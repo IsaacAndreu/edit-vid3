@@ -44,12 +44,30 @@ def _youtube_cookies(ctx: RunContext, yt_cfg: dict[str, Any]) -> str | None:
     encoded = ctx.env("YOUTUBE_COOKIES_B64", required=False)
     if encoded:
         return base64.b64decode(encoded).decode("utf-8")
+    path = _cookies_file(yt_cfg)
+    if path is not None:
+        print(f"   YouTube: usando cookies de {path}")
+        return path.read_text(encoding="utf-8")
+    return None
+
+
+def _cookies_file(yt_cfg: dict[str, Any]) -> Path | None:
     if yt_cfg.get("cookies_file"):
         path = Path(str(yt_cfg["cookies_file"])).expanduser()
         if path.is_file():
-            print(f"   YouTube: usando cookies de {path}")
-            return path.read_text(encoding="utf-8")
+            return path
     return None
+
+
+def youtube_source(ctx: RunContext) -> YouTubeSource:
+    """A YouTubeSource with this project's config and cookies; call .close() when done."""
+
+    yt_cfg = ctx.section("sourcing").get("youtube", {})
+    from_env = bool(ctx.env("YOUTUBE_COOKIES_B64", required=False))
+    return YouTubeSource(
+        root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookies_text=_youtube_cookies(ctx, yt_cfg),
+        cookies_path=None if from_env else _cookies_file(yt_cfg),
+    )
 
 
 class Precomputer:
@@ -124,11 +142,7 @@ def run(ctx: RunContext) -> None:
             stale.unlink()
 
     yt_cfg = cfg.get("youtube", {})
-    youtube = (
-        YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookies_text=_youtube_cookies(ctx, yt_cfg))
-        if yt_cfg.get("enabled", True)
-        else None
-    )
+    youtube = youtube_source(ctx) if yt_cfg.get("enabled", True) else None
     images = ImageSources(
         root=ctx.root,
         cache_dir=ctx.cache_dir,
@@ -176,8 +190,10 @@ def run(ctx: RunContext) -> None:
 
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 3))) as pool:
         results = list(pool.map(process, shots))
-    if youtube is not None and youtube.stats:
-        print(f"   Tiempos YouTube: {youtube.stats_line()}")
+    if youtube is not None:
+        youtube.close()
+        if youtube.stats:
+            print(f"   Tiempos YouTube: {youtube.stats_line()}")
     if precompute is not None:
         precompute.finish()
 

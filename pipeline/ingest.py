@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -27,8 +28,8 @@ import requests
 
 from .context import RunContext
 from .schemas import MAX_THIRD_PARTY_SECONDS, IngestedMedia, IngestFile, Selection, SelectionFile, ShotsFile
-from .sourcing import _youtube_cookies
-from .sourcing.common import USER_AGENT, key
+from .sourcing import youtube_source
+from .sourcing.common import USER_AGENT, Pacer, key
 from .sourcing.youtube import YouTubeSource
 
 
@@ -96,6 +97,47 @@ def normalise_image(source: Path, target: Path, *, lut: Path | None) -> None:
     tmp.replace(target)
 
 
+def wikimedia_thumbnails(url: str) -> list[str]:
+    """Commons refuses hot-downloading originals: ask for its standard scaled sizes instead."""
+
+    clean = url.split("?")[0]
+    marker = "/wikipedia/commons/"
+    if marker not in clean:
+        return [url]
+    if "/thumb/" in clean:
+        return [clean]
+    path = clean.split(marker, 1)[1]            # "1/12/Name.jpg"
+    name = path.rsplit("/", 1)[1]
+    base = clean.split(marker, 1)[0] + marker + "thumb/" + path
+    return [f"{base}/{width}px-{name}" for width in (1920, 1280)]
+
+
+_IMAGE_LOCK = threading.Lock()
+_IMAGE_PACER = Pacer(1.0)  # Wikimedia's robot policy: serial, unhurried downloads (https://w.wiki/4wJS)
+
+
+def fetch_image(http: requests.Session, url: str, target: Path, attempts: int = 4) -> None:
+    """Download with polite retries: 429/5xx back off; a 4xx on one size tries the next."""
+
+    last = ""
+    for candidate_url in wikimedia_thumbnails(url):
+        for attempt in range(attempts):
+            with _IMAGE_LOCK:
+                _IMAGE_PACER.wait()
+                response = http.get(candidate_url, timeout=60)
+            if response.status_code == 429 or response.status_code >= 500:
+                last = f"HTTP {response.status_code}"
+                time.sleep(3 * 2**attempt)
+                continue
+            if response.status_code >= 400:
+                last = f"HTTP {response.status_code}"
+                break
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(response.content)
+            return
+    raise RuntimeError(f"no se pudo descargar la imagen ({last}): {url[:120]}")
+
+
 def inputs(ctx: RunContext) -> list:
     lut = ctx.root / str(ctx.section("ingest").get("lut", "assets/lut.cube"))
     return [ctx.work_dir / "selection.json", ctx.work_dir / "shots.json", lut]
@@ -122,7 +164,7 @@ def run(ctx: RunContext) -> None:
             previous = {}
 
     yt_cfg = ctx.section("sourcing").get("youtube", {})
-    youtube = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookies_text=_youtube_cookies(ctx, yt_cfg))
+    youtube = youtube_source(ctx)
     http = requests.Session()
     http.headers["User-Agent"] = USER_AGENT
 
@@ -164,10 +206,7 @@ def run(ctx: RunContext) -> None:
             raise ValueError("la imagen no tiene URL original")
         original = ctx.cache_dir / "images" / "original" / f"{key(url)}{Path(url.split('?')[0]).suffix or '.jpg'}"
         if not original.is_file():
-            response = http.get(url, timeout=60)
-            response.raise_for_status()
-            original.parent.mkdir(parents=True, exist_ok=True)
-            original.write_bytes(response.content)
+            fetch_image(http, url, original)
         target = out_dir / f"{selection.shotId}.jpg"
         normalise_image(original, target, lut=lut)
         info = probe(target)
@@ -193,6 +232,7 @@ def run(ctx: RunContext) -> None:
             if number % 40 == 0:
                 print(f"   {number}/{len(todo)} ({time.monotonic() - started:.0f} s)")
 
+    youtube.close()
     ordered = [media[s.shotId] for s in todo if s.shotId in media]
     for stale in out_dir.iterdir():
         if stale.name != MANIFEST and stale.stem not in media:

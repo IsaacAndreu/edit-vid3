@@ -66,7 +66,7 @@ class ImageSources:
             "wikimedia": Pacer(float(config.get("wikimedia", {}).get("min_interval", 0.5))),
             "openverse": Pacer(float(config.get("openverse", {}).get("min_interval", 3.2))),
             "pixabay": Pacer(float(config.get("pixabay", {}).get("min_interval", 1.0))),
-            "download": Pacer(0.2),
+            "download": Pacer(1.0),  # upload.wikimedia.org blocks bursts (robot policy)
         }
         self.disabled: dict[str, str] = {}
 

@@ -53,6 +53,20 @@ class NormaliseTests(unittest.TestCase):
         self.assertEqual((info["width"], info["height"]), (2304, 1296))
 
 
+class WikimediaTests(unittest.TestCase):
+    def test_originals_become_standard_thumbnails(self) -> None:
+        from pipeline.ingest import wikimedia_thumbnails
+
+        url = "https://upload.wikimedia.org/wikipedia/commons/1/12/Casa_generalitat_web.jpg?utm_source=x"
+        self.assertEqual(wikimedia_thumbnails(url), [
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Casa_generalitat_web.jpg/1920px-Casa_generalitat_web.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Casa_generalitat_web.jpg/1280px-Casa_generalitat_web.jpg",
+        ])
+        thumb = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/X.jpg/1920px-X.jpg"
+        self.assertEqual(wikimedia_thumbnails(thumb), [thumb])
+        self.assertEqual(wikimedia_thumbnails("https://live.staticflickr.com/1/2.jpg"), ["https://live.staticflickr.com/1/2.jpg"])
+
+
 class IngestSchemaTests(unittest.TestCase):
     BASE = {"shotId": "s001", "kind": "video", "path": "work/x/media/s001.mp4", "source": "youtube",
             "candidateId": "yt:x", "start": 10, "end": 13, "durationSeconds": 3.0, "width": 1920, "height": 1080,

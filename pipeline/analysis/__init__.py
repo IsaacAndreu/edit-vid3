@@ -29,7 +29,7 @@ from pydantic import ValidationError
 
 from ..context import RunContext
 from ..schemas import MAX_THIRD_PARTY_SECONDS, Candidate, Option, OptionScores, Shot, ShotCandidates, ShotScores, ShotsFile
-from ..sourcing import _youtube_cookies, needs_footage
+from ..sourcing import needs_footage, youtube_source
 from ..sourcing.common import SourceUnavailable, key, tokens
 from ..sourcing.youtube import YouTubeSource
 from . import detectors as det
@@ -417,7 +417,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
 
     # 3. Fine pass: downloads in threads, analysis in this thread as they arrive.
     yt_cfg = ctx.section("sourcing").get("youtube", {})
-    youtube = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookies_text=_youtube_cookies(ctx, yt_cfg))
+    youtube = youtube_source(ctx)
     fine: dict[tuple[str, float, float], list[dict[str, Any]]] = {}
     notes: dict[str, list[str]] = {s.id: [] for s in todo}
     print(f"   Pasada fina: {len(jobs)} ventanas de ~{2 * pad + 5:.0f} s a 360p")
@@ -510,6 +510,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
             prompts=prompts_for(shot), options=options, notes=notes[shot.id],
         )
         ctx.write_json(f"{OUTPUT}/{shot.id}.json", result.model_dump(by_alias=True, exclude_none=True))
+    youtube.close()
     _write_summary(ctx, shots)
     print(f"   Análisis completo en {time.monotonic() - started:.0f} s")
 

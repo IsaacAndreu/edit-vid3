@@ -48,7 +48,8 @@ class _QuietLogger:
 
 class YouTubeSource:
     def __init__(
-        self, *, root: Path, cache_dir: Path, config: dict[str, Any], cookies_text: str | None = None
+        self, *, root: Path, cache_dir: Path, config: dict[str, Any], cookies_text: str | None = None,
+        cookies_path: Path | None = None,
     ) -> None:
         self.root = root
         self.cache_dir = cache_dir
@@ -59,6 +60,8 @@ class YouTubeSource:
         self._slots = threading.Semaphore(int(config.get("concurrency", 3)))
         self._cooldown_until = 0.0
         self._cookies_text = cookies_text
+        self._cookies_path = cookies_path          # where cookies_text came from, to persist rotations
+        self._cookie_copies: list[str] = []
         self._local = threading.local()
         self.stats: dict[str, list[float]] = {}   # action → [count, seconds], for tuning
         self._stats_lock = threading.Lock()
@@ -98,7 +101,26 @@ class YouTubeSource:
             with os.fdopen(handle, "w", encoding="utf-8") as cookie_file:
                 cookie_file.write(self._cookies_text)
             self._local.cookie_path = path
+            self._cookie_copies.append(path)
         return path
+
+    def close(self) -> None:
+        """Persist cookies YouTube rotated during the run (newest private copy) and drop the copies.
+
+        A stale copy makes the next run look like a replayed session, which gets it invalidated.
+        """
+
+        copies = [Path(p) for p in self._cookie_copies if Path(p).is_file()]
+        if copies and self._cookies_path is not None:
+            newest = max(copies, key=lambda p: p.stat().st_mtime).read_text(encoding="utf-8")
+            if "youtube.com" in newest and newest != self._cookies_text:
+                tmp = self._cookies_path.with_name(self._cookies_path.name + ".tmp")
+                tmp.write_text(newest, encoding="utf-8")
+                os.chmod(tmp, 0o600)
+                tmp.replace(self._cookies_path)
+        for path in copies:
+            path.unlink(missing_ok=True)
+        self._cookie_copies.clear()
 
     def _ydl(self, extra: dict[str, Any] | None = None) -> Any:
         import yt_dlp
