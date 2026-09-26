@@ -1,12 +1,11 @@
-"""Third-party footage from YouTube via yt-dlp (stage 3).
+"""Third-party footage from YouTube via yt-dlp (stage 3), storyboard-first.
 
-Search → metadata filters → low-res (360p) analysis media. Everything is cached globally:
-cache/search/youtube/ for searches, cache/videos/<id>/ for metadata, subtitles and the
-360p analysis files, so a second video about a similar topic reuses the work.
-
-Long videos are not downloaded whole: only sections around subtitle hits for the shot's
-terms (or a few sampled windows when there are no subtitles). The HD download of the
-chosen fragment happens later, in stage 6 (ingest).
+Per candidate video only two cheap things are fetched here: its metadata (one yt-dlp
+call) and its storyboard — the seek-bar thumbnails, ~100 frames of the whole video in a
+few hundred KB. Stage 4 scores those thumbnails and only then downloads short 360p
+windows around the best moments (`download_section`); stage 6 downloads the chosen
+≤5 s fragment in HD. Everything is cached globally in cache/search/youtube/ and
+cache/videos/<id>/, so later videos on similar topics reuse the work.
 """
 
 from __future__ import annotations
@@ -18,21 +17,24 @@ import shutil
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from ..clients.youtube_client import YouTubeClient as _LegacyParsers
-from ..schemas import AnalysisRange, BrollSpec, Candidate
-from .common import Pacer, SourceUnavailable, cached_json, fuse_ranks, key, tokens
+from ..schemas import BrollSpec, Candidate, Storyboard
+from .common import USER_AGENT, Pacer, SourceUnavailable, cached_json, fuse_ranks, key, tokens
 
 
 _BLOCK_MARKERS = ("sign in to confirm", "not a bot")
 _RATE_MARKERS = ("http error 429", "too many requests")
+_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 class RateLimited(RuntimeError):
     pass
-_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 class _QuietLogger:
@@ -51,13 +53,15 @@ class YouTubeSource:
         self.root = root
         self.cache_dir = cache_dir
         self.cfg = config
-        self.pacer = Pacer(float(config.get("min_interval", 1.5)))
+        self.pacer = Pacer(float(config.get("min_interval", 1.0)))
         self.blocked: str | None = None
-        # A couple of concurrent requests at most; a 429 pauses every thread (the limit is per account/IP).
-        self._slots = threading.Semaphore(int(config.get("concurrency", 2)))
+        # A few concurrent requests at most; a 429 pauses every thread (the limit is per account/IP).
+        self._slots = threading.Semaphore(int(config.get("concurrency", 3)))
         self._cooldown_until = 0.0
         self._cookies_text = cookies_text
         self._local = threading.local()
+        self.http = requests.Session()
+        self.http.headers["User-Agent"] = USER_AGENT
         options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
@@ -161,7 +165,21 @@ class YouTubeSource:
             return False
         return "/shorts/" not in str(entry.get("url") or "")
 
+    def _info_path(self, video_id: str) -> Path:
+        return self.cache_dir / "videos" / video_id / "info.json"
+
     def info(self, video_id: str) -> dict[str, Any]:
+        path = self._info_path(video_id)
+        if path.is_file():
+            try:
+                import json
+
+                cached = json.loads(path.read_text(encoding="utf-8"))
+                if "storyboard" not in cached:  # written by the older, download-first sourcing
+                    path.unlink()
+            except (OSError, ValueError):
+                path.unlink(missing_ok=True)
+
         def produce() -> dict[str, Any]:
             data = self._call(
                 "metadata",
@@ -169,7 +187,18 @@ class YouTubeSource:
                     f"https://www.youtube.com/watch?v={video_id}", download=False
                 ),
             )
-            heights = [f.get("height") or 0 for f in data.get("formats") or [] if f.get("vcodec") not in (None, "none")]
+            formats = data.get("formats") or []
+            heights = [f.get("height") or 0 for f in formats if f.get("vcodec") not in (None, "none")]
+            boards = [f for f in formats if str(f.get("format_id", "")).startswith("sb") and f.get("fragments")]
+            board = max(boards, key=lambda f: f.get("width") or 0, default=None)
+            captions: dict[str, str] = {}
+            for field in ("subtitles", "automatic_captions"):  # manual subtitles win
+                for lang, tracks in (data.get(field) or {}).items():
+                    base = lang.split("-")[0]
+                    if base in ("en", "es") and base not in captions:
+                        json3 = next((t.get("url") for t in tracks if t.get("ext") == "json3"), None)
+                        if json3:
+                            captions[base] = json3
             return {
                 "id": video_id,
                 "title": data.get("title") or "",
@@ -181,13 +210,19 @@ class YouTubeSource:
                 "height": data.get("height"),
                 "maxHeight": max(heights or [0]),
                 "liveStatus": data.get("live_status"),
-                "subtitleLangs": sorted(data.get("subtitles") or {}),
-                "autoCaptionLangs": sorted(
-                    lang for lang in (data.get("automatic_captions") or {}) if lang.split("-")[0] in ("en", "es")
-                ),
+                "fetchedAt": time.time(),
+                "storyboard": None if board is None else {
+                    "urls": [frag["url"] for frag in board["fragments"]],
+                    "columns": board.get("columns") or 1,
+                    "rows": board.get("rows") or 1,
+                    "width": board.get("width") or 0,
+                    "height": board.get("height") or 0,
+                    "fps": board.get("fps") or 0,
+                },
+                "captions": captions,
             }
 
-        return cached_json(self.cache_dir / "videos" / video_id / "info.json", produce)
+        return cached_json(path, produce)
 
     def passes_metadata_filters(self, info: dict[str, Any]) -> bool:
         if info.get("maxHeight", 0) < int(self.cfg.get("min_height", 720)):
@@ -195,83 +230,79 @@ class YouTubeSource:
         width, height = info.get("width") or 16, info.get("height") or 9
         if height > width:  # vertical = shorts-style footage
             return False
-        return bool(info.get("channel"))
+        board = info.get("storyboard")
+        return bool(info.get("channel")) and bool(board and board.get("fps") and board.get("width"))
 
-    def subtitles(self, info: dict[str, Any]) -> list[tuple[float, float, str]]:
+    # --- storyboard -----------------------------------------------------------------
+
+    def storyboard(self, info: dict[str, Any]) -> Storyboard:
         video_id = info["id"]
-        langs = [lang for lang in ("en", "es") if lang in info["subtitleLangs"]] or [
-            lang for lang in info["autoCaptionLangs"] if lang in ("en", "es", "en-orig", "es-orig")
-        ]
-        if not langs:
-            return []
-        lang = langs[0]
-        target_dir = self.cache_dir / "videos" / video_id
+        board = info["storyboard"]
+        target_dir = self.cache_dir / "videos" / video_id / "sb"
+        paths = [target_dir / f"{index:03d}.jpg" for index in range(len(board["urls"]))]
+
+        def fetch(item: tuple[str, Path]) -> None:
+            url, path = item
+            response = self.http.get(url, timeout=30)
+            response.raise_for_status()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(response.content)
+
+        missing = [(url, path) for url, path in zip(board["urls"], paths) if not path.is_file()]
+        if missing:
+            try:
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    list(pool.map(fetch, missing))
+            except requests.HTTPError:
+                # Signed thumbnail URLs expire: refresh the metadata once and retry.
+                self._info_path(video_id).unlink(missing_ok=True)
+                board = self.info(video_id)["storyboard"]
+                missing = [(url, path) for url, path in zip(board["urls"], paths) if not path.is_file()]
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    list(pool.map(fetch, missing))
+        duration = float(info.get("duration") or 0)
+        per_sheet = int(board["columns"]) * int(board["rows"])
+        frames = min(len(paths) * per_sheet, max(1, int(duration * float(board["fps"])) + 1))
+        return Storyboard(
+            sheets=[str(p.relative_to(self.root)) for p in paths],
+            columns=int(board["columns"]),
+            rows=int(board["rows"]),
+            tileWidth=int(board["width"]),
+            tileHeight=int(board["height"]),
+            interval=1.0 / float(board["fps"]),
+            frames=frames,
+        )
+
+    # --- used by stage 4 ------------------------------------------------------------
+
+    def captions(self, video_id: str) -> list[tuple[float, float, str]]:
+        """Subtitle cues (en/es) — best effort: [] when there are none or YouTube refuses."""
 
         def produce() -> list[list[Any]]:
-            options = {
-                "skip_download": True,
-                "writesubtitles": True,
-                "writeautomaticsub": True,
-                "subtitleslangs": [lang],
-                "subtitlesformat": "vtt",
-                "outtmpl": str(target_dir / "subs.%(ext)s"),
-            }
-            self._call(
-                "subtitles", lambda: self._ydl(options).download([f"https://www.youtube.com/watch?v={video_id}"]), rate_retries=0
-            )
-            files = sorted(target_dir.glob("subs*.vtt"))
-            if not files:
+            info = self.info(video_id)
+            url = info.get("captions", {}).get("en") or info.get("captions", {}).get("es")
+            if not url:
                 return []
-            cues = _LegacyParsers._parse_vtt(files[0].read_text(encoding="utf-8-sig", errors="replace"))
+            response = self.http.get(url, timeout=30)
+            if response.status_code == 429:
+                raise RateLimited("subtítulos: 429")
+            response.raise_for_status()
+            cues = _LegacyParsers._parse_json3(response.text)
             return [[c.start_seconds, c.end_seconds, c.text] for c in cues]
 
-        return [tuple(c) for c in cached_json(target_dir / f"subs.{lang}.json", produce)]  # type: ignore[misc]
-
-    # --- analysis sections ----------------------------------------------------------
-
-    def plan_sections(self, info: dict[str, Any], terms: set[str], entity_terms: set[str]) -> list[tuple[float, float, str]]:
-        duration = float(info.get("duration") or 0)
-        if duration <= float(self.cfg.get("full_download_max_seconds", 480)):
-            return [(0.0, duration, "full")]
-        margin = duration * 0.05
-        pad = float(self.cfg.get("section_padding", 15))
-        max_len = float(self.cfg.get("section_max_seconds", 60))
-        max_sections = int(self.cfg.get("max_sections", 3))
         try:
-            cues = self.subtitles(info)
-        except SourceUnavailable:
-            raise
+            cues = cached_json(self.cache_dir / "videos" / video_id / "captions.json", produce)
         except Exception:
-            cues = []  # no subtitles → sampled windows below
-        hits: list[tuple[float, float, float, str]] = []
-        for start, end, text in cues:
-            words = tokens(text)
-            score = len(words & terms) + 2 * len(words & entity_terms)
-            if score >= 2 and margin <= start <= duration - margin:
-                hits.append((score, start, end, text))
-        windows: list[list[Any]] = []
-        for _, start, end, text in sorted(hits, key=lambda h: (-h[0], h[1])):
-            window = [max(margin, start - pad), min(duration - margin, end + pad), f"subtítulo: {text[:60]}"]
-            window[1] = min(window[1], window[0] + max_len)
-            if any(w[0] - pad <= window[0] <= w[1] + pad for w in windows):
-                continue
-            windows.append(window)
-            if len(windows) >= max_sections:
-                break
-        if not windows:
-            length = min(max_len / 2, 30.0)
-            windows = [
-                [max(margin, duration * f - length / 2), min(duration - margin, duration * f + length / 2), "muestreo"]
-                for f in (0.25, 0.5, 0.75)
-            ][:max_sections]
-        return [(round(a, 2), round(b, 2), reason) for a, b, reason in sorted(windows) if b - a >= 3]
+            return []
+        return [tuple(c) for c in cues]  # type: ignore[misc]
 
     def download_section(self, video_id: str, start: float, end: float) -> Path:
+        """360p (video-only) file covering [start, end] of the source, exact timestamps."""
+
         target_dir = self.cache_dir / "videos" / video_id
         target = target_dir / f"a360_{start:.2f}_{end:.2f}.mp4"
         if target.is_file() and target.stat().st_size > 0:
             return target
-        # Reuse any already-downloaded file that covers this range.
         for existing in target_dir.glob("a360_*.mp4"):
             _, a, b = existing.stem.split("_")
             if float(a) <= start and float(b) >= end:
@@ -283,12 +314,9 @@ class YouTubeSource:
             "outtmpl": str(target_dir / f"dl_{start:.2f}_{end:.2f}.%(ext)s"),
             "overwrites": True,
             "nopart": True,
+            "download_ranges": download_range_func(None, [(start, end)]),
+            "force_keyframes_at_cuts": True,  # exact timestamps: later stages cut by them
         }
-        info_duration = self.info(video_id).get("duration") or 0
-        is_full = start <= 0.01 and end >= float(info_duration) - 0.5
-        if not is_full:
-            options["download_ranges"] = download_range_func(None, [(start, end)])
-            options["force_keyframes_at_cuts"] = True  # exact timestamps: later stages cut by them
         self._call("download", lambda: self._ydl(options).download([f"https://www.youtube.com/watch?v={video_id}"]))
         produced = [p for p in target_dir.glob(f"dl_{start:.2f}_{end:.2f}*") if p.suffix in (".mp4", ".webm", ".mkv")]
         if not produced:
@@ -328,8 +356,7 @@ class YouTubeSource:
             if entity_terms and entity_terms & tokens(f"{entry.get('title')} {entry.get('channel')}"):
                 scores[video_id] = scores.get(video_id, 0.0) + 0.3
 
-        terms = tokens(" ".join([*broll.queries, *broll.queriesLocal, *broll.mustContain]))
-        wanted = int(self.cfg.get("videos_per_shot", 4))
+        wanted = int(self.cfg.get("videos_per_shot", 3))
         result: list[Candidate] = []
         for video_id in sorted(entries, key=lambda v: -scores.get(v, 0.0)):
             if len(result) >= wanted:
@@ -338,16 +365,11 @@ class YouTubeSource:
                 info = self.info(video_id)
                 if not self.passes_metadata_filters(info):
                     continue
-                ranges = []
-                for start, end, reason in self.plan_sections(info, terms, entity_terms):
-                    path = self.download_section(video_id, start, end)
-                    ranges.append(AnalysisRange(path=str(path.relative_to(self.root)), start=start, end=end, reason=reason))
+                board = self.storyboard(info)
             except SourceUnavailable:
                 raise
             except Exception as error:
-                notes.append(f"yt:{video_id}: {error}")
-                continue
-            if not ranges:
+                notes.append(f"yt:{video_id}: {str(error)[:160]}")
                 continue
             channel = info["channel"]
             url = f"https://www.youtube.com/watch?v={video_id}"
@@ -368,7 +390,7 @@ class YouTubeSource:
                     height=info.get("height"),
                     query=entries[video_id]["query"],
                     rankScore=round(scores.get(video_id, 0.0), 4),
-                    analysis=ranges,
+                    storyboard=board,
                 )
             )
         return result

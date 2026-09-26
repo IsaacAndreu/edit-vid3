@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from pipeline.schemas import BrollSpec, Candidate
+from pipeline.schemas import BrollSpec, Candidate, Storyboard
 from pipeline.sourcing.common import SourceUnavailable, fuse_ranks
 from pipeline.sourcing.images import ImageSources, image_query
 from pipeline.sourcing.youtube import YouTubeSource, _parse_rate
@@ -40,39 +40,43 @@ class YouTubeFilterTests(unittest.TestCase):
     def test_metadata_filters(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             yt = _youtube(tmp)
-            info = {"maxHeight": 1080, "width": 1920, "height": 1080, "channel": "Canal"}
+            info = {"maxHeight": 1080, "width": 1920, "height": 1080, "channel": "Canal",
+                    "storyboard": {"fps": 0.2, "width": 320}}
             self.assertTrue(yt.passes_metadata_filters(info))
             self.assertFalse(yt.passes_metadata_filters({**info, "maxHeight": 480}))
             self.assertFalse(yt.passes_metadata_filters({**info, "width": 1080, "height": 1920}))
             self.assertFalse(yt.passes_metadata_filters({**info, "channel": ""}))
+            self.assertFalse(yt.passes_metadata_filters({**info, "storyboard": None}))
 
 
-class SectionPlanTests(unittest.TestCase):
-    def test_short_video_is_downloaded_whole(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(_youtube(tmp).plan_sections({"id": "x", "duration": 300}, set(), set()), [(0.0, 300, "full")])
+class StoryboardTests(unittest.TestCase):
+    INFO = {"id": "AAAAAAAAAAA", "duration": 100, "storyboard": {
+        "urls": ["https://i.ytimg.com/sb/a/M0.jpg", "https://i.ytimg.com/sb/a/M1.jpg"],
+        "columns": 3, "rows": 3, "width": 320, "height": 180, "fps": 0.1}}
 
-    def test_long_video_uses_subtitle_hits_outside_intro_and_outro(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            yt = _youtube(tmp, section_padding=10, max_sections=2)
-            cues = [
-                (5.0, 8.0, "casino madrid casino madrid"),          # inside the first 5 %: ignored
-                (600.0, 604.0, "the gran casino madrid building"),
-                (1200.0, 1203.0, "nothing relevant here"),
-                (1500.0, 1504.0, "casino building at night"),
-            ]
-            with patch.object(yt, "subtitles", return_value=cues):
-                sections = yt.plan_sections({"id": "x", "duration": 2000}, {"casino", "building", "night"}, {"madrid"})
-            self.assertEqual([(a, b) for a, b, _ in sections], [(590.0, 614.0), (1490.0, 1514.0)])
-            self.assertTrue(all(reason.startswith("subtítulo") for *_, reason in sections))
-
-    def test_long_video_without_subtitles_is_sampled(self) -> None:
+    def test_sheets_are_fetched_once_and_frames_counted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             yt = _youtube(tmp)
-            with patch.object(yt, "subtitles", return_value=[]):
-                sections = yt.plan_sections({"id": "x", "duration": 1000}, {"casino"}, set())
-            self.assertEqual(len(sections), 3)
-            self.assertTrue(all(reason == "muestreo" and b - a == 30 for a, b, reason in sections))
+            calls = []
+
+            class Response:
+                content = b"jpg"
+                def raise_for_status(self): ...
+
+            def fake_get(url, timeout):
+                calls.append(url)
+                return Response()
+
+            with patch.object(yt.http, "get", side_effect=fake_get):
+                board = yt.storyboard(self.INFO)
+                again = yt.storyboard(self.INFO)
+        self.assertEqual(len(calls), 2)                      # second call is served from disk
+        self.assertEqual(board, again)
+        self.assertEqual(board.frames, 11)                   # 100 s at 0.1 fps → frames 0..10
+        self.assertAlmostEqual(board.interval, 10.0)
+        self.assertEqual(board.locate(0), (0, 0, 0))
+        self.assertEqual(board.locate(4), (0, 320, 180))
+        self.assertEqual(board.locate(10), (1, 320, 0))
 
 
 class YouTubeCandidateTests(unittest.TestCase):
@@ -83,7 +87,7 @@ class YouTubeCandidateTests(unittest.TestCase):
             {"id": "CCCCCCCCCCC", "title": "short", "channel": "Y", "duration": 200, "url": "https://www.youtube.com/shorts/CCCCCCCCCCC"},
         ]
 
-    def test_builds_candidates_with_credit_and_ranges(self) -> None:
+    def test_builds_candidates_with_credit_and_storyboard(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             yt = _youtube(tmp, videos_per_shot=2)
             infos = {
@@ -93,22 +97,20 @@ class YouTubeCandidateTests(unittest.TestCase):
                                 "duration": 900, "width": 1280, "height": 720, "maxHeight": 480},
             }
 
-            def fake_download(video_id, start, end):
-                path = Path(tmp) / "cache" / "videos" / video_id / f"a360_{start:.2f}_{end:.2f}.mp4"
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(b"x")
-                return path
+            for info in infos.values():
+                info["storyboard"] = {"fps": 0.2, "width": 320}
+            board = Storyboard(sheets=["cache/sb/000.jpg"], columns=3, rows=3, tileWidth=320, tileHeight=180,
+                               interval=5.0, frames=9)
 
             with patch.object(yt, "search", side_effect=self._search_results), patch.object(
                 yt, "info", side_effect=lambda v: infos[v]
-            ), patch.object(yt, "download_section", side_effect=fake_download):
+            ), patch.object(yt, "storyboard", return_value=board):
                 notes: list[str] = []
                 result = yt.candidates(BROLL, notes)
         self.assertEqual([c.id for c in result], ["yt:AAAAAAAAAAA"])       # B fails 720p, C is a short
         candidate = result[0]
         self.assertEqual(candidate.credit, "Fuente: Drone ES")
-        self.assertEqual(candidate.analysis[0].reason, "full")
-        self.assertTrue(candidate.analysis[0].path.startswith("cache/videos/AAAAAAAAAAA/"))
+        self.assertEqual(candidate.storyboard.frames, 9)
 
     def test_block_trips_the_breaker_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,11 +201,12 @@ class CandidateSchemaTests(unittest.TestCase):
     def test_requires_media_and_a_real_credit(self) -> None:
         base = {"id": "yt:x", "source": "youtube", "kind": "video", "url": "u", "title": "t", "channel": "c",
                 "license": "l", "attribution": "a", "query": "q", "rankScore": 0.1}
+        board = {"sheets": ["s.jpg"], "columns": 3, "rows": 3, "tileWidth": 320, "tileHeight": 180, "interval": 5, "frames": 9}
         with self.assertRaises(ValidationError):
-            Candidate.model_validate({**base, "credit": "Fuente: c"})                    # video without ranges
+            Candidate.model_validate({**base, "credit": "Fuente: c"})                    # video without storyboard
         with self.assertRaises(ValidationError):
-            Candidate.model_validate({**base, "credit": "c", "analysis": [{"path": "p", "start": 0, "end": 5}]})
-        Candidate.model_validate({**base, "credit": "Fuente: c", "analysis": [{"path": "p", "start": 0, "end": 5}]})
+            Candidate.model_validate({**base, "credit": "c", "storyboard": board})
+        Candidate.model_validate({**base, "credit": "Fuente: c", "storyboard": board})
 
     def test_rank_fusion(self) -> None:
         scores = fuse_ranks([["a", "b"], ["b", "c"]])

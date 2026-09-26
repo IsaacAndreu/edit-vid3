@@ -130,10 +130,10 @@ class ImageSources:
         candidates: list[Candidate] = []
         for item_id in ranked:
             item = found[item_id]
-            suffix = ".png" if item["mediaUrl"].lower().split("?")[0].endswith(".png") else ".jpg"
-            target = self.cache_dir / "images" / item["source"] / f"{key(item['mediaUrl'])}{suffix}"
+            suffix = ".png" if item["analysisUrl"].lower().split("?")[0].endswith(".png") else ".jpg"
+            target = self.cache_dir / "images" / item["source"] / f"{key(item['analysisUrl'])}{suffix}"
             try:
-                download_file(self.session, item["mediaUrl"], target, pacer=self.pacers["download"])
+                download_file(self.session, item["analysisUrl"], target, pacer=self.pacers["download"])
             except Exception as error:
                 notes.append(f"{item_id}: descarga fallida ({type(error).__name__})")
                 continue
@@ -153,6 +153,7 @@ class ImageSources:
                     query=item["query"],
                     rankScore=round(scores.get(item_id, 0.0), 4),
                     imagePath=str(target.relative_to(self.root)),
+                    mediaUrl=item["mediaUrl"],
                 )
             )
         return planned, candidates
@@ -169,7 +170,7 @@ class ImageSources:
         params = {
             "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
             "gsrsearch": f"{query} filetype:bitmap", "gsrlimit": 12,
-            "prop": "imageinfo", "iiprop": "url|size|extmetadata|mime", "iiurlwidth": 1920,
+            "prop": "imageinfo", "iiprop": "url|size|extmetadata|mime", "iiurlwidth": 640,
         }
         payload = cached_json(
             self.cache_dir / "search" / "wikimedia" / f"{key(params)}.json",
@@ -188,9 +189,13 @@ class ImageSources:
             author = _short(strip_html((meta.get("Artist") or {}).get("value", ""))) or "Wikimedia Commons"
             title = page.get("title", "").removeprefix("File:").rsplit(".", 1)[0]
             landing = info.get("descriptionurl") or f"https://commons.wikimedia.org/wiki/{page.get('title', '')}"
+            thumb = info.get("thumburl") or info.get("url")
+            full = info.get("url")
+            if thumb and "/640px-" in thumb and int(info.get("width") or 0) > 1920:
+                full = thumb.replace("/640px-", "/1920px-")  # Commons scales on demand; originals can be huge
             results.append({
                 "id": f"wm:{page.get('pageid')}", "source": "wikimedia", "landing": landing, "title": title,
-                "mediaUrl": info.get("thumburl") or info.get("url"), "width": info.get("width"), "height": info.get("height"),
+                "analysisUrl": thumb, "mediaUrl": full, "width": info.get("width"), "height": info.get("height"),
                 "author": author, "license": licence,
                 "credit": f"Fuente: {author} / Wikimedia Commons",
                 "attribution": f"\"{title}\" — {author}, {licence}, Wikimedia Commons: {landing}",
@@ -218,7 +223,7 @@ class ImageSources:
             landing = item.get("foreign_landing_url") or item["url"]
             results.append({
                 "id": f"ov:{item['id']}", "source": "openverse", "landing": landing, "title": title,
-                "mediaUrl": item["url"], "width": item.get("width"), "height": item.get("height"),
+                "analysisUrl": item["url"], "mediaUrl": item["url"], "width": item.get("width"), "height": item.get("height"),
                 "author": author, "license": licence,
                 "credit": f"Fuente: {author} / {provider}",
                 "attribution": str(item.get("attribution") or f"\"{title}\" — {author}, {licence}: {landing}"),
@@ -241,7 +246,8 @@ class ImageSources:
             author = _short(str(hit.get("user") or "Pixabay"))
             results.append({
                 "id": f"px:{hit['id']}", "source": "pixabay", "landing": hit["pageURL"], "title": str(hit.get("tags", query)),
-                "mediaUrl": hit.get("largeImageURL"), "width": hit.get("imageWidth"), "height": hit.get("imageHeight"),
+                "analysisUrl": hit.get("webformatURL") or hit.get("largeImageURL"), "mediaUrl": hit.get("largeImageURL"),
+                "width": hit.get("imageWidth"), "height": hit.get("imageHeight"),
                 "author": author, "license": "Pixabay Content License",
                 "credit": f"Fuente: {author} / Pixabay",
                 "attribution": f"{author} — Pixabay Content License: {hit['pageURL']}",

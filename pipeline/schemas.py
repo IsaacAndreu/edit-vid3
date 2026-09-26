@@ -211,6 +211,25 @@ class AnalysisRange(_Strict):
     reason: str = ""                                         # full | subtitle hit "..." | sampled
 
 
+class Storyboard(_Strict):
+    """YouTube's seek-bar thumbnails: a cheap visual index of the whole video."""
+
+    sheets: list[str] = Field(min_length=1)                  # local JPGs, relative to the project root, in order
+    columns: int = Field(ge=1)
+    rows: int = Field(ge=1)
+    tileWidth: int = Field(ge=1)
+    tileHeight: int = Field(ge=1)
+    interval: float = Field(gt=0)                            # seconds between consecutive thumbnails
+    frames: int = Field(ge=1)
+
+    def locate(self, index: int) -> tuple[int, int, int]:
+        """Frame index → (sheet, x, y) of its tile."""
+
+        per_sheet = self.columns * self.rows
+        sheet, cell = divmod(index, per_sheet)
+        return sheet, (cell % self.columns) * self.tileWidth, (cell // self.columns) * self.tileHeight
+
+
 class Candidate(_Strict):
     id: str                                                  # "yt:<videoId>", "wm:<pageId>", "ov:<uuid>"...
     source: Source
@@ -227,13 +246,14 @@ class Candidate(_Strict):
     height: int | None = None
     query: str                                               # first query that surfaced it
     rankScore: float = Field(ge=0)                           # search-rank fusion, before any visual analysis
-    analysis: list[AnalysisRange] = Field(default_factory=list)   # videos
-    imagePath: str | None = None                             # images, relative to project root
+    storyboard: Storyboard | None = None                     # videos: thumbnails of the whole video
+    imagePath: str | None = None                             # images: analysis-size local copy
+    mediaUrl: str | None = None                              # images: full-resolution original (for ingest)
 
     @model_validator(mode="after")
     def _media_present(self) -> "Candidate":
-        if self.kind == "video" and not self.analysis:
-            raise ValueError(f"{self.id}: vídeo sin tramos descargados para analizar")
+        if self.kind == "video" and not self.storyboard:
+            raise ValueError(f"{self.id}: vídeo sin storyboard para analizar")
         if self.kind == "image" and not self.imagePath:
             raise ValueError(f"{self.id}: imagen sin fichero local")
         if not self.credit.startswith("Fuente: ") or len(self.credit) <= len("Fuente: "):
@@ -247,3 +267,53 @@ class ShotCandidates(_Strict):
     queries: dict[str, list[str]]                            # source → queries actually run
     candidates: list[Candidate]
     notes: list[str] = Field(default_factory=list)           # e.g. "youtube bloqueado: ..."
+
+
+# --- Stage 4: scores/<shot_id>.json ---------------------------------------------------
+
+MAX_THIRD_PARTY_SECONDS = 5.0
+
+
+class OptionScores(_Strict):
+    clip: float                                              # CLIP similarity shot text ↔ frames (raw cosine)
+    entity: float = 0.0                                      # 1 = source transcript names an entity of the shot
+    sharpness: float = 0.0                                   # 0-1
+    motion: float = 0.0                                      # 0-1
+    textArea: float = 0.0                                    # fraction of the frame covered by text
+    faceArea: float = 0.0                                    # largest face / frame
+
+
+class Option(_Strict):
+    """One usable fragment (video) or picture (image) for a shot, with its local-analysis score."""
+
+    candidateId: str
+    source: Source
+    kind: Literal["video", "image"]
+    pass_: Literal["coarse", "fine"] = Field(alias="pass")   # fine = checked on a 360p download
+    start: float | None = None                               # source-video seconds
+    end: float | None = None
+    analysisPath: str | None = None                          # 360p window file or image, relative to root
+    scores: OptionScores
+    total: float
+    discarded: str | None = None                             # reason, when the option must not be used
+    phash: str | None = None                                 # 64-bit perceptual hash, for de-duplication
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _video_span(self) -> "Option":
+        if self.kind == "video":
+            if self.start is None or self.end is None or self.end <= self.start:
+                raise ValueError(f"{self.candidateId}: fragmento sin tramo válido")
+            if self.end - self.start > MAX_THIRD_PARTY_SECONDS + 1e-6:
+                raise ValueError(f"{self.candidateId}: fragmento de {self.end - self.start:.2f} s (> 5 s)")
+        return self
+
+
+class ShotScores(_Strict):
+    shotId: str
+    inputsHash: str
+    needed: float = Field(gt=0, le=MAX_THIRD_PARTY_SECONDS)  # seconds of footage the shot needs (≤ 5)
+    prompts: list[str]
+    options: list[Option]                                    # best first; discarded ones last
+    notes: list[str] = Field(default_factory=list)

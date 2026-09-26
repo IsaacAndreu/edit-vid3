@@ -38,17 +38,13 @@ sourcing:
     queries_en: 2              # búsquedas por plano (de las 3-5 en inglés del planner)
     queries_local: 1           # + búsquedas en el idioma del guion
     results_per_query: 8
-    videos_per_shot: 3         # vídeos que pasan filtros y se descargan en 360p para analizar
-    concurrency: 2             # peticiones simultáneas a YouTube
+    videos_per_shot: 3         # vídeos por plano de los que se baja el storyboard (miniaturas)
+    concurrency: 3             # peticiones simultáneas a YouTube
     rate_backoff: 20           # s de pausa (x3 en cada reintento) cuando YouTube responde 429
     min_duration: 30           # s — descarta clips sueltos
     max_duration: 3600         # s — descarta directos y maratones
     min_height: 720            # resolución mínima disponible del original
-    full_download_max_seconds: 480   # vídeos más largos: solo tramos (subtítulos o muestreo)
-    section_padding: 15        # s alrededor de cada acierto en subtítulos
-    section_max_seconds: 60
-    max_sections: 3
-    min_interval: 1.5          # s entre peticiones a YouTube
+    min_interval: 1.0          # s entre peticiones a YouTube
     rate_limit: null           # límite de descarga, p. ej. "2M"
     sleep_requests: 0          # s entre peticiones HTTP internas de yt-dlp
     cookies_from_browser: null # "chrome", "firefox", "edge"... (solo en local)
@@ -61,3 +57,23 @@ sourcing:
     wikimedia: {enabled: true, queries_per_shot: 3, min_interval: 0.5}
     openverse: {enabled: true, queries_per_shot: 1, min_interval: 3.2, min_width: 1024}   # anónimo: 20/min, 200/día; Flickr llega a 1024 px
     pixabay: {enabled: true, queries_per_shot: 1, min_interval: 1.0}     # necesita PIXABAY_API_KEY
+
+analysis:
+  model: ViT-B-32                  # OpenCLIP; ~28 fotogramas/s en 4 núcleos de CPU
+  pretrained: laion2b_s34b_b79k
+  batch_size: 64
+  edge_margin: 0.05                # ignora el primer y el último 5 % de cada vídeo (intros/outros)
+  max_frames_per_video: 40         # miniaturas del storyboard codificadas por vídeo (pasada gruesa)
+  dedupe_difference: 4             # miniaturas consecutivas casi iguales se codifican una vez
+  moments_per_video: 2             # mejores momentos por vídeo en la pasada gruesa
+  fine_windows: 2                  # ventanas por plano que se descargan a 360p (pasada fina)
+  window_padding: 2.0              # s alrededor del momento elegido
+  fine_sample_seconds: 1.0         # un fotograma por segundo dentro de la ventana
+  scene_threshold: 27              # PySceneDetect ContentDetector
+  min_span_seconds: 1.2            # sub-planos más cortos no se usan
+  ocr_side: 480                    # lado mayor para detectar texto (más = más lento)
+  max_text_area: 0.08              # descarta fragmentos con más texto en pantalla
+  max_text_area_image: 0.12
+  talking_head_face_area: 0.05     # cara centrada que ocupa más de esto → presentador
+  frozen_difference: 0.5
+  weights: {clip: 1.0, entity: 0.04, sharpness: 0.02, motion: 0.01}

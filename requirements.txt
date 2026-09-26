@@ -6,3 +6,10 @@ deno                # runtime JS que yt-dlp necesita para los retos de YouTube
 pydantic>=2.6,<3
 PyYAML>=6.0
 faster-whisper>=1.0
+# Etapa 4 (análisis local, sin APIs de pago)
+numpy
+opencv-python-headless
+torch               # en CPU basta; en Windows/Mac el wheel por defecto sirve
+open_clip_torch
+scenedetect
+rapidocr-onnxruntime
