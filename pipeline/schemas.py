@@ -372,3 +372,44 @@ class SelectionFile(_Strict):
     slug: str
     selections: list[Selection]
     stats: dict[str, int | float] = Field(default_factory=dict)
+
+
+# --- Stage 6: media/_ingest.json ------------------------------------------------------
+
+
+class IngestedMedia(_Strict):
+    shotId: str
+    kind: Literal["video", "image"]
+    path: str                                                # relative to the project root
+    source: str
+    candidateId: str
+    start: float | None = None                               # source seconds actually used
+    end: float | None = None
+    durationSeconds: float | None = None                     # of the rendered clip (videos)
+    width: int
+    height: int
+    fps: float | None = None
+    hasAudio: bool = False
+    lut: str | None = None
+    credit: str
+    specHash: str                                            # selection + ingest settings → skip when unchanged
+
+    @model_validator(mode="after")
+    def _checks(self) -> "IngestedMedia":
+        if self.kind == "video":
+            if self.durationSeconds is None or self.durationSeconds > MAX_THIRD_PARTY_SECONDS + 1 / 30 + 1e-6:
+                raise ValueError(f"{self.shotId}: clip de {self.durationSeconds} s (máximo 5 s)")
+            if self.hasAudio:
+                raise ValueError(f"{self.shotId}: el clip conserva audio")
+            if (self.width, self.height) != (1920, 1080):
+                raise ValueError(f"{self.shotId}: clip de {self.width}x{self.height}, se esperaba 1920x1080")
+        if not self.credit.startswith("Fuente: "):
+            raise ValueError(f"{self.shotId}: crédito inválido")
+        return self
+
+
+class IngestFile(_Strict):
+    slug: str
+    media: list[IngestedMedia]
+    skipped: list[str] = Field(default_factory=list)         # fallback shots → stage 7
+    failed: dict[str, str] = Field(default_factory=dict)     # shot → error (stage 7 covers them too)

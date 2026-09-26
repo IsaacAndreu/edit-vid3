@@ -97,3 +97,10 @@ judge:
   max_phash_distance: 6            # fragmentos más parecidos que esto cuentan como repetidos
   # https://developers.openai.com/api/docs/pricing
   usd_per_mtok: {input: 0.25, output: 2.0}
+
+ingest:
+  format: "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]"   # HD del tramo elegido
+  lut: assets/lut.cube             # LUT común; si no existe, se omite
+  crf: 18                          # calidad x264 (menor = mejor)
+  preset: veryfast
+  parallel: 3
