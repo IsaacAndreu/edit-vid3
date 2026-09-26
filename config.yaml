@@ -132,3 +132,16 @@ qa:
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
   max_phash_distance: 6            # imágenes más parecidas → posible repetición
   columns: 14                      # hoja de contactos
+
+render:
+  # Híbrido: los planos que son solo vídeo + crédito se montan con ffmpeg (rápido); el resto
+  # (paneles, cifras, capítulos, fotos con Ken Burns) lo dibuja Remotion en una sola pasada.
+  hybrid: true
+  concurrency: 0                   # pestañas de Chrome para Remotion (0 = núcleos de la máquina)
+  browser_executable: auto         # auto = Chromium preinstalado si existe; si no, Remotion descarga el suyo
+  crf: 18
+  preset: veryfast
+  parallel: 3                      # segmentos de ffmpeg en paralelo
+  loudness: -16                    # LUFS del máster (YouTube)
+  true_peak: -1.5
+  audio_bitrate: 192k
