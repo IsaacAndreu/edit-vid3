@@ -227,6 +227,23 @@ class ImageTests(unittest.TestCase):
             self.assertEqual(sum("openverse desactivado" in n for n in notes), 1)
 
 
+class BlocklistTests(unittest.TestCase):
+    def test_video_game_sources_are_blocked_as_whole_words(self) -> None:
+        from pipeline.sourcing.common import blocked_by_title
+
+        self.assertEqual(blocked_by_title("RECONOCIMIENTO del CASINO GTA 5 ONLINE", "Canal"), "gta")
+        self.assertEqual(blocked_by_title("Casino tour", "Best Gameplay HD"), "gameplay")
+        self.assertIsNone(blocked_by_title("Gran Madrid casino", "GTAtube"))            # not a whole word
+        self.assertIsNone(blocked_by_title("Heist movie scene", "Films", ["gta"]))
+
+    def test_search_filter_uses_the_blocklist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            yt = _youtube(tmp)
+            entry = {"id": "abcdefghijk", "duration": 300, "url": "", "title": "GTA V casino heist", "channel": "x"}
+            self.assertFalse(yt.passes_search_filters(entry))
+            self.assertTrue(yt.passes_search_filters({**entry, "title": "Casino floor 4K"}))
+
+
 class CandidateSchemaTests(unittest.TestCase):
     def test_requires_media_and_a_real_credit(self) -> None:
         base = {"id": "yt:x", "source": "youtube", "kind": "video", "url": "u", "title": "t", "channel": "c",

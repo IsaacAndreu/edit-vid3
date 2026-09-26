@@ -25,7 +25,7 @@ import requests
 
 from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
-from .common import USER_AGENT, Pacer, SourceUnavailable, cached_json, fuse_ranks, key, tokens
+from .common import USER_AGENT, Pacer, SourceUnavailable, blocked_by_title, cached_json, fuse_ranks, key, tokens
 
 
 _BLOCK_MARKERS = ("sign in to confirm", "not a bot")
@@ -199,6 +199,8 @@ class YouTubeSource:
         if not float(self.cfg.get("min_duration", 30)) <= duration <= float(self.cfg.get("max_duration", 3600)):
             return False
         if entry.get("live_status") in ("is_live", "is_upcoming", "post_live"):
+            return False
+        if blocked_by_title(str(entry.get("title") or ""), str(entry.get("channel") or ""), self.cfg.get("title_blocklist")):
             return False
         return "/shorts/" not in str(entry.get("url") or "")
 

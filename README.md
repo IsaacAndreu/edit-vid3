@@ -34,7 +34,9 @@ logged to `work/<slug>/costs.json`.
 | 3 | `sourcing` → `candidates/<shot>.json` (YouTube via yt-dlp — metadata + storyboard thumbnails only — plus Wikimedia Commons, Openverse, Pixabay; global cache) | done (YouTube from a datacenter needs cookies) |
 | 4 | `analysis` → `scores/<shot>.json` (CLIP on thumbnails, then 360p windows around the best moments: scenes, OCR, faces, sharpness, motion, entity mentions; ≤5 s spans) | done |
 | 5 | `judge` → `selection.json` (priority YouTube → stills; no repeated fragments by timestamps/pHash; `gpt-5-mini` vision judge only on doubtful shots, 2 rounds max, else fallback) | done |
-| 6-10 | ingest, fallback, timeline, qa, render | in progress |
+| 6 | `ingest` → `media/` (HD span only, frame-accurate, 1920x1080 cover, 30 fps, no audio, LUT; stills 16:9) | done |
+| 7 | `fallback` → `fallback.json` + `media_fallback/` (next vetted option → Pexels video/photo by CLIP → GPT Image) | done |
+| 8-10 | timeline, qa, render | in progress |
 
 ## Adding a template
 

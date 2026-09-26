@@ -129,3 +129,19 @@ def fuse_ranks(result_lists: list[list[str]]) -> dict[str, float]:
 
 def strip_html(text: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", text or "").split())
+
+
+DEFAULT_TITLE_BLOCKLIST = (
+    "gta", "gameplay", "walkthrough", "let's play", "lets play", "playthrough", "minecraft", "roblox",
+    "fortnite", "red dead", "videojuego", "video game", "sims 4", "simulator", "speedrun",
+)
+
+
+def blocked_by_title(title: str, channel: str, blocklist: list[str] | tuple[str, ...] | None = None) -> str | None:
+    """The blocklisted term found in a source's title/channel (video games, gameplay...), if any."""
+
+    text = f" {title} {channel} ".casefold()
+    for term in blocklist if blocklist is not None else DEFAULT_TITLE_BLOCKLIST:
+        if re.search(rf"(?<![a-z0-9]){re.escape(term.casefold())}(?![a-z0-9])", text):
+            return term
+    return None

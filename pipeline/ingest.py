@@ -138,6 +138,58 @@ def fetch_image(http: requests.Session, url: str, target: Path, attempts: int = 
     raise RuntimeError(f"no se pudo descargar la imagen ({last}): {url[:120]}")
 
 
+class Materialiser:
+    """Download + normalise one chosen item (YouTube span or image URL). Shared with stage 7."""
+
+    def __init__(self, ctx: RunContext, cfg: dict[str, Any], lut: Path | None, youtube: Any, http: requests.Session) -> None:
+        self.ctx, self.cfg, self.lut, self.youtube, self.http = ctx, cfg, lut, youtube, http
+
+    def lut_name(self) -> str | None:
+        return str(self.lut.relative_to(self.ctx.root)) if self.lut else None
+
+    def materialise(self, selection: Selection, shot: Any, out_dir: Path, digest: str) -> IngestedMedia:
+        ctx, cfg, lut = self.ctx, self.cfg, self.lut
+        if selection.kind == "video":
+            duration = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            assert selection.start is not None
+            start = selection.start
+            video_id = selection.candidateId.removeprefix("yt:")
+            hd = self.youtube.download_range(
+                video_id, start, start + duration + 0.5,  # margin: a stream copy may stop a hair early
+                fmt=str(cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
+                prefix="hd",
+            )
+            file_start = float(hd.stem.split("_")[1])
+            target = out_dir / f"{selection.shotId}.mp4"
+            normalise_video(hd, target, offset=start - file_start, duration=duration, lut=lut, cfg=cfg)
+            info = probe(target)
+            return IngestedMedia(
+                shotId=selection.shotId, kind="video", path=str(target.relative_to(ctx.root)), source=selection.source,
+                candidateId=selection.candidateId, start=round(start, 3), end=round(start + info["duration"], 3),
+                durationSeconds=round(info["duration"], 3), width=info["width"], height=info["height"], fps=info["fps"],
+                hasAudio=info["hasAudio"], lut=self.lut_name(), credit=selection.credit, specHash=digest,
+            )
+        url = selection.mediaUrl
+        if not url:
+            raise ValueError("la imagen no tiene URL original")
+        original = ctx.cache_dir / "images" / "original" / f"{key(url)}{Path(url.split('?')[0]).suffix or '.jpg'}"
+        if not original.is_file():
+            fetch_image(self.http, url, original)
+        target = out_dir / f"{selection.shotId}.jpg"
+        normalise_image(original, target, lut=lut)
+        info = probe(target)
+        return IngestedMedia(
+            shotId=selection.shotId, kind="image", path=str(target.relative_to(ctx.root)), source=selection.source,
+            candidateId=selection.candidateId, width=info["width"], height=info["height"],
+            lut=self.lut_name(), credit=selection.credit, specHash=digest,
+        )
+
+
+def find_lut(ctx: RunContext) -> Path | None:
+    path = ctx.root / str(ctx.section("ingest").get("lut", "assets/lut.cube"))
+    return path if path.is_file() else None
+
+
 def inputs(ctx: RunContext) -> list:
     lut = ctx.root / str(ctx.section("ingest").get("lut", "assets/lut.cube"))
     return [ctx.work_dir / "selection.json", ctx.work_dir / "shots.json", lut]
@@ -172,49 +224,14 @@ def run(ctx: RunContext) -> None:
         return key(selection.model_dump(exclude={"judge"}), shots[selection.shotId].start, shots[selection.shotId].end,
                    lut_hash, cfg.get("crf", 18), cfg.get("preset", "veryfast"), IMAGE_SIZE, VIDEO_SIZE)
 
+    materialiser = Materialiser(ctx, cfg, lut, youtube, http)
+
     def ingest(selection: Selection) -> IngestedMedia:
-        shot = shots[selection.shotId]
         digest = spec_hash(selection)
         old = previous.get(selection.shotId)
         if old and old.specHash == digest and (ctx.root / old.path).is_file():
             return old
-        if selection.kind == "video":
-            duration = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
-            if duration > MAX_THIRD_PARTY_SECONDS + 1e-6:
-                raise ValueError("el plano supera 5 s")
-            assert selection.start is not None
-            start = selection.start
-            video_id = selection.candidateId.removeprefix("yt:")
-            hd = youtube.download_range(
-                video_id, start, start + duration + 0.5,  # margin: a stream copy may stop a hair early
-                fmt=str(cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
-                prefix="hd",
-            )
-            file_start = float(hd.stem.split("_")[1])
-            target = out_dir / f"{selection.shotId}.mp4"
-            normalise_video(hd, target, offset=start - file_start, duration=duration, lut=lut, cfg=cfg)
-            info = probe(target)
-            return IngestedMedia(
-                shotId=selection.shotId, kind="video", path=str(target.relative_to(ctx.root)), source=selection.source,
-                candidateId=selection.candidateId, start=round(start, 3), end=round(start + info["duration"], 3),
-                durationSeconds=round(info["duration"], 3), width=info["width"], height=info["height"], fps=info["fps"],
-                hasAudio=info["hasAudio"], lut=str(lut.relative_to(ctx.root)) if lut else None,
-                credit=selection.credit, specHash=digest,
-            )
-        url = selection.mediaUrl
-        if not url:
-            raise ValueError("la imagen no tiene URL original")
-        original = ctx.cache_dir / "images" / "original" / f"{key(url)}{Path(url.split('?')[0]).suffix or '.jpg'}"
-        if not original.is_file():
-            fetch_image(http, url, original)
-        target = out_dir / f"{selection.shotId}.jpg"
-        normalise_image(original, target, lut=lut)
-        info = probe(target)
-        return IngestedMedia(
-            shotId=selection.shotId, kind="image", path=str(target.relative_to(ctx.root)), source=selection.source,
-            candidateId=selection.candidateId, width=info["width"], height=info["height"],
-            lut=str(lut.relative_to(ctx.root)) if lut else None, credit=selection.credit, specHash=digest,
-        )
+        return materialiser.materialise(selection, shots[selection.shotId], out_dir, digest)
 
     todo = [s for s in selections if s.status == "selected"]
     skipped = [s.shotId for s in selections if s.status != "selected"]

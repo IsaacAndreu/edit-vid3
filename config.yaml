@@ -104,3 +104,18 @@ ingest:
   crf: 18                          # calidad x264 (menor = mejor)
   preset: veryfast
   parallel: 3
+
+fallback:
+  next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
+  pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)
+  min_clip: 0.22                   # parecido mínimo con el plano para aceptar algo de Pexels
+  generate: true                   # último recurso: imagen generada
+  image_model: gpt-image-2
+  image_quality: medium
+  # Estimación (OpenAI no publica aún el precio por imagen de gpt-image-2): se calcula con los tokens devueltos
+  image_usd_per_mtok: {text_input: 5.0, image_output: 40.0}
+
+content:
+  # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
+                    fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun]

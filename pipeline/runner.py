@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align, analysis, ingest, judge, planner, sourcing
+from . import align, analysis, fallback, ingest, judge, planner, sourcing
 from .context import RunContext
 
 
@@ -40,11 +40,11 @@ def _work(*names: str) -> Callable[[RunContext], list[Path]]:
 STAGES: list[Stage] = [
     Stage("align", _work(align.OUTPUT), align.inputs, align.run, align.validate, ("align",)),
     Stage("planner", _work(planner.OUTPUT), planner.inputs, planner.run, planner.validate, ("planner",)),
-    Stage("sourcing", _work(sourcing.OUTPUT), sourcing.inputs, sourcing.run, sourcing.validate, ("sourcing",), sourcing.retry_if),
+    Stage("sourcing", _work(sourcing.OUTPUT), sourcing.inputs, sourcing.run, sourcing.validate, ("sourcing", "content"), sourcing.retry_if),
     Stage("analysis", _work(analysis.OUTPUT), analysis.inputs, analysis.run, analysis.validate, ("analysis",)),
-    Stage("judge", _work(judge.OUTPUT), judge.inputs, judge.run, judge.validate, ("judge",)),
+    Stage("judge", _work(judge.OUTPUT), judge.inputs, judge.run, judge.validate, ("judge", "content")),
     Stage("ingest", _work(ingest.OUTPUT), ingest.inputs, ingest.run, ingest.validate, ("ingest",), ingest.retry_if),
-    Stage("fallback", _work("selection.json"), _work("selection.json", "media"), None),
+    Stage("fallback", _work(fallback.OUTPUT), fallback.inputs, fallback.run, fallback.validate, ("fallback", "content")),
     Stage("timeline", _work("timeline.json"), _work("shots.json", "selection.json", "words.json"), None),
     Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md"], _work("timeline.json"), None),
     Stage("render", lambda ctx: [ctx.out_dir / "video-final.mp4"], _work("timeline.json"), None),

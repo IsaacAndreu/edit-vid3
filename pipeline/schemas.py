@@ -413,3 +413,41 @@ class IngestFile(_Strict):
     media: list[IngestedMedia]
     skipped: list[str] = Field(default_factory=list)         # fallback shots → stage 7
     failed: dict[str, str] = Field(default_factory=dict)     # shot → error (stage 7 covers them too)
+
+
+# --- Stage 7: fallback.json -----------------------------------------------------------
+
+
+class FallbackItem(_Strict):
+    shotId: str
+    reason: str                                              # why the shot needed a fallback
+    method: Literal["next-option", "pexels-video", "pexels-photo", "generated"]
+    kind: Literal["video", "image"]
+    path: str                                                # normalised media, relative to the project root
+    source: str                                              # youtube | wikimedia | openverse | pexels | generated
+    candidateId: str
+    url: str | None = None
+    start: float | None = None
+    end: float | None = None
+    durationSeconds: float | None = None
+    credit: str | None = None                                # None only for generated images
+    attribution: str | None = None
+    clip: float | None = None                                # CLIP similarity, when measured here
+    costUsd: float = 0.0
+    specHash: str
+
+    @model_validator(mode="after")
+    def _checks(self) -> "FallbackItem":
+        if self.source == "generated":
+            return self
+        if not self.credit or not self.credit.startswith("Fuente: "):
+            raise ValueError(f"{self.shotId}: el material de terceros necesita crédito")
+        if self.kind == "video" and (self.durationSeconds is None or self.durationSeconds > MAX_THIRD_PARTY_SECONDS + 1 / 30 + 1e-6):
+            raise ValueError(f"{self.shotId}: clip de más de 5 s")
+        return self
+
+
+class FallbackFile(_Strict):
+    slug: str
+    items: list[FallbackItem]
+    unresolved: dict[str, str] = Field(default_factory=dict)  # shot → why nothing worked

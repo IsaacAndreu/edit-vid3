@@ -40,7 +40,7 @@ from .schemas import (
     ShotsFile,
 )
 from .sourcing import needs_footage
-from .sourcing.common import cached_json
+from .sourcing.common import blocked_by_title, cached_json
 
 
 STAGE = "judge"
@@ -62,7 +62,8 @@ Reject (leave out of the ranking) a candidate that:
 - is unrelated to the narration, or shows a different named place/person/brand;
 - is dominated by on-screen text, titles, lower-thirds, watermark banners, UI or screenshots;
 - is a presenter/vlogger talking to camera, a reaction face, or a channel intro/outro;
-- is blurry, black, frozen, a cartoon/animation (unless asked), or a slide.
+- is blurry, black, frozen, a cartoon/animation or video-game footage (unless asked), or a slide;
+- has burned-in subtitles or captions, even small ones.
 Prefer real footage of the exact named entity over generic footage, and moving footage over
 stills when both fit. Return an empty ranking only if none is acceptable.
 """
@@ -253,8 +254,12 @@ def run(ctx: RunContext) -> None:
     # 1. Which shots need the judge (decided on the un-deduplicated ranking, so calls can run in parallel).
     plans: dict[str, list[Option]] = {}
     doubtful: list[Shot] = []
+    blocklist = ctx.section("content").get("title_blocklist")
     for shot in shots:
-        order = [(s, o) for s, o in ranked(scores[shot.id].options, bonus) if s >= min_accept]
+        order = [
+            (s, o) for s, o in ranked(scores[shot.id].options, bonus)
+            if s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
+        ]
         plans[shot.id] = [o for _, o in order]
         if is_doubtful([s for s, _ in order], margin, min_score) and len(order) >= 1:
             doubtful.append(shot)
