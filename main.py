@@ -4,6 +4,7 @@ import argparse
 
 from pipeline.config import ConfigError
 from pipeline.context import RunContext
+from pipeline.qa import QABlocked
 from pipeline.runner import STAGE_NAMES, StageNotImplemented, run_stages
 
 
@@ -33,6 +34,8 @@ def main() -> None:
         run_stages(ctx, force=set(args.force), until=args.until, review=args.review)
     except StageNotImplemented as error:
         raise SystemExit(f"Parada: {error}") from error
+    except QABlocked as error:
+        raise SystemExit(f"Render bloqueado por la QA: {error}. Revisa out/{args.slug}/qa/report.md") from error
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as error:
         raise SystemExit(f"Error: {error}") from error
 

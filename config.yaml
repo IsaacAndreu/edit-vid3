@@ -126,3 +126,9 @@ timeline:
   duck_db: 18                      # la música baja 18 dB mientras suena la voz
   whoosh_volume: 0.6
   pop_volume: 0.5
+
+qa:
+  low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
+  low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
+  max_phash_distance: 6            # imágenes más parecidas → posible repetición
+  columns: 14                      # hoja de contactos

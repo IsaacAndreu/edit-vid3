@@ -37,7 +37,8 @@ logged to `work/<slug>/costs.json`.
 | 6 | `ingest` → `media/` (HD span only, frame-accurate, 1920x1080 cover, 30 fps, no audio, LUT; stills 16:9) | done |
 | 7 | `fallback` → `fallback.json` + `media_fallback/` (next vetted option → Pexels video/photo by CLIP → GPT Image) | done |
 | 8 | `timeline` → `timeline.json` (Remotion props) + `remotion/` templates: BRoll, DataCard, Stat, Chapter, Split, CreditBadge, AudioBed | done |
-| 9-10 | qa, render | in progress |
+| 9 | `qa` → `out/<slug>/qa/{contact-sheet.jpg, report.md}`, `manifest.json`, `creditos.txt` (blocks the render on third-party clips > 5 s, missing credits or files; flags low scores and repeats; share per source; API spend) | done |
+| 10 | render | pending |
 
 Preview a project in Remotion Studio: `npx remotion studio remotion/index.ts --props=work/<slug>/timeline.json --public-dir=work/<slug>`
 
