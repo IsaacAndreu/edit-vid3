@@ -386,9 +386,13 @@ class YouTubeSource:
             "external_downloader_args": {"ffmpeg_o": ["-copyts"]},
         }
 
+        # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
+        # may itself call _call(), and nesting slots deadlocks when all of them are taken.
+        info_file = str(self._fresh_full_info(video_id))
+
         def fetch() -> None:
             with self._ydl(options) as ydl:
-                ydl.download_with_info_file(str(self._fresh_full_info(video_id)))
+                ydl.download_with_info_file(info_file)
 
         self._call("download", fetch)
         produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*") if p.suffix in (".mp4", ".webm", ".mkv")]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 from pathlib import Path
 
@@ -74,20 +75,22 @@ class Detectors:
         return path
 
     def text_area(self, frame: np.ndarray) -> float:
-        """Fraction of the frame covered by detected text boxes."""
+        """Fraction of the frame covered by *readable words* (≥3 letters, confident OCR).
+
+        Detection alone flags roulette numbers, chess boards or textures as text; requiring a
+        recognised word keeps captions, titles and lower-thirds and ignores scene patterns.
+        """
 
         with self._lock:
             if self._ocr is None:
                 from rapidocr_onnxruntime import RapidOCR
 
                 self._ocr = RapidOCR(det_limit_side_len=self.ocr_side, det_limit_type="max")
-            boxes, _ = self._ocr(frame, use_det=True, use_cls=False, use_rec=False)
-        if not boxes:
-            return 0.0
+            results, _ = self._ocr(frame, use_det=True, use_cls=False, use_rec=True)
         mask = np.zeros(frame.shape[:2], np.uint8)
-        for box in boxes:
-            points = np.array(box[0] if isinstance(box[0][0], (list, tuple, np.ndarray)) else box, np.int32).reshape(-1, 2)
-            cv2.fillPoly(mask, [points], 1)
+        for box, text, score in results or []:
+            if float(score) >= 0.7 and len(re.findall(r"[^\W\d_]", str(text))) >= 3:
+                cv2.fillPoly(mask, [np.array(box, np.int32).reshape(-1, 2)], 1)
         return float(mask.mean())
 
     def face_area(self, frame: np.ndarray) -> tuple[float, float]:

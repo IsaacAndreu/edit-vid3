@@ -38,7 +38,7 @@ from .clip import ClipScorer
 
 STAGE = "analysis"
 OUTPUT = "scores"
-VERSION = 2  # bump when the scoring logic changes: invalidates per-shot results
+VERSION = 5  # bump when the scoring logic changes: invalidates per-shot results
 SUMMARY = "_summary.json"
 
 
@@ -129,7 +129,7 @@ def image_features(
         return None
     _, vectors = clip.cached(image_key, lambda: ([0.0], [load()]))
     checks = cached_json(
-        clip.cache_dir / f"{image_key}.checks.json",
+        clip.cache_dir / f"{image_key}.checks-v2.json",
         lambda: {"sharpness": det.sharpness(load()), "textArea": detectors.text_area(load()), "phash": det.phash(load())},
     )
     return vectors[0].astype(np.float32), checks
@@ -255,20 +255,32 @@ def fine_options(
     return results
 
 
+def entity_match(text: str, entities: list[str]) -> float:
+    """1.0 if `text` names the shot's primary entity, 0.5 if it names a secondary one, else 0.
+
+    "Names" = at least 75 % of the entity's words (≥4 letters): "Gran Casino de Ciudad Real"
+    does not name "Gran Casino de Madrid" just because it shares "gran" and "casino".
+    """
+
+    found = tokens(text)
+    for rank, entity in enumerate(entities):
+        words = {t for t in tokens(entity) if len(t) >= 4}
+        if words and len(words & found) >= math.ceil(0.75 * len(words)):
+            return 1.0 if rank == 0 else 0.5
+    return 0.0
+
+
 def entity_score(captions: list[tuple[float, float, str]], title: str, entities: list[str], start: float, end: float) -> float:
-    entity_terms = {t for t in tokens(" ".join(entities)) if len(t) >= 4}
-    if not entity_terms:
-        return 0.0
+    """Spec: bonus when the source's transcript (around the fragment) names the shot's entities."""
+
     near = " ".join(text for a, b, text in captions if b >= start - 10 and a <= end + 10)
-    if entity_terms & tokens(near):
-        return 1.0
-    return 0.5 if entity_terms & tokens(title) else 0.0
+    return max(entity_match(near, entities), 0.5 * entity_match(title, entities))
 
 
 def total_score(scores: dict[str, float], weights: dict[str, float]) -> float:
     return round(
         float(weights.get("clip", 1.0)) * scores.get("clip", 0.0)
-        + float(weights.get("entity", 0.04)) * scores.get("entity", 0.0)
+        + float(weights.get("entity", 0.10)) * scores.get("entity", 0.0)
         + float(weights.get("sharpness", 0.02)) * scores.get("sharpness", 0.0)
         + float(weights.get("motion", 0.01)) * scores.get("motion", 0.0),
         4,
@@ -375,13 +387,18 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
                 if len(times) == 0:
                     continue
                 sims = vectors.astype(np.float32) @ vector
+                title_entity = 0.5 * entity_match(c.title, shot.broll.entities)
                 for t, sim in coarse_moments(times, sims, c.storyboard.interval, per_video):
-                    options.append({"candidate": c, "t": t, "clip": sim})
+                    options.append({"candidate": c, "t": t, "clip": sim, "entity": title_entity})
             elif c.kind == "image" and c.id in image_vectors:
-                options.append({"candidate": c, "t": None, "clip": float(image_vectors[c.id] @ vector)})
-        options.sort(key=lambda o: -o["clip"])
+                options.append({"candidate": c, "t": None, "clip": float(image_vectors[c.id] @ vector),
+                                "entity": entity_match(c.title, shot.broll.entities)})
+        entity_weight = float(weights.get("entity", 0.10))
+        options.sort(key=lambda o: -(o["clip"] + entity_weight * o["entity"]))
         coarse[shot.id] = options
         chosen_videos: list[str] = []
+        # Named places/people are where CLIP is weakest: give the fine pass (and the judge) more to see.
+        windows_for_shot = fine_windows + (int(cfg.get("extra_windows_with_entities", 1)) if shot.broll.entities else 0)
         for option in options:
             c = option["candidate"]
             if c.kind != "video" or c.id in chosen_videos:  # the best moments of different videos
@@ -395,7 +412,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
             jobs.setdefault((c.id, round(a, 2), round(b, 2)), []).append(shot.id)
             option["window"] = (round(a, 2), round(b, 2))
             chosen_videos.append(c.id)
-            if len(chosen_videos) >= fine_windows:
+            if len(chosen_videos) >= windows_for_shot:
                 break
 
     # 3. Fine pass: downloads in threads, analysis in this thread as they arrive.
@@ -448,8 +465,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
                 checks = image_checks[c.id]
                 scores = {"clip": round(option["clip"], 4), "sharpness": round(checks["sharpness"], 3),
                           "textArea": round(checks["textArea"], 4)}
-                if entities and {t for t in tokens(" ".join(entities)) if len(t) >= 4} & tokens(c.title):
-                    scores["entity"] = 1.0
+                if entities and entity_match(c.title, entities):
+                    scores["entity"] = entity_match(c.title, entities)
                 too_much_text = checks["textArea"] > float(cfg.get("max_text_area_image", 0.12))
                 options.append(Option.model_validate({
                     "candidateId": c.id, "source": c.source, "kind": "image", "pass": "fine",
@@ -474,12 +491,19 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
             else:
                 # Not refined (outside the top windows or download failed): keep the thumbnail estimate.
                 start = option["t"]
-                scores = {"clip": round(option["clip"], 4)}
+                scores = {"clip": round(option["clip"], 4), "entity": option["entity"]}
                 options.append(Option.model_validate({
                     "candidateId": c.id, "source": c.source, "kind": "video", "pass": "coarse",
                     "start": round(start, 3), "end": round(start + needed, 3),
                     "scores": scores, "total": total_score(scores, weights),
                 }))
+        min_clip = float(cfg.get("min_clip", 0.20))
+        min_clip_entity = float(cfg.get("min_clip_entity", 0.15))  # the source names the place/person
+        options = [
+            o if o.discarded or o.scores.clip >= (min_clip_entity if o.scores.entity >= 0.5 else min_clip)
+            else o.model_copy(update={"discarded": f"poco relevante (CLIP {o.scores.clip:.2f})"})
+            for o in options
+        ]
         options.sort(key=lambda o: (o.discarded is not None, o.pass_ != "fine", -o.total))
         result = ShotScores(
             shotId=shot.id, inputsHash=shot_hash[shot.id], needed=round(needed, 3),

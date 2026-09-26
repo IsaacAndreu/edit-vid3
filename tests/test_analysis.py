@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from pydantic import ValidationError
 
-from pipeline.analysis import coarse_moments, entity_score, file_start, fine_options, storyboard_frames, total_score
+from pipeline.analysis import coarse_moments, entity_match, entity_score, file_start, fine_options, storyboard_frames, total_score
 from pipeline.analysis import detectors as det
 from pipeline.schemas import Candidate, Option
 
@@ -75,9 +75,17 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(entity_score(captions, "vlog", ["Gran Casino de Madrid"], 200, 204), 0.0)
         self.assertEqual(entity_score(captions, "vlog", [], 100, 104), 0.0)
 
+    def test_primary_entity_is_required(self) -> None:
+        entities = ["Gran Casino de Madrid", "Torrelodones"]
+        self.assertEqual(entity_match("Torrelodones. Casino Gran Madrid", entities), 1.0)
+        self.assertEqual(entity_match("Torrelodones. Plaza de la Constitución", entities), 0.5)   # secondary only
+        self.assertEqual(entity_match("Casino Militar de Barcelona", entities), 0.0)             # one word of primary
+        self.assertEqual(entity_match("Gran Casino de Ciudad Real", entities), 0.0)              # generic words only
+
     def test_total_uses_weights(self) -> None:
         scores = {"clip": 0.3, "entity": 1.0, "sharpness": 0.5, "motion": 1.0}
         self.assertAlmostEqual(total_score(scores, {"clip": 1, "entity": 0.04, "sharpness": 0.02, "motion": 0.01}), 0.36)
+        self.assertAlmostEqual(total_score(scores, {}), 0.42)
 
     def test_option_enforces_five_second_cap(self) -> None:
         base = {"candidateId": "yt:x", "source": "youtube", "kind": "video", "pass": "fine",

@@ -68,6 +68,7 @@ analysis:
   dedupe_difference: 4             # miniaturas consecutivas casi iguales se codifican una vez
   moments_per_video: 2             # mejores momentos por vídeo en la pasada gruesa
   fine_windows: 2                  # ventanas por plano que se descargan a 360p (pasada fina)
+  extra_windows_with_entities: 1   # +1 si el plano nombra un lugar/persona/marca concreta
   window_padding: 2.0              # s alrededor del momento elegido
   fine_sample_seconds: 1.0         # un fotograma por segundo dentro de la ventana
   scene_threshold: 27              # PySceneDetect ContentDetector
@@ -77,4 +78,6 @@ analysis:
   max_text_area_image: 0.12
   talking_head_face_area: 0.05     # cara centrada que ocupa más de esto → presentador
   frozen_difference: 0.5
-  weights: {clip: 1.0, entity: 0.04, sharpness: 0.02, motion: 0.01}
+  min_clip: 0.20                   # por debajo, la opción se marca "poco relevante"
+  min_clip_entity: 0.15            # umbral si la fuente nombra la entidad del plano (CLIP no conoce lugares concretos)
+  weights: {clip: 1.0, entity: 0.10, sharpness: 0.02, motion: 0.01}

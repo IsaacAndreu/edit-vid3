@@ -149,6 +149,36 @@ class YouTubeCandidateTests(unittest.TestCase):
                 yt._call("subtitles", lambda: (_ for _ in ()).throw(Exception("HTTP Error 429")), rate_retries=0)
             self.assertIsNone(yt.blocked)
 
+    def test_range_download_never_nests_connection_slots(self) -> None:
+        """Re-extracting metadata inside a download used to deadlock when every slot was busy."""
+
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmp:
+            yt = _youtube(tmp, concurrency=1)
+            nested = []
+
+            def fake_info(video_id):
+                # info() goes through _call → needs a free slot
+                return yt._call("metadata", lambda: nested.append(video_id) or {})
+
+            finished = threading.Event()
+
+            def run():
+                with patch.object(yt, "_full_info_path", return_value=Path(tmp) / "missing.json"), \
+                        patch.object(yt, "info", side_effect=fake_info), \
+                        patch.object(yt, "_ydl", side_effect=RuntimeError("stop here")):
+                    try:
+                        yt.download_range("AAAAAAAAAAA", 1, 5, fmt="x", prefix="a360")
+                    except RuntimeError:
+                        pass
+                finished.set()
+
+            thread = threading.Thread(target=run, daemon=True)
+            thread.start()
+            self.assertTrue(finished.wait(5), "download_range se bloqueó")
+            self.assertEqual(nested, ["AAAAAAAAAAA"])
+
     def test_rate_parsing(self) -> None:
         self.assertEqual(_parse_rate("2M"), 2 * 1024 * 1024)
         self.assertEqual(_parse_rate("500K"), 500 * 1024)

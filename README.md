@@ -31,8 +31,9 @@ logged to `work/<slug>/costs.json`.
 |---|-------|--------|
 | 1 | `align` → `words.json` (local faster-whisper + forced alignment to the script) | done |
 | 2 | `planner` → `shots.json` + `shots.md` (DP cutter 1.5-4 s + DeepSeek labelling, pydantic-validated, no invented figures) | done |
-| 3 | `sourcing` → `candidates/<shot>.json` (YouTube via yt-dlp + Wikimedia Commons, Openverse, Pixabay; 360p analysis media; global cache) | done (YouTube needs a local run or cookies) |
-| 4-10 | analysis, judge, ingest, fallback, timeline, qa, render | in progress |
+| 3 | `sourcing` → `candidates/<shot>.json` (YouTube via yt-dlp — metadata + storyboard thumbnails only — plus Wikimedia Commons, Openverse, Pixabay; global cache) | done (YouTube from a datacenter needs cookies) |
+| 4 | `analysis` → `scores/<shot>.json` (CLIP on thumbnails, then 360p windows around the best moments: scenes, OCR, faces, sharpness, motion, entity mentions; ≤5 s spans) | done |
+| 5-10 | judge, ingest, fallback, timeline, qa, render | in progress |
 
 ## Adding a template
 
