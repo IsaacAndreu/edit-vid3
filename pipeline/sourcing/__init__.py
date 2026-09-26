@@ -7,7 +7,9 @@ interrupted run resumes where it stopped.
 
 from __future__ import annotations
 
+import base64
 import json
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -33,6 +35,20 @@ def _spec_hash(shot: Shot, cfg: dict[str, Any]) -> str:
     return key(shot.broll.model_dump() if shot.broll else None, cfg)
 
 
+def _youtube_cookies(ctx: RunContext, yt_cfg: dict[str, Any]) -> str | None:
+    """cookies.txt contents from YOUTUBE_COOKIES_B64 (env) or youtube.cookies_file, if any."""
+
+    encoded = ctx.env("YOUTUBE_COOKIES_B64", required=False)
+    if encoded:
+        return base64.b64decode(encoded).decode("utf-8")
+    if yt_cfg.get("cookies_file"):
+        path = Path(str(yt_cfg["cookies_file"])).expanduser()
+        if path.is_file():
+            print(f"   YouTube: usando cookies de {path}")
+            return path.read_text(encoding="utf-8")
+    return None
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "shots.json"]
 
@@ -48,7 +64,11 @@ def run(ctx: RunContext) -> None:
             stale.unlink()
 
     yt_cfg = cfg.get("youtube", {})
-    youtube = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg) if yt_cfg.get("enabled", True) else None
+    youtube = (
+        YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookies_text=_youtube_cookies(ctx, yt_cfg))
+        if yt_cfg.get("enabled", True)
+        else None
+    )
     images = ImageSources(
         root=ctx.root,
         cache_dir=ctx.cache_dir,

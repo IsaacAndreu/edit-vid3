@@ -32,13 +32,15 @@ planner:
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 
 sourcing:
-  parallel: 3                  # planos procesados a la vez
+  parallel: 4                  # planos procesados a la vez
   youtube:
     enabled: true
     queries_en: 2              # búsquedas por plano (de las 3-5 en inglés del planner)
     queries_local: 1           # + búsquedas en el idioma del guion
     results_per_query: 8
-    videos_per_shot: 4         # vídeos que pasan filtros y se descargan en 360p para analizar
+    videos_per_shot: 3         # vídeos que pasan filtros y se descargan en 360p para analizar
+    concurrency: 2             # peticiones simultáneas a YouTube
+    rate_backoff: 20           # s de pausa (x3 en cada reintento) cuando YouTube responde 429
     min_duration: 30           # s — descarta clips sueltos
     max_duration: 3600         # s — descarta directos y maratones
     min_height: 720            # resolución mínima disponible del original
@@ -50,7 +52,7 @@ sourcing:
     rate_limit: null           # límite de descarga, p. ej. "2M"
     sleep_requests: 0          # s entre peticiones HTTP internas de yt-dlp
     cookies_from_browser: null # "chrome", "firefox", "edge"... (solo en local)
-    cookies_file: null         # ruta a cookies.txt exportado
+    cookies_file: ~/.config/edit-vid3/youtube-cookies.txt   # si existe; o YOUTUBE_COOKIES_B64 en el entorno
     player_client: null        # p. ej. [android_vr] si YouTube cambia algo
   images:
     max_per_shot: 6

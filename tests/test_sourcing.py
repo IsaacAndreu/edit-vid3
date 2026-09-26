@@ -128,6 +128,25 @@ class YouTubeCandidateTests(unittest.TestCase):
                 with self.assertRaises(SourceUnavailable):
                     yt.candidates(BROLL, [])
 
+    def test_429_is_retried_not_a_block(self) -> None:
+        from pipeline.sourcing.youtube import RateLimited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            yt = _youtube(tmp, rate_backoff=0)
+            calls = []
+
+            def flaky():
+                calls.append(1)
+                if len(calls) < 3:
+                    raise Exception("HTTP Error 429: Too Many Requests")
+                return "ok"
+
+            self.assertEqual(yt._call("search", flaky), "ok")
+            self.assertIsNone(yt.blocked)
+            with self.assertRaises(RateLimited):
+                yt._call("subtitles", lambda: (_ for _ in ()).throw(Exception("HTTP Error 429")), rate_retries=0)
+            self.assertIsNone(yt.blocked)
+
     def test_rate_parsing(self) -> None:
         self.assertEqual(_parse_rate("2M"), 2 * 1024 * 1024)
         self.assertEqual(_parse_rate("500K"), 500 * 1024)

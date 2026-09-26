@@ -12,8 +12,12 @@ chosen fragment happens later, in stage 6 (ingest).
 from __future__ import annotations
 
 import math
+import os
 import re
 import shutil
+import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +26,12 @@ from ..schemas import AnalysisRange, BrollSpec, Candidate
 from .common import Pacer, SourceUnavailable, cached_json, fuse_ranks, key, tokens
 
 
-_BLOCK_MARKERS = ("sign in to confirm", "not a bot", "http error 429", "too many requests")
+_BLOCK_MARKERS = ("sign in to confirm", "not a bot")
+_RATE_MARKERS = ("http error 429", "too many requests")
+
+
+class RateLimited(RuntimeError):
+    pass
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
@@ -36,12 +45,19 @@ class _QuietLogger:
 
 
 class YouTubeSource:
-    def __init__(self, *, root: Path, cache_dir: Path, config: dict[str, Any]) -> None:
+    def __init__(
+        self, *, root: Path, cache_dir: Path, config: dict[str, Any], cookies_text: str | None = None
+    ) -> None:
         self.root = root
         self.cache_dir = cache_dir
         self.cfg = config
         self.pacer = Pacer(float(config.get("min_interval", 1.5)))
         self.blocked: str | None = None
+        # A couple of concurrent requests at most; a 429 pauses every thread (the limit is per account/IP).
+        self._slots = threading.Semaphore(int(config.get("concurrency", 2)))
+        self._cooldown_until = 0.0
+        self._cookies_text = cookies_text
+        self._local = threading.local()
         options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
@@ -55,8 +71,6 @@ class YouTubeSource:
             options["js_runtimes"] = {"node": {}}
         if config.get("player_client"):
             options["extractor_args"] = {"youtube": {"player_client": list(config["player_client"])}}
-        if config.get("cookies_file"):
-            options["cookiefile"] = str(Path(config["cookies_file"]).expanduser())
         if config.get("cookies_from_browser"):
             options["cookiesfrombrowser"] = (str(config["cookies_from_browser"]),)
         if config.get("rate_limit"):
@@ -67,26 +81,56 @@ class YouTubeSource:
 
     # --- yt-dlp plumbing ------------------------------------------------------------
 
+    def _cookie_file(self) -> str | None:
+        """Per-thread private copy: yt-dlp saves rotated cookies back into the file it was given."""
+
+        if not self._cookies_text:
+            return None
+        path = getattr(self._local, "cookie_path", None)
+        if path is None:
+            handle, path = tempfile.mkstemp(prefix="yt-cookies-", suffix=".txt")
+            with os.fdopen(handle, "w", encoding="utf-8") as cookie_file:
+                cookie_file.write(self._cookies_text)
+            self._local.cookie_path = path
+        return path
+
     def _ydl(self, extra: dict[str, Any] | None = None) -> Any:
         import yt_dlp
 
-        return yt_dlp.YoutubeDL({**self.base_options, **(extra or {})})
+        options = {**self.base_options, **(extra or {})}
+        cookie_file = self._cookie_file()
+        if cookie_file:
+            options["cookiefile"] = cookie_file
+        return yt_dlp.YoutubeDL(options)
 
-    def _call(self, action: str, fn: Any) -> Any:
+    def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
         if self.blocked:
             raise SourceUnavailable(self.blocked)
-        self.pacer.wait()
-        try:
-            return fn()
-        except Exception as error:
-            message = str(error)
-            if any(marker in message.casefold() for marker in _BLOCK_MARKERS):
-                self.blocked = (
-                    "YouTube bloquea este equipo (\"Sign in to confirm you're not a bot\"). "
-                    "Ejecuta el sourcing en local o configura youtube.cookies_from_browser/cookies_file."
-                )
-                raise SourceUnavailable(self.blocked) from None
-            raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
+        for attempt in range(rate_retries + 1):
+            try:
+                with self._slots:
+                    delay = self._cooldown_until - time.monotonic()
+                    if delay > 0:
+                        time.sleep(delay)
+                    self.pacer.wait()
+                    return fn()
+            except Exception as error:
+                message = str(error)
+                lowered = message.casefold()
+                if any(marker in lowered for marker in _BLOCK_MARKERS):
+                    self.blocked = (
+                        "YouTube bloquea este equipo (\"Sign in to confirm you're not a bot\"). "
+                        "Ejecuta el sourcing en local o configura cookies (youtube.cookies_file / YOUTUBE_COOKIES_B64)."
+                    )
+                    raise SourceUnavailable(self.blocked) from None
+                if any(marker in lowered for marker in _RATE_MARKERS):
+                    if attempt < rate_retries:
+                        pause = float(self.cfg.get("rate_backoff", 20)) * 3**attempt
+                        self._cooldown_until = max(self._cooldown_until, time.monotonic() + pause)
+                        continue
+                    raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429)") from None
+                raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
+        raise AssertionError("unreachable")
 
     # --- search & metadata ----------------------------------------------------------
 
@@ -172,7 +216,9 @@ class YouTubeSource:
                 "subtitlesformat": "vtt",
                 "outtmpl": str(target_dir / "subs.%(ext)s"),
             }
-            self._call("subtitles", lambda: self._ydl(options).download([f"https://www.youtube.com/watch?v={video_id}"]))
+            self._call(
+                "subtitles", lambda: self._ydl(options).download([f"https://www.youtube.com/watch?v={video_id}"]), rate_retries=0
+            )
             files = sorted(target_dir.glob("subs*.vtt"))
             if not files:
                 return []
@@ -191,8 +237,14 @@ class YouTubeSource:
         pad = float(self.cfg.get("section_padding", 15))
         max_len = float(self.cfg.get("section_max_seconds", 60))
         max_sections = int(self.cfg.get("max_sections", 3))
+        try:
+            cues = self.subtitles(info)
+        except SourceUnavailable:
+            raise
+        except Exception:
+            cues = []  # no subtitles → sampled windows below
         hits: list[tuple[float, float, float, str]] = []
-        for start, end, text in self.subtitles(info):
+        for start, end, text in cues:
             words = tokens(text)
             score = len(words & terms) + 2 * len(words & entity_terms)
             if score >= 2 and margin <= start <= duration - margin:
