@@ -36,7 +36,10 @@ logged to `work/<slug>/costs.json`.
 | 5 | `judge` → `selection.json` (priority YouTube → stills; no repeated fragments by timestamps/pHash; `gpt-5-mini` vision judge only on doubtful shots, 2 rounds max, else fallback) | done |
 | 6 | `ingest` → `media/` (HD span only, frame-accurate, 1920x1080 cover, 30 fps, no audio, LUT; stills 16:9) | done |
 | 7 | `fallback` → `fallback.json` + `media_fallback/` (next vetted option → Pexels video/photo by CLIP → GPT Image) | done |
-| 8-10 | timeline, qa, render | in progress |
+| 8 | `timeline` → `timeline.json` (Remotion props) + `remotion/` templates: BRoll, DataCard, Stat, Chapter, Split, CreditBadge, AudioBed | done |
+| 9-10 | qa, render | in progress |
+
+Preview a project in Remotion Studio: `npx remotion studio remotion/index.ts --props=work/<slug>/timeline.json --public-dir=work/<slug>`
 
 ## Adding a template
 

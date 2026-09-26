@@ -119,3 +119,10 @@ content:
   # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
   title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
                     fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun]
+
+timeline:
+  assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
+  music_volume: 0.25
+  duck_db: 18                      # la música baja 18 dB mientras suena la voz
+  whoosh_volume: 0.6
+  pop_volume: 0.5

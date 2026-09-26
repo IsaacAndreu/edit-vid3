@@ -15,5 +15,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["Root.tsx", "remotion.config.ts", "src", "templates"]
+  "include": ["Root.tsx", "remotion.config.ts", "src", "templates", "remotion"]
 }

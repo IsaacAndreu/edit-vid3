@@ -6,9 +6,12 @@
   "scripts": {
     "start": "remotion studio",
     "render": "remotion render src/index.ts YoutubeVideo --props=example-props.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "studio": "remotion studio remotion/index.ts --props=work/Video1/timeline.json --public-dir=work/Video1"
   },
   "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "@remotion/fonts": "4.0.525",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.525"

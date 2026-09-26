@@ -451,3 +451,93 @@ class FallbackFile(_Strict):
     slug: str
     items: list[FallbackItem]
     unresolved: dict[str, str] = Field(default_factory=dict)  # shot → why nothing worked
+
+
+# --- Stage 8: timeline.json (Remotion props) ------------------------------------------
+
+
+class TimelineMedia(_Strict):
+    src: str                                                 # relative to work/<slug>/ (Remotion public dir)
+    kind: Literal["video", "image"]
+    source: str
+    credit: str | None = None                                # on-screen "Fuente: …"; None for generated images
+
+
+class TimelineShot(_Strict):
+    id: str
+    type: ShotType
+    from_: int = Field(alias="from", ge=0)                   # frame
+    durationInFrames: int = Field(ge=1)
+    text: str
+    media: TimelineMedia | None = None
+    chapterTitle: str | None = None
+    groupId: str | None = None                               # panel / stat group this shot belongs to
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class PanelStep(_Strict):
+    from_: int = Field(alias="from", ge=0)                   # frame, relative to the group
+    rows: list[DataRow]
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class TimelineGroup(_Strict):
+    id: str
+    kind: Literal["datacard", "split", "stat"]
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(ge=1)
+    title: str | None = None
+    note: str | None = None
+    steps: list[PanelStep] = Field(default_factory=list)     # datacard / split: rows revealed step by step
+    stat: StatData | None = None
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class TimelineSfx(_Strict):
+    src: str
+    from_: int = Field(alias="from", ge=0)
+    volume: float = Field(gt=0, le=1)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class TimelineAudio(_Strict):
+    voice: str
+    music: str | None = None
+    musicVolume: float = 0.25
+    duckedVolume: float = 0.03                               # ≈ −18 dB below musicVolume while the voice speaks
+    speech: list[tuple[int, int]] = Field(default_factory=list)   # [from, to) frames with narration
+    sfx: list[TimelineSfx] = Field(default_factory=list)
+
+
+class Timeline(_Strict):
+    slug: str
+    title: str
+    fps: int
+    width: int
+    height: int
+    durationInFrames: int = Field(ge=1)
+    shots: list[TimelineShot]
+    groups: list[TimelineGroup]
+    audio: TimelineAudio
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "Timeline":
+        cursor = 0
+        for shot in self.shots:
+            if shot.from_ != cursor:
+                raise ValueError(f"{shot.id}: empieza en el fotograma {shot.from_}, se esperaba {cursor}")
+            cursor += shot.durationInFrames
+            if shot.type != "datacard" and shot.media is None:
+                raise ValueError(f"{shot.id}: plano {shot.type} sin medio")
+            if shot.media and shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
+                raise ValueError(f"{shot.id}: medio de terceros sin crédito")
+            if shot.media and shot.media.kind == "video" and shot.media.source == "youtube" \
+                    and shot.durationInFrames > MAX_THIRD_PARTY_SECONDS * self.fps + 1:
+                raise ValueError(f"{shot.id}: clip de terceros de más de 5 s")
+        if cursor != self.durationInFrames:
+            raise ValueError(f"Los planos suman {cursor} fotogramas y el vídeo dura {self.durationInFrames}")
+        return self
