@@ -1,0 +1,12 @@
+node_modules
+out
+public/pipeline-assets
+/materiales/
+/referencias/
+.DS_Store
+*.log
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example

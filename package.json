@@ -1,0 +1,22 @@
+{
+  "name": "youtube-video-templates",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Data-driven Remotion templates for long-form YouTube videos.",
+  "scripts": {
+    "start": "remotion studio",
+    "render": "remotion render src/index.ts YoutubeVideo --props=example-props.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.525"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.525",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "^5.9.3"
+  }
+}

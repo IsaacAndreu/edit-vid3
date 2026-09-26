@@ -1,0 +1,184 @@
+{
+  "scenes": [
+    {
+      "templateName": "kinetic-text-hook",
+      "text": "La atención empieza aquí",
+      "durationInFrames": 180,
+      "accentColor": "#f97316",
+      "sceneType": "hook"
+    },
+    {
+      "templateName": "title-card",
+      "text": "EL PRECIO DE ENTRADA",
+      "durationInFrames": 120,
+      "accentColor": "#facc15",
+      "sceneType": "transition"
+    },
+    {
+      "templateName": "lower-third",
+      "text": "Una historia se construye escena a escena",
+      "imageUrl": "https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg",
+      "durationInFrames": 240,
+      "accentColor": "#38bdf8",
+      "sceneType": "narrative"
+    },
+    {
+      "templateName": "kenburns-image",
+      "imageUrl": "https://placehold.co/1920x1080/png?text=Ken+Burns+Image",
+      "durationInFrames": 240,
+      "accentColor": "#38bdf8",
+      "sceneType": "narrative"
+    },
+    {
+      "templateName": "multi-shot-montage",
+      "text": "Un mismo bloque puede contener varios planos",
+      "shots": [
+        {
+          "url": "https://placehold.co/1920x1080/png?text=Montage+Shot+1",
+          "type": "image"
+        },
+        {
+          "url": "https://placehold.co/1920x1080/png?text=Montage+Shot+2",
+          "type": "image"
+        },
+        {
+          "url": "https://placehold.co/1920x1080/png?text=Montage+Shot+3",
+          "type": "image"
+        },
+        {
+          "url": "https://placehold.co/1920x1080/png?text=Montage+Shot+4",
+          "type": "image"
+        }
+      ],
+      "durationInFrames": 240,
+      "accentColor": "#38bdf8",
+      "sceneType": "narrative"
+    },
+    {
+      "templateName": "news-image-montage",
+      "text": "El negocio detrás de los casinos",
+      "keywords": [
+        "Las Vegas",
+        "Ruleta",
+        "Ingresos",
+        "Mercados"
+      ],
+      "shots": [
+        {
+          "url": "https://placehold.co/1920x1080/png?text=News+Shot+1",
+          "type": "image"
+        },
+        {
+          "url": "https://placehold.co/1920x1080/png?text=News+Shot+2",
+          "type": "image"
+        },
+        {
+          "url": "https://placehold.co/1920x1080/png?text=News+Shot+3",
+          "type": "image"
+        },
+        {
+          "url": "https://placehold.co/1920x1080/png?text=News+Shot+4",
+          "type": "image"
+        }
+      ],
+      "durationInFrames": 180,
+      "accentColor": "#ef4444",
+      "sceneType": "narrative"
+    },
+    {
+      "templateName": "whip-transition",
+      "durationInFrames": 8,
+      "accentColor": "#ffffff",
+      "sceneType": "transition"
+    },
+    {
+      "templateName": "stat-overlay",
+      "text": "73% de los espectadores recuerda mejor los datos visuales",
+      "durationInFrames": 210,
+      "accentColor": "#a78bfa",
+      "sceneType": "stat"
+    },
+    {
+      "templateName": "blueprint-data-panel",
+      "text": "$2-3 BILLION - Coste estimado de construcción",
+      "keywords": [
+        "offshore rig",
+        "construction cost",
+        "capital expense"
+      ],
+      "durationInFrames": 240,
+      "accentColor": "#9cff57",
+      "sceneType": "stat"
+    },
+    {
+      "templateName": "number-callout",
+      "text": "$770,000 - Coste operativo anual",
+      "imageUrl": "https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg",
+      "durationInFrames": 180,
+      "accentColor": "#facc15",
+      "sceneType": "stat"
+    },
+    {
+      "templateName": "timeline-graphic",
+      "text": "Evolución del coste operativo",
+      "timelinePoints": [
+        {
+          "label": "Inicio",
+          "value": "$180K",
+          "position": 0.08
+        },
+        {
+          "label": "Expansión",
+          "value": "$420K",
+          "position": 0.36
+        },
+        {
+          "label": "Pico de costes",
+          "value": "$770K",
+          "position": 0.68
+        },
+        {
+          "label": "Estabilización",
+          "value": "$650K",
+          "position": 0.93
+        }
+      ],
+      "durationInFrames": 240,
+      "accentColor": "#67e8f9",
+      "sceneType": "stat"
+    },
+    {
+      "templateName": "comparison-panel",
+      "text": "Proyección de rentabilidad",
+      "comparisonColumns": [
+        {
+          "title": "Optimista",
+          "items": [
+            "Tarifa diaria: $450,000",
+            "Ingresos brutos: +$165M",
+            "Beneficio neto: +$50M"
+          ]
+        },
+        {
+          "title": "Realista",
+          "items": [
+            "Tarifa diaria: $200,000",
+            "4 meses de inactividad",
+            "Margen operativo reducido"
+          ]
+        }
+      ],
+      "durationInFrames": 240,
+      "accentColor": "#9cff57",
+      "sceneType": "stat"
+    },
+    {
+      "templateName": "placeholder",
+      "text": "Ahora pasemos al siguiente punto",
+      "videoUrl": "https://cdn.example.com/avatar-transition.mp4",
+      "durationInFrames": 150,
+      "accentColor": "#34d399",
+      "sceneType": "transition"
+    }
+  ]
+}
