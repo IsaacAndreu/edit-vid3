@@ -76,17 +76,36 @@ When the shot is marked HOOK (the first seconds of the video), be strict: accept
 good-quality footage that is unmistakably about the topic; reject amateur, dull or generic shots.
 Prefer real footage of the exact named entity over generic footage, and moving footage over
 stills when both fit. Return an empty ranking only if none is acceptable.
+
+First describe every candidate in "candidates": what its frames really show (a few plain
+words), whether it is a screen / UI / chart / document dominated by text, and whether it
+belongs to the video's topic. Then rank. A candidate flagged as screen or off-topic is
+never used, whatever the ranking says.
 """
 
 VERDICT_SCHEMA = {
     "type": "object",
     "properties": {
+        "candidates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "letter": {"type": "string", "enum": list(LETTERS)},
+                    "shows": {"type": "string"},
+                    "screenOrText": {"type": "boolean"},
+                    "onTopic": {"type": "boolean"},
+                },
+                "required": ["letter", "shows", "screenOrText", "onTopic"],
+                "additionalProperties": False,
+            },
+        },
         "ranking": {"type": "array", "items": {"type": "string", "enum": list(LETTERS)}},
         "score": {"type": "number", "minimum": 0, "maximum": 1},
         "reason": {"type": "string"},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
-    "required": ["ranking", "score", "reason", "confidence"],
+    "required": ["candidates", "ranking", "score", "reason", "confidence"],
     "additionalProperties": False,
 }
 
@@ -232,11 +251,17 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         usd = (usage.input_tokens * float(prices.get("input", 0.25)) + usage.output_tokens * float(prices.get("output", 2.0))) / 1e6
         record_cost(ctx, stage=STAGE, provider="openai", operation=model, usd=usd,
                     details={"shot": shot.id, "inputTokens": usage.input_tokens, "outputTokens": usage.output_tokens})
-        verdict = json.loads(response.output_text)
-        verdict["ranking"] = [letter for letter in dict.fromkeys(verdict.get("ranking", [])) if letter in letters]
-        return verdict
+        return json.loads(response.output_text)
 
-    return cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce)
+    return usable(cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce), letters)
+
+
+def usable(verdict: dict[str, Any], letters: str) -> dict[str, Any]:
+    """The ranking without letters off the sheet, repeated, or flagged as screen/off-topic."""
+
+    flagged = {c["letter"] for c in verdict.get("candidates", []) if c.get("screenOrText") or not c.get("onTopic", True)}
+    ranking = [x for x in dict.fromkeys(verdict.get("ranking", [])) if x in letters and x not in flagged]
+    return {**verdict, "ranking": ranking}
 
 
 # --- stage -----------------------------------------------------------------------------

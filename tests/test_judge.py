@@ -168,5 +168,16 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("HOOK", J.shot_brief(shot))
 
 
+class UsableTests(unittest.TestCase):
+    def test_flagged_candidates_never_survive_the_ranking(self) -> None:
+        verdict = {"ranking": ["B", "A", "C", "B", "D"], "score": 0.8, "reason": "r", "confidence": 0.9, "candidates": [
+            {"letter": "A", "shows": "casino floor", "screenOrText": False, "onTopic": True},
+            {"letter": "B", "shows": "speed test website", "screenOrText": True, "onTopic": False},
+            {"letter": "C", "shows": "restaurant kitchen", "screenOrText": False, "onTopic": False},
+        ]}
+        self.assertEqual(J.usable(verdict, "ABC")["ranking"], ["A"])      # D is not on the sheet
+        self.assertEqual(J.usable({"ranking": ["A"]}, "AB")["ranking"], ["A"])   # old cached verdicts still work
+
+
 if __name__ == "__main__":
     unittest.main()
