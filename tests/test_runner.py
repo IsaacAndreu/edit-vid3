@@ -66,6 +66,13 @@ class RunnerTests(unittest.TestCase):
         run_stages(self.ctx)
         self.assertEqual(self.calls, ["first", "second", "second"])
 
+    def test_retry_if_reruns_a_valid_stage(self) -> None:
+        run_stages(self.ctx)
+        flaky = self.stages[0]
+        self.stages[0] = Stage(flaky.name, flaky.outputs, flaky.inputs, flaky.run, None, ("step",), lambda ctx: True)
+        run_stages(self.ctx, until="first")
+        self.assertEqual(self.calls, ["first", "second", "first"])
+
     def test_unknown_stage_names_are_rejected(self) -> None:
         with self.assertRaises(ValueError):
             run_stages(self.ctx, force={"nope"})

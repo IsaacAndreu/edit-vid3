@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align, planner
+from . import align, planner, sourcing
 from .context import RunContext
 
 
@@ -29,6 +29,7 @@ class Stage:
     run: Callable[[RunContext], None] | None
     validate: Callable[[RunContext], bool] | None = None
     config_sections: tuple[str, ...] = ()
+    retry_if: Callable[[RunContext], bool] | None = None   # True → outputs are valid but worth redoing
 
 
 def _work(*names: str) -> Callable[[RunContext], list[Path]]:
@@ -39,7 +40,7 @@ def _work(*names: str) -> Callable[[RunContext], list[Path]]:
 STAGES: list[Stage] = [
     Stage("align", _work(align.OUTPUT), align.inputs, align.run, align.validate, ("align",)),
     Stage("planner", _work(planner.OUTPUT), planner.inputs, planner.run, planner.validate, ("planner",)),
-    Stage("sourcing", _work("candidates"), _work("shots.json"), None),
+    Stage("sourcing", _work(sourcing.OUTPUT), sourcing.inputs, sourcing.run, sourcing.validate, ("sourcing",), sourcing.retry_if),
     Stage("analysis", _work("scores"), _work("shots.json", "candidates"), None),
     Stage("judge", _work("selection.json"), _work("shots.json", "scores"), None),
     Stage("ingest", _work("media"), _work("selection.json"), None),
@@ -93,10 +94,14 @@ def is_up_to_date(ctx: RunContext, stage: Stage) -> bool:
         return False
     if stage.validate is not None:
         try:
-            return bool(stage.validate(ctx))
+            if not stage.validate(ctx):
+                return False
         except Exception as error:  # an invalid output simply means "run again"
             print(f"   Salida de {stage.name} no válida ({error}); se regenera.")
             return False
+    if stage.retry_if is not None and stage.retry_if(ctx):
+        print(f"   {stage.name}: la última ejecución quedó incompleta; se reintenta.")
+        return False
     return True
 
 

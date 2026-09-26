@@ -195,3 +195,55 @@ class ShotsFile(_Strict):
         if abs(previous_end - self.durationSeconds) > 1e-3:
             raise ValueError("Los planos no cubren todo el audio")
         return self
+
+
+# --- Stage 3: candidates/<shot_id>.json ---------------------------------------------
+
+Source = Literal["youtube", "wikimedia", "openverse", "pixabay"]
+
+
+class AnalysisRange(_Strict):
+    """A low-res local file covering [start, end] seconds of the source video."""
+
+    path: str                                                # relative to the project root
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    reason: str = ""                                         # full | subtitle hit "..." | sampled
+
+
+class Candidate(_Strict):
+    id: str                                                  # "yt:<videoId>", "wm:<pageId>", "ov:<uuid>"...
+    source: Source
+    kind: Literal["video", "image"]
+    url: str                                                 # human page (YouTube watch URL, Commons file page...)
+    title: str
+    channel: str                                             # YouTube channel / image author — goes into the credit
+    uploader: str | None = None
+    license: str                                             # "youtube-standard", "creative-commons", "CC BY-SA 4.0"...
+    credit: str                                              # exact on-screen text: "Fuente: <...>"
+    attribution: str                                         # long form for creditos.txt
+    durationSeconds: float | None = None
+    width: int | None = None
+    height: int | None = None
+    query: str                                               # first query that surfaced it
+    rankScore: float = Field(ge=0)                           # search-rank fusion, before any visual analysis
+    analysis: list[AnalysisRange] = Field(default_factory=list)   # videos
+    imagePath: str | None = None                             # images, relative to project root
+
+    @model_validator(mode="after")
+    def _media_present(self) -> "Candidate":
+        if self.kind == "video" and not self.analysis:
+            raise ValueError(f"{self.id}: vídeo sin tramos descargados para analizar")
+        if self.kind == "image" and not self.imagePath:
+            raise ValueError(f"{self.id}: imagen sin fichero local")
+        if not self.credit.startswith("Fuente: ") or len(self.credit) <= len("Fuente: "):
+            raise ValueError(f"{self.id}: crédito inválido {self.credit!r}")
+        return self
+
+
+class ShotCandidates(_Strict):
+    shotId: str
+    specHash: str                                            # hash of the shot's broll spec + sourcing config
+    queries: dict[str, list[str]]                            # source → queries actually run
+    candidates: list[Candidate]
+    notes: list[str] = Field(default_factory=list)           # e.g. "youtube bloqueado: ..."
