@@ -1,8 +1,6 @@
 node_modules
 out
 public/pipeline-assets
-/materiales/
-/referencias/
 .DS_Store
 *.log
 __pycache__/
