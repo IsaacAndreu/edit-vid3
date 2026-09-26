@@ -128,9 +128,9 @@ timeline:
   duck_db: 18                      # la música baja 18 dB mientras suena la voz
   whoosh_volume: 0.6
   pop_volume: 0.5
-  questions: true                  # preguntas del guion (¿…?) en un panel centrado
-  question_merge_gap: 2.5          # preguntas a menos de 2,5 s comparten panel
-  question_hold: 1.2               # s que el panel sigue tras la última palabra
+  questions: true                  # preguntas del guion (¿…?) como texto flotante en el centro
+  question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas
+  question_hold: 1.2               # s que el texto sigue tras la última palabra
   question_max_words: 30
 
 qa:

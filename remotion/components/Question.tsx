@@ -4,61 +4,65 @@ import { fontFamily, theme } from '../theme';
 import type { QuestionWord } from '../types';
 
 /**
- * A question from the script in a centred panel. The whole sentence is laid out from the
- * start (dimmed) so nothing reflows; each word lights up when the voice says it.
+ * A question from the script as floating text in the middle of the frame, straight over the
+ * footage (no card). The whole sentence is laid out from the start, invisible, so nothing
+ * reflows; each word fades up when the voice says it, and the block drifts slowly upwards.
  */
 export const Question: FC<{ words: QuestionWord[]; durationInFrames: number }> = ({ words, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const enter = spring({ frame, fps, config: { damping: 200, stiffness: 180 }, durationInFrames: 10 });
+  const enter = spring({ frame, fps, config: { damping: 200, stiffness: 160 }, durationInFrames: 10 });
   const exit = interpolate(frame, [durationInFrames - 6, durationInFrames], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
+  const drift = interpolate(frame, [0, durationInFrames], [10, -10]);
   const chars = words.reduce((n, w) => n + w.text.length + 1, 0);
-  const size = chars > 80 ? 56 : chars > 45 ? 66 : 78;
+  const size = chars > 80 ? 64 : chars > 45 ? 76 : 92;
   return (
     <AbsoluteFill
       style={{
-        background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.6) 100%)',
+        // Soft dark vignette behind the words only, so white text reads on any footage.
+        background: 'radial-gradient(ellipse 60% 45% at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 100%)',
+        opacity: Math.min(enter, exit),
         justifyContent: 'center',
         alignItems: 'center',
-        opacity: Math.min(enter, exit),
       }}
     >
       <div
         style={{
-          backgroundColor: 'rgba(26,26,26,0.92)',
-          borderTop: `8px solid ${theme.accent}`,
-          borderRadius: 18,
-          padding: '56px 84px 60px',
-          maxWidth: 1480,
-          boxShadow: '0 30px 80px rgba(0,0,0,0.55)',
-          transform: `scale(${interpolate(enter, [0, 1], [0.94, 1])})`,
+          fontFamily,
+          fontWeight: 900,
+          fontSize: size,
+          lineHeight: 1.15,
+          color: theme.text,
           textAlign: 'center',
+          maxWidth: 1500,
+          padding: '0 80px',
+          textShadow: theme.shadow,
+          letterSpacing: '-0.01em',
+          transform: `translateY(${drift}px)`,
         }}
       >
-        <div style={{ fontFamily, fontWeight: 800, fontSize: size, lineHeight: 1.18, color: theme.text }}>
-          {words.map((w, i) => {
-            const lit = interpolate(frame, [w.from - 2, w.from + 4], [0, 1], {
-              extrapolateLeft: 'clamp',
-              extrapolateRight: 'clamp',
-            });
-            return (
-              <span
-                key={`${w.from}-${i}`}
-                style={{
-                  opacity: interpolate(lit, [0, 1], [0.22, 1]),
-                  display: 'inline-block',
-                  transform: `translateY(${interpolate(lit, [0, 1], [6, 0])}px)`,
-                  marginRight: '0.26em',
-                }}
-              >
-                {w.text}
-              </span>
-            );
-          })}
-        </div>
+        {words.map((w, i) => {
+          const lit = interpolate(frame, [w.from - 2, w.from + 5], [0, 1], {
+            extrapolateLeft: 'clamp',
+            extrapolateRight: 'clamp',
+          });
+          return (
+            <span
+              key={`${w.from}-${i}`}
+              style={{
+                opacity: lit,
+                display: 'inline-block',
+                transform: `translateY(${interpolate(lit, [0, 1], [14, 0])}px)`,
+                marginRight: '0.24em',
+              }}
+            >
+              {w.text}
+            </span>
+          );
+        })}
       </div>
     </AbsoluteFill>
   );

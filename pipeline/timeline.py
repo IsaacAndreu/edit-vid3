@@ -4,8 +4,8 @@ Merges shots (what each shot shows), stage-6 media and stage-7 fallback media in
 frame-accurate list of shots, plus:
 - groups: consecutive datacard/split shots sharing a panel (rows revealed step by step)
   and stat shots (one continuous number while the b-roll keeps cutting underneath);
-- questions: the script's questions (¿…?) in a centred panel, words appearing as they are
-  spoken; questions a breath apart share one panel;
+- questions: the script's questions (¿…?) as floating text in the middle, words appearing as they are
+  spoken; questions a breath apart are shown together;
 - audio: the narration, optional music from assets/music/ (ducked while the voice speaks)
   and optional SFX from assets/sfx/ (whoosh on chapters, pop on data).
 
@@ -76,7 +76,7 @@ def question_spans(words: WordsFile) -> list[tuple[int, int]]:
 
 def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
                     total: int, cfg: dict[str, Any]) -> list[TimelineGroup]:
-    """Centred question panels that never overlap a data group or a chapter title."""
+    """Floating questions (centred text) that never overlap a data group or a chapter title."""
 
     if not cfg.get("questions", True):
         return []
