@@ -24,6 +24,7 @@ import cv2
 import numpy as np
 import requests
 
+from .analysis import detectors as det
 from .analysis import make_models, prompts_for
 from .context import RunContext
 from .costs import record_cost
@@ -121,6 +122,13 @@ def run(ctx: RunContext) -> None:
     # Everything already on screen, so nothing is repeated.
     used: list[Selection] = [s for s in selections.values() if s.status == "selected" and s.shotId in done]
     pexels_used: set[str] = set()  # media taken by fallback items in this run (cached or new): never twice
+    max_hamming = int(ctx.section("judge").get("max_phash_distance", 6))
+    # Hashes of everything on screen: the same stock clip is often re-uploaded to YouTube.
+    on_screen: list[str] = [s.phash for s in used if s.phash]
+
+    def looks_used(path: Path, kind: str) -> bool:
+        h = _frame_hash(path, kind)
+        return h is not None and any(det.hamming(h, other) <= max_hamming for other in on_screen)
 
     http = requests.Session()
     http.headers["User-Agent"] = USER_AGENT
@@ -137,9 +145,12 @@ def run(ctx: RunContext) -> None:
         digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
         old = previous.get(shot_id)
         # Reuse the cached result unless a shot earlier in this run has already taken that media.
-        if old and old.specHash == digest and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used:
+        if (old and old.specHash == digest and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used
+                and not looks_used(ctx.root / old.path, old.kind)):
             items.append(old)
             pexels_used.add(old.candidateId)
+            if h := _frame_hash(ctx.root / old.path, old.kind):
+                on_screen.append(h)
             continue
         item: FallbackItem | None = None
         tried: list[str] = []
@@ -210,39 +221,45 @@ def run(ctx: RunContext) -> None:
                         if picture is not None:
                             scored.append((float(clip.embed_images([picture])[0] @ vector), result))
                 scored.sort(key=lambda pair: -pair[0])
-                if not scored or scored[0][0] < float(cfg.get("min_clip", 0.22)):
+                good = [pair for pair in scored if pair[0] >= float(cfg.get("min_clip", 0.22))]
+                if not good:
                     tried.append(f"pexels {kind}: nada con CLIP ≥ {cfg.get('min_clip', 0.22)}")
                     continue
-                similarity, best = scored[0]
-                author = str((best.get("user") or {}).get("name") or best.get("photographer") or "Pexels")[:40]
-                rid = f"px{kind[0]}:{best['id']}"
-                try:
-                    if kind == "video":
-                        files = [f for f in best.get("video_files", []) if (f.get("width") or 0) <= 1920 and f.get("link")]
-                        link = max(files, key=lambda f: f.get("width") or 0)["link"]
-                        source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.mp4")
-                        offset = min(1.0, max(0.0, float(best.get("duration") or needed) - needed))
-                        target = out_dir / f"{shot_id}.mp4"
-                        normalise_video(source, target, offset=offset, duration=needed, lut=lut, cfg=ctx.section("ingest"))
-                        info = probe(target)
-                        extra = {"start": offset, "end": round(offset + info["duration"], 3), "durationSeconds": round(info["duration"], 3)}
-                    else:
-                        link = (best.get("src") or {}).get("large2x") or (best.get("src") or {}).get("original")
-                        source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.jpg")
-                        target = out_dir / f"{shot_id}.jpg"
-                        normalise_image(source, target, lut=lut)
-                        extra = {}
-                except Exception as error:
-                    tried.append(f"{rid}: {str(error)[:80]}")
-                    continue
-                item = FallbackItem(
-                    shotId=shot_id, reason=reason, method=f"pexels-{kind}", kind="video" if kind == "video" else "image",
-                    path=str(target.relative_to(ctx.root)), source="pexels", candidateId=rid, url=best.get("url"),
-                    credit=f"Fuente: {author} / Pexels", attribution=f"{author} — Pexels: {best.get('url')}",
-                    clip=round(similarity, 4), specHash=digest, **extra,
-                )
-                pexels_used.add(rid)
-                break
+                for similarity, best in good[:4]:
+                    author = str((best.get("user") or {}).get("name") or best.get("photographer") or "Pexels")[:40]
+                    rid = f"px{kind[0]}:{best['id']}"
+                    try:
+                        if kind == "video":
+                            files = [f for f in best.get("video_files", []) if (f.get("width") or 0) <= 1920 and f.get("link")]
+                            link = max(files, key=lambda f: f.get("width") or 0)["link"]
+                            source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.mp4")
+                            offset = min(1.0, max(0.0, float(best.get("duration") or needed) - needed))
+                            target = out_dir / f"{shot_id}.mp4"
+                            normalise_video(source, target, offset=offset, duration=needed, lut=lut, cfg=ctx.section("ingest"))
+                            info = probe(target)
+                            extra = {"start": offset, "end": round(offset + info["duration"], 3), "durationSeconds": round(info["duration"], 3)}
+                        else:
+                            link = (best.get("src") or {}).get("large2x") or (best.get("src") or {}).get("original")
+                            source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.jpg")
+                            target = out_dir / f"{shot_id}.jpg"
+                            normalise_image(source, target, lut=lut)
+                            extra = {}
+                    except Exception as error:
+                        tried.append(f"{rid}: {str(error)[:80]}")
+                        continue
+                    if looks_used(target, "video" if kind == "video" else "image"):
+                        tried.append(f"{rid}: ya está en pantalla (misma imagen en otra fuente)")
+                        continue
+                    item = FallbackItem(
+                        shotId=shot_id, reason=reason, method=f"pexels-{kind}", kind="video" if kind == "video" else "image",
+                        path=str(target.relative_to(ctx.root)), source="pexels", candidateId=rid, url=best.get("url"),
+                        credit=f"Fuente: {author} / Pexels", attribution=f"{author} — Pexels: {best.get('url')}",
+                        clip=round(similarity, 4), specHash=digest, **extra,
+                    )
+                    pexels_used.add(rid)
+                    break
+                if item is not None:
+                    break
 
         # 3. Generated image — the last resort.
         if item is None and cfg.get("generate", True):
@@ -256,6 +273,8 @@ def run(ctx: RunContext) -> None:
             continue
         items.append(item)
         pexels_used.add(item.candidateId)
+        if h := _frame_hash(ctx.root / item.path, item.kind):
+            on_screen.append(h)
         print(f"   {shot_id}: {item.method} ({item.source}){' — ' + item.credit if item.credit else ''}")
 
     youtube.close()
@@ -268,6 +287,20 @@ def run(ctx: RunContext) -> None:
           f"sin resolver: {len(unresolved)} · coste {spent:.3f} $ · {time.monotonic() - started:.0f} s")
     for shot_id, why in unresolved.items():
         print(f"   AVISO {shot_id}: {why[:200]}")
+
+
+def _frame_hash(path: Path, kind: str) -> str | None:
+    """pHash of the middle frame of a materialised clip (or of the still)."""
+
+    if kind == "image":
+        frame = cv2.imread(str(path))
+    else:
+        capture = cv2.VideoCapture(str(path))
+        capture.set(cv2.CAP_PROP_POS_FRAMES, (capture.get(cv2.CAP_PROP_FRAME_COUNT) or 1) // 2)
+        ok, frame = capture.read()
+        capture.release()
+        frame = frame if ok else None
+    return det.phash(frame) if frame is not None else None
 
 
 def _generate(ctx: RunContext, shot: Shot, reason: str, digest: str, out_dir: Path, lut: Path | None,
