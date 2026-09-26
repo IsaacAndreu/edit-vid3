@@ -20,3 +20,13 @@ align:
   # Si el porcentaje de palabras alineadas cae por debajo de este umbral, la etapa falla:
   # probablemente el guion y la voz no corresponden.
   min_match_ratio: 0.80
+
+planner:
+  model: deepseek-flash
+  thinking: false
+  target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
+  batch_size: 24             # planos por llamada al LLM
+  parallel: 4
+  max_attempts: 3            # reintentos si la salida no valida el esquema
+  # Precio en horario punta (el valle es la mitad): https://api-docs.deepseek.com/quick_start/pricing
+  usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}

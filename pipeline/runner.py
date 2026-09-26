@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align
+from . import align, planner
 from .context import RunContext
 
 
@@ -38,7 +38,7 @@ def _work(*names: str) -> Callable[[RunContext], list[Path]]:
 # Order matters: each stage reads the outputs of the stages before it.
 STAGES: list[Stage] = [
     Stage("align", _work(align.OUTPUT), align.inputs, align.run, align.validate, ("align",)),
-    Stage("planner", _work("shots.json"), _work("words.json"), None),
+    Stage("planner", _work(planner.OUTPUT), planner.inputs, planner.run, planner.validate, ("planner",)),
     Stage("sourcing", _work("candidates"), _work("shots.json"), None),
     Stage("analysis", _work("scores"), _work("shots.json", "candidates"), None),
     Stage("judge", _work("selection.json"), _work("shots.json", "scores"), None),

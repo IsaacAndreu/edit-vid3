@@ -30,7 +30,8 @@ logged to `work/<slug>/costs.json`.
 | # | Stage | Status |
 |---|-------|--------|
 | 1 | `align` → `words.json` (local faster-whisper + forced alignment to the script) | done |
-| 2-10 | planner, sourcing, analysis, judge, ingest, fallback, timeline, qa, render | in progress |
+| 2 | `planner` → `shots.json` + `shots.md` (DP cutter 1.5-4 s + DeepSeek labelling, pydantic-validated, no invented figures) | done |
+| 3-10 | sourcing, analysis, judge, ingest, fallback, timeline, qa, render | in progress |
 
 ## Adding a template
 

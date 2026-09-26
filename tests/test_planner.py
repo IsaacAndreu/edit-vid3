@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from pydantic import ValidationError
+
+from pipeline import planner
+from pipeline.context import RunContext
+from pipeline.planner import _label_batch, check_numbers, cut_shots, normalize_groups
+from pipeline.schemas import Shot, ShotsFile, Word
+
+
+def _words(n: int, step: float = 0.4) -> list[Word]:
+    return [
+        Word(index=i, text=f"w{i}" + ("." if i % 7 == 6 else ""), start=i * step, end=i * step + 0.3,
+             matched=True, sentenceEnd=i % 7 == 6)
+        for i in range(n)
+    ]
+
+
+BROLL = {
+    "visualIntent": "roulette wheel spinning",
+    "queriesEn": ["roulette wheel close up", "casino roulette table", "roulette ball spinning"],
+    "queriesEs": ["ruleta casino"],
+}
+
+
+def _structural(i: int, text: str = "texto") -> dict:
+    return {"id": f"s{i:03d}", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2, "text": text, "chapter": 0}
+
+
+class CutShotsTests(unittest.TestCase):
+    def test_durations_within_limits_and_contiguous(self) -> None:
+        words = _words(300)
+        duration = words[-1].end + 0.2
+        shots = cut_shots(words, duration, target=2.6, forced_starts={100})
+        self.assertEqual(shots[0][0], 0)
+        self.assertEqual(shots[-1][1], 299)
+        for (a, b), (c, _) in zip(shots, shots[1:]):
+            self.assertEqual(b + 1, c)
+        starts = [0.0] + [words[a].start for a, _ in shots[1:]] + [duration]
+        durations = [e - s for s, e in zip(starts, starts[1:])]
+        self.assertTrue(all(1.5 <= d <= 4.0 for d in durations), durations)
+        self.assertIn(100, [a for a, _ in shots])
+
+    def test_prefers_sentence_ends(self) -> None:
+        words = _words(140)
+        shots = cut_shots(words, words[-1].end + 0.2, target=2.6, forced_starts=set())
+        ends_on_sentence = sum(words[b].sentenceEnd for _, b in shots[:-1])
+        self.assertGreater(ends_on_sentence, len(shots) // 3)
+
+
+class NumberCheckTests(unittest.TestCase):
+    def test_rejects_invented_or_digitless_figures(self) -> None:
+        stat = {"id": "s1", "type": "stat", "stat": {"value": "10-100 M€", "label": "x"}}
+        self.assertTrue(check_numbers(stat, "entre varios millones y decenas de millones"))
+        stat["stat"]["value"] = "decenas de M€"
+        self.assertTrue(check_numbers(stat, "decenas de millones"))
+
+    def test_accepts_spanish_formats(self) -> None:
+        panel = {"id": "s1", "type": "datacard", "panel": {"title": "t", "rows": [
+            {"label": "a", "value": "2,70 €"}, {"label": "b", "value": "305.800 M$"}, {"label": "c", "value": "x miles"}]}}
+        self.assertEqual(check_numbers(panel, "se queda con 2,7 euros de 305.800 millones"), [])
+
+
+class GroupTests(unittest.TestCase):
+    def test_renumbers_batch_local_ids_and_merges_repeated_stats(self) -> None:
+        panel = lambda title, n: {"title": title, "rows": [{"label": "r", "value": str(i)} for i in range(n)]}  # noqa: E731
+        shots = [
+            {"id": "s001", "type": "datacard", "panelId": "p1", "panel": panel("A", 1)},
+            {"id": "s002", "type": "split", "panelId": "p1", "panel": panel("A", 2), "broll": BROLL},
+            {"id": "s003", "type": "broll", "broll": BROLL},
+            {"id": "s004", "type": "datacard", "panelId": "p1", "panel": panel("B", 1)},
+            {"id": "s005", "type": "stat", "stat": {"value": "5%", "label": "x"}},
+            {"id": "s006", "type": "stat", "stat": {"value": "5%", "label": "x"}},
+            {"id": "s007", "type": "stat", "stat": {"value": "7%", "label": "y"}},
+        ]
+        normalize_groups(shots)
+        ids = [s.get("panelId") for s in shots]
+        self.assertEqual(ids[0], ids[1])
+        self.assertEqual(shots[1]["type"], "datacard")      # group takes the first shot's type
+        self.assertNotIn("broll", shots[1])
+        self.assertIsNone(ids[2])
+        self.assertNotEqual(ids[3], ids[0])                  # same raw "p1", different panel
+        self.assertEqual(ids[4], ids[5])
+        self.assertIsNone(ids[6])                            # singleton stat
+
+
+class ShotSchemaTests(unittest.TestCase):
+    def test_type_requires_its_fields(self) -> None:
+        base = _structural(1)
+        Shot.model_validate({**base, "type": "broll", "broll": BROLL})
+        for bad in (
+            {**base, "type": "broll"},
+            {**base, "type": "split", "broll": BROLL},
+            {**base, "type": "chapter", "broll": BROLL},
+            {**base, "type": "stat"},
+            {**base, "type": "broll", "broll": {**BROLL, "queriesEn": ["one", "two"]}},
+            {**base, "type": "broll", "broll": {**BROLL, "queriesEs": []}},
+        ):
+            with self.assertRaises(ValidationError):
+                Shot.model_validate(bad)
+
+    def test_file_rejects_gaps_and_out_of_range_durations(self) -> None:
+        shots = [
+            {**_structural(0), "type": "broll", "broll": BROLL},
+            {**_structural(1), "type": "broll", "broll": BROLL},
+        ]
+        base = {"slug": "t", "title": "T", "durationSeconds": 4.0,
+                "chapters": [{"title": "X", "startWord": 0, "fromScript": False}]}
+        ShotsFile.model_validate({**base, "shots": shots})
+        with self.assertRaises(ValidationError):
+            ShotsFile.model_validate({**base, "durationSeconds": 5.0, "shots": shots})
+        long_shot = {**shots[0], "end": 4.5}
+        with self.assertRaises(ValidationError):
+            ShotsFile.model_validate({**base, "shots": [long_shot, {**shots[1], "start": 4.5, "end": 6.0}], "durationSeconds": 6.0})
+
+
+class LabelRetryTests(unittest.TestCase):
+    def test_retry_asks_only_for_failed_shots_and_keeps_good_ones(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = RunContext.create("t", root=Path(tmp), config={})
+            batch = [_structural(1, "dice 2,7%"), _structural(2, "otra cosa")]
+            responses = [
+                {"shots": [{"id": "s001", "type": "stat", "stat": {"value": "2,7%", "label": "x"}, "broll": BROLL},
+                           {"id": "s002", "type": "stat", "stat": {"value": "99%", "label": "inventado"}, "broll": BROLL}]},
+                {"shots": [{"id": "s002", "type": "broll", "broll": BROLL}]},
+            ]
+            prompts: list[str] = []
+
+            def fake(ctx, **kwargs):
+                prompts.append(kwargs["user"])
+                return responses[len(prompts) - 1]
+
+            with patch.object(planner, "complete_json", side_effect=fake):
+                result = _label_batch(ctx, batch, "H", 3, {"s001": "dice 2,7%", "s002": "otra cosa"})
+        self.assertEqual([s["type"] for s in result], ["stat", "broll"])
+        self.assertIn("RESPONDE SOLO con los planos s002", prompts[1])
+        self.assertIn("99%", prompts[1])
+
+
+if __name__ == "__main__":
+    unittest.main()

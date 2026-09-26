@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,6 +11,7 @@ from .context import RunContext
 
 
 COSTS_FILE = "costs.json"
+_LOCK = threading.Lock()
 
 
 def _load(ctx: RunContext) -> list[dict[str, Any]]:
@@ -32,6 +34,11 @@ def record_cost(
     usd: float,
     details: dict[str, Any] | None = None,
 ) -> None:
+    with _LOCK:
+        _append(ctx, stage=stage, provider=provider, operation=operation, usd=usd, details=details)
+
+
+def _append(ctx: RunContext, *, stage: str, provider: str, operation: str, usd: float, details) -> None:
     entries = _load(ctx)
     entries.append(
         {
