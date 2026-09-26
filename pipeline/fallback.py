@@ -120,7 +120,7 @@ def run(ctx: RunContext) -> None:
 
     # Everything already on screen, so nothing is repeated.
     used: list[Selection] = [s for s in selections.values() if s.status == "selected" and s.shotId in done]
-    pexels_used: set[str] = set()  # filled as items are assigned in this run (cached or new)
+    pexels_used: set[str] = set()  # media taken by fallback items in this run (cached or new): never twice
 
     http = requests.Session()
     http.headers["User-Agent"] = USER_AGENT
@@ -136,7 +136,8 @@ def run(ctx: RunContext) -> None:
         needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
         digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
         old = previous.get(shot_id)
-        if old and old.specHash == digest and (ctx.root / old.path).is_file():
+        # Reuse the cached result unless a shot earlier in this run has already taken that media.
+        if old and old.specHash == digest and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used:
             items.append(old)
             pexels_used.add(old.candidateId)
             continue
@@ -254,6 +255,7 @@ def run(ctx: RunContext) -> None:
             unresolved[shot_id] = "; ".join(tried)[:400] or "sin alternativas"
             continue
         items.append(item)
+        pexels_used.add(item.candidateId)
         print(f"   {shot_id}: {item.method} ({item.source}){' — ' + item.credit if item.credit else ''}")
 
     youtube.close()
