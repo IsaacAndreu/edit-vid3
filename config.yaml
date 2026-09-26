@@ -84,6 +84,7 @@ analysis:
 
 judge:
   hook_seconds: 30                 # los planos del gancho pasan siempre por el juez (más exigente)
+  all: true                        # el juez revisa todos los planos (~0,20 $/vídeo); false = solo los dudosos
   provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
   model: gpt-5-mini
   reasoning_effort: low

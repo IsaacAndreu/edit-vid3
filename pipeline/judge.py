@@ -56,7 +56,11 @@ repeated). Rank the candidates that are ACCEPTABLE for this shot, best first.
 
 B-roll illustrates the idea being narrated; it does not have to match every detail of the
 description. Accept a candidate when it clearly fits what is being said (the subject, the
-place, the mood). The description is a guide, not a checklist.
+place, the mood). The description is a guide, not a checklist. It is written by an automatic
+planner and can be wrong: when it asks for something outside the video's topic (a restaurant
+kitchen, an office checklist, a filing cabinet in a video about casinos), ignore it and judge
+against the topic and the narration. Look carefully at what each frame really shows before
+naming it.
 
 Reject (leave out of the ranking) a candidate that:
 - is unrelated to the narration, or shows a different named place/person/brand;
@@ -268,15 +272,16 @@ def run(ctx: RunContext) -> None:
     doubtful: list[Shot] = []
     blocklist = ctx.section("content").get("title_blocklist")
     hook_seconds = float(cfg.get("hook_seconds", 30))
+    judge_all = bool(cfg.get("all", False))
     for shot in shots:
         order = [
             (s, o) for s, o in ranked(scores[shot.id].options, bonus)
             if s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
         ]
         plans[shot.id] = [o for _, o in order]
-        if order and (is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds):
+        if order and (judge_all or is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds):
             doubtful.append(shot)
-    print(f"   {len(shots)} planos · {len(doubtful)} con duda o en el gancho → juez ({cfg.get('model', 'gpt-5-mini')})")
+    print(f"   {len(shots)} planos · {len(doubtful)} {'en total' if judge_all else 'con duda o en el gancho'} → juez ({cfg.get('model', 'gpt-5-mini')})")
 
     verdicts: dict[str, tuple[dict[str, Any], list[Option]]] = {}
 
