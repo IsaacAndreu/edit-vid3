@@ -15,18 +15,22 @@ npm run render
 
 ## Automated pipeline
 
-The Python orchestrator lives in `pipeline/` and is launched from the repository root:
+Specification: `CLAUDE.md`. Inputs live in `materiales/<slug>/` (`titulo.txt`, `guion.txt`, `voz.mp3`).
 
 ```bash
 python -m pip install -r requirements.txt
-python main.py --guion guion.txt --voz narracion.mp3 --output video_final.mp4
+python main.py --slug Video1 [--review] [--force planner] [--until timeline]
 ```
 
-Create `.env` from `.env.example` first. The pipeline transcribes the audio with Whisper, segments using DeepSeek, searches YouTube for subtitle-timed third-party clips, and asks DeepSeek's vision-capable model to judge sampled frames. Each downloaded YouTube clip is hard-capped at five seconds; scenes without a suitable result fall back to Pexels and then GPT Image. Selection details and source/timestamps are recorded in the props and timeline manifests. Use `--skip-render` to inspect only the generated props.
+Each stage reads and writes JSON in `work/<slug>/` and is skipped when its output is valid and
+its inputs (files + its `config.yaml` section) are unchanged. `--force <etapa>` re-runs it.
+Tunables live in `config.yaml`; API keys in `.env` (see `.env.example`). External API spend is
+logged to `work/<slug>/costs.json`.
 
-Install `ffmpeg`/`ffprobe` and Deno as well as Python dependencies. Current yt-dlp YouTube support needs a JavaScript runtime; Deno is enabled automatically. See the [yt-dlp EJS setup guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS). Use `--skip-third-party` to skip YouTube and test the Pexels/image fallbacks.
-
-Avatar generation/import is intentionally disabled for now. The `--avatar-dir` option remains reserved for a future iteration.
+| # | Stage | Status |
+|---|-------|--------|
+| 1 | `align` → `words.json` (local faster-whisper + forced alignment to the script) | done |
+| 2-10 | planner, sourcing, analysis, judge, ingest, fallback, timeline, qa, render | in progress |
 
 ## Adding a template
 

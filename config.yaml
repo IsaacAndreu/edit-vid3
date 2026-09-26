@@ -1,0 +1,22 @@
+# Parámetros ajustables del pipeline. Las claves de API van en .env, nunca aquí.
+
+video:
+  width: 1920
+  height: 1080
+  fps: 30
+
+paths:
+  materials: materiales   # materiales/<slug>/{titulo.txt, guion.txt, voz.mp3}
+  work: work              # work/<slug>/ — JSON intermedio de cada etapa
+  out: out                # out/<slug>/ — entregables
+  cache: cache            # caché global compartida entre vídeos
+
+align:
+  provider: local         # local (faster-whisper, gratis) | openai (whisper-1, de pago)
+  model: medium           # tiny | base | small | medium | large-v3 (solo provider=local)
+  language: es
+  compute_type: int8
+  # Una palabra del guion sin equivalente en el audio recibe tiempos interpolados.
+  # Si el porcentaje de palabras alineadas cae por debajo de este umbral, la etapa falla:
+  # probablemente el guion y la voz no corresponden.
+  min_match_ratio: 0.80

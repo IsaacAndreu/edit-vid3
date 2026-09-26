@@ -1,0 +1,156 @@
+"""Stage orchestration: idempotent, resumable, no in-memory state between stages.
+
+A stage is skipped when its outputs exist, validate, and were produced from the
+same inputs (files + the stage's config section). The fingerprint lives in
+work/<slug>/.stages/<stage>.json, so changing guion.txt or config.yaml
+automatically invalidates the affected stage, and a re-run stage invalidates the
+stages that read its output.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable
+
+from . import align
+from .context import RunContext
+
+
+@dataclass(frozen=True)
+class Stage:
+    name: str
+    outputs: Callable[[RunContext], list[Path]]
+    inputs: Callable[[RunContext], list[Path]]
+    run: Callable[[RunContext], None] | None
+    validate: Callable[[RunContext], bool] | None = None
+    config_sections: tuple[str, ...] = ()
+
+
+def _work(*names: str) -> Callable[[RunContext], list[Path]]:
+    return lambda ctx: [ctx.work_dir / name for name in names]
+
+
+# Order matters: each stage reads the outputs of the stages before it.
+STAGES: list[Stage] = [
+    Stage("align", _work(align.OUTPUT), align.inputs, align.run, align.validate, ("align",)),
+    Stage("planner", _work("shots.json"), _work("words.json"), None),
+    Stage("sourcing", _work("candidates"), _work("shots.json"), None),
+    Stage("analysis", _work("scores"), _work("shots.json", "candidates"), None),
+    Stage("judge", _work("selection.json"), _work("shots.json", "scores"), None),
+    Stage("ingest", _work("media"), _work("selection.json"), None),
+    Stage("fallback", _work("selection.json"), _work("selection.json", "media"), None),
+    Stage("timeline", _work("timeline.json"), _work("shots.json", "selection.json", "words.json"), None),
+    Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md"], _work("timeline.json"), None),
+    Stage("render", lambda ctx: [ctx.out_dir / "video-final.mp4"], _work("timeline.json"), None),
+]
+STAGE_NAMES = [stage.name for stage in STAGES]
+
+
+class StageNotImplemented(RuntimeError):
+    pass
+
+
+def _hash_path(digest: "hashlib._Hash", path: Path) -> None:
+    digest.update(str(path.name).encode())
+    if path.is_dir():
+        for child in sorted(path.rglob("*")):
+            if child.is_file():
+                digest.update(str(child.relative_to(path)).encode())
+                digest.update(child.read_bytes())
+    elif path.is_file():
+        digest.update(path.read_bytes())
+    else:
+        digest.update(b"<missing>")
+
+
+def fingerprint(ctx: RunContext, stage: Stage) -> str:
+    digest = hashlib.sha256()
+    for path in stage.inputs(ctx):
+        _hash_path(digest, path)
+    for section in stage.config_sections:
+        digest.update(json.dumps(ctx.section(section), sort_keys=True).encode())
+    return digest.hexdigest()
+
+
+def _marker(ctx: RunContext, stage: Stage) -> Path:
+    return ctx.work_dir / ".stages" / f"{stage.name}.json"
+
+
+def is_up_to_date(ctx: RunContext, stage: Stage) -> bool:
+    marker = _marker(ctx, stage)
+    if not marker.is_file() or not all(path.exists() for path in stage.outputs(ctx)):
+        return False
+    try:
+        recorded = json.loads(marker.read_text(encoding="utf-8")).get("inputsHash")
+    except (OSError, json.JSONDecodeError):
+        return False
+    if recorded != fingerprint(ctx, stage):
+        return False
+    if stage.validate is not None:
+        try:
+            return bool(stage.validate(ctx))
+        except Exception as error:  # an invalid output simply means "run again"
+            print(f"   Salida de {stage.name} no válida ({error}); se regenera.")
+            return False
+    return True
+
+
+def run_stages(
+    ctx: RunContext,
+    *,
+    force: set[str] | None = None,
+    until: str | None = None,
+    review: bool = False,
+) -> list[str]:
+    """Run stages in order. Returns the names of the stages actually executed."""
+
+    force = set(force or ())
+    unknown = force - set(STAGE_NAMES) - {"all"}
+    if unknown:
+        raise ValueError(f"Etapa desconocida en --force: {', '.join(sorted(unknown))}. Opciones: {', '.join(STAGE_NAMES)}")
+    if until is not None and until not in STAGE_NAMES:
+        raise ValueError(f"Etapa desconocida en --until: {until}. Opciones: {', '.join(STAGE_NAMES)}")
+    last = "qa" if review and (until is None or STAGE_NAMES.index(until) > STAGE_NAMES.index("qa")) else until
+
+    executed: list[str] = []
+    ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    for number, stage in enumerate(STAGES, start=1):
+        label = f"[{number}/{len(STAGES)}] {stage.name}"
+        forced = "all" in force or stage.name in force
+        if not forced and is_up_to_date(ctx, stage):
+            print(f"{label}: al día, se salta.")
+        else:
+            if stage.run is None:
+                raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
+            print(f"{label}: ejecutando…")
+            started = time.monotonic()
+            stage.run(ctx)
+            if stage.validate is not None:
+                stage.validate(ctx)
+            marker = _marker(ctx, stage)
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(
+                json.dumps(
+                    {
+                        "stage": stage.name,
+                        "inputsHash": fingerprint(ctx, stage),
+                        "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "seconds": round(time.monotonic() - started, 1),
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            executed.append(stage.name)
+            print(f"{label}: hecho en {time.monotonic() - started:.1f} s")
+        if stage.name == last:
+            if review and stage.name == "qa":
+                print("Revisión: pipeline detenido tras la QA (--review). Revisa out/<slug>/qa/ y relanza sin --review.")
+            break
+    return executed
