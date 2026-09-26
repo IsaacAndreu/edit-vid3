@@ -66,9 +66,10 @@ class PolicyTests(unittest.TestCase):
 class RunTests(unittest.TestCase):
     """End-to-end over fake stage outputs, with the vision call mocked."""
 
-    def _write(self, root: Path, shots: list[dict], candidates: dict, scores: dict) -> RunContext:
-        ctx = RunContext.create("t", root=root, config={"judge": {"margin": 0.02, "min_score": 0.30, "min_accept": 0.22}})
-        ctx.write_json("shots.json", {"slug": "t", "title": "T", "durationSeconds": 2.0 * len(shots),
+    def _write(self, root: Path, shots: list[dict], candidates: dict, scores: dict, hook: float = 0) -> RunContext:
+        ctx = RunContext.create("t", root=root, config={"judge": {"margin": 0.02, "min_score": 0.30, "min_accept": 0.22,
+                                                                  "hook_seconds": hook}})
+        ctx.write_json("shots.json", {"slug": "t", "title": "T", "durationSeconds": 2.0 * len(shots), "context": "Casinos in Spain",
                                       "chapters": [{"title": "X", "startWord": 0, "fromScript": False}], "shots": shots})
         for sid, cands in candidates.items():
             ctx.write_json(f"candidates/{sid}.json", {"shotId": sid, "specHash": "h", "queries": {}, "candidates": cands})
@@ -96,7 +97,7 @@ class RunTests(unittest.TestCase):
             ctx = self._write(Path(tmp), shots, {s: [video, photo] for s in scores}, scores)
             calls = []
 
-            def fake_judge(ctx, shot, sheet, letters):
+            def fake_judge(ctx, shot, sheet, letters, *args):
                 calls.append(shot.id)
                 return {"ranking": ["A", "B", "C"], "score": 0.8, "reason": "ok", "confidence": 0.9}  # C: not on the sheet
 
@@ -125,7 +126,7 @@ class RunTests(unittest.TestCase):
             ctx = self._write(Path(tmp), shots, {"s000": [video]}, {"s000": options})
             sheets = []
 
-            def reject_all(ctx, shot, sheet, letters):
+            def reject_all(ctx, shot, sheet, letters, *args):
                 sheets.append(letters)
                 return {"ranking": [], "score": 0, "reason": "nothing fits", "confidence": 0.9}
 
@@ -134,6 +135,37 @@ class RunTests(unittest.TestCase):
             result = json.loads((ctx.work_dir / "selection.json").read_text())["selections"]
         self.assertEqual(len(sheets), 2)                       # two rounds of 3, not all 8
         self.assertEqual(result[0]["status"], "fallback")      # no blind pick of option 7
+
+
+    def test_hook_shots_are_always_judged_with_the_topic(self) -> None:
+        broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": "t", "chapter": 0, "broll": broll} for i in range(2)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        video = {"id": "yt:a", "source": "youtube", "kind": "video", "url": "https://y/a", "title": "t", "channel": "A",
+                 "license": "l", "credit": "Fuente: A", "attribution": "a", "query": "q", "rankScore": 1,
+                 "durationSeconds": 500, "storyboard": board}
+        scores = {"s000": [opt("yt:a", 0.45, start=10, end=12)], "s001": [opt("yt:a", 0.45, start=100, end=102)]}  # both clear
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {s: [video] for s in scores}, scores, hook=1.0)
+            calls = []
+
+            def fake_judge(ctx, shot, sheet, letters, topic, hook):
+                calls.append((shot.id, topic, hook))
+                return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+        self.assertEqual(calls, [("s000", "Casinos in Spain", True)])   # s001 (2 s) is clear and outside a 1 s hook
+
+    def test_brief_carries_topic_and_hook(self) -> None:
+        from pipeline.schemas import Shot
+        shot = Shot.model_validate({"id": "s000", "type": "broll", "startWord": 0, "endWord": 0, "start": 0, "end": 2,
+                                    "text": "hola", "chapter": 0,
+                                    "broll": {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}})
+        brief = J.shot_brief(shot, "Casinos in Spain", True)
+        self.assertTrue(brief.startswith("Video topic: Casinos in Spain\nHOOK"))
+        self.assertNotIn("HOOK", J.shot_brief(shot))
 
 
 if __name__ == "__main__":

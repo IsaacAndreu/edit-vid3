@@ -83,6 +83,7 @@ analysis:
   weights: {clip: 1.0, entity: 0.10, sharpness: 0.02, motion: 0.01}
 
 judge:
+  hook_seconds: 30                 # los planos del gancho pasan siempre por el juez (más exigente)
   provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
   model: gpt-5-mini
   reasoning_effort: low
@@ -118,7 +119,8 @@ fallback:
 content:
   # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
   title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
-                    fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun]
+                    fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun,
+                    excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop]
 
 timeline:
   assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
@@ -126,6 +128,10 @@ timeline:
   duck_db: 18                      # la música baja 18 dB mientras suena la voz
   whoosh_volume: 0.6
   pop_volume: 0.5
+  questions: true                  # preguntas del guion (¿…?) en un panel centrado
+  question_merge_gap: 2.5          # preguntas a menos de 2,5 s comparten panel
+  question_hold: 1.2               # s que el panel sigue tras la última palabra
+  question_max_words: 30
 
 qa:
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar

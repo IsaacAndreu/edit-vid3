@@ -53,18 +53,21 @@ class Segment:
     condensed_start: int = 0          # where the run begins in the condensed Remotion render
 
 
-def is_fast(shot: dict[str, Any]) -> bool:
+def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
     """Plain footage: only the credit badge is drawn on top, so ffmpeg can compose it."""
 
     media = shot.get("media") or {}
-    return shot["type"] == "broll" and media.get("kind") == "video" and not shot.get("groupId")
+    a, b = shot["from"], shot["from"] + shot["durationInFrames"]
+    covered = any(g["from"] < b and a < g["from"] + g["durationInFrames"] for g in groups)
+    return shot["type"] == "broll" and media.get("kind") == "video" and not shot.get("groupId") and not covered
 
 
 def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment]:
     segments: list[Segment] = []
     condensed = 0
+    groups = timeline.get("groups", [])
     for shot in timeline["shots"]:
-        if hybrid and is_fast(shot):
+        if hybrid and is_fast(shot, groups):
             segments.append(Segment("ffmpeg", shot["from"], shot["durationInFrames"], [shot]))
             continue
         if segments and segments[-1].kind == "remotion":
@@ -88,12 +91,14 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
         for shot in segment.shots:
             shift[shot["id"]] = offset
             shots.append({**shot, "from": shot["from"] - offset})
-    starts = {s["from"] + shift[s["id"]]: shift[s["id"]] for s in shots}   # original start → offset
     groups = []
     for group in timeline["groups"]:
-        if group["from"] not in starts:
-            raise RuntimeError(f"El grupo {group['id']} no empieza en un plano de Remotion")
-        groups.append({**group, "from": group["from"] - starts[group["from"]]})
+        # A group lies inside one run of slow shots (every shot it touches is slow): shift it with them.
+        owner = next((s for s in shots if s["from"] + shift[s["id"]] <= group["from"]
+                      < s["from"] + shift[s["id"]] + s["durationInFrames"]), None)
+        if owner is None:
+            raise RuntimeError(f"El grupo {group['id']} no cae en un tramo de Remotion")
+        groups.append({**group, "from": group["from"] - shift[owner["id"]]})
     total = sum(s["durationInFrames"] for s in shots)
     audio = {**timeline["audio"], "music": None, "speech": [], "sfx": []}
     return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "audio": audio}

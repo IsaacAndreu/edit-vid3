@@ -30,15 +30,21 @@ export interface PanelStep {
   rows: DataRow[];
 }
 
+export interface QuestionWord {
+  text: string;
+  from: number; // relative to the group: when the voice says it
+}
+
 export interface Group {
   id: string;
-  kind: 'datacard' | 'split' | 'stat';
+  kind: 'datacard' | 'split' | 'stat' | 'question';
   from: number;
   durationInFrames: number;
   title?: string | null;
   note?: string | null;
   steps: PanelStep[];
   stat?: { value: string; label: string; sign: Sign } | null;
+  words?: QuestionWord[];
 }
 
 export interface Sfx {

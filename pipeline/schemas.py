@@ -483,15 +483,23 @@ class PanelStep(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class QuestionWord(_Strict):
+    text: str
+    from_: int = Field(alias="from", ge=0)                   # relative to the group: when the voice says it
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class TimelineGroup(_Strict):
     id: str
-    kind: Literal["datacard", "split", "stat"]
+    kind: Literal["datacard", "split", "stat", "question"]
     from_: int = Field(alias="from", ge=0)
     durationInFrames: int = Field(ge=1)
     title: str | None = None
     note: str | None = None
     steps: list[PanelStep] = Field(default_factory=list)     # datacard / split: rows revealed step by step
     stat: StatData | None = None
+    words: list[QuestionWord] = Field(default_factory=list)  # question: script words revealed as spoken
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

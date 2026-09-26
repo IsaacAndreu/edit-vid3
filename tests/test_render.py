@@ -43,6 +43,20 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(props["audio"]["speech"], [])
 
 
+class QuestionRenderTests(unittest.TestCase):
+    def test_group_starting_mid_shot_makes_its_shots_slow(self) -> None:
+        timeline = {
+            "durationInFrames": 180,
+            "shots": [_shot(0, 0, 60), _shot(1, 60, 60), _shot(2, 120, 60)],
+            "groups": [{"id": "q01", "kind": "question", "from": 80, "durationInFrames": 50, "steps": [], "words": []}],
+            "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []},
+        }
+        segments = plan_segments(timeline)
+        self.assertEqual([(s.kind, s.start, s.frames) for s in segments], [("ffmpeg", 0, 60), ("remotion", 60, 120)])
+        props = condensed_props(timeline, segments)
+        self.assertEqual(props["groups"][0]["from"], 20)
+
+
 class DuckingTests(unittest.TestCase):
     def test_expression_matches_audiobed(self) -> None:
         expr = music_volume_expr([(30, 60)], 30, 120, 0.25, 0.05)

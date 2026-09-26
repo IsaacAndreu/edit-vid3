@@ -223,9 +223,21 @@ Objeto "broll" (metraje a buscar en YouTube/bancos de imágenes):
  "preferredShot": "wide | medium | close-up | aerial | detail | action | archive"}
 
 Tipos:
-- "broll" (la mayoría, ~70-80 %): metraje que ilustra literalmente lo que se dice. Si el texto
+- "broll" (la mayoría, ~70-80 %): metraje que ilustra lo que se dice. Si el texto
   es abstracto, elige una imagen documental concreta y reconocible (dinero contado, fichas,
   mesas de juego, edificios, gente). Varía el encuadre entre planos seguidos; no repitas queries.
+
+El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISUAL):
+- Comparaciones y metáforas NO se ilustran al pie de la letra: "no es como abrir un
+  restaurante" o "es una máquina de hacer dinero" muestran el tema del vídeo (p. ej. un casino
+  lleno, una ruleta girando), no una cocina ni una máquina.
+- Conceptos abstractos o burocráticos (requisitos, regulación, ingresos, trámites, impuestos)
+  → una imagen concreta DEL TEMA (sala de juego, crupier contando fichas, caja del casino,
+  fachada, edificio oficial, billetes), NUNCA pantallas de ordenador, hojas de cálculo,
+  programas (Excel, Word), formularios, casillas de verificación ni tutoriales.
+- Los planos con "gancho": true son los primeros segundos: deciden si el espectador se queda.
+  Pide el metraje más espectacular e inconfundible del tema (planos aéreos, salas llenas de
+  gente, ruletas girando, montones de fichas, ciudades de noche), nunca algo genérico.
 - "stat": UNA cifra que el texto dice en ese plano, mostrada en grande sobre b-roll
   (incluye "broll" como fondo). "value" corto tal como lo diría el guion ("2,7%", "60.000 m²",
   "14 M"); "label" breve en el idioma del guion.
@@ -277,6 +289,7 @@ def _label_batch(
         public = [
             {"id": s["id"], "seconds": round(s["end"] - s["start"], 1), "text": s["text"],
              **({"chapterTitle": s["chapterTitle"]} if s.get("chapterTitle") else {}),
+             **({"gancho": True} if s.get("hook") else {}),
              **({"yaDecidido": _summary(good[s["id"]])} if s["id"] in good else {})}
             for s in batch
         ]
@@ -500,6 +513,8 @@ def run(ctx: RunContext) -> None:
         }
         if first == chapters[chapter].startWord and chapters[chapter].showTitle:
             item["chapterTitle"] = chapters[chapter].title
+        if start < float(cfg.get("hook_seconds", 30)):  # first seconds: ask for the most striking footage
+            item["hook"] = True
         structural.append(item)
     print(f"   {len(structural)} planos cortados ({len(structural) / (words_file.durationSeconds / 60):.1f} cortes/min)")
 

@@ -63,7 +63,13 @@ Reject (leave out of the ranking) a candidate that:
 - is dominated by on-screen text, titles, lower-thirds, watermark banners, UI or screenshots;
 - is a presenter/vlogger talking to camera, a reaction face, or a channel intro/outro;
 - is blurry, black, frozen, a cartoon/animation or video-game footage (unless asked), or a slide;
-- has burned-in subtitles or captions, even small ones.
+- has burned-in subtitles or captions, even small ones;
+- is a screen recording or tutorial of software, a spreadsheet, a form, a website or an app;
+- takes the viewer out of the video's topic: a comparison or metaphor illustrated literally
+  (a restaurant kitchen for "it is not like opening a restaurant"), or generic office/stock
+  footage for an abstract idea, when footage of the topic itself would fit.
+When the shot is marked HOOK (the first seconds of the video), be strict: accept only striking,
+good-quality footage that is unmistakably about the topic; reject amateur, dull or generic shots.
 Prefer real footage of the exact named entity over generic footage, and moving footage over
 stills when both fit. Return an empty ranking only if none is acceptable.
 """
@@ -164,10 +170,13 @@ def is_repeat(option: Option, used: list[Selection], max_hamming: int) -> bool:
 # --- judge call ------------------------------------------------------------------------
 
 
-def shot_brief(shot: Shot) -> str:
+def shot_brief(shot: Shot, topic: str = "", hook: bool = False) -> str:
     broll = shot.broll
     assert broll is not None
-    lines = [
+    lines = [f"Video topic: {topic}"] if topic else []
+    if hook:
+        lines.append("HOOK: this is one of the first seconds of the video.")
+    lines += [
         f"Narration (Spanish): {shot.text}",
         f"The shot should show: {broll.visualIntent}",
     ]
@@ -180,7 +189,8 @@ def shot_brief(shot: Shot) -> str:
     return "\n".join(lines)
 
 
-def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str) -> dict[str, Any]:
+def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, topic: str = "",
+               hook: bool = False) -> dict[str, Any]:
     cfg = ctx.section("judge")
     model = str(cfg.get("model", "gpt-5-mini"))
     if str(cfg.get("provider", "openai")) != "openai":
@@ -189,7 +199,7 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str) -> 
     if not ok:
         raise RuntimeError("No se pudo codificar la hoja de contactos.")
     image_bytes = encoded.tobytes()
-    prompt = f"{shot_brief(shot)}\nCandidates on the sheet: {', '.join(letters)}."
+    prompt = f"{shot_brief(shot, topic, hook)}\nCandidates on the sheet: {', '.join(letters)}."
     cache_key = hashlib.sha256(
         json.dumps([model, JUDGE_INSTRUCTIONS, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
         + image_bytes
@@ -235,7 +245,9 @@ def inputs(ctx: RunContext) -> list:
 def run(ctx: RunContext) -> None:
     cfg = ctx.section("judge")
     started = time.monotonic()
-    shots = [s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots if needs_footage(s)]
+    shots_file = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    shots = [s for s in shots_file.shots if needs_footage(s)]
+    topic = shots_file.context or shots_file.title
     candidates: dict[str, Candidate] = {}
     scores: dict[str, ShotScores] = {}
     for shot in shots:
@@ -255,15 +267,16 @@ def run(ctx: RunContext) -> None:
     plans: dict[str, list[Option]] = {}
     doubtful: list[Shot] = []
     blocklist = ctx.section("content").get("title_blocklist")
+    hook_seconds = float(cfg.get("hook_seconds", 30))
     for shot in shots:
         order = [
             (s, o) for s, o in ranked(scores[shot.id].options, bonus)
             if s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
         ]
         plans[shot.id] = [o for _, o in order]
-        if is_doubtful([s for s, _ in order], margin, min_score) and len(order) >= 1:
+        if order and (is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds):
             doubtful.append(shot)
-    print(f"   {len(shots)} planos · {len(doubtful)} con duda → juez ({cfg.get('model', 'gpt-5-mini')})")
+    print(f"   {len(shots)} planos · {len(doubtful)} con duda o en el gancho → juez ({cfg.get('model', 'gpt-5-mini')})")
 
     verdicts: dict[str, tuple[dict[str, Any], list[Option]]] = {}
 
@@ -282,7 +295,7 @@ def run(ctx: RunContext) -> None:
             sheet = contact_sheet(options, candidates, ctx.root)
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
             cv2.imwrite(str(sheets_dir / f"{shot.id}{suffix}.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)])
+            verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds)
             by_letter = dict(zip(LETTERS, options))
             seen += options
             accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]

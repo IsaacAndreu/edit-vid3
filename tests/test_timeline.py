@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from pipeline.context import RunContext
 from pipeline.schemas import Timeline, WordsFile
-from pipeline.timeline import run, speech_segments
+from pipeline.timeline import question_groups, question_spans, run, speech_segments
 
 BROLL = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
 PANEL = lambda n: {"title": "Ruleta", "rows": [{"label": f"r{i}", "value": f"{i} €"} for i in range(n)]}  # noqa: E731
@@ -105,6 +105,40 @@ class SpeechTests(unittest.TestCase):
             "chapters": [], "alignment": {"provider": "l", "model": "m", "scriptWords": 3, "whisperWords": 3,
                                           "matchedWords": 3, "matchRatio": 1.0}})
         self.assertEqual(speech_segments(words, 30), [(0, 30), (60, 75)])
+
+
+def _words(items: list[tuple[str, float, float]]) -> WordsFile:
+    return WordsFile.model_validate({
+        "slug": "t", "title": "T", "language": "es", "durationSeconds": 20.0,
+        "words": [{"index": i, "text": t, "start": a, "end": b, "matched": True} for i, (t, a, b) in enumerate(items)],
+        "chapters": [], "alignment": {"provider": "l", "model": "m", "scriptWords": 1, "whisperWords": 1,
+                                      "matchedWords": 1, "matchRatio": 1.0}})
+
+
+class QuestionTests(unittest.TestCase):
+    WORDS = _words([
+        ("Pero", 0.0, 0.3), ("la", 0.3, 0.4), ("pregunta", 0.4, 0.8), ("es:", 0.8, 1.0),
+        ("¿sabes", 1.0, 1.3), ("cuánto", 1.3, 1.6), ("gana?", 1.6, 2.0),
+        ("Y", 2.5, 2.6), ("sobre", 2.6, 2.8), ("todo,", 2.8, 3.0), ("¿sabes", 3.0, 3.3), ("cómo?", 3.3, 3.6),
+        ("Fin.", 8.0, 8.4), ("Esto", 12.0, 12.2), ("vale?", 12.2, 12.6),
+    ])
+
+    def test_finds_questions_with_and_without_opening_mark(self) -> None:
+        self.assertEqual(question_spans(self.WORDS), [(4, 6), (10, 11), (13, 14)])
+
+    def test_merges_close_questions_and_avoids_chapters(self) -> None:
+        from pipeline.schemas import TimelineShot
+        shots = [TimelineShot.model_validate({"id": "s0", "type": "broll", "from": 0, "durationInFrames": 330, "text": "t"}),
+                 TimelineShot.model_validate({"id": "s1", "type": "chapter", "from": 330, "durationInFrames": 270, "text": "t"})]
+        groups = question_groups(self.WORDS, shots, [], 30, 600, {})
+        self.assertEqual(len(groups), 1)                    # "Esto vale?" falls on the chapter title → skipped
+        q = groups[0]
+        self.assertEqual(q.kind, "question")
+        self.assertEqual(q.from_, 27)                       # 3 frames before "¿sabes"
+        self.assertEqual(" ".join(w.text for w in q.words), "¿sabes cuánto gana? Y sobre todo, ¿sabes cómo?")
+        self.assertEqual(q.words[-1].from_, 99 - 27)
+        self.assertEqual(q.from_ + q.durationInFrames, 108 + 36)   # holds 1.2 s after the last word
+        self.assertEqual(question_groups(self.WORDS, shots, [], 30, 600, {"questions": False}), [])
 
 
 if __name__ == "__main__":

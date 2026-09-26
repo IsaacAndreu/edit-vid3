@@ -4,6 +4,8 @@ Merges shots (what each shot shows), stage-6 media and stage-7 fallback media in
 frame-accurate list of shots, plus:
 - groups: consecutive datacard/split shots sharing a panel (rows revealed step by step)
   and stat shots (one continuous number while the b-roll keeps cutting underneath);
+- questions: the script's questions (¿…?) in a centred panel, words appearing as they are
+  spoken; questions a breath apart share one panel;
 - audio: the narration, optional music from assets/music/ (ducked while the voice speaks)
   and optional SFX from assets/sfx/ (whoosh on chapters, pop on data).
 
@@ -47,6 +49,67 @@ def speech_segments(words: WordsFile, fps: int, max_gap: float = 0.5) -> list[tu
         else:
             segments.append([word.start, word.end])
     return [(round(a * fps), max(round(a * fps) + 1, round(b * fps))) for a, b in segments]
+
+
+OPEN_PUNCT = "«“\"'(¡"
+CLOSE_PUNCT = "»”\"')"
+
+
+def question_spans(words: WordsFile) -> list[tuple[int, int]]:
+    """(first, last) word indexes of each question in the script."""
+
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    sentence = 0
+    for i, word in enumerate(words.words):
+        text = word.text.lstrip(OPEN_PUNCT)
+        if text.startswith("¿"):
+            start = i
+        tail = word.text.rstrip(CLOSE_PUNCT)
+        if tail.endswith("?"):
+            spans.append((start if start is not None else sentence, i))
+            start = None
+        if tail.endswith((".", "!", "?", ":", ";", "…")):
+            sentence = i + 1
+    return spans
+
+
+def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                    total: int, cfg: dict[str, Any]) -> list[TimelineGroup]:
+    """Centred question panels that never overlap a data group or a chapter title."""
+
+    if not cfg.get("questions", True):
+        return []
+    merge_gap = float(cfg.get("question_merge_gap", 2.5))
+    hold = round(float(cfg.get("question_hold", 1.2)) * fps)
+    lead = 3
+    max_words = int(cfg.get("question_max_words", 30))
+    merged: list[list[int]] = []
+    for a, b in question_spans(words):
+        if merged and words.words[a].start - words.words[merged[-1][1]].end <= merge_gap:
+            merged[-1][1] = b
+        else:
+            merged.append([a, b])
+    blocked = sorted([(g.from_, g.from_ + g.durationInFrames) for g in groups]
+                     + [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"])
+    result: list[TimelineGroup] = []
+    for a, b in merged:
+        if b - a + 1 > max_words:
+            continue
+        start = max(0, round(words.words[a].start * fps) - lead)
+        spoken_end = round(words.words[b].end * fps)
+        if any(x < spoken_end and start < y for x, y in blocked):
+            continue
+        end = min([total, spoken_end + hold] + [x for x, _ in blocked if x >= spoken_end])
+        if result:
+            previous = result[-1]
+            if previous.from_ + previous.durationInFrames > start:
+                previous.durationInFrames = max(1, start - previous.from_)
+        result.append(TimelineGroup.model_validate({
+            "id": f"q{len(result) + 1:02d}", "kind": "question", "from": start, "durationInFrames": end - start,
+            "words": [{"text": w.text, "from": max(0, round(w.start * fps) - start)} for w in words.words[a : b + 1]],
+        }))
+    return result
 
 
 def _first_audio(folder: Path, prefix: str = "") -> Path | None:
@@ -122,6 +185,9 @@ def run(ctx: RunContext) -> None:
             "steps": [{"from": 0, "rows": [r.model_dump() for r in source.panel.rows]}] if source.panel else [],
             "stat": source.stat.model_dump() if source.stat else None,
         }))
+
+    groups += question_groups(words, shots, groups, fps, total_frames, cfg)
+    groups.sort(key=lambda g: g.from_)
 
     # Audio: voice (always), music and SFX only if the files exist.
     audio_dir = ctx.work_dir / "audio"

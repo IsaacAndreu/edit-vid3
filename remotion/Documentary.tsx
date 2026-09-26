@@ -5,6 +5,7 @@ import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
 import { DataCard, SplitPanel } from './components/Panel';
+import { Question } from './components/Question';
 import { Stat } from './components/Stat';
 import { theme } from './theme';
 import type { Shot, TimelineProps } from './types';
@@ -30,7 +31,7 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
 
 /**
  * Layers, bottom to top: shot footage/panel background → data groups (stat, datacard, split)
- * spanning their shots → chapter titles → source credit → audio.
+ * spanning their shots, question panels → chapter titles → source credit → audio.
  */
 export const Documentary: FC<TimelineProps> = ({ shots, groups, audio }) => (
   <AbsoluteFill style={{ backgroundColor: '#000' }}>
@@ -44,6 +45,9 @@ export const Documentary: FC<TimelineProps> = ({ shots, groups, audio }) => (
         {group.kind === 'stat' && group.stat ? <Stat value={group.stat.value} label={group.stat.label} /> : null}
         {group.kind === 'datacard' ? <DataCard title={group.title} note={group.note} steps={group.steps} /> : null}
         {group.kind === 'split' ? <SplitPanel title={group.title} note={group.note} steps={group.steps} /> : null}
+        {group.kind === 'question' && group.words ? (
+          <Question words={group.words} durationInFrames={group.durationInFrames} />
+        ) : null}
       </Sequence>
     ))}
     {shots
