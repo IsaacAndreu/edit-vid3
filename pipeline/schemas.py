@@ -317,3 +317,58 @@ class ShotScores(_Strict):
     prompts: list[str]
     options: list[Option]                                    # best first; discarded ones last
     notes: list[str] = Field(default_factory=list)
+
+
+# --- Stage 5: selection.json --------------------------------------------------------
+
+
+class JudgeVerdict(_Strict):
+    choice: str                                              # "A" | "B" | "C" | "none"
+    selectedStart: float | None = None
+    selectedEnd: float | None = None
+    score: float = Field(ge=0, le=1)
+    reason: str
+    confidence: float = Field(ge=0, le=1)
+    model: str
+    round: int = 1                                           # contact sheet: judge/<shot>.jpg (1) or judge/<shot>-2.jpg
+
+
+class Selection(_Strict):
+    shotId: str
+    status: Literal["selected", "fallback"]                 # fallback → stage 7 (Pexels / GPT Image)
+    decidedBy: Literal["score", "judge", "fallback"]
+    candidateId: str | None = None
+    source: str | None = None                                # youtube | wikimedia | openverse | pixabay | pexels | generated
+    kind: Literal["video", "image"] | None = None
+    start: float | None = None                               # source seconds (videos)
+    end: float | None = None
+    analysisPath: str | None = None                          # low-res local copy (360p window / image thumbnail)
+    mediaUrl: str | None = None                              # full-resolution image (images)
+    url: str | None = None                                   # page of the source
+    title: str | None = None
+    channel: str | None = None
+    license: str | None = None
+    credit: str | None = None                                # exact on-screen text, copied from the candidate
+    attribution: str | None = None
+    score: float | None = None                               # stage-4 total of the chosen option
+    judge: JudgeVerdict | None = None
+    phash: str | None = None
+
+    @model_validator(mode="after")
+    def _complete(self) -> "Selection":
+        if self.status == "selected":
+            missing = [n for n in ("candidateId", "source", "kind", "credit", "url") if not getattr(self, n)]
+            if missing:
+                raise ValueError(f"{self.shotId}: selección incompleta ({', '.join(missing)})")
+            if self.kind == "video":
+                if self.start is None or self.end is None or not 0 < self.end - self.start <= MAX_THIRD_PARTY_SECONDS + 1e-6:
+                    raise ValueError(f"{self.shotId}: tramo de vídeo inválido o > 5 s")
+            if not self.credit.startswith("Fuente: "):
+                raise ValueError(f"{self.shotId}: crédito inválido")
+        return self
+
+
+class SelectionFile(_Strict):
+    slug: str
+    selections: list[Selection]
+    stats: dict[str, int | float] = Field(default_factory=dict)

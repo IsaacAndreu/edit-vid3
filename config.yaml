@@ -81,3 +81,19 @@ analysis:
   min_clip: 0.20                   # por debajo, la opción se marca "poco relevante"
   min_clip_entity: 0.15            # umbral si la fuente nombra la entidad del plano (CLIP no conoce lugares concretos)
   weights: {clip: 1.0, entity: 0.10, sharpness: 0.02, motion: 0.01}
+
+judge:
+  provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
+  model: gpt-5-mini
+  reasoning_effort: low
+  detail: auto                     # resolución con la que el modelo ve la hoja de contactos
+  margin: 0.02                     # duda si la 1.ª y la 2.ª opción están más cerca que esto…
+  min_score: 0.30                  # …o si la mejor no llega a esta nota
+  min_accept: 0.22                 # por debajo, la opción no se usa (→ fallback)
+  candidates: 3                    # opciones que ve el juez por hoja
+  rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
+  parallel: 4
+  source_bonus: {youtube: 0.02}    # prioridad: metraje de terceros antes que fotos
+  max_phash_distance: 6            # fragmentos más parecidos que esto cuentan como repetidos
+  # https://developers.openai.com/api/docs/pricing
+  usd_per_mtok: {input: 0.25, output: 2.0}

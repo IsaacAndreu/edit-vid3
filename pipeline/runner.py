@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align, analysis, planner, sourcing
+from . import align, analysis, judge, planner, sourcing
 from .context import RunContext
 
 
@@ -42,7 +42,7 @@ STAGES: list[Stage] = [
     Stage("planner", _work(planner.OUTPUT), planner.inputs, planner.run, planner.validate, ("planner",)),
     Stage("sourcing", _work(sourcing.OUTPUT), sourcing.inputs, sourcing.run, sourcing.validate, ("sourcing",), sourcing.retry_if),
     Stage("analysis", _work(analysis.OUTPUT), analysis.inputs, analysis.run, analysis.validate, ("analysis",)),
-    Stage("judge", _work("selection.json"), _work("shots.json", "scores"), None),
+    Stage("judge", _work(judge.OUTPUT), judge.inputs, judge.run, judge.validate, ("judge",)),
     Stage("ingest", _work("media"), _work("selection.json"), None),
     Stage("fallback", _work("selection.json"), _work("selection.json", "media"), None),
     Stage("timeline", _work("timeline.json"), _work("shots.json", "selection.json", "words.json"), None),
