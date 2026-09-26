@@ -38,6 +38,7 @@ from .clip import ClipScorer
 
 STAGE = "analysis"
 OUTPUT = "scores"
+VERSION = 2  # bump when the scoring logic changes: invalidates per-shot results
 SUMMARY = "_summary.json"
 
 
@@ -90,6 +91,48 @@ def coarse_moments(times: np.ndarray, sims: np.ndarray, interval: float, per_vid
         if len(picked) >= per_video:
             break
     return picked
+
+
+# --- per-source cached features (also precomputed during sourcing) ---------------------
+
+
+def frames_key(candidate_id: str, cfg: dict[str, Any]) -> str:
+    settings = (cfg.get("edge_margin", 0.05), cfg.get("max_frames_per_video", 40), cfg.get("dedupe_difference", 4))
+    return f"{candidate_id.replace(':', '_')}-{key(*settings)[:8]}"
+
+
+def video_features(clip: ClipScorer, candidate: Candidate, root: Path, cfg: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    """(times, CLIP vectors) of a video's storyboard thumbnails — cached globally."""
+
+    return clip.cached(frames_key(candidate.id, cfg), lambda: storyboard_frames(candidate, root, cfg))
+
+
+def image_features(
+    clip: ClipScorer, detectors: det.Detectors, candidate: Candidate, root: Path
+) -> tuple[np.ndarray, dict[str, Any]] | None:
+    """(CLIP vector, checks) of an image candidate — cached globally."""
+
+    from ..sourcing.common import cached_json
+
+    if not candidate.imagePath:
+        return None
+    image_key = f"img_{key(candidate.imagePath)}"
+    picture = None
+
+    def load():
+        nonlocal picture
+        if picture is None:
+            picture = cv2.imread(str(root / candidate.imagePath))
+        return picture
+
+    if load() is None and not (clip.cache_dir / f"{image_key}.npz").is_file():
+        return None
+    _, vectors = clip.cached(image_key, lambda: ([0.0], [load()]))
+    checks = cached_json(
+        clip.cache_dir / f"{image_key}.checks.json",
+        lambda: {"sharpness": det.sharpness(load()), "textArea": detectors.text_area(load()), "phash": det.phash(load())},
+    )
+    return vectors[0].astype(np.float32), checks
 
 
 # --- fine: 360p window ------------------------------------------------------------------
@@ -235,6 +278,17 @@ def total_score(scores: dict[str, float], weights: dict[str, float]) -> float:
 # --- stage ------------------------------------------------------------------------------
 
 
+def make_models(ctx: RunContext) -> tuple[ClipScorer, det.Detectors]:
+    cfg = ctx.section("analysis")
+    clip = ClipScorer(
+        cache_dir=ctx.cache_dir,
+        model=str(cfg.get("model", "ViT-B-32")),
+        pretrained=str(cfg.get("pretrained", "laion2b_s34b_b79k")),
+        batch_size=int(cfg.get("batch_size", 64)),
+    )
+    return clip, det.Detectors(cache_dir=ctx.cache_dir, ocr_side=int(cfg.get("ocr_side", 480)))
+
+
 def prompts_for(shot: Shot) -> list[str]:
     assert shot.broll is not None
     return list(dict.fromkeys([shot.broll.visualIntent, *shot.broll.queries]))
@@ -265,7 +319,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
     out_dir = ctx.work_dir / OUTPUT
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    config_key = key(cfg)
+    config_key = key(cfg, VERSION)
     todo: list[Shot] = []
     shot_hash: dict[str, str] = {}
     for shot in shots:
@@ -283,13 +337,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
         _write_summary(ctx, shots)
         return
 
-    clip = ClipScorer(
-        cache_dir=ctx.cache_dir,
-        model=str(cfg.get("model", "ViT-B-32")),
-        pretrained=str(cfg.get("pretrained", "laion2b_s34b_b79k")),
-        batch_size=int(cfg.get("batch_size", 64)),
-    )
-    detectors = det.Detectors(cache_dir=ctx.cache_dir, ocr_side=int(cfg.get("ocr_side", 480)))
+    clip, detectors = make_models(ctx)
     shot_vectors = {s.id: clip.shot_vector(prompts_for(s)) for s in todo}
 
     # 1. Coarse embeddings, once per source (cached globally).
@@ -300,22 +348,15 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
             (videos if c.kind == "video" else images)[c.id] = c
     frame_index: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for number, (cid, c) in enumerate(videos.items(), start=1):
-        frame_index[cid] = clip.cached(cid.replace(":", "_"), lambda c=c: storyboard_frames(c, ctx.root, cfg))
+        frame_index[cid] = video_features(clip, c, ctx.root, cfg)
         if number % 50 == 0:
             print(f"   miniaturas: {number}/{len(videos)} vídeos ({time.monotonic() - started:.0f} s)")
     image_vectors: dict[str, np.ndarray] = {}
     image_checks: dict[str, dict[str, Any]] = {}
     for cid, c in images.items():
-        picture = cv2.imread(str(ctx.root / c.imagePath)) if c.imagePath else None
-        if picture is None:
-            continue
-        _, vectors = clip.cached(f"img_{key(c.imagePath)}", lambda picture=picture: ([0.0], [picture]))
-        image_vectors[cid] = vectors[0].astype(np.float32)
-        image_checks[cid] = {
-            "sharpness": det.sharpness(picture),
-            "textArea": detectors.text_area(picture),
-            "phash": det.phash(picture),
-        }
+        features = image_features(clip, detectors, c, ctx.root)
+        if features is not None:
+            image_vectors[cid], image_checks[cid] = features
     print(f"   Pasada gruesa: {len(videos)} vídeos, {len(image_vectors)} imágenes ({time.monotonic() - started:.0f} s)")
 
     # 2. Coarse options per shot and the fine windows worth downloading.

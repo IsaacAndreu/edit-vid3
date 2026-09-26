@@ -60,6 +60,8 @@ class YouTubeSource:
         self._cooldown_until = 0.0
         self._cookies_text = cookies_text
         self._local = threading.local()
+        self.stats: dict[str, list[float]] = {}   # action → [count, seconds], for tuning
+        self._stats_lock = threading.Lock()
         self.http = requests.Session()
         self.http.headers["User-Agent"] = USER_AGENT
         options: dict[str, Any] = {
@@ -117,7 +119,11 @@ class YouTubeSource:
                     if delay > 0:
                         time.sleep(delay)
                     self.pacer.wait()
-                    return fn()
+                    began = time.monotonic()
+                    try:
+                        return fn()
+                    finally:
+                        self._count(action, time.monotonic() - began)
             except Exception as error:
                 message = str(error)
                 lowered = message.casefold()
@@ -135,6 +141,15 @@ class YouTubeSource:
                     raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429)") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
         raise AssertionError("unreachable")
+
+    def _count(self, action: str, seconds: float) -> None:
+        with self._stats_lock:
+            entry = self.stats.setdefault(action, [0, 0.0])
+            entry[0] += 1
+            entry[1] += seconds
+
+    def stats_line(self) -> str:
+        return " · ".join(f"{action} {int(n)}× {total / max(n, 1):.1f} s" for action, (n, total) in sorted(self.stats.items()))
 
     # --- search & metadata ----------------------------------------------------------
 
@@ -187,6 +202,7 @@ class YouTubeSource:
                     f"https://www.youtube.com/watch?v={video_id}", download=False
                 ),
             )
+            self._save_full_info(video_id, data)
             formats = data.get("formats") or []
             heights = [f.get("height") or 0 for f in formats if f.get("vcodec") not in (None, "none")]
             boards = [f for f in formats if str(f.get("format_id", "")).startswith("sb") and f.get("fragments")]
@@ -249,6 +265,7 @@ class YouTubeSource:
             path.write_bytes(response.content)
 
         missing = [(url, path) for url, path in zip(board["urls"], paths) if not path.is_file()]
+        began = time.monotonic()
         if missing:
             try:
                 with ThreadPoolExecutor(max_workers=4) as pool:
@@ -260,6 +277,7 @@ class YouTubeSource:
                 missing = [(url, path) for url, path in zip(board["urls"], paths) if not path.is_file()]
                 with ThreadPoolExecutor(max_workers=4) as pool:
                     list(pool.map(fetch, missing))
+            self._count("storyboard", time.monotonic() - began)
         duration = float(info.get("duration") or 0)
         per_sheet = int(board["columns"]) * int(board["rows"])
         frames = min(len(paths) * per_sheet, max(1, int(duration * float(board["fps"])) + 1))
@@ -296,33 +314,111 @@ class YouTubeSource:
             return []
         return [tuple(c) for c in cues]  # type: ignore[misc]
 
-    def download_section(self, video_id: str, start: float, end: float) -> Path:
-        """360p (video-only) file covering [start, end] of the source, exact timestamps."""
+    # --- downloads without re-extraction ------------------------------------------------
 
-        target_dir = self.cache_dir / "videos" / video_id
-        target = target_dir / f"a360_{start:.2f}_{end:.2f}.mp4"
-        if target.is_file() and target.stat().st_size > 0:
-            return target
-        for existing in target_dir.glob("a360_*.mp4"):
-            _, a, b = existing.stem.split("_")
-            if float(a) <= start and float(b) >= end:
-                return existing
+    def _full_info_path(self, video_id: str) -> Path:
+        return self.cache_dir / "videos" / video_id / "ytdlp-info.json"
+
+    def _save_full_info(self, video_id: str, data: dict[str, Any]) -> None:
+        """yt-dlp's own info dict (minus bulky fields) so downloads can skip the ~4 s extraction."""
+
+        import json
+
+        slim = {k: v for k, v in data.items() if k not in ("automatic_captions", "subtitles", "thumbnails", "heatmap")}
+        path = self._full_info_path(video_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        with self._ydl() as ydl:
+            tmp.write_text(json.dumps(ydl.sanitize_info(slim)), encoding="utf-8")
+        tmp.replace(path)
+
+    def _fresh_full_info(self, video_id: str) -> Path:
+        """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed)."""
+
+        import json
+        from urllib.parse import parse_qs, urlparse
+
+        path = self._full_info_path(video_id)
+        if path.is_file():
+            try:
+                formats = json.loads(path.read_text(encoding="utf-8")).get("formats") or []
+                expiries = [
+                    int(parse_qs(urlparse(f["url"]).query).get("expire", ["0"])[0])
+                    for f in formats if f.get("vcodec") not in (None, "none") and f.get("url")
+                ]
+                if expiries and min(expiries) - time.time() > 600:
+                    return path
+            except (OSError, ValueError, KeyError):
+                pass
+        self._info_path(video_id).unlink(missing_ok=True)
+        self.info(video_id)  # re-extracts and re-saves the full info
+        return path
+
+    def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str) -> Path:
+        """Stream-copy [start, end] of the source (no re-encode) → <prefix>_<realStart>_<realEnd>.mp4.
+
+        Without re-encoding the file begins at the keyframe before `start`; the real start is
+        measured (timestamps kept with -copyts), the file is rebased to 0 and the real range is
+        written into its name so later stages cut at exact source seconds.
+        """
+
+        import json
+        import subprocess
+
         from yt_dlp.utils import download_range_func
 
+        target_dir = self.cache_dir / "videos" / video_id
+        for existing in target_dir.glob(f"{prefix}_*.mp4"):
+            try:
+                _, a, b = existing.stem.split("_")
+                if float(a) <= start + 1e-3 and float(b) >= end - 1e-3:
+                    return existing
+            except ValueError:
+                continue
+        raw = target_dir / f"dl_{prefix}_{start:.2f}_{end:.2f}.mp4"
         options: dict[str, Any] = {
-            "format": "bv*[height<=360][vcodec^=avc1]/bv*[height<=360]/b[height<=360]/wv*",
-            "outtmpl": str(target_dir / f"dl_{start:.2f}_{end:.2f}.%(ext)s"),
+            "format": fmt,
+            "outtmpl": str(raw.with_suffix(".%(ext)s")),
             "overwrites": True,
             "nopart": True,
             "download_ranges": download_range_func(None, [(start, end)]),
-            "force_keyframes_at_cuts": True,  # exact timestamps: later stages cut by them
+            "force_keyframes_at_cuts": False,
+            "external_downloader_args": {"ffmpeg_o": ["-copyts"]},
         }
-        self._call("download", lambda: self._ydl(options).download([f"https://www.youtube.com/watch?v={video_id}"]))
-        produced = [p for p in target_dir.glob(f"dl_{start:.2f}_{end:.2f}*") if p.suffix in (".mp4", ".webm", ".mkv")]
+
+        def fetch() -> None:
+            with self._ydl(options) as ydl:
+                ydl.download_with_info_file(str(self._fresh_full_info(video_id)))
+
+        self._call("download", fetch)
+        produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*") if p.suffix in (".mp4", ".webm", ".mkv")]
         if not produced:
             raise RuntimeError(f"yt-dlp no produjo el tramo {start}-{end} de {video_id}")
-        produced[0].replace(target)
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time:format=duration",
+             "-of", "json", str(produced[0])],
+            capture_output=True, text=True, check=True,
+        )
+        info = json.loads(probe.stdout)
+        real_start = float(info["streams"][0].get("start_time") or start)
+        real_end = real_start + float(info["format"]["duration"])
+        target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}.mp4"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", "0:v:0",
+             "-c", "copy", "-avoid_negative_ts", "make_zero", str(target)],
+            check=True,
+        )
+        produced[0].unlink(missing_ok=True)
         return target
+
+    def download_section(self, video_id: str, start: float, end: float) -> Path:
+        """360p video-only file covering [start, end] (source seconds are in its name)."""
+
+        return self.download_range(
+            video_id, start, end,
+            fmt="bv*[height<=360][vcodec^=avc1]/bv*[height<=360]/b[height<=360]/wv*",
+            prefix="a360",
+        )
 
     # --- per shot ---------------------------------------------------------------------
 

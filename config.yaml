@@ -62,6 +62,7 @@ analysis:
   model: ViT-B-32                  # OpenCLIP; ~28 fotogramas/s en 4 núcleos de CPU
   pretrained: laion2b_s34b_b79k
   batch_size: 64
+  precompute_during_sourcing: true   # calcula las huellas CLIP en segundo plano durante el sourcing
   edge_margin: 0.05                # ignora el primer y el último 5 % de cada vídeo (intros/outros)
   max_frames_per_video: 40         # miniaturas del storyboard codificadas por vídeo (pasada gruesa)
   dedupe_difference: 4             # miniaturas consecutivas casi iguales se codifican una vez

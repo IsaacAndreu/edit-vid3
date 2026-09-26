@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import base64
 import json
+import queue
+import threading
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -49,6 +52,63 @@ def _youtube_cookies(ctx: RunContext, yt_cfg: dict[str, Any]) -> str | None:
     return None
 
 
+class Precomputer:
+    """Computes stage 4's per-source CLIP features while sourcing waits on the network.
+
+    Sourcing is I/O-bound and analysis's coarse pass is CPU-bound, so doing the latter in a
+    background thread as candidates arrive makes it almost free. Results land in the same
+    global cache stage 4 reads; if the analysis dependencies are missing it silently no-ops.
+    """
+
+    def __init__(self, ctx: RunContext) -> None:
+        self.ctx = ctx
+        self.queue: queue.Queue = queue.Queue()
+        self.done = 0
+        self.busy_seconds = 0.0
+        self.error: str | None = None
+        self.thread = threading.Thread(target=self._work, daemon=True)
+        self.thread.start()
+
+    def submit(self, candidates: list) -> None:
+        for candidate in candidates:
+            self.queue.put(candidate)
+
+    def _work(self) -> None:
+        try:
+            from ..analysis import image_features, make_models, video_features
+
+            clip, detectors = make_models(self.ctx)
+        except Exception as error:  # torch/open_clip not installed, etc.
+            self.error = str(error)[:160]
+            clip = None
+        cfg = self.ctx.section("analysis")
+        while True:
+            candidate = self.queue.get()
+            if candidate is None:
+                return
+            if clip is None:
+                continue
+            began = time.monotonic()
+            try:
+                if candidate.kind == "video":
+                    video_features(clip, candidate, self.ctx.root, cfg)
+                else:
+                    image_features(clip, detectors, candidate, self.ctx.root)
+                self.done += 1
+            except Exception as error:
+                self.error = f"{candidate.id}: {str(error)[:120]}"
+            self.busy_seconds += time.monotonic() - began
+
+    def finish(self) -> None:
+        began = time.monotonic()
+        self.queue.put(None)
+        self.thread.join()
+        extra = time.monotonic() - began
+        print(f"   Precálculo CLIP: {self.done} fuentes ({self.busy_seconds:.0f} s de CPU, {extra:.0f} s de espera al final)")
+        if self.error:
+            print(f"   Aviso precálculo: {self.error}")
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "shots.json"]
 
@@ -76,7 +136,15 @@ def run(ctx: RunContext) -> None:
         pixabay_key=ctx.env("PIXABAY_API_KEY", required=False),
     )
 
+    precompute = Precomputer(ctx) if ctx.section("analysis").get("precompute_during_sourcing", True) else None
+
     def process(shot: Shot) -> ShotCandidates:
+        result = _process(shot)
+        if precompute is not None:
+            precompute.submit(result.candidates)
+        return result
+
+    def _process(shot: Shot) -> ShotCandidates:
         spec_hash = _spec_hash(shot, cfg)
         path = out_dir / f"{shot.id}.json"
         if path.is_file():
@@ -108,6 +176,10 @@ def run(ctx: RunContext) -> None:
 
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 3))) as pool:
         results = list(pool.map(process, shots))
+    if youtube is not None and youtube.stats:
+        print(f"   Tiempos YouTube: {youtube.stats_line()}")
+    if precompute is not None:
+        precompute.finish()
 
     by_source: dict[str, int] = {}
     empty = []
