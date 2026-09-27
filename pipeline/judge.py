@@ -73,6 +73,12 @@ Reject (leave out of the ranking) a candidate that:
 - takes the viewer out of the video's topic: a comparison or metaphor illustrated literally
   (a restaurant kitchen for "it is not like opening a restaurant"), or generic office/stock
   footage for an abstract idea, when footage of the topic itself would fit.
+When the video is about a specific person (VIDEO SUBJECT), the footage must belong to their
+world: the same sport/discipline, and preferably the person themselves or the exact event of
+the shot (EVENT). A podium, arena or crowd from another sport or another competition is
+off-topic, even if "a podium" matches the words. Prefer the identifiable person/event over
+generic footage of the same sport. The source video titles listed under the sheet are hints
+(they can be clickbait or compilations): trust what the frames show first.
 When the shot is marked HOOK (the first seconds of the video), be strict: accept only striking,
 good-quality footage that is unmistakably about the topic; reject amateur, dull or generic shots.
 Prefer real footage of the exact named entity over generic footage, and moving footage over
@@ -80,7 +86,8 @@ stills when both fit. Return an empty ranking only if none is acceptable.
 
 First describe every candidate in "candidates": what its frames really show (a few plain
 words), whether it is a screen / UI / chart / document dominated by text, and whether it
-belongs to the video's topic. Then rank. A candidate flagged as screen or off-topic is
+belongs to the video's topic (for a video about a person: same sport/discipline, not another
+athlete shown as if they were the subject). Then rank. A candidate flagged as screen or off-topic is
 never used, whatever the ranking says.
 """
 
@@ -195,10 +202,14 @@ def is_repeat(option: Option, used: list[Selection], max_hamming: int) -> bool:
 # --- judge call ------------------------------------------------------------------------
 
 
-def shot_brief(shot: Shot, topic: str = "", hook: bool = False) -> str:
+def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "") -> str:
     broll = shot.broll
     assert broll is not None
     lines = [f"Video topic: {topic}"] if topic else []
+    if subject:
+        lines.append(f"VIDEO SUBJECT: {subject}")
+    if broll.event:
+        lines.append(f"EVENT of this shot: {broll.event}")
     if hook:
         lines.append("HOOK: this is one of the first seconds of the video.")
     lines += [
@@ -215,7 +226,7 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False) -> str:
 
 
 def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, topic: str = "",
-               hook: bool = False) -> dict[str, Any]:
+               hook: bool = False, subject: str = "", sources: str = "") -> dict[str, Any]:
     cfg = ctx.section("judge")
     model = str(cfg.get("model", "gpt-5-mini"))
     if str(cfg.get("provider", "openai")) != "openai":
@@ -224,7 +235,9 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     if not ok:
         raise RuntimeError("No se pudo codificar la hoja de contactos.")
     image_bytes = encoded.tobytes()
-    prompt = f"{shot_brief(shot, topic, hook)}\nCandidates on the sheet: {', '.join(letters)}."
+    prompt = f"{shot_brief(shot, topic, hook, subject)}\nCandidates on the sheet: {', '.join(letters)}."
+    if sources:
+        prompt += f"\nSource of each candidate:\n{sources}"
     cache_key = hashlib.sha256(
         json.dumps([model, JUDGE_INSTRUCTIONS, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
         + image_bytes
@@ -258,6 +271,16 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     return usable(cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce), letters)
 
 
+def source_lines(options: list[Option], candidates: dict[str, Candidate]) -> str:
+    """One line per letter: where the fragment comes from (title · channel), a hint for the judge."""
+
+    lines = []
+    for letter, option in zip(LETTERS, options):
+        c = candidates[option.candidateId]
+        lines.append(f"{letter}: {c.source} · \"{(c.title or '')[:90]}\" · {(c.channel or '')[:40]}")
+    return "\n".join(lines)
+
+
 def usable(verdict: dict[str, Any], letters: str) -> dict[str, Any]:
     """The ranking without letters off the sheet, repeated, or flagged as screen/off-topic."""
 
@@ -279,6 +302,7 @@ def run(ctx: RunContext) -> None:
     shots_file = ShotsFile.model_validate(ctx.read_json("shots.json"))
     shots = [s for s in shots_file.shots if needs_footage(s)]
     topic = shots_file.context or shots_file.title
+    subject = shots_file.subject
     candidates: dict[str, Candidate] = {}
     scores: dict[str, ShotScores] = {}
     for shot in shots:
@@ -327,7 +351,8 @@ def run(ctx: RunContext) -> None:
             sheet = contact_sheet(options, candidates, ctx.root)
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
             cv2.imwrite(str(sheets_dir / f"{shot.id}{suffix}.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds)
+            verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds,
+                                 subject, source_lines(options, candidates))
             by_letter = dict(zip(LETTERS, options))
             seen += options
             accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]

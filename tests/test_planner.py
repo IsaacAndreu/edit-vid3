@@ -68,6 +68,29 @@ class OutlineTests(unittest.TestCase):
             planner._validate_outline({"chapters": [{"title": "a", "sentence": 3}]}, sentences, words)
 
 
+class StoryTests(unittest.TestCase):
+    def test_parses_events_tolerantly_and_assigns_them_to_shots(self) -> None:
+        sentences = [(i * 10, i * 10 + 9) for i in range(10)]
+        result = {"subject": "Carlos Yulo · artistic gymnastics", "events": [
+            {"sentence": 4, "label": "Carlos Yulo floor gold 2019 Stuttgart"},
+            {"sentence": 2, "label": "Carlos Yulo Palarong Pambansa childhood"},
+            {"sentence": 99, "label": "out of range"}, {"sentence": "x", "label": "bad"}, "junk"]}
+        subject, events = planner.parse_story(result, sentences)
+        self.assertEqual(subject, "Carlos Yulo · artistic gymnastics")
+        self.assertEqual([(e.startWord, e.label) for e in events], [
+            (0, "Carlos Yulo highlights"), (20, "Carlos Yulo Palarong Pambansa childhood"),
+            (40, "Carlos Yulo floor gold 2019 Stuttgart")])
+        self.assertEqual(planner.event_at(events, 45), "Carlos Yulo floor gold 2019 Stuttgart")
+        self.assertEqual(planner.parse_story({}, sentences), ("", []))
+
+    def test_event_becomes_the_first_query(self) -> None:
+        broll = {"visualIntent": "podium", "queriesEn": ["gymnastics podium", "medal ceremony"], "queriesEs": ["podio"]}
+        out = planner._with_event(broll, "Carlos Yulo 2019 Stuttgart podium")
+        self.assertEqual(out["queriesEn"][0], "Carlos Yulo 2019 Stuttgart podium")
+        self.assertEqual(out["event"], "Carlos Yulo 2019 Stuttgart podium")
+        self.assertIs(planner._with_event(broll, None), broll)
+
+
 class NumberCheckTests(unittest.TestCase):
     def test_rejects_invented_or_digitless_figures(self) -> None:
         stat = {"id": "s1", "type": "stat", "stat": {"value": "10-100 M€", "label": "x"}}

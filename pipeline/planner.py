@@ -23,7 +23,7 @@ from pydantic import ValidationError
 
 from .context import RunContext
 from .llm import LLMError, complete_json
-from .schemas import MAX_SHOT_SECONDS, MIN_SHOT_SECONDS, PlanChapter, Shot, ShotsFile, Word, WordsFile
+from .schemas import MAX_SHOT_SECONDS, MIN_SHOT_SECONDS, PlanChapter, Shot, ShotsFile, StoryEvent, Word, WordsFile
 
 
 STAGE = "planner"
@@ -46,8 +46,18 @@ El nicho y el tema los marca el guion.
 Recibes las frases numeradas del guion de un vídeo. Devuelve SOLO un objeto JSON:
 {
   "context": "1-2 frases EN INGLÉS: tema, país/ciudad, época y tipo de metraje que encaja (se usará para buscar b-roll)",
-  "chapters": [{"title": "TÍTULO EN MAYÚSCULAS", "sentence": 12}]
+  "chapters": [{"title": "TÍTULO EN MAYÚSCULAS", "sentence": 12}],
+  "subject": "si el vídeo trata de una persona concreta: 'Nombre Apellido · deporte/actividad en inglés' (p. ej. 'Carlos Yulo · artistic gymnastics'); si no, \"\"",
+  "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'"}]
 }
+Reglas de "events" (el hilo de la historia):
+- Un evento nuevo cada vez que el guion pasa a contar un hecho concreto distinto (una
+  competición, un año, un lugar, una etapa de la vida). Suelen ser 5-20 en un vídeo de 10 min.
+- Si el guion habla de otra persona durante un tramo (un rival, un ídolo), ese tramo es un
+  evento de esa persona ("Kohei Uchimura London 2012 all-around gold").
+- Tramos sin hecho concreto (reflexiones, llamada a suscribirse) siguen con el evento anterior
+  o con uno general del protagonista ("Carlos Yulo best moments highlights").
+- "sentence" en orden creciente.
 Reglas de los capítulos:
 - Entre 3 y 7 capítulos, en el idioma del guion, en MAYÚSCULAS, 1-4 palabras, con gancho
   (p. ej. "LA LICENCIA", "LA MÁQUINA DE DINERO"). Nada de "Introducción" ni "Conclusión".
@@ -72,7 +82,39 @@ def _fmt_time(seconds: float) -> str:
     return f"{int(seconds // 60)}:{seconds % 60:04.1f}"
 
 
-def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChapter], str]:
+def parse_story(result: dict[str, Any], sentences: list[tuple[int, int]]) -> tuple[str, list[StoryEvent]]:
+    """Subject and story events from the outline; malformed events are dropped, never fatal."""
+
+    subject = str(result.get("subject") or "").strip()[:120]
+    events: list[StoryEvent] = []
+    raw = result.get("events") if isinstance(result.get("events"), list) else []
+    for item in sorted((e for e in raw if isinstance(e, dict)), key=lambda e: _as_int(e.get("sentence"))):
+        sentence, label = _as_int(item.get("sentence")), " ".join(str(item.get("label") or "").split())[:160]
+        if not 0 <= sentence < len(sentences) or len(label) < 3:
+            continue
+        start = sentences[sentence][0]
+        if events and events[-1].startWord == start:
+            events[-1] = StoryEvent(label=label, startWord=start)
+        elif not events or events[-1].label != label:
+            events.append(StoryEvent(label=label, startWord=start))
+    if events and events[0].startWord != 0 and subject:
+        events.insert(0, StoryEvent(label=subject.split("·")[0].strip() + " highlights", startWord=0))
+    return subject, events
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
+def event_at(events: list[StoryEvent], word: int) -> str | None:
+    current = [e for e in events if e.startWord <= word]
+    return current[-1].label if current else None
+
+
+def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChapter], str, dict[str, Any]]:
     words = words_file.words
     sentences = _sentences(words)
     if words_file.chapters:
@@ -80,6 +122,7 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
             PlanChapter(title=c.title.upper()[:48], startWord=c.wordIndex, fromScript=True) for c in words_file.chapters
         ]
         context = ""
+        result = {}
     else:
         listing = "\n".join(
             f"[{n}] ({_fmt_time(words[a].start)}) " + " ".join(w.text for w in words[a : b + 1])
@@ -107,7 +150,7 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         context = str(result.get("context") or "").strip()[:400]
     if not chapters or chapters[0].startWord != 0:
         chapters.insert(0, PlanChapter(title=words_file.title.upper()[:48] or "INTRO", startWord=0, fromScript=False, showTitle=False))
-    return chapters, context
+    return chapters, context, result
 
 
 def _validate_outline(result: dict[str, Any], sentences: list[tuple[int, int]], words: list[Word],
@@ -248,6 +291,9 @@ El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISU
   entrenando o compitiendo, el estadio, el podio; historia: lugares y documentos de época),
   NUNCA pantallas de ordenador, hojas de cálculo,
   programas (Excel, Word), formularios, casillas de verificación ni tutoriales.
+- Si el plano lleva "evento", el b-roll es de ESE evento (esa competición, ese año, ese lugar):
+  un podio es EL podio de ese evento, no cualquiera. Incluye persona + competición + año en las
+  búsquedas. Solo si el texto del plano habla claramente de otra cosa, busca eso otro.
 - Si el vídeo trata de una persona concreta (un deportista, un empresario…), pide metraje de
   ESA persona siempre que el texto hable de ella, con su nombre en "entities" y en las búsquedas
   (nombre + prueba/acción + año/lugar, p. ej. "Simone Biles vault final 2023 Antwerp"): competiciones, entrenamientos, podios.
@@ -307,6 +353,7 @@ def _label_batch(
             {"id": s["id"], "seconds": round(s["end"] - s["start"], 1), "text": s["text"],
              **({"chapterTitle": s["chapterTitle"]} if s.get("chapterTitle") else {}),
              **({"gancho": True} if s.get("hook") else {}),
+             **({"evento": s["event"]} if s.get("event") else {}),
              **({"yaDecidido": _summary(good[s["id"]])} if s["id"] in good else {})}
             for s in batch
         ]
@@ -467,6 +514,19 @@ def _trim_broll(broll: dict[str, Any]) -> dict[str, Any]:
     return trimmed
 
 
+def _with_event(broll: dict[str, Any], event: str | None) -> dict[str, Any]:
+    """Every shot of a story event searches for that event first, so consecutive shots draw on
+    the same competition/footage instead of any podium or any gym."""
+
+    if not event:
+        return broll
+    key = "queriesEn" if "queriesEn" in broll else "queries"
+    queries = [q for q in broll.get(key, []) if isinstance(q, str)]
+    if event.casefold() not in (q.casefold() for q in queries):
+        queries = [event, *queries][:5]
+    return {**broll, key: queries, "event": event}
+
+
 def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     shot = {k: structural[k] for k in ("id", "startWord", "endWord", "start", "end", "text", "chapter")}
     kind = str(label.get("type") or "broll")
@@ -480,7 +540,7 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
         if label.get(key) not in (None, "", {}):
             shot[key] = label[key]
     if isinstance(shot.get("broll"), dict):
-        shot["broll"] = _trim_broll(shot["broll"])
+        shot["broll"] = _with_event(_trim_broll(shot["broll"]), structural.get("event"))
     if kind == "broll":
         shot.pop("panel", None), shot.pop("stat", None), shot.pop("panelId", None)
     if kind == "chapter":
@@ -552,8 +612,11 @@ def run(ctx: RunContext) -> None:
     words_file = WordsFile.model_validate(ctx.read_json("words.json"))
     words = words_file.words
 
-    chapters, context = plan_chapters(ctx, words_file)
+    chapters, context, outline = plan_chapters(ctx, words_file)
+    subject, events = parse_story(outline, _sentences(words))
     print(f"   {len(chapters)} capítulos: " + " | ".join(c.title for c in chapters if c.showTitle))
+    if subject or events:
+        print(f"   Protagonista: {subject or '—'} · {len(events)} tramos de la historia")
     cuts = cut_shots(
         words,
         words_file.durationSeconds,
@@ -579,6 +642,8 @@ def run(ctx: RunContext) -> None:
             item["chapterTitle"] = chapters[chapter].title
         if start < float(cfg.get("hook_seconds", 30)):  # first seconds: ask for the most striking footage
             item["hook"] = True
+        if event := event_at(events, first):
+            item["event"] = event
         structural.append(item)
     print(f"   {len(structural)} planos cortados ({len(structural) / (words_file.durationSeconds / 60):.1f} cortes/min)")
 
@@ -587,7 +652,8 @@ def run(ctx: RunContext) -> None:
     header = (
         f"TÍTULO DEL VÍDEO: {words_file.title}\n"
         f"CONTEXTO VISUAL: {context or '(deducir del texto)'}\n"
-        "CAPÍTULOS: " + " | ".join(c.title for c in chapters if c.showTitle)
+        + (f"PROTAGONISTA: {subject}\n" if subject else "")
+        + "CAPÍTULOS: " + " | ".join(c.title for c in chapters if c.showTitle)
     )
 
     def label(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -611,6 +677,8 @@ def run(ctx: RunContext) -> None:
         title=words_file.title,
         durationSeconds=words_file.durationSeconds,
         context=context,
+        subject=subject,
+        events=events,
         chapters=chapters,
         shots=[Shot.model_validate(s) for s in shots],
     )

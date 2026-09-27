@@ -150,7 +150,7 @@ class RunTests(unittest.TestCase):
             ctx = self._write(Path(tmp), shots, {s: [video] for s in scores}, scores, hook=1.0)
             calls = []
 
-            def fake_judge(ctx, shot, sheet, letters, topic, hook):
+            def fake_judge(ctx, shot, sheet, letters, topic, hook, *rest):
                 calls.append((shot.id, topic, hook))
                 return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
 
@@ -166,6 +166,10 @@ class RunTests(unittest.TestCase):
         brief = J.shot_brief(shot, "Casinos in Spain", True)
         self.assertTrue(brief.startswith("Video topic: Casinos in Spain\nHOOK"))
         self.assertNotIn("HOOK", J.shot_brief(shot))
+        shot.broll.event = "Carlos Yulo floor final 2019 Stuttgart"
+        brief = J.shot_brief(shot, "Gymnastics", False, "Carlos Yulo · artistic gymnastics")
+        self.assertIn("VIDEO SUBJECT: Carlos Yulo · artistic gymnastics", brief)
+        self.assertIn("EVENT of this shot: Carlos Yulo floor final 2019 Stuttgart", brief)
 
 
 class ContactSheetTests(unittest.TestCase):

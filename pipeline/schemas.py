@@ -90,6 +90,7 @@ class BrollSpec(_Strict):
     mustContain: list[str] = Field(default_factory=list, max_length=4)
     avoid: list[str] = Field(default_factory=list, max_length=5)
     preferredShot: PreferredShot = "medium"
+    event: str | None = Field(default=None, max_length=160)   # story event this shot belongs to (search phrase)
 
     @model_validator(mode="before")
     @classmethod
@@ -169,11 +170,20 @@ class PlanChapter(_Strict):
     showTitle: bool = True                                  # False for the untitled intro before chapter 1
 
 
+class StoryEvent(_Strict):
+    """A stretch of the story about one concrete event: every shot in it searches for that event."""
+
+    label: str = Field(min_length=3, max_length=160)        # English search phrase: who + what + year + where
+    startWord: int = Field(ge=0)
+
+
 class ShotsFile(_Strict):
     slug: str
     title: str
     durationSeconds: float = Field(gt=0)
     context: str = ""                                        # global visual context from the outline pass
+    subject: str = ""                                        # who/what the video is about ("Carlos Yulo · artistic gymnastics")
+    events: list[StoryEvent] = Field(default_factory=list)
     chapters: list[PlanChapter]
     shots: list[Shot] = Field(min_length=1)
 

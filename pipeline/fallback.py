@@ -29,7 +29,7 @@ from .analysis import make_models, prompts_for
 from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
-from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked
+from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked, source_lines
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
     FallbackFile,
@@ -96,7 +96,8 @@ def run(ctx: RunContext) -> None:
     started = time.monotonic()
     out_dir = ctx.work_dir / MEDIA_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    shots = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots if needs_footage(s)}
+    story = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    shots = {s.id: s for s in story.shots if needs_footage(s)}
     selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
     ingest = IngestFile.model_validate_json((ctx.work_dir / "media" / MANIFEST).read_text("utf-8"))
     done = {m.shotId for m in ingest.media}
@@ -186,7 +187,8 @@ def run(ctx: RunContext) -> None:
             ][: int(cfg.get("next_options", 3))]
             if options:
                 # Nobody has looked at these yet: the vision judge vets them before anything is used.
-                verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)])
+                verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
+                                     story.context or story.title, False, story.subject, source_lines(options, candidates))
                 by_letter = dict(zip(LETTERS, options))
                 options = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
                 if not options:
