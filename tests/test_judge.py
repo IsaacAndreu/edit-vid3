@@ -168,6 +168,25 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("HOOK", J.shot_brief(shot))
 
 
+class ContactSheetTests(unittest.TestCase):
+    def test_tile_outside_a_short_storyboard_sheet_is_skipped(self) -> None:
+        import numpy as np
+        import cv2
+        from pipeline.schemas import Candidate, Option
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cv2.imwrite(str(root / "sb.jpg"), np.full((90, 160, 3), 120, np.uint8))   # one 160x90 tile, grid says 2x2
+            board = {"sheets": ["sb.jpg"], "columns": 2, "rows": 2, "tileWidth": 160, "tileHeight": 90,
+                     "interval": 1, "frames": 4}
+            candidate = Candidate.model_validate({
+                "id": "yt:a", "source": "youtube", "kind": "video", "url": "https://y/a", "title": "t", "channel": "A",
+                "license": "l", "credit": "Fuente: A", "attribution": "a", "query": "q", "rankScore": 1,
+                "durationSeconds": 20, "storyboard": board})
+            option = Option.model_validate(opt("yt:a", 0.3, start=0.0, end=5.0).model_dump(by_alias=True, exclude_none=True))
+            sheet = J.contact_sheet([option], {"yt:a": candidate}, root)
+        self.assertEqual(sheet.shape[0], J.TILE[1])
+
+
 class UsableTests(unittest.TestCase):
     def test_flagged_candidates_never_survive_the_ranking(self) -> None:
         verdict = {"ranking": ["B", "A", "C", "B", "D"], "score": 0.8, "reason": "r", "confidence": 0.9, "candidates": [

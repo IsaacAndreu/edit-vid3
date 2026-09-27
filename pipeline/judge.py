@@ -139,7 +139,8 @@ def _video_frames(option: Option, candidate: Candidate, root: Path) -> list[np.n
             sheet = cv2.imread(str(root / board.sheets[sheet_index]))
             if sheet is not None:
                 frames.append(sheet[y : y + board.tileHeight, x : x + board.tileWidth])
-    return frames
+    # The last storyboard sheet can be smaller than its grid: an out-of-range tile crops to nothing.
+    return [f for f in frames if f.size > 0]
 
 
 def contact_sheet(options: list[Option], candidates: dict[str, Candidate], root: Path) -> np.ndarray:
