@@ -75,6 +75,14 @@ class NumberCheckTests(unittest.TestCase):
         stat["stat"]["value"] = "decenas de M€"
         self.assertTrue(check_numbers(stat, "decenas de millones"))
 
+    def test_accepts_numbers_written_as_words(self) -> None:
+        stat = {"id": "s1", "type": "stat", "stat": {"value": "5º oro", "label": "x", "sign": "positive"}}
+        self.assertEqual(check_numbers(stat, "se llevó su quinto oro consecutivo en suelo"), [])
+        panel = {"id": "s2", "type": "datacard", "panel": {"title": "t", "rows": [
+            {"label": "edad", "value": "16 años", "sign": "neutral"}, {"label": "x", "value": "32", "sign": "neutral"}]}}
+        self.assertEqual(check_numbers(panel, "tenía dieciséis años y treinta y dos medallas"), [])
+        self.assertTrue(check_numbers(stat, "se llevó el oro"))
+
     def test_accepts_spanish_formats(self) -> None:
         panel = {"id": "s1", "type": "datacard", "panel": {"title": "t", "rows": [
             {"label": "a", "value": "2,70 €"}, {"label": "b", "value": "305.800 M$"}, {"label": "c", "value": "x miles"}]}}

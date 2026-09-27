@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -298,6 +299,7 @@ def _label_batch(
     """Label structural shots; returns full shot dicts that validate against `Shot`."""
 
     good: dict[str, dict[str, Any]] = {}
+    demoted: dict[str, dict[str, Any]] = {}   # last candidate of shots that failed only on their figures
     errors: list[str] = []
     for _ in range(attempts):
         pending = [s for s in batch if s["id"] not in good]
@@ -348,6 +350,7 @@ def _label_batch(
             number_errors = check_numbers(candidate, nearby_text[shot["id"]])
             if number_errors:
                 errors.extend(number_errors)
+                demoted[shot["id"]] = candidate
                 continue
             good[shot["id"]] = candidate
         run = 0
@@ -356,14 +359,60 @@ def _label_batch(
             run = run + 1 if candidate and candidate["type"] == "stat" else 0
             if run == 3:
                 errors.append(f"{shot['id']}: tercer plano stat seguido; agrupa las cifras en un datacard/split con panelId")
-                del good[shot["id"]]
+                demoted[shot["id"]] = good.pop(shot["id"])
                 run = 0
         if len(good) == len(batch):
             return [good[s["id"]] for s in batch]
+    # Last resort: a shot whose only problem is its figure becomes plain b-roll with its own footage.
+    for shot in batch:
+        candidate = demoted.get(shot["id"])
+        if shot["id"] in good or not candidate or not isinstance(candidate.get("broll"), dict):
+            continue
+        plain = {k: v for k, v in candidate.items() if k not in ("stat", "panel", "panelId")} | {"type": "broll"}
+        if shot.get("chapterTitle"):
+            plain["type"] = "chapter"
+        try:
+            Shot.model_validate(plain)
+        except ValidationError:
+            continue
+        print(f"   {shot['id']}: la cifra no se dice en el texto → se queda como b-roll")
+        good[shot["id"]] = plain
+    if len(good) == len(batch):
+        return [good[s["id"]] for s in batch]
     raise RuntimeError("El planner no produjo planos válidos tras varios intentos: " + " | ".join(errors[:8]))
 
 
 _NUMBER = re.compile(r"\d[\d.,]*\d|\d")
+
+
+_UNITS = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce",
+          "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno",
+          "veintidos", "veintitres", "veinticuatro", "veinticinco", "veintiseis", "veintisiete", "veintiocho",
+          "veintinueve"]
+_TENS = {"treinta": 30, "cuarenta": 40, "cincuenta": 50, "sesenta": 60, "setenta": 70, "ochenta": 80, "noventa": 90}
+_ORDINALS = {"primer": 1, "primero": 1, "primera": 1, "segundo": 2, "tercer": 3, "tercero": 3, "cuarto": 4,
+             "quinto": 5, "sexto": 6, "septimo": 7, "octavo": 8, "noveno": 9, "decimo": 10, "undecimo": 11,
+             "duodecimo": 12, "vigesimo": 20}
+_WORD_VALUES: dict[str, int] = {w: i for i, w in enumerate(_UNITS)} | {"un": 1, "una": 1, "veintiun": 21, "cien": 100,
+                                                                     "ciento": 100, "mil": 1000} | _TENS | _ORDINALS
+
+
+def _spelled_numbers(text: str) -> set[float]:
+    """Numbers written as words ("dieciséis", "treinta y dos", "quinto", "duodécimo")."""
+
+    plain = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    tokens = re.findall(r"[a-z]+", plain)
+    values: set[float] = set()
+    for i, token in enumerate(tokens):
+        stem = token[:-1] if token.endswith("s") and token[:-1] in _WORD_VALUES else token
+        stem = stem[:-1] + "o" if stem.endswith("a") and stem[:-1] + "o" in _ORDINALS else stem
+        if stem not in _WORD_VALUES:
+            continue
+        value = _WORD_VALUES[stem]
+        values.add(float(value))
+        if token in _TENS and i + 2 < len(tokens) and tokens[i + 1] == "y" and tokens[i + 2] in _WORD_VALUES:
+            values.add(float(value + _WORD_VALUES[tokens[i + 2]]))
+    return values
 
 
 def _numbers(text: str) -> set[float]:
@@ -382,7 +431,7 @@ def _numbers(text: str) -> set[float]:
 def check_numbers(shot: dict[str, Any], nearby_text: str) -> list[str]:
     """Every number shown on screen must be said in the narration around the shot."""
 
-    said = _numbers(nearby_text)
+    said = _numbers(nearby_text) | _spelled_numbers(nearby_text)
     errors: list[str] = []
     shown: list[str] = []
     if shot.get("type") == "stat" and isinstance(shot.get("stat"), dict):
