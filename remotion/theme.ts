@@ -23,6 +23,10 @@ export const theme = {
   text: '#ffffff',
   muted: '#8a8a8a',
   accent: '#ffd400', // yellow: stats, titles, dividers (reference style)
+  canvas: '#07080b', // channel background behind framed cards (grid)
+  glow: 'rgba(255,196,0,0.38)', // warm glow at the bottom of the canvas
+  label: '#1f4fd8', // lower-third tags (names, places, scores)
+  wipe: '#ff8a00', // chapter transition
   positive: '#4ade80',
   negative: '#f87171',
   neutral: '#ffffff',

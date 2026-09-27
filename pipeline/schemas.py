@@ -127,6 +127,16 @@ class StatData(_Strict):
     sign: Sign = "neutral"
 
 
+LabelKind = Literal["name", "place", "date", "score"]
+
+
+class OnScreenLabel(_Strict):
+    """Small lower-left tag: a person's name, a place, a date or a score, as said in the narration."""
+
+    kind: LabelKind
+    text: str = Field(min_length=1, max_length=40)
+
+
 class Shot(_Strict):
     id: str = Field(pattern=r"^s\d{3,4}$")
     type: ShotType
@@ -141,6 +151,7 @@ class Shot(_Strict):
     panelId: str | None = None                              # consecutive shots sharing a panel render as one
     stat: StatData | None = None
     chapterTitle: str | None = Field(default=None, max_length=48)
+    label: OnScreenLabel | None = None                      # lower-left tag (first mention of a person/score)
 
     @property
     def duration(self) -> float:
@@ -175,6 +186,7 @@ class StoryEvent(_Strict):
 
     label: str = Field(min_length=3, max_length=160)        # English search phrase: who + what + year + where
     startWord: int = Field(ge=0)
+    tag: str | None = Field(default=None, max_length=40)    # on-screen place/date in the script language
 
 
 class ShotsFile(_Strict):
@@ -471,6 +483,18 @@ class TimelineMedia(_Strict):
     kind: Literal["video", "image"]
     source: str
     credit: str | None = None                                # on-screen "Fuente: …"; None for generated images
+    layout: Literal["full", "card"] = "full"                 # card: framed over the channel background
+    width: int | None = None                                 # of the media file (cards keep the source frame)
+    height: int | None = None
+
+
+class TimelineLabel(_Strict):
+    kind: LabelKind
+    text: str
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(ge=1)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class TimelineShot(_Strict):
@@ -481,6 +505,7 @@ class TimelineShot(_Strict):
     text: str
     media: TimelineMedia | None = None
     chapterTitle: str | None = None
+    chapterNumber: int | None = None                         # 1, 2, … for "CAPÍTULO 01"
     groupId: str | None = None                               # panel / stat group this shot belongs to
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -540,6 +565,7 @@ class Timeline(_Strict):
     durationInFrames: int = Field(ge=1)
     shots: list[TimelineShot]
     groups: list[TimelineGroup]
+    labels: list[TimelineLabel] = Field(default_factory=list)
     audio: TimelineAudio
 
     @model_validator(mode="after")

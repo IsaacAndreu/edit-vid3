@@ -39,6 +39,10 @@ MANIFEST = "_ingest.json"
 FPS = 30
 VIDEO_SIZE = (1920, 1080)
 IMAGE_SIZE = (2304, 1296)
+# Sources narrower than this (4:3, square, vertical phone video) are not cropped to 16:9: they keep
+# their frame and the timeline shows them as a framed card over the channel background.
+FIT_BELOW_ASPECT = 1.5
+NORMALISE_VERSION = 2
 
 
 def probe(path: Path) -> dict[str, Any]:
@@ -66,15 +70,26 @@ def lut_filter(lut: Path | None) -> str:
     return f",lut3d=file='{escaped}'"
 
 
+def _frame_filter(source: Path, width: int, height: int) -> str:
+    """Cover-crop widescreen sources to width x height; fit narrower ones inside it, uncropped."""
+
+    try:
+        info = probe(source)
+        aspect = info["width"] / info["height"] if info["height"] else 16 / 9
+    except (subprocess.CalledProcessError, ValueError, KeyError):
+        aspect = 16 / 9
+    if aspect < FIT_BELOW_ASPECT:
+        return (f"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2")
+    return f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
+
+
 def normalise_video(source: Path, target: Path, *, offset: float, duration: float, lut: Path | None, cfg: dict[str, Any]) -> None:
     """Frame-accurate cut (decode from the file start, seek inside) + cover 1920x1080 @30, no audio."""
 
     width, height = VIDEO_SIZE
     frames = max(1, round(duration * FPS))
-    vf = (
-        f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop={width}:{height},setsar=1,fps={FPS}{lut_filter(lut)},format=yuv420p"
-    )
+    vf = f"{_frame_filter(source, width, height)},setsar=1,fps={FPS}{lut_filter(lut)},format=yuv420p"
     tmp = target.with_name(target.stem + ".tmp.mp4")
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-ss", f"{max(0.0, offset):.3f}",
@@ -87,7 +102,7 @@ def normalise_video(source: Path, target: Path, *, offset: float, duration: floa
 
 def normalise_image(source: Path, target: Path, *, lut: Path | None) -> None:
     width, height = IMAGE_SIZE
-    vf = f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1{lut_filter(lut)}"
+    vf = f"{_frame_filter(source, width, height)},setsar=1{lut_filter(lut)}"
     tmp = target.with_name(target.stem + ".tmp.jpg")
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-vf", vf, "-frames:v", "1",
@@ -222,7 +237,8 @@ def run(ctx: RunContext) -> None:
 
     def spec_hash(selection: Selection) -> str:
         return key(selection.model_dump(exclude={"judge"}), shots[selection.shotId].start, shots[selection.shotId].end,
-                   lut_hash, cfg.get("crf", 18), cfg.get("preset", "veryfast"), IMAGE_SIZE, VIDEO_SIZE)
+                   lut_hash, cfg.get("crf", 18), cfg.get("preset", "veryfast"), IMAGE_SIZE, VIDEO_SIZE,
+                   NORMALISE_VERSION)
 
     materialiser = Materialiser(ctx, cfg, lut, youtube, http)
 

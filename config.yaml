@@ -133,6 +133,9 @@ timeline:
   question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas
   question_hold: 1.2               # s que el texto sigue tras la última palabra
   question_max_words: 30
+  card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
+  labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
+  label_seconds: 2.5
 
 qa:
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar

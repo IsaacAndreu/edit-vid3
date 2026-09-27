@@ -49,7 +49,7 @@ Recibes las frases numeradas del guion de un vídeo. Devuelve SOLO un objeto JSO
   "chapters": [{"title": "TÍTULO EN MAYÚSCULAS", "sentence": 12}],
   "subject": "si el vídeo trata de una persona concreta: 'Nombre Apellido · deporte/actividad en inglés' (p. ej. 'Carlos Yulo · artistic gymnastics'); si no, \"\"",
   "peak": "si hay protagonista: búsqueda EN INGLÉS de su momento cumbre, el más espectacular (p. ej. 'Carlos Yulo Paris 2024 floor gold medal winning moment'); si no, \"\"",
-  "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'"}]
+  "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'", "tag": "rótulo en pantalla en el idioma del guion, lugar y/o fecha tal como se dicen en esa parte, MAYÚSCULAS, máx. 30 caracteres, p. ej. 'STUTTGART · 2019'; null si el guion no dice lugar ni fecha"}]
 }
 Reglas de "events" (el hilo de la historia):
 - Un evento nuevo cada vez que el guion pasa a contar un hecho concreto distinto (una
@@ -96,10 +96,13 @@ def parse_story(result: dict[str, Any], sentences: list[tuple[int, int]]) -> tup
         if not 0 <= sentence < len(sentences) or len(label) < 3:
             continue
         start = sentences[sentence][0]
+        tag = " ".join(str(item.get("tag") or "").split()).upper()[:40] or None
+        if tag in ("NULL", "NONE"):
+            tag = None
         if events and events[-1].startWord == start:
-            events[-1] = StoryEvent(label=label, startWord=start)
+            events[-1] = StoryEvent(label=label, startWord=start, tag=tag)
         elif not events or events[-1].label != label:
-            events.append(StoryEvent(label=label, startWord=start))
+            events.append(StoryEvent(label=label, startWord=start, tag=tag))
     if events and events[0].startWord != 0 and subject:
         events.insert(0, StoryEvent(label=subject.split("·")[0].strip() + " highlights", startWord=0))
     return subject, events
@@ -276,6 +279,11 @@ durante cada plano. Para CADA plano decides qué se ve. Devuelve SOLO JSON:
   {"id": "s004", "type": "split", "panel": {...}, "broll": {...}},
   {"id": "s005", "type": "chapter", "broll": {...}}
 ]}
+
+Opcional en cualquier plano: "rotulo": {"tipo": "nombre" | "nota", "texto": "..."} — etiqueta pequeña
+abajo a la izquierda. "nombre": la PRIMERA vez que el texto nombra a una persona relevante distinta
+del protagonista (p. ej. "Kohei Uchimura"). "nota": una puntuación o marca dicha en ese plano
+("15.3", "14.549"). Solo con lo que se dice en ese plano; como mucho 1 de cada 4 planos.
 
 Objeto "broll" (metraje a buscar en YouTube/bancos de imágenes):
 {"visualIntent": "qué se ve, concreto y observable, en inglés",
@@ -542,6 +550,30 @@ def _with_event(broll: dict[str, Any], event: str | None) -> dict[str, Any]:
     return {**broll, key: queries, "event": event}
 
 
+_LABEL_KINDS = {"nombre": "name", "name": "name", "nota": "score", "score": "score", "lugar": "place",
+                "place": "place", "fecha": "date", "date": "date"}
+
+
+def _plain(text: str) -> str:
+    return unicodedata.normalize("NFKD", text.casefold()).encode("ascii", "ignore").decode()
+
+
+def _on_screen_label(raw: Any, text: str) -> dict[str, str] | None:
+    """A lower-left tag only if everything on it is said in this shot (names and numbers alike)."""
+
+    if not isinstance(raw, dict):
+        return None
+    kind = _LABEL_KINDS.get(str(raw.get("tipo") or raw.get("kind") or "").casefold())
+    value = " ".join(str(raw.get("texto") or raw.get("text") or "").split())[:40]
+    if not kind or not value:
+        return None
+    said = _plain(text)
+    words = [w for w in re.findall(r"[a-z]+", _plain(value)) if len(w) >= 3]
+    if any(w not in said for w in words) or not (_numbers(value) <= (_numbers(text) | _spelled_numbers(text))):
+        return None
+    return {"kind": kind, "text": value}
+
+
 def _with_subject(broll: dict[str, Any], person: str | None) -> dict[str, Any]:
     """Protagonist first: a shot that names nobody else shows the protagonist."""
 
@@ -562,6 +594,8 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     for key in ("broll", "panel", "stat", "panelId"):
         if label.get(key) not in (None, "", {}):
             shot[key] = label[key]
+    if tag := _on_screen_label(label.get("rotulo"), structural["text"]):
+        shot["label"] = tag
     if isinstance(shot.get("broll"), dict):
         shot["broll"] = _with_subject(_with_event(_trim_broll(shot["broll"]), structural.get("event")),
                                       structural.get("subject"))

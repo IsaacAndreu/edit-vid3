@@ -34,7 +34,7 @@ class NormaliseTests(unittest.TestCase):
     def test_video_is_cover_1080p_30fps_silent_and_exact_length(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source, target, lut = Path(tmp) / "hd.mp4", Path(tmp) / "s001.mp4", Path(tmp) / "lut.cube"
-            _source(source, size="1440x1080")           # 4:3 source → must be cropped, not letterboxed
+            _source(source, size="1280x720")            # 16:9 → cover 1920x1080
             _identity_lut(lut)
             normalise_video(source, target, offset=2.3, duration=3.1, lut=lut, cfg={"preset": "ultrafast"})
             info = probe(target)
@@ -43,14 +43,27 @@ class NormaliseTests(unittest.TestCase):
         self.assertFalse(info["hasAudio"])
         self.assertAlmostEqual(info["duration"], 93 / 30, delta=0.02)   # round(3.1 * 30) frames
 
+    def test_narrow_video_keeps_its_frame_for_a_card(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "hd.mp4", Path(tmp) / "s003.mp4"
+            _source(source, size="720x1280", seconds=3)  # vertical phone video → fitted, not cropped
+            normalise_video(source, target, offset=0.5, duration=2.0, lut=None, cfg={"preset": "ultrafast"})
+            info = probe(target)
+        self.assertEqual((info["width"], info["height"]), (608, 1080))
+
     def test_image_gets_ken_burns_headroom(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source, target = Path(tmp) / "photo.png", Path(tmp) / "s002.jpg"
             subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
-                            "-i", "testsrc2=size=1600x1200:duration=1", "-frames:v", "1", str(source)], check=True)
+                            "-i", "testsrc2=size=1920x1080:duration=1", "-frames:v", "1", str(source)], check=True)
             normalise_image(source, target, lut=None)
             info = probe(target)
-        self.assertEqual((info["width"], info["height"]), (2304, 1296))
+            self.assertEqual((info["width"], info["height"]), (2304, 1296))
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                            "-i", "testsrc2=size=1600x1200:duration=1", "-frames:v", "1", str(source)], check=True)
+            normalise_image(source, target, lut=None)           # 4:3 photo → uncropped, for a card
+            info = probe(target)
+        self.assertEqual((info["width"], info["height"]), (1728, 1296))
 
 
 class WikimediaTests(unittest.TestCase):

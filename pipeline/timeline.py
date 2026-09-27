@@ -19,7 +19,10 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import hashlib
+
 from .context import RunContext
+from .ingest import probe
 from .schemas import (
     FallbackFile,
     IngestFile,
@@ -28,6 +31,7 @@ from .schemas import (
     Timeline,
     TimelineAudio,
     TimelineGroup,
+    TimelineLabel,
     TimelineMedia,
     TimelineSfx,
     TimelineShot,
@@ -112,6 +116,60 @@ def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[Ti
     return result
 
 
+def _size(path: Path) -> tuple[int | None, int | None]:
+    try:
+        info = probe(path)
+        return info["width"] or None, info["height"] or None
+    except Exception:
+        return None, None
+
+
+def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float) -> str:
+    """Framed card for stills and for sources that are not widescreen (kept uncropped), plus a
+    deterministic share of ordinary clips for variety, as the channel style does."""
+
+    if shot_type in ("chapter", "split"):
+        return "full"
+    if media.kind == "image":
+        return "card"
+    if media.width and media.height and media.width / media.height < 1.6:
+        return "card"
+    bucket = int(hashlib.sha1(shot_id.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+    return "card" if bucket < card_share else "full"
+
+
+def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                 cfg: dict[str, Any]) -> list[TimelineLabel]:
+    """Lower-left tags: the place/date of each story event on its first plain shot, and the names and
+    scores the planner marked. Never over a panel, a stat, a question or a chapter title, never two at once."""
+
+    if not cfg.get("labels", True):
+        return []
+    hold = round(float(cfg.get("label_seconds", 2.5)) * fps)
+    busy = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    busy += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"]
+    wanted: list[tuple[int, str, str]] = []            # (frame, kind, text)
+    by_id = {s.id: s for s in shots}
+    for shot in shots_file.shots:
+        if shot.label is not None and shot.type == "broll":
+            wanted.append((by_id[shot.id].from_, shot.label.kind, shot.label.text))
+    for event in shots_file.events:
+        if event.tag:
+            first = next((s for s in shots_file.shots if s.startWord >= event.startWord), None)
+            if first is not None:
+                wanted.append((by_id[first.id].from_, "place", event.tag))
+    labels: list[TimelineLabel] = []
+    last_end = -1
+    for start, kind, text in sorted(wanted):
+        start += 4                                      # land just after the cut
+        end = start + hold
+        if start < last_end or any(a < end and start < b for a, b in busy) or end > shots[-1].from_ + shots[-1].durationInFrames:
+            continue
+        labels.append(TimelineLabel.model_validate({"kind": kind, "text": text, "from": start, "durationInFrames": hold}))
+        last_end = end
+    return labels
+
+
 def _first_audio(folder: Path, prefix: str = "") -> Path | None:
     if not folder.is_dir():
         return None
@@ -140,11 +198,13 @@ def run(ctx: RunContext) -> None:
     for item in IngestFile.model_validate_json((ctx.work_dir / "media" / "_ingest.json").read_text("utf-8")).media:
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source, credit=item.credit,
+            width=item.width, height=item.height,
         )
     for item in FallbackFile.model_validate(ctx.read_json("fallback.json")).items:
+        size = _size(ctx.root / item.path)
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
-            credit=item.credit,
+            credit=item.credit, width=size[0], height=size[1],
         )
 
     # Frame-accurate shots: each starts where the previous ended.
@@ -152,14 +212,21 @@ def run(ctx: RunContext) -> None:
     starts[0] = 0
     shots: list[TimelineShot] = []
     missing = []
+    chapter_number = 0
+    card_share = float(cfg.get("card_share", 0.25))
     for index, shot in enumerate(shots_file.shots):
         m = media.get(shot.id) if needs_footage(shot) else None
         if needs_footage(shot) and m is None:
             missing.append(shot.id)
+        if m is not None:
+            m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share)})
+        if shot.type == "chapter":
+            chapter_number += 1
         shots.append(TimelineShot.model_validate({
             "id": shot.id, "type": shot.type, "from": starts[index],
             "durationInFrames": starts[index + 1] - starts[index], "text": shot.text,
             "media": m.model_dump() if m else None, "chapterTitle": shot.chapterTitle,
+            "chapterNumber": chapter_number if shot.type == "chapter" else None,
             "groupId": shot.panelId or (f"stat-{shot.id}" if shot.type == "stat" else None),
         }))
     if missing:
@@ -189,6 +256,7 @@ def run(ctx: RunContext) -> None:
 
     groups += question_groups(words, shots, groups, fps, total_frames, cfg)
     groups.sort(key=lambda g: g.from_)
+    labels = place_labels(shots_file, shots, groups, fps, cfg)
 
     # Audio: voice (always), music and SFX only if the files exist.
     audio_dir = ctx.work_dir / "audio"
@@ -219,7 +287,7 @@ def run(ctx: RunContext) -> None:
 
     timeline = Timeline(
         slug=ctx.slug, title=shots_file.title, fps=fps, width=int(video.get("width", 1920)),
-        height=int(video.get("height", 1080)), durationInFrames=total_frames, shots=shots, groups=groups,
+        height=int(video.get("height", 1080)), durationInFrames=total_frames, shots=shots, groups=groups, labels=labels,
         audio=TimelineAudio(
             voice=str(voice.relative_to(ctx.work_dir)), music=music,
             musicVolume=float(cfg.get("music_volume", 0.25)),

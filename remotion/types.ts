@@ -6,6 +6,9 @@ export interface Media {
   kind: 'video' | 'image';
   source: string;
   credit?: string | null;
+  layout?: 'full' | 'card';
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface Shot {
@@ -16,6 +19,7 @@ export interface Shot {
   text: string;
   media?: Media | null;
   chapterTitle?: string | null;
+  chapterNumber?: number | null;
   groupId?: string | null;
 }
 
@@ -47,6 +51,15 @@ export interface Group {
   words?: QuestionWord[];
 }
 
+export type LabelKind = 'name' | 'place' | 'date' | 'score';
+
+export interface Label {
+  kind: LabelKind;
+  text: string;
+  from: number;
+  durationInFrames: number;
+}
+
 export interface Sfx {
   src: string;
   from: number;
@@ -71,6 +84,7 @@ export interface TimelineProps {
   durationInFrames: number;
   shots: Shot[];
   groups: Group[];
+  labels?: Label[];
   audio: AudioSpec;
   [key: string]: unknown;
 }

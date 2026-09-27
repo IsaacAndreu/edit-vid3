@@ -4,6 +4,8 @@ import { AudioBed } from './components/AudioBed';
 import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
+import { FramedCard } from './components/FramedCard';
+import { LowerThird } from './components/LowerThird';
 import { DataCard, SplitPanel } from './components/Panel';
 import { Question } from './components/Question';
 import { Stat } from './components/Stat';
@@ -26,14 +28,17 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
       </AbsoluteFill>
     );
   }
+  if (shot.media.layout === 'card') {
+    return <FramedCard media={shot.media} durationInFrames={shot.durationInFrames} />;
+  }
   return <BRoll media={shot.media} durationInFrames={shot.durationInFrames} seed={shot.id} />;
 };
 
 /**
  * Layers, bottom to top: shot footage/panel background → data groups (stat, datacard, split)
- * spanning their shots, question panels → chapter titles → source credit → audio.
+ * spanning their shots, question panels → lower-third labels → chapter titles → source credit → audio.
  */
-export const Documentary: FC<TimelineProps> = ({ shots, groups, audio }) => (
+export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], audio }) => (
   <AbsoluteFill style={{ backgroundColor: '#000' }}>
     {shots.map((shot) => (
       <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
@@ -50,11 +55,16 @@ export const Documentary: FC<TimelineProps> = ({ shots, groups, audio }) => (
         ) : null}
       </Sequence>
     ))}
+    {labels.map((label, i) => (
+      <Sequence key={`label-${i}`} from={label.from} durationInFrames={label.durationInFrames} name={`label ${label.text}`}>
+        <LowerThird kind={label.kind} text={label.text} durationInFrames={label.durationInFrames} />
+      </Sequence>
+    ))}
     {shots
       .filter((shot) => shot.type === 'chapter' && shot.chapterTitle)
       .map((shot) => (
         <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
-          <Chapter title={shot.chapterTitle as string} />
+          <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} />
         </Sequence>
       ))}
     {shots

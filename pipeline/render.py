@@ -59,13 +59,14 @@ def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
     media = shot.get("media") or {}
     a, b = shot["from"], shot["from"] + shot["durationInFrames"]
     covered = any(g["from"] < b and a < g["from"] + g["durationInFrames"] for g in groups)
-    return shot["type"] == "broll" and media.get("kind") == "video" and not shot.get("groupId") and not covered
+    return (shot["type"] == "broll" and media.get("kind") == "video" and media.get("layout", "full") == "full"
+            and not shot.get("groupId") and not covered)
 
 
 def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment]:
     segments: list[Segment] = []
     condensed = 0
-    groups = timeline.get("groups", [])
+    groups = [*timeline.get("groups", []), *timeline.get("labels", [])]   # anything drawn over the footage
     for shot in timeline["shots"]:
         if hybrid and is_fast(shot, groups):
             segments.append(Segment("ffmpeg", shot["from"], shot["durationInFrames"], [shot]))
@@ -91,17 +92,22 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
         for shot in segment.shots:
             shift[shot["id"]] = offset
             shots.append({**shot, "from": shot["from"] - offset})
-    groups = []
-    for group in timeline["groups"]:
-        # A group lies inside one run of slow shots (every shot it touches is slow): shift it with them.
-        owner = next((s for s in shots if s["from"] + shift[s["id"]] <= group["from"]
-                      < s["from"] + shift[s["id"]] + s["durationInFrames"]), None)
-        if owner is None:
-            raise RuntimeError(f"El grupo {group['id']} no cae en un tramo de Remotion")
-        groups.append({**group, "from": group["from"] - shift[owner["id"]]})
+    def shifted(items: list[dict[str, Any]], what: str) -> list[dict[str, Any]]:
+        # An overlay lies inside one run of slow shots (every shot it touches is slow): shift it with them.
+        out = []
+        for item in items:
+            owner = next((s for s in shots if s["from"] + shift[s["id"]] <= item["from"]
+                          < s["from"] + shift[s["id"]] + s["durationInFrames"]), None)
+            if owner is None:
+                raise RuntimeError(f"{what} en el fotograma {item['from']} no cae en un tramo de Remotion")
+            out.append({**item, "from": item["from"] - shift[owner["id"]]})
+        return out
+
+    groups = shifted(timeline["groups"], "Un grupo")
+    labels = shifted(timeline.get("labels", []), "Un rótulo")
     total = sum(s["durationInFrames"] for s in shots)
     audio = {**timeline["audio"], "music": None, "speech": [], "sfx": []}
-    return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "audio": audio}
+    return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels, "audio": audio}
 
 
 def music_volume_expr(speech: list[list[int]] | list[tuple[int, int]], fps: int, total: int,

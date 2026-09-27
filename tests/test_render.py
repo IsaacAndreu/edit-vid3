@@ -57,6 +57,22 @@ class QuestionRenderTests(unittest.TestCase):
         self.assertEqual(props["groups"][0]["from"], 20)
 
 
+class LayoutRenderTests(unittest.TestCase):
+    def test_cards_and_labels_go_to_remotion(self) -> None:
+        card = {**VIDEO, "layout": "card"}
+        timeline = {
+            "durationInFrames": 240,
+            "shots": [_shot(0, 0, 60), _shot(1, 60, 60, media=card), _shot(2, 120, 60), _shot(3, 180, 60)],
+            "groups": [],
+            "labels": [{"kind": "name", "text": "Kohei Uchimura", "from": 124, "durationInFrames": 30}],
+            "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []},
+        }
+        segments = plan_segments(timeline)
+        self.assertEqual([(s.kind, s.start, s.frames) for s in segments],
+                         [("ffmpeg", 0, 60), ("remotion", 60, 120), ("ffmpeg", 180, 60)])
+        self.assertEqual(condensed_props(timeline, segments)["labels"][0]["from"], 64)
+
+
 class DuckingTests(unittest.TestCase):
     def test_expression_matches_audiobed(self) -> None:
         expr = music_volume_expr([(30, 60)], 30, 120, 0.25, 0.05)
