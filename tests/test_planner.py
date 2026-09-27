@@ -53,6 +53,21 @@ class CutShotsTests(unittest.TestCase):
         self.assertGreater(ends_on_sentence, len(shots) // 3)
 
 
+class OutlineTests(unittest.TestCase):
+    def test_drops_misplaced_chapters_instead_of_failing(self) -> None:
+        # One sentence every 10 s.
+        words = [Word.model_validate({"index": i, "text": "w.", "start": 10.0 * i, "end": 10.0 * i + 1, "matched": True,
+                                      "sentenceEnd": True}) for i in range(40)]
+        sentences = [(i, i) for i in range(40)]
+        result = {"chapters": [{"title": "b", "sentence": 12}, {"title": "hook", "sentence": 1},
+                               {"title": "a", "sentence": 3}, {"title": "too close", "sentence": 5},
+                               {"title": "c", "sentence": 30}, {"title": "bad", "sentence": 99}]}
+        chapters = planner._validate_outline(result, sentences, words)
+        self.assertEqual([(c.title, c.startWord) for c in chapters], [("A", 3), ("B", 12), ("C", 30)])
+        with self.assertRaises(ValueError):
+            planner._validate_outline({"chapters": [{"title": "a", "sentence": 3}]}, sentences, words)
+
+
 class NumberCheckTests(unittest.TestCase):
     def test_rejects_invented_or_digitless_figures(self) -> None:
         stat = {"id": "s1", "type": "stat", "stat": {"value": "10-100 M€", "label": "x"}}

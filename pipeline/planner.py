@@ -109,26 +109,35 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
     return chapters, context
 
 
-def _validate_outline(result: dict[str, Any], sentences: list[tuple[int, int]], words: list[Word]) -> list[PlanChapter]:
+def _validate_outline(result: dict[str, Any], sentences: list[tuple[int, int]], words: list[Word],
+                      min_gap: float = 45.0, hook: float = 20.0) -> list[PlanChapter]:
+    """Chapters in order, at least `min_gap` s apart and after the hook. The model often gets the
+    spacing slightly wrong: such chapters are dropped instead of rejecting the whole outline."""
+
     raw = result.get("chapters")
-    if not isinstance(raw, list) or not 3 <= len(raw) <= 7:
-        raise ValueError("se esperaban entre 3 y 7 capítulos")
-    chapters: list[PlanChapter] = []
-    previous_start = -math.inf
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("se esperaba una lista de capítulos")
+    parsed: list[tuple[int, str]] = []
     for item in raw:
         try:
             sentence = int(item["sentence"])
             title = str(item["title"]).strip().upper()
         except (KeyError, TypeError, ValueError):
             raise ValueError(f"capítulo mal formado: {item!r}") from None
-        if not 0 <= sentence < len(sentences) or not title:
-            raise ValueError(f"capítulo fuera de rango: {item!r}")
+        if 0 <= sentence < len(sentences) and title:
+            parsed.append((sentence, title))
+    chapters: list[PlanChapter] = []
+    previous_start = hook - min_gap          # the first chapter may not start inside the hook
+    for sentence, title in sorted(set(parsed)):
         start_word = sentences[sentence][0]
-        if words[start_word].start - previous_start < 45:
-            raise ValueError("capítulos desordenados o separados menos de 45 s")
+        if words[start_word].start - previous_start < min_gap:
+            continue
         previous_start = words[start_word].start
         chapters.append(PlanChapter(title=title[:48], startWord=start_word, fromScript=False))
-    return chapters
+    if len(chapters) < 2:
+        raise ValueError(f"quedan {len(chapters)} capítulos válidos: hacen falta al menos 2, en orden, "
+                         f"separados {min_gap:.0f} s y después del segundo {hook:.0f}")
+    return chapters[:7]
 
 
 # --- 2. Cutting ------------------------------------------------------------------------
