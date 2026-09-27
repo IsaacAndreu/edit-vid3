@@ -16,6 +16,7 @@ npm run render
 ## Automated pipeline
 
 Specification: `CLAUDE.md`. Inputs live in `materiales/<slug>/` (`titulo.txt`, `guion.txt`, `voz.mp3`).
+Running it on your own PC: see [`docs/LOCAL.md`](docs/LOCAL.md).
 
 ```bash
 python -m pip install -r requirements.txt
