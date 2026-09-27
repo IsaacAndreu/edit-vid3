@@ -22,6 +22,13 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        merged[key] = deep_merge(merged[key], value) if isinstance(value, dict) and isinstance(merged.get(key), dict) else value
+    return merged
+
+
 @dataclass
 class RunContext:
     """Everything a stage needs to locate its inputs and outputs. No stage state lives here."""
@@ -33,7 +40,15 @@ class RunContext:
 
     @classmethod
     def create(cls, slug: str, *, root: Path = PROJECT_ROOT, config: dict[str, Any] | None = None) -> "RunContext":
-        return cls(slug=slug, root=root, config=config if config is not None else load_config(root / "config.yaml"))
+        if config is not None:
+            return cls(slug=slug, root=root, config=config)
+        base = load_config(root / "config.yaml")
+        ctx = cls(slug=slug, root=root, config=base)
+        # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {cold_open_seconds: 10}).
+        override = ctx.materials_dir / "config.yaml"
+        if override.is_file():
+            ctx.config = deep_merge(base, load_config(override))
+        return ctx
 
     def _dir(self, key: str, default: str) -> Path:
         return self.root / str(self.config.get("paths", {}).get(key, default))

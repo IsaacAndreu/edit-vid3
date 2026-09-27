@@ -106,7 +106,7 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
     groups = shifted(timeline["groups"], "Un grupo")
     labels = shifted(timeline.get("labels", []), "Un rótulo")
     total = sum(s["durationInFrames"] for s in shots)
-    audio = {**timeline["audio"], "music": None, "speech": [], "sfx": []}
+    audio = {**timeline["audio"], "music": None, "speech": [], "sfx": [], "clips": [], "voiceFrom": 0}
     return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels, "audio": audio}
 
 
@@ -287,27 +287,41 @@ class Renderer:
         total = timeline["durationInFrames"]
         seconds = total / self.fps
         work = self.ctx.work_dir
-        inputs = ["-i", str(work / audio["voice"])]
-        chains = ["[0:a]aresample=48000,aformat=channel_layouts=stereo[voice]"]
+        inputs: list[str] = []
+        files: list[Path] = []
+
+        def add(path: Path, *pre: str) -> int:
+            inputs.extend([*pre, "-i", str(path)])
+            files.append(path)
+            return len(files) - 1
+
+        stereo = "aresample=48000,aformat=channel_layouts=stereo"
+        voice_delay = round(audio.get("voiceFrom", 0) / self.fps * 1000)
+        chains = [f"[{add(work / audio['voice'])}:a]{stereo}"
+                  + (f",adelay={voice_delay}:all=1" if voice_delay else "") + "[voice]"]
         mix = ["[voice]"]
         if audio.get("music"):
-            inputs += ["-stream_loop", "-1", "-i", str(work / audio["music"])]
+            index = add(work / audio["music"], "-stream_loop", "-1")
             expr = music_volume_expr(audio.get("speech", []), self.fps, total, audio["musicVolume"], audio["duckedVolume"])
-            chains.append(f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=end={seconds:.4f},"
-                          f"volume=eval=frame:volume='{expr}'[music]")
+            chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f},volume=eval=frame:volume='{expr}'[music]")
             mix.append("[music]")
-        for sfx in audio.get("sfx", []):
-            index = len(inputs) // 2
-            inputs += ["-i", str(work / sfx["src"])]
+        # Original sound of the cold-open clips (the only clip audio ever used), then SFX.
+        for n, clip in enumerate(audio.get("clips", [])):
+            index = add(work / clip["src"])
+            delay = round(clip["from"] / self.fps * 1000)
+            chains.append(f"[{index}:a]{stereo},atrim=end={clip['durationInFrames'] / self.fps:.3f},"
+                          f"volume={clip.get('volume', 1.0)},adelay={delay}:all=1[c{n}]")
+            mix.append(f"[c{n}]")
+        for n, sfx in enumerate(audio.get("sfx", [])):
+            index = add(work / sfx["src"])
             delay = round(sfx["from"] / self.fps * 1000)
-            chains.append(f"[{index}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=end={SFX_FRAMES / self.fps:.3f},"
-                          f"volume={sfx['volume']},adelay={delay}:all=1[s{index}]")
-            mix.append(f"[s{index}]")
-        mixed = (f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:normalize=0," if len(mix) > 1 else f"{mix[0]}anull,")
+            chains.append(f"[{index}:a]{stereo},atrim=end={SFX_FRAMES / self.fps:.3f},"
+                          f"volume={sfx['volume']},adelay={delay}:all=1[s{n}]")
+            mix.append(f"[s{n}]")
+        mixed = (f"{''.join(mix)}amix=inputs={len(mix)}:duration=longest:normalize=0," if len(mix) > 1 else f"{mix[0]}anull,")
         base = ";".join(chains) + f";{mixed}apad,atrim=end={seconds:.4f}"
         target, peak = float(self.cfg.get("loudness", -16)), float(self.cfg.get("true_peak", -1.5))
-        key = _hash(VERSION, base, [_file_sig(Path(inputs[i + 1])) for i in range(0, len(inputs), 2) if inputs[i] == "-i"],
-                    target, peak)
+        key = _hash(VERSION, base, [_file_sig(f) for f in files], target, peak)
         out = self.dir / f"audio-{key}.wav"
         if out.is_file():
             return out

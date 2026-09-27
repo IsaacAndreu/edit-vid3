@@ -80,5 +80,18 @@ class RunnerTests(unittest.TestCase):
             run_stages(self.ctx, until="nope")
 
 
+class PerVideoConfigTests(unittest.TestCase):
+    def test_materials_config_overrides_the_project_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "config.yaml").write_text("timeline:\n  music_volume: 0.25\n  cold_open_seconds: 0\nvideo:\n  fps: 30\n")
+            (root / "materiales" / "v").mkdir(parents=True)
+            (root / "materiales" / "v" / "config.yaml").write_text("timeline:\n  cold_open_seconds: 10\n")
+            ctx = RunContext.create("v", root=root)
+            other = RunContext.create("w", root=root)
+        self.assertEqual(ctx.section("timeline"), {"music_volume": 0.25, "cold_open_seconds": 10})
+        self.assertEqual(other.section("timeline")["cold_open_seconds"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

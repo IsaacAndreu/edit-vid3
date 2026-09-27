@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from pipeline.render import condensed_props, music_volume_expr, plan_segments
 
@@ -71,6 +72,37 @@ class LayoutRenderTests(unittest.TestCase):
         self.assertEqual([(s.kind, s.start, s.frames) for s in segments],
                          [("ffmpeg", 0, 60), ("remotion", 60, 120), ("ffmpeg", 180, 60)])
         self.assertEqual(condensed_props(timeline, segments)["labels"][0]["from"], 64)
+
+
+class AudioMixTests(unittest.TestCase):
+    def test_mixes_delayed_voice_cold_open_sound_music_and_sfx(self) -> None:
+        import subprocess
+        import tempfile
+
+        from pipeline.context import RunContext
+        from pipeline.ingest import probe
+        from pipeline.render import Renderer
+
+        def tone(path, seconds, freq, video=False):
+            args = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"sine=frequency={freq}:duration={seconds}"]
+            if video:
+                args += ["-f", "lavfi", "-i", f"color=black:s=320x180:d={seconds}", "-shortest"]
+            subprocess.run([*args, str(path)], check=True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = RunContext.create("t", root=root, config={"video": {"fps": 30}})
+            for rel, secs, freq, video in (("audio/voz.wav", 1, 440, False), ("coldopen/c01.mp4", 1, 880, True),
+                                           ("audio/music.mp3", 1, 220, False), ("audio/pop.wav", 0.3, 1000, False)):
+                (ctx.work_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+                tone(ctx.work_dir / rel, secs, freq, video)
+            timeline = {"durationInFrames": 90, "audio": {
+                "voice": "audio/voz.wav", "voiceFrom": 30, "music": "audio/music.mp3", "musicVolume": 0.25,
+                "duckedVolume": 0.03, "speech": [[30, 60]],
+                "clips": [{"src": "coldopen/c01.mp4", "from": 0, "durationInFrames": 30, "volume": 1.0}],
+                "sfx": [{"src": "audio/pop.wav", "from": 45, "volume": 0.5}]}}
+            out = Renderer(ctx).audio(timeline)
+            self.assertAlmostEqual(probe(out)["duration"], 3.0, delta=0.05)
 
 
 class DuckingTests(unittest.TestCase):

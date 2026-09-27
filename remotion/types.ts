@@ -21,6 +21,7 @@ export interface Shot {
   chapterTitle?: string | null;
   chapterNumber?: number | null;
   groupId?: string | null;
+  coldOpen?: boolean;
 }
 
 export interface DataRow {
@@ -66,8 +67,17 @@ export interface Sfx {
   volume: number;
 }
 
+export interface ClipAudio {
+  src: string;
+  from: number;
+  durationInFrames: number;
+  volume?: number;
+}
+
 export interface AudioSpec {
   voice: string;
+  voiceFrom?: number;
+  clips?: ClipAudio[];
   music?: string | null;
   musicVolume: number;
   duckedVolume: number;

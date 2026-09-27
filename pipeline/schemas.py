@@ -488,6 +488,29 @@ class TimelineMedia(_Strict):
     height: int | None = None
 
 
+class ColdOpenClip(_Strict):
+    """A few seconds of the protagonist's peak with its ORIGINAL sound, before the narration starts."""
+
+    path: str                                                # relative to the project root
+    candidateId: str
+    url: str
+    title: str | None = None
+    channel: str | None = None
+    start: float
+    end: float
+    durationSeconds: float = Field(gt=0, le=MAX_THIRD_PARTY_SECONDS + 1 / 30 + 1e-6)
+    width: int
+    height: int
+    credit: str
+    attribution: str | None = None
+
+
+class ColdOpenFile(_Strict):
+    slug: str
+    seconds: float = 0
+    clips: list[ColdOpenClip] = Field(default_factory=list)
+
+
 class TimelineLabel(_Strict):
     kind: LabelKind
     text: str
@@ -507,6 +530,7 @@ class TimelineShot(_Strict):
     chapterTitle: str | None = None
     chapterNumber: int | None = None                         # 1, 2, … for "CAPÍTULO 01"
     groupId: str | None = None                               # panel / stat group this shot belongs to
+    coldOpen: bool = False                                   # plays with its original sound, before the narration
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -547,8 +571,21 @@ class TimelineSfx(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class TimelineClipAudio(_Strict):
+    """Original sound of a cold-open clip (the only clip audio ever used)."""
+
+    src: str
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(ge=1)
+    volume: float = Field(default=1.0, gt=0, le=1.5)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class TimelineAudio(_Strict):
     voice: str
+    voiceFrom: int = Field(default=0, ge=0)                  # the narration starts after the cold open
+    clips: list[TimelineClipAudio] = Field(default_factory=list)
     music: str | None = None
     musicVolume: float = 0.25
     duckedVolume: float = 0.03                               # ≈ −18 dB below musicVolume while the voice speaks

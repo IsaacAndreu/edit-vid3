@@ -378,7 +378,8 @@ class YouTubeSource:
         self.info(video_id)  # re-extracts and re-saves the full info
         return path
 
-    def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str) -> Path:
+    def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
+                       audio: bool = False) -> Path:
         """Stream-copy [start, end] of the source (no re-encode) → <prefix>_<realStart>_<realEnd>.mp4.
 
         Without re-encoding the file begins at the keyframe before `start`; the real start is
@@ -433,6 +434,7 @@ class YouTubeSource:
         target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}.mp4"
         subprocess.run(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", "0:v:0",
+             *(["-map", "0:a:0?"] if audio else []),
              "-c", "copy", "-avoid_negative_ts", "make_zero", str(target)],
             check=True,
         )

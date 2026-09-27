@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from pipeline.context import RunContext
 from pipeline.schemas import Timeline, WordsFile
-from pipeline.timeline import question_groups, question_spans, run, speech_segments
+from pipeline.timeline import question_groups, question_spans, run, speech_segments, with_cold_open
 
 BROLL = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
 PANEL = lambda n: {"title": "Ruleta", "rows": [{"label": f"r{i}", "value": f"{i} €"} for i in range(n)]}  # noqa: E731
@@ -95,6 +95,30 @@ class TimelineSchemaTests(unittest.TestCase):
                 Timeline.model_validate({**self.BASE, "shots": [bad]})
         with self.assertRaises(ValidationError):
             Timeline.model_validate({**self.BASE, "durationInFrames": 200, "shots": [{**shot, "durationInFrames": 200}]})
+
+
+class ColdOpenTests(unittest.TestCase):
+    def test_cold_open_goes_first_and_pushes_the_narration(self) -> None:
+        base = Timeline.model_validate({
+            "slug": "t", "title": "T", "fps": 30, "width": 1920, "height": 1080, "durationInFrames": 60,
+            "shots": [{"id": "s000", "type": "broll", "from": 0, "durationInFrames": 60, "text": "t",
+                       "media": {"src": "media/s000.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: X"}}],
+            "groups": [{"id": "q01", "kind": "question", "from": 10, "durationInFrames": 20, "words": []}],
+            "labels": [{"kind": "name", "text": "Kohei Uchimura", "from": 5, "durationInFrames": 30}],
+            "audio": {"voice": "audio/voz.mp3", "speech": [(0, 30)]},
+        })
+        tl = with_cold_open(base, [("coldopen/c01.mp4", 3.5, "Fuente: Olympics", 1920, 1080),
+                                   ("coldopen/c02.mp4", 9.0, "Fuente: FIG", 1080, 1920)], 30, 0.9)
+        self.assertEqual([(s.id, s.from_, s.durationInFrames, s.coldOpen) for s in tl.shots],
+                         [("c01", 0, 105, True), ("c02", 105, 150, True), ("s000", 255, 60, False)])   # 9 s → capped at 5 s
+        self.assertEqual(tl.durationInFrames, 315)
+        self.assertEqual(tl.shots[1].media.layout, "card")
+        self.assertEqual((tl.groups[0].from_, tl.labels[0].from_), (265, 260))
+        self.assertEqual(tl.audio.voiceFrom, 255)
+        self.assertEqual(tl.audio.speech, [(255, 285)])
+        self.assertEqual([(c.src, c.from_, c.volume) for c in tl.audio.clips],
+                         [("coldopen/c01.mp4", 0, 0.9), ("coldopen/c02.mp4", 105, 0.9)])
+        self.assertIs(with_cold_open(base, [], 30), base)
 
 
 class SpeechTests(unittest.TestCase):

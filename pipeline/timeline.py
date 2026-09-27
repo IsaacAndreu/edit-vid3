@@ -30,6 +30,8 @@ from .schemas import (
     ShotsFile,
     Timeline,
     TimelineAudio,
+    ColdOpenFile,
+    TimelineClipAudio,
     TimelineGroup,
     TimelineLabel,
     TimelineMedia,
@@ -37,6 +39,7 @@ from .schemas import (
     TimelineShot,
     WordsFile,
 )
+from .schemas import MAX_THIRD_PARTY_SECONDS
 from .sourcing import needs_footage
 
 
@@ -116,6 +119,48 @@ def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[Ti
     return result
 
 
+def with_cold_open(timeline: Timeline, clips: list[tuple[str, float, str, int, int]], fps: int,
+                   volume: float = 1.0) -> Timeline:
+    """Put the cold-open clips (src, seconds, credit, width, height) first, with their original
+    sound, and push everything narrated — shots, overlays, SFX, speech and the voice — after them."""
+
+    if not clips:
+        return timeline
+    cold: list[TimelineShot] = []
+    sounds: list[TimelineClipAudio] = []
+    cursor = 0
+    for i, (src, seconds, credit, width, height) in enumerate(clips, start=1):
+        frames = max(1, min(round(seconds * fps), int(MAX_THIRD_PARTY_SECONDS * fps)))
+        cold.append(TimelineShot.model_validate({
+            "id": f"c{i:02d}", "type": "broll", "from": cursor, "durationInFrames": frames, "text": "",
+            "media": {"src": src, "kind": "video", "source": "youtube", "credit": credit, "layout": "card",
+                      "width": width, "height": height},
+            "coldOpen": True,
+        }))
+        sounds.append(TimelineClipAudio.model_validate({"src": src, "from": cursor, "durationInFrames": frames,
+                                                         "volume": volume}))
+        cursor += frames
+    offset = cursor
+
+    def moved(item):
+        return item.model_copy(update={"from_": item.from_ + offset})
+
+    audio = timeline.audio.model_copy(update={
+        "voiceFrom": timeline.audio.voiceFrom + offset,
+        "clips": [*sounds, *[moved(c) for c in timeline.audio.clips]],
+        "speech": [(a + offset, b + offset) for a, b in timeline.audio.speech],
+        "sfx": [moved(x) for x in timeline.audio.sfx],
+    })
+    return Timeline.model_validate({
+        **timeline.model_dump(by_alias=True),
+        "durationInFrames": timeline.durationInFrames + offset,
+        "shots": [s.model_dump(by_alias=True) for s in [*cold, *[moved(x) for x in timeline.shots]]],
+        "groups": [moved(g).model_dump(by_alias=True) for g in timeline.groups],
+        "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
+        "audio": audio.model_dump(by_alias=True),
+    })
+
+
 def _size(path: Path) -> tuple[int | None, int | None]:
     try:
         info = probe(path)
@@ -180,7 +225,7 @@ def _first_audio(folder: Path, prefix: str = "") -> Path | None:
 def inputs(ctx: RunContext) -> list:
     return [
         ctx.work_dir / "shots.json", ctx.work_dir / "words.json", ctx.work_dir / "media" / "_ingest.json",
-        ctx.work_dir / "fallback.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
+        ctx.work_dir / "fallback.json", ctx.work_dir / "coldopen.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
     ]
 
 
@@ -295,6 +340,13 @@ def run(ctx: RunContext) -> None:
             speech=speech_segments(words, fps), sfx=sfx,
         ),
     )
+    cold = ctx.work_dir / "coldopen.json"
+    if cold.is_file():
+        clips = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).clips
+        timeline = with_cold_open(timeline, [
+            (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
+            for c in clips
+        ], fps, float(cfg.get("cold_open_volume", 1.0)))
     ctx.write_json(OUTPUT, timeline.model_dump(by_alias=True, exclude_none=True))
     kinds: dict[str, int] = {}
     for group in groups:

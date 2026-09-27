@@ -27,7 +27,7 @@ import numpy as np
 from .analysis import detectors as det
 from .context import RunContext
 from .costs import COSTS_FILE
-from .schemas import MAX_THIRD_PARTY_SECONDS, FallbackFile, SelectionFile, ShotsFile, Timeline
+from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
 
 
 STAGE = "qa"
@@ -76,6 +76,7 @@ def mmss(seconds: float) -> str:
 
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "timeline.json", ctx.work_dir / "selection.json", ctx.work_dir / "fallback.json",
+            ctx.work_dir / "coldopen.json",
             ctx.work_dir / "media" / "_ingest.json"]
 
 
@@ -88,6 +89,10 @@ def run(ctx: RunContext) -> None:
     selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
     fallback = {i.shotId: i for i in FallbackFile.model_validate(ctx.read_json("fallback.json")).items}
     ingest = {m["shotId"]: m for m in ctx.read_json("media/_ingest.json")["media"]}
+    cold = {}
+    if (ctx.work_dir / "coldopen.json").is_file():
+        cold = {str((ctx.root / c.path).relative_to(ctx.work_dir)): c
+                for c in ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).clips}
     fps = timeline.fps
 
     blockers: list[str] = []
@@ -119,7 +124,14 @@ def run(ctx: RunContext) -> None:
         if shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
             blockers.append(f"{shot.id}: material de terceros sin crédito")
         # provenance
-        if shot.id in ingest and shot.id not in fallback:
+        if shot.coldOpen and shot.media.src in cold:
+            clip = cold[shot.media.src]
+            entry.update({
+                "decidedBy": "coldopen", "coldOpen": True, "withAudio": True, "candidateId": clip.candidateId,
+                "url": clip.url, "title": clip.title, "channel": clip.channel, "sourceStart": clip.start,
+                "sourceEnd": clip.end, "attribution": clip.attribution,
+            })
+        elif shot.id in ingest and shot.id not in fallback:
             selection = selections[shot.id]
             entry.update({
                 "decidedBy": selection.decidedBy, "candidateId": selection.candidateId, "url": selection.url,
@@ -141,7 +153,8 @@ def run(ctx: RunContext) -> None:
         entry["phash"] = det.phash(frame) if frame is not None else None
         rows.append(entry)
 
-    if timeline.durationInFrames != round(ShotsFile.model_validate(ctx.read_json("shots.json")).durationSeconds * fps):
+    narration = round(ShotsFile.model_validate(ctx.read_json("shots.json")).durationSeconds * fps)
+    if timeline.durationInFrames != narration + timeline.audio.voiceFrom:
         blockers.append("La duración del timeline no coincide con la de la narración")
 
     # --- low scores -------------------------------------------------------------------------
@@ -163,8 +176,9 @@ def run(ctx: RunContext) -> None:
     # --- repeats: same source with overlapping timestamps, or near-identical pictures --------
     repeats: list[str] = []
     media_rows = [e for e in rows if e.get("media")]
-    for i, a in enumerate(media_rows):
-        for b in media_rows[i + 1:]:
+    compared = [e for e in media_rows if not e.get("coldOpen")]   # the cold open is a deliberate teaser
+    for i, a in enumerate(compared):
+        for b in compared[i + 1:]:
             same_source = a.get("candidateId") and a.get("candidateId") == b.get("candidateId")
             if same_source and a.get("sourceStart") is not None and b.get("sourceStart") is not None:
                 overlap = a["sourceStart"] < b["sourceEnd"] and b["sourceStart"] < a["sourceEnd"]

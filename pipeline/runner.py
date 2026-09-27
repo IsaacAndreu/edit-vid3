@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align, analysis, fallback, ingest, judge, planner, qa, render, sourcing, timeline
+from . import align, analysis, coldopen, fallback, ingest, judge, planner, qa, render, sourcing, timeline
 from .context import RunContext
 
 
@@ -45,6 +45,7 @@ STAGES: list[Stage] = [
     Stage("judge", _work(judge.OUTPUT), judge.inputs, judge.run, judge.validate, ("judge", "content")),
     Stage("ingest", _work(ingest.OUTPUT), ingest.inputs, ingest.run, ingest.validate, ("ingest",), ingest.retry_if),
     Stage("fallback", _work(fallback.OUTPUT), fallback.inputs, fallback.run, fallback.validate, ("fallback", "content")),
+    Stage("coldopen", _work(coldopen.OUTPUT), coldopen.inputs, coldopen.run, coldopen.validate, ("timeline", "judge")),
     Stage("timeline", _work(timeline.OUTPUT), timeline.inputs, timeline.run, timeline.validate, ("timeline", "video")),
     Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md", ctx.out_dir / "manifest.json", ctx.out_dir / "creditos.txt"],
           qa.inputs, qa.run, qa.validate, ("qa", "judge")),
