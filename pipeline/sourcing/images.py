@@ -1,8 +1,11 @@
-"""Still-image sources with clear licences: Wikimedia Commons, Openverse, Pixabay (optional key).
+"""Still-image sources: Wikimedia Commons, Openverse, Pixabay (optional key) — with clear licences —
+and web photos of the named people/events (like a Google Images search).
 
-Only licences that allow commercial use and modification are kept (a monetised channel
-crops and animates the images), and every result carries its author and licence for the
-on-screen credit and creditos.txt.
+For the free-licence sources only licences that allow commercial use and modification are kept.
+Web photos (`images.web`) are press/editorial pictures without a free licence — the same material
+sports channels use; they are credited with their website. They come from Google Images through
+Serper (SERPER_API_KEY) or, without a key, from DuckDuckGo (works from a home connection; data
+centres get junk). A web photo is kept only if the searched name appears in its title or URL.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from .common import (
 WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php"
 OPENVERSE_API = "https://api.openverse.org/v1/images/"
 PIXABAY_API = "https://pixabay.com/api/"
+SERPER_IMAGES_API = "https://google.serper.dev/images"
 _RESTRICTIVE = re.compile(r"\b(nc|nd)\b", re.IGNORECASE)  # non-commercial / no-derivatives
 _OK_WIKIMEDIA_LICENCES = ("cc0", "public domain", "pd", "cc by", "cc-by", "cc by-sa", "cc-by-sa", "attribution")
 
@@ -47,13 +51,43 @@ def image_query(query: str, max_words: int = 4) -> str:
     return " ".join(kept[:max_words]) or query
 
 
+def web_queries(broll: BrollSpec) -> list[tuple[str, set[str]]]:
+    """Photo searches for the named people/places of a shot: the name alone, then the name with the
+    shot's event context. Each carries the name tokens a result must mention."""
+
+    out: list[tuple[str, set[str]]] = []
+    for entity in broll.entities[:2]:
+        must = tokens(entity)
+        if not must:
+            continue
+        event = broll.event or ""
+        if event and must <= tokens(event):
+            out.append((event, must))
+        out.append((entity, must))
+    seen: set[str] = set()
+    return [(q, m) for q, m in out if not (q in seen or seen.add(q))]
+
+
+def mentions(must: set[str], text: str) -> bool:
+    """All name tokens (e.g. {'carlos', 'yulo'}) appear in the title/URL — so 'Carlos Alcaraz' never passes."""
+
+    found = tokens(text.replace("-", " ").replace("_", " ").replace("/", " "))
+    return bool(must) and must <= found
+
+
+def site_name(url: str) -> str:
+    host = re.sub(r"^https?://", "", url.strip()).split("/")[0].lower()
+    return host.removeprefix("www.") or "web"
+
+
 def _short(text: str, limit: int = 40) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 class ImageSources:
-    def __init__(self, *, root: Path, cache_dir: Path, config: dict[str, Any], pixabay_key: str = "") -> None:
+    def __init__(self, *, root: Path, cache_dir: Path, config: dict[str, Any], pixabay_key: str = "",
+                 serper_key: str = "") -> None:
         self.root = root
         self.cache_dir = cache_dir
         self.cfg = config
@@ -62,7 +96,10 @@ class ImageSources:
         self.min_width = int(config.get("min_width", 1280))
         self.min_aspect = float(config.get("min_aspect", 1.2))
         self.pixabay_key = pixabay_key
+        self.serper_key = serper_key
+        self.web_must: dict[str, set[str]] = {}   # web query → name tokens a result must mention
         self.pacers = {
+            "web": Pacer(float(config.get("web", {}).get("min_interval", 1.5))),
             "wikimedia": Pacer(float(config.get("wikimedia", {}).get("min_interval", 0.5))),
             "openverse": Pacer(float(config.get("openverse", {}).get("min_interval", 3.2))),
             "pixabay": Pacer(float(config.get("pixabay", {}).get("min_interval", 1.0))),
@@ -92,6 +129,13 @@ class ImageSources:
             planned["pixabay"] = sorted(dict.fromkeys(image_query(q, 3) for q in broll.queries), key=lambda q: len(q.split()))[
                 : int(px_cfg.get("queries_per_shot", 1))
             ]
+        web_cfg = self.cfg.get("web", {})
+        if web_cfg.get("enabled", True) and broll.entities:
+            queries = web_queries(broll)[: int(web_cfg.get("queries_per_shot", 2))]
+            for query, must in queries:
+                self.web_must[query] = must
+            if queries:
+                planned["web"] = [q for q, _ in queries]
         return planned
 
     # --- search ---------------------------------------------------------------------
@@ -201,6 +245,67 @@ class ImageSources:
                 "attribution": f"\"{title}\" — {author}, {licence}, Wikimedia Commons: {landing}",
             })
         return results
+
+    def _search_web(self, query: str) -> list[dict[str, Any]]:
+        """Google Images (Serper) or DuckDuckGo; only results that mention the searched name."""
+
+        cfg = self.cfg.get("web", {})
+        if self.serper_key:
+            provider = "serper"
+            payload = cached_json(
+                self.cache_dir / "search" / "web" / f"serper-{key(query)}.json",
+                lambda: self._serper(query, int(cfg.get("results", 20))),
+            )
+            raw = [{"title": i.get("title", ""), "image": i.get("imageUrl"), "thumbnail": i.get("thumbnailUrl"),
+                    "url": i.get("link"), "width": i.get("imageWidth"), "height": i.get("imageHeight"),
+                    "domain": i.get("domain") or i.get("source")} for i in payload.get("images", [])]
+        else:
+            provider = "ddg"
+            payload = cached_json(
+                self.cache_dir / "search" / "web" / f"ddg-{key(query)}.json",
+                lambda: {"images": self._ddg(query, int(cfg.get("results", 20)))},
+            )
+            raw = payload.get("images", [])
+        must = self.web_must.get(query) or tokens(query)
+        min_width = int(cfg.get("min_width", 800))
+        results = []
+        for item in raw:
+            image, thumb, page = item.get("image"), item.get("thumbnail") or item.get("image"), item.get("url") or ""
+            if not image or not mentions(must, f"{item.get('title', '')} {page} {image}"):
+                continue
+            try:
+                width, height = int(item.get("width") or 0), int(item.get("height") or 0)
+            except (TypeError, ValueError):
+                continue
+            if width < min_width or not height or not 0.5 <= width / height <= 2.6:
+                continue
+            domain = site_name(item.get("domain") or page or image)
+            title = _short(str(item.get("title") or query), 80)
+            results.append({
+                "id": f"web:{key(image)[:16]}", "source": "web", "landing": page or image, "title": title,
+                "analysisUrl": thumb, "mediaUrl": image, "width": width, "height": height,
+                "author": domain, "license": f"editorial ({provider})",
+                "credit": f"Fuente: {domain}",
+                "attribution": f"\"{title}\" — {domain}: {page or image}",
+            })
+        return results
+
+    def _serper(self, query: str, num: int) -> dict[str, Any]:
+        self.pacers["web"].wait()
+        response = self.session.post(SERPER_IMAGES_API, json={"q": query, "num": num},
+                                     headers={"X-API-KEY": self.serper_key}, timeout=30)
+        if response.status_code in (401, 403):
+            raise SourceUnavailable(f"Serper rechazó la clave ({response.status_code})")
+        response.raise_for_status()
+        return response.json()
+
+    def _ddg(self, query: str, num: int) -> list[dict[str, Any]]:
+        try:
+            from ddgs import DDGS
+        except ImportError as error:
+            raise SourceUnavailable("instala 'ddgs' o define SERPER_API_KEY para buscar fotos web") from error
+        self.pacers["web"].wait()
+        return [dict(i) for i in DDGS().images(query, max_results=num)]
 
     def _search_openverse(self, query: str) -> list[dict[str, Any]]:
         params = {"q": query, "page_size": 20, "license_type": "commercial,modification", "mature": "false"}

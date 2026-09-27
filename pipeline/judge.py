@@ -80,7 +80,10 @@ off-topic, even if "a podium" matches the words. Prefer the identifiable person/
 generic footage of the same sport. Protagonist first: unless the narration names someone else
 or a specific place, rank candidates that show the VIDEO SUBJECT above everything else; footage
 of anonymous athletes, children or strangers is a last resort, and for HOOK shots of such a
-video only the subject's standout moments are acceptable. The source video titles listed under the sheet are hints
+video only the subject's standout moments are acceptable. Identity: the person on screen must be the one the narration is about. If the narration is about a
+man, reject footage or photos whose main subject is a woman (and vice versa), unless the narration
+names that other person; never show a different, identifiable athlete as if it were the subject.
+The source video titles listed under the sheet are hints
 (they can be clickbait or compilations): trust what the frames show first.
 When the shot is marked HOOK (the first seconds of the video), be strict: accept only striking,
 good-quality footage that is unmistakably about the topic; reject amateur, dull or generic shots.

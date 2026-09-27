@@ -44,6 +44,8 @@ def category(source: str) -> str:
         return "terceros (YouTube)"
     if source in FREE_IMAGES:
         return "imágenes libres"
+    if source == "web":
+        return "fotos web"
     if source == "pexels":
         return "Pexels"
     if source == "generated":
@@ -275,7 +277,7 @@ def credits_text(rows: list[dict[str, Any]]) -> str:
         key = entry.get("url") or entry.get("candidateId") or entry["shotId"]
         group = groups.setdefault(key, {"entry": entry, "times": []})
         group["times"].append(mmss(entry["start"]))
-    sections = {"terceros (YouTube)": [], "imágenes libres": [], "Pexels": []}
+    sections = {"terceros (YouTube)": [], "fotos web": [], "imágenes libres": [], "Pexels": []}
     for group in groups.values():
         e = group["entry"]
         times = ", ".join(dict.fromkeys(group["times"]))
@@ -286,6 +288,7 @@ def credits_text(rows: list[dict[str, Any]]) -> str:
         sections.setdefault(category(e["source"]), []).append(line)
     parts = ["FUENTES Y CRÉDITOS", ""]
     titles = {"terceros (YouTube)": "Vídeos de terceros (fragmentos de menos de 5 s):",
+              "fotos web": "Fotografías (web):",
               "imágenes libres": "Imágenes con licencia libre:", "Pexels": "Pexels:"}
     for name, lines in sections.items():
         if lines:

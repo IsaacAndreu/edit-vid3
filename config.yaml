@@ -57,6 +57,10 @@ sourcing:
     wikimedia: {enabled: true, queries_per_shot: 3, min_interval: 0.5}
     openverse: {enabled: true, queries_per_shot: 1, min_interval: 3.2, min_width: 1024}   # anónimo: 20/min, 200/día; Flickr llega a 1024 px
     pixabay: {enabled: true, queries_per_shot: 1, min_interval: 1.0}     # necesita PIXABAY_API_KEY
+    # Fotos web de las personas/eventos nombrados (como Google Imágenes). Con SERPER_API_KEY usa Google
+    # Imágenes vía Serper; sin clave, DuckDuckGo (funciona desde casa; desde servidores devuelve basura
+    # y el filtro de nombre la descarta). Son fotos de prensa sin licencia libre: se acreditan con la web.
+    web: {enabled: true, queries_per_shot: 2, results: 20, min_width: 800, min_interval: 1.5}
 
 analysis:
   model: ViT-B-32                  # OpenCLIP; ~28 fotogramas/s en 4 núcleos de CPU
@@ -110,6 +114,7 @@ ingest:
 fallback:
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)
+  pexels_for_person: true          # en vídeos sobre una persona, Pexels solo si no queda NADA suyo (ni vídeo ni foto)
   min_clip: 0.22                   # parecido mínimo con el plano para aceptar algo de Pexels
   generate: true                   # último recurso: imagen generada
   image_model: gpt-image-2

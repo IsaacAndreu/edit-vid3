@@ -46,13 +46,13 @@ from .schemas import (
 )
 from .sourcing import needs_footage, youtube_source
 from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key, tokens
-from .sourcing.images import image_query
+from .sourcing.images import ImageSources, image_query
 
 
 STAGE = "fallback"
 OUTPUT = "fallback.json"
 MEDIA_DIR = "media_fallback"
-VERSION = 4  # bump when the fallback policy changes: invalidates per-shot results
+VERSION = 5  # bump when the fallback policy changes: invalidates per-shot results
 PEXELS = "https://api.pexels.com"
 
 
@@ -238,8 +238,22 @@ def run(ctx: RunContext) -> None:
             )[:limit]
             item = vet_and_materialise(options, pool_candidates, "protagonist")
 
-        # 2. Pexels (video, then photo), picked by CLIP.
-        if item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False):
+        # 1c. A web photo of whoever/whatever the shot names (then of the protagonist), in a card —
+        # what sports channels do when there is no footage. Vetted by the judge like the rest.
+        if item is None and shot.broll:
+            person = story.subject.split("·")[0].strip()
+            for entities in (shot.broll.entities, [person] if person else []):
+                if item is not None or not entities:
+                    continue
+                candidates = web_photos(ctx, shot.broll.model_copy(update={"entities": entities[:2]}), tried)
+                options = [photo_option(c) for c in candidates.values()
+                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)][:limit]
+                item = vet_and_materialise(options, candidates, "web-photo")
+
+        # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
+        # them is left at all: anonymous stock is exactly what that format avoids.
+        if (item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False)
+                and (not story.subject or cfg.get("pexels_for_person", True))):
             if clip is None:
                 clip, _ = make_models(ctx)
             vector = clip.shot_vector(prompts_for(shot))
@@ -301,8 +315,8 @@ def run(ctx: RunContext) -> None:
                 if item is not None:
                     break
 
-        # 3. Generated image — the last resort.
-        if item is None and cfg.get("generate", True):
+        # 3. Generated image — the last resort, never for a video about a real person.
+        if item is None and cfg.get("generate", True) and not story.subject:
             try:
                 item = _generate(ctx, shot, reason, digest, out_dir, lut, cfg)
             except Exception as error:
@@ -327,6 +341,27 @@ def run(ctx: RunContext) -> None:
           f"sin resolver: {len(unresolved)} · coste {spent:.3f} $ · {time.monotonic() - started:.0f} s")
     for shot_id, why in unresolved.items():
         print(f"   AVISO {shot_id}: {why[:200]}")
+
+
+def web_photos(ctx: RunContext, broll: Any, notes: list[str]) -> dict[str, Candidate]:
+    """Web photos (Google Images via Serper, or DuckDuckGo) of the broll's entities only."""
+
+    images_cfg = ctx.section("sourcing").get("images", {})
+    if not images_cfg.get("web", {}).get("enabled", True):
+        return {}
+    only_web = {**images_cfg, "wikimedia": {"enabled": False}, "openverse": {"enabled": False},
+                "pixabay": {"enabled": False}}
+    source = ImageSources(root=ctx.root, cache_dir=ctx.cache_dir, config=only_web,
+                          serper_key=ctx.env("SERPER_API_KEY", required=False))
+    _, found = source.search(broll, notes)
+    return {c.id: c for c in found}
+
+
+def photo_option(candidate: Candidate) -> Option:
+    return Option.model_validate({
+        "candidateId": candidate.id, "source": candidate.source, "kind": "image", "pass": "coarse",
+        "analysisPath": candidate.imagePath, "scores": {"clip": candidate.rankScore}, "total": candidate.rankScore,
+    })
 
 
 _POOL: dict[str, tuple[list[Option], dict[str, Candidate]]] = {}

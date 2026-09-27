@@ -263,3 +263,27 @@ class CandidateSchemaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WebPhotoTests(unittest.TestCase):
+    def test_queries_and_name_filter(self) -> None:
+        from pipeline.schemas import BrollSpec
+        from pipeline.sourcing.images import mentions, site_name, web_queries
+
+        broll = BrollSpec(visualIntent="podium", queries=["a", "b", "c"], queriesLocal=["d"],
+                          entities=["Carlos Yulo"], event="Carlos Yulo floor gold 2019 Stuttgart")
+        self.assertEqual([q for q, _ in web_queries(broll)], ["Carlos Yulo floor gold 2019 Stuttgart", "Carlos Yulo"])
+        self.assertFalse(mentions({"carlos", "yulo"}, "Carlos Alcaraz wins US Open https://nypost.com/alcaraz"))
+        self.assertTrue(mentions({"carlos", "yulo"}, "Gold for the Philippines https://olympics.com/news/carlos-yulo-gold"))
+        self.assertEqual(site_name("https://www.rappler.com/sports/x"), "rappler.com")
+
+    def test_web_photo_becomes_a_judgeable_option(self) -> None:
+        from pipeline.fallback import photo_option
+        from pipeline.schemas import Candidate
+
+        c = Candidate.model_validate({"id": "web:1", "source": "web", "kind": "image", "url": "https://x/y", "title": "t",
+                                      "channel": "x", "license": "editorial", "credit": "Fuente: x", "attribution": "a",
+                                      "query": "q", "rankScore": 0.4, "imagePath": "cache/images/web/1.jpg",
+                                      "mediaUrl": "https://x/1.jpg", "width": 1200, "height": 800})
+        option = photo_option(c)
+        self.assertEqual((option.kind, option.analysisPath, option.total), ("image", "cache/images/web/1.jpg", 0.4))

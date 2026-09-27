@@ -150,6 +150,7 @@ def run(ctx: RunContext) -> None:
         cache_dir=ctx.cache_dir,
         config=cfg.get("images", {}),
         pixabay_key=ctx.env("PIXABAY_API_KEY", required=False),
+        serper_key=ctx.env("SERPER_API_KEY", required=False),
     )
 
     precompute = Precomputer(ctx) if ctx.section("analysis").get("precompute_during_sourcing", True) else None

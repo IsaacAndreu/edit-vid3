@@ -13,3 +13,4 @@ torch               # en CPU basta; en Windows/Mac el wheel por defecto sirve
 open_clip_torch
 scenedetect
 rapidocr-onnxruntime
+ddgs                # fotos web sin clave (DuckDuckGo) cuando no hay SERPER_API_KEY
