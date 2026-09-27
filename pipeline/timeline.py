@@ -134,17 +134,18 @@ def run(ctx: RunContext) -> None:
     words = WordsFile.model_validate(ctx.read_json("words.json"))
     total_frames = round(shots_file.durationSeconds * fps)
 
-    # Media per shot: stage 6 first, stage 7 for the rest. Paths relative to the public dir.
+    # Media per shot: stage 6, replaced by stage 7 where fallback stepped in (failed download,
+    # rejected by the judge, or a look-alike of an earlier shot). Paths relative to the public dir.
     media: dict[str, TimelineMedia] = {}
     for item in IngestFile.model_validate_json((ctx.work_dir / "media" / "_ingest.json").read_text("utf-8")).media:
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source, credit=item.credit,
         )
     for item in FallbackFile.model_validate(ctx.read_json("fallback.json")).items:
-        media.setdefault(item.shotId, TimelineMedia(
+        media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
             credit=item.credit,
-        ))
+        )
 
     # Frame-accurate shots: each starts where the previous ended.
     starts = [round(s.start * fps) for s in shots_file.shots] + [total_frames]

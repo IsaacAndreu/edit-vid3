@@ -43,7 +43,8 @@ class TimelineBuildTests(unittest.TestCase):
                 "chapters": [], "alignment": {"provider": "local", "model": "x", "scriptWords": 3,
                                               "whisperWords": 3, "matchedWords": 3, "matchRatio": 1.0}})
             media = []
-            for sid, kind, ext in (("s000", "video", "mp4"), ("s001", "image", "jpg")):
+            # s004 also has an ingested clip, but fallback replaced it (e.g. a look-alike): fallback wins.
+            for sid, kind, ext in (("s000", "video", "mp4"), ("s001", "image", "jpg"), ("s004", "video", "mp4")):
                 path = ctx.work_dir / "media" / f"{sid}.{ext}"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"x")

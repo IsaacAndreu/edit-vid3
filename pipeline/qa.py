@@ -119,7 +119,7 @@ def run(ctx: RunContext) -> None:
         if shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
             blockers.append(f"{shot.id}: material de terceros sin crédito")
         # provenance
-        if shot.id in ingest:
+        if shot.id in ingest and shot.id not in fallback:
             selection = selections[shot.id]
             entry.update({
                 "decidedBy": selection.decidedBy, "candidateId": selection.candidateId, "url": selection.url,

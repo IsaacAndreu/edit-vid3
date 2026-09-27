@@ -100,10 +100,26 @@ def run(ctx: RunContext) -> None:
     selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
     ingest = IngestFile.model_validate_json((ctx.work_dir / "media" / MANIFEST).read_text("utf-8"))
     done = {m.shotId for m in ingest.media}
+    max_hamming = int(ctx.section("judge").get("max_phash_distance", 6))
 
+    # The judge compares fragments before download; different uploads of the same broadcast can
+    # still end up on screen twice. Check the downloaded media exactly like QA does (middle frame)
+    # and send any later look-alike here for a replacement.
     pending: dict[str, str] = {}
+    seen: list[tuple[str, str]] = []
+    for media in sorted(ingest.media, key=lambda m: list(shots).index(m.shotId) if m.shotId in shots else 10**6):
+        h = _frame_hash(ctx.root / media.path, media.kind) if (ctx.root / media.path).is_file() else None
+        if h is None:
+            continue
+        twin = next((sid for sid, other in seen if det.hamming(h, other) <= max_hamming), None)
+        if twin:
+            done.discard(media.shotId)
+            pending[media.shotId] = f"repite la imagen de {twin}"
+        else:
+            seen.append((media.shotId, h))
+
     for shot_id in shots:
-        if shot_id in done:
+        if shot_id in done or shot_id in pending:
             continue
         selection = selections.get(shot_id)
         if selection is None or selection.status == "fallback":
@@ -122,9 +138,8 @@ def run(ctx: RunContext) -> None:
     # Everything already on screen, so nothing is repeated.
     used: list[Selection] = [s for s in selections.values() if s.status == "selected" and s.shotId in done]
     pexels_used: set[str] = set()  # media taken by fallback items in this run (cached or new): never twice
-    max_hamming = int(ctx.section("judge").get("max_phash_distance", 6))
     # Hashes of everything on screen: the same stock clip is often re-uploaded to YouTube.
-    on_screen: list[str] = [s.phash for s in used if s.phash]
+    on_screen: list[str] = [h for sid, h in seen if sid in done] + [s.phash for s in used if s.phash]
 
     def looks_used(path: Path, kind: str) -> bool:
         h = _frame_hash(path, kind)
