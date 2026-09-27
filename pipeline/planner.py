@@ -40,7 +40,8 @@ _SOFT_PUNCT = (",", ";", ":", ")", "»", "”", "—")
 # --- 1. Chapters -----------------------------------------------------------------------
 
 OUTLINE_SYSTEM = """
-Eres editor de vídeos documentales de economía de ritmo rápido (estilo "Millionaire Problems").
+Eres editor de vídeos documentales de ritmo rápido para YouTube (b-roll real, cifras grandes, paneles de datos).
+El nicho y el tema los marca el guion.
 Recibes las frases numeradas del guion de un vídeo. Devuelve SOLO un objeto JSON:
 {
   "context": "1-2 frases EN INGLÉS: tema, país/ciudad, época y tipo de metraje que encaja (se usará para buscar b-roll)",
@@ -200,8 +201,9 @@ def cut_shots(
 # --- 3. Labelling ----------------------------------------------------------------------
 
 LABEL_SYSTEM = """
-Eres el editor de un canal de YouTube de documentales de economía de ritmo rápido
-(estilo "Millionaire Problems": b-roll real de terceros, cifras grandes, paneles de datos).
+Eres el editor de un canal de YouTube de documentales de ritmo rápido (b-roll real de
+terceros, cifras grandes, paneles de datos). El nicho y el tema los marcan el TÍTULO y el
+CONTEXTO VISUAL (economía, deporte, historia, tecnología…); los ejemplos de abajo son solo ejemplos.
 Recibes una lista de planos YA CORTADOS (1,5-4 s cada uno) con el texto que se narra
 durante cada plano. Para CADA plano decides qué se ve. Devuelve SOLO JSON:
 
@@ -224,20 +226,24 @@ Objeto "broll" (metraje a buscar en YouTube/bancos de imágenes):
 
 Tipos:
 - "broll" (la mayoría, ~70-80 %): metraje que ilustra lo que se dice. Si el texto
-  es abstracto, elige una imagen documental concreta y reconocible (dinero contado, fichas,
-  mesas de juego, edificios, gente). Varía el encuadre entre planos seguidos; no repitas queries.
+  es abstracto, elige una imagen documental concreta y reconocible del tema (personas, lugares,
+  objetos, momentos reconocibles). Varía el encuadre entre planos seguidos; no repitas queries.
 
 El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISUAL):
 - Comparaciones y metáforas NO se ilustran al pie de la letra: "no es como abrir un
-  restaurante" o "es una máquina de hacer dinero" muestran el tema del vídeo (p. ej. un casino
-  lleno, una ruleta girando), no una cocina ni una máquina.
+  restaurante" o "es una máquina de hacer dinero" muestran el tema del vídeo (en un vídeo de
+  casinos, un casino lleno; en uno de deporte, el atleta compitiendo), no una cocina ni una máquina.
 - Conceptos abstractos o burocráticos (requisitos, regulación, ingresos, trámites, impuestos)
-  → una imagen concreta DEL TEMA (sala de juego, crupier contando fichas, caja del casino,
-  fachada, edificio oficial, billetes), NUNCA pantallas de ordenador, hojas de cálculo,
+  → una imagen concreta DEL TEMA (casinos: sala de juego, crupier, fachada; deporte: el atleta
+  entrenando o compitiendo, el estadio, el podio; historia: lugares y documentos de época),
+  NUNCA pantallas de ordenador, hojas de cálculo,
   programas (Excel, Word), formularios, casillas de verificación ni tutoriales.
+- Si el vídeo trata de una persona concreta (un deportista, un empresario…), pide metraje de
+  ESA persona siempre que el texto hable de ella, con su nombre en "entities" y en las búsquedas
+  (nombre + prueba/acción + año/lugar, p. ej. "Simone Biles vault final 2023 Antwerp"): competiciones, entrenamientos, podios.
 - Los planos con "gancho": true son los primeros segundos: deciden si el espectador se queda.
-  Pide el metraje más espectacular e inconfundible del tema (planos aéreos, salas llenas de
-  gente, ruletas girando, montones de fichas, ciudades de noche), nunca algo genérico.
+  Pide el metraje más espectacular e inconfundible del tema (el protagonista en su mejor
+  momento, planos aéreos, multitudes, momentos cumbre), nunca algo genérico.
 - "stat": UNA cifra que el texto dice en ese plano, mostrada en grande sobre b-roll
   (incluye "broll" como fondo). "value" corto tal como lo diría el guion ("2,7%", "60.000 m²",
   "14 M"); "label" breve en el idioma del guion.

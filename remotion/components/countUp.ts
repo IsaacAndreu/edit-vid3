@@ -1,24 +1,40 @@
 /**
- * Animate every number inside a Spanish-formatted value ("305.800 M$", "2,7%", "65%–80%"):
- * '.' groups thousands, ',' is the decimal mark. Non-numeric parts are kept as they are.
+ * Animate every number inside a value ("305.800 M$", "2,7%", "65%–80%", "15.3", "0.017").
+ * Spanish style: '.' groups thousands and ',' is the decimal mark. A '.' that cannot be a
+ * thousands group ("15.3", "0.017", scores written the English way) is a decimal point and is
+ * kept as such. Non-numeric parts are kept as they are, and the last frame shows the value
+ * exactly as written.
  */
-const NUMBER = /\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?/g;
+const NUMBER = /[1-9]\d{0,2}(?:\.\d{3})+(?:,\d+)?|\d+\.\d+|\d+(?:,\d+)?/g;
+const THOUSANDS = /^[1-9]\d{0,2}(?:\.\d{3})+(?:,\d+)?$/;
 
-const parse = (token: string): { value: number; decimals: number } => {
+interface Parsed {
+  value: number;
+  decimals: number;
+  mark: ',' | '.';
+  grouped: boolean;
+}
+
+export const parseNumber = (token: string): Parsed => {
+  if (!THOUSANDS.test(token) && token.includes('.')) {
+    const [, dec] = token.split('.');
+    return { value: Number(token), decimals: dec.length, mark: '.', grouped: false };
+  }
   const [int, dec = ''] = token.split(',');
-  return { value: Number(int.replace(/\./g, '') + (dec ? `.${dec}` : '')), decimals: dec.length };
+  const value = Number(int.replace(/\./g, '') + (dec ? `.${dec}` : ''));
+  return { value, decimals: dec.length, mark: ',', grouped: token.includes('.') || value >= 10000 };
 };
 
-const format = (value: number, decimals: number, grouped: boolean): string => {
-  const fixed = value.toFixed(decimals);
-  const [int, dec] = fixed.split('.');
+const format = ({ decimals, mark, grouped }: Parsed, value: number): string => {
+  const [int, dec] = value.toFixed(decimals).split('.');
   const intText = grouped ? int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : int;
-  return dec ? `${intText},${dec}` : intText;
+  return dec ? `${intText}${mark}${dec}` : intText;
 };
 
 export const countUp = (text: string, progress: number): string =>
-  text.replace(NUMBER, (token) => {
-    const { value, decimals } = parse(token);
-    const grouped = token.includes('.') || value >= 10000;
-    return format(value * progress, decimals, grouped);
-  });
+  progress >= 1
+    ? text
+    : text.replace(NUMBER, (token) => {
+        const parsed = parseNumber(token);
+        return format(parsed, parsed.value * progress);
+      });

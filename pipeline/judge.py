@@ -49,7 +49,7 @@ LETTERS = "ABCDE"
 TILE = (320, 180)
 
 JUDGE_INSTRUCTIONS = """
-You are the picture editor of a fast-paced economics documentary. For ONE shot you get the
+You are the picture editor of a fast-paced YouTube documentary (any niche; the topic is given). For ONE shot you get the
 narration, a description of the ideal image, and a contact sheet: each row (A, B, C) is one
 candidate, shown by 3 frames of the exact fragment that would be used (a still photo is
 repeated). Rank the candidates that are ACCEPTABLE for this shot, best first.
@@ -65,7 +65,8 @@ naming it.
 Reject (leave out of the ranking) a candidate that:
 - is unrelated to the narration, or shows a different named place/person/brand;
 - is dominated by on-screen text, titles, lower-thirds, watermark banners, UI or screenshots;
-- is a presenter/vlogger talking to camera, a reaction face, or a channel intro/outro;
+- is a presenter/vlogger talking to camera, a reaction face, or a channel intro/outro (an interview
+  of the very person the video is about is fine when the narration quotes or describes them);
 - is blurry, black, frozen, a cartoon/animation or video-game footage (unless asked), or a slide;
 - has burned-in subtitles or captions, even small ones;
 - is a screen recording or tutorial of software, a spreadsheet, a form, a website or an app;
