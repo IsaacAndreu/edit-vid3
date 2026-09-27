@@ -344,7 +344,7 @@ def protagonist_pool(ctx: RunContext, story: ShotsFile) -> tuple[list[Option], d
     blocklist = ctx.section("content").get("title_blocklist")
     options: dict[tuple[str, float | None], Option] = {}
     candidates: dict[str, Candidate] = {}
-    for path in sorted((ctx.work_dir / "candidates").glob("*.json")):
+    for path in sorted((ctx.work_dir / "candidates").glob("s*.json")):   # per-shot files, not the stage summary
         scores_path = ctx.work_dir / "scores" / path.name
         if not scores_path.is_file() or not surname:
             continue

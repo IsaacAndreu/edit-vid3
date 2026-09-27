@@ -32,6 +32,7 @@ class ProtagonistPoolTests(unittest.TestCase):
                 ctx.write_json(f"candidates/{sid}.json", {"shotId": sid, "specHash": "h", "queries": {}, "candidates": cands})
                 ctx.write_json(f"scores/{sid}.json", {"shotId": sid, "inputsHash": "h", "needed": 2.0, "prompts": ["p"],
                                                       "options": [o.model_dump(by_alias=True, exclude_none=True) for o in options]})
+            ctx.write_json("candidates/_sourcing.json", {"shots": 2, "warnings": []})   # stage summary: ignored
             story = ShotsFile.model_construct(subject="Carlos Yulo · artistic gymnastics", title="T")
             pool, candidates = F.protagonist_pool(ctx, story)
         self.assertEqual([(o.candidateId, o.start) for o in pool], [("yt:a", 10), ("yt:a", 50)])
