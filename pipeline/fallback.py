@@ -32,9 +32,11 @@ from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise
 from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked, source_lines
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
+    Candidate,
     FallbackFile,
     FallbackItem,
     IngestFile,
+    Option,
     Selection,
     SelectionFile,
     Shot,
@@ -43,14 +45,14 @@ from .schemas import (
     ShotsFile,
 )
 from .sourcing import needs_footage, youtube_source
-from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key
+from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key, tokens
 from .sourcing.images import image_query
 
 
 STAGE = "fallback"
 OUTPUT = "fallback.json"
 MEDIA_DIR = "media_fallback"
-VERSION = 3  # bump when the fallback policy changes: invalidates per-shot results
+VERSION = 4  # bump when the fallback policy changes: invalidates per-shot results
 PEXELS = "https://api.pexels.com"
 
 
@@ -171,29 +173,18 @@ def run(ctx: RunContext) -> None:
         item: FallbackItem | None = None
         tried: list[str] = []
 
-        # 1. The next option from stage 4 — only when the choice itself was fine but its download failed.
-        if reason.startswith("descarga fallida"):
-            failed_id = selections[shot_id].candidateId
-            scores = ShotScores.model_validate_json((ctx.work_dir / "scores" / f"{shot_id}.json").read_text("utf-8"))
-            candidates = {c.id: c for c in ShotCandidates.model_validate_json(
-                (ctx.work_dir / "candidates" / f"{shot_id}.json").read_text("utf-8")).candidates}
-            judge_cfg = ctx.section("judge")
-            options = [
-                o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
-                if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId != failed_id
-                and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
-                                         ctx.section("content").get("title_blocklist"))
-                and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
-            ][: int(cfg.get("next_options", 3))]
-            if options:
-                # Nobody has looked at these yet: the vision judge vets them before anything is used.
-                verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
-                                     story.context or story.title, False, story.subject, source_lines(options, candidates))
-                by_letter = dict(zip(LETTERS, options))
-                options = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
-                if not options:
-                    tried.append(f"juez rechazó las siguientes opciones: {verdict.get('reason', '')[:100]}")
-            for option in options:
+        def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str) -> FallbackItem | None:
+            """Nobody has looked at these yet: the vision judge vets them, then the first that downloads wins."""
+
+            if not options:
+                return None
+            verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
+                                 story.context or story.title, False, story.subject, source_lines(options, candidates))
+            by_letter = dict(zip(LETTERS, options))
+            accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
+            if not accepted:
+                tried.append(f"{method}: el juez las rechazó ({verdict.get('reason', '')[:100]})")
+            for option in accepted:
                 c = candidates[option.candidateId]
                 selection = Selection(
                     shotId=shot_id, status="selected", decidedBy="score", candidateId=c.id, source=c.source,
@@ -206,14 +197,46 @@ def run(ctx: RunContext) -> None:
                 except Exception as error:
                     tried.append(f"{c.id}: {str(error)[-80:]}")
                     continue
-                item = FallbackItem(
-                    shotId=shot_id, reason=reason, method="next-option", kind=media.kind, path=media.path,
+                if looks_used(ctx.root / media.path, media.kind):
+                    tried.append(f"{c.id}: ya está en pantalla")
+                    continue
+                used.append(selection)
+                return FallbackItem(
+                    shotId=shot_id, reason=reason, method=method, kind=media.kind, path=media.path,
                     source=c.source, candidateId=c.id, url=c.url, start=media.start, end=media.end,
                     durationSeconds=media.durationSeconds, credit=c.credit, attribution=c.attribution,
                     specHash=digest,
                 )
-                used.append(selection)
-                break
+            return None
+
+        judge_cfg = ctx.section("judge")
+        limit = int(cfg.get("next_options", 3))
+
+        # 1. The next option from stage 4 — only when the choice itself was fine but its download failed.
+        if reason.startswith("descarga fallida"):
+            failed_id = selections[shot_id].candidateId
+            scores = ShotScores.model_validate_json((ctx.work_dir / "scores" / f"{shot_id}.json").read_text("utf-8"))
+            candidates = {c.id: c for c in ShotCandidates.model_validate_json(
+                (ctx.work_dir / "candidates" / f"{shot_id}.json").read_text("utf-8")).candidates}
+            options = [
+                o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
+                if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId != failed_id
+                and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
+                                         ctx.section("content").get("title_blocklist"))
+                and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+            ][:limit]
+            item = vet_and_materialise(options, candidates, "next-option")
+
+        # 1b. Protagonist first: any other fragment of the protagonist found for the whole video,
+        # preferring the shot's own event, before any stock footage.
+        if item is None and story.subject and shot.broll:
+            pool, pool_candidates = protagonist_pool(ctx, story)
+            event_words = tokens(shot.broll.event or "")
+            options = sorted(
+                (o for o in pool if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))),
+                key=lambda o: (-len(event_words & tokens(pool_candidates[o.candidateId].title or "")), -o.total),
+            )[:limit]
+            item = vet_and_materialise(options, pool_candidates, "protagonist")
 
         # 2. Pexels (video, then photo), picked by CLIP.
         if item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False):
@@ -304,6 +327,39 @@ def run(ctx: RunContext) -> None:
           f"sin resolver: {len(unresolved)} · coste {spent:.3f} $ · {time.monotonic() - started:.0f} s")
     for shot_id, why in unresolved.items():
         print(f"   AVISO {shot_id}: {why[:200]}")
+
+
+_POOL: dict[str, tuple[list[Option], dict[str, Candidate]]] = {}
+
+
+def protagonist_pool(ctx: RunContext, story: ShotsFile) -> tuple[list[Option], dict[str, Candidate]]:
+    """Every scored fragment, across all shots, from a source whose title or channel names the protagonist."""
+
+    cache_key = f"{ctx.work_dir}:{story.subject}"
+    if cache_key in _POOL:
+        return _POOL[cache_key]
+    person = story.subject.split("·")[0].strip()
+    surname = person.split()[-1].casefold() if person else ""
+    judge_cfg = ctx.section("judge")
+    blocklist = ctx.section("content").get("title_blocklist")
+    options: dict[tuple[str, float | None], Option] = {}
+    candidates: dict[str, Candidate] = {}
+    for path in sorted((ctx.work_dir / "candidates").glob("*.json")):
+        scores_path = ctx.work_dir / "scores" / path.name
+        if not scores_path.is_file() or not surname:
+            continue
+        found = {c.id: c for c in ShotCandidates.model_validate_json(path.read_text("utf-8")).candidates}
+        for total, option in ranked(ShotScores.model_validate_json(scores_path.read_text("utf-8")).options,
+                                    judge_cfg.get("source_bonus", {"youtube": 0.02})):
+            c = found.get(option.candidateId)
+            if (c is None or total < float(judge_cfg.get("min_accept", 0.22))
+                    or surname not in f"{c.title or ''} {c.channel or ''}".casefold()
+                    or blocked_by_title(c.title, c.channel, blocklist)):
+                continue
+            candidates[c.id] = c
+            options.setdefault((option.candidateId, option.start), option)
+    _POOL[cache_key] = (sorted(options.values(), key=lambda o: -o.total), candidates)
+    return _POOL[cache_key]
 
 
 def _frame_hash(path: Path, kind: str) -> str | None:

@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from pipeline import fallback as F
+from pipeline.context import RunContext
+from pipeline.schemas import ShotsFile
+
+from tests.test_judge import opt
+
+BOARD = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+
+
+def _candidate(cid: str, title: str) -> dict:
+    return {"id": cid, "source": "youtube", "kind": "video", "url": f"https://y/{cid}", "title": title, "channel": "C",
+            "license": "l", "credit": "Fuente: C", "attribution": "a", "query": "q", "rankScore": 1,
+            "durationSeconds": 100, "storyboard": BOARD}
+
+
+class ProtagonistPoolTests(unittest.TestCase):
+    def test_pool_holds_only_fragments_from_sources_naming_the_protagonist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = RunContext.create("t", root=Path(tmp), config={"judge": {"min_accept": 0.22}})
+            for sid, cands, options in (
+                ("s001", [_candidate("yt:a", "Carlos Yulo floor gold Paris 2024"), _candidate("yt:b", "Figure skating podium")],
+                 [opt("yt:a", 0.40, start=10, end=12), opt("yt:b", 0.45, start=5, end=7)]),
+                ("s002", [_candidate("yt:a", "Carlos Yulo floor gold Paris 2024")],
+                 [opt("yt:a", 0.30, start=50, end=52), opt("yt:a", 0.10, start=80, end=82)]),   # 0.10 < min_accept
+            ):
+                ctx.write_json(f"candidates/{sid}.json", {"shotId": sid, "specHash": "h", "queries": {}, "candidates": cands})
+                ctx.write_json(f"scores/{sid}.json", {"shotId": sid, "inputsHash": "h", "needed": 2.0, "prompts": ["p"],
+                                                      "options": [o.model_dump(by_alias=True, exclude_none=True) for o in options]})
+            story = ShotsFile.model_construct(subject="Carlos Yulo · artistic gymnastics", title="T")
+            pool, candidates = F.protagonist_pool(ctx, story)
+        self.assertEqual([(o.candidateId, o.start) for o in pool], [("yt:a", 10), ("yt:a", 50)])
+        self.assertEqual(set(candidates), {"yt:a"})
+
+
+if __name__ == "__main__":
+    unittest.main()

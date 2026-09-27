@@ -48,6 +48,7 @@ Recibes las frases numeradas del guion de un vídeo. Devuelve SOLO un objeto JSO
   "context": "1-2 frases EN INGLÉS: tema, país/ciudad, época y tipo de metraje que encaja (se usará para buscar b-roll)",
   "chapters": [{"title": "TÍTULO EN MAYÚSCULAS", "sentence": 12}],
   "subject": "si el vídeo trata de una persona concreta: 'Nombre Apellido · deporte/actividad en inglés' (p. ej. 'Carlos Yulo · artistic gymnastics'); si no, \"\"",
+  "peak": "si hay protagonista: búsqueda EN INGLÉS de su momento cumbre, el más espectacular (p. ej. 'Carlos Yulo Paris 2024 floor gold medal winning moment'); si no, \"\"",
   "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'"}]
 }
 Reglas de "events" (el hilo de la historia):
@@ -86,6 +87,8 @@ def parse_story(result: dict[str, Any], sentences: list[tuple[int, int]]) -> tup
     """Subject and story events from the outline; malformed events are dropped, never fatal."""
 
     subject = str(result.get("subject") or "").strip()[:120]
+    if subject.casefold() in ("none", "null", "n/a", "-"):
+        subject = ""
     events: list[StoryEvent] = []
     raw = result.get("events") if isinstance(result.get("events"), list) else []
     for item in sorted((e for e in raw if isinstance(e, dict)), key=lambda e: _as_int(e.get("sentence"))):
@@ -107,6 +110,12 @@ def _as_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return -1
+
+
+def subject_person(subject: str) -> str:
+    """'Carlos Yulo · artistic gymnastics' → 'Carlos Yulo'."""
+
+    return subject.split("·")[0].strip()
 
 
 def event_at(events: list[StoryEvent], word: int) -> str | None:
@@ -294,10 +303,16 @@ El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISU
 - Si el plano lleva "evento", el b-roll es de ESE evento (esa competición, ese año, ese lugar):
   un podio es EL podio de ese evento, no cualquiera. Incluye persona + competición + año en las
   búsquedas. Solo si el texto del plano habla claramente de otra cosa, busca eso otro.
+- PROTAGONISTA PRIMERO: si hay PROTAGONISTA, por defecto cada plano muestra AL PROTAGONISTA
+  (compitiendo, en el podio, entrenando, en entrevistas, en fotos), aunque el texto cuente un
+  recuerdo, una reflexión o una cita suya. Solo si el texto NOMBRA a otra persona o un lugar
+  concreto, muestra a esa persona o ese lugar (con su nombre en "entities"). NUNCA "un niño
+  cualquiera", "un abuelo", "un gimnasta genérico" ni imágenes de stock de desconocidos.
 - Si el vídeo trata de una persona concreta (un deportista, un empresario…), pide metraje de
   ESA persona siempre que el texto hable de ella, con su nombre en "entities" y en las búsquedas
   (nombre + prueba/acción + año/lugar, p. ej. "Simone Biles vault final 2023 Antwerp"): competiciones, entrenamientos, podios.
 - Los planos con "gancho": true son los primeros segundos: deciden si el espectador se queda.
+  Si hay PROTAGONISTA, muestran su momento cumbre (el "evento" del plano), no lo que narra el texto.
   Pide el metraje más espectacular e inconfundible del tema (el protagonista en su mejor
   momento, planos aéreos, multitudes, momentos cumbre), nunca algo genérico.
 - "stat": UNA cifra que el texto dice en ese plano, mostrada en grande sobre b-roll
@@ -527,6 +542,14 @@ def _with_event(broll: dict[str, Any], event: str | None) -> dict[str, Any]:
     return {**broll, key: queries, "event": event}
 
 
+def _with_subject(broll: dict[str, Any], person: str | None) -> dict[str, Any]:
+    """Protagonist first: a shot that names nobody else shows the protagonist."""
+
+    if not person or broll.get("entities"):
+        return broll
+    return {**broll, "entities": [person]}
+
+
 def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     shot = {k: structural[k] for k in ("id", "startWord", "endWord", "start", "end", "text", "chapter")}
     kind = str(label.get("type") or "broll")
@@ -540,7 +563,8 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
         if label.get(key) not in (None, "", {}):
             shot[key] = label[key]
     if isinstance(shot.get("broll"), dict):
-        shot["broll"] = _with_event(_trim_broll(shot["broll"]), structural.get("event"))
+        shot["broll"] = _with_subject(_with_event(_trim_broll(shot["broll"]), structural.get("event")),
+                                      structural.get("subject"))
     if kind == "broll":
         shot.pop("panel", None), shot.pop("stat", None), shot.pop("panelId", None)
     if kind == "chapter":
@@ -614,6 +638,8 @@ def run(ctx: RunContext) -> None:
 
     chapters, context, outline = plan_chapters(ctx, words_file)
     subject, events = parse_story(outline, _sentences(words))
+    peak = " ".join(str(outline.get("peak") or "").split())[:160] if subject else ""
+    hook_seconds = float(cfg.get("hook_seconds", 30))
     print(f"   {len(chapters)} capítulos: " + " | ".join(c.title for c in chapters if c.showTitle))
     if subject or events:
         print(f"   Protagonista: {subject or '—'} · {len(events)} tramos de la historia")
@@ -640,10 +666,13 @@ def run(ctx: RunContext) -> None:
         }
         if first == chapters[chapter].startWord and chapters[chapter].showTitle:
             item["chapterTitle"] = chapters[chapter].title
-        if start < float(cfg.get("hook_seconds", 30)):  # first seconds: ask for the most striking footage
+        if start < hook_seconds:  # first seconds: ask for the most striking footage
             item["hook"] = True
-        if event := event_at(events, first):
+        # The hook of a video about someone shows their peak moment, whatever the narration says.
+        if event := (peak if peak and start < hook_seconds else event_at(events, first)):
             item["event"] = event
+        if subject:
+            item["subject"] = subject_person(subject)
         structural.append(item)
     print(f"   {len(structural)} planos cortados ({len(structural) / (words_file.durationSeconds / 60):.1f} cortes/min)")
 
