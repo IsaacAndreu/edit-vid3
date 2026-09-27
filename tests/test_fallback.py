@@ -26,6 +26,7 @@ class ProtagonistPoolTests(unittest.TestCase):
             for sid, cands, options in (
                 ("s001", [_candidate("yt:a", "Carlos Yulo floor gold Paris 2024"), _candidate("yt:b", "Figure skating podium")],
                  [opt("yt:a", 0.40, start=10, end=12), opt("yt:b", 0.45, start=5, end=7)]),
+                ("s003", [_candidate("yt:e", "Eldrew Yulo wins World Cup gold")], [opt("yt:e", 0.5, start=1, end=3)]),  # brother
                 ("s002", [_candidate("yt:a", "Carlos Yulo floor gold Paris 2024")],
                  [opt("yt:a", 0.30, start=50, end=52), opt("yt:a", 0.10, start=80, end=82)]),   # 0.10 < min_accept
             ):

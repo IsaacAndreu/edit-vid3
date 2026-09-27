@@ -17,6 +17,7 @@ Shots whose inputs did not change are skipped.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import threading
 import time
@@ -42,7 +43,7 @@ IMAGE_SIZE = (2304, 1296)
 # Sources narrower than this (4:3, square, vertical phone video) are not cropped to 16:9: they keep
 # their frame and the timeline shows them as a framed card over the channel background.
 FIT_BELOW_ASPECT = 1.5
-NORMALISE_VERSION = 2
+NORMALISE_VERSION = 3
 
 
 def probe(path: Path) -> dict[str, Any]:
@@ -70,18 +71,46 @@ def lut_filter(lut: Path | None) -> str:
     return f",lut3d=file='{escaped}'"
 
 
-def _frame_filter(source: Path, width: int, height: int) -> str:
-    """Cover-crop widescreen sources to width x height; fit narrower ones inside it, uncropped."""
+def detect_bars(source: Path, offset: float = 0.0) -> tuple[int, int, int, int] | None:
+    """Black borders baked into the source (a vertical phone video inside a 16:9 frame, letterboxing):
+    the content box (w, h, x, y) if the borders take more than ~6 % of the picture, else None."""
 
+    try:
+        info = probe(source)
+        run = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-ss", f"{max(0.0, offset):.3f}", "-i", str(source), "-t", "1.5",
+             "-vf", "cropdetect=limit=24:round=2:reset=0", "-an", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, KeyError):
+        return None
+    found = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", run.stderr)
+    if not found or not info["width"] or not info["height"]:
+        return None
+    w, h, x, y = map(int, found[-1])
+    area = (w * h) / (info["width"] * info["height"])
+    if area > 0.94 or w < info["width"] * 0.25 or h < info["height"] * 0.4:
+        return None
+    return w, h, x, y
+
+
+def _frame_filter(source: Path, width: int, height: int, offset: float = 0.0) -> str:
+    """Remove baked-in black borders, then cover-crop widescreen content to width x height or fit
+    narrower content (4:3, vertical) inside it, uncropped."""
+
+    crop = ""
     try:
         info = probe(source)
         aspect = info["width"] / info["height"] if info["height"] else 16 / 9
     except (subprocess.CalledProcessError, ValueError, KeyError):
         aspect = 16 / 9
+    if bars := detect_bars(source, offset):
+        w, h, x, y = bars
+        crop, aspect = f"crop={w}:{h}:{x}:{y},", w / h
     if aspect < FIT_BELOW_ASPECT:
-        return (f"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,"
+        return (f"{crop}scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,"
                 "scale=trunc(iw/2)*2:trunc(ih/2)*2")
-    return f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
+    return f"{crop}scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
 
 
 def normalise_video(source: Path, target: Path, *, offset: float, duration: float, lut: Path | None, cfg: dict[str, Any]) -> None:
@@ -89,7 +118,7 @@ def normalise_video(source: Path, target: Path, *, offset: float, duration: floa
 
     width, height = VIDEO_SIZE
     frames = max(1, round(duration * FPS))
-    vf = f"{_frame_filter(source, width, height)},setsar=1,fps={FPS}{lut_filter(lut)},format=yuv420p"
+    vf = f"{_frame_filter(source, width, height, offset)},setsar=1,fps={FPS}{lut_filter(lut)},format=yuv420p"
     tmp = target.with_name(target.stem + ".tmp.mp4")
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-ss", f"{max(0.0, offset):.3f}",

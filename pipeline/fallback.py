@@ -374,21 +374,21 @@ def protagonist_pool(ctx: RunContext, story: ShotsFile) -> tuple[list[Option], d
     if cache_key in _POOL:
         return _POOL[cache_key]
     person = story.subject.split("·")[0].strip()
-    surname = person.split()[-1].casefold() if person else ""
+    name = tokens(person)                     # the full name: the surname alone also matches relatives
     judge_cfg = ctx.section("judge")
     blocklist = ctx.section("content").get("title_blocklist")
     options: dict[tuple[str, float | None], Option] = {}
     candidates: dict[str, Candidate] = {}
     for path in sorted((ctx.work_dir / "candidates").glob("s*.json")):   # per-shot files, not the stage summary
         scores_path = ctx.work_dir / "scores" / path.name
-        if not scores_path.is_file() or not surname:
+        if not scores_path.is_file() or not name:
             continue
         found = {c.id: c for c in ShotCandidates.model_validate_json(path.read_text("utf-8")).candidates}
         for total, option in ranked(ShotScores.model_validate_json(scores_path.read_text("utf-8")).options,
                                     judge_cfg.get("source_bonus", {"youtube": 0.02})):
             c = found.get(option.candidateId)
             if (c is None or total < float(judge_cfg.get("min_accept", 0.22))
-                    or surname not in f"{c.title or ''} {c.channel or ''}".casefold()
+                    or not name <= tokens(f"{c.title or ''} {c.channel or ''}")
                     or blocked_by_title(c.title, c.channel, blocklist)):
                 continue
             candidates[c.id] = c

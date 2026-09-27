@@ -51,6 +51,16 @@ class NormaliseTests(unittest.TestCase):
             info = probe(target)
         self.assertEqual((info["width"], info["height"]), (608, 1080))
 
+    def test_pillarboxed_vertical_video_loses_its_black_bars(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "hd.mp4", Path(tmp) / "s004.mp4"
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                            "-i", "testsrc2=size=406x720:rate=30:duration=3", "-vf", "pad=1280:720:437:0:black",
+                            "-c:v", "libx264", "-preset", "ultrafast", str(source)], check=True)
+            normalise_video(source, target, offset=0.5, duration=1.0, lut=None, cfg={"preset": "ultrafast"})
+            info = probe(target)
+        self.assertLess(info["width"] / info["height"], 0.7)            # a vertical card, not a 16:9 frame
+
     def test_image_gets_ken_burns_headroom(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source, target = Path(tmp) / "photo.png", Path(tmp) / "s002.jpg"
