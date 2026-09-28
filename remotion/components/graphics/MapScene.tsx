@@ -1,11 +1,11 @@
 import type { FC } from 'react';
 import { useMemo } from 'react';
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoArea, geoBounds, geoCentroid, geoGraticule10, geoInterpolate, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
+import { geoArea, geoBounds, geoCentroid, geoDistance, geoGraticule10, geoInterpolate, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world from 'world-atlas/countries-50m.json';
-import { fontFamily, theme } from '../../theme';
+import { alpha, fontFamily, theme } from '../../theme';
 import type { MapGraphic } from '../../graphics';
 import { GraphicTitle } from './GraphicTitle';
 
@@ -38,14 +38,18 @@ const box = (coords: [number, number][], pad: number): [number, number, number, 
   return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2];
 };
 
-/** Mercator view (scale, centre) that fits a lon/lat box in the frame with margins. */
-const view = (b: [number, number, number, number]) => {
+/** Mercator view (scale, centre) that fits a lon/lat box in the frame with margins. `tilted`: the
+ * map will be enlarged 1.3x and leant back, so fit a smaller box, a little higher. */
+const view = (b: [number, number, number, number], tilted = false) => {
   // corners as points: a polygon ring's winding would decide whether it means the box or the rest of the globe
   const outline = {
     type: 'MultiPoint',
     coordinates: [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]],
   } as GeoPermissibleObjects;
-  const p = geoMercator().fitExtent([[260, 200], [W - 260, H - 150]], outline);
+  const extent: [[number, number], [number, number]] = tilted
+    ? [[W / 2 - 560, H / 2 - 290], [W / 2 + 560, H / 2 + 170]]
+    : [[260, 200], [W - 260, H - 150]];
+  const p = geoMercator().fitExtent(extent, outline);
   const centre = p.invert?.([W / 2, H / 2 + 25]) ?? [0, 0];
   return { scale: p.scale(), centre: centre as [number, number] };
 };
@@ -122,9 +126,9 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       const [[x0, y0], [x1, y1]] = geoBounds(mainland(c));
       all.push([x0, y0], [x1, y1]);
     }
-    const start = view(box(all.length ? all : [[0, 20]], 12));
+    const start = view(box(all.length ? all : [[0, 20]], 12), true);
     const zoomPoint = graphic.zoom != null ? points[graphic.zoom] : undefined;
-    const end = zoomPoint ? view(box([[zoomPoint.lon, zoomPoint.lat]], 3)) : start;
+    const end = zoomPoint ? view(box([[zoomPoint.lon, zoomPoint.lat]], 3), true) : start;
     const z = zoomPoint ? t(0.55, 0.85) : 0;
     const scale = Math.exp(lerp(Math.log(start.scale), Math.log(end.scale), z));
     zoomed = z;
@@ -161,10 +165,61 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       ? path({ type: 'LineString', coordinates: points.map((p) => [p.lon, p.lat]) } as GeoPermissibleObjects)
       : null;
 
+  // --- camera: flat maps lean back in perspective (the SVG is tilted; labels and the plane are
+  // placed on screen through the same transform so they stay upright and on their pins)
+  const tiltDeg = graphic.globe ? 0 : interpolate(frame, [0, durationInFrames], [30, 22]);
+  const S = graphic.globe ? 1 : 1.3;                    // overscan so the tilted map fills the frame
+  const P = 1500;
+  const tilt = (xy: [number, number]): [number, number] => {
+    if (!tiltDeg) return xy;
+    const a = (tiltDeg * Math.PI) / 180;
+    const X = (xy[0] - W / 2) * S;
+    const Y = (xy[1] - H / 2) * S;
+    const z = Y * Math.sin(a);
+    const k = P / (P - z);
+    return [W / 2 + X * k, H / 2 + Y * Math.cos(a) * k];
+  };
+
+  // --- the plane travelling on the route (ahead of the line as it is drawn)
+  let plane: { xy: [number, number]; angle: number } | null = null;
+  if (graphic.route && points.length > 1 && route > 0 && route < 1) {
+    const legs = points.slice(1).map((p, i) => geoDistance([points[i].lon, points[i].lat], [p.lon, p.lat]));
+    const at = (progress: number): [number, number] | null => {
+      let left = progress * legs.reduce((s, x) => s + x, 0);
+      for (let i = 0; i < legs.length; i++) {
+        if (left <= legs[i] || i === legs.length - 1) {
+          const f = legs[i] ? Math.min(1, left / legs[i]) : 1;
+          const g = geoInterpolate([points[i].lon, points[i].lat], [points[i + 1].lon, points[i + 1].lat])(f);
+          const xy = projection(g as [number, number]);
+          return xy ? tilt(xy as [number, number]) : null;
+        }
+        left -= legs[i];
+      }
+      return null;
+    };
+    const here = at(route);
+    const before = at(Math.max(0, route - 0.02));
+    if (here && before) {
+      plane = { xy: here, angle: (Math.atan2(here[1] - before[1], here[0] - before[0]) * 180) / Math.PI };
+    }
+  }
+
   return (
     <AbsoluteFill style={{ backgroundColor: theme.ocean }}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+      <svg
+        width={W}
+        height={H}
+        viewBox={`0 0 ${W} ${H}`}
+        style={tiltDeg ? { transform: `perspective(${P}px) rotateX(${tiltDeg}deg) scale(${S})`, transformOrigin: '50% 50%' } : undefined}
+      >
         <defs>
+          <linearGradient id="landShade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={alpha('#ffffff', 0.10)} />
+            <stop offset="100%" stopColor={alpha('#000000', 0.25)} />
+          </linearGradient>
+          <filter id="relief" x="-10%" y="-10%" width="120%" height="130%">
+            <feDropShadow dx="0" dy="5" stdDeviation="4" floodColor="#000" floodOpacity="0.7" />
+          </filter>
           <radialGradient id="ocean" cx="50%" cy="45%" r="60%">
             <stop offset="0%" stopColor={theme.land} />
             <stop offset="100%" stopColor={theme.ocean} />
@@ -185,15 +240,35 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
         ) : (
           <rect width={W} height={H} fill="url(#ocean)" />
         )}
-        {COUNTRIES.map((c, i) => (
-          <path key={i} d={path(c as never) ?? ''} fill={theme.land} stroke={theme.border} strokeWidth={0.8} />
-        ))}
+        <g filter="url(#relief)">
+          {COUNTRIES.map((c, i) => (
+            <path key={i} d={path(c as never) ?? ''} fill={theme.land} stroke={theme.border} strokeWidth={0.8} />
+          ))}
+        </g>
+        {/* soft relief: light from above over the land */}
+        <g opacity={0.9}>
+          {COUNTRIES.map((c, i) => (
+            <path key={`s${i}`} d={path(c as never) ?? ''} fill="url(#landShade)" stroke="none" />
+          ))}
+        </g>
+        {/* highlighted countries raised: a few darker copies below give them thickness */}
+        {[8, 5, 2].map((dy) =>
+          highlighted.map((c, i) => (
+            <path
+              key={`x${dy}-${i}`}
+              d={path(c as never) ?? ''}
+              transform={`translate(0,${dy * light})`}
+              fill={alpha(theme.accent, 0.08 * light * (1 - 0.75 * zoomed))}
+              stroke="none"
+            />
+          )),
+        )}
         {highlighted.map((c, i) => (
           <path
             key={`h${i}`}
             d={path(c as never) ?? ''}
             fill={theme.accent}
-            fillOpacity={0.32 * light * (1 - 0.75 * zoomed)}
+            fillOpacity={0.24 * light * (1 - 0.75 * zoomed)}
             stroke={theme.accent}
             strokeOpacity={light}
             strokeWidth={2.5}
@@ -228,8 +303,9 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       </svg>
       {labelSpots(
         points.map((p) => {
-          const xy = projection([p.lon, p.lat]);
-          return xy && xy[0] > 0 && xy[0] < W && xy[1] > 0 && xy[1] < H ? (xy as [number, number]) : null;   // off screen: no label
+          const raw = projection([p.lon, p.lat]);
+          const xy = raw ? tilt(raw as [number, number]) : null;
+          return xy && xy[0] > 0 && xy[0] < W && xy[1] > 0 && xy[1] < H ? xy : null;   // off screen: no label
         }),
         points.map((p) => (p.note && p.note.length * 0.7 > p.name.length ? p.note.slice(0, Math.ceil(p.note.length * 0.7)) : p.name)),
       ).map((spot, i) => {
@@ -261,6 +337,24 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           </div>
         );
       })}
+      {plane ? (
+        <svg
+          width={64}
+          height={64}
+          viewBox="-32 -32 64 64"
+          style={{ position: 'absolute', left: plane.xy[0] - 32, top: plane.xy[1] - 32, overflow: 'visible' }}
+        >
+          <g transform={`rotate(${plane.angle + 90})`} filter="drop-shadow(0 6px 6px rgba(0,0,0,0.6))">
+            {/* a plane seen from above, nose up before the rotation */}
+            <path
+              d="M0,-26 C3,-26 4,-20 4,-14 L4,-6 L26,6 L26,11 L4,4 L3,18 L10,23 L10,27 L0,24 L-10,27 L-10,23 L-3,18 L-4,4 L-26,11 L-26,6 L-4,-6 L-4,-14 C-4,-20 -3,-26 0,-26 Z"
+              fill={theme.text}
+              stroke={theme.accent}
+              strokeWidth={2}
+            />
+          </g>
+        </svg>
+      ) : null}
       {graphic.title ? <GraphicTitle text={graphic.title} /> : null}
     </AbsoluteFill>
   );

@@ -183,6 +183,14 @@ mejor que un clip (~1 cada 100 s, sección `graphics:` de config.yaml). Todo dat
 tiene que decirse en el guion; las ciudades se sitúan con OpenStreetMap. Muestra de todas las
 plantillas: `out/plantillas-animadas.mp4`.
 
+**Kit de marca:** los colores de todas las plantillas salen de `brand:` en config.yaml (dorado y
+morado en gimnasia). Para otro canal basta con otro `brand:` (en su config.yaml).
+
+**Efectos:** zoom o barrido con desenfoque en los cortes con transición, un «pop» por cada barra,
+chincheta o dato que aparece y un golpe con temblor de cámara y destello cuando cae una cifra
+grande (`assets/sfx/pop-*.mp3`, `impact-*.mp3`; cámbialos por los tuyos si quieres). Los mapas van
+inclinados en perspectiva, con relieve suave y un avión que recorre la ruta.
+
 ## 8. Panel de investigación (tipo TubeLab)
 
 Añade tus claves de la API de YouTube a `.env`, separadas por comas (si alguna tiene más cuota que
