@@ -1,6 +1,6 @@
 import type { CSSProperties, FC } from 'react';
 import { Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame } from 'remotion';
-import { theme } from '../../theme';
+import { alpha, theme } from '../../theme';
 import type { Media } from '../../types';
 
 /** A photo (slow zoom) or a muted clip in a framed box with the accent border. */
@@ -43,7 +43,7 @@ export const MediaBox: FC<{
         borderRadius: 16,
         border: `4px solid ${theme.accent}`,
         backgroundColor: cutout ? 'rgba(20,22,28,0.9)' : '#111',
-        backgroundImage: cutout ? 'radial-gradient(ellipse at 50% 100%, rgba(255,212,0,0.22) 0%, rgba(0,0,0,0) 65%)' : undefined,
+        backgroundImage: cutout ? `radial-gradient(ellipse at 50% 100%, ${alpha(theme.accent, 0.22)} 0%, rgba(0,0,0,0) 65%)` : undefined,
         boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
         ...style,
       }}

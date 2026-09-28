@@ -1,11 +1,10 @@
 import type { FC } from 'react';
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from 'remotion';
-import { fontFamily, theme } from '../../theme';
+import { alpha, fontFamily, palette, theme } from '../../theme';
 import type { ChartGraphic } from '../../graphics';
 import { GridBackground } from '../GridBackground';
 import { GraphicTitle } from './GraphicTitle';
 
-const PALETTE = [theme.accent, '#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#14b8a6', '#eab308'];
 const W = 1700;
 const H = 700;
 const LEFT = 110;
@@ -41,7 +40,7 @@ const Bars: FC<{ g: ChartGraphic }> = ({ g }) => {
                 height: ((H - 150) * d.value * k) / max,
                 backgroundColor: hot ? theme.accent : 'rgba(255,255,255,0.28)',
                 borderRadius: '10px 10px 0 0',
-                boxShadow: hot ? '0 0 40px rgba(255,212,0,0.35)' : 'none',
+                boxShadow: hot ? `0 0 40px ${alpha(theme.accent, 0.35)}` : 'none',
               }}
             />
             <div style={{ fontWeight: 700, fontSize: 30, color: theme.muted, marginTop: 14, textAlign: 'center', height: 76 }}>{d.label}</div>
@@ -66,7 +65,7 @@ const Line: FC<{ g: ChartGraphic }> = ({ g }) => {
   return (
     <svg style={{ position: 'absolute', left: LEFT, top: TOP, overflow: 'visible' }} width={W} height={H}>
       <line x1={0} x2={W} y1={H - 120} y2={H - 120} stroke="rgba(255,255,255,0.25)" strokeWidth={2} />
-      <path d={`${d} L${x(data.length - 1)},${H - 120} L${x(0)},${H - 120} Z`} fill="rgba(255,212,0,0.10)" opacity={draw} />
+      <path d={`${d} L${x(data.length - 1)},${H - 120} L${x(0)},${H - 120} Z`} fill={alpha(theme.accent, 0.1)} opacity={draw} />
       <path d={d} fill="none" stroke={theme.accent} strokeWidth={7} strokeLinejoin="round" pathLength={1} strokeDasharray="1" strokeDashoffset={1 - draw} />
       {data.map((p, i) =>
         i <= shown ? (
@@ -108,20 +107,20 @@ const Pie: FC<{ g: ChartGraphic }> = ({ g }) => {
     if (end <= start) return null;
     const large = end - start > Math.PI ? 1 : 0;
     const p = (a: number) => `${cx + R * Math.cos(a)},${cy + R * Math.sin(a)}`;
-    return <path key={i} d={`M${cx},${cy} L${p(start)} A${R},${R} 0 ${large} 1 ${p(end)} Z`} fill={PALETTE[i % PALETTE.length]} stroke="#07080b" strokeWidth={4} />;
+    return <path key={i} d={`M${cx},${cy} L${p(start)} A${R},${R} 0 ${large} 1 ${p(end)} Z`} fill={palette()[i % 8]} stroke={theme.canvas} strokeWidth={4} />;
   });
   return (
     <div style={{ position: 'absolute', left: LEFT, top: TOP, width: W, height: H }}>
       <svg width={W} height={H} style={{ position: 'absolute' }}>
         {slices}
-        <circle cx={cx} cy={cy} r={R * 0.52} fill="#07080b" />
+        <circle cx={cx} cy={cy} r={R * 0.52} fill={theme.canvas} />
       </svg>
       <div style={{ position: 'absolute', left: 1000, top: 60, display: 'flex', flexDirection: 'column', gap: 22, fontFamily }}>
         {data.map((d, i) => {
           const show = grow(frame, 10 + i * 6, 24 + i * 6);
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 20, opacity: show }}>
-              <div style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: PALETTE[i % PALETTE.length] }} />
+              <div style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: palette()[i % 8] }} />
               <div style={{ fontWeight: 700, fontSize: 36, color: theme.text }}>{d.label}</div>
               <div style={{ fontWeight: 900, fontSize: 36, color: theme.accent }}>{Math.round((d.value / total) * 100)}%</div>
             </div>

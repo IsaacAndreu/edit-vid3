@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 import { AbsoluteFill } from 'remotion';
-import { theme } from '../theme';
+import { alpha, theme } from '../theme';
 
 /** The channel canvas behind framed cards: near-black, a fine grid and a warm glow at the bottom. */
 export const GridBackground: FC = () => (
@@ -15,7 +15,7 @@ export const GridBackground: FC = () => (
     />
     <AbsoluteFill
       style={{
-        background: `radial-gradient(ellipse 85% 45% at 50% 108%, ${theme.glow} 0%, rgba(255,196,0,0.10) 45%, rgba(0,0,0,0) 75%)`,
+        background: `radial-gradient(ellipse 85% 45% at 50% 108%, ${theme.glow} 0%, ${alpha(theme.glow, 0.1)} 45%, rgba(0,0,0,0) 75%)`,
       }}
     />
   </AbsoluteFill>

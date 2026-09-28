@@ -262,14 +262,14 @@ class Renderer:
     def badges(self, credits: list[str]) -> dict[str, Path]:
         """One transparent 1920x1080 PNG per distinct credit text, cached by text."""
 
-        folder = self.ctx.cache_dir / "render" / "badges" / _hash(sorted(self._remotion_sig()))
+        folder = self.ctx.cache_dir / "render" / "badges" / _hash(sorted(self._remotion_sig()), self.ctx.section("brand"))
         paths = {c: folder / f"{_hash(c)}.png" for c in credits}
         missing = [c for c in credits if not paths[c].is_file()]
         if missing:
             folder.mkdir(parents=True, exist_ok=True)
             tmp = self.dir / "badges"
             shutil.rmtree(tmp, ignore_errors=True)
-            self.remotion("Badges", {"credits": missing}, tmp,
+            self.remotion("Badges", {"credits": missing, "brand": self.ctx.section("brand")}, tmp,
                           ["--sequence", "--image-format=png", f"--concurrency={self.concurrency()}"], set())
             frames = sorted(tmp.iterdir(), key=lambda p: int(re.findall(r"\d+", p.stem)[-1]))
             if len(frames) != len(missing):

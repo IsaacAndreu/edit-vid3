@@ -16,9 +16,6 @@ const COUNTRIES = (feature(world as any, (world as any).objects.countries) as an
 
 const W = 1920;
 const H = 1080;
-const OCEAN = '#0a0d13';
-const LAND = '#1b2029';
-const BORDER = '#2b3140';
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -165,12 +162,12 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       : null;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: OCEAN }}>
+    <AbsoluteFill style={{ backgroundColor: theme.ocean }}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <defs>
           <radialGradient id="ocean" cx="50%" cy="45%" r="60%">
-            <stop offset="0%" stopColor="#141a26" />
-            <stop offset="100%" stopColor="#07090e" />
+            <stop offset="0%" stopColor={theme.land} />
+            <stop offset="100%" stopColor={theme.ocean} />
           </radialGradient>
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="6" result="blur" />
@@ -189,7 +186,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           <rect width={W} height={H} fill="url(#ocean)" />
         )}
         {COUNTRIES.map((c, i) => (
-          <path key={i} d={path(c as never) ?? ''} fill={LAND} stroke={BORDER} strokeWidth={0.8} />
+          <path key={i} d={path(c as never) ?? ''} fill={theme.land} stroke={theme.border} strokeWidth={0.8} />
         ))}
         {highlighted.map((c, i) => (
           <path

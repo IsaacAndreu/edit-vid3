@@ -622,6 +622,7 @@ def run(ctx: RunContext) -> None:
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips
         ], fps, float(cfg.get("cold_open_volume", 1.0)))
+    timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
     timeline = with_endscreen(timeline, round(float(cfg.get("endscreen_seconds", 0) or 0) * fps))
     if tracks and cfg.get("music_by_chapter", True):
         parts = music_parts(ctx, timeline, tracks, default)

@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { fontFamily, theme } from '../theme';
+import { alpha, fontFamily, theme } from '../theme';
 import { GridBackground } from './GridBackground';
 
 /**
@@ -45,7 +45,7 @@ export const EndScreen: FC<{ next?: string; subscribe?: string }> = ({ next, sub
             borderRadius: 18,
             border: `5px solid ${theme.accent}`,
             backgroundColor: 'rgba(0,0,0,0.55)',
-            boxShadow: `0 0 60px rgba(255,212,0,0.18)`,
+            boxShadow: `0 0 60px ${alpha(theme.accent, 0.18)}`,
           }}
         />
       </div>
@@ -71,7 +71,7 @@ export const EndScreen: FC<{ next?: string; subscribe?: string }> = ({ next, sub
             borderRadius: '50%',
             border: `5px solid ${theme.accent}`,
             backgroundColor: 'rgba(0,0,0,0.55)',
-            boxShadow: `0 0 60px rgba(255,212,0,0.18)`,
+            boxShadow: `0 0 60px ${alpha(theme.accent, 0.18)}`,
           }}
         />
         <div style={{ ...label, fontSize: 46 }}>{subscribe || 'SUSCRÍBETE'}</div>

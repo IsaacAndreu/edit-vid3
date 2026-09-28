@@ -1,4 +1,5 @@
 import type { Graphic } from './graphics';
+import type { Brand } from './theme';
 
 export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split' | 'endscreen';
 export type Sign = 'positive' | 'negative' | 'neutral';
@@ -102,5 +103,6 @@ export interface TimelineProps {
   labels?: Label[];
   audio: AudioSpec;
   locale?: { chapter?: string; source?: string; next?: string; subscribe?: string };
+  brand?: Brand | null;
   [key: string]: unknown;
 }

@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { fontFamily, theme } from '../../theme';
+import { alpha, fontFamily, theme } from '../../theme';
 import type { TimelineGraphic } from '../../graphics';
 import { GridBackground } from '../GridBackground';
 import { GraphicTitle } from './GraphicTitle';
@@ -34,7 +34,7 @@ export const TimelineScene: FC<{ graphic: TimelineGraphic; durationInFrames: num
           height: 6,
           width: 960,
           backgroundColor: theme.accent,
-          boxShadow: '0 0 24px rgba(255,212,0,0.5)',
+          boxShadow: `0 0 24px ${alpha(theme.accent, 0.5)}`,
         }}
       />
       {events.map((e, i) => {
@@ -72,8 +72,8 @@ export const TimelineScene: FC<{ graphic: TimelineGraphic; durationInFrames: num
                 height: 38,
                 borderRadius: '50%',
                 backgroundColor: reached > 0.5 ? theme.accent : '#333',
-                border: '6px solid #07080b',
-                boxShadow: reached > 0.5 ? '0 0 24px rgba(255,212,0,0.6)' : 'none',
+                border: `6px solid ${theme.canvas}`,
+                boxShadow: reached > 0.5 ? `0 0 24px ${alpha(theme.accent, 0.6)}` : 'none',
                 transform: `scale(${interpolate(near, [0, 1], [0.8, 1.3])})`,
               }}
             />

@@ -108,13 +108,15 @@ def run(ctx: RunContext) -> None:
         found = json.loads(people.read_text("utf-8")).get("people", [])
         cutout = found[0]["image"] if found else None
     backgrounds = background_frames(ctx, timeline)
-    variants = [{"text": texts[i], "accent": ACCENTS[i], "flip": i == 1, "cutout": cutout,
+    brand = ctx.section("brand")
+    accents = [str(brand.get("accent") or ACCENTS[0]), str(brand.get("accent2") or ACCENTS[1]), ACCENTS[2]] if brand else ACCENTS
+    variants = [{"text": texts[i], "accent": accents[i], "flip": i == 1, "cutout": cutout,
                  "background": backgrounds[i % len(backgrounds)] if backgrounds else None} for i in range(3)]
     renderer = Renderer(ctx)
     frames_dir = renderer.dir / "thumbs"
     shutil.rmtree(frames_dir, ignore_errors=True)
     public = {v["background"] for v in variants if v["background"]} | ({cutout} if cutout else set())
-    renderer.remotion("Thumbnails", {"variants": variants}, frames_dir,
+    renderer.remotion("Thumbnails", {"variants": variants, "brand": brand}, frames_dir,
                       ["--sequence", "--image-format=jpeg", "--jpeg-quality=92"], public)
     out_dir = ctx.out_dir / THUMB_DIR
     out_dir.mkdir(parents=True, exist_ok=True)

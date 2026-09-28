@@ -13,7 +13,7 @@ import { PersonCard } from './components/PersonCard';
 import { DataCard, SplitPanel } from './components/Panel';
 import { Question } from './components/Question';
 import { Stat } from './components/Stat';
-import { theme } from './theme';
+import { applyBrand, theme } from './theme';
 import type { Shot, TimelineProps } from './types';
 
 /** What fills the frame under the overlays for one shot. */
@@ -55,7 +55,12 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
 export const localCredit = (credit: string, source?: string): string =>
   source && credit.startsWith('Fuente: ') ? `${source}: ${credit.slice('Fuente: '.length)}` : credit;
 
-export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale }) => (
+export const Documentary: FC<TimelineProps> = (props) => {
+  applyBrand(props.brand);
+  return <DocumentaryBody {...props} />;
+};
+
+const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale }) => (
   <AbsoluteFill style={{ backgroundColor: '#000' }}>
     {shots.map((shot) => (
       <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>

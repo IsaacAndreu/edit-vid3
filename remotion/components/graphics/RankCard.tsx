@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { fontFamily, theme } from '../../theme';
+import { alpha, fontFamily, theme } from '../../theme';
 import type { RankGraphic } from '../../graphics';
 import { GridBackground } from '../GridBackground';
 import { MediaBox } from './MediaBox';
@@ -22,7 +22,7 @@ export const RankCard: FC<{ graphic: RankGraphic; durationInFrames: number }> = 
             fontSize: 260,
             lineHeight: 0.9,
             color: theme.accent,
-            textShadow: '0 0 60px rgba(255,212,0,0.35)',
+            textShadow: `0 0 60px ${alpha(theme.accent, 0.35)}`,
             transform: `scale(${interpolate(number, [0, 1], [1.4, 1])})`,
             transformOrigin: 'left center',
             opacity: Math.min(1, number * 1.4),

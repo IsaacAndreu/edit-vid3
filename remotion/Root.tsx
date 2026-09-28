@@ -6,6 +6,7 @@ import { GraphicScene } from "./components/graphics/GraphicScene";
 import { ParallaxPhoto } from "./components/ParallaxPhoto";
 import type { Graphic } from "./graphics";
 import type { Media } from "./types";
+import { applyBrand, type Brand } from "./theme";
 import { Documentary } from "./Documentary";
 import type { TimelineProps } from "./types";
 
@@ -23,11 +24,13 @@ const empty: TimelineProps = {
 
 interface BadgesProps {
   credits: string[];
+  brand?: Brand | null;
   [key: string]: unknown;
 }
 
 /** Frame i = credit badge i on a transparent background (the render stage overlays it with ffmpeg). */
-const Badges: FC<BadgesProps> = ({ credits }) => {
+const Badges: FC<BadgesProps> = ({ credits, brand }) => {
+  applyBrand(brand);
   const credit = credits[useCurrentFrame()];
   return (
     <AbsoluteFill>
@@ -38,22 +41,26 @@ const Badges: FC<BadgesProps> = ({ credits }) => {
 
 interface ThumbnailsProps {
   variants: ThumbnailVariant[];
+  brand?: Brand | null;
   [key: string]: unknown;
 }
 
 /** Frame i = thumbnail variant i (rendered as an image sequence by the package stage). */
-const Thumbnails: FC<ThumbnailsProps> = ({ variants }) => {
+const Thumbnails: FC<ThumbnailsProps> = ({ variants, brand }) => {
+  applyBrand(brand);
   const variant = variants[useCurrentFrame()];
   return variant ? <Thumbnail variant={variant} /> : <AbsoluteFill />;
 };
 
 interface ShowcaseProps {
   scenes: { graphic?: Graphic; parallax?: Media; seconds: number }[];
+  brand?: Brand | null;
   [key: string]: unknown;
 }
 
 /** Every animated template one after another (samples to review the templates). */
-const Showcase: FC<ShowcaseProps> = ({ scenes }) => {
+const Showcase: FC<ShowcaseProps> = ({ scenes, brand }) => {
+  applyBrand(brand);
   let from = 0;
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>

@@ -6,7 +6,6 @@ import { GridBackground } from '../GridBackground';
 import { GraphicTitle } from './GraphicTitle';
 import { MediaBox } from './MediaBox';
 
-const BLUE = '#3b82f6';
 
 /** A value counting up, with the same decimals as the final figure. */
 const format = (n: number, target: number) => {
@@ -27,7 +26,7 @@ export const Compare: FC<{ graphic: CompareGraphic; durationInFrames: number }> 
         fontFamily,
         fontWeight: 900,
         fontSize: 54,
-        color: align === 'left' ? theme.accent : BLUE,
+        color: align === 'left' ? theme.accent : theme.accent2,
         textAlign: align,
         textShadow: theme.shadow,
       }}
@@ -52,7 +51,7 @@ export const Compare: FC<{ graphic: CompareGraphic; durationInFrames: number }> 
             width={200}
             height={200}
             durationInFrames={durationInFrames}
-            style={{ borderRadius: '50%', borderColor: BLUE }}
+            style={{ borderRadius: '50%', borderColor: theme.accent2 }}
             face
           />
         </div>
@@ -87,11 +86,11 @@ export const Compare: FC<{ graphic: CompareGraphic; durationInFrames: number }> 
               <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.text, fontWeight: 800, fontSize: 40 }}>
                 <span style={{ color: aWins ? theme.accent : theme.text }}>{format(row.a * grow, row.a)}{unit}</span>
                 <span style={{ color: theme.muted, fontWeight: 600, fontSize: 32 }}>{row.label}</span>
-                <span style={{ color: bWins ? BLUE : theme.text }}>{format(row.b * grow, row.b)}{unit}</span>
+                <span style={{ color: bWins ? theme.accent2 : theme.text }}>{format(row.b * grow, row.b)}{unit}</span>
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 {bar(row.a, theme.accent, aWins, 'left')}
-                {bar(row.b, BLUE, bWins, 'right')}
+                {bar(row.b, theme.accent2, bWins, 'right')}
               </div>
             </div>
           );

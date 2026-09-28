@@ -162,6 +162,20 @@ lab:                               # panel (python main.py --panel) e ideas con 
   ideas_queries: 6                 # cuántas de ellas usa --ideas cada día (~160 unidades cada una)
   ideas_days: 180                  # solo vídeos de los últimos N días
 
+brand:                             # kit de marca del canal: colores de TODAS las plantillas (ver remotion/theme.ts)
+  accent: "#f5c451"                # dorado: cifras, títulos, barras, rutas del mapa
+  accent2: "#9b5cff"               # morado: segundo color (lado B de comparativas, 2.ª serie)
+  canvas: "#0b0613"                # fondo con cuadrícula
+  glow: "rgba(140,82,255,0.42)"    # brillo morado abajo del fondo
+  label: "#6a2fd6"                 # rótulos de nombre/lugar
+  wipe: "#8b5cf6"                  # barrido de los capítulos
+  panel: "#150d22"
+  panelRaised: "#20152f"
+  muted: "#a397bd"
+  ocean: "#0a0612"                 # mapas
+  land: "#1d142b"
+  border: "#35274d"
+
 graphics:                          # gráficos animados elegidos del guion (mapas, A vs B, gráficas, línea de tiempo…)
   enabled: true
   seconds_per_graphic: 100         # ~1 gráfico cada 100 s de vídeo
