@@ -318,9 +318,12 @@ def run(ctx: RunContext) -> None:
     for folder in LINKED:
         if (original.work_dir / folder).is_dir():
             _link_tree(original.work_dir / folder, ctx.work_dir / folder)
-    for name in COPIED:
+    for name in COPIED:   # paths inside point at work/<original>/: make them point at this copy
         if (original.work_dir / name).is_file():
-            shutil.copy2(original.work_dir / name, ctx.work_dir / name)
+            text = (original.work_dir / name).read_text("utf-8")
+            for sep in ("/", "\\\\"):
+                text = text.replace(f"work{sep}{original.slug}{sep}", f"work{sep}{ctx.slug}{sep}")
+            (ctx.work_dir / name).write_text(text, encoding="utf-8")
     voice = ctx.work_dir / "audio" / "voz.mp3"
     voice.unlink(missing_ok=True)          # a hard link to the original voice: never write through it
     shutil.copy2(ctx.materials_dir / "voz.mp3", voice)
