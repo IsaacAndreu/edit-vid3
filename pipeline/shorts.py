@@ -178,7 +178,13 @@ def run(ctx: RunContext) -> None:
         return
     words = ctx.read_json("words.json")["words"]
     timeline = ctx.read_json("timeline.json")
-    offset = timeline["audio"].get("voiceFrom", 0) / timeline["fps"]   # narration starts after the cold open
+    fps = timeline["fps"]
+    offset = timeline["audio"].get("voiceFrom", 0) / fps   # narration starts after the cold open
+    gaps = timeline["audio"].get("voiceGaps", [])
+
+    def final(t: float) -> float:   # voice seconds → seconds in the video (cold open and moments included)
+        return offset + t + sum(frames / fps for at, frames in gaps if at / fps <= t)
+
     sents = sentences(words)
     chosen = pick(ctx, sents)
     out_dir = ctx.out_dir / DIR
@@ -188,10 +194,11 @@ def run(ctx: RunContext) -> None:
     notes = ["SHORTS · súbelos con «Vídeo relacionado» apuntando al vídeo largo", ""]
     for n, item in enumerate(chosen, 1):
         first, last = sents[item["from"]], sents[item["to"]]
-        start = offset + first["start"] - 0.15
-        length = last["end"] - first["start"] + 0.6
-        spoken = [w for s in sents[item["from"]: item["to"] + 1] for w in s["words"]]
-        subtitles = ass(spoken, str(item.get("hook") or ""), first["start"] - 0.15, length)
+        start = final(first["start"]) - 0.15
+        length = final(last["end"]) - final(first["start"]) + 0.6
+        spoken = [{**w, "start": final(w["start"]), "end": final(w["end"])}
+                  for s in sents[item["from"]: item["to"] + 1] for w in s["words"]]
+        subtitles = ass(spoken, str(item.get("hook") or ""), start, length)
         target = out_dir / f"short-{n}.mp4"
         render_short(ctx, ctx.out_dir / "video-final.mp4", start, length, subtitles, target)
         print(f"   short-{n}.mp4 · {length:.0f} s · {item.get('hook', '')}")

@@ -95,8 +95,8 @@ def run(ctx: RunContext) -> None:
     ingest = {m["shotId"]: m for m in ctx.read_json("media/_ingest.json")["media"]}
     cold = {}
     if (ctx.work_dir / "coldopen.json").is_file():
-        cold = {str((ctx.root / c.path).relative_to(ctx.work_dir)): c
-                for c in ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).clips}
+        opening = ColdOpenFile.model_validate(ctx.read_json("coldopen.json"))
+        cold = {str((ctx.root / c.path).relative_to(ctx.work_dir)): c for c in [*opening.clips, *opening.moments]}
     fps = timeline.fps
 
     blockers: list[str] = []
@@ -160,7 +160,7 @@ def run(ctx: RunContext) -> None:
         rows.append(entry)
 
     narration = round(float(ctx.read_json("words.json")["durationSeconds"]) * fps)
-    if timeline.durationInFrames != narration + timeline.audio.voiceFrom:
+    if timeline.durationInFrames != narration + timeline.audio.voiceFrom + sum(b for _, b in timeline.audio.voiceGaps):
         blockers.append("La duración del timeline no coincide con la de la narración")
 
     # --- low scores -------------------------------------------------------------------------

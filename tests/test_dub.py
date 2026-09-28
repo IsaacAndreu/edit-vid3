@@ -45,3 +45,30 @@ def test_screen_texts_roundtrip_skips_names():
     dub.apply_texts(t, {**texts, "stat:g": "floor gold", "label:0": "PARIS"})
     assert t["groups"][0]["stat"]["label"] == "floor gold" and t["labels"][0]["text"] == "PARIS"
     assert t["labels"][1]["text"] == "CARLOS YULO"
+
+
+def test_retime_with_a_moment_keeps_its_length_and_maps_around_it():
+    t = _timeline()
+    # a 30-frame moment inserted at voice frame 120 (video frame 150): shots after it moved by 30
+    moment = {"id": "m01", "type": "broll", "from": 150, "durationInFrames": 30, "text": "", "coldOpen": True,
+              "media": {"src": "coldopen/m.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: X"}}
+    for s in t["shots"]:
+        if s["from"] >= 150:
+            s["from"] += 30
+    t["shots"].insert(3, moment)
+    t["labels"] = []
+    t["durationInFrames"] = 360
+    t["audio"]["voiceGaps"] = [[120, 30]]
+    t["audio"]["clips"] = [{"src": "coldopen/m.mp4", "from": 150, "durationInFrames": 30}]
+    out = dub.retime(t, lambda v: v * 0.5, 5.0, 5.0)
+    m = next(s for s in out["shots"] if s["id"] == "m01")
+    assert m["durationInFrames"] == 30 and m["from"] == 30 + 60          # voice 4 s → 2 s
+    assert out["audio"]["voiceGaps"] == [[60, 30]]
+    assert out["audio"]["clips"][0]["from"] == m["from"]
+    assert out["durationInFrames"] == 30 + 150 + 30
+    assert sum(s["durationInFrames"] for s in out["shots"]) == out["durationInFrames"]
+
+
+def test_speech_spans_split_at_pauses():
+    words = [{"start": 0.0, "end": 1.0}, {"start": 1.2, "end": 3.0}]
+    assert dub.speech_spans(words, 30, 10, pauses=[[60, 30]]) == [[10, 70], [100, 130]]

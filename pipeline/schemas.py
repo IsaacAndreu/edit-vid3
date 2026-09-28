@@ -504,12 +504,14 @@ class ColdOpenClip(_Strict):
     height: int
     credit: str
     attribution: str | None = None
+    afterSeconds: float | None = None                        # moments: where the narration pauses (voice seconds)
 
 
 class ColdOpenFile(_Strict):
     slug: str
     seconds: float = 0
     clips: list[ColdOpenClip] = Field(default_factory=list)
+    moments: list[ColdOpenClip] = Field(default_factory=list)   # mid-video pauses with the original sound
 
 
 class TimelineLabel(_Strict):
@@ -592,6 +594,8 @@ class TimelineAudio(_Strict):
     duckedVolume: float = 0.03                               # ≈ −18 dB below musicVolume while the voice speaks
     speech: list[tuple[int, int]] = Field(default_factory=list)   # [from, to) frames with narration
     sfx: list[TimelineSfx] = Field(default_factory=list)
+    # Moments: the narration pauses at voice frame `at` for `frames` while a clip plays with its sound.
+    voiceGaps: list[tuple[int, int]] = Field(default_factory=list)
 
 
 class Timeline(_Strict):

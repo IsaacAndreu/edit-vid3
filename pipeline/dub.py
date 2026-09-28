@@ -138,10 +138,25 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
     """Move every cut/overlay after the cold open with f (voice seconds → voice seconds)."""
 
     fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
-    total = vf + round(new_voice_seconds * fps)
+    gaps = [tuple(g) for g in timeline["audio"].get("voiceGaps", [])]          # (voice frame, frames)
+    new_gaps = [(round(f(at / fps) * fps), frames) for at, frames in gaps]
+    total = vf + round(new_voice_seconds * fps) + sum(b for _, b in gaps)
 
     def frame(old: int) -> int:
-        return old if old <= vf else vf + round(f((old - vf) / fps) * fps)
+        """Old video frame → new one: voice time goes through f, moments keep their length."""
+
+        if old <= vf:
+            return old
+        voice, before = old - vf, 0
+        for (at, frames), (new_at, _) in zip(gaps, new_gaps):
+            start = at + before                   # where this pause begins in the old video (after vf)
+            if voice < start:
+                break
+            if voice < start + frames:            # inside the pause: same offset from its start
+                return vf + new_at + before + (voice - start)
+            before += frames
+        v = voice - before
+        return vf + final_frame(round(f(v / fps) * fps), new_gaps)
 
     out = copy.deepcopy(timeline)
     shots = out["shots"]
@@ -162,8 +177,17 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
         item["from"], item["durationInFrames"] = a, b - a
     for sfx in out["audio"].get("sfx", []):
         sfx["from"] = frame(sfx["from"])
+    for clip in out["audio"].get("clips", []):
+        clip["from"] = frame(clip["from"])
+    out["audio"]["voiceGaps"] = [list(g) for g in new_gaps]
     out["durationInFrames"] = total
     return out
+
+
+def final_frame(voice_frame: int, gaps: list) -> int:
+    """Voice frame → frames after voiceFrom, counting the pauses before it."""
+
+    return voice_frame + sum(frames for at, frames in gaps if at <= voice_frame)
 
 
 # --- media ---------------------------------------------------------------------------------------
@@ -254,22 +278,35 @@ def question_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> Non
     """Question panels show the new narration's words as they are spoken."""
 
     fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
+    gaps = timeline["audio"].get("voiceGaps", [])
+
+    def at(t: float) -> int:
+        return vf + final_frame(round(t * fps), gaps)
+
     for group in timeline["groups"]:
         if group["kind"] != "question":
             continue
         a, b = group["from"], group["from"] + group["durationInFrames"]
-        spoken = [w for w in words if a <= vf + round(w["start"] * fps) < b]
-        group["words"] = [{"text": w["text"], "from": max(0, vf + round(w["start"] * fps) - a)} for w in spoken]
+        spoken = [w for w in words if a <= at(w["start"]) < b]
+        group["words"] = [{"text": w["text"], "from": max(0, at(w["start"]) - a)} for w in spoken]
 
 
-def speech_spans(words: list[dict[str, Any]], fps: int, offset: int, gap: float = 0.5) -> list[list[int]]:
+def speech_spans(words: list[dict[str, Any]], fps: int, offset: int, gap: float = 0.5,
+                 pauses: list | None = None) -> list[list[int]]:
     spans: list[list[float]] = []
     for w in words:
         if spans and w["start"] - spans[-1][1] < gap:
             spans[-1][1] = w["end"]
         else:
             spans.append([w["start"], w["end"]])
-    return [[offset + round(a * fps), offset + round(b * fps)] for a, b in spans]
+    out = []
+    for a, b in spans:
+        fa, fb = round(a * fps), round(b * fps)
+        cuts = [at for at, _ in pauses or [] if fa < at < fb]
+        for s, e in zip([fa, *cuts], [*cuts, fb]):
+            end = final_frame(e - 1, pauses or []) + 1 if e in cuts else final_frame(e, pauses or [])
+            out.append([offset + final_frame(s, pauses or []), offset + end])
+    return out
 
 
 # --- run -----------------------------------------------------------------------------------------
@@ -311,7 +348,8 @@ def run(ctx: RunContext) -> None:
     timeline = retime(old_timeline, time_map(points), new_words["durationSeconds"], MAX_THIRD_PARTY_SECONDS)
     timeline["slug"] = ctx.slug
     question_words(timeline, new_words["words"])
-    timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0))
+    timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0),
+                                               pauses=timeline["audio"].get("voiceGaps", []))
     timeline["locale"] = {"chapter": chapter_word, "source": source_word}
 
     print("[4/6] Material: reutilizando clips (cámara lenta donde el plano es más largo)")

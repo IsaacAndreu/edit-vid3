@@ -120,6 +120,63 @@ def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[Ti
     return result
 
 
+def with_moments(timeline: Timeline, moments: list[tuple[str, float, float, str, int, int]], fps: int,
+                 volume: float = 1.0) -> Timeline:
+    """Pause the narration after peak sentences: (src, voice seconds, clip seconds, credit, w, h).
+
+    Called before the cold open, when frames still equal voice frames. The pause goes at the shot
+    boundary nearest the end of the sentence (within 1.5 s) that does not cut a panel or label;
+    everything after it moves by the clip's length and the voice gets a gap there.
+    """
+
+    for src, after, seconds, credit, width, height in sorted(moments, key=lambda m: m[1]):
+        target = round(after * fps) + sum(b for _, b in timeline.audio.voiceGaps)
+        overlays = [(g.from_, g.from_ + g.durationInFrames) for g in [*timeline.groups, *timeline.labels]]
+        options = [s.from_ for s in timeline.shots[1:] if abs(s.from_ - target) <= 1.5 * fps
+                   and not any(a < s.from_ < b for a, b in overlays)]
+        if not options:
+            continue
+        at = min(options, key=lambda f: abs(f - target))
+        frames = max(1, min(round(seconds * fps), int(MAX_THIRD_PARTY_SECONDS * fps)))
+        n = len(timeline.audio.voiceGaps) + 1
+
+        def moved(item):
+            return item.model_copy(update={"from_": item.from_ + frames}) if item.from_ >= at else item
+
+        index = next(i for i, s in enumerate(timeline.shots) if s.from_ == at)
+        pause = TimelineShot.model_validate({
+            "id": f"m{n:02d}", "type": "broll", "from": at, "durationInFrames": frames, "text": "",
+            "media": {"src": src, "kind": "video", "source": "youtube", "credit": credit, "layout": "full",
+                      "width": width, "height": height},
+            "coldOpen": True,
+        })
+        speech = []
+        for a, b in timeline.audio.speech:
+            if b <= at:
+                speech.append((a, b))
+            elif a >= at:
+                speech.append((a + frames, b + frames))
+            else:
+                speech += [(a, at), (at + frames, b + frames)]
+        voice_at = at - sum(b for _, b in timeline.audio.voiceGaps)
+        audio = timeline.audio.model_copy(update={
+            "clips": [*[moved(c) for c in timeline.audio.clips],
+                      TimelineClipAudio.model_validate({"src": src, "from": at, "durationInFrames": frames, "volume": volume})],
+            "speech": speech, "sfx": [moved(x) for x in timeline.audio.sfx],
+            "voiceGaps": [*timeline.audio.voiceGaps, (voice_at, frames)],
+        })
+        shots = [*timeline.shots[:index], pause, *[moved(s) for s in timeline.shots[index:]]]
+        timeline = Timeline.model_validate({
+            **timeline.model_dump(by_alias=True),
+            "durationInFrames": timeline.durationInFrames + frames,
+            "shots": [s.model_dump(by_alias=True) for s in shots],
+            "groups": [moved(g).model_dump(by_alias=True) for g in timeline.groups],
+            "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
+            "audio": audio.model_dump(by_alias=True),
+        })
+    return timeline
+
+
 def with_cold_open(timeline: Timeline, clips: list[tuple[str, float, str, int, int]], fps: int,
                    volume: float = 1.0) -> Timeline:
     """Put the cold-open clips (src, seconds, credit, width, height) first, with their original
@@ -372,7 +429,12 @@ def run(ctx: RunContext) -> None:
     )
     cold = ctx.work_dir / "coldopen.json"
     if cold.is_file():
-        clips = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).clips
+        opening = ColdOpenFile.model_validate(ctx.read_json("coldopen.json"))
+        clips = opening.clips
+        timeline = with_moments(timeline, [
+            (str((ctx.root / m.path).relative_to(ctx.work_dir)), m.afterSeconds, m.durationSeconds, m.credit, m.width, m.height)
+            for m in opening.moments if m.afterSeconds is not None
+        ], fps, float(cfg.get("moment_volume", 1.0)))
         timeline = with_cold_open(timeline, [
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips

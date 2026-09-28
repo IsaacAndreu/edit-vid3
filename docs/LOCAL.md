@@ -57,6 +57,7 @@ Desde una conexión de casa normalmente no hace falta nada. Si aparece
    ```yaml
    timeline:
      cold_open_seconds: 10   # 10 s de los mejores momentos del protagonista con su sonido original
+     moments: 2              # 2 pausas en el clímax con el sonido original de la competición (0 = ninguna)
    ```
 3. Ejecuta:
    ```bash

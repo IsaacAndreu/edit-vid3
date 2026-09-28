@@ -5,6 +5,12 @@ the video opens with N seconds of the protagonist's peak moments WITH their orig
 (crowd, commentators) before the narration starts, as sports channels do. The fragments show the
 protagonist alone in action (judge-vetted), are never reused later in the video, are at most 5 s
 each and carry their source credit; their audio is levelled and mixed under nothing else.
+
+Moments (`timeline.moments: N`, default 2): the same idea in the middle of the video, like the
+reference channels do at the climax. The LLM picks the sentences after which the story peaks (the
+landing that wins the gold, the score appearing, the fall); the narration pauses there for
+`timeline.moment_seconds` while the competition footage continues with its commentators and crowd:
+the same source as the last shot of that sentence, right after the fragment already shown.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ import subprocess
 from pathlib import Path
 
 from .context import RunContext
+from .llm import complete_json
 from .ingest import FPS, NORMALISE_VERSION, _frame_filter, find_lut, lut_filter, probe
 from .judge import LETTERS, call_judge, contact_sheet, ranked, source_lines
 from .schemas import (
@@ -141,23 +148,111 @@ def pick_fragments(ctx: RunContext) -> list[Selection]:
     return picks
 
 
+MOMENTS_SYSTEM = """
+Eres montador de documentales deportivos. Te paso la narración en frases numeradas. Elige como
+máximo {count} frases DESPUÉS de las cuales la voz debe callarse unos segundos para dejar sonar el
+momento original (comentaristas, público): el instante cumbre de una competición que se está
+contando (el aterrizaje que da el oro, la nota en el marcador, la caída, la victoria). Solo
+momentos de competición que se puedan ver, nunca en la infancia, entrevistas o reflexiones, y
+repartidos por el vídeo (no en los primeros 30 s). Devuelve SOLO JSON: {{"moments": [{{"sentence": 12}}]}}
+""".strip()
+
+
+def pick_moments(ctx: RunContext, count: int, seconds: float) -> list[tuple[Selection, float, float]]:
+    """(source, clip start, voice time to pause at) for up to `count` peak sentences."""
+
+    from .shorts import sentences
+
+    story = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    words = ctx.read_json("words.json")["words"]
+    sents = sentences(words)
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
+    try:
+        chosen = complete_json(ctx, stage=STAGE, section="planner", max_tokens=1000, user=listing[:60000],
+                               system=MOMENTS_SYSTEM.format(count=count)).get("moments", [])
+    except Exception as error:
+        print(f"   Sin momentos: {str(error)[:120]}")
+        return []
+    selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
+    replaced = set()
+    if (ctx.work_dir / "fallback.json").is_file():
+        replaced = {i.shotId for i in FallbackFile.model_validate(ctx.read_json("fallback.json")).items}
+    used = [(s.candidateId, s.start, s.end) for s in selections.values()
+            if s.status == "selected" and s.start is not None and s.end is not None]
+    name = tokens(story.subject.split("·")[0].strip())
+    picks: list[tuple[Selection, float, float]] = []
+    for item in chosen:
+        try:
+            sent = sents[int(item["sentence"])]
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+        if sent["end"] < 30 or any(abs(sent["end"] - p[2]) < 60 for p in picks):
+            continue
+        inside = [s for s in story.shots if s.start >= sent["start"] - 0.05 and s.end <= sent["end"] + 0.6]
+        for shot in reversed(inside):
+            sel = selections.get(shot.id)
+            if (sel is None or shot.id in replaced or sel.status != "selected" or sel.source != "youtube"
+                    or sel.kind != "video" or sel.end is None
+                    or (name and not name <= tokens(f"{sel.title or ''} {sel.channel or ''}"))):
+                continue
+            start = float(sel.end)            # the action continues right after what was shown
+            if any(cid == sel.candidateId and start < b + 0.5 and a < start + seconds + 0.5 for cid, a, b in used
+                   if not (a == sel.start and b == sel.end)):
+                continue
+            picks.append((sel, start, sent["end"]))
+            break
+        if len(picks) == count:
+            break
+    return sorted(picks, key=lambda p: p[2])
+
+
+def fetch(youtube, sel: Selection, start: float, length: float, target: Path, lut: Path | None) -> ColdOpenClip | None:
+    """Download [start, start+length] of a YouTube source WITH its sound, normalised; None if unusable."""
+
+    try:
+        if not target.is_file():
+            source = youtube.download_range(sel.candidateId.removeprefix("yt:"), start, start + length + 0.5,
+                                            fmt=AUDIO_FORMAT, prefix="hdav", audio=True)
+            file_start = float(source.stem.split("_")[1])
+            normalise_with_audio(source, target, offset=start - file_start, duration=length, lut=lut)
+        info = probe(target)
+        if not info["hasAudio"]:
+            target.unlink(missing_ok=True)
+            print(f"   {sel.candidateId}: sin pista de audio, se salta")
+            return None
+    except Exception as error:  # a failed download just means one clip fewer
+        print(f"   {sel.candidateId}: {str(error)[-120:]}")
+        return None
+    return ColdOpenClip(
+        path=target.as_posix(), candidateId=sel.candidateId, url=sel.url or "", title=sel.title, channel=sel.channel,
+        start=round(start, 3), end=round(start + info["duration"], 3), durationSeconds=round(info["duration"], 3),
+        width=info["width"], height=info["height"], credit=sel.credit or "", attribution=sel.attribution,
+    )
+
+
 def inputs(ctx: RunContext) -> list:
-    return [ctx.work_dir / "selection.json", ctx.work_dir / "shots.json", ctx.work_dir / "fallback.json"]
+    return [ctx.work_dir / "selection.json", ctx.work_dir / "shots.json", ctx.work_dir / "fallback.json",
+            ctx.work_dir / "words.json"]
 
 
 def run(ctx: RunContext) -> None:
-    seconds = float(ctx.section("timeline").get("cold_open_seconds", 0) or 0)
-    if seconds <= 0:
-        ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug).model_dump())
-        print("   Sin cold open (timeline.cold_open_seconds = 0)")
-        return
-    picks = pick_fragments(ctx)
+    cfg = ctx.section("timeline")
+    seconds = float(cfg.get("cold_open_seconds", 0) or 0)
+    moment_count = int(cfg.get("moments", 2) or 0)
+    moment_seconds = min(MAX_THIRD_PARTY_SECONDS, float(cfg.get("moment_seconds", 4.5)))
+    picks = pick_fragments(ctx) if seconds > 0 else []
     lengths = plan_clips(seconds, len(picks))
+    moments = pick_moments(ctx, moment_count, moment_seconds) if moment_count > 0 else []
+    if not lengths and not moments:
+        ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug).model_dump())
+        print("   Sin cold open ni momentos con sonido original")
+        return
     lut = find_lut(ctx)
     youtube = youtube_source(ctx)
     out_dir = ctx.work_dir / CLIP_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     clips: list[ColdOpenClip] = []
+    pauses: list[ColdOpenClip] = []
     try:
         for sel in picks:
             if len(clips) == len(lengths):
@@ -165,34 +260,25 @@ def run(ctx: RunContext) -> None:
             length = lengths[len(clips)]
             start = float(sel.start)
             target = out_dir / f"c{len(clips) + 1:02d}-{key(sel.candidateId, start, length, NORMALISE_VERSION)[:8]}.mp4"
-            try:
-                if not target.is_file():
-                    source = youtube.download_range(sel.candidateId.removeprefix("yt:"), start, start + length + 0.5,
-                                                    fmt=AUDIO_FORMAT, prefix="hdav", audio=True)
-                    file_start = float(source.stem.split("_")[1])
-                    normalise_with_audio(source, target, offset=start - file_start, duration=length, lut=lut)
-                info = probe(target)
-                if not info["hasAudio"]:
-                    target.unlink(missing_ok=True)
-                    print(f"   {sel.candidateId}: sin pista de audio, se salta")
-                    continue
-            except Exception as error:  # a failed download just means one clip fewer
-                print(f"   {sel.candidateId}: {str(error)[-120:]}")
-                continue
-            clips.append(ColdOpenClip(
-                path=str(target.relative_to(ctx.root)), candidateId=sel.candidateId, url=sel.url or "",
-                title=sel.title, channel=sel.channel, start=round(start, 3), end=round(start + info["duration"], 3),
-                durationSeconds=round(info["duration"], 3), width=info["width"], height=info["height"],
-                credit=sel.credit or "", attribution=sel.attribution,
-            ))
+            clip = fetch(youtube, sel, start, length, target, lut)
+            if clip:
+                clips.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root))}))
+        for sel, start, after in moments:
+            target = out_dir / f"m{len(pauses) + 1:02d}-{key(sel.candidateId, start, moment_seconds, NORMALISE_VERSION)[:8]}.mp4"
+            clip = fetch(youtube, sel, start, moment_seconds, target, lut)
+            if clip:
+                pauses.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root)), "afterSeconds": round(after, 3)}))
     finally:
         youtube.close()
-    ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips).model_dump())
+    ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses).model_dump())
     total = sum(c.durationSeconds for c in clips)
-    print(f"   Cold open: {len(clips)} clips con sonido original · {total:.1f} s · "
-          + ", ".join(c.credit.removeprefix("Fuente: ") for c in clips))
+    if lengths:
+        print(f"   Cold open: {len(clips)} clips con sonido original · {total:.1f} s · "
+              + ", ".join(c.credit.removeprefix("Fuente: ") for c in clips))
+    print(f"   Momentos con sonido original: {len(pauses)} · "
+          + ", ".join(f"{m.afterSeconds:.0f}s ({m.credit.removeprefix('Fuente: ')})" for m in pauses))
 
 
 def validate(ctx: RunContext) -> bool:
     data = ColdOpenFile.model_validate(ctx.read_json(OUTPUT))
-    return all((ctx.root / c.path).is_file() for c in data.clips)
+    return all((ctx.root / c.path).is_file() for c in [*data.clips, *data.moments])

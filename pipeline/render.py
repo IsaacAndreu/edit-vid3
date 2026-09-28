@@ -110,6 +110,26 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
     return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels, "audio": audio}
 
 
+def voice_chains(index: int, voice_from: int, gaps: list, fps: int, stereo: str) -> list[str]:
+    """The narration, delayed by the cold open and split at each moment so it pauses there."""
+
+    delay = round(voice_from / fps * 1000)
+    if not gaps:
+        return [f"[{index}:a]{stereo}" + (f",adelay={delay}:all=1" if delay else "") + "[voice]"]
+    cuts = [0, *[at for at, _ in gaps]]
+    chains = [f"[{index}:a]{stereo},asplit={len(cuts)}" + "".join(f"[vs{k}]" for k in range(len(cuts)))]
+    shift = 0
+    for k, start in enumerate(cuts):
+        if k:
+            shift += gaps[k - 1][1]
+        end = f":end={cuts[k + 1] / fps:.4f}" if k + 1 < len(cuts) else ""
+        ms = round((voice_from + start + shift) / fps * 1000)
+        chains.append(f"[vs{k}]atrim=start={start / fps:.4f}{end},asetpts=PTS-STARTPTS"
+                      + (f",adelay={ms}:all=1" if ms else "") + f"[vp{k}]")
+    chains.append("".join(f"[vp{k}]" for k in range(len(cuts))) + f"amix=inputs={len(cuts)}:normalize=0[voice]")
+    return chains
+
+
 def music_volume_expr(speech: list[list[int]] | list[tuple[int, int]], fps: int, total: int,
                       music: float, ducked: float) -> str:
     """ffmpeg `volume` expression (t in seconds) for AudioBed's ducking curve."""
@@ -296,9 +316,8 @@ class Renderer:
             return len(files) - 1
 
         stereo = "aresample=48000,aformat=channel_layouts=stereo"
-        voice_delay = round(audio.get("voiceFrom", 0) / self.fps * 1000)
-        chains = [f"[{add(work / audio['voice'])}:a]{stereo}"
-                  + (f",adelay={voice_delay}:all=1" if voice_delay else "") + "[voice]"]
+        chains = voice_chains(add(work / audio["voice"]), audio.get("voiceFrom", 0), audio.get("voiceGaps", []),
+                              self.fps, stereo)
         mix = ["[voice]"]
         if audio.get("music"):
             index = add(work / audio["music"], "-stream_loop", "-1")

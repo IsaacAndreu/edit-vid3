@@ -188,6 +188,9 @@ timeline:
   card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
   labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
   label_seconds: 2.5
+  moments: 2                       # momentos cumbre en los que la voz calla y suena el original (0 = ninguno)
+  moment_seconds: 4.5              # duración de cada uno (máx. 5 s, clip de terceros)
+  moment_volume: 1.0
 
 qa:
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
