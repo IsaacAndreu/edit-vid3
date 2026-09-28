@@ -5,6 +5,8 @@ config.yaml (`ideas:`) with yt-dlp — no YouTube API key — and scores each vi
 channel: views / median views of that channel's recent videos. Outliers (≥ `min_ratio`) are what
 the audience is asking for right now. The LLM turns them, plus your channel's best videos, into
 3 ideas (title, protagonist, angle, hook, why) that are not already made or suggested before.
+With YouTube API keys (YOUTUBE_API_KEYS) it also searches the whole niche (`lab.queries`) for
+outliers of any channel, and reads the videos you saved in the panel.
 Result: out/_ideas/<date>.md, and the same by email/Telegram if configured.
 """
 
@@ -84,6 +86,25 @@ def score(channel: dict[str, Any], min_duration: int = 240) -> list[dict[str, An
              "url": f"https://www.youtube.com/watch?v={v['id']}"} for v in long]
 
 
+def _api(ctx: RunContext):
+    """The YouTube Data API client when keys are configured (more data, whole-niche search), else None."""
+
+    from .ytapi import YouTubeAPI
+
+    api = YouTubeAPI(ctx)
+    return api if api.keys else None
+
+
+def _channel_scored(ctx: RunContext, api: Any, handle: str, limit: int) -> list[dict[str, Any]]:
+    if api is None:
+        return score(channel_videos(ctx, handle, limit))
+    from . import lab
+
+    report = lab.channel_report(ctx, handle, count=limit, api=api)
+    return [{**v, "channel": report["title"], "subscribers": report["subscribers"]}
+            for v in report["videos"] if not v["short"] and v["ratio"] is not None]
+
+
 def done_topics(ctx: RunContext) -> list[str]:
     topics = []
     for folder in (ctx.root / "materiales").iterdir() if (ctx.root / "materiales").is_dir() else []:
@@ -100,29 +121,50 @@ def run(ctx: RunContext) -> Path:
     limit = int(cfg.get("videos_per_channel", 40))
     competitors = [str(c) for c in cfg.get("competitors", []) if str(c).strip()]
     mine = str(cfg.get("my_channel") or "").strip()
-    if not competitors and not mine:
+    if not competitors and not mine and not ctx.section("lab").get("queries"):
         raise ValueError("Configura ideas.my_channel y/o ideas.competitors en config.yaml")
+    min_ratio = float(cfg.get("min_ratio", 2.0))
+    api = _api(ctx)
     outliers: list[dict[str, Any]] = []
     for handle in competitors:
         try:
-            outliers += [v for v in score(channel_videos(ctx, handle, limit)) if v["ratio"] >= float(cfg.get("min_ratio", 2.0))]
+            outliers += [v for v in _channel_scored(ctx, api, handle, limit) if v["ratio"] >= min_ratio]
         except Exception as error:  # one unreachable channel must not stop the ideas
             print(f"   {handle}: {str(error)[:120]}")
-    outliers.sort(key=lambda v: -v["ratio"])
+    if api:   # with API keys: also the outliers of the whole niche, not only of known channels
+        from . import lab
+
+        lab_cfg = ctx.section("lab")
+        for query in lab_cfg.get("queries", [])[: int(lab_cfg.get("ideas_queries", 6))]:
+            try:
+                outliers += lab.outliers(ctx, str(query), days=int(lab_cfg.get("ideas_days", 180)),
+                                         min_ratio=min_ratio, api=api)
+            except Exception as error:
+                print(f"   búsqueda «{query}»: {str(error)[:120]}")
+                if type(error).__name__ == "NoKeysLeft":
+                    break
+    outliers = list({v["id"]: v for v in sorted(outliers, key=lambda v: v["ratio"] or 0)}.values())
+    outliers.sort(key=lambda v: -(v["ratio"] or 0))
     best_mine: list[dict[str, Any]] = []
     if mine:
         try:
-            best_mine = sorted(score(channel_videos(ctx, mine, limit)), key=lambda v: -v["views"])[:8]
+            best_mine = sorted(_channel_scored(ctx, api, mine, limit), key=lambda v: -v["views"])[:8]
         except Exception as error:
             print(f"   {mine}: {str(error)[:120]}")
+    from .lab import saved
+
+    marked = saved(ctx)[:10]
     print(f"   {len(outliers)} outliers en la competencia · {len(best_mine)} mejores vídeos propios")
-    listing = "\n".join(f"- [{v['channel']}] x{v['ratio']} · {v['views']} visitas · {v['title']}" for v in outliers[:25])
+    listing = "\n".join(f"- [{v['channel']}] x{v['ratio']} · {v['views']} visitas · {v['title']}" for v in outliers[:40])
     own = "\n".join(f"- {v['views']} visitas (x{v['ratio']}) · {v['title']}" for v in best_mine)
     niches = ", ".join(cfg.get("niches", ["gimnasia", "atletismo", "patinaje artístico"]))
     result = complete_json(
         ctx, stage=STAGE, section="planner", system=SYSTEM, max_tokens=3000, use_cache=False,
         user=(f"NICHOS DEL CANAL: {niches}\n\nOUTLIERS DE LA COMPETENCIA:\n{listing or '(ninguno)'}\n\n"
               f"MEJORES VÍDEOS DEL CANAL:\n{own or '(sin datos)'}\n\n"
+              f"VÍDEOS QUE EL DUEÑO GUARDÓ COMO REFERENCIA:\n"
+              + ("\n".join(f"- {v.get('title')} ({v.get('channel')})" + (f" · nota: {v['note']}" if v.get("note") else "")
+                           for v in marked) or "(ninguno)") + "\n\n"
               f"TEMAS YA HECHOS O YA SUGERIDOS (no repetir):\n" + "\n".join(f"- {t}" for t in done_topics(ctx)[-60:])),
     )
     ideas = [i for i in result.get("ideas", []) if isinstance(i, dict) and i.get("title")][:3]

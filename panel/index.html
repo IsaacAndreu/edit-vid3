@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratorio de vídeos</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e8eaf0; --muted: #8b93a7;
+    --accent: #ffd400; --good: #22c55e; --warm: #f59e0b; --hot: #ef4444; --chip: #202532;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f6f8; --panel: #fff; --line: #e3e6ec; --text: #161a22; --muted: #5d6679; --chip: #eef0f4; --accent: #b58f00; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line);
+           display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 12px 16px; }
+  h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
+  nav { display: flex; gap: 4px; }
+  nav button { background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; }
+  nav button.on { background: var(--chip); color: var(--text); font-weight: 600; }
+  #quota { margin-left: auto; color: var(--muted); font-size: 12px; min-width: 200px; }
+  #quota .bar { height: 5px; background: var(--chip); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  #quota .bar i { display: block; height: 100%; background: var(--good); }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  section { display: none; } section.on { display: block; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-bottom: 12px; }
+  label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+  input, select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+  input[type=search] { min-width: min(360px, 100%); }
+  .btn { background: var(--accent); color: #111; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; font: inherit; font-weight: 700; }
+  .btn.ghost { background: var(--chip); color: var(--text); font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .chip { background: var(--chip); color: var(--text); border: 0; border-radius: 999px; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 12px; }
+  .status { color: var(--muted); margin: 8px 0 12px; min-height: 20px; }
+  .status.err { color: var(--hot); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .thumb { position: relative; display: block; aspect-ratio: 16/9; background: #000; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ratio { position: absolute; top: 8px; left: 8px; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 13px; color: #111; background: var(--muted); }
+  .ratio.r2 { background: var(--good); } .ratio.r5 { background: var(--warm); } .ratio.r10 { background: var(--hot); color: #fff; }
+  .dur { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,.8); color: #fff; font-size: 12px; padding: 1px 6px; border-radius: 4px; }
+  .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .title { font-weight: 600; color: var(--text); text-decoration: none; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .actions { display: flex; gap: 6px; margin-top: auto; padding-top: 4px; }
+  .actions button { flex: 1; font-size: 12px; padding: 6px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 20px; } .stat span { color: var(--muted); font-size: 12px; }
+  .ideas { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 20px 16px; }
+  .ideas h2 { font-size: 16px; margin: 18px 0 6px; } .ideas p { margin: 4px 0; } .ideas li { margin: 3px 0; }
+  .ideas a { color: var(--accent); }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Laboratorio</h1>
+  <nav>
+    <button data-tab="outliers" class="on">Outliers</button>
+    <button data-tab="canal">Canal</button>
+    <button data-tab="guardados">Guardados</button>
+    <button data-tab="ideas">Ideas</button>
+  </nav>
+  <div id="quota">Cuota…<div class="bar"><i style="width:0"></i></div></div>
+</header>
+<main>
+  <section id="outliers" class="on">
+    <form id="f-out">
+      <label>Buscar<input type="search" name="q" placeholder="p. ej. historia gimnasta olímpica" required></label>
+      <label>Publicados<select name="days">
+        <option value="30">último mes</option><option value="90">3 meses</option>
+        <option value="365" selected>1 año</option><option value="730">2 años</option><option value="0">siempre</option></select></label>
+      <label>Duración<select name="duration">
+        <option value="4plus" selected>+4 min</option><option value="medium">4–20 min</option><option value="long">+20 min</option><option value="any">todos (con Shorts)</option></select></label>
+      <label>Ratio mín.<input name="minRatio" type="number" step="0.5" min="0" value="2" style="width:80px"></label>
+      <label>Subs máx.<input name="maxSubs" type="number" min="0" step="1000" placeholder="sin límite" style="width:120px"></label>
+      <label>Idioma<select name="lang"><option value="">cualquiera</option><option value="es">español</option><option value="en">inglés</option></select></label>
+      <label>Resultados<select name="pages"><option value="1">50 (100 u.)</option><option value="2">100 (200 u.)</option><option value="3">150 (300 u.)</option></select></label>
+      <button class="btn">Buscar</button>
+    </form>
+    <div class="chips" id="queries"></div>
+    <div class="status" id="s-out">Busca un tema: salen los vídeos que han hecho muchas más visitas que la media de su canal.</div>
+    <div class="grid" id="g-out"></div>
+  </section>
+
+  <section id="canal">
+    <form id="f-ch">
+      <label>Canal<input type="search" name="h" placeholder="@GymnastIcons o URL" required></label>
+      <button class="btn">Analizar</button>
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="hide-shorts" checked> ocultar Shorts</label>
+    </form>
+    <div class="chips" id="competitors"></div>
+    <div class="status" id="s-ch"></div>
+    <div id="ch-head"></div>
+    <div class="grid" id="g-ch"></div>
+  </section>
+
+  <section id="guardados">
+    <div class="status" id="s-sv"></div>
+    <div class="grid" id="g-sv"></div>
+  </section>
+
+  <section id="ideas">
+    <form id="f-id"><button class="btn">Generar 3 ideas ahora</button></form>
+    <div class="status" id="s-id"></div>
+    <div class="ideas" id="ideas-md"></div>
+  </section>
+</main>
+<script>
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, props = {}, ...kids) => {
+  const node = Object.assign(document.createElement(tag), props);
+  for (const kid of kids) if (kid != null) node.append(kid);
+  return node;
+};
+const fmt = (n) => n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + " M" : n >= 1e3 ? Math.round(n / 1e3) + " K" : String(n);
+const dur = (s) => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`; };
+const age = (d) => d == null ? "" : d < 31 ? `hace ${d} d` : d < 365 ? `hace ${Math.round(d / 30)} meses` : `hace ${(d / 365).toFixed(1)} años`;
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+function status(id, text, err = false) { const s = $(id); s.textContent = text; s.classList.toggle("err", err); }
+
+let savedIds = new Set();
+
+function card(v, { onChannel = true, remove = false } = {}) {
+  const r = v.ratio;
+  const badge = r == null ? null : el("span", { className: "ratio" + (r >= 10 ? " r10" : r >= 5 ? " r5" : r >= 2 ? " r2" : ""), textContent: `x${r}` });
+  const thumb = el("a", { className: "thumb", href: v.url, target: "_blank", rel: "noopener" },
+    el("img", { src: v.thumbnail || "", loading: "lazy", alt: "" }), badge,
+    v.duration ? el("span", { className: "dur", textContent: dur(v.duration) }) : null);
+  const saveBtn = el("button", { className: "btn ghost", textContent: savedIds.has(v.id) ? "Guardado ✓" : "Guardar" });
+  saveBtn.onclick = async () => {
+    if (remove || savedIds.has(v.id)) { await api("/api/unsave", { id: v.id }); savedIds.delete(v.id); saveBtn.textContent = "Guardar";
+      if (remove) saveBtn.closest(".card").remove(); return; }
+    await api("/api/save", { video: v }); savedIds.add(v.id); saveBtn.textContent = "Guardado ✓";
+  };
+  if (remove) saveBtn.textContent = "Quitar";
+  const actions = el("div", { className: "actions" }, saveBtn);
+  if (onChannel && v.channelId) {
+    const b = el("button", { className: "btn ghost", textContent: "Analizar canal" });
+    b.onclick = () => { show("canal"); $("#f-ch").h.value = v.channelHandle || v.channelId; analyse(); };
+    actions.append(b);
+  }
+  return el("div", { className: "card" }, thumb, el("div", { className: "body" },
+    el("a", { className: "title", href: v.url, target: "_blank", rel: "noopener", textContent: v.title }),
+    el("div", { className: "meta", textContent: [v.channel, v.subscribers != null ? fmt(v.subscribers) + " subs" : null].filter(Boolean).join(" · ") }),
+    el("div", { className: "meta", textContent: [`${fmt(v.views)} visitas`, age(v.ageDays), v.viewsPerDay != null ? `${fmt(v.viewsPerDay)}/día` : null,
+      v.median ? `media canal ${fmt(Math.round(v.median))}` : null].filter(Boolean).join(" · ") }),
+    v.note ? el("div", { className: "meta", textContent: "📝 " + v.note }) : null, actions));
+}
+
+async function quota() {
+  try {
+    const q = await api("/api/quota");
+    const pct = q.total ? Math.round(100 * q.left / q.total) : 0;
+    $("#quota").firstChild.textContent = q.keys ? `${q.keys} claves · ${fmt(q.left)} u. libres hoy (~${q.searchesLeft} búsquedas)` : "Sin claves: añade YOUTUBE_API_KEYS a .env";
+    $("#quota i").style.width = pct + "%";
+    return q;
+  } catch (e) { $("#quota").firstChild.textContent = e.message; }
+}
+
+function show(tab) {
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", s.id === tab));
+  if (tab === "guardados") loadSaved();
+  if (tab === "ideas") loadIdeas();
+}
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => show(b.dataset.tab));
+
+$("#f-out").onsubmit = async (e) => {
+  e.preventDefault();
+  const params = new URLSearchParams(new FormData(e.target));
+  status("#s-out", "Buscando y comparando cada vídeo con la media de su canal…"); $("#g-out").replaceChildren();
+  try {
+    const found = await api("/api/outliers?" + params);
+    status("#s-out", found.length ? `${found.length} vídeos (ordenados por ratio = visitas / media de su canal)` : "Nada con esos filtros: baja el ratio o amplía las fechas.");
+    $("#g-out").replaceChildren(...found.map((v) => card(v)));
+  } catch (err) { status("#s-out", err.message, true); }
+  quota();
+};
+
+let lastChannel = null;
+function renderChannel() {
+  const c = lastChannel; if (!c) return;
+  const stat = (b, s) => el("div", { className: "stat" }, el("b", { textContent: b }), el("span", { textContent: s }));
+  $("#ch-head").replaceChildren(el("h2", { textContent: c.title }), el("div", { className: "stats" },
+    stat(fmt(c.subscribers), "suscriptores"), stat(fmt(c.viewCount), "visitas totales"), stat(String(c.videoCount), "vídeos"),
+    stat(fmt(c.median && Math.round(c.median)), "mediana (largos recientes)"),
+    stat(c.daysBetweenUploads != null ? `${c.daysBetweenUploads} d` : "—", "entre vídeos largos"),
+    stat(`${c.longVideos} / ${c.shorts}`, "largos / Shorts (recientes)")));
+  const hide = $("#hide-shorts").checked;
+  $("#g-ch").replaceChildren(...c.videos.filter((v) => !(hide && v.short)).map((v) => card({ ...v, channelId: null })));
+}
+$("#hide-shorts").onchange = renderChannel;
+async function analyse() {
+  const h = $("#f-ch").h.value.trim(); if (!h) return;
+  status("#s-ch", "Analizando…"); $("#g-ch").replaceChildren(); $("#ch-head").replaceChildren();
+  try { lastChannel = await api("/api/channel?h=" + encodeURIComponent(h)); status("#s-ch", "Vídeos recientes ordenados por ratio"); renderChannel(); }
+  catch (err) { status("#s-ch", err.message, true); }
+  quota();
+}
+$("#f-ch").onsubmit = (e) => { e.preventDefault(); analyse(); };
+
+async function loadSaved() {
+  const items = await api("/api/saved"); savedIds = new Set(items.map((v) => v.id));
+  status("#s-sv", items.length ? `${items.length} guardados · las ideas diarias también se inspiran en ellos` : "");
+  $("#g-sv").replaceChildren(...(items.length ? items.map((v) => card(v, { onChannel: false, remove: true })) : [el("div", { className: "empty", textContent: "Aún no has guardado vídeos." })]));
+}
+
+function markdown(md) {   // tiny, safe renderer for the ideas file (text is escaped first)
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return md.split("\n").map((line) => {
+    let h = esc(line).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    if (line.startsWith("# ")) return `<h2>${h.slice(2)}</h2>`;
+    if (line.startsWith("## ")) return `<h2>${h.slice(3)}</h2>`;
+    if (line.startsWith("- ")) return `<li>${h.slice(2)}</li>`;
+    return line.trim() ? `<p>${h}</p>` : "";
+  }).join("");
+}
+async function loadIdeas() {
+  const data = await api("/api/ideas");
+  $("#ideas-md").innerHTML = data.latest ? markdown(data.latest) : '<p class="empty">Aún no hay ideas: pulsa «Generar 3 ideas ahora».</p>';
+}
+$("#f-id").onsubmit = async (e) => {
+  e.preventDefault(); status("#s-id", "Mirando la competencia y generando ideas (1–2 min)…");
+  try { const data = await api("/api/ideas/run", {}); $("#ideas-md").innerHTML = markdown(data.latest); status("#s-id", "Listo · " + data.file); }
+  catch (err) { status("#s-id", err.message, true); }
+  quota();
+};
+
+(async () => {
+  const q = await quota();
+  const chips = (box, list, onClick) => $(box).replaceChildren(...list.map((t) => { const b = el("button", { className: "chip", textContent: t }); b.onclick = () => onClick(t); return b; }));
+  if (q) {
+    chips("#queries", q.queries || [], (t) => { $("#f-out").q.value = t; $("#f-out").requestSubmit(); });
+    chips("#competitors", [q.myChannel, ...(q.competitors || [])].filter(Boolean), (t) => { $("#f-ch").h.value = t; analyse(); });
+  }
+  try { savedIds = new Set((await api("/api/saved")).map((v) => v.id)); } catch {}
+})();
+</script>
+</body>
+</html>

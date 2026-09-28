@@ -157,7 +157,39 @@ Cada mañana a las 9 (Windows, una vez desde la carpeta del proyecto):
 schtasks /create /tn "Ideas videos" /sc daily /st 08:52 /tr "cmd /c cd /d %CD% && python main.py --ideas > out\ideas.log 2>&1"
 ```
 
-## 8. Tiempos y coste orientativos (vídeo de 10 min)
+## 8. Panel de investigación (tipo TubeLab)
+
+Añade tus claves de la API de YouTube a `.env`, separadas por comas (si alguna tiene más cuota que
+la normal de 10 000 unidades, ponla como `clave:50000`):
+
+```
+YOUTUBE_API_KEYS=clave1,clave2,clave3,clave4,clave5,clave6
+```
+
+y abre el panel:
+
+```bash
+python main.py --panel
+```
+
+Se abre en el navegador (`http://127.0.0.1:8765`, solo en tu PC). Pestañas:
+
+- **Outliers**: busca un tema en todo YouTube y te enseña los vídeos que han hecho muchas más
+  visitas que la media de su propio canal (x2, x5, x10…). Filtros: fecha, duración, ratio mínimo,
+  suscriptores máximos (para encontrar canales pequeños que lo están petando) e idioma. Los botones
+  rápidos son las búsquedas de `lab.queries` en `config.yaml`.
+- **Canal**: suscriptores, mediana de visitas, cada cuánto sube y sus vídeos ordenados por ratio.
+- **Guardados**: lo que marcas con «Guardar». Las ideas diarias también se inspiran en ellos.
+- **Ideas**: las del día y un botón para generar 3 nuevas.
+
+Cuota: cada búsqueda cuesta ~100–160 unidades (100 la búsqueda + ~1–2 por canal nuevo; lo repetido sale
+de la caché). Con 100 000 unidades al día son unas 600 búsquedas. Arriba a la derecha ves lo que
+queda hoy; cuando una clave se agota pasa sola a la siguiente, y se renuevan a las 9:00 (hora de España).
+
+Con claves configuradas, `--ideas` busca además outliers en todo el nicho (las 6 primeras
+búsquedas de `lab.queries`, ~1 000 unidades al día), no solo en los canales de la competencia.
+
+## 9. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar
   metraje y el render. El PC va al máximo durante el análisis y el render.
