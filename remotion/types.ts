@@ -6,7 +6,8 @@ export interface Media {
   kind: 'video' | 'image';
   source: string;
   credit?: string | null;
-  layout?: 'full' | 'card';
+  layout?: 'full' | 'card' | 'person';
+  caption?: string | null; // person cards: the name
   width?: number | null;
   height?: number | null;
 }

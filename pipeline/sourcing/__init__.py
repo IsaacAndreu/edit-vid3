@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from .. import library
 from ..context import RunContext
 from ..schemas import Shot, ShotCandidates, ShotsFile
 from .common import SourceUnavailable, key
@@ -180,6 +181,9 @@ def run(ctx: RunContext) -> None:
                 candidates += youtube.candidates(shot.broll, notes)
             except SourceUnavailable as error:
                 notes.append(str(error))
+        # Sources of the same person that earlier videos already vetted (other moments of them).
+        candidates += library.candidates_for(ctx, shot.broll, {c.id for c in candidates},
+                                             int(cfg.get("library_per_shot", 3)))
         image_queries, image_candidates = images.search(shot.broll, notes)
         queries.update(image_queries)
         candidates += image_candidates

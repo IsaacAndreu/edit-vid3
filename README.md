@@ -38,10 +38,15 @@ logged to `work/<slug>/costs.json`.
 | 5 | `judge` → `selection.json` (priority YouTube → stills; no repeated fragments by timestamps/pHash; `gpt-5-mini` vision judge on every shot (`judge.all`) with the topic, subject, event and source titles; flags screens/off-topic per candidate; 2 rounds max, else fallback) | done |
 | 6 | `ingest` → `media/` (HD span only, frame-accurate, 30 fps, no audio, LUT; widescreen cover-cropped to 1920x1080, 4:3/vertical kept uncropped for cards) | done |
 | 7 | `fallback` → `fallback.json` + `media_fallback/` (also replaces downloaded look-alikes; next vetted option → other fragments of the protagonist → Pexels by CLIP → GPT Image) | done |
+| 7b | `people` → `people.json` + `people/` (protagonist and named people cut out with rembg from a photo — or a frame of their own videos — for a presentation card; kept in the athlete library) | done |
 | 8 | `coldopen` → `coldopen.json` + `coldopen/` (optional, `timeline.cold_open_seconds`: the protagonist's peak with its original sound before the narration, clips ≤ 5 s) | done |
 | 9 | `timeline` → `timeline.json` (Remotion props) + `remotion/` templates: BRoll, FramedCard over GridBackground, LowerThird labels, DataCard, Stat, Question, Chapter ("CAPÍTULO 01 \| título"), Split, CreditBadge, AudioBed | done |
 | 10 | `qa` → `out/<slug>/qa/{contact-sheet.jpg, report.md}`, `manifest.json`, `creditos.txt` (blocks the render on third-party clips > 5 s, missing credits or files; flags low scores and repeats; share per source; API spend) | done |
 | 11 | `render` → `out/<slug>/video-final.mp4` (hybrid: plain footage + credit badge composed by ffmpeg, panels/stats/chapters/stills in one Remotion pass; audio mastered to -16 LUFS; segments joined without re-encoding; postflight checks) | done |
+
+Athlete library: `cache/library/<person>/` keeps the vetted videos/photos and the cutout of each
+protagonist; later videos about the same person get those sources as extra candidates (other
+moments — `cache/used_fragments.json` stops any fragment from appearing in two videos).
 
 Per-video options: `materiales/<slug>/config.yaml` is merged over `config.yaml` for that video only
 (e.g. `timeline: {cold_open_seconds: 10}`).

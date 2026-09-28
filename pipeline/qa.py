@@ -27,7 +27,7 @@ import numpy as np
 
 from .analysis import detectors as det
 from .context import RunContext
-from . import publish
+from . import library, publish
 from .costs import COSTS_FILE
 from .judge import register_used
 from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
@@ -129,7 +129,9 @@ def run(ctx: RunContext) -> None:
         if shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
             blockers.append(f"{shot.id}: material de terceros sin crédito")
         # provenance
-        if shot.coldOpen and shot.media.src in cold:
+        if shot.media.layout == "person":
+            entry.update({"decidedBy": "people", "caption": shot.media.caption})
+        elif shot.coldOpen and shot.media.src in cold:
             clip = cold[shot.media.src]
             entry.update({
                 "decidedBy": "coldopen", "coldOpen": True, "withAudio": True, "candidateId": clip.candidateId,
@@ -222,6 +224,7 @@ def run(ctx: RunContext) -> None:
     (ctx.out_dir / "creditos.txt").write_text(credits, encoding="utf-8")
     publish.write(ctx, timeline, rows)
     register_used(ctx, rows)
+    library.remember(ctx, rows)
     status = "BLOQUEADO" if blockers else "OK"
     report = render_report(ctx.slug, timeline, status, blockers, warnings, low, repeats, by_count, by_time, footage_time,
                            spend, total_usd, rows)

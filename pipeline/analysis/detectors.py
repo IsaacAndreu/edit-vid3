@@ -93,6 +93,19 @@ class Detectors:
                 cv2.fillPoly(mask, [np.array(box, np.int32).reshape(-1, 2)], 1)
         return float(mask.mean())
 
+    def faces(self, frame: np.ndarray, min_area: float = 0.002) -> list[float]:
+        """Area (fraction of the frame) of every face bigger than `min_area`, largest first."""
+
+        h, w = frame.shape[:2]
+        with self._lock:
+            detector = self._faces.get((w, h))
+            if detector is None:
+                detector = cv2.FaceDetectorYN.create(str(self._face_model()), "", (w, h), 0.8)
+                self._faces[(w, h)] = detector
+            _, found = detector.detect(frame)
+        areas = [float(f[2] * f[3] / (w * h)) for f in (found if found is not None else [])]
+        return sorted((a for a in areas if a >= min_area), reverse=True)
+
     def face_area(self, frame: np.ndarray) -> tuple[float, float]:
         """(largest face area / frame area, its horizontal centre 0-1)."""
 

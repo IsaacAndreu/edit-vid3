@@ -132,7 +132,14 @@ content:
   # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
   title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
                     fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun,
-                    excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop]
+                    excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop,
+                    gymnast icons]   # canales de la competencia: su material ya está editado
+
+people:
+  enabled: true                    # tarjeta de presentación (atleta recortado + nombre) la 1.ª vez que se le nombra
+  max: 4                           # protagonista + hasta 3 personas con rótulo de nombre
+  tries: 8                         # fotos que se prueban por persona hasta encontrar una recortable
+  model: u2net_human_seg           # modelo de rembg para recortar personas
 
 timeline:
   assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3

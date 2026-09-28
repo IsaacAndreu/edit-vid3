@@ -6,6 +6,7 @@ import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
 import { FramedCard } from './components/FramedCard';
 import { LowerThird } from './components/LowerThird';
+import { PersonCard } from './components/PersonCard';
 import { DataCard, SplitPanel } from './components/Panel';
 import { Question } from './components/Question';
 import { Stat } from './components/Stat';
@@ -27,6 +28,9 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
         </AbsoluteFill>
       </AbsoluteFill>
     );
+  }
+  if (shot.media.layout === 'person') {
+    return <PersonCard media={shot.media} durationInFrames={shot.durationInFrames} />;
   }
   if (shot.media.layout === 'card') {
     return <FramedCard media={shot.media} durationInFrames={shot.durationInFrames} />;

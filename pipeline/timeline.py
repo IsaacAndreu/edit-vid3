@@ -41,6 +41,7 @@ from .schemas import (
 )
 from .schemas import MAX_THIRD_PARTY_SECONDS
 from .sourcing import needs_footage
+from .sourcing.common import tokens
 
 
 STAGE = "timeline"
@@ -183,6 +184,33 @@ def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share
     return "card" if bucket < card_share else "full"
 
 
+def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
+                 fps: int) -> None:
+    """The first plain shot where the voice names each person (the protagonist after the hook) becomes
+    their presentation card: the cutout from the people stage, with its own credit."""
+
+    path = ctx.work_dir / "people.json"
+    if not path.is_file():
+        return
+    hook = round(float(ctx.section("judge").get("hook_seconds", 30)) * fps)
+    covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    taken: set[str] = set()
+    for index, person in enumerate(ctx.read_json("people.json").get("people", [])):
+        surname = tokens(person["name"].split()[-1])
+        for shot in shots:
+            start, end = shot.from_, shot.from_ + shot.durationInFrames
+            if (shot.id in taken or shot.type != "broll" or shot.groupId or shot.media is None
+                    or shot.durationInFrames < round(1.5 * fps) or (index == 0 and start < hook)
+                    or any(a < end and start < b for a, b in covered) or not surname <= tokens(shot.text)):
+                continue
+            size = _size(ctx.work_dir / person["image"])
+            shot.media = TimelineMedia(src=person["image"], kind="image", source=person.get("source") or "web",
+                                       credit=person.get("credit"), layout="person", caption=person["name"],
+                                       width=size[0], height=size[1])
+            taken.add(shot.id)
+            break
+
+
 def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
                  cfg: dict[str, Any]) -> list[TimelineLabel]:
     """Lower-left tags: the place/date of each story event on its first plain shot, and the names and
@@ -192,7 +220,8 @@ def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[
         return []
     hold = round(float(cfg.get("label_seconds", 2.5)) * fps)
     busy = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
-    busy += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"]
+    busy += [(s.from_, s.from_ + s.durationInFrames) for s in shots
+             if s.type == "chapter" or (s.media and s.media.layout == "person")]
     wanted: list[tuple[int, str, str]] = []            # (frame, kind, text)
     by_id = {s.id: s for s in shots}
     for shot in shots_file.shots:
@@ -225,7 +254,7 @@ def _first_audio(folder: Path, prefix: str = "") -> Path | None:
 def inputs(ctx: RunContext) -> list:
     return [
         ctx.work_dir / "shots.json", ctx.work_dir / "words.json", ctx.work_dir / "media" / "_ingest.json",
-        ctx.work_dir / "fallback.json", ctx.work_dir / "coldopen.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
+        ctx.work_dir / "fallback.json", ctx.work_dir / "coldopen.json", ctx.work_dir / "people.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
     ]
 
 
@@ -301,6 +330,7 @@ def run(ctx: RunContext) -> None:
 
     groups += question_groups(words, shots, groups, fps, total_frames, cfg)
     groups.sort(key=lambda g: g.from_)
+    person_cards(ctx, shots_file, shots, groups, fps)
     labels = place_labels(shots_file, shots, groups, fps, cfg)
 
     # Audio: voice (always), music and SFX only if the files exist.
