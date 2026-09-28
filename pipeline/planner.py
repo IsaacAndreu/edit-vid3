@@ -215,6 +215,22 @@ def _boundary_cost(words: list[Word], b: int) -> float:
     return cost - min(1.0, gap * 2)
 
 
+def _boundary_times(words: list[Word], duration: float) -> list[list[float]]:
+    """Where shot b may start: at word b, or — after a long pause — inside the silence, so a long
+    pause can be shared by two shots instead of forcing one over the maximum length."""
+
+    n = len(words)
+    times: list[list[float]] = [[0.0]]
+    for b in range(1, n):
+        start, previous_end = words[b].start, words[b - 1].end
+        options = [start]
+        if start - previous_end > 0.6:
+            options += [(start + previous_end) / 2, previous_end + 0.15]
+        times.append(options)
+    times.append([duration])
+    return times
+
+
 def cut_shots(
     words: list[Word],
     duration: float,
@@ -223,44 +239,54 @@ def cut_shots(
     forced_starts: set[int],
     min_seconds: float = MIN_SHOT_SECONDS,
     max_seconds: float = MAX_SHOT_SECONDS,
-) -> list[tuple[int, int]]:
-    """Return shots as (firstWord, lastWord), contiguous and covering all words."""
+    with_times: bool = False,
+):
+    """Return shots as (firstWord, lastWord), contiguous and covering all words — and, with
+    `with_times`, the start second of each shot (a cut may fall inside a long pause)."""
 
     n = len(words)
-    times = [0.0] + [words[b].start for b in range(1, n)] + [duration]
+    times = _boundary_times(words, duration)
     forced = sorted(b for b in forced_starts if 0 < b < n)
     inf = math.inf
-    best = [inf] * (n + 1)
-    back = [-1] * (n + 1)
-    best[0] = 0.0
+    best = [[inf] * len(times[b]) for b in range(n + 1)]
+    back: list[list[tuple[int, int]]] = [[(-1, -1)] * len(times[b]) for b in range(n + 1)]
+    best[0][0] = 0.0
     for b in range(1, n + 1):
         cut_cost = _boundary_cost(words, b) if b < n else 0.0
-        for a in range(b - 1, -1, -1):
-            d = times[b] - times[a]
-            if d > max_seconds * 3:
-                break
-            if best[a] == inf or any(a < f < b for f in forced):
-                continue
-            penalty = ((d - target) / 0.8) ** 2
-            if d < min_seconds:
-                penalty += 1000 * (min_seconds - d + 0.1)
-            elif d > max_seconds:
-                penalty += 1000 * (d - max_seconds + 0.1)
-            total = best[a] + penalty + cut_cost
-            if total < best[b]:
-                best[b], back[b] = total, a
-    if best[n] == inf:
+        for j, tb in enumerate(times[b]):
+            for a in range(b - 1, -1, -1):
+                if tb - max(times[a]) > max_seconds * 3:
+                    break
+                if any(a < f < b for f in forced):
+                    continue
+                for i, ta in enumerate(times[a]):
+                    if best[a][i] == inf:
+                        continue
+                    d = tb - ta
+                    if d <= 0:
+                        continue
+                    penalty = ((d - target) / 0.8) ** 2
+                    if d < min_seconds:
+                        penalty += 1000 * (min_seconds - d + 0.1)
+                    elif d > max_seconds:
+                        penalty += 1000 * (d - max_seconds + 0.1)
+                    total = best[a][i] + penalty + cut_cost
+                    if total < best[b][j]:
+                        best[b][j], back[b][j] = total, (a, i)
+    if best[n][0] == inf:
         raise RuntimeError("No se pudo dividir el audio en planos.")
-    bounds, b = [], n
+    bounds: list[tuple[int, float]] = []
+    b, j = n, 0
     while b > 0:
-        bounds.append(b)
-        b = back[b]
+        bounds.append((b, times[b][j]))
+        b, j = back[b][j]
     bounds.reverse()
-    shots, start = [], 0
-    for end in bounds:
-        shots.append((start, end - 1))
-        start = end
-    return shots
+    shots, starts, start_word, start_time = [], [], 0, 0.0
+    for end_word, end_time in bounds:
+        shots.append((start_word, end_word - 1))
+        starts.append(start_time)
+        start_word, start_time = end_word, end_time
+    return (shots, starts) if with_times else shots
 
 
 # --- 3. Labelling ----------------------------------------------------------------------
@@ -677,17 +703,18 @@ def run(ctx: RunContext) -> None:
     print(f"   {len(chapters)} capítulos: " + " | ".join(c.title for c in chapters if c.showTitle))
     if subject or events:
         print(f"   Protagonista: {subject or '—'} · {len(events)} tramos de la historia")
-    cuts = cut_shots(
+    cuts, cut_starts = cut_shots(
         words,
         words_file.durationSeconds,
         target=float(cfg.get("target_shot_seconds", 2.6)),
         forced_starts={c.startWord for c in chapters},
+        with_times=True,
     )
     chapter_starts = [c.startWord for c in chapters]
     structural: list[dict[str, Any]] = []
     for number, (first, last) in enumerate(cuts, start=1):
-        start = 0.0 if first == 0 else words[first].start
-        end = words_file.durationSeconds if last == len(words) - 1 else words[last + 1].start
+        start = cut_starts[number - 1]
+        end = cut_starts[number] if number < len(cuts) else words_file.durationSeconds
         chapter = max(i for i, s in enumerate(chapter_starts) if s <= first)
         item = {
             "id": f"s{number:03d}",

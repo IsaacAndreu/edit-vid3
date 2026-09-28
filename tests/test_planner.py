@@ -46,6 +46,18 @@ class CutShotsTests(unittest.TestCase):
         self.assertTrue(all(1.5 <= d <= 4.0 for d in durations), durations)
         self.assertIn(100, [a for a, _ in shots])
 
+    def test_a_long_pause_is_shared_instead_of_breaking_the_maximum(self) -> None:
+        # "En 2016," then 5 s of silence, then more speech: no word boundary makes every shot ≤ 4 s.
+        items = [("a", 0.0, 0.4), ("b", 0.5, 0.9), ("c", 1.0, 1.4), ("En", 1.5, 1.7), ("2016,", 1.8, 2.4),
+                 ("la", 7.4, 7.6), ("beca", 7.7, 8.2), ("de", 8.3, 8.4), ("Tokio", 8.5, 9.0), ("fin.", 9.1, 9.6)]
+        words = [Word.model_validate({"index": i, "text": t, "start": a, "end": b, "matched": True,
+                                      "sentenceEnd": t.endswith(".")}) for i, (t, a, b) in enumerate(items)]
+        shots, starts = cut_shots(words, 10.0, target=2.6, forced_starts=set(), with_times=True)
+        ends = starts[1:] + [10.0]
+        self.assertTrue(all(1.5 - 1e-6 <= e - s <= 4.0 + 1e-6 for s, e in zip(starts, ends)), list(zip(starts, ends)))
+        self.assertEqual(shots[0][0], 0)
+        self.assertEqual(shots[-1][1], len(words) - 1)
+
     def test_prefers_sentence_ends(self) -> None:
         words = _words(140)
         shots = cut_shots(words, words[-1].end + 0.2, target=2.6, forced_starts=set())
