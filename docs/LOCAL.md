@@ -159,6 +159,17 @@ Cada mañana a las 9 (Windows, una vez desde la carpeta del proyecto):
 schtasks /create /tn "Ideas videos" /sc daily /st 08:52 /tr "cmd /c cd /d %CD% && python main.py --ideas > out\ideas.log 2>&1"
 ```
 
+## 7b. Música y transiciones
+
+- **Transiciones:** `assets/sfx/whoosh*.mp3`. Suena casi siempre la de `timeline.whoosh_main`
+  (espada) y 1 de cada 4 otra, en capítulos, momentos, cold open, tarjetas y cifras.
+- **Música de fondo:** `assets/music/<tono>-<nombre>.mp3`, con tono = `intriga`, `triunfo`,
+  `caida`, `tension`, `remontada` o `infancia`. Cada capítulo recibe el tono que le pega (lo decide
+  el LLM entre los tonos que tengan pistas) y la música cambia con un fundido de 4 s. Entre vídeos
+  se alternan las pistas de cada tono (las menos usadas primero: `cache/music_usage.json`).
+  Todas se nivelan solas; se repiten en bucle con fundido si el capítulo es más largo.
+- Volumen: `timeline.music_volume` (en las pausas) y `timeline.duck_db` (cuánto baja bajo la voz).
+
 ## 8. Panel de investigación (tipo TubeLab)
 
 Añade tus claves de la API de YouTube a `.env`, separadas por comas (si alguna tiene más cuota que

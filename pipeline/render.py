@@ -313,6 +313,28 @@ class Renderer:
 
     # --- audio ------------------------------------------------------------------------------
 
+    def chapter_bed(self, parts: list[dict[str, Any]], seconds: float) -> Path:
+        """One bed from the chapter parts: each track looped to its part, cross-faded into the next
+        (the fade ends where the next chapter starts)."""
+
+        fade = float(self.cfg.get("music_crossfade", 4.0))
+        beds, lengths = [], []
+        for i, part in enumerate(parts):
+            length = part["durationInFrames"] / self.fps + (fade if i + 1 < len(parts) else 0.0)
+            if i + 1 == len(parts):
+                length = max(length, seconds - part["from"] / self.fps)
+            beds.append(self.music_bed(self.ctx.work_dir / part["src"], length))
+            lengths.append(length)
+        out = self.dir / f"music-parts-{_hash([_file_sig(b) for b in beds], lengths, fade)}.wav"
+        if out.is_file():
+            return out
+        chain = ";".join(f"[{i}:a]atrim=end={length:.3f},asetpts=PTS-STARTPTS[p{i}]" for i, length in enumerate(lengths))
+        chain += ";[p0]anull[x0]" + "".join(
+            f";[x{i - 1}][p{i}]acrossfade=d={fade}:c1=tri:c2=tri[x{i}]" for i in range(1, len(beds)))
+        _run(["ffmpeg", "-y", "-v", "error", *[a for b in beds for a in ("-i", str(b))], "-filter_complex", chain,
+              "-map", f"[x{len(beds) - 1}]", "-ar", "48000", "-ac", "2", str(out)], "la música por capítulos")
+        return out
+
     def music_bed(self, track: Path, seconds: float) -> Path:
         """The track levelled to MUSIC_LUFS (any track sits the same under the voice) and repeated
         until the video ends, each repetition cross-faded into the next."""
@@ -349,7 +371,9 @@ class Renderer:
                               self.fps, stereo)
         mix = ["[voice]"]
         if audio.get("music"):
-            index = add(self.music_bed(work / audio["music"], seconds))
+            parts = audio.get("musicParts") or []
+            index = add(self.chapter_bed(parts, seconds) if len(parts) > 1 else
+                        self.music_bed(work / (parts[0]["src"] if parts else audio["music"]), seconds))
             # ducked under the voice AND under the original sound of the cold open / moments
             busy = sorted([*[tuple(s) for s in audio.get("speech", [])],
                            *[(c["from"], c["from"] + c["durationInFrames"]) for c in audio.get("clips", [])]])

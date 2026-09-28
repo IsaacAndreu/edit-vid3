@@ -62,3 +62,20 @@ def test_main_whoosh_most_of_the_time():
         s.chapterTitle = "X"
     out = transition_sfx(t, ["w-1-fast.mp3", "w-2-espada.mp3", "w-3-giro.mp3"], 0.6, min_gap=1.0, main="espada", other_every=4)
     assert [s.src for s in out] == ["w-2-espada.mp3"] * 3 + ["w-1-fast.mp3"]
+
+
+def test_music_parts_by_chapter_rotate_across_videos(tmp_path, monkeypatch):
+    from pipeline import timeline as tl
+    from pipeline.context import RunContext
+
+    t = _timeline()
+    for i in (2, 4):
+        t.shots[i].type = "chapter"
+        t.shots[i].chapterTitle = "X"
+    monkeypatch.setattr(tl, "complete_json", lambda *a, **k: {"moods": ["intriga", "triunfo", "triunfo"]})
+    tracks = {"intriga": ["audio/intriga-a.mp3", "audio/intriga-b.mp3"], "triunfo": ["audio/triunfo-a.mp3"]}
+    first = tl.music_parts(RunContext.create("v1", root=tmp_path, config={}), t, tracks, "intriga")
+    assert [(p["mood"], p["src"], p["from"], p["durationInFrames"]) for p in first] == [
+        ("intriga", "audio/intriga-a.mp3", 0, 120), ("triunfo", "audio/triunfo-a.mp3", 120, 180)]
+    second = tl.music_parts(RunContext.create("v2", root=tmp_path, config={}), t, tracks, "intriga")
+    assert second[0]["src"] == "audio/intriga-b.mp3"            # the next video starts with the other intriga track

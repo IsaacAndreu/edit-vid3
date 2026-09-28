@@ -15,6 +15,7 @@ and any music/SFX are copied into work/<slug>/audio/.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -22,8 +23,10 @@ from typing import Any
 import hashlib
 
 from .context import RunContext
+from .llm import complete_json
 from .ingest import probe
 from .schemas import (
+    MusicPart,
     FallbackFile,
     IngestFile,
     PanelStep,
@@ -307,6 +310,68 @@ def _all_audio(folder: Path, prefix: str) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTENSIONS and p.name.lower().startswith(prefix))
 
 
+MUSIC_USAGE = "music_usage.json"   # in cache/: which tracks each video used
+
+MOODS = {
+    "intriga": "misterio, investigación, contexto, preguntas, la historia se va desvelando",
+    "triunfo": "victoria, oro, récord, podio, celebración, la gloria",
+    "caida": "fracaso, lesión, derrota, tristeza, dudas, pérdida",
+    "tension": "la espera antes de una final, presión, momento decisivo, suspense",
+    "remontada": "superación, volver más fuerte, determinación, esfuerzo que da fruto",
+    "infancia": "orígenes, niñez, familia, primeros pasos, recuerdos",
+}
+
+MUSIC_SYSTEM = """
+Eres el montador musical de un documental deportivo. Para cada tramo numerado del guion elige el
+tono de la música de fondo, SOLO entre estos: {moods}. Evita cambiar de tono sin motivo: tramos
+seguidos con el mismo ánimo llevan el mismo tono. Devuelve SOLO JSON: {{"moods": ["tono del tramo 0", ...]}}
+""".strip()
+
+
+def music_parts(ctx: RunContext, timeline: Timeline, tracks: dict[str, list[str]], default: str) -> list[dict]:
+    """Chapter by chapter: the mood the LLM picks (among moods with tracks), tracks rotating per mood,
+    consecutive chapters with the same mood merged into one part."""
+
+    starts = [0] + [s.from_ for s in timeline.shots if s.type == "chapter" and s.from_ > 0]
+    bounds = list(zip(starts, [*starts[1:], timeline.durationInFrames]))
+    moods = [default] * len(bounds)
+    if len(tracks) > 1:
+        texts = []
+        for a, b in bounds:
+            text = " ".join(s.text for s in timeline.shots if a <= s.from_ < b and s.text)
+            texts.append(text[:1500] or "(apertura con el sonido original de la competición)")
+        try:
+            listed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=600,
+                                   system=MUSIC_SYSTEM.format(moods=", ".join(f"{m} ({MOODS.get(m, m)})" for m in tracks)),
+                                   user="\n\n".join(f"[{i}] {t}" for i, t in enumerate(texts))).get("moods", [])
+            moods = [str(m).lower() if str(m).lower() in tracks else default for m in listed][:len(bounds)]
+            moods += [moods[-1] if moods else default] * (len(bounds) - len(moods))
+        except Exception as error:  # music by chapter is a nicety: one mood for all otherwise
+            print(f"   Música por capítulos no disponible: {str(error)[:100]}")
+    # Least used first across the channel's videos (cache/music_usage.json), so videos alternate tracks.
+    registry = ctx.cache_dir / MUSIC_USAGE
+    usage: dict[str, list[str]] = json.loads(registry.read_text("utf-8")) if registry.is_file() else {}
+    count: dict[str, int] = {}
+    for slug, names in usage.items():
+        if slug != ctx.slug:
+            for name in names:
+                count[name] = count.get(name, 0) + 1
+    queue = {m: sorted(srcs, key=lambda s: (count.get(Path(s).name, 0), Path(s).name)) for m, srcs in tracks.items()}
+    parts: list[dict] = []
+    used = {m: 0 for m in tracks}
+    for (a, b), mood in zip(bounds, moods):
+        if parts and parts[-1]["mood"] == mood:
+            parts[-1]["durationInFrames"] = b - parts[-1]["from"]
+            continue
+        src = queue[mood][used[mood] % len(queue[mood])]
+        used[mood] += 1
+        parts.append({"src": src, "from": a, "durationInFrames": b - a, "mood": mood})
+    usage[ctx.slug] = sorted({Path(p["src"]).name for p in parts})
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(usage, ensure_ascii=False, indent=1), encoding="utf-8")
+    return parts
+
+
 def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap: float = 4.0,
                    main: str = "", other_every: int = 4) -> list[TimelineSfx]:
     """Whooshes at the transitions, rotating through the files, never two closer than `min_gap` s.
@@ -444,7 +509,13 @@ def run(ctx: RunContext) -> None:
             shutil.copy2(path, target)
         return str(target.relative_to(ctx.work_dir))
 
-    music = publish(_first_audio(assets / "music"))
+    tracks: dict[str, list[str]] = {}
+    for path in _all_audio(assets / "music", ""):
+        mood = path.stem.split("-")[0].lower()
+        tracks.setdefault(mood if mood in MOODS else "general", []).append(publish(path))
+    default = str(cfg.get("music_default", "intriga"))
+    default = default if default in tracks else next(iter(tracks), "")
+    music = tracks[default][0] if tracks else None
     whooshes = [publish(p) for p in _all_audio(assets / "sfx", "whoosh")]
     pop = publish(_first_audio(assets / "sfx", "pop"))
     sfx: list[TimelineSfx] = []
@@ -475,6 +546,11 @@ def run(ctx: RunContext) -> None:
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips
         ], fps, float(cfg.get("cold_open_volume", 1.0)))
+    if tracks and cfg.get("music_by_chapter", True):
+        parts = music_parts(ctx, timeline, tracks, default)
+        timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
+            "musicParts": [MusicPart.model_validate(p) for p in parts]})})
+        print("   Música: " + " → ".join(f"{p['mood']} ({Path(p['src']).stem})" for p in parts))
     if whooshes:
         extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.6)), float(cfg.get("sfx_min_gap", 4.0)),
                                str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)))

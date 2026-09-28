@@ -585,11 +585,23 @@ class TimelineClipAudio(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class MusicPart(_Strict):
+    """One chapter's background track (the render cross-fades from one part into the next)."""
+
+    src: str
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(ge=1)
+    mood: str = ""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class TimelineAudio(_Strict):
     voice: str
     voiceFrom: int = Field(default=0, ge=0)                  # the narration starts after the cold open
     clips: list[TimelineClipAudio] = Field(default_factory=list)
     music: str | None = None
+    musicParts: list[MusicPart] = Field(default_factory=list)   # music by chapter mood; empty = `music` looped
     musicVolume: float = 0.25
     duckedVolume: float = 0.03                               # ≈ −18 dB below musicVolume while the voice speaks
     speech: list[tuple[int, int]] = Field(default_factory=list)   # [from, to) frames with narration
