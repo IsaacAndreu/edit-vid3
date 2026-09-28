@@ -1,4 +1,4 @@
-export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split';
+export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split' | 'endscreen';
 export type Sign = 'positive' | 'negative' | 'neutral';
 
 export interface Media {
@@ -97,6 +97,6 @@ export interface TimelineProps {
   groups: Group[];
   labels?: Label[];
   audio: AudioSpec;
-  locale?: { chapter?: string; source?: string };
+  locale?: { chapter?: string; source?: string; next?: string; subscribe?: string };
   [key: string]: unknown;
 }

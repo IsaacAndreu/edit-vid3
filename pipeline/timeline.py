@@ -372,6 +372,21 @@ def music_parts(ctx: RunContext, timeline: Timeline, tracks: dict[str, list[str]
     return parts
 
 
+def with_endscreen(timeline: Timeline, frames: int) -> Timeline:
+    """Append the end screen (YouTube's end-screen elements go over it) after the narration."""
+
+    if frames <= 0:
+        return timeline
+    end = TimelineShot.model_validate({"id": "end", "type": "endscreen", "from": timeline.durationInFrames,
+                                       "durationInFrames": frames, "text": ""})
+    return Timeline.model_validate({
+        **timeline.model_dump(by_alias=True),
+        "durationInFrames": timeline.durationInFrames + frames,
+        "shots": [*[s.model_dump(by_alias=True) for s in timeline.shots], end.model_dump(by_alias=True)],
+        "endscreenFrames": frames,
+    })
+
+
 def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap: float = 4.0,
                    main: str = "", other_every: int = 4) -> list[TimelineSfx]:
     """Whooshes at the transitions, rotating through the files, never two closer than `min_gap` s.
@@ -386,6 +401,7 @@ def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap:
     points: list[int] = [s.from_ for s in timeline.shots if s.type == "chapter"]
     moments = [s for s in timeline.shots if s.coldOpen]
     points += [s.from_ for s in moments if s.from_ > 0] + [s.from_ + s.durationInFrames for s in moments]
+    points += [s.from_ for s in timeline.shots if s.type == "endscreen"]
     points += [s.from_ for s in timeline.shots if s.media and s.media.layout == "person"]
     points += [g.from_ for g in timeline.groups if g.kind in ("stat", "datacard", "split")]
     placed: list[int] = []
@@ -546,6 +562,7 @@ def run(ctx: RunContext) -> None:
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips
         ], fps, float(cfg.get("cold_open_volume", 1.0)))
+    timeline = with_endscreen(timeline, round(float(cfg.get("endscreen_seconds", 0) or 0) * fps))
     if tracks and cfg.get("music_by_chapter", True):
         parts = music_parts(ctx, timeline, tracks, default)
         timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={

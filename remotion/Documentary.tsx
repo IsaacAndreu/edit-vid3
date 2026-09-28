@@ -4,6 +4,7 @@ import { AudioBed } from './components/AudioBed';
 import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
+import { EndScreen } from './components/EndScreen';
 import { FramedCard } from './components/FramedCard';
 import { LowerThird } from './components/LowerThird';
 import { PersonCard } from './components/PersonCard';
@@ -15,6 +16,9 @@ import type { Shot, TimelineProps } from './types';
 
 /** What fills the frame under the overlays for one shot. */
 const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
+  if (shot.type === 'endscreen') {
+    return null; // drawn on its own layer, with the localised words
+  }
   if (shot.type === 'datacard' || !shot.media) {
     return <AbsoluteFill style={{ backgroundColor: theme.panel }} />;
   }
@@ -73,6 +77,13 @@ export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], aud
       .map((shot) => (
         <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
           <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} word={locale?.chapter} />
+        </Sequence>
+      ))}
+    {shots
+      .filter((shot) => shot.type === 'endscreen')
+      .map((shot) => (
+        <Sequence key={`end-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
+          <EndScreen next={locale?.next} subscribe={locale?.subscribe} />
         </Sequence>
       ))}
     {shots

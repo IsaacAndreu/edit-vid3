@@ -43,6 +43,10 @@ LANGUAGES = {
     "fr": ("Français", "CHAPITRE", "Source"), "it": ("Italiano", "CAPITOLO", "Fonte"),
     "de": ("Deutsch", "KAPITEL", "Quelle"), "es": ("Español", "CAPÍTULO", "Fuente"),
 }
+ENDSCREEN = {
+    "en": ("NEXT STORY", "SUBSCRIBE"), "pt": ("PRÓXIMA HISTÓRIA", "INSCREVA-SE"), "fr": ("PROCHAINE HISTOIRE", "ABONNE-TOI"),
+    "it": ("PROSSIMA STORIA", "ISCRIVITI"), "de": ("NÄCHSTE GESCHICHTE", "ABONNIEREN"), "es": ("SIGUIENTE HISTORIA", "SUSCRÍBETE"),
+}
 LINKED = ("media", "media_fallback", "people", "coldopen", "audio")
 COPIED = ("shots.json", "selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
 MAX_SLOWMO = 1.5
@@ -140,7 +144,8 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
     fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
     gaps = [tuple(g) for g in timeline["audio"].get("voiceGaps", [])]          # (voice frame, frames)
     new_gaps = [(round(f(at / fps) * fps), frames) for at, frames in gaps]
-    total = vf + round(new_voice_seconds * fps) + sum(b for _, b in gaps)
+    end = int(timeline.get("endscreenFrames", 0))
+    total = vf + round(new_voice_seconds * fps) + sum(b for _, b in gaps) + end
 
     def frame(old: int) -> int:
         """Old video frame → new one: voice time goes through f, moments keep their length."""
@@ -167,6 +172,8 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
         media = shots[i - 1].get("media") or {}
         if media.get("kind") == "video" and media.get("source") == "youtube":
             bounds[i] = min(bounds[i], bounds[i - 1] + int(max_third_party * fps))
+    if end and shots[-1].get("type") == "endscreen":
+        bounds[len(shots) - 1] = total - end               # the end screen keeps its length
     for i in range(len(shots) - 1, 0, -1):               # squeeze back if the end was overrun
         bounds[i] = min(bounds[i], bounds[i + 1] - MIN_SHOT_FRAMES)
     for shot, a, b in zip(shots, bounds, bounds[1:]):
@@ -350,7 +357,8 @@ def run(ctx: RunContext) -> None:
     question_words(timeline, new_words["words"])
     timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0),
                                                pauses=timeline["audio"].get("voiceGaps", []))
-    timeline["locale"] = {"chapter": chapter_word, "source": source_word}
+    next_word, subscribe_word = ENDSCREEN.get(lang, ("NEXT STORY", "SUBSCRIBE"))
+    timeline["locale"] = {"chapter": chapter_word, "source": source_word, "next": next_word, "subscribe": subscribe_word}
 
     print("[4/6] Material: reutilizando clips (cámara lenta donde el plano es más largo)")
     for folder in LINKED:

@@ -73,7 +73,8 @@ Resultado en `out/<nombre>/`:
 - `manifest.json` — de dónde sale cada plano
 - `verificacion.md` — datos del guion comprobados (❌ a corregir, ⚠️ sin confirmar, ✅ confirmados)
 - `miniaturas/miniatura-1..3.jpg` — 3 miniaturas (recorte del atleta + frame de su gran momento + frase corta)
-- `youtube.txt` — para YouTube Studio: 3 títulos a elegir, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
+- `subtitulos.es.srt` — subtítulos para subir en YouTube Studio → Subtítulos
+- `youtube.txt` — para YouTube Studio: 3 títulos a elegir, comentario para fijar, post de comunidad, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
 
 Si algo falla, vuelve a lanzar el mismo comando: cada etapa terminada se salta y continúa donde
 se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
@@ -169,6 +170,11 @@ schtasks /create /tn "Ideas videos" /sc daily /st 08:52 /tr "cmd /c cd /d %CD% &
   se alternan las pistas de cada tono (las menos usadas primero: `cache/music_usage.json`).
   Todas se nivelan solas; se repiten en bucle con fundido si el capítulo es más largo.
 - Volumen: `timeline.music_volume` (en las pausas) y `timeline.duck_db` (cuánto baja bajo la voz).
+
+**Pantalla final:** los últimos 20 s (`timeline.endscreen_seconds`) son el fondo del canal con un
+recuadro «SIGUIENTE HISTORIA» y un círculo «SUSCRÍBETE»: en YouTube Studio → Pantalla final, pon
+un vídeo sugerido encima del recuadro y el botón de suscribirse sobre el círculo. La música se
+desvanece al final.
 
 ## 8. Panel de investigación (tipo TubeLab)
 

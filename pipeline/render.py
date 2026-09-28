@@ -378,7 +378,9 @@ class Renderer:
             busy = sorted([*[tuple(s) for s in audio.get("speech", [])],
                            *[(c["from"], c["from"] + c["durationInFrames"]) for c in audio.get("clips", [])]])
             expr = music_volume_expr(busy, self.fps, total, audio["musicVolume"], audio["duckedVolume"])
-            chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f},volume=eval=frame:volume='{expr}'[music]")
+            fade = min(3.0, seconds / 4)          # the music fades out with the end screen
+            chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f},volume=eval=frame:volume='{expr}',"
+                          f"afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}[music]")
             mix.append("[music]")
         # Original sound of the cold-open clips (the only clip audio ever used), then SFX.
         for n, clip in enumerate(audio.get("clips", [])):

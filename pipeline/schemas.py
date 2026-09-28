@@ -525,7 +525,7 @@ class TimelineLabel(_Strict):
 
 class TimelineShot(_Strict):
     id: str
-    type: ShotType
+    type: ShotType | Literal["endscreen"]                     # endscreen: the last 20 s for YouTube's end screen
     from_: int = Field(alias="from", ge=0)                   # frame
     durationInFrames: int = Field(ge=1)
     text: str
@@ -622,6 +622,7 @@ class Timeline(_Strict):
     labels: list[TimelineLabel] = Field(default_factory=list)
     audio: TimelineAudio
     locale: dict[str, str] = Field(default_factory=dict)     # dubbed versions: {"chapter": "CHAPTER", "source": "Source"}
+    endscreenFrames: int = Field(default=0, ge=0)            # the end screen after the narration
 
     @model_validator(mode="after")
     def _consistent(self) -> "Timeline":
@@ -630,7 +631,7 @@ class Timeline(_Strict):
             if shot.from_ != cursor:
                 raise ValueError(f"{shot.id}: empieza en el fotograma {shot.from_}, se esperaba {cursor}")
             cursor += shot.durationInFrames
-            if shot.type != "datacard" and shot.media is None:
+            if shot.type not in ("datacard", "endscreen") and shot.media is None:
                 raise ValueError(f"{shot.id}: plano {shot.type} sin medio")
             if shot.media and shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
                 raise ValueError(f"{shot.id}: medio de terceros sin crédito")

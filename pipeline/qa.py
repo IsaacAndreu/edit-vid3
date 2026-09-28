@@ -160,7 +160,8 @@ def run(ctx: RunContext) -> None:
         rows.append(entry)
 
     narration = round(float(ctx.read_json("words.json")["durationSeconds"]) * fps)
-    if timeline.durationInFrames != narration + timeline.audio.voiceFrom + sum(b for _, b in timeline.audio.voiceGaps):
+    if timeline.durationInFrames != (narration + timeline.audio.voiceFrom + sum(b for _, b in timeline.audio.voiceGaps)
+                                     + timeline.endscreenFrames):
         blockers.append("La duración del timeline no coincide con la de la narración")
 
     # --- low scores -------------------------------------------------------------------------
