@@ -179,7 +179,10 @@ timeline:
   assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
   music_volume: 0.25
   duck_db: 18                      # la música baja 18 dB mientras suena la voz
-  whoosh_volume: 0.6
+  whoosh_volume: 0.6               # transiciones: assets/sfx/whoosh*.mp3, se van alternando
+  sfx_min_gap: 4                   # nunca dos transiciones a menos de 4 s
+  whoosh_main: espada              # el que suena casi siempre (parte del nombre del archivo)
+  whoosh_other_every: 4            # 1 de cada 4 usa otro de assets/sfx para variar (0 = solo el principal)
   pop_volume: 0.5
   questions: true                  # preguntas del guion (¿…?) como texto flotante en el centro
   question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas

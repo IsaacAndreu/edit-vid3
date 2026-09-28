@@ -40,3 +40,25 @@ def test_voice_chains_pause_the_narration():
     assert chains[1] == "[vs0]atrim=start=0.0000:end=2.0000,asetpts=PTS-STARTPTS[vp0]"
     assert chains[2] == "[vs1]atrim=start=2.0000,asetpts=PTS-STARTPTS,adelay=3000:all=1[vp1]"
     assert chains[3] == "[vp0][vp1]amix=inputs=2:normalize=0,asetpts=N/SR/TB[voice]"
+
+
+def test_transition_sfx_rotate_and_keep_a_minimum_gap():
+    from pipeline.timeline import transition_sfx
+
+    t = _timeline()
+    t.shots[2].type = "chapter"
+    t.shots[2].chapterTitle = "X"
+    out = transition_sfx(t, ["a.mp3", "b.mp3"], 0.6, min_gap=1.0)
+    assert [(s.src, s.from_) for s in out] == [("a.mp3", 56), ("b.mp3", 116)]   # stat at 60, chapter at 120
+    assert [s.from_ for s in transition_sfx(t, ["a.mp3"], 0.6, min_gap=4.0)] == [116]   # chapter wins, stat too close
+
+
+def test_main_whoosh_most_of_the_time():
+    from pipeline.timeline import transition_sfx
+
+    t = _timeline()
+    for s in t.shots[1:]:
+        s.type = "chapter"
+        s.chapterTitle = "X"
+    out = transition_sfx(t, ["w-1-fast.mp3", "w-2-espada.mp3", "w-3-giro.mp3"], 0.6, min_gap=1.0, main="espada", other_every=4)
+    assert [s.src for s in out] == ["w-2-espada.mp3"] * 3 + ["w-1-fast.mp3"]

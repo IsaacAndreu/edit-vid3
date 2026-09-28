@@ -301,6 +301,45 @@ def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[
     return labels
 
 
+def _all_audio(folder: Path, prefix: str) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTENSIONS and p.name.lower().startswith(prefix))
+
+
+def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap: float = 4.0,
+                   main: str = "", other_every: int = 4) -> list[TimelineSfx]:
+    """Whooshes at the transitions, rotating through the files, never two closer than `min_gap` s.
+
+    By priority: chapter cards, entering/leaving the original-sound moments and the cold open,
+    athlete cards, then stat/panel entries.
+    """
+
+    if not files:
+        return []
+    fps = timeline.fps
+    points: list[int] = [s.from_ for s in timeline.shots if s.type == "chapter"]
+    moments = [s for s in timeline.shots if s.coldOpen]
+    points += [s.from_ for s in moments if s.from_ > 0] + [s.from_ + s.durationInFrames for s in moments]
+    points += [s.from_ for s in timeline.shots if s.media and s.media.layout == "person"]
+    points += [g.from_ for g in timeline.groups if g.kind in ("stat", "datacard", "split")]
+    placed: list[int] = []
+    for point in points:
+        at = max(0, point - 4)                    # the swoosh peaks just as the cut lands
+        if at < timeline.durationInFrames and all(abs(at - p) >= min_gap * fps for p in placed):
+            placed.append(at)
+    first = next((f for f in files if main and main.lower() in Path(f).name.lower()), None)
+    others = [f for f in files if f != first] or files
+    chosen = []
+    for i, at in enumerate(sorted(placed)):
+        if first and (not other_every or (i + 1) % other_every):
+            chosen.append((first, at))                  # the main whoosh most of the time…
+        else:
+            step = i // max(1, other_every) if first else i
+            chosen.append((others[step % len(others)], at))   # …another one now and then (or plain rotation)
+    return [TimelineSfx.model_validate({"src": src, "from": at, "volume": volume}) for src, at in chosen]
+
+
 def _first_audio(folder: Path, prefix: str = "") -> Path | None:
     if not folder.is_dir():
         return None
@@ -406,12 +445,9 @@ def run(ctx: RunContext) -> None:
         return str(target.relative_to(ctx.work_dir))
 
     music = publish(_first_audio(assets / "music"))
-    whoosh = publish(_first_audio(assets / "sfx", "whoosh"))
+    whooshes = [publish(p) for p in _all_audio(assets / "sfx", "whoosh")]
     pop = publish(_first_audio(assets / "sfx", "pop"))
     sfx: list[TimelineSfx] = []
-    if whoosh:
-        sfx += [TimelineSfx.model_validate({"src": whoosh, "from": max(0, s.from_ - 4), "volume": float(cfg.get("whoosh_volume", 0.6))})
-                for s in shots if s.type == "chapter"]
     if pop:
         for group in groups:
             for step in (group.steps or [PanelStep.model_validate({"from": 0, "rows": []})]):
@@ -439,6 +475,12 @@ def run(ctx: RunContext) -> None:
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips
         ], fps, float(cfg.get("cold_open_volume", 1.0)))
+    if whooshes:
+        extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.6)), float(cfg.get("sfx_min_gap", 4.0)),
+                               str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)))
+        timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
+            "sfx": sorted([*timeline.audio.sfx, *extra], key=lambda x: x.from_)})})
+        sfx = timeline.audio.sfx
     ctx.write_json(OUTPUT, timeline.model_dump(by_alias=True, exclude_none=True))
     kinds: dict[str, int] = {}
     for group in groups:
