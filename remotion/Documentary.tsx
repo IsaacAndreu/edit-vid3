@@ -4,6 +4,7 @@ import { AudioBed } from './components/AudioBed';
 import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
+import { CutMotion } from './components/CutMotion';
 import { EndScreen } from './components/EndScreen';
 import { GraphicScene } from './components/graphics/GraphicScene';
 import { FramedCard } from './components/FramedCard';
@@ -60,8 +61,9 @@ export const Documentary: FC<TimelineProps> = (props) => {
   return <DocumentaryBody {...props} />;
 };
 
-const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale }) => (
+const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale, transitions = [] }) => (
   <AbsoluteFill style={{ backgroundColor: '#000' }}>
+    <CutMotion transitions={transitions}>
     {shots.map((shot) => (
       <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
         <ShotBackground shot={shot} />
@@ -80,6 +82,7 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
         ) : null}
       </Sequence>
     ))}
+    </CutMotion>
     {labels.map((label, i) => (
       <Sequence key={`label-${i}`} from={label.from} durationInFrames={label.durationInFrames} name={`label ${label.text}`}>
         <LowerThird kind={label.kind} text={label.text} durationInFrames={label.durationInFrames} />

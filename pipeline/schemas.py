@@ -514,6 +514,16 @@ class ColdOpenFile(_Strict):
     moments: list[ColdOpenClip] = Field(default_factory=list)   # mid-video pauses with the original sound
 
 
+class TimelineTransition(_Strict):
+    """A key cut: zoom punch or whip pan with motion blur, centred on the cut (from = cut - 6)."""
+
+    kind: Literal["zoom", "whip"]
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(default=12, ge=2)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class TimelineLabel(_Strict):
     kind: LabelKind
     text: str
@@ -621,6 +631,7 @@ class Timeline(_Strict):
     shots: list[TimelineShot]
     groups: list[TimelineGroup]
     labels: list[TimelineLabel] = Field(default_factory=list)
+    transitions: list[TimelineTransition] = Field(default_factory=list)
     audio: TimelineAudio
     locale: dict[str, str] = Field(default_factory=dict)     # dubbed versions: {"chapter": "CHAPTER", "source": "Source"}
     endscreenFrames: int = Field(default=0, ge=0)            # the end screen after the narration

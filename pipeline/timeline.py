@@ -40,6 +40,7 @@ from .schemas import (
     TimelineMedia,
     TimelineSfx,
     TimelineShot,
+    TimelineTransition,
     WordsFile,
 )
 from .schemas import MAX_THIRD_PARTY_SECONDS
@@ -446,6 +447,22 @@ def with_endscreen(timeline: Timeline, frames: int) -> Timeline:
     })
 
 
+def key_cuts(timeline: Timeline, cuts: list[int], half: int = 6) -> list[TimelineTransition]:
+    """Visual transitions on the cuts that carry a whoosh: a zoom punch into chapter cards and
+    graphics, a whip pan elsewhere. Only on real shot boundaries, never over the first frames."""
+
+    starts = {s.from_: s for s in timeline.shots}
+    zoom_at = {s.from_ for s in timeline.shots if s.type in ("chapter", "endscreen")}
+    zoom_at |= {g.from_ for g in timeline.groups if g.kind == "graphic"}
+    zoom_at |= {g.from_ + g.durationInFrames for g in timeline.groups if g.kind == "graphic"}
+    out = []
+    for at in cuts:
+        if at in starts and half <= at <= timeline.durationInFrames - half:
+            out.append(TimelineTransition.model_validate({"kind": "zoom" if at in zoom_at else "whip",
+                                                          "from": at - half, "durationInFrames": 2 * half}))
+    return out
+
+
 def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap: float = 4.0,
                    main: str = "", other_every: int = 4) -> list[TimelineSfx]:
     """Whooshes at the transitions, rotating through the files, never two closer than `min_gap` s.
@@ -634,6 +651,8 @@ def run(ctx: RunContext) -> None:
                                str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)))
         timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
             "sfx": sorted([*timeline.audio.sfx, *extra], key=lambda x: x.from_)})})
+        if cfg.get("transitions", True):
+            timeline = timeline.model_copy(update={"transitions": key_cuts(timeline, [x.from_ + 4 for x in extra])})
         sfx = timeline.audio.sfx
     ctx.write_json(OUTPUT, timeline.model_dump(by_alias=True, exclude_none=True))
     kinds: dict[str, int] = {}

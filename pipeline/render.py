@@ -68,7 +68,8 @@ def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
 def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment]:
     segments: list[Segment] = []
     condensed = 0
-    groups = [*timeline.get("groups", []), *timeline.get("labels", [])]   # anything drawn over the footage
+    groups = [*timeline.get("groups", []), *timeline.get("labels", []),   # anything drawn over the footage
+              *timeline.get("transitions", [])]                          # or moving it (zoom / whip)
     for shot in timeline["shots"]:
         if hybrid and is_fast(shot, groups):
             segments.append(Segment("ffmpeg", shot["from"], shot["durationInFrames"], [shot]))
@@ -107,9 +108,11 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
 
     groups = shifted(timeline["groups"], "Un grupo")
     labels = shifted(timeline.get("labels", []), "Un rótulo")
+    transitions = shifted(timeline.get("transitions", []), "Una transición")
     total = sum(s["durationInFrames"] for s in shots)
     audio = {**timeline["audio"], "music": None, "speech": [], "sfx": [], "clips": [], "voiceFrom": 0}
-    return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels, "audio": audio}
+    return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels,
+            "transitions": transitions, "audio": audio}
 
 
 def media_seconds(path: Path) -> float:

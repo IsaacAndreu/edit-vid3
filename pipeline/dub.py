@@ -184,6 +184,12 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
         item["from"], item["durationInFrames"] = a, b - a
     for sfx in out["audio"].get("sfx", []):
         sfx["from"] = frame(sfx["from"])
+    starts = {s["from"] for s in shots}
+    for tr in out.get("transitions", []):             # centred on a cut: follow the cut, keep the length
+        half = tr["durationInFrames"] // 2
+        cut = frame(tr["from"] + half)
+        cut = min(starts, key=lambda f: abs(f - cut)) if starts else cut
+        tr["from"] = max(0, cut - half)
     for clip in out["audio"].get("clips", []):
         clip["from"] = frame(clip["from"])
     out["audio"]["voiceGaps"] = [list(g) for g in new_gaps]

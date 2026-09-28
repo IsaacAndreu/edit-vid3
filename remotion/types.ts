@@ -1,5 +1,6 @@
 import type { Graphic } from './graphics';
 import type { Brand } from './theme';
+import type { Transition } from './components/CutMotion';
 
 export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split' | 'endscreen';
 export type Sign = 'positive' | 'negative' | 'neutral';
@@ -104,5 +105,6 @@ export interface TimelineProps {
   audio: AudioSpec;
   locale?: { chapter?: string; source?: string; next?: string; subscribe?: string };
   brand?: Brand | null;
+  transitions?: Transition[];
   [key: string]: unknown;
 }
