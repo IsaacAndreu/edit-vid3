@@ -30,7 +30,7 @@ from .context import RunContext
 from . import library, publish
 from .costs import COSTS_FILE
 from .judge import register_used
-from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
+from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, Timeline
 
 
 STAGE = "qa"
@@ -90,7 +90,6 @@ def run(ctx: RunContext) -> None:
     qa_dir = ctx.out_dir / "qa"
     qa_dir.mkdir(parents=True, exist_ok=True)
     timeline = Timeline.model_validate(ctx.read_json("timeline.json"))
-    shots_plan = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots}
     selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
     fallback = {i.shotId: i for i in FallbackFile.model_validate(ctx.read_json("fallback.json")).items}
     ingest = {m["shotId"]: m for m in ctx.read_json("media/_ingest.json")["media"]}
@@ -160,7 +159,7 @@ def run(ctx: RunContext) -> None:
         entry["phash"] = det.phash(frame) if frame is not None else None
         rows.append(entry)
 
-    narration = round(ShotsFile.model_validate(ctx.read_json("shots.json")).durationSeconds * fps)
+    narration = round(float(ctx.read_json("words.json")["durationSeconds"]) * fps)
     if timeline.durationInFrames != narration + timeline.audio.voiceFrom:
         blockers.append("La duración del timeline no coincide con la de la narración")
 

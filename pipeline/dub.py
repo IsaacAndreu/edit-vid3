@@ -44,7 +44,7 @@ LANGUAGES = {
     "de": ("Deutsch", "KAPITEL", "Quelle"), "es": ("Español", "CAPÍTULO", "Fuente"),
 }
 LINKED = ("media", "media_fallback", "people", "coldopen", "audio")
-COPIED = ("selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
+COPIED = ("shots.json", "selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
 MAX_SLOWMO = 1.5
 MIN_SHOT_FRAMES = 12
 
@@ -324,9 +324,6 @@ def run(ctx: RunContext) -> None:
     voice = ctx.work_dir / "audio" / "voz.mp3"
     voice.unlink(missing_ok=True)          # a hard link to the original voice: never write through it
     shutil.copy2(ctx.materials_dir / "voz.mp3", voice)
-    shots_file = original.read_json("shots.json")
-    shots_file.update(slug=ctx.slug, durationSeconds=new_words["durationSeconds"])
-    ctx.write_json("shots.json", shots_file)
     slowed = 0
     for shot in timeline["shots"]:
         media = shot.get("media") or {}
