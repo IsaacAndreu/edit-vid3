@@ -6,7 +6,8 @@ Checks the final plan (timeline + the media files on disk) and writes:
   fragments, shots without credit, share per source, API spend;
 - qa/qa.json — the same, machine-readable;
 - manifest.json — provenance of every shot (URL, channel, timestamps, scores, decision);
-- creditos.txt — third-party sources, ready to paste into the YouTube description.
+- creditos.txt — third-party sources, ready to paste into the YouTube description;
+- youtube.txt — title, description, chapters with timestamps, credits and tags for YouTube Studio.
 
 Blockers (third-party clip > 5 s, third-party media without credit, missing file or a
 timeline that does not match the narration) stop the pipeline: the render never starts.
@@ -26,6 +27,7 @@ import numpy as np
 
 from .analysis import detectors as det
 from .context import RunContext
+from . import publish
 from .costs import COSTS_FILE
 from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
 
@@ -215,7 +217,9 @@ def run(ctx: RunContext) -> None:
         json.dumps({"slug": ctx.slug, "title": timeline.title, "fps": fps, "shots": manifest}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    (ctx.out_dir / "creditos.txt").write_text(credits_text(rows), encoding="utf-8")
+    credits = credits_text(rows)
+    (ctx.out_dir / "creditos.txt").write_text(credits, encoding="utf-8")
+    publish.write(ctx, timeline, rows)
     status = "BLOQUEADO" if blockers else "OK"
     report = render_report(ctx.slug, timeline, status, blockers, warnings, low, repeats, by_count, by_time, footage_time,
                            spend, total_usd, rows)
