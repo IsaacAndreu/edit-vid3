@@ -88,6 +88,12 @@ analysis:
 
 judge:
   hook_seconds: 30                 # los planos del gancho pasan siempre por el juez (más exigente)
+  # Canales oficiales: +trusted_bonus a sus fragmentos (mejor calidad, títulos fiables). Ojo: son también
+  # los que más reclaman por Content ID. Coincide si el canal contiene TODAS las palabras de alguno.
+  trusted_channels: [Olympics, Olympic Games, Olympic Channel, FIG Gymnastics, World Athletics, Wanda Diamond League,
+                     ISU Skating, European Athletics, European Gymnastics, USA Gymnastics, NBC Sports, Eurovision Sport]
+  trusted_bonus: 0.03
+  avoid_other_videos: true         # no reutilizar fragmentos/fotos ya usados en otros vídeos del canal (cache/used_fragments.json)
   all: true                        # el juez revisa todos los planos (~0,20 $/vídeo); false = solo los dudosos
   provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
   model: gpt-5-mini

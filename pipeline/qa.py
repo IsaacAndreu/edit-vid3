@@ -29,6 +29,7 @@ from .analysis import detectors as det
 from .context import RunContext
 from . import publish
 from .costs import COSTS_FILE
+from .judge import register_used
 from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
 
 
@@ -220,6 +221,7 @@ def run(ctx: RunContext) -> None:
     credits = credits_text(rows)
     (ctx.out_dir / "creditos.txt").write_text(credits, encoding="utf-8")
     publish.write(ctx, timeline, rows)
+    register_used(ctx, rows)
     status = "BLOQUEADO" if blockers else "OK"
     report = render_report(ctx.slug, timeline, status, blockers, warnings, low, repeats, by_count, by_time, footage_time,
                            spend, total_usd, rows)

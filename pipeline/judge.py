@@ -40,7 +40,7 @@ from .schemas import (
     ShotsFile,
 )
 from .sourcing import needs_footage
-from .sourcing.common import blocked_by_title, cached_json
+from .sourcing.common import blocked_by_title, cached_json, tokens
 
 
 STAGE = "judge"
@@ -192,6 +192,53 @@ def is_doubtful(scores: list[float], margin: float, min_score: float) -> bool:
     return scores[0] < min_score or (len(scores) > 1 and scores[0] - scores[1] < margin)
 
 
+USED_REGISTRY = "used_fragments.json"   # in cache/: what every video of the channel already put on screen
+
+
+def used_elsewhere(ctx: RunContext) -> dict[str, list[tuple[float | None, float | None]]]:
+    """Fragments/pictures other videos already used: candidateId → [(start, end)] (None = a picture)."""
+
+    path = ctx.cache_dir / USED_REGISTRY
+    if not ctx.section("judge").get("avoid_other_videos", True) or not path.is_file():
+        return {}
+    try:
+        registry = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, list[tuple[float | None, float | None]]] = {}
+    for slug, entries in registry.items():
+        if slug == ctx.slug:
+            continue
+        for cid, start, end in entries:
+            out.setdefault(cid, []).append((start, end))
+    return out
+
+
+def seen_elsewhere(option: Option, elsewhere: dict[str, list[tuple[float | None, float | None]]]) -> bool:
+    for start, end in elsewhere.get(option.candidateId, []):
+        if option.start is None or start is None:
+            return True                          # the same picture, or a still of that video
+        if option.start < end + 0.5 and start < option.end + 0.5:
+            return True
+    return False
+
+
+def register_used(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
+    """Record this video's on-screen sources so later videos of the channel avoid them."""
+
+    path = ctx.cache_dir / USED_REGISTRY
+    try:
+        registry = json.loads(path.read_text("utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        registry = {}
+    registry[ctx.slug] = [[r["candidateId"], r.get("sourceStart"), r.get("sourceEnd")]
+                          for r in rows if r.get("candidateId") and r.get("source") not in (None, "generated")]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(registry, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
 def is_repeat(option: Option, used: list[Selection], max_hamming: int) -> bool:
     for previous in used:
         if previous.candidateId == option.candidateId:
@@ -330,11 +377,21 @@ def run(ctx: RunContext) -> None:
     blocklist = ctx.section("content").get("title_blocklist")
     hook_seconds = float(cfg.get("hook_seconds", 30))
     judge_all = bool(cfg.get("all", False))
+    trusted = [tokens(str(t)) for t in cfg.get("trusted_channels", []) if tokens(str(t))]
+    trusted_bonus = float(cfg.get("trusted_bonus", 0.03))
+
+    def official(option: Option) -> float:
+        """Whole words of a trusted name in the channel name ('Olympics' yes, 'Chris RD Gymnastics' no)."""
+        channel = tokens(candidates[option.candidateId].channel or "")
+        return trusted_bonus if channel and any(t <= channel for t in trusted) else 0.0
+
+    elsewhere = used_elsewhere(ctx)
     for shot in shots:
-        order = [
-            (s, o) for s, o in ranked(scores[shot.id].options, bonus)
+        order = sorted((
+            (s + official(o), o) for s, o in ranked(scores[shot.id].options, bonus)
             if s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
-        ]
+            and not seen_elsewhere(o, elsewhere)
+        ), key=lambda pair: -pair[0])
         plans[shot.id] = [o for _, o in order]
         if order and (judge_all or is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds):
             doubtful.append(shot)

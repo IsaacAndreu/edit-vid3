@@ -191,6 +191,25 @@ class ContactSheetTests(unittest.TestCase):
         self.assertEqual(sheet.shape[0], J.TILE[1])
 
 
+class OtherVideosTests(unittest.TestCase):
+    def test_fragments_used_by_another_video_are_avoided(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = RunContext.create("Yulo1", root=root, config={})
+            J.register_used(first, [
+                {"candidateId": "yt:a", "source": "youtube", "sourceStart": 10.0, "sourceEnd": 12.0},
+                {"candidateId": "web:1", "source": "web"},
+                {"candidateId": "gen:1", "source": "generated"},
+            ])
+            second = RunContext.create("Yulo2", root=root, config={})
+            elsewhere = J.used_elsewhere(second)
+            self.assertEqual(J.used_elsewhere(first), {})                 # a video never blocks itself
+        self.assertTrue(J.seen_elsewhere(opt("yt:a", 0.4, start=11, end=13), elsewhere))
+        self.assertFalse(J.seen_elsewhere(opt("yt:a", 0.4, start=40, end=42), elsewhere))   # same video, other moment
+        self.assertTrue(J.seen_elsewhere(opt("web:1", 0.4, source="wikimedia"), elsewhere))
+        self.assertNotIn("gen:1", elsewhere)
+
+
 class UsableTests(unittest.TestCase):
     def test_flagged_candidates_never_survive_the_ranking(self) -> None:
         verdict = {"ranking": ["B", "A", "C", "B", "D"], "score": 0.8, "reason": "r", "confidence": 0.9, "candidates": [

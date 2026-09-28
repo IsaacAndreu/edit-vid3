@@ -29,7 +29,7 @@ from .analysis import make_models, prompts_for
 from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
-from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked, source_lines
+from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked, seen_elsewhere, source_lines, used_elsewhere
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
     Candidate,
@@ -141,6 +141,7 @@ def run(ctx: RunContext) -> None:
     # Everything already on screen, so nothing is repeated.
     used: list[Selection] = [s for s in selections.values() if s.status == "selected" and s.shotId in done]
     pexels_used: set[str] = set()  # media taken by fallback items in this run (cached or new): never twice
+    elsewhere = used_elsewhere(ctx)  # what other videos of the channel already showed
     # Hashes of everything on screen: the same stock clip is often re-uploaded to YouTube.
     on_screen: list[str] = [h for sid, h in seen if sid in done] + [s.phash for s in used if s.phash]
 
@@ -224,6 +225,7 @@ def run(ctx: RunContext) -> None:
                 and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
                                          ctx.section("content").get("title_blocklist"))
                 and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+                and not seen_elsewhere(o, elsewhere)
             ][:limit]
             item = vet_and_materialise(options, candidates, "next-option")
 
@@ -233,7 +235,8 @@ def run(ctx: RunContext) -> None:
             pool, pool_candidates = protagonist_pool(ctx, story)
             event_words = tokens(shot.broll.event or "")
             options = sorted(
-                (o for o in pool if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))),
+                (o for o in pool if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+                 and not seen_elsewhere(o, elsewhere)),
                 key=lambda o: (-len(event_words & tokens(pool_candidates[o.candidateId].title or "")), -o.total),
             )[:limit]
             item = vet_and_materialise(options, pool_candidates, "protagonist")
@@ -247,7 +250,8 @@ def run(ctx: RunContext) -> None:
                     continue
                 candidates = web_photos(ctx, shot.broll.model_copy(update={"entities": entities[:2]}), tried)
                 options = [photo_option(c) for c in candidates.values()
-                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)][:limit]
+                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
+                           and c.id not in elsewhere][:limit]
                 item = vet_and_materialise(options, candidates, "web-photo")
 
         # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
