@@ -130,6 +130,13 @@ def run(ctx: RunContext) -> None:
     body = ("Títulos:\n" + "\n".join(f"{n}. {t}" for n, t in enumerate(titles, 1))
             + f"\n\nVídeo ({minutes:.1f} min): {ctx.out_dir / 'video-final.mp4'}"
             + f"\nDescripción, capítulos y etiquetas: {ctx.out_dir / 'youtube.txt'}")
+    shorts = sorted((ctx.out_dir / "shorts").glob("short-*.mp4"))
+    if shorts:
+        body += f"\nShorts: {len(shorts)} en {ctx.out_dir / 'shorts'} (títulos en shorts.txt)"
+    from .factcheck import summary
+
+    if line := summary(ctx):
+        body += "\n" + line
     notify.send(ctx, f"Vídeo listo: {titles[0]}", body, thumbs)
 
 

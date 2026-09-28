@@ -15,3 +15,4 @@ scenedetect
 rapidocr-onnxruntime
 ddgs                # fotos web sin clave (DuckDuckGo) cuando no hay SERPER_API_KEY
 rembg[cpu]          # recorte de atletas sin fondo (tarjetas de presentación); opcional
+fonttools           # convierte la fuente Inter a TTF para los subtítulos de los Shorts

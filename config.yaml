@@ -31,6 +31,12 @@ planner:
   # Precio en horario punta (el valle es la mitad): https://api-docs.deepseek.com/quick_start/pricing
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 
+factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
+  model: deepseek-flash
+  thinking: false
+  block_on_wrong: false      # true = no sigue con el vídeo si algún dato parece incorrecto
+  usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
+
 sourcing:
   parallel: 4                  # planos procesados a la vez
   youtube:
@@ -155,6 +161,12 @@ lab:                               # panel (python main.py --panel) e ideas con 
     - olympic athlete documentary
   ideas_queries: 6                 # cuántas de ellas usa --ideas cada día (~160 unidades cada una)
   ideas_days: 180                  # solo vídeos de los últimos N días
+
+shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
+  count: 3
+  min_seconds: 25
+  max_seconds: 58
+  zoom: 1.1                        # el plano 16:9 un poco más ancho que la pantalla
 
 people:
   enabled: true                    # tarjeta de presentación (atleta recortado + nombre) la 1.ª vez que se le nombra

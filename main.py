@@ -33,6 +33,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--ideas", action="store_true",
                         help="3 ideas de vídeo basadas en los outliers de la competencia y tus mejores vídeos "
                              "(out/_ideas/<fecha>.md, y por email/Telegram si está configurado).")
+    target.add_argument("--check", metavar="SLUG",
+                        help="Solo verifica los datos del guion de materiales/SLUG (antes de grabar la voz) → out/SLUG/verificacion.md.")
     target.add_argument("--panel", action="store_true",
                         help="Panel web local (outliers, análisis de canales, guardados, ideas) en http://127.0.0.1:8765.")
     parser.add_argument(
@@ -182,6 +184,15 @@ def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> Non
 
 def main() -> None:
     args = _parser().parse_args()
+    if args.check:
+        from pipeline import factcheck
+
+        ctx = RunContext.create(args.check)
+        if not (ctx.materials_dir / "guion.txt").is_file():
+            raise SystemExit(f"No existe {ctx.materials_dir / 'guion.txt'}")
+        factcheck.run(ctx)
+        print(factcheck.summary(ctx))
+        return
     if args.panel:
         from pipeline import panel
 

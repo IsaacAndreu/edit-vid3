@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align, analysis, coldopen, fallback, ingest, judge, package, people, planner, qa, render, sourcing, timeline
+from . import align, analysis, coldopen, factcheck, fallback, ingest, judge, package, people, planner, qa, render, shorts, sourcing, timeline
 from .context import RunContext
 
 
@@ -38,6 +38,7 @@ def _work(*names: str) -> Callable[[RunContext], list[Path]]:
 
 # Order matters: each stage reads the outputs of the stages before it.
 STAGES: list[Stage] = [
+    Stage("factcheck", _work(factcheck.OUTPUT), factcheck.inputs, factcheck.run, factcheck.validate, ("factcheck",)),
     Stage("align", _work(align.OUTPUT), align.inputs, align.run, align.validate, ("align",)),
     Stage("planner", _work(planner.OUTPUT), planner.inputs, planner.run, planner.validate, ("planner",)),
     Stage("sourcing", _work(sourcing.OUTPUT), sourcing.inputs, sourcing.run, sourcing.validate, ("sourcing", "content"), sourcing.retry_if),
@@ -51,6 +52,8 @@ STAGES: list[Stage] = [
     Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md", ctx.out_dir / "manifest.json", ctx.out_dir / "creditos.txt"],
           qa.inputs, qa.run, qa.validate, ("qa", "judge")),
     Stage("render", lambda ctx: [ctx.out_dir / render.OUTPUT], render.inputs, render.run, render.validate, ("render", "video")),
+    Stage("shorts", lambda ctx: [ctx.out_dir / shorts.DIR / "shorts.txt"], shorts.inputs, shorts.run, shorts.validate,
+          ("shorts",)),
     Stage("package", lambda ctx: [ctx.out_dir / package.THUMB_DIR / "miniatura-1.jpg"], package.inputs, package.run,
           package.validate, ("package",)),
 ]
