@@ -377,14 +377,19 @@ def run(ctx: RunContext) -> None:
 
     # 2. ffmpeg: fast shots with their credit badge, and the slow runs cut from the condensed render.
     t = time.monotonic()
-    credits = sorted({s.shots[0]["media"]["credit"] for s in fast if s.shots[0]["media"].get("credit")})
+    source_word = (timeline.get("locale") or {}).get("source")
+
+    def shown(credit: str) -> str:   # dubbed versions: "Fuente: X" → "Source: X"
+        return f"{source_word}: {credit[len('Fuente: '):]}" if source_word and credit.startswith("Fuente: ") else credit
+
+    credits = sorted({shown(s.shots[0]["media"]["credit"]) for s in fast if s.shots[0]["media"].get("credit")})
     badges = r.badges(credits) if credits else {}
     cut_key = condensed_path.stem.split("-")[-1] if condensed_path else ""
 
     def build(segment: Segment) -> Path:
         if segment.kind == "ffmpeg":
             credit = segment.shots[0]["media"].get("credit")
-            return r.fast_segment(segment, badges.get(credit) if credit else None)
+            return r.fast_segment(segment, badges.get(shown(credit)) if credit else None)
         return r.cut_segment(segment, condensed_path, cut_key)
 
     with ThreadPoolExecutor(max_workers=max(1, int(r.cfg.get("parallel", 3)))) as pool:

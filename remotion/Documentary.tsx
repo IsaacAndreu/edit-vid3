@@ -42,7 +42,11 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
  * Layers, bottom to top: shot footage/panel background → data groups (stat, datacard, split)
  * spanning their shots, question panels → lower-third labels → chapter titles → source credit → audio.
  */
-export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], audio }) => (
+/** "Fuente: X" → "Source: X" in dubbed versions (the data always keeps the Spanish prefix). */
+export const localCredit = (credit: string, source?: string): string =>
+  source && credit.startsWith('Fuente: ') ? `${source}: ${credit.slice('Fuente: '.length)}` : credit;
+
+export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale }) => (
   <AbsoluteFill style={{ backgroundColor: '#000' }}>
     {shots.map((shot) => (
       <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
@@ -68,14 +72,14 @@ export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], aud
       .filter((shot) => shot.type === 'chapter' && shot.chapterTitle)
       .map((shot) => (
         <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
-          <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} />
+          <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} word={locale?.chapter} />
         </Sequence>
       ))}
     {shots
       .filter((shot) => shot.media?.credit)
       .map((shot) => (
         <Sequence key={`credit-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
-          <CreditBadge credit={shot.media?.credit as string} />
+          <CreditBadge credit={localCredit(shot.media?.credit as string, locale?.source)} />
         </Sequence>
       ))}
     <AudioBed audio={audio} />

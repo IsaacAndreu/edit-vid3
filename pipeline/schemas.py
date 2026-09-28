@@ -605,6 +605,7 @@ class Timeline(_Strict):
     groups: list[TimelineGroup]
     labels: list[TimelineLabel] = Field(default_factory=list)
     audio: TimelineAudio
+    locale: dict[str, str] = Field(default_factory=dict)     # dubbed versions: {"chapter": "CHAPTER", "source": "Source"}
 
     @model_validator(mode="after")
     def _consistent(self) -> "Timeline":

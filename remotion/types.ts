@@ -97,5 +97,6 @@ export interface TimelineProps {
   groups: Group[];
   labels?: Label[];
   audio: AudioSpec;
+  locale?: { chapter?: string; source?: string };
   [key: string]: unknown;
 }

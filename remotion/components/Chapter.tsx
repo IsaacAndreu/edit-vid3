@@ -6,12 +6,12 @@ import { fontFamily, theme } from '../theme';
  * Chapter card: "CAPÍTULO 01" in big heavy type with the chapter title under it, left-aligned
  * behind a yellow bar, over darkened footage. A colour wipe sweeps across as it comes in.
  */
-export const Chapter: FC<{ title: string; number?: number | null }> = ({ title, number }) => {
+export const Chapter: FC<{ title: string; number?: number | null; word?: string }> = ({ title, number, word }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame: frame - 4, fps, config: { damping: 200, stiffness: 180 }, durationInFrames: 10 });
   const wipe = interpolate(frame, [0, 10], [-110, 110], { extrapolateRight: 'clamp' });
-  const heading = number ? `CAPÍTULO ${String(number).padStart(2, '0')}` : title;
+  const heading = number ? `${word || 'CAPÍTULO'} ${String(number).padStart(2, '0')}` : title;
   return (
     <AbsoluteFill>
       <AbsoluteFill

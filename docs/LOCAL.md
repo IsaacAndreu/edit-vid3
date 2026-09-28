@@ -70,6 +70,8 @@ Resultado en `out/<nombre>/`:
 - `creditos.txt` — fuentes para la descripción de YouTube
 - `qa/report.md` y `qa/contact-sheet.jpg` — revisión: planos flojos, reparto por fuente, coste
 - `manifest.json` — de dónde sale cada plano
+- `verificacion.md` — datos del guion comprobados (❌ a corregir, ⚠️ sin confirmar, ✅ confirmados)
+- `shorts/short-1..3.mp4` + `shorts.txt` — 3 Shorts verticales con subtítulos y sus títulos
 - `miniaturas/miniatura-1..3.jpg` — 3 miniaturas (recorte del atleta + frame de su gran momento + frase corta)
 - `youtube.txt` — para YouTube Studio: 3 títulos a elegir, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
 
@@ -189,7 +191,30 @@ queda hoy; cuando una clave se agota pasa sola a la siguiente, y se renuevan a l
 Con claves configuradas, `--ideas` busca además outliers en todo el nicho (las 6 primeras
 búsquedas de `lab.queries`, ~1 000 unidades al día), no solo en los canales de la competencia.
 
-## 9. Tiempos y coste orientativos (vídeo de 10 min)
+## 9. Verificar el guion antes de grabar
+
+```bash
+python main.py --check <nombre>
+```
+
+Solo necesita `materiales/<nombre>/guion.txt`. Saca las afirmaciones comprobables (fechas,
+resultados, edades, récords, citas…) y las contrasta con Wikipedia y búsquedas web →
+`out/<nombre>/verificacion.md`. Hazlo antes de grabar la voz: corregir un dato después obliga a
+regrabar. En la cola también se hace solo, pero no para el vídeo (salvo `factcheck.block_on_wrong: true`).
+
+## 10. Versiones dobladas (reutilizando el vídeo hecho)
+
+1. Deja la narración traducida junto al original: `materiales/<nombre>/voz-en.mp3` (en, pt, fr, it, de).
+   Opcional: `guion-en.txt` (el guion traducido) y `titulo-en.txt`. Sin guion, se usa la transcripción.
+2. `python main.py --dub <nombre>:en` — o nada: la cola nocturna las detecta sola en cuanto el
+   vídeo original está terminado.
+
+Resultado en `out/<nombre>-en/`: mismos clips y mismo montaje, con los cortes reajustados a la
+nueva voz, los textos en pantalla traducidos («CHAPTER», «Source»), y sus Shorts, miniaturas y
+títulos en ese idioma. No vuelve a buscar ni a juzgar metraje: ~15-25 min, casi todo render.
+Si un plano queda más largo que su clip, va en cámara lenta suave.
+
+## 11. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar
   metraje y el render. El PC va al máximo durante el análisis y el render.

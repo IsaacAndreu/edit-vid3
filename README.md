@@ -43,7 +43,10 @@ logged to `work/<slug>/costs.json`.
 | 9 | `timeline` → `timeline.json` (Remotion props) + `remotion/` templates: BRoll, FramedCard over GridBackground, LowerThird labels, DataCard, Stat, Question, Chapter ("CAPÍTULO 01 \| título"), Split, CreditBadge, AudioBed | done |
 | 10 | `qa` → `out/<slug>/qa/{contact-sheet.jpg, report.md}`, `manifest.json`, `creditos.txt` (blocks the render on third-party clips > 5 s, missing credits or files; flags low scores and repeats; share per source; API spend) | done |
 | 11 | `render` → `out/<slug>/video-final.mp4` (hybrid: plain footage + credit badge composed by ffmpeg, panels/stats/chapters/stills in one Remotion pass; audio mastered to -16 LUFS; segments joined without re-encoding; postflight checks) | done |
+| 0 | `factcheck` → `out/<slug>/verificacion.md`: script claims checked against Wikipedia + web results (`--check <slug>` before recording) | done |
+| 11b | `shorts` → `out/<slug>/shorts/short-{1,2,3}.mp4`: vertical 25-58 s moments with hook line and word-by-word captions (ffmpeg) | done |
 | 12 | `package` → `out/<slug>/miniaturas/miniatura-{1,2,3}.jpg` + 3 title options in `youtube.txt` (patterned on the competition's outliers), sent by email/Telegram | done |
+|  | `python main.py --dub <slug>:<lang>` → `out/<slug>-<lang>/`: dubbed version reusing the finished edit, retimed to the translated voice (also picked up by the queue from `materiales/<slug>/voz-<lang>.mp3`) | done |
 |  | `python main.py --ideas` → `out/_ideas/<date>.md`: 3 daily video ideas from competitor outliers (views / channel median) and your own best videos | done |
 |  | `python main.py --panel` → local research panel at http://127.0.0.1:8765: niche-wide outlier search, channel analysis, saved videos, ideas (YouTube Data API, several keys rotated) | done |
 

@@ -35,6 +35,9 @@ def _parser() -> argparse.ArgumentParser:
                              "(out/_ideas/<fecha>.md, y por email/Telegram si está configurado).")
     target.add_argument("--check", metavar="SLUG",
                         help="Solo verifica los datos del guion de materiales/SLUG (antes de grabar la voz) → out/SLUG/verificacion.md.")
+    target.add_argument("--dub", metavar="SLUG:IDIOMA",
+                        help="Versión doblada reutilizando el vídeo hecho, p. ej. CarlosYulo:en con la voz en "
+                             "materiales/CarlosYulo/voz-en.mp3 (+ guion-en.txt opcional) → out/CarlosYulo-en/.")
     target.add_argument("--panel", action="store_true",
                         help="Panel web local (outliers, análisis de canales, guardados, ideas) en http://127.0.0.1:8765.")
     parser.add_argument(
@@ -56,6 +59,11 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
     ctx = RunContext.create(slug, root=root)
     if not ctx.materials_dir.is_dir():
         raise FileNotFoundError(f"No existe {ctx.materials_dir}")
+    if ctx.section("dub").get("of"):            # a dubbed version reuses the original's edit
+        from pipeline import dub
+
+        dub.run(ctx)
+        return
     run_stages(ctx, force=force, until=until, review=review)
 
 
@@ -143,6 +151,10 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             notify(root, message)
             raise SystemExit(message)
         slugs = pending_slugs(root)
+        from pipeline import dub
+
+        slugs += [dub.prepare(root, slug, lang) for slug, lang in dub.pending(root)
+                  if dub.dub_slug(slug, lang) not in slugs]    # dubs of videos already finished
         if limit > 0:
             slugs = slugs[:limit]
         print(f"Cola: {len(slugs)} vídeo(s) pendiente(s): {', '.join(slugs) or '—'}")
@@ -192,6 +204,14 @@ def main() -> None:
             raise SystemExit(f"No existe {ctx.materials_dir / 'guion.txt'}")
         factcheck.run(ctx)
         print(factcheck.summary(ctx))
+        return
+    if args.dub:
+        from pipeline import dub
+
+        slug, _, lang = args.dub.partition(":")
+        if not lang:
+            raise SystemExit("Usa --dub SLUG:IDIOMA, p. ej. --dub CarlosYulo:en")
+        run_one(dub.prepare(PROJECT_ROOT, slug, lang), force=set(), until=None, review=False)
         return
     if args.panel:
         from pipeline import panel
