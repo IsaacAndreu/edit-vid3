@@ -42,7 +42,7 @@ class QueueTests(unittest.TestCase):
                 done.append(slug)
 
             with patch.object(main, "run_one", side_effect=fake_run):
-                failures = main.run_queue(force=set(), until=None, review=False, root=root)
+                failures = main.run_queue(force=set(), until=None, review=False, root=root, check=False)
             report = (root / main.QUEUE_REPORT).read_text()
             lock_left = (root / main.QUEUE_LOCK).exists()
         self.assertEqual((failures, done), (1, ["A", "C"]))
@@ -56,7 +56,22 @@ class QueueTests(unittest.TestCase):
             (root / "work").mkdir()
             (root / main.QUEUE_LOCK).write_text("123 ayer")
             with self.assertRaises(SystemExit):
-                main.run_queue(force=set(), until=None, review=False, root=root)
+                main.run_queue(force=set(), until=None, review=False, root=root, check=False)
+
+
+    def test_preflight_stops_the_queue_before_it_starts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _materials(root, "A")
+            ran = []
+            with patch.object(main, "preflight", return_value=["falta la clave OPENAI_API_KEY en .env"]), \
+                    patch.object(main, "run_one", side_effect=lambda slug, **k: ran.append(slug)):
+                with self.assertRaises(SystemExit) as stop:
+                    main.run_queue(force=set(), until=None, review=False, root=root)
+            lock_left = (root / main.QUEUE_LOCK).exists()
+        self.assertIn("OPENAI_API_KEY", str(stop.exception))
+        self.assertEqual(ran, [])
+        self.assertFalse(lock_left)
 
 
 if __name__ == "__main__":

@@ -70,6 +70,7 @@ Resultado en `out/<nombre>/`:
 - `creditos.txt` — fuentes para la descripción de YouTube
 - `qa/report.md` y `qa/contact-sheet.jpg` — revisión: planos flojos, reparto por fuente, coste
 - `manifest.json` — de dónde sale cada plano
+- `youtube.txt` — para YouTube Studio: título, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
 
 Si algo falla, vuelve a lanzar el mismo comando: cada etapa terminada se salta y continúa donde
 se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
@@ -91,6 +92,16 @@ python main.py --all --limit 3  # como mucho 3 esta noche
   uno fallido basta con volver a lanzar la cola: retoma donde se quedó.
 - No se pueden lanzar dos colas a la vez. Si el PC se apagó en mitad de una, borra
   `work/.cola.lock` antes de volver a lanzarla.
+
+Antes de empezar, la cola comprueba claves, espacio libre (mínimo 20 GB), ffmpeg/Node y que YouTube
+responda; si algo falla no arranca y lo dice (mejor saberlo a las 0:00 que a las 3:00).
+
+**Aviso al móvil (opcional, Telegram):** al terminar (o si no puede arrancar) te llega el resumen.
+
+1. En Telegram, habla con **@BotFather** → `/newbot` → te da un token.
+2. Escribe cualquier cosa a tu bot nuevo y abre
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` en el navegador: el número `"chat":{"id": …}` es tu chat.
+3. Añade a `.env`: `TELEGRAM_BOT_TOKEN=...` y `TELEGRAM_CHAT_ID=...`.
 
 **Que el PC no se duerma:** si entra en suspensión, la cola se pausa.
 

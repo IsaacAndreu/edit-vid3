@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -66,6 +67,50 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     return [d.name for d in sorted(ready, key=lambda d: (d.stat().st_mtime, d.name))]
 
 
+REQUIRED_KEYS = ("LLM_API_KEY", "OPENAI_API_KEY")
+MIN_FREE_GB = 20
+
+
+def preflight(root: Path = PROJECT_ROOT) -> list[str]:
+    """What would make tonight's queue fail, checked before it starts."""
+
+    import requests
+
+    problems: list[str] = []
+    ctx = RunContext.create("_preflight", root=root, config={})   # only for .env access
+    for name in REQUIRED_KEYS:
+        if not ctx.env(name, required=False):
+            problems.append(f"falta la clave {name} en .env")
+    free_gb = shutil.disk_usage(root).free / 1e9
+    if free_gb < MIN_FREE_GB:
+        problems.append(f"solo quedan {free_gb:.0f} GB libres en disco (mínimo {MIN_FREE_GB})")
+    for tool in ("ffmpeg", "ffprobe", "npx"):
+        if not shutil.which(tool):
+            problems.append(f"no encuentro '{tool}' en el PATH")
+    try:
+        if requests.get("https://www.youtube.com", timeout=15).status_code >= 500:
+            problems.append("YouTube no responde")
+    except requests.RequestException as error:
+        problems.append(f"sin conexión con YouTube ({type(error).__name__})")
+    return problems
+
+
+def notify(root: Path, text: str) -> None:
+    """Telegram message if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are in .env; silent otherwise."""
+
+    import requests
+
+    ctx = RunContext.create("_notify", root=root, config={})
+    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False), ctx.env("TELEGRAM_CHAT_ID", required=False)
+    if not token or not chat:
+        return
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                      json={"chat_id": chat, "text": text[:4000]}, timeout=20)
+    except requests.RequestException as error:
+        print(f"Aviso: no se pudo enviar el mensaje de Telegram ({type(error).__name__})")
+
+
 def _describe(error: BaseException) -> str:
     if isinstance(error, QABlocked):
         return f"QA bloqueó el render: {error}"
@@ -74,7 +119,8 @@ def _describe(error: BaseException) -> str:
     return f"{type(error).__name__}: {error}"
 
 
-def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT) -> int:
+def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT,
+              check: bool = True) -> int:
     """Process every pending video; never stop the night because one video failed. Returns failures."""
 
     lock = root / QUEUE_LOCK
@@ -88,6 +134,14 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                          f"Si no es así (p. ej. se apagó el PC), borra {QUEUE_LOCK} y vuelve a lanzarla.")
     results: list[tuple[str, str, float, str]] = []
     try:
+        if not check:
+            problems = []
+        else:
+            problems = preflight(root)
+        if problems:
+            message = "Cola NO iniciada:\n- " + "\n- ".join(problems)
+            notify(root, message)
+            raise SystemExit(message)
         slugs = pending_slugs(root)
         if limit > 0:
             slugs = slugs[:limit]
@@ -111,6 +165,10 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         _write_report(root, results)
     failures = sum(1 for _, status, _, _ in results if status != "OK")
     print(f"\nCola terminada: {len(results) - failures} OK · {failures} con error · resumen en {QUEUE_REPORT}")
+    if results:
+        notify(root, f"Cola terminada: {len(results) - failures} OK · {failures} con error\n" + "\n".join(
+            f"{'✅' if status == 'OK' else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
+            for slug, status, seconds, detail in results))
     return failures
 
 
