@@ -74,7 +74,44 @@ Resultado en `out/<nombre>/`:
 Si algo falla, vuelve a lanzar el mismo comando: cada etapa terminada se salta y continúa donde
 se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
 
-## 6. Tiempos y coste orientativos (vídeo de 10 min)
+## 6. Cola nocturna (varios vídeos seguidos)
+
+Deja por la tarde cada vídeo en su carpeta (`materiales/<nombre>/` con `guion.txt`, `voz.mp3`,
+`titulo.txt`) y lanza:
+
+```bash
+python main.py --all            # todos los pendientes, uno detrás de otro
+python main.py --all --limit 3  # como mucho 3 esta noche
+```
+
+- Pendiente = tiene guion y voz pero aún no tiene `out/<nombre>/video-final.mp4`. Se procesan
+  por orden de llegada.
+- Si uno falla, se apunta y la cola **sigue con el siguiente**. Al terminar (y tras cada vídeo)
+  queda un resumen en `out/_cola.md`: estado, tiempo y motivo de cada fallo. Para reintentar
+  uno fallido basta con volver a lanzar la cola: retoma donde se quedó.
+- No se pueden lanzar dos colas a la vez. Si el PC se apagó en mitad de una, borra
+  `work/.cola.lock` antes de volver a lanzarla.
+
+**Que el PC no se duerma:** si entra en suspensión, la cola se pausa.
+
+- Windows: Configuración → Sistema → Inicio/apagado y suspensión → «Nunca» (al menos enchufado),
+  o en una terminal de administrador: `powercfg /change standby-timeout-ac 0`.
+- Mac: lanza la cola con `caffeinate -i python main.py --all`.
+
+**Que empiece sola a una hora** (opcional):
+
+- Windows (Programador de tareas), una sola vez desde la carpeta del proyecto:
+  ```
+  schtasks /create /tn "Videos cola" /sc daily /st 01:00 /tr "cmd /c cd /d %CD% && python main.py --all > out\cola.log 2>&1"
+  ```
+- Mac/Linux (`crontab -e`):
+  ```
+  0 1 * * * cd /ruta/a/edit-vid3 && python3 main.py --all > out/cola.log 2>&1
+  ```
+
+Con un PC de 6–8 núcleos, 2–3 vídeos de 10 min caben de sobra en una noche (1–1,5 h cada uno).
+
+## 7. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar
   metraje y el render. El PC va al máximo durante el análisis y el render.

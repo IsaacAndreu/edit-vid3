@@ -1,18 +1,34 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+import time
+import traceback
+from datetime import datetime
+from pathlib import Path
 
-from pipeline.config import ConfigError
+from pipeline.config import PROJECT_ROOT, ConfigError
 from pipeline.context import RunContext
 from pipeline.qa import QABlocked
 from pipeline.runner import STAGE_NAMES, StageNotImplemented, run_stages
+
+QUEUE_LOCK = "work/.cola.lock"
+QUEUE_REPORT = "out/_cola.md"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Genera un vídeo documental a partir de materiales/<slug>/{titulo.txt, guion.txt, voz.mp3}."
     )
-    parser.add_argument("--slug", required=True, help="Carpeta dentro de materiales/, p. ej. Video1.")
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--slug", help="Carpeta dentro de materiales/, p. ej. Video1.")
+    target.add_argument(
+        "--all",
+        action="store_true",
+        help="Cola: procesa uno tras otro todos los vídeos de materiales/ que aún no tienen out/<slug>/video-final.mp4. "
+        "Si uno falla, lo apunta y sigue con el siguiente. Resumen en out/_cola.md.",
+    )
     parser.add_argument(
         "--force",
         action="append",
@@ -22,16 +38,99 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
     parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
+    parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
     return parser
+
+
+def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root: Path = PROJECT_ROOT) -> None:
+    """One video, end to end. Raises on failure (the caller decides whether to stop)."""
+
+    ctx = RunContext.create(slug, root=root)
+    if not ctx.materials_dir.is_dir():
+        raise FileNotFoundError(f"No existe {ctx.materials_dir}")
+    run_stages(ctx, force=force, until=until, review=review)
+
+
+def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
+    """materiales/<slug>/ with a script and a voice but no final video yet, oldest first."""
+
+    materials = root / "materiales"
+    if not materials.is_dir():
+        return []
+    ready = [
+        d for d in materials.iterdir()
+        if d.is_dir() and not d.name.startswith((".", "_"))
+        and (d / "guion.txt").is_file() and (d / "voz.mp3").is_file()
+        and not (root / "out" / d.name / "video-final.mp4").is_file()
+    ]
+    return [d.name for d in sorted(ready, key=lambda d: (d.stat().st_mtime, d.name))]
+
+
+def _describe(error: BaseException) -> str:
+    if isinstance(error, QABlocked):
+        return f"QA bloqueó el render: {error}"
+    if isinstance(error, (StageNotImplemented, ConfigError, FileNotFoundError, RuntimeError, ValueError)):
+        return str(error)
+    return f"{type(error).__name__}: {error}"
+
+
+def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT) -> int:
+    """Process every pending video; never stop the night because one video failed. Returns failures."""
+
+    lock = root / QUEUE_LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
+        os.close(fd)
+    except FileExistsError:
+        raise SystemExit(f"Ya hay una cola en marcha ({lock.read_text().strip()}). "
+                         f"Si no es así (p. ej. se apagó el PC), borra {QUEUE_LOCK} y vuelve a lanzarla.")
+    results: list[tuple[str, str, float, str]] = []
+    try:
+        slugs = pending_slugs(root)
+        if limit > 0:
+            slugs = slugs[:limit]
+        print(f"Cola: {len(slugs)} vídeo(s) pendiente(s): {', '.join(slugs) or '—'}")
+        for number, slug in enumerate(slugs, start=1):
+            print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
+            started = time.monotonic()
+            try:
+                run_one(slug, force=force, until=until, review=review, root=root)
+                results.append((slug, "OK", time.monotonic() - started, ""))
+            except KeyboardInterrupt:
+                results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
+                raise
+            except BaseException as error:  # SystemExit too: one bad video must not end the queue
+                traceback.print_exc()
+                results.append((slug, "ERROR", time.monotonic() - started, _describe(error)))
+                print(f"✗ {slug}: {_describe(error)} — sigo con el siguiente")
+            _write_report(root, results)
+    finally:
+        lock.unlink(missing_ok=True)
+        _write_report(root, results)
+    failures = sum(1 for _, status, _, _ in results if status != "OK")
+    print(f"\nCola terminada: {len(results) - failures} OK · {failures} con error · resumen en {QUEUE_REPORT}")
+    return failures
+
+
+def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> None:
+    lines = [f"# Cola · {datetime.now():%Y-%m-%d %H:%M}", "", "| Vídeo | Estado | Tiempo | Detalle |", "|---|---|---|---|"]
+    for slug, status, seconds, detail in results:
+        where = f"out/{slug}/video-final.mp4" if status == "OK" else detail.replace("|", "/")[:300]
+        lines.append(f"| {slug} | {status} | {seconds / 60:.0f} min | {where} |")
+    report = root / QUEUE_REPORT
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> None:
     args = _parser().parse_args()
+    if args.all:
+        failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)
+        sys.exit(1 if failures else 0)
     try:
-        ctx = RunContext.create(args.slug)
-        if not ctx.materials_dir.is_dir():
-            raise FileNotFoundError(f"No existe {ctx.materials_dir}")
-        run_stages(ctx, force=set(args.force), until=args.until, review=args.review)
+        run_one(args.slug, force=set(args.force), until=args.until, review=args.review)
     except StageNotImplemented as error:
         raise SystemExit(f"Parada: {error}") from error
     except QABlocked as error:

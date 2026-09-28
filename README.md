@@ -21,6 +21,7 @@ Running it on your own PC: see [`docs/LOCAL.md`](docs/LOCAL.md).
 ```bash
 python -m pip install -r requirements.txt
 python main.py --slug Video1 [--review] [--force planner] [--until timeline]
+python main.py --all [--limit 3]     # queue: every pending materiales/<slug>, one after another; summary in out/_cola.md
 ```
 
 Each stage reads and writes JSON in `work/<slug>/` and is skipped when its output is valid and
