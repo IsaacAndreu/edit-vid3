@@ -39,4 +39,4 @@ def test_voice_chains_pause_the_narration():
     assert chains[0] == "[0:a]anull,asplit=2[vs0][vs1]"
     assert chains[1] == "[vs0]atrim=start=0.0000:end=2.0000,asetpts=PTS-STARTPTS[vp0]"
     assert chains[2] == "[vs1]atrim=start=2.0000,asetpts=PTS-STARTPTS,adelay=3000:all=1[vp1]"
-    assert chains[3] == "[vp0][vp1]amix=inputs=2:normalize=0[voice]"
+    assert chains[3] == "[vp0][vp1]amix=inputs=2:normalize=0,asetpts=N/SR/TB[voice]"

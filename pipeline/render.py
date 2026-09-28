@@ -126,7 +126,7 @@ def voice_chains(index: int, voice_from: int, gaps: list, fps: int, stereo: str)
         ms = round((voice_from + start + shift) / fps * 1000)
         chains.append(f"[vs{k}]atrim=start={start / fps:.4f}{end},asetpts=PTS-STARTPTS"
                       + (f",adelay={ms}:all=1" if ms else "") + f"[vp{k}]")
-    chains.append("".join(f"[vp{k}]" for k in range(len(cuts))) + f"amix=inputs={len(cuts)}:normalize=0[voice]")
+    chains.append("".join(f"[vp{k}]" for k in range(len(cuts))) + f"amix=inputs={len(cuts)}:normalize=0,asetpts=N/SR/TB[voice]")   # continuous timestamps, or apad never ends
     return chains
 
 
