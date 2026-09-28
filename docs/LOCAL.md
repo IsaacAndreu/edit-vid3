@@ -71,7 +71,6 @@ Resultado en `out/<nombre>/`:
 - `qa/report.md` y `qa/contact-sheet.jpg` — revisión: planos flojos, reparto por fuente, coste
 - `manifest.json` — de dónde sale cada plano
 - `verificacion.md` — datos del guion comprobados (❌ a corregir, ⚠️ sin confirmar, ✅ confirmados)
-- `shorts/short-1..3.mp4` + `shorts.txt` — 3 Shorts verticales con subtítulos y sus títulos
 - `miniaturas/miniatura-1..3.jpg` — 3 miniaturas (recorte del atleta + frame de su gran momento + frase corta)
 - `youtube.txt` — para YouTube Studio: 3 títulos a elegir, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
 
@@ -202,7 +201,18 @@ resultados, edades, récords, citas…) y las contrasta con Wikipedia y búsqued
 `out/<nombre>/verificacion.md`. Hazlo antes de grabar la voz: corregir un dato después obliga a
 regrabar. En la cola también se hace solo, pero no para el vídeo (salvo `factcheck.block_on_wrong: true`).
 
-## 10. Versiones dobladas (reutilizando el vídeo hecho)
+## 10. Shorts (solo cuando tú quieras)
+
+```bash
+python main.py --shorts <nombre>
+```
+
+Con el vídeo ya terminado, elige los 3 mejores momentos (25–58 s) y los saca en vertical con
+subtítulos grandes y una frase gancho arriba → `out/<nombre>/shorts/` (+ `shorts.txt` con título y
+descripción de cada uno). Si quieres que un vídeo concreto los haga solo en la cola, pon en su
+`materiales/<nombre>/config.yaml`: `shorts: {enabled: true}`.
+
+## 10b. Versiones dobladas (reutilizando el vídeo hecho)
 
 1. Deja la narración traducida junto al original: `materiales/<nombre>/voz-en.mp3` (en, pt, fr, it, de).
    Opcional: `guion-en.txt` (el guion traducido) y `titulo-en.txt`. Sin guion, se usa la transcripción.
@@ -210,7 +220,7 @@ regrabar. En la cola también se hace solo, pero no para el vídeo (salvo `factc
    vídeo original está terminado.
 
 Resultado en `out/<nombre>-en/`: mismos clips y mismo montaje, con los cortes reajustados a la
-nueva voz, los textos en pantalla traducidos («CHAPTER», «Source»), y sus Shorts, miniaturas y
+nueva voz, los textos en pantalla traducidos («CHAPTER», «Source»), y sus miniaturas y
 títulos en ese idioma. No vuelve a buscar ni a juzgar metraje: ~15-25 min, casi todo render.
 Si un plano queda más largo que su clip, va en cámara lenta suave.
 

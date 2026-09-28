@@ -35,6 +35,8 @@ def _parser() -> argparse.ArgumentParser:
                              "(out/_ideas/<fecha>.md, y por email/Telegram si está configurado).")
     target.add_argument("--check", metavar="SLUG",
                         help="Solo verifica los datos del guion de materiales/SLUG (antes de grabar la voz) → out/SLUG/verificacion.md.")
+    target.add_argument("--shorts", metavar="SLUG",
+                        help="Hace 3 Shorts verticales de un vídeo ya terminado → out/SLUG/shorts/.")
     target.add_argument("--dub", metavar="SLUG:IDIOMA",
                         help="Versión doblada reutilizando el vídeo hecho, p. ej. CarlosYulo:en con la voz en "
                              "materiales/CarlosYulo/voz-en.mp3 (+ guion-en.txt opcional) → out/CarlosYulo-en/.")
@@ -204,6 +206,16 @@ def main() -> None:
             raise SystemExit(f"No existe {ctx.materials_dir / 'guion.txt'}")
         factcheck.run(ctx)
         print(factcheck.summary(ctx))
+        return
+    if args.shorts:
+        from pipeline import shorts
+
+        ctx = RunContext.create(args.shorts)
+        if not (ctx.out_dir / "video-final.mp4").is_file():
+            raise SystemExit(f"Aún no existe {ctx.out_dir / 'video-final.mp4'}")
+        ctx.config.setdefault("shorts", {})["enabled"] = True
+        shorts.run(ctx)
+        print(f"Shorts en {ctx.out_dir / shorts.DIR}")
         return
     if args.dub:
         from pipeline import dub

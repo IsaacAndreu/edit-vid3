@@ -52,7 +52,7 @@ STAGES: list[Stage] = [
     Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md", ctx.out_dir / "manifest.json", ctx.out_dir / "creditos.txt"],
           qa.inputs, qa.run, qa.validate, ("qa", "judge")),
     Stage("render", lambda ctx: [ctx.out_dir / render.OUTPUT], render.inputs, render.run, render.validate, ("render", "video")),
-    Stage("shorts", lambda ctx: [ctx.out_dir / shorts.DIR / "shorts.txt"], shorts.inputs, shorts.run, shorts.validate,
+    Stage("shorts", shorts.outputs, shorts.inputs, shorts.run, shorts.validate,
           ("shorts",)),
     Stage("package", lambda ctx: [ctx.out_dir / package.THUMB_DIR / "miniatura-1.jpg"], package.inputs, package.run,
           package.validate, ("package",)),

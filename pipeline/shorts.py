@@ -164,7 +164,18 @@ def inputs(ctx: RunContext) -> list:
     return [ctx.out_dir / "video-final.mp4", ctx.work_dir / "words.json"]
 
 
+def enabled(ctx: RunContext) -> bool:
+    return bool(ctx.section("shorts").get("enabled", False))
+
+
+def outputs(ctx: RunContext) -> list:
+    return [ctx.out_dir / DIR / "shorts.txt"] if enabled(ctx) else []
+
+
 def run(ctx: RunContext) -> None:
+    if not enabled(ctx):
+        print("   Shorts desactivados (python main.py --shorts <vídeo> para hacerlos)")
+        return
     words = ctx.read_json("words.json")["words"]
     timeline = ctx.read_json("timeline.json")
     offset = timeline["audio"].get("voiceFrom", 0) / timeline["fps"]   # narration starts after the cold open
@@ -196,4 +207,6 @@ def run(ctx: RunContext) -> None:
 
 
 def validate(ctx: RunContext) -> bool:
+    if not enabled(ctx):
+        return True
     return (ctx.out_dir / DIR / "shorts.txt").is_file() and any((ctx.out_dir / DIR).glob("short-*.mp4"))

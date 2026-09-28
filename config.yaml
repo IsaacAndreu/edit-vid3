@@ -163,6 +163,7 @@ lab:                               # panel (python main.py --panel) e ideas con 
   ideas_days: 180                  # solo vídeos de los últimos N días
 
 shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
+  enabled: false                   # solo cuando tú lo pidas: python main.py --shorts <vídeo>
   count: 3
   min_seconds: 25
   max_seconds: 58
