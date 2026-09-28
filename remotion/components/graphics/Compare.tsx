@@ -41,7 +41,7 @@ export const Compare: FC<{ graphic: CompareGraphic; durationInFrames: number }> 
       {graphic.title ? <GraphicTitle text={graphic.title} /> : null}
       <div style={{ position: 'absolute', top: 190, left: 110, right: 110, display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ opacity: enter, transform: `translateX(${(1 - enter) * -60}px)`, display: 'flex', gap: 28, alignItems: 'center' }}>
-          <MediaBox media={graphic.left.media} width={200} height={200} durationInFrames={durationInFrames} style={{ borderRadius: '50%' }} />
+          <MediaBox media={graphic.left.media} width={200} height={200} durationInFrames={durationInFrames} style={{ borderRadius: '50%' }} face />
           {side(graphic.left.name, 'left')}
         </div>
         <div style={{ fontFamily, fontWeight: 900, fontSize: 70, color: theme.muted, alignSelf: 'center', opacity: enter }}>VS</div>
@@ -53,6 +53,7 @@ export const Compare: FC<{ graphic: CompareGraphic; durationInFrames: number }> 
             height={200}
             durationInFrames={durationInFrames}
             style={{ borderRadius: '50%', borderColor: BLUE }}
+            face
           />
         </div>
       </div>

@@ -10,6 +10,7 @@ export interface Media {
   caption?: string | null; // person cards: the name
   width?: number | null;
   height?: number | null;
+  focus?: [number, number] | null; // graphics: centre of the face (% of width, % of height) to crop around
 }
 
 export interface Shot {
