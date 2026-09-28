@@ -73,6 +73,14 @@ class RunContext:
     def fps(self) -> int:
         return int(self.config.get("video", {}).get("fps", 30))
 
+    @property
+    def language(self) -> str:
+        """Name of the narration language for LLM prompts (align.language: es, en, pt…)."""
+
+        code = str(self.section("align").get("language", "es"))
+        return {"es": "español", "en": "English", "pt": "português", "fr": "français", "it": "italiano",
+                "de": "Deutsch"}.get(code, code)
+
     def section(self, name: str) -> dict[str, Any]:
         value = self.config.get(name, {})
         return value if isinstance(value, dict) else {}

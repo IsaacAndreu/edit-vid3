@@ -67,7 +67,8 @@ def pick(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cfg = ctx.section("shorts")
     count, min_s, max_s = int(cfg.get("count", 3)), float(cfg.get("min_seconds", 25)), float(cfg.get("max_seconds", 58))
     listing = "\n".join(f"[{s['n']}] ({s['start']:.1f}-{s['end']:.1f}s) {s['text']}" for s in sents)
-    result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=3000, user=listing[:60000],
+    result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=3000,
+                           user=f"IDIOMA DE hook/title/description: {ctx.language}\n\n" + listing[:60000],
                            system=SYSTEM.format(count=count, min_s=int(min_s), max_s=int(max_s)))
     chosen, taken = [], set()
     for item in result.get("shorts", []):

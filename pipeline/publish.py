@@ -79,7 +79,8 @@ def write(ctx: RunContext, timeline: Timeline, rows: list[dict[str, Any]]) -> No
     if script.is_file():
         try:
             extra = complete_json(ctx, stage=STAGE, section="planner", system=SYSTEM,
-                                  user=script.read_text("utf-8")[:12000], max_tokens=800)
+                                  user=f"IDIOMA DE LA DESCRIPCIÓN Y ETIQUETAS: {ctx.language}\n\n"
+                                       + script.read_text("utf-8")[:12000], max_tokens=800)
         except Exception as error:  # the file is useful without them
             print(f"   youtube.txt sin descripción/etiquetas: {str(error)[:120]}")
     body = [str(extra["description"]).strip()] if extra.get("description") else []

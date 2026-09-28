@@ -90,8 +90,9 @@ def run(ctx: RunContext) -> None:
     script = (ctx.materials_dir / "guion.txt").read_text("utf-8")[:12000]
     try:
         result: dict[str, Any] = complete_json(
-            ctx, stage=STAGE, section="planner", system=SYSTEM, max_tokens=800,
-            user=f"TÍTULO DE TRABAJO: {title}\n\nTÍTULOS QUE MEJOR FUNCIONAN EN LA COMPETENCIA:\n"
+            ctx, stage=STAGE, section="planner", max_tokens=800,
+            system=SYSTEM + f"\nIDIOMA OBLIGATORIO de titles y thumbTexts: {ctx.language}, aunque los ejemplos estén en otro idioma.",
+            user=f"IDIOMA DE LOS TÍTULOS Y TEXTOS: {ctx.language}\nTÍTULO DE TRABAJO: {title}\n\nTÍTULOS QUE MEJOR FUNCIONAN EN LA COMPETENCIA:\n"
                  + ("\n".join(f"- {p}" for p in patterns) or "(sin datos)") + f"\n\nGUION:\n{script}")
     except Exception as error:
         print(f"   Sin títulos/textos del LLM: {str(error)[:120]}")
