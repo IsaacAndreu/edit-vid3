@@ -15,11 +15,20 @@ the same source as the last shot of that sentence, right after the fragment alre
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import math
+import re
 import subprocess
 from pathlib import Path
+from typing import Any
+
+import cv2
+import numpy as np
 
 from .context import RunContext
+from .costs import record_cost
 from .llm import complete_json
 from .ingest import FPS, NORMALISE_VERSION, _frame_filter, find_lut, lut_filter, probe
 from .judge import LETTERS, call_judge, contact_sheet, ranked, source_lines
@@ -37,7 +46,7 @@ from .schemas import (
     ShotsFile,
 )
 from .sourcing import youtube_source
-from .sourcing.common import key, tokens
+from .sourcing.common import blocked_by_title, cached_json, key, tokens
 
 STAGE = "coldopen"
 OUTPUT = "coldopen.json"
@@ -158,8 +167,14 @@ repartidos por el vídeo (no en los primeros 30 s). Devuelve SOLO JSON: {{"momen
 """.strip()
 
 
-def pick_moments(ctx: RunContext, count: int, seconds: float) -> list[tuple[Selection, float, float]]:
-    """(source, clip start, voice time to pause at) for up to `count` peak sentences."""
+TALK = re.compile(r"\b(says?|said|interview|reacts?|press|speaks?|talks?|entrevista|dice|habla|rueda de prensa)\b", re.I)
+
+CHECK_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["competition", "why"],
+                "properties": {"competition": {"type": "boolean"}, "why": {"type": "string"}}}
+
+
+def pick_moments(ctx: RunContext, count: int, seconds: float) -> list[tuple[float, list[tuple[Selection, float]]]]:
+    """For up to `count` peak sentences: (voice time to pause at, [(source, clip start), …] to try)."""
 
     from .shorts import sentences
 
@@ -180,30 +195,108 @@ def pick_moments(ctx: RunContext, count: int, seconds: float) -> list[tuple[Sele
     used = [(s.candidateId, s.start, s.end) for s in selections.values()
             if s.status == "selected" and s.start is not None and s.end is not None]
     name = tokens(story.subject.split("·")[0].strip())
-    picks: list[tuple[Selection, float, float]] = []
+    blocklist = ctx.section("content").get("title_blocklist")
+    picks: list[tuple[float, list[tuple[Selection, float]]]] = []
     for item in chosen:
         try:
-            sent = sents[int(item["sentence"])]
+            n = int(item["sentence"])
+            sent = sents[n]
         except (KeyError, IndexError, TypeError, ValueError):
             continue
-        if sent["end"] < 30 or any(abs(sent["end"] - p[2]) < 60 for p in picks):
+        if sent["end"] < 30 or any(abs(sent["end"] - p[0]) < 60 for p in picks):
             continue
-        inside = [s for s in story.shots if s.start >= sent["start"] - 0.05 and s.end <= sent["end"] + 0.6]
+        since = sents[max(0, n - 1)]["start"] - 0.05          # this sentence and the one before
+        inside = [s for s in story.shots if s.start >= since and s.end <= sent["end"] + 0.6]
+        options: list[tuple[Selection, float]] = []
         for shot in reversed(inside):
             sel = selections.get(shot.id)
             if (sel is None or shot.id in replaced or sel.status != "selected" or sel.source != "youtube"
-                    or sel.kind != "video" or sel.end is None
+                    or sel.kind != "video" or sel.end is None or TALK.search(sel.title or "")
+                    or blocked_by_title(sel.title or "", sel.channel or "", blocklist)
                     or (name and not name <= tokens(f"{sel.title or ''} {sel.channel or ''}"))):
                 continue
             start = float(sel.end)            # the action continues right after what was shown
             if any(cid == sel.candidateId and start < b + 0.5 and a < start + seconds + 0.5 for cid, a, b in used
                    if not (a == sel.start and b == sel.end)):
                 continue
-            picks.append((sel, start, sent["end"]))
-            break
+            if all(o[0].candidateId != sel.candidateId for o in options):
+                options.append((sel, start))
+        options += analysed_options(ctx, inside, used, name, blocklist, {o[0].candidateId for o in options})
+        if options:
+            picks.append((sent["end"], options[:4]))
         if len(picks) == count:
             break
-    return sorted(picks, key=lambda p: p[2])
+    return sorted(picks, key=lambda p: p[0])
+
+
+def analysed_options(ctx: RunContext, shots: list, used: list, name: set[str], blocklist: Any,
+                     skip: set[str]) -> list[tuple[Selection, float]]:
+    """Other analysed fragments of these shots (best first) from the protagonist's sources, not on screen."""
+
+    found: list[tuple[float, Selection, float]] = []
+    for shot in shots:
+        path = ctx.work_dir / "candidates" / f"{shot.id}.json"
+        scores = ctx.work_dir / "scores" / f"{shot.id}.json"
+        if not path.is_file() or not scores.is_file():
+            continue
+        by_id = {c.id: c for c in ShotCandidates.model_validate_json(path.read_text("utf-8")).candidates}
+        for total, option in ranked(ShotScores.model_validate_json(scores.read_text("utf-8")).options, {}):
+            c = by_id.get(option.candidateId)
+            if (c is None or option.kind != "video" or c.source != "youtube" or c.id in skip or option.start is None
+                    or TALK.search(c.title or "") or blocked_by_title(c.title or "", c.channel or "", blocklist)
+                    or (name and not name <= tokens(f"{c.title or ''} {c.channel or ''}"))
+                    or any(cid == c.id and option.start < b + 1.0 and a < option.end + 1.0 for cid, a, b in used)):
+                continue
+            skip.add(c.id)
+            found.append((total, Selection(
+                shotId=shot.id, status="selected", decidedBy="judge", candidateId=c.id, source=c.source, kind="video",
+                start=option.start, end=option.end, url=c.url, title=c.title, channel=c.channel, license=c.license,
+                credit=c.credit, attribution=c.attribution, score=option.total), float(option.start)))
+    return [(sel, start) for _, sel, start in sorted(found, key=lambda f: -f[0])][:3]
+
+
+def is_competition(ctx: RunContext, clip: Path, person: str) -> bool:
+    """Vision check on 3 frames: the athlete competing/celebrating in the arena, not an interview."""
+
+    capture = cv2.VideoCapture(str(clip))
+    total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 1)
+    frames = []
+    for at in (0.15, 0.5, 0.85):
+        capture.set(cv2.CAP_PROP_POS_FRAMES, int(total * at))
+        ok, frame = capture.read()
+        if ok:
+            frames.append(cv2.resize(frame, (480, 270)))
+    capture.release()
+    if not frames:
+        return False
+    ok, encoded = cv2.imencode(".jpg", np.hstack(frames), [cv2.IMWRITE_JPEG_QUALITY, 85])
+    image = encoded.tobytes()
+    cfg = ctx.section("judge")
+    model = str(cfg.get("model", "gpt-5-mini"))
+    prompt = (f"Three frames of one 4-5 s clip. Is it LIVE COMPETITION footage of {person or 'the athlete'}: performing, "
+              "landing, finishing or celebrating in the arena / on the podium, or the scoreboard moment? "
+              "Interviews, press conferences, talking heads, news studios, training or crowds only → false.")
+
+    def produce() -> dict[str, Any]:
+        from openai import OpenAI
+
+        response = OpenAI(api_key=ctx.env("OPENAI_API_KEY")).responses.create(
+            model=model, reasoning={"effort": "low"},
+            input=[{"role": "user", "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(image).decode()}]}],
+            text={"format": {"type": "json_schema", "name": "moment_check", "strict": True, "schema": CHECK_SCHEMA}},
+        )
+        prices = cfg.get("usd_per_mtok", {})
+        usage = response.usage
+        record_cost(ctx, stage=STAGE, provider="openai", operation=model,
+                    usd=(usage.input_tokens * float(prices.get("input", 0.25)) + usage.output_tokens * float(prices.get("output", 2.0))) / 1e6)
+        return json.loads(response.output_text)
+
+    verdict = cached_json(ctx.cache_dir / "judge" / f"moment-{hashlib.sha256(prompt.encode() + image).hexdigest()[:32]}.json", produce)
+    if not verdict.get("competition"):
+        print(f"   {clip.name}: descartado ({verdict.get('why', '')[:90]})")
+    return bool(verdict.get("competition"))
 
 
 def fetch(youtube, sel: Selection, start: float, length: float, target: Path, lut: Path | None) -> ColdOpenClip | None:
@@ -263,11 +356,15 @@ def run(ctx: RunContext) -> None:
             clip = fetch(youtube, sel, start, length, target, lut)
             if clip:
                 clips.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root))}))
-        for sel, start, after in moments:
-            target = out_dir / f"m{len(pauses) + 1:02d}-{key(sel.candidateId, start, moment_seconds, NORMALISE_VERSION)[:8]}.mp4"
-            clip = fetch(youtube, sel, start, moment_seconds, target, lut)
-            if clip:
-                pauses.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root)), "afterSeconds": round(after, 3)}))
+        person = ShotsFile.model_validate(ctx.read_json("shots.json")).subject.split("·")[0].strip()
+        for after, options in moments:
+            for sel, start in options:
+                target = out_dir / f"m{len(pauses) + 1:02d}-{key(sel.candidateId, start, moment_seconds, NORMALISE_VERSION)[:8]}.mp4"
+                clip = fetch(youtube, sel, start, moment_seconds, target, lut)
+                if clip and is_competition(ctx, target, person):
+                    pauses.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root)), "afterSeconds": round(after, 3)}))
+                    break
+                target.unlink(missing_ok=True)
     finally:
         youtube.close()
     ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses).model_dump())
