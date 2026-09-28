@@ -319,7 +319,7 @@ class Renderer:
 
         fade = float(self.cfg.get("music_crossfade", 4.0))
         length = media_seconds(track)
-        copies = 1 if length <= 0 or length >= seconds else math.ceil((seconds - fade) / max(1.0, length - fade)) + 1
+        copies = 1 if length <= 0 or length >= seconds else max(1, math.ceil((seconds - fade) / max(1.0, length - fade)) + 1)
         out = self.dir / f"music-{_hash(_file_sig(track), copies, fade, MUSIC_LUFS)}.wav"
         if out.is_file():
             return out
