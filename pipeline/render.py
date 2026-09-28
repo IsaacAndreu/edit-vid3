@@ -22,6 +22,7 @@ from __future__ import annotations
 import glob
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -41,6 +42,7 @@ STAGE = "render"
 OUTPUT = "video-final.mp4"
 VERSION = 1
 RAMP_FRAMES = 8          # music fade around speech, as in remotion/components/AudioBed.tsx
+MUSIC_LUFS = -20         # the bed before music_volume / ducking (the voice is ~-23 LUFS before mastering)
 SFX_FRAMES = 90          # each SFX plays at most 3 s, as in AudioBed
 
 
@@ -108,6 +110,15 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
     total = sum(s["durationInFrames"] for s in shots)
     audio = {**timeline["audio"], "music": None, "speech": [], "sfx": [], "clips": [], "voiceFrom": 0}
     return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels, "audio": audio}
+
+
+def media_seconds(path: Path) -> float:
+    result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                            capture_output=True, text=True)
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
 
 
 def voice_chains(index: int, voice_from: int, gaps: list, fps: int, stereo: str) -> list[str]:
@@ -302,6 +313,24 @@ class Renderer:
 
     # --- audio ------------------------------------------------------------------------------
 
+    def music_bed(self, track: Path, seconds: float) -> Path:
+        """The track levelled to MUSIC_LUFS (any track sits the same under the voice) and repeated
+        until the video ends, each repetition cross-faded into the next."""
+
+        fade = float(self.cfg.get("music_crossfade", 4.0))
+        length = media_seconds(track)
+        copies = 1 if length <= 0 or length >= seconds else math.ceil((seconds - fade) / max(1.0, length - fade)) + 1
+        out = self.dir / f"music-{_hash(_file_sig(track), copies, fade, MUSIC_LUFS)}.wav"
+        if out.is_file():
+            return out
+        chain = "[0:a]anull[m0]" + "".join(
+            f";[m{i - 1}][{i}:a]acrossfade=d={fade}:c1=tri:c2=tri[m{i}]" for i in range(1, copies))
+        chain += f";[m{copies - 1}]loudnorm=I={MUSIC_LUFS}:TP=-2:LRA=11[bed]"
+        _run(["ffmpeg", "-y", "-v", "error", *[a for _ in range(copies) for a in ("-i", str(track))],
+              "-filter_complex", chain, "-map", "[bed]", "-ar", "48000", "-ac", "2", str(out)],
+             "el bucle de la música")
+        return out
+
     def audio(self, timeline: dict[str, Any]) -> Path:
         audio = timeline["audio"]
         total = timeline["durationInFrames"]
@@ -320,8 +349,11 @@ class Renderer:
                               self.fps, stereo)
         mix = ["[voice]"]
         if audio.get("music"):
-            index = add(work / audio["music"], "-stream_loop", "-1")
-            expr = music_volume_expr(audio.get("speech", []), self.fps, total, audio["musicVolume"], audio["duckedVolume"])
+            index = add(self.music_bed(work / audio["music"], seconds))
+            # ducked under the voice AND under the original sound of the cold open / moments
+            busy = sorted([*[tuple(s) for s in audio.get("speech", [])],
+                           *[(c["from"], c["from"] + c["durationInFrames"]) for c in audio.get("clips", [])]])
+            expr = music_volume_expr(busy, self.fps, total, audio["musicVolume"], audio["duckedVolume"])
             chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f},volume=eval=frame:volume='{expr}'[music]")
             mix.append("[music]")
         # Original sound of the cold-open clips (the only clip audio ever used), then SFX.
