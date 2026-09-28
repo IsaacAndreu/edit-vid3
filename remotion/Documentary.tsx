@@ -7,6 +7,7 @@ import { CreditBadge } from './components/CreditBadge';
 import { EndScreen } from './components/EndScreen';
 import { FramedCard } from './components/FramedCard';
 import { LowerThird } from './components/LowerThird';
+import { ParallaxPhoto } from './components/ParallaxPhoto';
 import { PersonCard } from './components/PersonCard';
 import { DataCard, SplitPanel } from './components/Panel';
 import { Question } from './components/Question';
@@ -35,6 +36,9 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
   }
   if (shot.media.layout === 'person') {
     return <PersonCard media={shot.media} durationInFrames={shot.durationInFrames} />;
+  }
+  if (shot.media.layout === 'parallax') {
+    return <ParallaxPhoto media={shot.media} durationInFrames={shot.durationInFrames} seed={shot.id} />;
   }
   if (shot.media.layout === 'card') {
     return <FramedCard media={shot.media} durationInFrames={shot.durationInFrames} />;

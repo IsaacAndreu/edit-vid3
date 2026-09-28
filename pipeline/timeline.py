@@ -236,8 +236,8 @@ def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share
 
     if shot_type in ("chapter", "split"):
         return "full"
-    if media.kind == "image":
-        return "card"
+    if media.kind == "image":   # photos alternate between the framed card and the parallax move
+        return "parallax" if int(hashlib.sha1(shot_id.encode()).hexdigest()[8:16], 16) % 2 else "card"
     if media.width and media.height and media.width / media.height < 1.6:
         return "card"
     bucket = int(hashlib.sha1(shot_id.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF

@@ -483,7 +483,7 @@ class TimelineMedia(_Strict):
     kind: Literal["video", "image"]
     source: str
     credit: str | None = None                                # on-screen "Fuente: …"; None for generated images
-    layout: Literal["full", "card", "person"] = "full"       # card: framed over the channel background; person: cutout card
+    layout: Literal["full", "card", "person", "parallax"] = "full"   # card: framed over the grid; person: cutout card; parallax: photo with depth
     caption: str | None = None                               # person cards: the name
     width: int | None = None                                 # of the media file (cards keep the source frame)
     height: int | None = None

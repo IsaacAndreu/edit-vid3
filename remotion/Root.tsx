@@ -1,7 +1,11 @@
 import type { FC } from "react";
-import { AbsoluteFill, Composition, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Composition, Sequence, useCurrentFrame } from "remotion";
 import { CreditBadge } from "./components/CreditBadge";
 import { Thumbnail, type ThumbnailVariant } from "./components/Thumbnail";
+import { GraphicScene } from "./components/graphics/GraphicScene";
+import { ParallaxPhoto } from "./components/ParallaxPhoto";
+import type { Graphic } from "./graphics";
+import type { Media } from "./types";
 import { Documentary } from "./Documentary";
 import type { TimelineProps } from "./types";
 
@@ -43,6 +47,31 @@ const Thumbnails: FC<ThumbnailsProps> = ({ variants }) => {
   return variant ? <Thumbnail variant={variant} /> : <AbsoluteFill />;
 };
 
+interface ShowcaseProps {
+  scenes: { graphic?: Graphic; parallax?: Media; seconds: number }[];
+  [key: string]: unknown;
+}
+
+/** Every animated template one after another (samples to review the templates). */
+const Showcase: FC<ShowcaseProps> = ({ scenes }) => {
+  let from = 0;
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+      {scenes.map((scene, i) => {
+        const frames = Math.round(scene.seconds * 30);
+        const at = from;
+        from += frames;
+        return (
+          <Sequence key={i} from={at} durationInFrames={frames}>
+            {scene.graphic ? <GraphicScene graphic={scene.graphic} durationInFrames={frames} /> : null}
+            {scene.parallax ? <ParallaxPhoto media={scene.parallax} durationInFrames={frames} seed={`s${i}`} /> : null}
+          </Sequence>
+        );
+      })}
+    </AbsoluteFill>
+  );
+};
+
 /** Props = work/<slug>/timeline.json; render with --public-dir=work/<slug>. */
 export const RemotionRoot: FC = () => (
   <>
@@ -71,6 +100,18 @@ export const RemotionRoot: FC = () => (
       height={1080}
       calculateMetadata={({ props }) => ({
         durationInFrames: Math.max(1, props.credits.length),
+      })}
+    />
+    <Composition
+      id="Showcase"
+      component={Showcase}
+      defaultProps={{ scenes: [] } as ShowcaseProps}
+      durationInFrames={30}
+      fps={30}
+      width={1920}
+      height={1080}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: Math.max(1, props.scenes.reduce((s, x) => s + Math.round(x.seconds * 30), 0)),
       })}
     />
     <Composition
