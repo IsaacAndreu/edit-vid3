@@ -1,6 +1,6 @@
 import type { Graphic } from './graphics';
 import type { Brand } from './theme';
-import type { Transition } from './components/CutMotion';
+import type { Shake, Transition } from './components/CutMotion';
 
 export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split' | 'endscreen';
 export type Sign = 'positive' | 'negative' | 'neutral';
@@ -106,5 +106,6 @@ export interface TimelineProps {
   locale?: { chapter?: string; source?: string; next?: string; subscribe?: string };
   brand?: Brand | null;
   transitions?: Transition[];
+  shakes?: Shake[];
   [key: string]: unknown;
 }

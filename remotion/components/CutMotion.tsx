@@ -14,10 +14,37 @@ const ease = Easing.in(Easing.quad);
  * sideways (whip) with motion blur, and the incoming one lands from the same move. Wraps the
  * footage and graphics layers; labels and credits stay still on top.
  */
-export const CutMotion: FC<{ transitions?: Transition[]; children: ReactNode }> = ({ transitions = [], children }) => {
+export interface Shake {
+  from: number; // the hit (a big figure landing)
+  durationInFrames: number;
+}
+
+/** Camera shake after a hit: a few decaying jolts. */
+const shakeOffset = (frame: number, shakes: Shake[]): string => {
+  const s = shakes.find((x) => frame >= x.from && frame < x.from + x.durationInFrames);
+  if (!s) return '';
+  const p = (frame - s.from) / s.durationInFrames;
+  const amp = 14 * (1 - p) ** 2;
+  return `translate(${(Math.sin(frame * 2.9) * amp).toFixed(1)}px, ${(Math.cos(frame * 3.7) * amp * 0.6).toFixed(1)}px) `;
+};
+
+export const CutMotion: FC<{ transitions?: Transition[]; shakes?: Shake[]; children: ReactNode }> = ({
+  transitions = [],
+  shakes = [],
+  children,
+}) => {
   const frame = useCurrentFrame();
+  const shake = shakeOffset(frame, shakes);
   const t = transitions.find((x) => frame >= x.from && frame < x.from + x.durationInFrames);
-  if (!t) return <AbsoluteFill>{children}</AbsoluteFill>;
+  if (!t) {
+    return shake ? (
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
+        <AbsoluteFill style={{ transform: `${shake}scale(1.03)` }}>{children}</AbsoluteFill>
+      </AbsoluteFill>
+    ) : (
+      <AbsoluteFill>{children}</AbsoluteFill>
+    );
+  }
   const half = t.durationInFrames / 2;
   const d = frame - (t.from + half); // -half … half-1
   const k = ease(Math.max(0, 1 - Math.abs(d + 0.5) / half)); // 0 at the edges, 1 at the cut
@@ -29,7 +56,7 @@ export const CutMotion: FC<{ transitions?: Transition[]; children: ReactNode }> 
         `translateX(${(d < 0 ? -1 : 1) * 520 * k}px) scale(${1 + (2 * 520 * k) / 1920 + 0.02})`;
   return (
     <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
-      <AbsoluteFill style={{ transform, filter: blur > 0.3 ? `blur(${blur.toFixed(1)}px)` : undefined }}>{children}</AbsoluteFill>
+      <AbsoluteFill style={{ transform: shake + transform, filter: blur > 0.3 ? `blur(${blur.toFixed(1)}px)` : undefined }}>{children}</AbsoluteFill>
       {t.kind === 'zoom' ? <AbsoluteFill style={{ backgroundColor: '#fff', opacity: 0.22 * k ** 3 }} /> : null}
     </AbsoluteFill>
   );

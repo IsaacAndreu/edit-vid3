@@ -61,9 +61,9 @@ export const Documentary: FC<TimelineProps> = (props) => {
   return <DocumentaryBody {...props} />;
 };
 
-const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale, transitions = [] }) => (
+const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio, locale, transitions = [], shakes = [] }) => (
   <AbsoluteFill style={{ backgroundColor: '#000' }}>
-    <CutMotion transitions={transitions}>
+    <CutMotion transitions={transitions} shakes={shakes}>
     {shots.map((shot) => (
       <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
         <ShotBackground shot={shot} />

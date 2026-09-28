@@ -40,6 +40,7 @@ from .schemas import (
     TimelineMedia,
     TimelineSfx,
     TimelineShot,
+    TimelineShake,
     TimelineTransition,
     WordsFile,
 )
@@ -497,6 +498,59 @@ def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap:
     return [TimelineSfx.model_validate({"src": src, "from": at, "volume": volume}) for src, at in chosen]
 
 
+STAT_LANDS = 18   # frame the Stat counter reaches its figure (remotion/components/Stat.tsx)
+
+
+def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
+    """When each element of an animated graphic appears (same timings as its Remotion component)."""
+
+    kind = graphic.get("type")
+    if kind == "map":
+        n = len(graphic.get("points") or [])
+        return [("pop", round((0.15 + 0.45 * i / max(1, n)) * frames)) for i in range(n)]
+    if kind == "chart":
+        n = len(graphic.get("data") or [])
+        if graphic.get("chart") == "line":
+            return [("pop", round(6 + 44 * i / max(1, n - 1))) for i in range(min(n, 24))]
+        if graphic.get("chart") == "pie":
+            return [("pop", 10 + i * 6) for i in range(min(n, 8))]
+        return [("pop", 8 + i * 5) for i in range(min(n, 12))]
+    if kind == "compare":
+        return [("pop", 14 + i * 10) for i in range(min(len(graphic.get("rows") or []), 5))]
+    if kind == "specs":
+        return [("pop", 14 + i * 7) for i in range(min(len(graphic.get("specs") or []), 6))]
+    if kind == "rank":
+        return [("impact", 2)] + [("pop", 20 + i * 8) for i in range(min(len(graphic.get("stats") or []), 4))]
+    if kind == "timeline":
+        n = min(len(graphic.get("events") or []), 8)
+        return [("pop", round(i * frames / max(1, n))) for i in range(n)]
+    if kind == "kinetic":
+        words = sum(len(str(line).split()) for line in graphic.get("lines") or [])
+        gap = max(3, min(8, int(frames * 0.6 / max(1, words))))
+        return [("impact", (words - 1) * gap)]
+    return []
+
+
+def animation_cues(groups: list[TimelineGroup], min_gap: int = 3) -> list[tuple[str, int]]:
+    """Sounds glued to the animations: a pop per bar/pin/row/milestone/panel row, an impact when a
+    big figure lands (stats, ranking numbers, the last word of kinetic text)."""
+
+    cues: list[tuple[str, int]] = []
+    for group in groups:
+        if group.kind == "stat":
+            cues.append(("impact", group.from_ + STAT_LANDS))
+        elif group.kind == "graphic" and group.graphic:
+            cues += [(k, group.from_ + at) for k, at in graphic_cues(group.graphic, group.durationInFrames)
+                     if at < group.durationInFrames]
+        elif group.kind in ("datacard", "split"):
+            cues += [("pop", group.from_ + step.from_) for step in group.steps]
+    out: list[tuple[str, int]] = []
+    for kind, at in sorted(cues, key=lambda c: c[1]):
+        if not out or at - out[-1][1] >= min_gap or kind == "impact":
+            out.append((kind, at))
+    return out
+
+
 def _first_audio(folder: Path, prefix: str = "") -> Path | None:
     if not folder.is_dir():
         return None
@@ -612,10 +666,12 @@ def run(ctx: RunContext) -> None:
     whooshes = [publish(p) for p in _all_audio(assets / "sfx", "whoosh")]
     pop = publish(_first_audio(assets / "sfx", "pop"))
     sfx: list[TimelineSfx] = []
-    if pop:
-        for group in groups:
-            for step in (group.steps or [PanelStep.model_validate({"from": 0, "rows": []})]):
-                sfx.append(TimelineSfx.model_validate({"src": pop, "from": group.from_ + step.from_, "volume": float(cfg.get("pop_volume", 0.5))}))
+    impact = publish(_first_audio(assets / "sfx", "impact"))
+    for kind, at in animation_cues(groups):
+        src = pop if kind == "pop" else impact
+        if src:
+            sfx.append(TimelineSfx.model_validate({"src": src, "from": at, "volume": float(
+                cfg.get("pop_volume", 0.35) if kind == "pop" else cfg.get("impact_volume", 0.6))}))
 
     timeline = Timeline(
         slug=ctx.slug, title=shots_file.title, fps=fps, width=int(video.get("width", 1920)),
@@ -646,6 +702,9 @@ def run(ctx: RunContext) -> None:
         timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
             "musicParts": [MusicPart.model_validate(p) for p in parts]})})
         print("   Música: " + " → ".join(f"{p['mood']} ({Path(p['src']).stem})" for p in parts))
+    if cfg.get("shake", True):   # shake where the impacts ended up (after the cold open / moments moved them)
+        timeline = timeline.model_copy(update={"shakes": [TimelineShake.model_validate({"from": x.from_})
+                                                          for x in timeline.audio.sfx if "impact" in Path(x.src).name]})
     if whooshes:
         extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.6)), float(cfg.get("sfx_min_gap", 4.0)),
                                str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)))

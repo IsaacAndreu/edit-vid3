@@ -524,6 +524,15 @@ class TimelineTransition(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class TimelineShake(_Strict):
+    """A small camera shake when a big figure lands (with the impact sound)."""
+
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(default=10, ge=2)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class TimelineLabel(_Strict):
     kind: LabelKind
     text: str
@@ -632,6 +641,7 @@ class Timeline(_Strict):
     groups: list[TimelineGroup]
     labels: list[TimelineLabel] = Field(default_factory=list)
     transitions: list[TimelineTransition] = Field(default_factory=list)
+    shakes: list[TimelineShake] = Field(default_factory=list)
     audio: TimelineAudio
     locale: dict[str, str] = Field(default_factory=dict)     # dubbed versions: {"chapter": "CHAPTER", "source": "Source"}
     endscreenFrames: int = Field(default=0, ge=0)            # the end screen after the narration

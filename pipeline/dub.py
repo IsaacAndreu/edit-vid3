@@ -184,6 +184,8 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
         item["from"], item["durationInFrames"] = a, b - a
     for sfx in out["audio"].get("sfx", []):
         sfx["from"] = frame(sfx["from"])
+    for shake in out.get("shakes", []):
+        shake["from"] = frame(shake["from"])
     starts = {s["from"] for s in shots}
     for tr in out.get("transitions", []):             # centred on a cut: follow the cut, keep the length
         half = tr["durationInFrames"] // 2
