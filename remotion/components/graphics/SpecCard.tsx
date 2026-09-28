@@ -23,7 +23,9 @@ export const SpecCard: FC<{ graphic: SpecsGraphic; durationInFrames: number }> =
         style={{ position: 'absolute', left: 110, top: 110, opacity: enter, transform: `translateX(${(1 - enter) * -50}px)` }}
       />
       <div style={{ position: 'absolute', left: 960, top: 120, right: 110, fontFamily }}>
-        <div style={{ fontWeight: 600, fontSize: 30, letterSpacing: '0.3em', color: theme.accent, opacity: enter }}>FICHA TÉCNICA</div>
+        <div style={{ fontWeight: 600, fontSize: 30, letterSpacing: '0.3em', color: theme.accent, opacity: enter }}>
+          {(graphic.kicker || 'FICHA TÉCNICA').toUpperCase()}
+        </div>
         <div style={{ fontWeight: 900, fontSize: 88, color: theme.text, lineHeight: 1.02, marginTop: 8, opacity: enter }}>
           {graphic.name.toUpperCase()}
         </div>

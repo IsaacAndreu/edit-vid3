@@ -72,3 +72,17 @@ def test_retime_with_a_moment_keeps_its_length_and_maps_around_it():
 def test_speech_spans_split_at_pauses():
     words = [{"start": 0.0, "end": 1.0}, {"start": 1.2, "end": 3.0}]
     assert dub.speech_spans(words, 30, 10, pauses=[[60, 30]]) == [[10, 70], [100, 130]]
+
+
+def test_graphic_texts_are_translated_but_not_paths_or_years():
+    t = _timeline()
+    t["groups"].append({"id": "graphic-1", "kind": "graphic", "from": 30, "durationInFrames": 60, "steps": [], "words": [],
+                        "graphic": {"type": "timeline", "title": "El camino", "events": [{"year": "2019", "text": "Oro en Stuttgart"}],
+                                    "media": {"src": "people/x.png", "kind": "image"}}})
+    texts = dub.screen_texts(t)
+    assert texts["graphic:graphic-1.title"] == "El camino" and "graphic:graphic-1.media.src" not in texts
+    assert not any(k.endswith(".year") for k in texts)
+    dub.apply_texts(t, {**texts, "graphic:graphic-1.title": "The road", "graphic:graphic-1.events.0.text": "Gold in Stuttgart"})
+    g = t["groups"][-1]["graphic"]
+    assert g["title"] == "The road" and g["events"][0] == {"year": "2019", "text": "Gold in Stuttgart"}
+    assert g["media"]["src"] == "people/x.png"

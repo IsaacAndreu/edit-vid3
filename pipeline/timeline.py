@@ -372,6 +372,65 @@ def music_parts(ctx: RunContext, timeline: Timeline, tracks: dict[str, list[str]
     return parts
 
 
+def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
+                  labels: list[TimelineLabel], fps: int, total: int) -> tuple[list[TimelineGroup], list[TimelineLabel]]:
+    """Animated graphics (maps, A vs B, charts…) over the shots of the sentences they explain.
+
+    Each one is snapped to shot boundaries and skipped where it would cover a data panel, a stat,
+    a question, a chapter card or an athlete card; lower-third labels under it are dropped.
+    """
+
+    from . import graphics
+    from .shorts import sentences
+
+    planned = graphics.plan(ctx, sentences([w.model_dump() for w in words.words]), words.durationSeconds)
+    if not planned:
+        return groups, labels
+    people = []
+    if (ctx.work_dir / "people.json").is_file():
+        people = json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])
+    bounds = [s.from_ for s in shots] + [total]
+    added: list[TimelineGroup] = []
+    blocked = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    blocked += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter" or (s.media and s.media.layout == "person")]
+    for n, item in enumerate(planned, 1):
+        a = min(bounds, key=lambda f: abs(f - item["start"] * fps))
+        b = min(bounds, key=lambda f: abs(f - item["end"] * fps))
+        # the longest stretch of [a, b) free of panels, stats, questions, chapter and athlete cards
+        cuts = sorted({a, b, *[x for lo, hi in blocked + [(g.from_, g.from_ + g.durationInFrames) for g in added]
+                               for x in (lo, hi) if a < x < b]})
+        free = [(lo, hi) for lo, hi in zip(cuts, cuts[1:])
+                if not any(x < hi and lo < y for x, y in blocked + [(g.from_, g.from_ + g.durationInFrames) for g in added])]
+        if not free:
+            continue
+        a, b = max(free, key=lambda r: r[1] - r[0])
+        covered = [s for s in shots if a <= s.from_ < b]
+        if b - a < 3 * fps or not covered:
+            continue
+        graphic = dict(item["graphic"])
+
+        def footage() -> dict[str, Any] | None:   # a photo of this passage (else a clip) for cards without a portrait
+            media = [s.media for s in covered if s.media]
+            pick = next((m for m in media if m.kind == "image"), media[0] if media else None)
+            return pick.model_dump(exclude_none=True) if pick else None
+
+        if graphic["type"] in ("rank", "specs"):
+            face = graphics.portrait(ctx, graphic["name"], people)
+            graphic["media"] = face or footage()
+            if graphic["type"] == "specs":
+                graphic["kicker"] = "EN CIFRAS" if face else "FICHA TÉCNICA"
+        if graphic["type"] == "compare":
+            for side in ("left", "right"):
+                graphic[side]["media"] = graphics.portrait(ctx, graphic[side]["name"], people)
+        added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
+                                                   "durationInFrames": b - a, "graphic": graphic}))
+    labels = [label for label in labels
+              if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames for g in added)]
+    if added:
+        print("   Gráficos: " + ", ".join(f"{g.graphic['type']} {g.from_ / fps:.0f}s" for g in added))
+    return sorted([*groups, *added], key=lambda g: g.from_), labels
+
+
 def with_endscreen(timeline: Timeline, frames: int) -> Timeline:
     """Append the end screen (YouTube's end-screen elements go over it) after the narration."""
 
@@ -403,7 +462,7 @@ def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap:
     points += [s.from_ for s in moments if s.from_ > 0] + [s.from_ + s.durationInFrames for s in moments]
     points += [s.from_ for s in timeline.shots if s.type == "endscreen"]
     points += [s.from_ for s in timeline.shots if s.media and s.media.layout == "person"]
-    points += [g.from_ for g in timeline.groups if g.kind in ("stat", "datacard", "split")]
+    points += [g.from_ for g in timeline.groups if g.kind in ("graphic", "stat", "datacard", "split")]
     placed: list[int] = []
     for point in points:
         at = max(0, point - 4)                    # the swoosh peaks just as the cut lands
@@ -509,6 +568,7 @@ def run(ctx: RunContext) -> None:
     groups.sort(key=lambda g: g.from_)
     person_cards(ctx, shots_file, shots, groups, fps)
     labels = place_labels(shots_file, shots, groups, fps, cfg)
+    groups, labels = with_graphics(ctx, words, shots, groups, labels, fps, total_frames)
 
     # Audio: voice (always), music and SFX only if the files exist.
     audio_dir = ctx.work_dir / "audio"

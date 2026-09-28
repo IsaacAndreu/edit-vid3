@@ -60,6 +60,7 @@ export interface TimelineGraphic {
 
 export interface SpecsGraphic {
   type: 'specs';
+  kicker?: string | null; // small heading: "FICHA TÉCNICA" (products), "EN CIFRAS" (people)
   name: string;
   subtitle?: string | null;
   media?: Media | null;

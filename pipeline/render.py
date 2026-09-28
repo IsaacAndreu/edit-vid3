@@ -121,6 +121,15 @@ def media_seconds(path: Path) -> float:
         return 0.0
 
 
+def graphic_media(graphic: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Photos/clips a graphic shows (rank, specs, the two sides of a comparison)."""
+
+    if not graphic:
+        return []
+    found = [graphic.get("media"), (graphic.get("left") or {}).get("media"), (graphic.get("right") or {}).get("media")]
+    return [m for m in found if isinstance(m, dict) and m.get("src")]
+
+
 def voice_chains(index: int, voice_from: int, gaps: list, fps: int, stereo: str) -> list[str]:
     """The narration, delayed by the cold open and split at each moment so it pauses there."""
 
@@ -444,6 +453,7 @@ def run(ctx: RunContext) -> None:
         if not condensed_path.is_file():
             t = time.monotonic()
             public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
+            public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
             tmp = r.dir / "remotion.tmp.mp4"
             r.remotion("Documentary", props, tmp,
                        ["--muted", f"--concurrency={r.concurrency()}", "--codec=h264", "--crf=12",

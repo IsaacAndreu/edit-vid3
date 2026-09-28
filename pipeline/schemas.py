@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -554,11 +554,12 @@ class QuestionWord(_Strict):
 
 class TimelineGroup(_Strict):
     id: str
-    kind: Literal["datacard", "split", "stat", "question"]
+    kind: Literal["datacard", "split", "stat", "question", "graphic"]
     from_: int = Field(alias="from", ge=0)
     durationInFrames: int = Field(ge=1)
     title: str | None = None
     note: str | None = None
+    graphic: dict[str, Any] | None = None                    # kind "graphic": map, compare, chart… (remotion/graphics.ts)
     steps: list[PanelStep] = Field(default_factory=list)     # datacard / split: rows revealed step by step
     stat: StatData | None = None
     words: list[QuestionWord] = Field(default_factory=list)  # question: script words revealed as spoken

@@ -255,12 +255,39 @@ def screen_texts(timeline: dict[str, Any]) -> dict[str, str]:
                 texts[f"group:{group['id']}:{key}"] = group[key]
         if group.get("stat") and group["stat"].get("label"):
             texts[f"stat:{group['id']}"] = group["stat"]["label"]
+        if group.get("graphic"):
+            _graphic_strings(group["graphic"], f"graphic:{group['id']}", texts)
         for s, step in enumerate(group.get("steps", [])):
             for r, row in enumerate(step.get("rows", [])):
                 for key, value in row.items():
                     if isinstance(value, str) and re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{3}", value):
                         texts[f"row:{group['id']}:{s}:{r}:{key}"] = value
     return texts
+
+
+SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", "query", "year", "id"}
+
+
+def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:
+    """Every translatable string inside a graphic (titles, names, labels, notes, lines…)."""
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key not in SKIP:
+                _graphic_strings(item, f"{path}.{key}", out)
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            _graphic_strings(item, f"{path}.{i}", out)
+    elif isinstance(value, str) and re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{2}", value):
+        out[path] = value
+
+
+def _set_graphic_strings(value: Any, path: str, texts: dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        return {k: v if k in SKIP else _set_graphic_strings(v, f"{path}.{k}", texts) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_set_graphic_strings(v, f"{path}.{i}", texts) for i, v in enumerate(value)]
+    return texts.get(path, value) if isinstance(value, str) else value
 
 
 def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
@@ -275,6 +302,8 @@ def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
                 group[key] = texts.get(f"group:{group['id']}:{key}", group[key])
         if group.get("stat") and group["stat"].get("label"):
             group["stat"]["label"] = texts.get(f"stat:{group['id']}", group["stat"]["label"])
+        if group.get("graphic"):
+            group["graphic"] = _set_graphic_strings(group["graphic"], f"graphic:{group['id']}", texts)
         for s, step in enumerate(group.get("steps", [])):
             for r, row in enumerate(step.get("rows", [])):
                 for key in list(row):

@@ -176,6 +176,13 @@ recuadro «SIGUIENTE HISTORIA» y un círculo «SUSCRÍBETE»: en YouTube Studio
 un vídeo sugerido encima del recuadro y el botón de suscribirse sobre el círculo. La música se
 desvanece al final.
 
+**Gráficos animados:** el sistema lee el guion y mete solo mapas (rutas, ciudades, zoom, globo),
+comparativas A vs B, gráficas de barras/líneas/tarta, líneas de tiempo con años, fichas (EN CIFRAS
+para personas, FICHA TÉCNICA para productos), tarjetas de ranking y texto cinético donde explican
+mejor que un clip (~1 cada 100 s, sección `graphics:` de config.yaml). Todo dato que muestran
+tiene que decirse en el guion; las ciudades se sitúan con OpenStreetMap. Muestra de todas las
+plantillas: `out/plantillas-animadas.mp4`.
+
 ## 8. Panel de investigación (tipo TubeLab)
 
 Añade tus claves de la API de YouTube a `.env`, separadas por comas (si alguna tiene más cuota que

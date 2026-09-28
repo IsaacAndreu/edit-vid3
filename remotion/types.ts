@@ -1,3 +1,5 @@
+import type { Graphic } from './graphics';
+
 export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split' | 'endscreen';
 export type Sign = 'positive' | 'negative' | 'neutral';
 
@@ -44,7 +46,7 @@ export interface QuestionWord {
 
 export interface Group {
   id: string;
-  kind: 'datacard' | 'split' | 'stat' | 'question';
+  kind: 'datacard' | 'split' | 'stat' | 'question' | 'graphic';
   from: number;
   durationInFrames: number;
   title?: string | null;
@@ -52,6 +54,7 @@ export interface Group {
   steps: PanelStep[];
   stat?: { value: string; label: string; sign: Sign } | null;
   words?: QuestionWord[];
+  graphic?: Graphic | null;
 }
 
 export type LabelKind = 'name' | 'place' | 'date' | 'score';

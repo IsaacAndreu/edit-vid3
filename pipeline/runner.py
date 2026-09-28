@@ -48,7 +48,7 @@ STAGES: list[Stage] = [
     Stage("fallback", _work(fallback.OUTPUT), fallback.inputs, fallback.run, fallback.validate, ("fallback", "content")),
     Stage("people", _work(people.OUTPUT), people.inputs, people.run, people.validate, ("people", "sourcing")),
     Stage("coldopen", _work(coldopen.OUTPUT), coldopen.inputs, coldopen.run, coldopen.validate, ("timeline", "judge")),
-    Stage("timeline", _work(timeline.OUTPUT), timeline.inputs, timeline.run, timeline.validate, ("timeline", "video")),
+    Stage("timeline", _work(timeline.OUTPUT), timeline.inputs, timeline.run, timeline.validate, ("timeline", "video", "graphics")),
     Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md", ctx.out_dir / "manifest.json", ctx.out_dir / "creditos.txt"],
           qa.inputs, qa.run, qa.validate, ("qa", "judge")),
     Stage("render", lambda ctx: [ctx.out_dir / render.OUTPUT], render.inputs, render.run, render.validate, ("render", "video")),

@@ -5,6 +5,7 @@ import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
 import { EndScreen } from './components/EndScreen';
+import { GraphicScene } from './components/graphics/GraphicScene';
 import { FramedCard } from './components/FramedCard';
 import { LowerThird } from './components/LowerThird';
 import { ParallaxPhoto } from './components/ParallaxPhoto';
@@ -66,6 +67,9 @@ export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], aud
         {group.kind === 'stat' && group.stat ? <Stat value={group.stat.value} label={group.stat.label} /> : null}
         {group.kind === 'datacard' ? <DataCard title={group.title} note={group.note} steps={group.steps} /> : null}
         {group.kind === 'split' ? <SplitPanel title={group.title} note={group.note} steps={group.steps} /> : null}
+        {group.kind === 'graphic' && group.graphic ? (
+          <GraphicScene graphic={group.graphic} durationInFrames={group.durationInFrames} />
+        ) : null}
         {group.kind === 'question' && group.words ? (
           <Question words={group.words} durationInFrames={group.durationInFrames} />
         ) : null}
@@ -92,6 +96,8 @@ export const Documentary: FC<TimelineProps> = ({ shots, groups, labels = [], aud
       ))}
     {shots
       .filter((shot) => shot.media?.credit)
+      // footage hidden under a full-screen graphic does not get its source badge
+      .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
       .map((shot) => (
         <Sequence key={`credit-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
           <CreditBadge credit={localCredit(shot.media?.credit as string, locale?.source)} />

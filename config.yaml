@@ -162,6 +162,14 @@ lab:                               # panel (python main.py --panel) e ideas con 
   ideas_queries: 6                 # cuántas de ellas usa --ideas cada día (~160 unidades cada una)
   ideas_days: 180                  # solo vídeos de los últimos N días
 
+graphics:                          # gráficos animados elegidos del guion (mapas, A vs B, gráficas, línea de tiempo…)
+  enabled: true
+  seconds_per_graphic: 100         # ~1 gráfico cada 100 s de vídeo
+  max: 8
+  min_seconds: 4
+  max_seconds: 12
+  types: [map, compare, chart, timeline, specs, kinetic]   # añade "rank" en canales de rankings / cuentas atrás
+
 shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
   enabled: false                   # solo cuando tú lo pidas: python main.py --shorts <vídeo>
   count: 3
