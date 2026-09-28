@@ -135,6 +135,13 @@ content:
                     excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop,
                     gymnast icons]   # canales de la competencia: su material ya está editado
 
+ideas:
+  my_channel: ""                   # tu canal, p. ej. "@TuCanal" (sus mejores vídeos también inspiran las ideas)
+  competitors: ["@GymnastIcons"]   # canales de la competencia (añade los que quieras: @handle o URL)
+  niches: [gimnasia, atletismo, patinaje artístico]
+  videos_per_channel: 40           # últimos vídeos que se miran de cada canal
+  min_ratio: 2.0                   # outlier = al menos 2x la mediana de visitas de su canal
+
 people:
   enabled: true                    # tarjeta de presentación (atleta recortado + nombre) la 1.ª vez que se le nombra
   max: 4                           # protagonista + hasta 3 personas con rótulo de nombre

@@ -43,6 +43,8 @@ logged to `work/<slug>/costs.json`.
 | 9 | `timeline` → `timeline.json` (Remotion props) + `remotion/` templates: BRoll, FramedCard over GridBackground, LowerThird labels, DataCard, Stat, Question, Chapter ("CAPÍTULO 01 \| título"), Split, CreditBadge, AudioBed | done |
 | 10 | `qa` → `out/<slug>/qa/{contact-sheet.jpg, report.md}`, `manifest.json`, `creditos.txt` (blocks the render on third-party clips > 5 s, missing credits or files; flags low scores and repeats; share per source; API spend) | done |
 | 11 | `render` → `out/<slug>/video-final.mp4` (hybrid: plain footage + credit badge composed by ffmpeg, panels/stats/chapters/stills in one Remotion pass; audio mastered to -16 LUFS; segments joined without re-encoding; postflight checks) | done |
+| 12 | `package` → `out/<slug>/miniaturas/miniatura-{1,2,3}.jpg` + 3 title options in `youtube.txt` (patterned on the competition's outliers), sent by email/Telegram | done |
+|  | `python main.py --ideas` → `out/_ideas/<date>.md`: 3 daily video ideas from competitor outliers (views / channel median) and your own best videos | done |
 
 Athlete library: `cache/library/<person>/` keeps the vetted videos/photos and the cutout of each
 protagonist; later videos about the same person get those sources as extra candidates (other

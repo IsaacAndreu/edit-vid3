@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { AbsoluteFill, Composition, useCurrentFrame } from "remotion";
 import { CreditBadge } from "./components/CreditBadge";
+import { Thumbnail, type ThumbnailVariant } from "./components/Thumbnail";
 import { Documentary } from "./Documentary";
 import type { TimelineProps } from "./types";
 
@@ -29,6 +30,17 @@ const Badges: FC<BadgesProps> = ({ credits }) => {
       {credit ? <CreditBadge credit={credit} /> : null}
     </AbsoluteFill>
   );
+};
+
+interface ThumbnailsProps {
+  variants: ThumbnailVariant[];
+  [key: string]: unknown;
+}
+
+/** Frame i = thumbnail variant i (rendered as an image sequence by the package stage). */
+const Thumbnails: FC<ThumbnailsProps> = ({ variants }) => {
+  const variant = variants[useCurrentFrame()];
+  return variant ? <Thumbnail variant={variant} /> : <AbsoluteFill />;
 };
 
 /** Props = work/<slug>/timeline.json; render with --public-dir=work/<slug>. */
@@ -60,6 +72,16 @@ export const RemotionRoot: FC = () => (
       calculateMetadata={({ props }) => ({
         durationInFrames: Math.max(1, props.credits.length),
       })}
+    />
+    <Composition
+      id="Thumbnails"
+      component={Thumbnails}
+      defaultProps={{ variants: [] } as ThumbnailsProps}
+      durationInFrames={1}
+      fps={30}
+      width={1280}
+      height={720}
+      calculateMetadata={({ props }) => ({ durationInFrames: Math.max(1, props.variants.length) })}
     />
   </>
 );

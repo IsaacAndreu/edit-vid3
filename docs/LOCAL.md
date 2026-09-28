@@ -70,7 +70,8 @@ Resultado en `out/<nombre>/`:
 - `creditos.txt` — fuentes para la descripción de YouTube
 - `qa/report.md` y `qa/contact-sheet.jpg` — revisión: planos flojos, reparto por fuente, coste
 - `manifest.json` — de dónde sale cada plano
-- `youtube.txt` — para YouTube Studio: título, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
+- `miniaturas/miniatura-1..3.jpg` — 3 miniaturas (recorte del atleta + frame de su gran momento + frase corta)
+- `youtube.txt` — para YouTube Studio: 3 títulos a elegir, descripción, capítulos con minutos, fuentes y etiquetas (copiar y pegar)
 
 Si algo falla, vuelve a lanzar el mismo comando: cada etapa terminada se salta y continúa donde
 se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
@@ -122,7 +123,41 @@ responda; si algo falla no arranca y lo dice (mejor saberlo a las 0:00 que a las
 
 Con un PC de 6–8 núcleos, 2–3 vídeos de 10 min caben de sobra en una noche (1–1,5 h cada uno).
 
-## 7. Tiempos y coste orientativos (vídeo de 10 min)
+**Aviso por email (opcional):** con Gmail crea una *contraseña de aplicación* (Cuenta de Google →
+Seguridad → Verificación en dos pasos → Contraseñas de aplicaciones) y añade a `.env`:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tucuenta@gmail.com
+SMTP_PASSWORD=la-contraseña-de-aplicación
+EMAIL_TO=tucuenta@gmail.com
+```
+
+Al terminar cada vídeo te llegan las 3 miniaturas y los 3 títulos (por email y/o Telegram).
+
+## 7. Tres ideas diarias
+
+En `config.yaml`, sección `ideas:`, pon tu canal (`my_channel: "@tucanal"`) y los canales de la
+competencia (`competitors`). Luego:
+
+```bash
+python main.py --ideas
+```
+
+Mira los últimos vídeos de cada canal (sin API de YouTube), calcula cuántas veces supera cada uno
+la mediana de su canal (outliers ≥ `min_ratio`) y propone 3 ideas (título, enfoque, hook y qué
+comprobar) que no repiten temas ya hechos o ya sugeridos. Resultado en `out/_ideas/<fecha>.md` y
+por email/Telegram. Los títulos que mejor funcionan también sirven de patrón para los títulos y
+miniaturas de cada vídeo.
+
+Cada mañana a las 9 (Windows, una vez desde la carpeta del proyecto):
+
+```
+schtasks /create /tn "Ideas videos" /sc daily /st 08:52 /tr "cmd /c cd /d %CD% && python main.py --ideas > out\ideas.log 2>&1"
+```
+
+## 8. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar
   metraje y el render. El PC va al máximo durante el análisis y el render.

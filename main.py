@@ -30,6 +30,9 @@ def _parser() -> argparse.ArgumentParser:
         help="Cola: procesa uno tras otro todos los vídeos de materiales/ que aún no tienen out/<slug>/video-final.mp4. "
         "Si uno falla, lo apunta y sigue con el siguiente. Resumen en out/_cola.md.",
     )
+    target.add_argument("--ideas", action="store_true",
+                        help="3 ideas de vídeo basadas en los outliers de la competencia y tus mejores vídeos "
+                             "(out/_ideas/<fecha>.md, y por email/Telegram si está configurado).")
     parser.add_argument(
         "--force",
         action="append",
@@ -96,19 +99,12 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
 
 
 def notify(root: Path, text: str) -> None:
-    """Telegram message if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are in .env; silent otherwise."""
+    """Email and/or Telegram, whichever is configured in .env; silent otherwise."""
 
-    import requests
+    from pipeline import notify as messages
 
-    ctx = RunContext.create("_notify", root=root, config={})
-    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False), ctx.env("TELEGRAM_CHAT_ID", required=False)
-    if not token or not chat:
-        return
-    try:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      json={"chat_id": chat, "text": text[:4000]}, timeout=20)
-    except requests.RequestException as error:
-        print(f"Aviso: no se pudo enviar el mensaje de Telegram ({type(error).__name__})")
+    first_line = text.splitlines()[0] if text else "Cola"
+    messages.send(RunContext.create("_notify", root=root, config={}), first_line, text)
 
 
 def _describe(error: BaseException) -> str:
@@ -184,6 +180,12 @@ def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> Non
 
 def main() -> None:
     args = _parser().parse_args()
+    if args.ideas:
+        from pipeline import ideas
+
+        path = ideas.run(RunContext.create("_ideas"))
+        print(f"Ideas en {path}")
+        return
     if args.all:
         failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)
         sys.exit(1 if failures else 0)
