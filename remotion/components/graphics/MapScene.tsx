@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useMemo } from 'react';
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoArea, geoBounds, geoCentroid, geoGraticule10, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
+import { geoArea, geoBounds, geoCentroid, geoGraticule10, geoInterpolate, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world from 'world-atlas/countries-50m.json';
@@ -43,13 +43,38 @@ const box = (coords: [number, number][], pad: number): [number, number, number, 
 
 /** Mercator view (scale, centre) that fits a lon/lat box in the frame with margins. */
 const view = (b: [number, number, number, number]) => {
+  // corners as points: a polygon ring's winding would decide whether it means the box or the rest of the globe
   const outline = {
-    type: 'Polygon',
-    coordinates: [[[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]]],
+    type: 'MultiPoint',
+    coordinates: [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]],
   } as GeoPermissibleObjects;
   const p = geoMercator().fitExtent([[260, 200], [W - 260, H - 150]], outline);
   const centre = p.invert?.([W / 2, H / 2 + 25]) ?? [0, 0];
   return { scale: p.scale(), centre: centre as [number, number] };
+};
+
+/** Label boxes next to their pins without overlapping: right of the pin, else left, else lower. */
+const labelSpots = (pins: ([number, number] | null)[], texts: string[]) => {
+  const placed: { left: number; top: number; width: number }[] = [];
+  const BOX_H = 74;
+  const hits = (l: number, t: number, w: number) =>
+    placed.some((q) => l < q.left + q.width + 12 && q.left < l + w + 12 && Math.abs(q.top - t) < BOX_H);
+  return pins.map((xy, i) => {
+    if (!xy) return null;
+    const BOX_W = 44 + texts[i].length * 22;         // ~22 px per character at 34 px heavy type
+    const options = [
+      [xy[0] + 22, xy[1] - 62], [xy[0] - 22 - BOX_W, xy[1] - 62], [xy[0] + 22, xy[1] + 14], [xy[0] - 22 - BOX_W, xy[1] + 14],
+      [xy[0] + 22, xy[1] - 140], [xy[0] + 22, xy[1] + 90],
+    ];
+    const [left, top] = options.find(([l, t]) => !hits(l, t, BOX_W)) ?? options[0];
+    const spot = {
+      left: Math.min(Math.max(left, 20), W - BOX_W - 20),
+      top: Math.min(Math.max(top, 170), H - BOX_H - 20),
+      width: BOX_W,
+    };
+    placed.push(spot);
+    return spot;
+  });
 };
 
 /**
@@ -74,6 +99,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
 
   // --- projection -----------------------------------------------------------------------------
   let projection;
+  let zoomed = 0;
   if (graphic.globe) {
     const target: [number, number] = highlighted.length
       ? (geoCentroid(mainland(highlighted[0])) as [number, number])
@@ -88,6 +114,13 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       .clipAngle(90);
   } else {
     const all: [number, number][] = points.map((p) => [p.lon, p.lat]);
+    if (graphic.route) {
+      // the great-circle arc between cities bows north/south: keep it in the frame
+      for (let i = 1; i < points.length; i++) {
+        const arc = geoInterpolate([points[i - 1].lon, points[i - 1].lat], [points[i].lon, points[i].lat]);
+        for (const f of [0.25, 0.5, 0.75]) all.push(arc(f) as [number, number]);
+      }
+    }
     for (const c of highlighted) {
       const [[x0, y0], [x1, y1]] = geoBounds(mainland(c));
       all.push([x0, y0], [x1, y1]);
@@ -97,9 +130,27 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
     const end = zoomPoint ? view(box([[zoomPoint.lon, zoomPoint.lat]], 3)) : start;
     const z = zoomPoint ? t(0.55, 0.85) : 0;
     const scale = Math.exp(lerp(Math.log(start.scale), Math.log(end.scale), z));
+    zoomed = z;
+    let centre = start.centre;
+    if (zoomPoint && z > 0) {
+      // Keep the target city on a straight path from where it is on the overview to the middle
+      // of the frame while the scale grows, so it never leaves the picture mid-zoom.
+      const mid: [number, number] = [W / 2, H / 2 + 25];
+      const merc = (lon: number, lat: number): [number, number] => [
+        (lon * Math.PI) / 180,
+        Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)),
+      ];
+      const [tx, ty] = merc(zoomPoint.lon, zoomPoint.lat);
+      const [cx, cy] = merc(start.centre[0], start.centre[1]);
+      const p0: [number, number] = [mid[0] + start.scale * (tx - cx), mid[1] - start.scale * (ty - cy)];
+      const p: [number, number] = [lerp(p0[0], mid[0], z), lerp(p0[1], mid[1], z)];
+      const x = tx - (p[0] - mid[0]) / scale;
+      const y = ty + (p[1] - mid[1]) / scale;
+      centre = [(x * 180) / Math.PI, (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * (180 / Math.PI)];
+    }
     projection = geoMercator()
       .scale(scale)
-      .center([lerp(start.centre[0], end.centre[0], z), lerp(start.centre[1], end.centre[1], z)])
+      .center(centre)
       .translate([W / 2, H / 2 + 25]);
   }
   const path = geoPath(projection);
@@ -145,7 +196,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             key={`h${i}`}
             d={path(c as never) ?? ''}
             fill={theme.accent}
-            fillOpacity={0.32 * light}
+            fillOpacity={0.32 * light * (1 - 0.75 * zoomed)}
             stroke={theme.accent}
             strokeOpacity={light}
             strokeWidth={2.5}
@@ -178,9 +229,15 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           );
         })}
       </svg>
-      {points.map((p, i) => {
-        const xy = projection([p.lon, p.lat]);
-        if (!xy) return null;
+      {labelSpots(
+        points.map((p) => {
+          const xy = projection([p.lon, p.lat]);
+          return xy && xy[0] > 0 && xy[0] < W && xy[1] > 0 && xy[1] < H ? (xy as [number, number]) : null;   // off screen: no label
+        }),
+        points.map((p) => (p.note && p.note.length * 0.7 > p.name.length ? p.note.slice(0, Math.ceil(p.note.length * 0.7)) : p.name)),
+      ).map((spot, i) => {
+        const p = points[i];
+        if (!spot) return null;
         const show = interpolate(frame, [pinAt(i) * durationInFrames + 4, pinAt(i) * durationInFrames + 12], [0, 1], {
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
@@ -190,8 +247,8 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             key={`l${i}`}
             style={{
               position: 'absolute',
-              left: xy[0] + 22,
-              top: xy[1] - 62,
+              left: spot.left,
+              top: spot.top,
               opacity: show,
               transform: `translateY(${(1 - show) * 10}px)`,
               backgroundColor: 'rgba(0,0,0,0.78)',

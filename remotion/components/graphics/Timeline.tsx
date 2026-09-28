@@ -42,41 +42,54 @@ export const TimelineScene: FC<{ graphic: TimelineGraphic; durationInFrames: num
         const reached = spring({ frame: frame - i * per, fps, config: { damping: 200, stiffness: 140 } });
         const near = Math.max(0, 1 - Math.abs(focus - i));
         return (
-          <div key={i} style={{ position: 'absolute', left: x - 200, top: 250, width: 400, textAlign: 'center', fontFamily }}>
+          <div key={i}>
             <div
               style={{
-                fontWeight: 900,
-                fontSize: interpolate(near, [0, 1], [70, 120]),
-                color: reached > 0.5 ? theme.accent : theme.muted,
-                opacity: interpolate(reached, [0, 1], [0.35, 1]),
-                lineHeight: 1,
-                height: 150,
+                position: 'absolute',
+                left: x - 220,
+                width: 440,
+                top: 330,
+                height: 190,
                 display: 'flex',
                 alignItems: 'flex-end',
                 justifyContent: 'center',
+                fontFamily,
+                fontWeight: 900,
+                fontSize: interpolate(near, [0, 1], [70, 130]),
+                lineHeight: 1,
+                color: reached > 0.5 ? theme.accent : theme.muted,
+                opacity: interpolate(reached, [0, 1], [0.35, 1]),
               }}
             >
               {e.year}
             </div>
             <div
               style={{
-                margin: '120px auto 0',
-                width: 34,
-                height: 34,
+                position: 'absolute',
+                left: x - 19,
+                top: 544,
+                width: 38,
+                height: 38,
                 borderRadius: '50%',
                 backgroundColor: reached > 0.5 ? theme.accent : '#333',
-                border: '5px solid #07080b',
-                transform: `translateY(-150px) scale(${interpolate(near, [0, 1], [0.8, 1.3])})`,
+                border: '6px solid #07080b',
+                boxShadow: reached > 0.5 ? '0 0 24px rgba(255,212,0,0.6)' : 'none',
+                transform: `scale(${interpolate(near, [0, 1], [0.8, 1.3])})`,
               }}
             />
             <div
               style={{
-                marginTop: -40,
+                position: 'absolute',
+                left: x - 220,
+                width: 440,
+                top: 620,
+                textAlign: 'center',
+                fontFamily,
                 fontWeight: 700,
-                fontSize: 36,
-                color: theme.text,
-                opacity: reached * interpolate(near, [0, 1], [0.45, 1]),
+                fontSize: 38,
                 lineHeight: 1.2,
+                color: theme.text,
+                opacity: reached * interpolate(near, [0, 1], [0.4, 1]),
               }}
             >
               {e.text}
