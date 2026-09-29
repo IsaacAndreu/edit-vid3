@@ -397,6 +397,32 @@ def with_seconds(ctx: RunContext, media: dict[str, Any]) -> dict[str, Any]:
     return media
 
 
+def motion_graphic(ctx: RunContext, graphic: dict[str, Any], clips: list[dict[str, Any]], sessions: dict[str, Any],
+                   n: int) -> dict[str, Any] | None:
+    """A stroboscope or a speed-ramped replay from the first clip of the passage where it works."""
+
+    from . import motion
+
+    if "rembg" not in sessions:
+        try:
+            from rembg import new_session
+
+            sessions["rembg"] = new_session(str(ctx.section("people").get("model", "u2net_human_seg")))
+        except Exception:  # rembg missing: no motion graphics
+            sessions["rembg"] = None
+    if sessions["rembg"] is None:
+        return None
+    for k, clip in enumerate(clips[:4]):
+        name = f"g{n}-{k}"
+        if graphic["type"] == "strobe":
+            made = motion.strobe(ctx, ctx.work_dir / clip["src"], name, sessions["rembg"])
+        else:
+            made = motion.replay(ctx, ctx.work_dir / clip["src"], name, sessions["rembg"])
+        if made:
+            return {**graphic, **made}
+    return None
+
+
 def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
                   labels: list[TimelineLabel], fps: int, total: int) -> tuple[list[TimelineGroup], list[TimelineLabel]]:
     """Animated graphics (maps, A vs B, charts…) over the shots of the sentences they explain.
@@ -415,6 +441,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     if (ctx.work_dir / "people.json").is_file():
         people = json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])
     bounds = [s.from_ for s in shots] + [total]
+    sessions: dict[str, Any] = {}
     added: list[TimelineGroup] = []
     blocked = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
     blocked += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter" or (s.media and s.media.layout == "person")]
@@ -446,6 +473,13 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                     seen[s.media.src] = with_seconds(ctx, s.media.model_dump(exclude_none=True))
             return list(seen.values())
 
+        if graphic["type"] in ("strobe", "replay"):
+            made = motion_graphic(ctx, graphic, clips(), sessions, n)
+            if not made:
+                continue
+            graphic = made
+            longest = round((6.0 if graphic["type"] == "strobe" else graphic.pop("seconds")) * fps)
+            b = min(b, a + longest)                          # the shots after it show as usual
         if graphic["type"] == "banned":
             graphic["media"] = next(iter(clips()), None) or footage()
         if graphic["type"] == "split":
@@ -675,6 +709,8 @@ SCORE_LANDS = 40       # Score.tsx: the total
 PRESS_STEP = 16        # Press.tsx: one clipping every 16 frames
 RULE_STAMP = 44        # RulePage.tsx: the stamp hits the page
 BANNED_STAMP = 22      # BannedCard.tsx: the stamp hits the card
+STROBE_START, STROBE_STEP = 8, 6            # Strobe.tsx: one position every 6 frames
+STANDINGS_START, STANDINGS_STEP = 6, 14     # Standings.tsx: one row every 14 frames
 
 
 def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
@@ -713,6 +749,12 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
         return [("pop", 4), ("pop", 12)]
     if kind == "spotlight":
         return [("impact", 1)]
+    if kind == "strobe":
+        return [("pop", STROBE_START + i * STROBE_STEP) for i in range(len(graphic.get("ghosts") or []))]
+    if kind == "replay":
+        return [("impact", round(float(graphic.get("peak") or 0) * 30))]
+    if kind == "standings":
+        return [("pop", STANDINGS_START + i * STANDINGS_STEP) for i in range(min(len(graphic.get("rows") or []), 8))]
     if kind == "kinetic":
         words = sum(len(str(line).split()) for line in graphic.get("lines") or [])
         gap = max(3, min(8, int(frames * 0.6 / max(1, words))))

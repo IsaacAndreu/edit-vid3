@@ -124,7 +124,33 @@ export interface SpotlightGraphic {
   height?: number | null; // % of the frame the person fills
 }
 
+export interface StrobeGraphic {
+  type: 'strobe';
+  name: string; // the move ("Mortal Yurchenko")
+  note?: string | null;
+  background: Media; // the scene without the athlete
+  ghosts: (Media & { x: number; y: number; w: number; h: number })[]; // each position, % of the frame
+}
+
+export interface ReplayGraphic {
+  type: 'replay';
+  name?: string | null; // label at the key moment
+  badge: string; // "REPETICIÓN"
+  video: Media; // the clip with the speed ramp already applied
+  track: [number, number, number, number, number][]; // [s, x, y, w, h] (% of the frame) of the athlete
+  peak: number; // s of the key moment (slow motion)
+}
+
+export interface StandingsGraphic {
+  type: 'standings';
+  title?: string | null;
+  rows: { name: string; score: string }[]; // in the order they are said; the board re-sorts itself
+}
+
 export type Graphic =
+  | StrobeGraphic
+  | ReplayGraphic
+  | StandingsGraphic
   | ScoreGraphic
   | PressGraphic
   | RuleGraphic

@@ -87,7 +87,26 @@ ESTE VÍDEO REPASA COSAS PROHIBIDAS/ELIMINADAS de un deporte (elementos, técnic
 - Capítulos: agrupan elementos (por aparato, por época…), con las mismas reglas.
 """.strip()
 
-FORMAT_OUTLINES = {"ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE}
+TECHNIQUE_OUTLINE = """
+ESTE VÍDEO EXPLICA UNA TÉCNICA O UN MOVIMIENTO (cómo se hace, por qué es tan difícil):
+- "subject": la persona que lo creó o lo hace mejor si el vídeo gira en torno a ella; si no, "".
+- "events": uno por cada ejecución o fase que se cuenta; "label" = búsqueda EN INGLÉS que encuentre ese
+  movimiento bien visible y con la cámara lo más quieta posible (p. ej. 'Yurchenko double pike vault
+  Simone Biles slow motion side view'); "tag" = nombre del movimiento y año si se dice.
+- Capítulos: las partes de la explicación (origen, cómo se hace, por qué es difícil, quién lo domina).
+""".strip()
+
+FINAL_OUTLINE = """
+ESTE VÍDEO NARRA UNA FINAL O COMPETICIÓN CONCRETA, participante a participante:
+- "subject": el protagonista de la final si lo hay; si no, "".
+- "peak": búsqueda EN INGLÉS del momento decisivo de esa final.
+- "events": uno por cada participante o ejercicio que se cuenta, SIEMPRE con la competición y el año
+  (p. ej. 'Carlos Yulo floor final Paris 2024 Olympics'); "tag" = 'NOMBRE · NOTA' o el lugar y año.
+- Capítulos: los momentos de la final (la previa, los primeros ejercicios, el giro, el desenlace).
+""".strip()
+
+FORMAT_OUTLINES = {"ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE, "tecnica": TECHNIQUE_OUTLINE,
+                   "final": FINAL_OUTLINE}
 
 
 def outline_system(ctx: RunContext) -> str:

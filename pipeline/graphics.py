@@ -26,22 +26,23 @@ from .planner import _numbers, _spelled_numbers
 
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
-TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "rule", "split")
+TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "rule", "split",
+         "strobe", "replay", "standings")
 
 # Fixed words drawn on the graphics, in the narration's language (a dub translates them again).
 WORDS = {
     "es": {"stamp": "PROHIBIDO", "rulebook": "REGLAMENTO", "d": "DIFICULTAD", "e": "EJECUCIÓN", "pen": "PENALIZACIÓN",
-           "total": "NOTA", "since": "DESDE"},
+           "total": "NOTA", "since": "DESDE", "replay": "REPETICIÓN"},
     "en": {"stamp": "BANNED", "rulebook": "RULEBOOK", "d": "DIFFICULTY", "e": "EXECUTION", "pen": "PENALTY",
-           "total": "SCORE", "since": "SINCE"},
+           "total": "SCORE", "since": "SINCE", "replay": "REPLAY"},
     "pt": {"stamp": "PROIBIDO", "rulebook": "REGULAMENTO", "d": "DIFICULDADE", "e": "EXECUÇÃO", "pen": "PENALIDADE",
-           "total": "NOTA", "since": "DESDE"},
+           "total": "NOTA", "since": "DESDE", "replay": "REPLAY"},
     "fr": {"stamp": "INTERDIT", "rulebook": "RÈGLEMENT", "d": "DIFFICULTÉ", "e": "EXÉCUTION", "pen": "PÉNALITÉ",
-           "total": "NOTE", "since": "DEPUIS"},
+           "total": "NOTE", "since": "DEPUIS", "replay": "RALENTI"},
     "it": {"stamp": "VIETATO", "rulebook": "REGOLAMENTO", "d": "DIFFICOLTÀ", "e": "ESECUZIONE", "pen": "PENALITÀ",
-           "total": "PUNTEGGIO", "since": "DAL"},
+           "total": "PUNTEGGIO", "since": "DAL", "replay": "REPLAY"},
     "de": {"stamp": "VERBOTEN", "rulebook": "REGELWERK", "d": "SCHWIERIGKEIT", "e": "AUSFÜHRUNG", "pen": "ABZUG",
-           "total": "WERTUNG", "since": "SEIT"},
+           "total": "WERTUNG", "since": "SEIT", "replay": "WIEDERHOLUNG"},
 }
 
 
@@ -81,6 +82,13 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   "highlight": "3-6 palabras de text a resaltar", "stamp": true si la norma prohíbe/elimina algo}}
 - "split": se contrastan DOS personas, momentos o ejecuciones que se ven en el metraje ("antes/ahora",
   "ella… mientras que él…"). data: {{"title": "…" o null, "left": {{"name": "…"}}, "right": {{"name": "…"}}}}
+- "strobe": el guion describe UN movimiento concreto que se ve en el metraje (un salto, un mortal, un
+  lanzamiento) y conviene ver todas sus posiciones a la vez. data: {{"name": "nombre del movimiento como se
+  dice", "note": "dato corto dicho (p. ej. 'tres giros y medio') o null"}}
+- "replay": el momento decisivo de una acción (el aterrizaje, la caída, el salto ganador) merece repetición
+  a cámara lenta. data: {{"name": "etiqueta de máx. 4 palabras del guion (p. ej. 'el doble mortal') o null"}}
+- "standings": se dicen las notas/marcas de al menos 3 participantes de una misma prueba (una final).
+  data: {{"title": "…" o null, "rows": [{{"name": "…", "score": "nota como se dice"}}]}} en el orden en que se dicen
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
 Reglas: TODOS los datos (cifras, años, nombres) deben estar en esas frases del guion; nada inventado.
 Textos en el idioma del guion, cortos. Devuelve SOLO JSON:
@@ -111,6 +119,14 @@ la narración en frases numeradas. Encuentra la frase donde se PRESENTA cada ele
  "number": número si el guion los numera ("el número 5"), si no null}]}
 Reglas: nada inventado; textos en el idioma del guion.
 """.strip()
+
+
+FORMAT_HINTS = {
+    "tecnica": "Este vídeo explica cómo se hace un movimiento/técnica: usa \"strobe\" y \"replay\" cada vez que se "
+               "describe una fase del movimiento, y \"specs\" para la ficha del elemento (dificultad, año, quién lo creó).",
+    "final": "Este vídeo narra una final/competición: usa \"standings\" cada vez que se dicen notas de varios "
+             "participantes, \"score\" para la nota decisiva y \"replay\" en los momentos clave (caídas, aterrizajes).",
+}
 
 
 # --- geography ----------------------------------------------------------------------------------
@@ -269,6 +285,22 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             return None
         return {"type": "split", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
                 "left": {"name": str(left)}, "right": {"name": str(right)}}
+    if kind == "strobe":
+        if not data.get("name") or not said_words(data["name"], text, 0.6):
+            return None
+        note = data.get("note") if data.get("note") and said_words(data["note"], text, 0.7) else None
+        return {"type": "strobe", "name": str(data["name"]), "note": note}
+    if kind == "replay":
+        name = data.get("name") if data.get("name") and len(str(data["name"]).split()) <= 5 \
+            and said_words(data["name"], text, 0.7) else None
+        return {"type": "replay", "name": name, "badge": fixed_words(ctx)["replay"]}
+    if kind == "standings":
+        rows = [r for r in data.get("rows", []) if isinstance(r, dict) and r.get("name") and r.get("score")
+                and _num(r["score"]) is not None and said(r["score"], text) and said_words(r["name"], text, 0.5)]
+        if len(rows) < 3:
+            return None
+        return {"type": "standings", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
+                "rows": [{"name": str(r["name"]), "score": str(r["score"])} for r in rows[:8]]}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
@@ -371,14 +403,17 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
         return []
     passes = {"ranking": ranking, "prohibidos": banned}
     ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
-    count = max(1, round(duration / float(cfg.get("seconds_per_graphic", 100))))
+    fmt = str(ctx.config.get("format") or "")
+    every = float((cfg.get("seconds_per_format") or {}).get(fmt, cfg.get("seconds_per_graphic", 100)))
+    count = max(1, round(duration / every))
     count = min(count, int(cfg.get("max", 8)))
     allowed = [t for t in cfg.get("types", TYPES) if t in TYPES and not (ranked and t == "rank")]
     listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
     try:
         proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
                                  system=SYSTEM.format(count=count)
-                                 + f"\nTipos permitidos en este canal: {', '.join(allowed)}.").get("graphics", [])
+                                 + f"\nTipos permitidos en este canal: {', '.join(allowed)}."
+                                 + (f"\n{FORMAT_HINTS[fmt]}" if fmt in FORMAT_HINTS else "")).get("graphics", [])
     except Exception as error:  # graphics are a bonus: the video is complete without them
         print(f"   Gráficos no disponibles: {str(error)[:120]}")
         return []

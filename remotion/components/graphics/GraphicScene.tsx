@@ -13,6 +13,9 @@ import { RulePage } from './RulePage';
 import { Score } from './Score';
 import { Split } from './Split';
 import { Spotlight } from './Spotlight';
+import { Replay } from './Replay';
+import { Standings } from './Standings';
+import { Strobe } from './Strobe';
 
 /** Full-screen animated graphic of any kind. */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
@@ -43,6 +46,12 @@ export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = 
       return <BannedCard graphic={graphic} durationInFrames={durationInFrames} />;
     case 'spotlight':
       return <Spotlight graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'strobe':
+      return <Strobe graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'replay':
+      return <Replay graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'standings':
+      return <Standings graphic={graphic} durationInFrames={durationInFrames} />;
     default:
       return null;
   }

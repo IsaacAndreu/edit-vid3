@@ -323,6 +323,19 @@ Animaciones que salen solas en cualquier formato, siempre sacadas del guion:
   sale si el guion lo nombra.
 - **Reglamento:** la página del reglamento con la norma subrayada y, si prohíbe algo, un sello.
 
+Más formatos (en la `config.yaml` del vídeo):
+- `format: tecnica`: explica cómo se hace un movimiento. Busca el metraje con la cámara lo más quieta
+  posible y usa mucha estroboscopia y repetición.
+- `format: final`: narra una final participante a participante. Usa el marcador en directo, la nota
+  desglosada y repeticiones en los momentos clave.
+
+Animaciones sacadas del propio clip (necesitan `rembg`, lo mismo que las tarjetas de atleta):
+- **Estroboscopia:** todas las posiciones de un salto en una sola imagen, que aparecen una a una.
+  Si la cámara se mueve, se alinean los fotogramas; si hay un corte o no se distingue al atleta, no sale.
+- **Repetición con rampa:** el clip va a velocidad normal, se ralentiza en el punto más alto del salto
+  y vuelve a la normal, con el rótulo «REPETICIÓN», un anillo que sigue al atleta y su trayectoria dibujada.
+- **Marcador en directo:** las notas entran en el orden en que se dicen y la tabla se reordena sola.
+
 Si cambias el formato de un vídeo que ya estaba a medias, vuelve a lanzarlo con
 `--force planner --force timeline`.
 
