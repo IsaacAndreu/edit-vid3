@@ -973,7 +973,7 @@ def run(ctx: RunContext) -> None:
 
     payload = timeline.model_dump(by_alias=True, exclude_none=True)
     ctx.write_json("timeline.base.json", payload)        # as the pipeline made it; the editor's changes go on top
-    ctx.write_json(OUTPUT, editor.apply_to_timeline(payload, editor.load(ctx)))
+    ctx.write_json(OUTPUT, editor.build(ctx, payload))
     kinds: dict[str, int] = {}
     for group in groups:
         kinds[group.kind] = kinds.get(group.kind, 0) + 1

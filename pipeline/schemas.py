@@ -642,6 +642,7 @@ class Timeline(_Strict):
     labels: list[TimelineLabel] = Field(default_factory=list)
     transitions: list[TimelineTransition] = Field(default_factory=list)
     shakes: list[TimelineShake] = Field(default_factory=list)
+    edited: dict[str, Any] | None = None                     # scenes reordered/deleted in the editor (time map for subtitles)
     audio: TimelineAudio
     locale: dict[str, str] = Field(default_factory=dict)     # dubbed versions: {"chapter": "CHAPTER", "source": "Source"}
     endscreenFrames: int = Field(default=0, ge=0)            # the end screen after the narration

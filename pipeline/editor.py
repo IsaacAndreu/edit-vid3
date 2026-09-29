@@ -25,8 +25,9 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
+from . import edit_model
 from .context import RunContext
 
 EDITS = "edits.json"
@@ -39,54 +40,30 @@ MAX_OPTIONS = 9
 
 def load(ctx: RunContext) -> dict[str, Any]:
     path = ctx.work_dir / EDITS
-    edits = json.loads(path.read_text("utf-8")) if path.is_file() else {}
-    return {"footage": edits.get("footage", {}), "texts": edits.get("texts", {}), "removed": edits.get("removed", []),
-            "labels": edits.get("labels", {})}
+    return edit_model.normalise(json.loads(path.read_text("utf-8")) if path.is_file() else {})
 
 
 def save(ctx: RunContext, edits: dict[str, Any]) -> None:
-    ctx.write_json(EDITS, edits)
-
-
-def _set_path(target: dict[str, Any], path: str, value: Any) -> None:
-    """Set target["a"]["b"][0]["c"] from "a.b.0.c" (only where that path already exists)."""
-
-    keys = path.split(".")
-    for key in keys[:-1]:
-        target = target[int(key)] if isinstance(target, list) else target[key]
-    last = keys[-1]
-    if isinstance(target, list):
-        target[int(last)] = value
-    elif last in target:
-        target[last] = value
+    ctx.write_json(EDITS, edit_model.normalise(edits))
 
 
 def apply_to_timeline(timeline: dict[str, Any], edits: dict[str, Any]) -> dict[str, Any]:
-    """Text edits and removals on a timeline dict (as written to timeline.json)."""
+    """The editor's changes on a timeline dict, without the steps that make files (see edit_model)."""
 
-    removed = set(edits.get("removed", []))
-    timeline["groups"] = [g for g in timeline["groups"] if g["id"] not in removed]
-    groups = {g["id"]: g for g in timeline["groups"]}
-    shots = {s["id"]: s for s in timeline["shots"]}
-    for key, value in edits.get("texts", {}).items():
-        kind, _, rest = key.partition(":")
-        try:
-            if kind == "group":
-                gid, _, path = rest.partition(":")
-                if gid in groups:
-                    _set_path(groups[gid], path, value)
-            elif kind == "chapter" and rest in shots:
-                shots[rest]["chapterTitle"] = value
-        except (KeyError, IndexError, ValueError, TypeError):
-            continue                       # the timeline changed since: that edit no longer applies
-    labels = edits.get("labels", {})
-    timeline["labels"] = [{**label, "text": labels.get(label["text"], label["text"])} for label in timeline.get("labels", [])
-                          if labels.get(label["text"], label["text"])]
-    return timeline
+    return edit_model.build(timeline, edits)
+
+
+def story(ctx: RunContext) -> dict[str, Any] | None:
+    path = ctx.work_dir / "shots.json"
+    return json.loads(path.read_text("utf-8")) if path.is_file() else None
+
+
+def build(ctx: RunContext, base: dict[str, Any], edits: dict[str, Any] | None = None) -> dict[str, Any]:
+    return edit_model.build(base, edits if edits is not None else load(ctx), ctx, story(ctx))
 
 
 def apply_footage(ctx: RunContext, selections: list[Any]) -> list[Any]:
-    """The judge's selections with the editor's footage swaps (Selection models)."""
+    """The judge's selections with the footage chosen in the editor (Selection models)."""
 
     from .schemas import Selection
 
@@ -101,38 +78,44 @@ def apply_footage(ctx: RunContext, selections: list[Any]) -> list[Any]:
     return out
 
 
+_OPTIONS: dict[str, Any] = {}
+
+
 def _options(ctx: RunContext, shot_id: str) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Usable analysed options of a shot (best first) and its candidates by id."""
+    """Usable analysed options of a shot (best first) and its candidates by id (cached per file version)."""
 
     scores_path = ctx.work_dir / "scores" / f"{shot_id}.json"
     cand_path = ctx.work_dir / "candidates" / f"{shot_id}.json"
     if not scores_path.is_file() or not cand_path.is_file():
         return [], {}
+    key = f"{scores_path}:{scores_path.stat().st_mtime_ns}:{cand_path.stat().st_mtime_ns}"
+    if key not in _OPTIONS:
+        _OPTIONS[key] = _read_options(scores_path, cand_path)
+    return _OPTIONS[key]
+
+
+def _read_options(scores_path: Path, cand_path: Path) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     options = [o for o in json.loads(scores_path.read_text("utf-8")).get("options", []) if not o.get("discarded")]
     options.sort(key=lambda o: -float(o.get("total") or 0))
     candidates = {c["id"]: c for c in json.loads(cand_path.read_text("utf-8")).get("candidates", [])}
     return [o for o in options if o["candidateId"] in candidates], candidates
 
 
-def selection_for(ctx: RunContext, shot_id: str, swap: dict[str, Any]) -> dict[str, Any] | None:
-    """A selection entry for option {"candidateId", "start"} of a shot, as the judge would write it."""
+def selection_for(ctx: RunContext, shot_id: str, footage: dict[str, Any]) -> dict[str, Any] | None:
+    """A selection entry for the footage chosen in the editor (an analysed option, a slip of it, or
+    a video found with the editor's search)."""
 
     options, candidates = _options(ctx, shot_id)
-    option = next((o for o in options if o["candidateId"] == swap.get("candidateId")
-                   and abs(float(o.get("start") or 0) - float(swap.get("start") or 0)) < 0.01), None)
-    if option is None:
-        return None
-    c = candidates[option["candidateId"]]
-    entry = {"shotId": shot_id, "status": "selected", "decidedBy": "editor", "candidateId": option["candidateId"],
-             "source": option["source"], "kind": option["kind"], "start": option.get("start"), "end": option.get("end"),
-             "analysisPath": option.get("analysisPath"), "mediaUrl": c.get("mediaUrl"), "url": c["url"],
-             "title": c["title"], "channel": c["channel"], "license": c["license"], "credit": c["credit"],
-             "attribution": c["attribution"], "score": option.get("total"), "phash": option.get("phash")}
-    return {k: v for k, v in entry.items() if v is not None}
+    option = next((o for o in options if o["candidateId"] == footage.get("candidateId")
+                   and (abs(float(o.get("start") or 0) - float(footage.get("start") or 0)) < 0.01 or "end" in footage)), None)
+    candidate = candidates.get(str(footage.get("candidateId")))
+    if option is None and candidate is not None and "end" in footage:     # slip of a candidate with no option at hand
+        option = {"candidateId": candidate["id"], "source": candidate["source"], "kind": candidate["kind"]}
+    return edit_model.selection_entry(shot_id, footage, option, candidate if option else None)
 
 
 def patch_selection(ctx: RunContext) -> int:
-    """Write the footage swaps into selection.json now (so only ingest and later stages re-run)."""
+    """Write the footage choices into selection.json now (so only ingest and later stages re-run)."""
 
     from .schemas import SelectionFile
 
@@ -201,8 +184,26 @@ def _window_start(path: Path) -> float:
     return float(found.group(1)) if found else 0.0
 
 
+def _voice_frames(ctx: RunContext, base: dict[str, Any]) -> list[list[Any]]:
+    """[[frame, word]] of the narration in the pipeline's frames (before scene edits)."""
+
+    path = ctx.work_dir / "words.json"
+    if not path.is_file():
+        return []
+    fps = base["fps"]
+    audio = base["audio"]
+    gaps = audio.get("voiceGaps", [])
+    out = []
+    for word in json.loads(path.read_text("utf-8")).get("words", []):
+        frame = round(word["start"] * fps)
+        out.append([audio.get("voiceFrom", 0) + frame + sum(b for at, b in gaps if at <= frame), word["text"]])
+    return out
+
+
 def state(ctx: RunContext) -> dict[str, Any]:
     timeline = json.loads((ctx.work_dir / "timeline.json").read_text("utf-8"))
+    base_path = ctx.work_dir / "timeline.base.json"
+    base = json.loads(base_path.read_text("utf-8")) if base_path.is_file() else timeline
     selection = {}
     if (ctx.work_dir / "selection.json").is_file():
         selection = {s["shotId"]: s for s in json.loads((ctx.work_dir / "selection.json").read_text("utf-8"))["selections"]}
@@ -213,21 +214,27 @@ def state(ctx: RunContext) -> dict[str, Any]:
     for shot in timeline["shots"]:
         chosen = selection.get(shot["id"], {})
         judge = chosen.get("judge") or {}
-        weak = bool(chosen) and chosen.get("decidedBy") != "editor" and (
+        weak = bool(chosen) and chosen.get("decidedBy") != "editor" and shot["id"] not in edits["own"] and (
             chosen.get("status") == "fallback" or (judge and float(judge.get("confidence") or 1) < low_conf)
-            or (not judge and chosen.get("score") is not None and float(chosen["score"]) < low_score))
+            or (not judge and chosen.get("score") is not None and float(chosen["score"]) < low_score)
+            or str((shot.get("media") or {}).get("source", "")).lower() in ("pexels", "generated"))
         shots.append({"id": shot["id"], "type": shot["type"], "from": shot["from"], "durationInFrames": shot["durationInFrames"],
                       "text": shot.get("text", ""), "chapterTitle": shot.get("chapterTitle"),
                       "media": shot.get("media"), "title": chosen.get("title"), "channel": chosen.get("channel"),
+                      "candidateId": chosen.get("candidateId"), "start": chosen.get("start"), "end": chosen.get("end"),
                       "decidedBy": chosen.get("decidedBy"), "reason": judge.get("reason"), "weak": weak,
-                      "swapped": shot["id"] in edits["footage"], "options": len(_options(ctx, shot["id"])[0])})
-    base_path = ctx.work_dir / "timeline.base.json"
-    base = json.loads(base_path.read_text("utf-8")) if base_path.is_file() else timeline
+                      "swapped": shot["id"] in edits["footage"] or shot["id"] in edits["own"] or shot["id"] in edits["media"],
+                      "options": len(_options(ctx, shot["id"])[0])})
     labels = [{"original": label["text"], "text": edits["labels"].get(label["text"], label["text"]), "from": label["from"],
                "durationInFrames": label["durationInFrames"], "kind": label["kind"]} for label in base.get("labels", [])]
     removed = [{"id": g["id"], "kind": g["kind"], "type": (g.get("graphic") or {}).get("type"), "from": g["from"],
-                "durationInFrames": g["durationInFrames"]} for g in base["groups"] if g["id"] in set(edits["removed"])]
+                "durationInFrames": g["durationInFrames"]} for g in [*base["groups"], *edits["added"]]
+               if g["id"] in set(edits["removed"])]
+    # the tracks, in the pipeline's frames (before scene reordering): the page maps them with timeMap
+    unedited = edit_model.build(base, {**edits, "order": [], "deleted": []}, keep_keys=True)
     return {"slug": ctx.slug, "timeline": timeline, "shots": shots, "edits": edits, "labels": labels, "removedGroups": removed,
+            "layout": unedited, "scenes": edit_model.scenes(unedited, story(ctx)), "timeMap": edit_model.time_map(timeline),
+            "words": _voice_frames(ctx, base), "baseDuration": base["durationInFrames"],
             "rendered": (ctx.out_dir / "video-final.mp4").is_file(), "job": JOB.status()}
 
 
@@ -247,11 +254,16 @@ def options(ctx: RunContext, shot_id: str) -> list[dict[str, Any]]:
     return out
 
 
-# --- changes -----------------------------------------------------------------------------------------------
+def set_edits(ctx: RunContext, edits: dict[str, Any]) -> dict[str, Any]:
+    """The page sends the whole set of changes (that is how undo/redo work)."""
+
+    save(ctx, edits)
+    refresh(ctx)
+    return state(ctx)
+
 
 def edit(ctx: RunContext, body: dict[str, Any]) -> dict[str, Any]:
-    """One change from the page. Texts and removals show at once (timeline.json is updated too);
-    footage swaps wait for "Aplicar" (they need the new clip downloaded)."""
+    """One change (kept for simple clients and the tests)."""
 
     edits = load(ctx)
     kind = body.get("type")
@@ -260,9 +272,9 @@ def edit(ctx: RunContext, body: dict[str, Any]) -> dict[str, Any]:
         if option is None:
             edits["footage"].pop(shot, None)
         else:
-            edits["footage"][shot] = {"candidateId": str(option["candidateId"]), "start": float(option.get("start") or 0)}
+            edits["footage"][shot] = {k: v for k, v in option.items() if v is not None}
     elif kind == "text":
-        edits["texts"][str(body["key"])] = str(body["value"])
+        edits["texts"][str(body["key"])] = body["value"]
     elif kind == "label":
         edits["labels"][str(body["original"])] = str(body["value"])
     elif kind == "remove":
@@ -272,10 +284,7 @@ def edit(ctx: RunContext, body: dict[str, Any]) -> dict[str, Any]:
         edits["removed"] = [g for g in edits["removed"] if g != body["id"]]
     else:
         raise ValueError(f"cambio desconocido: {kind}")
-    save(ctx, edits)
-    if kind != "footage":
-        refresh(ctx, edits)
-    return state(ctx)
+    return set_edits(ctx, edits)
 
 
 def refresh(ctx: RunContext, edits: dict[str, Any] | None = None) -> None:
@@ -284,7 +293,147 @@ def refresh(ctx: RunContext, edits: dict[str, Any] | None = None) -> None:
     base = ctx.work_dir / "timeline.base.json"
     if not base.is_file():
         return
-    ctx.write_json("timeline.json", apply_to_timeline(json.loads(base.read_text("utf-8")), edits or load(ctx)))
+    ctx.write_json("timeline.json", build(ctx, json.loads(base.read_text("utf-8")), edits))
+
+
+# --- library: templates, music, sound effects, search, uploads ---------------------------------------------------
+
+TEMPLATES: list[dict[str, Any]] = [
+    {"type": "kinetic", "name": "Texto cinético", "seconds": 3, "data": {"lines": ["UNA FRASE", "QUE IMPACTA"]}},
+    {"type": "map", "name": "Mapa", "seconds": 6, "data": {"title": "Título del mapa", "countries": [], "points": [], "route": False,
+                                                          "zoom": None, "globe": False}},
+    {"type": "compare", "name": "A vs B", "seconds": 7, "data": {"title": "A vs B", "left": {"name": "Atleta A"},
+                                                                 "right": {"name": "Atleta B"}, "rows": [
+        {"label": "Oros", "a": 2, "b": 1, "unit": None, "better": "high"}, {"label": "Mundiales", "a": 3, "b": 4, "unit": None, "better": "high"}]}},
+    {"type": "chart", "name": "Gráfica", "seconds": 6, "data": {"chart": "bar", "title": "Título", "unit": None, "data": [
+        {"label": "2016", "value": 10}, {"label": "2020", "value": 14}, {"label": "2024", "value": 19}]}},
+    {"type": "timeline", "name": "Línea de tiempo", "seconds": 7, "data": {"title": "Su carrera", "events": [
+        {"year": "2016", "text": "Primer hito"}, {"year": "2020", "text": "Segundo hito"}, {"year": "2024", "text": "Tercer hito"}]}},
+    {"type": "specs", "name": "Ficha técnica", "seconds": 6, "data": {"kicker": "EN CIFRAS", "name": "Nombre", "subtitle": None, "specs": [
+        {"label": "Edad", "value": "24", "unit": None}, {"label": "Altura", "value": "1,50", "unit": "m"}, {"label": "Oros", "value": "2", "unit": None}]}},
+    {"type": "rank", "name": "Puesto de ranking", "seconds": 5, "data": {"rank": 1, "total": 10, "name": "Nombre", "subtitle": None,
+                                                                         "stats": [{"label": "Dato", "value": "10"}]}},
+    {"type": "score", "name": "Nota desglosada", "seconds": 5, "data": {"name": "Gimnasta", "title": "Suelo", "d": 6.6, "e": 8.4,
+                                                                         "penalty": None, "total": 15.0, "labels": {}}},
+    {"type": "press", "name": "Recortes de prensa", "seconds": 6, "data": {"items": [
+        {"outlet": "Periódico", "headline": "Titular de la noticia", "date": None, "highlight": "noticia"}]}},
+    {"type": "rule", "name": "Reglamento", "seconds": 6, "data": {"source": "REGLAMENTO", "article": None,
+                                                                   "text": "Texto de la norma", "highlight": "norma", "stamp": "PROHIBIDO"}},
+    {"type": "banned", "name": "Prohibido", "seconds": 5, "data": {"name": "Elemento", "number": None, "who": None, "reason": None,
+                                                                    "since": None, "stamp": "PROHIBIDO"}},
+    {"type": "standings", "name": "Marcador", "seconds": 7, "data": {"title": "Final", "rows": [
+        {"name": "Atleta A", "score": "15.000"}, {"name": "Atleta B", "score": "14.900"}, {"name": "Atleta C", "score": "14.800"}]}},
+    {"type": "podium", "name": "Podio", "seconds": 6, "data": {"title": "Final", "places": [
+        {"place": 1, "name": "Oro", "note": None}, {"place": 2, "name": "Plata", "note": None}, {"place": 3, "name": "Bronce", "note": None}]}},
+    {"type": "card", "name": "Carta de jugador", "seconds": 6, "data": {"name": "Atleta", "position": None,
+                                                                         "headline": {"label": "Oros", "value": "2"},
+                                                                         "stats": [{"label": "Mundiales", "value": "3"},
+                                                                                   {"label": "Edad", "value": "24"},
+                                                                                   {"label": "Medallas", "value": "8"}]}},
+    {"type": "scale", "name": "Escala", "seconds": 6, "data": {"title": "Título", "axis": "height", "unit": "m", "items": [
+        {"name": "La marca", "value": 2.45}, {"name": "Persona media", "value": 1.75, "reference": True}]}},
+]
+
+
+def templates(ctx: RunContext) -> list[dict[str, Any]]:
+    from .graphics import fixed_words
+
+    words = fixed_words(ctx)
+    out = json.loads(json.dumps(TEMPLATES))
+    for template in out:
+        if template["type"] == "score":
+            template["data"]["labels"] = {"d": words["d"], "e": words["e"], "penalty": words["pen"], "total": words["total"]}
+    return out
+
+
+def assets(ctx: RunContext) -> dict[str, Any]:
+    """Music tracks and sound effects the page can choose (the channel's own first)."""
+
+    folder = ctx.root / str(ctx.section("timeline").get("assets", "assets"))
+    found: dict[str, list[dict[str, str]]] = {"music": [], "sfx": []}
+    for kind in found:
+        seen = set()
+        for base in (folder / kind, ctx.root / "assets" / kind):
+            for path in sorted(base.glob("*")) if base.is_dir() else []:
+                if path.suffix.lower() in (".mp3", ".wav", ".m4a", ".ogg") and path.name not in seen:
+                    seen.add(path.name)
+                    found[kind].append({"src": str(path.relative_to(ctx.root)).replace("\\", "/"), "name": path.stem,
+                                        "mood": path.stem.split("-")[0]})
+    return found
+
+
+def geocode(ctx: RunContext, query: str) -> dict[str, Any]:
+    from .graphics import geocode as lookup
+
+    found = lookup(ctx, query)
+    if not found:
+        raise ValueError(f"No encuentro «{query}»")
+    return {"lon": found[0], "lat": found[1]}
+
+
+def search(ctx: RunContext, query: str) -> list[dict[str, Any]]:
+    """YouTube videos for a query typed in the editor (to use a part of one in a shot)."""
+
+    import yt_dlp
+
+    if not query.strip():
+        raise ValueError("Escribe qué buscar")
+    with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True, "skip_download": True, "noplaylist": True}) as ydl:
+        info = ydl.extract_info(f"ytsearch12:{query}", download=False)
+    out = []
+    for entry in (info or {}).get("entries") or []:
+        if not entry or not entry.get("id"):
+            continue
+        out.append({"id": entry["id"], "title": entry.get("title") or "", "channel": entry.get("channel") or entry.get("uploader") or "",
+                    "duration": entry.get("duration"), "thumb": f"https://i.ytimg.com/vi/{entry['id']}/mqdefault.jpg",
+                    "url": f"https://www.youtube.com/watch?v={entry['id']}"})
+    return out
+
+
+UPLOADS = "editor/uploads"
+MAX_UPLOAD = 1_500_000_000
+
+
+def upload(ctx: RunContext, name: str, data: bytes) -> dict[str, Any]:
+    """A clip or photo of your own, to drop onto a shot."""
+
+    kind = "image" if Path(name).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") else "video"
+    if Path(name).suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v", ".webm"):
+        raise ValueError("Formato no admitido: usa mp4, mov, webm, jpg, png o webp")
+    folder = ctx.work_dir / UPLOADS
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / edit_model.sanitize_name(name)
+    target.write_bytes(data)
+    if kind == "video" and target.suffix.lower() != ".mp4":        # the browser and the render both want H.264 mp4
+        converted = target.with_suffix(".mp4")
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(target), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                        "-pix_fmt", "yuv420p", "-an", str(converted)], check=True)
+        target = converted
+    return {"src": str(target.relative_to(ctx.work_dir)), "kind": kind}
+
+
+def waveform(ctx: RunContext, per_second: int = 20) -> dict[str, Any]:
+    """Peaks of the narration (in the pipeline's timeline frames) for the voice track."""
+
+    import numpy as np
+
+    base_path = ctx.work_dir / "timeline.base.json"
+    base = json.loads(base_path.read_text("utf-8")) if base_path.is_file() else json.loads((ctx.work_dir / "timeline.json").read_text("utf-8"))
+    cache = ctx.work_dir / "editor" / "waveform.json"
+    voice = ctx.work_dir / base["audio"]["voice"]
+    if cache.is_file() and cache.stat().st_mtime >= voice.stat().st_mtime:
+        return json.loads(cache.read_text("utf-8"))
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(voice), "-ac", "1", "-ar", "8000", "-f", "s16le", "-"],
+                         capture_output=True).stdout
+    samples = np.abs(np.frombuffer(raw, dtype=np.int16).astype(np.float32))
+    step = 8000 // per_second
+    peaks = [float(samples[i:i + step].max()) for i in range(0, len(samples), step)] if len(samples) else []
+    top = max(peaks) if peaks else 1.0
+    result = {"perSecond": per_second, "peaks": [round(v / top, 3) for v in peaks], "voiceFrom": base["audio"].get("voiceFrom", 0),
+              "gaps": base["audio"].get("voiceGaps", []), "fps": base["fps"]}
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(result), encoding="utf-8")
+    return result
 
 
 class Job:
@@ -451,12 +600,15 @@ def make_handler(ctx: RunContext, port: int) -> type[BaseHTTPRequestHandler]:
                         self.end_headers()
                         return
             else:
-                if path == "/api/state":
-                    self._run(lambda: state(ctx))
+                query = parse_qs(url.query)
+                q = (query.get("q") or [""])[0]
+                routes = {"/api/state": lambda: state(ctx), "/api/job": JOB.status, "/api/templates": lambda: templates(ctx),
+                          "/api/assets": lambda: assets(ctx), "/api/waveform": lambda: waveform(ctx),
+                          "/api/geocode": lambda: geocode(ctx, q), "/api/search": lambda: search(ctx, q)}
+                if path in routes:
+                    self._run(routes[path])
                 elif path.startswith("/api/options/"):
                     self._run(lambda: options(ctx, path.rsplit("/", 1)[1]))
-                elif path == "/api/job":
-                    self._run(JOB.status)
                 else:
                     self._json(404, {"error": "no existe"})
                 return
@@ -466,8 +618,21 @@ def make_handler(ctx: RunContext, port: int) -> type[BaseHTTPRequestHandler]:
                 _file(self, found)
 
         def do_POST(self) -> None:
-            if self.headers.get("Origin") not in allowed or self.headers.get("Content-Type") != "application/json":
+            if self.headers.get("Origin") not in allowed:
                 self._json(403, {"error": "origen no permitido"})
+                return
+            url = urlparse(self.path)
+            if url.path == "/api/upload" and self.headers.get("Content-Type") == "application/octet-stream":
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > MAX_UPLOAD:
+                    self._json(400, {"error": "archivo demasiado grande"})
+                    return
+                name = (parse_qs(url.query).get("name") or ["archivo"])[0]
+                data = self.rfile.read(length)
+                self._run(lambda: upload(ctx, name, data))
+                return
+            if self.headers.get("Content-Type") != "application/json":
+                self._json(403, {"error": "tipo no permitido"})
                 return
             length = int(self.headers.get("Content-Length") or 0)
             try:
@@ -476,7 +641,8 @@ def make_handler(ctx: RunContext, port: int) -> type[BaseHTTPRequestHandler]:
                 self._json(400, {"error": "JSON no válido"})
                 return
             path = urlparse(self.path).path
-            actions = {"/api/edit": lambda: edit(ctx, body), "/api/apply": lambda: apply(ctx), "/api/render": lambda: render(ctx)}
+            actions = {"/api/edit": lambda: edit(ctx, body), "/api/edits": lambda: set_edits(ctx, body.get("edits") or {}),
+                       "/api/apply": lambda: apply(ctx), "/api/render": lambda: render(ctx)}
             if path in actions:
                 self._run(actions[path])
             else:
@@ -491,6 +657,8 @@ def serve(ctx: RunContext, port: int = 8766, open_browser: bool = True) -> None:
     base = ctx.work_dir / "timeline.base.json"          # made by the timeline stage; older runs: the current one
     if not base.is_file() and not any(load(ctx).values()):
         base.write_text((ctx.work_dir / "timeline.json").read_text("utf-8"), encoding="utf-8")
+    if not edit_model.is_empty(load(ctx)):
+        refresh(ctx)                                     # the changes on top of the current pipeline edit
     build_app(ctx.root)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(ctx, port))
     url = f"http://127.0.0.1:{port}"

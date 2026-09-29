@@ -282,27 +282,43 @@ nueva voz, los textos en pantalla traducidos («CHAPTER», «Source»), y sus mi
 títulos en ese idioma. No vuelve a buscar ni a juzgar metraje: ~15-25 min, casi todo render.
 Si un plano queda más largo que su clip, va en cámara lenta suave.
 
-## 10d. Editor antes del render
+## 10d. Editor antes del render (tipo CapCut)
 
-Para revisar un vídeo antes de gastar el tiempo de render:
+Para revisar y retocar un vídeo antes de gastar el tiempo de render:
 
 ```powershell
 python main.py --slug Video1 --review     # hace todo menos el render
-python main.py --editor Video1            # abre http://127.0.0.1:8766
+python main.py --editor Video1            # abre http://127.0.0.1:8766 (Chrome o Edge)
 ```
 
-La primera vez tarda unos segundos en prepararse. El editor sirve para:
-- **Ver el vídeo montado** con los mismos gráficos, rótulos y música del render final (usa Chrome o Edge).
-- **Recorrer los planos por capítulo.** Los marcados con ⚠ son los que el juez eligió con menos seguridad;
-  con «Solo planos flojos» ves solo esos.
-- **Cambiar el metraje de un plano** por otra opción que ya se analizó: al pasar el ratón ves el fragmento.
-  Luego pulsa **«Aplicar cambios de planos»**, que descarga solo esos planos y rehace el montaje (1-3 min).
-- **Editar o quitar** los textos de los gráficos (títulos, nombres, notas…), los rótulos de nombre y
-  lugar (déjalos vacíos para quitarlos) y los títulos de capítulo. Se ven al momento.
-- **«Renderizar vídeo»:** hace el render con tus cambios y deja el resultado en `out/<vídeo>/`.
+La pantalla tiene cuatro zonas:
+- **Arriba a la izquierda, la biblioteca:**
+  - **Plantillas:** mapa, podio, marcador, prensa, carta de jugador, texto cinético… Arrástrala a la
+    línea de tiempo o haz clic para ponerla en el cursor.
+  - **Metraje:** buscar en YouTube o subir un clip o una foto tuya para el plano elegido.
+  - **Audio:** cambiar la canción de un tramo y añadir efectos.
+- **En el centro, la vista previa**, con los mismos gráficos, rótulos y música del render final.
+  «Ver solo esta escena» reproduce solo la escena elegida.
+- **A la derecha, las propiedades** de lo que hayas seleccionado: textos y cifras de un gráfico,
+  otras opciones de metraje del análisis (al pasar el ratón ves el fragmento), mover el fragmento
+  ±0,3 s o ±1 s, volumen de un efecto…
+- **Abajo, la línea de tiempo** con las pistas Escenas, Vídeo, Gráficos, Rótulos, Voz (onda y palabras
+  con zoom), Música y Efectos. Qué puedes hacer en ella:
+  - **Recortar un plano:** arrastra su borde izquierdo. El corte se engancha a la palabra más cercana
+    y la transición y su «whoosh» se mueven con él.
+  - **Intercambiar dos planos:** arrastra uno encima del otro.
+  - **Mover o estirar** gráficos, rótulos y efectos.
+  - **Reordenar la historia:** arrastra una escena. La voz, la música y los subtítulos se mueven con
+    ella. También puedes eliminar una escena entera.
+  - **Zoom:** con la barra o con Ctrl + rueda.
 
-Los cambios se guardan en `work/<vídeo>/edits.json` y se respetan aunque vuelvas a lanzar una etapa.
-También sirve con un vídeo ya terminado: los cambios hacen que se vuelva a renderizar.
+Atajos: **Ctrl+Z / Ctrl+Y** deshacer y rehacer · **Supr** quitar lo seleccionado · **Espacio** reproducir.
+«⚠ flojos → siguiente» salta al siguiente plano que el juez eligió con menos seguridad (o que es stock).
+
+Casi todo se ve al momento. El metraje nuevo de YouTube (otra opción, fragmento movido o búsqueda) se
+descarga al pulsar **«Aplicar cambios de planos»** (1-3 min). **«Renderizar vídeo»** hace el vídeo
+final con todo. Los cambios se guardan en `work/<vídeo>/edits.json` y se respetan aunque vuelvas a lanzar
+una etapa.
 
 ## 10c. Varios canales (perfiles) y vídeos de ranking
 

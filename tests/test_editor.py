@@ -5,6 +5,7 @@ from pipeline.context import RunContext
 from pipeline.schemas import Selection
 
 TIMELINE = {
+    "fps": 30, "durationInFrames": 300, "audio": {"voice": "audio/voz.mp3", "sfx": []},
     "shots": [{"id": "c1", "type": "chapter", "from": 0, "durationInFrames": 30, "text": "", "chapterTitle": "EL INICIO"}],
     "groups": [{"id": "graphic-1", "kind": "graphic", "from": 0, "durationInFrames": 90,
                 "graphic": {"type": "map", "title": "De Manila a Tokio", "points": [{"name": "Manila"}]}},

@@ -90,8 +90,15 @@ def subtitles(timeline: Timeline, words: list[dict[str, Any]], line: int = 42, m
 
     def final(t: float) -> float:
         frame = round(t * fps)
+        if timeline.edited:                               # scenes moved in the editor
+            from .edit_model import remap_subtitle_time
+
+            moved = remap_subtitle_time(timeline, frame)
+            return -1.0 if moved is None else moved
         return (timeline.audio.voiceFrom + frame + sum(b for at, b in gaps if at <= frame)) / fps
 
+    if timeline.edited:                                   # in the new scene order; deleted scenes have no captions
+        words = sorted((w for w in words if final(w["start"]) >= 0), key=lambda w: final(w["start"]))
     cues: list[list[dict[str, Any]]] = []
     for word in words:
         current = cues[-1] if cues else None

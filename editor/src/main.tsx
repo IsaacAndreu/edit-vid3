@@ -1,250 +1,106 @@
-// Editor before the render: the Remotion Player plays work/<slug>/timeline.json with the same
-// components as the final render; the side panels change footage, graphics and texts through
-// pipeline/editor.py (python main.py --editor SLUG).
+// Editor before the render (CapCut-style): library on the left, the Remotion Player in the middle,
+// the inspector on the right and a multi-track timeline below. The player plays
+// work/<slug>/timeline.json with the same components as the final render; every change goes to
+// pipeline/editor.py as the whole set of edits (that is how undo/redo work).
 
 (window as unknown as { remotion_staticBase: string }).remotion_staticBase = '/work';
 
 import { Player, type PlayerRef } from '@remotion/player';
-import { StrictMode, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState, type CSSProperties, type FC } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Documentary } from '../../remotion/Documentary';
-import type { TimelineProps } from '../../remotion/types';
-
-interface ShotInfo {
-  id: string;
-  type: string;
-  from: number;
-  durationInFrames: number;
-  text: string;
-  chapterTitle?: string | null;
-  media?: { src: string; kind: string; source: string } | null;
-  title?: string | null;
-  channel?: string | null;
-  decidedBy?: string | null;
-  reason?: string | null;
-  weak: boolean;
-  swapped: boolean;
-  options: number;
-}
-
-interface Group {
-  id: string;
-  kind: string;
-  from: number;
-  durationInFrames: number;
-  title?: string | null;
-  note?: string | null;
-  graphic?: Record<string, unknown> | null;
-  stat?: Record<string, unknown> | null;
-}
-
-interface LabelInfo {
-  original: string;
-  text: string;
-  from: number;
-  durationInFrames: number;
-  kind: string;
-}
-
-interface Edits {
-  footage: Record<string, { candidateId: string; start: number }>;
-  texts: Record<string, string>;
-  removed: string[];
-  labels: Record<string, string>;
-}
-
-interface Job {
-  kind: string;
-  running: boolean;
-  ok: boolean | null;
-  log: string[];
-}
-
-interface State {
-  slug: string;
-  timeline: TimelineProps & { groups: Group[] };
-  shots: ShotInfo[];
-  edits: Edits;
-  labels: LabelInfo[];
-  removedGroups: { id: string; kind: string; type?: string | null; from: number; durationInFrames: number }[];
-  rendered: boolean;
-  job: Job;
-}
-
-interface Option {
-  index: number;
-  candidateId: string;
-  start: number;
-  end: number;
-  kind: string;
-  source: string;
-  title: string;
-  channel: string;
-  score: number;
-  thumb: string;
-  preview: string | null;
-  previewFrom: number | null;
-  previewTo: number | null;
-}
-
-const api = async <T,>(path: string, body?: unknown): Promise<T> => {
-  const response = await fetch(path, body === undefined ? undefined : {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error ?? response.statusText);
-  }
-  return data as T;
-};
-
-const clock = (frame: number, fps: number) => {
-  const s = Math.floor(frame / fps);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
-
-const overlaps = (a: { from: number; durationInFrames: number }, b: { from: number; durationInFrames: number }) =>
-  a.from < b.from + b.durationInFrames && b.from < a.from + a.durationInFrames;
-
-const KIND_NAMES: Record<string, string> = {
-  graphic: 'Gráfico', stat: 'Cifra grande', datacard: 'Panel de datos', split: 'Panel doble', question: 'Pregunta',
-};
-const GRAPHIC_NAMES: Record<string, string> = {
-  map: 'Mapa', compare: 'A vs B', chart: 'Gráfica', timeline: 'Línea de tiempo', specs: 'Ficha técnica', rank: 'Puesto del ranking',
-  kinetic: 'Texto cinético', score: 'Nota desglosada', press: 'Recortes de prensa', rule: 'Reglamento', split: 'Pantalla partida',
-  banned: 'Prohibido', spotlight: 'Congelado con foco', strobe: 'Estroboscopia', replay: 'Repetición', standings: 'Marcador',
-  podium: 'Podio', race: 'Carrera de barras', card: 'Carta de jugador', scale: 'Escala',
-};
-// keys whose strings are not on-screen text
-const SKIP = new Set(['src', 'kind', 'source', 'credit', 'type', 'chart', 'layout', 'better', 'query', 'id', 'axis', 'unit', 'countries', 'labels']);
-const FIELD: Record<string, string> = { title: 'Título', name: 'Nombre', note: 'Nota', subtitle: 'Subtítulo', lines: 'Línea', label: 'Etiqueta',
-  text: 'Texto', headline: 'Titular', outlet: 'Medio', date: 'Fecha', highlight: 'Resaltado', who: 'Quién', reason: 'Motivo', since: 'Desde',
-  stamp: 'Sello', position: 'Posición', badge: 'Rótulo', value: 'Valor', left: 'Izquierda', right: 'Derecha', points: 'Punto', events: 'Hito',
-  rows: 'Fila', stats: 'Dato', specs: 'Dato', items: 'Elemento', places: 'Puesto', data: 'Dato', steps: 'Paso', kicker: 'Antetítulo' };
-const pretty = (path: string) => path.replace(/^graphic\./, '').replace(/^stat\./, '').split('.')
-  .map((k) => (/^\d+$/.test(k) ? String(Number(k) + 1) : FIELD[k] ?? k)).join(' › ');
-
-/** Every on-screen string inside a group, with its dotted path ("graphic.left.name"). */
-const strings = (value: unknown, path: string, out: { path: string; value: string }[] = []) => {
-  if (Array.isArray(value)) {
-    value.forEach((item, i) => strings(item, `${path}.${i}`, out));
-  } else if (value && typeof value === 'object') {
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      if (!SKIP.has(key)) {
-        strings(item, path ? `${path}.${key}` : key, out);
-      }
-    }
-  } else if (typeof value === 'string' && /[A-Za-zÁÉÍÓÚáéíóúñÑ]{2}/.test(value)) {
-    out.push({ path, value });
-  }
-  return out;
-};
-
-const TextField: FC<{ value: string; onSave: (value: string) => void; label?: string }> = ({ value, onSave, label }) => {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  return (
-    <label style={{ display: 'block', marginBottom: 8 }}>
-      {label ? <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 3 }}>{label}</div> : null}
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => draft !== value && onSave(draft)}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-      />
-    </label>
-  );
-};
-
-const Card: FC<{ title: string; children: React.ReactNode; right?: React.ReactNode }> = ({ title, children, right }) => (
-  <section style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-      <strong>{title}</strong>
-      {right}
-    </div>
-    {children}
-  </section>
-);
-
-const OptionCard: FC<{ option: Option; chosen: boolean; onPick: () => void }> = ({ option, chosen, onPick }) => {
-  const [hover, setHover] = useState(false);
-  const video = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (hover && video.current && option.previewFrom !== null) {
-      video.current.currentTime = option.previewFrom;
-      void video.current.play().catch(() => undefined);
-    }
-  }, [hover, option.previewFrom]);
-  return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{ border: `2px solid ${chosen ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 10, overflow: 'hidden', background: 'var(--raised)' }}
-    >
-      <div style={{ position: 'relative', aspectRatio: '16 / 9', background: '#000' }}>
-        {hover && option.preview && option.kind === 'video' ? (
-          <video
-            ref={video}
-            src={option.preview}
-            muted
-            playsInline
-            onTimeUpdate={(e) => {
-              const v = e.currentTarget;
-              if (option.previewTo !== null && option.previewFrom !== null && v.currentTime > option.previewTo) {
-                v.currentTime = option.previewFrom;
-              }
-            }}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <img src={option.thumb} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        )}
-        <span style={{ position: 'absolute', left: 6, top: 6, fontSize: 11, background: 'rgba(0,0,0,.7)', padding: '2px 6px', borderRadius: 4 }}>
-          {option.kind === 'video' ? 'VÍDEO' : 'FOTO'} · {option.score.toFixed(2)}
-        </span>
-      </div>
-      <div style={{ padding: 8 }}>
-        <div title={option.title} style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{option.title}</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>{option.channel}</div>
-        <button className={chosen ? '' : 'primary'} disabled={chosen} onClick={onPick} style={{ width: '100%', padding: '4px 8px' }}>
-          {chosen ? 'Elegido' : 'Usar este'}
-        </button>
-      </div>
-    </div>
-  );
-};
+import { api, clock, clone, toBase, type Asset, type Edits, type Job, type Selection, type State, type Template } from './model';
+import { Card, Inspector, Library } from './Panels';
+import { Tracks } from './Tracks';
 
 const App: FC = () => {
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
-  const [options, setOptions] = useState<Option[] | null>(null);
-  const [onlyWeak, setOnlyWeak] = useState(false);
-  const [current, setCurrent] = useState(0);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [frame, setFrame] = useState(0);
   const [reload, setReload] = useState(0);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [assets, setAssets] = useState<{ music: Asset[]; sfx: Asset[] }>({ music: [], sfx: [] });
+  const [wave, setWave] = useState<{ perSecond: number; peaks: number[]; voiceFrom: number; gaps: [number, number][] } | null>(null);
+  const past = useRef<Edits[]>([]);
+  const future = useRef<Edits[]>([]);
+  const [, setHistory] = useState(0);   // re-render the undo/redo buttons
+  const [saving, setSaving] = useState(false);
+  const [scenePreview, setScenePreview] = useState<[number, number] | null>(null);
   const player = useRef<PlayerRef>(null);
-  const list = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => api<State>('/api/state').then(setState).catch((e) => setError(String(e))), []);
-  useEffect(() => void load(), [load]);
+  useEffect(() => {
+    void load();
+    api<Template[]>('/api/templates').then(setTemplates).catch(() => undefined);
+    api<{ music: Asset[]; sfx: Asset[] }>('/api/assets').then(setAssets).catch(() => undefined);
+    api<typeof wave>('/api/waveform').then(setWave).catch(() => undefined);
+  }, [load]);
 
-  const run = useCallback(async (body: unknown) => {
+  // The page's own copy of the changes is the reference: every change starts from it (never from a
+  // server answer still on its way), and only the answer to the latest request is shown.
+  const editsRef = useRef<Edits | null>(null);
+  const sequence = useRef(0);
+  useEffect(() => {
+    if (state && editsRef.current === null) editsRef.current = state.edits;
+  }, [state]);
+
+  const send = useCallback(async (next: Edits) => {
+    const mine = ++sequence.current;
+    setSaving(true);
     try {
-      setState(await api<State>('/api/edit', body));
-      setError('');
+      const answer = await api<State>('/api/edits', { edits: next });
+      if (mine === sequence.current) {
+        setState(answer);
+        setError('');
+      }
     } catch (e) {
-      setError(String(e));
+      if (mine === sequence.current) setError(String(e));
+    } finally {
+      if (mine === sequence.current) setSaving(false);
     }
   }, []);
+
+  const commit = useCallback((next: Edits) => {
+    editsRef.current = next;
+    setState((s) => (s ? { ...s, edits: next } : s));
+    void send(next);
+  }, [send]);
+
+  /** One change: applied to a copy of the edits, remembered for undo, sent to the server. */
+  const change = useCallback((fn: (e: Edits) => void) => {
+    if (!editsRef.current) return;
+    const previous = editsRef.current;
+    const next = clone(previous);
+    fn(next);
+    past.current = [...past.current.slice(-80), previous];
+    future.current = [];
+    setHistory((h) => h + 1);
+    commit(next);
+  }, [commit]);
+
+  const undo = useCallback(() => {
+    const previous = past.current[past.current.length - 1];
+    if (!editsRef.current || !previous) return;
+    future.current = [editsRef.current, ...future.current];
+    past.current = past.current.slice(0, -1);
+    setHistory((h) => h + 1);
+    commit(previous);
+  }, [commit]);
+
+  const redo = useCallback(() => {
+    const next = future.current[0];
+    if (!editsRef.current || !next) return;
+    past.current = [...past.current, editsRef.current];
+    future.current = future.current.slice(1);
+    setHistory((h) => h + 1);
+    commit(next);
+  }, [commit]);
 
   // background job (apply / render): poll while it runs, reload everything when it ends
   const running = state?.job.running ?? false;
   useEffect(() => {
-    if (!running) {
-      return;
-    }
+    if (!running) return;
     const timer = setInterval(async () => {
       const job = await api<Job>('/api/job');
       setState((s) => (s ? { ...s, job } : s));
@@ -257,118 +113,88 @@ const App: FC = () => {
     return () => clearInterval(timer);
   }, [running, load]);
 
-  // the shot under the playhead
+  // playhead ← player
   useEffect(() => {
     const ref = player.current;
-    if (!ref) {
-      return;
-    }
-    const onFrame = (e: { detail: { frame: number } }) => setCurrent(e.detail.frame);
+    if (!ref) return;
+    const onFrame = (e: { detail: { frame: number } }) => setFrame(e.detail.frame);
     ref.addEventListener('frameupdate', onFrame);
-    return () => ref.removeEventListener('frameupdate', onFrame);
-  }, [state?.slug, reload]);
+    ref.addEventListener('seeked', onFrame);
+    return () => {
+      ref.removeEventListener('frameupdate', onFrame);
+      ref.removeEventListener('seeked', onFrame);
+    };
+  }, [state?.slug, reload, scenePreview]);
 
-  const shot = state?.shots.find((s) => s.id === selected) ?? null;
+  const seek = useCallback((f: number) => {
+    player.current?.seekTo(f);
+    setFrame(f);
+  }, []);
+
+  const map = state?.timeMap ?? [];
+  const base = useCallback((f: number) => toBase(f, map), [map]);
+
+  // keyboard: undo/redo, delete, play
   useEffect(() => {
-    setOptions(null);
-    if (shot && shot.options > 0) {
-      api<Option[]>(`/api/options/${shot.id}`).then(setOptions).catch(() => setOptions([]));
-    }
-  }, [shot?.id, reload]);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+      else if (e.key === ' ') { e.preventDefault(); player.current?.toggle(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selection) {
+        const s = selection;
+        if (s.kind === 'group') change((ed) => { ed.removed.push(s.id); });
+        if (s.kind === 'label') change((ed) => { if (s.added !== undefined) ed.addedLabels.splice(s.added, 1); else ed.labels[s.original!] = ''; });
+        if (s.kind === 'sfx') change((ed) => { if (s.added !== undefined) ed.sfx.added.splice(s.added, 1); else ed.sfx.removed.push(s.key!); });
+        setSelection(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, selection, change]);
 
-  const playing = useMemo(() => state?.shots.find((s) => s.from <= current && current < s.from + s.durationInFrames)?.id, [state, current]);
-
-  if (!state) {
-    return <div style={{ padding: 40 }}>{error || 'Cargando…'}</div>;
-  }
+  if (!state) return <div style={{ padding: 40 }}>{error || 'Cargando…'}</div>;
   const { timeline, edits } = state;
   const fps = timeline.fps;
   const pending = Object.keys(edits.footage).length;
-  const textChanges = Object.keys(edits.texts).length + Object.keys(edits.labels).length + edits.removed.length;
-  const weakCount = state.shots.filter((s) => s.weak).length;
-
-  const pick = (s: ShotInfo) => {
-    setSelected(s.id);
-    player.current?.seekTo(s.from);
-  };
-
-  const chapters: { title: string; shots: ShotInfo[] }[] = [{ title: 'Inicio', shots: [] }];
-  for (const s of state.shots) {
-    if (s.type === 'chapter') {
-      chapters.push({ title: s.chapterTitle || s.text || 'Capítulo', shots: [] });
-    }
-    if (!onlyWeak || s.weak || s.type === 'chapter') {
-      chapters[chapters.length - 1].shots.push(s);
-    }
-  }
-
-  const groupsHere = shot ? timeline.groups.filter((g) => overlaps(g, shot)) : [];
-  const labelsHere = shot ? state.labels.filter((l) => overlaps(l, shot)) : [];
-  const removedHere = shot ? state.removedGroups.filter((g) => overlaps(g, shot)) : [];
-  const swap = shot ? edits.footage[shot.id] : undefined;
-
-  const bar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--line)', background: 'var(--panel)' };
+  const weak = state.shots.filter((s) => s.weak);
+  const nextWeak = weak.find((s) => s.from > frame + 1) ?? weak[0];
+  const bar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid var(--line)', background: 'var(--panel)' };
+  const common = { state, frame, change, select: setSelection, seek, toBase: base, reload, setScenePreview, scenePreview };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header style={bar}>
-        <strong style={{ fontSize: 16 }}>✂️ {timeline.title}</strong>
-        <span style={{ color: 'var(--muted)' }}>{clock(timeline.durationInFrames, fps)} · {state.shots.length} planos · {weakCount} flojos</span>
+        <strong style={{ fontSize: 15 }}>✂️ {timeline.title}</strong>
+        <span style={{ color: 'var(--muted)', fontSize: 12 }}>{clock(timeline.durationInFrames, fps)} · {state.shots.length} planos</span>
+        <button disabled={!past.current.length} onClick={undo} title="Deshacer (Ctrl+Z)">↶</button>
+        <button disabled={!future.current.length} onClick={redo} title="Rehacer (Ctrl+Y)">↷</button>
+        {weak.length ? (
+          <button onClick={() => { if (nextWeak) { seek(nextWeak.from); setSelection({ kind: 'shot', id: nextWeak.id }); } }}
+            title="Salta al siguiente plano que el juez eligió con menos seguridad">⚠ {weak.length} flojos → siguiente</button>
+        ) : null}
+        {saving ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>guardando…</span> : null}
         <span style={{ flex: 1 }} />
-        {pending ? <span style={{ color: 'var(--warn)' }}>{pending} plano(s) por aplicar</span> : null}
+        {pending ? <span style={{ color: 'var(--warn)', fontSize: 12 }}>{pending} plano(s) por descargar</span> : null}
         <button disabled={!pending || running} onClick={() => api<Job>('/api/apply', {}).then(() => load()).catch((e) => setError(String(e)))}
-          title="Descarga los planos nuevos y rehace el montaje (1-3 min)">
-          Aplicar cambios de planos
-        </button>
-        <button className="primary" disabled={running || pending > 0}
-          title={pending ? 'Aplica antes los cambios de planos' : 'Renderiza el vídeo final con los cambios'}
-          onClick={() => api<Job>('/api/render', {}).then(() => load()).catch((e) => setError(String(e)))}>
-          Renderizar vídeo
-        </button>
+          title="Descarga los planos nuevos y rehace el montaje (1-3 min)">Aplicar cambios de planos</button>
+        <button className="primary" disabled={running || pending > 0} title={pending ? 'Aplica antes los cambios de planos' : 'Renderiza el vídeo final'}
+          onClick={() => api<Job>('/api/render', {}).then(() => load()).catch((e) => setError(String(e)))}>Renderizar vídeo</button>
       </header>
       {state.job.kind ? (
-        <div style={{ ...bar, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: state.job.ok === false ? 'var(--bad)' : 'var(--muted)' }}>
-          {state.job.running ? '⏳' : state.job.ok ? '✅' : '❌'} {state.job.kind === 'apply' ? 'Aplicando cambios' : 'Render'}:{' '}
-          {state.job.log[state.job.log.length - 1] ?? '…'}
+        <div style={{ ...bar, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: state.job.ok === false ? 'var(--bad)' : 'var(--muted)', padding: '4px 14px' }}>
+          {state.job.running ? '⏳' : state.job.ok ? '✅' : '❌'} {state.job.kind === 'apply' ? 'Aplicando cambios' : 'Render'}: {state.job.log[state.job.log.length - 1] ?? '…'}
         </div>
       ) : null}
       {error ? <div style={{ ...bar, color: 'var(--bad)' }}>{error}</div> : null}
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <aside ref={list} style={{ width: 360, overflowY: 'auto', borderRight: '1px solid var(--line)', padding: 10 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, color: 'var(--muted)' }}>
-            <input type="checkbox" style={{ width: 'auto' }} checked={onlyWeak} onChange={(e) => setOnlyWeak(e.target.checked)} />
-            Solo planos flojos ({weakCount})
-          </label>
-          {chapters.filter((c) => c.shots.length).map((chapter, ci) => (
-            <div key={ci}>
-              <div style={{ fontWeight: 700, color: 'var(--accent)', margin: '12px 0 6px', fontSize: 12, letterSpacing: 1 }}>{chapter.title.toUpperCase()}</div>
-              {chapter.shots.filter((s) => s.type !== 'chapter' || true).map((s) => (
-                <div key={s.id} onClick={() => pick(s)}
-                  style={{ display: 'flex', gap: 8, padding: 6, borderRadius: 8, cursor: 'pointer', marginBottom: 2,
-                    background: s.id === selected ? 'var(--raised)' : s.id === playing ? 'rgba(245,196,81,.08)' : 'transparent',
-                    border: `1px solid ${s.id === selected ? 'var(--accent)' : 'transparent'}` }}>
-                  <div style={{ width: 96, flex: 'none', aspectRatio: '16 / 9', background: '#000', borderRadius: 4, overflow: 'hidden' }}>
-                    {s.media ? <img src={`/api/thumb/${s.id}?r=${reload}`} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
-                      <div style={{ fontSize: 10, color: 'var(--muted)', padding: 4 }}>{s.type === 'chapter' ? 'CAPÍTULO' : s.type}</div>
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0, fontSize: 12 }}>
-                    <div style={{ color: 'var(--muted)' }}>
-                      {clock(s.from, fps)} {s.weak ? <span style={{ color: 'var(--warn)' }}>⚠ flojo</span> : null}{' '}
-                      {s.swapped ? <span style={{ color: 'var(--accent)' }}>✎ cambiado</span> : null}
-                    </div>
-                    <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.text}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+      <div style={{ flex: '1 1 55%', display: 'flex', minHeight: 0 }}>
+        <aside style={{ width: 290, borderRight: '1px solid var(--line)', minHeight: 0 }}>
+          <Library {...common} selection={selection} templates={templates} assets={assets} />
         </aside>
-        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ padding: '16px 16px 0', flex: 'none' }}>
-          <div style={{ maxWidth: 'min(1100px, calc((100vh - 330px) * 16 / 9))', margin: '0 auto' }}>
+        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, minWidth: 0, background: '#08090c' }}>
+          <div style={{ width: '100%', maxWidth: 'calc((55vh - 30px) * 16 / 9)' }}>
             <Player
-              key={reload}
+              key={`${reload}-${scenePreview?.join('-') ?? 'all'}`}
               ref={player}
               component={Documentary as unknown as FC<Record<string, unknown>>}
               inputProps={timeline as unknown as Record<string, unknown>}
@@ -376,80 +202,86 @@ const App: FC = () => {
               fps={fps}
               compositionWidth={timeline.width}
               compositionHeight={timeline.height}
+              inFrame={scenePreview ? scenePreview[0] : undefined}
+              outFrame={scenePreview ? Math.min(timeline.durationInFrames - 1, scenePreview[1]) : undefined}
               controls
               acknowledgeRemotionLicense
-              style={{ width: '100%', borderRadius: 12, overflow: 'hidden', background: '#000' }}
+              style={{ width: '100%', borderRadius: 8, overflow: 'hidden', background: '#000' }}
             />
-          </div>
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-          <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-            {!shot ? (
-              <Card title="Cómo se usa">
-                <div style={{ color: 'var(--muted)' }}>
-                  Elige un plano en la lista (los ⚠ son los que el juez eligió con menos seguridad). Podrás cambiar su metraje por
-                  otra opción ya analizada, y editar o quitar los gráficos y rótulos que salen encima. Los textos se ven al momento;
-                  los cambios de metraje, al pulsar «Aplicar». Cuando esté a tu gusto, «Renderizar vídeo».
-                  {textChanges ? ` · ${textChanges} cambio(s) de texto guardados.` : ''}
-                </div>
-              </Card>
-            ) : (
-              <>
-                <Card title={`Plano ${shot.id} · ${clock(shot.from, fps)}`} right={<span style={{ color: 'var(--muted)' }}>{(shot.durationInFrames / fps).toFixed(1)} s</span>}>
-                  <div style={{ marginBottom: 6 }}>«{shot.text}»</div>
-                  {shot.title ? <div style={{ color: 'var(--muted)', fontSize: 12 }}>Ahora: {shot.title} · {shot.channel}</div> : null}
-                  {shot.reason ? <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Juez: {shot.reason}</div> : null}
-                  {shot.type === 'chapter' ? (
-                    <TextField label="Título del capítulo" value={shot.chapterTitle ?? ''} onSave={(v) => run({ type: 'text', key: `chapter:${shot.id}`, value: v })} />
-                  ) : null}
-                </Card>
-                {shot.options > 0 ? (
-                  <Card title="Cambiar el metraje" right={swap ? <button onClick={() => run({ type: 'footage', shot: shot.id, option: null })}>Volver al original</button> : null}>
-                    {options === null ? <div style={{ color: 'var(--muted)' }}>Cargando opciones…</div> : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
-                        {options.map((o) => (
-                          <OptionCard key={o.index} option={o}
-                            chosen={swap ? swap.candidateId === o.candidateId && Math.abs(swap.start - o.start) < 0.01 : o.index === -1}
-                            onPick={() => run({ type: 'footage', shot: shot.id, option: { candidateId: o.candidateId, start: o.start } })} />
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>Pasa el ratón por encima para ver el fragmento. El cambio se ve tras «Aplicar cambios de planos».</div>
-                  </Card>
-                ) : null}
-                {groupsHere.map((g) => (
-                  <Card key={g.id}
-                    title={`${KIND_NAMES[g.kind] ?? g.kind}${g.graphic?.type ? ` · ${GRAPHIC_NAMES[String(g.graphic.type)] ?? g.graphic.type}` : ''} · ${clock(g.from, fps)}`}
-                    right={<span style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => player.current?.seekTo(g.from)}>Ver</button>
-                      <button onClick={() => run({ type: 'remove', id: g.id })}>Quitar</button>
-                    </span>}>
-                    {strings(g, '').filter((f) => !f.path.startsWith('words') && f.path !== 'id' && f.path !== 'kind').map((f) => (
-                      <TextField key={f.path} label={pretty(f.path)} value={f.value}
-                        onSave={(v) => run({ type: 'text', key: `group:${g.id}:${f.path}`, value: v })} />
-                    ))}
-                  </Card>
-                ))}
-                {removedHere.map((g) => (
-                  <Card key={g.id} title={`Quitado: ${GRAPHIC_NAMES[g.type ?? ''] ?? KIND_NAMES[g.kind] ?? g.kind}`}
-                    right={<button onClick={() => run({ type: 'restore', id: g.id })}>Restaurar</button>}>
-                    <div style={{ color: 'var(--muted)' }}>No saldrá en el vídeo.</div>
-                  </Card>
-                ))}
-                {labelsHere.length ? (
-                  <Card title="Rótulos (deja vacío para quitarlo)">
-                    {labelsHere.map((l) => (
-                      <TextField key={l.original} label={`${l.kind} · ${clock(l.from, fps)}`} value={l.text}
-                        onSave={(v) => run({ type: 'label', original: l.original, value: v })} />
-                    ))}
-                  </Card>
-                ) : null}
-              </>
-            )}
-          </div>
+            {scenePreview ? (
+              <div style={{ textAlign: 'center', marginTop: 6, fontSize: 12, color: 'var(--accent)' }}>
+                Viendo solo una escena · <a href="#" style={{ color: 'var(--accent)' }} onClick={(e) => { e.preventDefault(); setScenePreview(null); }}>ver todo el vídeo</a>
+              </div>
+            ) : null}
           </div>
         </main>
+        <aside style={{ width: 380, borderLeft: '1px solid var(--line)', overflowY: 'auto', padding: 10 }}>
+          <Inspector {...common} selection={selection} />
+          {state.removedGroups.length ? (
+            <Card title={`Quitados (${state.removedGroups.length})`}>
+              {state.removedGroups.map((g) => (
+                <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 4 }}>
+                  <span>{g.type ?? g.kind} · {clock(g.from, fps)}</span>
+                  <button style={{ padding: '2px 8px' }} onClick={() => change((e) => { e.removed = e.removed.filter((id) => id !== g.id); })}>Restaurar</button>
+                </div>
+              ))}
+            </Card>
+          ) : null}
+        </aside>
       </div>
+      <section style={{ flex: '1 1 45%', minHeight: 250, borderTop: '1px solid var(--line)', background: 'var(--bg)' }}>
+        <Tracks
+          layout={state.layout}
+          shots={state.shots}
+          scenes={state.scenes}
+          order={edits.order}
+          deleted={edits.deleted}
+          map={map}
+          duration={timeline.durationInFrames}
+          fps={fps}
+          frame={frame}
+          words={state.words}
+          wave={wave}
+          selection={selection}
+          reload={reload}
+          actions={{
+            seek,
+            select: setSelection,
+            cut: (id, f) => change((e) => { e.cuts[id] = f; }),
+            swap: (a, b) => change((e) => {
+              const origin = (x: string) => e.media[x] ?? x;
+              const [oa, ob] = [origin(a), origin(b)];
+              e.media[a] = ob;
+              e.media[b] = oa;
+              for (const x of [a, b]) if (e.media[x] === x) delete e.media[x];
+            }),
+            retimeGroup: (id, from, length) => change((e) => { e.timing[id] = [from, length]; }),
+            retimeLabel: (label, from, length) => change((e) => {
+              if (label.added !== undefined) Object.assign(e.addedLabels[label.added], { from, durationInFrames: length });
+              else e.labelTiming[label.original!] = [from, length];
+            }),
+            moveSfx: (sfx, from) => change((e) => {
+              if (sfx.added !== undefined) e.sfx.added[sfx.added].from = from;
+              else e.sfx.moved[sfx.key!] = from;
+            }),
+            reorder: (id, before) => change((e) => {
+              const movable = state.scenes.filter((s) => !s.fixed).map((s) => s.id);
+              const current = (e.order.length ? e.order : movable).filter((x) => x !== id);
+              const at = before ? current.indexOf(before) : current.length;
+              current.splice(at < 0 ? current.length : at, 0, id);
+              e.order = current;
+            }),
+            dropTemplate: (index, f) => {
+              const t = templates[index];
+              if (!t) return;
+              change((e) => {
+                const n = Math.max(0, ...e.added.map((g) => Number(g.id.replace('user-', '')) || 0)) + 1;
+                e.added.push({ id: `user-${n}`, kind: 'graphic', from: f, durationInFrames: Math.round(t.seconds * fps), graphic: { type: t.type, ...clone(t.data) } });
+              });
+            },
+          }}
+        />
+      </section>
     </div>
   );
 };
