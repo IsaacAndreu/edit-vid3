@@ -64,6 +64,16 @@ def netscape_from_json(raw: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def cookie_folders(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[Path]:
+    """Where cookies of several accounts are looked for: <project>/cookies/ (git-ignored) and
+    youtube.cookies_dir (~/.config/edit-vid3/cookies by default)."""
+
+    folders = [ctx.root / "cookies"]
+    if yt_cfg.get("cookies_dir"):
+        folders.append(Path(str(yt_cfg["cookies_dir"])).expanduser())
+    return folders
+
+
 def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path | None]]:
     """Every YouTube account available: YOUTUBE_COOKIES_B64, youtube.cookies_file and each .txt in
     youtube.cookies_dir (one per secondary account), in that order, without duplicates."""
@@ -75,8 +85,7 @@ def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path
     files = []
     if _cookies_file(yt_cfg):
         files.append(_cookies_file(yt_cfg))
-    if yt_cfg.get("cookies_dir"):
-        folder = Path(str(yt_cfg["cookies_dir"])).expanduser()
+    for folder in cookie_folders(ctx, yt_cfg):
         if folder.is_dir():
             for exported in sorted(folder.glob("*.json")):          # JSON export → cookies.txt next to it
                 target = exported.with_suffix(".txt")
@@ -108,7 +117,11 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     yt_cfg = ctx.section("sourcing").get("youtube", {})
     sets = cookie_sets(ctx, yt_cfg)
     if sets:
-        print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos")
+        print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos: "
+              + ", ".join(path.name if path else "YOUTUBE_COOKIES_B64" for _, path in sets))
+    else:
+        print("   YouTube: sin cookies (busco archivos .txt/.json en "
+              + " y ".join(str(f) for f in cookie_folders(ctx, yt_cfg)) + ")")
     return YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
 
 

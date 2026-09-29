@@ -50,9 +50,9 @@ y si YouTube bloquea una se aparta y siguen las demás.
 
 1. Con cada cuenta secundaria abierta en el navegador (una ventana/perfil por cuenta), entra en
    youtube.com y exporta las cookies con la extensión «Get cookies.txt LOCALLY» → Export.
-2. Guarda cada archivo, con el nombre que quieras, en:
-   - Windows: `C:\Users\<tu usuario>\.config\edit-vid3\cookies\` (p. ej. `cuenta1.txt`, `cuenta2.txt`…)
-   - Mac/Linux: `~/.config/edit-vid3/cookies/`
+2. Guarda cada archivo (formato Netscape .txt o JSON, da igual), con el nombre que quieras, en la
+   carpeta `cookies` del proyecto: `edit-vid3\cookies\cuenta1.txt`, `cuenta2.txt`… (no se sube a
+   GitHub). También vale `~/.config/edit-vid3/cookies/`.
 3. Al lanzar verás «YouTube: 4 cuenta(s) de cookies, por turnos».
 
 Las cookies duran semanas o meses; cuando una caduca verás «YouTube bloqueó cuenta2.txt» y basta
