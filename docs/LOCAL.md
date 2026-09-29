@@ -41,14 +41,22 @@ SERPER_API_KEY=...      # opcional: fotos de Google Imágenes. Sin ella usa Duck
 
 `.env` nunca se sube a GitHub.
 
-## 4. YouTube
+## 4. YouTube (cookies de varias cuentas)
 
-Desde una conexión de casa normalmente no hace falta nada. Si aparece
-«Sign in to confirm you're not a bot», exporta las cookies de YouTube (extensión
-"Get cookies.txt LOCALLY", mejor con una cuenta secundaria) a:
+Si aparece «YouTube bloquea este equipo (Sign in to confirm you're not a bot)», YouTube está
+frenando las búsquedas automáticas desde tu conexión. Se soluciona con cookies de cuentas de
+YouTube (mejor secundarias, nunca la del canal); con varias, las peticiones se reparten entre ellas
+y si YouTube bloquea una se aparta y siguen las demás.
 
-- Windows: `C:\Users\<tu usuario>\.config\edit-vid3\youtube-cookies.txt`
-- Mac/Linux: `~/.config/edit-vid3/youtube-cookies.txt`
+1. Con cada cuenta secundaria abierta en el navegador (una ventana/perfil por cuenta), entra en
+   youtube.com y exporta las cookies con la extensión «Get cookies.txt LOCALLY» → Export.
+2. Guarda cada archivo, con el nombre que quieras, en:
+   - Windows: `C:\Users\<tu usuario>\.config\edit-vid3\cookies\` (p. ej. `cuenta1.txt`, `cuenta2.txt`…)
+   - Mac/Linux: `~/.config/edit-vid3/cookies/`
+3. Al lanzar verás «YouTube: 4 cuenta(s) de cookies, por turnos».
+
+Las cookies duran semanas o meses; cuando una caduca verás «YouTube bloqueó cuenta2.txt» y basta
+con volver a exportarla. Mantén yt-dlp al día: `pip install -U yt-dlp`.
 
 ## 5. Hacer un vídeo
 

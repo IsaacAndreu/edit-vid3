@@ -49,7 +49,7 @@ class _QuietLogger:
 class YouTubeSource:
     def __init__(
         self, *, root: Path, cache_dir: Path, config: dict[str, Any], cookies_text: str | None = None,
-        cookies_path: Path | None = None,
+        cookies_path: Path | None = None, cookie_sets: list[tuple[str, Path | None]] | None = None,
     ) -> None:
         self.root = root
         self.cache_dir = cache_dir
@@ -59,9 +59,13 @@ class YouTubeSource:
         # A few concurrent requests at most; a 429 pauses every thread (the limit is per account/IP).
         self._slots = threading.Semaphore(int(config.get("concurrency", 3)))
         self._cooldown_until = 0.0
-        self._cookies_text = cookies_text
-        self._cookies_path = cookies_path          # where cookies_text came from, to persist rotations
-        self._cookie_copies: list[str] = []
+        # One or more accounts (cookies.txt contents, file they came from). Requests take turns
+        # between them; one that YouTube blocks is set aside and the rest carry on.
+        self._sets: list[tuple[str, Path | None]] = list(cookie_sets or ([(cookies_text, cookies_path)] if cookies_text else []))
+        self._bad: set[int] = set()
+        self._turn = 0
+        self._turn_lock = threading.Lock()
+        self._cookie_copies: dict[int, list[str]] = {}
         self._local = threading.local()
         self.stats: dict[str, list[float]] = {}   # action → [count, seconds], for tuning
         self._stats_lock = threading.Lock()
@@ -90,36 +94,55 @@ class YouTubeSource:
 
     # --- yt-dlp plumbing ------------------------------------------------------------
 
-    def _cookie_file(self) -> str | None:
-        """Per-thread private copy: yt-dlp saves rotated cookies back into the file it was given."""
+    def _next_account(self) -> int | None:
+        """The next account in turn that YouTube has not blocked (None without cookies)."""
 
-        if not self._cookies_text:
+        with self._turn_lock:
+            good = [i for i in range(len(self._sets)) if i not in self._bad]
+            if not good:
+                return None
+            index = good[self._turn % len(good)]
+            self._turn += 1
+            return index
+
+    def _account_name(self, index: int) -> str:
+        path = self._sets[index][1]
+        return path.name if path else f"cuenta {index + 1}"
+
+    def _cookie_file(self) -> str | None:
+        """Per-thread private copy of the account in use: yt-dlp saves rotated cookies back into it."""
+
+        index = getattr(self._local, "account", None)
+        if index is None or not self._sets:
             return None
-        path = getattr(self._local, "cookie_path", None)
-        if path is None:
+        paths = getattr(self._local, "cookie_paths", None)
+        if paths is None:
+            paths = self._local.cookie_paths = {}
+        if index not in paths:
             handle, path = tempfile.mkstemp(prefix="yt-cookies-", suffix=".txt")
             with os.fdopen(handle, "w", encoding="utf-8") as cookie_file:
-                cookie_file.write(self._cookies_text)
-            self._local.cookie_path = path
-            self._cookie_copies.append(path)
-        return path
+                cookie_file.write(self._sets[index][0])
+            paths[index] = path
+            with self._turn_lock:
+                self._cookie_copies.setdefault(index, []).append(path)
+        return paths[index]
 
     def close(self) -> None:
-        """Persist cookies YouTube rotated during the run (newest private copy) and drop the copies.
+        """Persist cookies YouTube rotated during the run (newest private copy of each account) and
+        drop the copies. A stale copy makes the next run look like a replayed session."""
 
-        A stale copy makes the next run look like a replayed session, which gets it invalidated.
-        """
-
-        copies = [Path(p) for p in self._cookie_copies if Path(p).is_file()]
-        if copies and self._cookies_path is not None:
-            newest = max(copies, key=lambda p: p.stat().st_mtime).read_text(encoding="utf-8")
-            if "youtube.com" in newest and newest != self._cookies_text:
-                tmp = self._cookies_path.with_name(self._cookies_path.name + ".tmp")
-                tmp.write_text(newest, encoding="utf-8")
-                os.chmod(tmp, 0o600)
-                tmp.replace(self._cookies_path)
-        for path in copies:
-            path.unlink(missing_ok=True)
+        for index, names in self._cookie_copies.items():
+            copies = [Path(p) for p in names if Path(p).is_file()]
+            text, origin = self._sets[index]
+            if copies and origin is not None:
+                newest = max(copies, key=lambda p: p.stat().st_mtime).read_text(encoding="utf-8")
+                if "youtube.com" in newest and newest != text:
+                    tmp = origin.with_name(origin.name + ".tmp")
+                    tmp.write_text(newest, encoding="utf-8")
+                    os.chmod(tmp, 0o600)
+                    tmp.replace(origin)
+            for path in copies:
+                path.unlink(missing_ok=True)
         self._cookie_copies.clear()
 
     def _ydl(self, extra: dict[str, Any] | None = None) -> Any:
@@ -134,7 +157,11 @@ class YouTubeSource:
     def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
         if self.blocked:
             raise SourceUnavailable(self.blocked)
-        for attempt in range(rate_retries + 1):
+        attempt = 0
+        while True:
+            self._local.account = self._next_account()
+            if self._sets and self._local.account is None:
+                self._blocked_everywhere()
             try:
                 with self._slots:
                     delay = self._cooldown_until - time.monotonic()
@@ -150,19 +177,36 @@ class YouTubeSource:
                 message = str(error)
                 lowered = message.casefold()
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
-                    self.blocked = (
-                        "YouTube bloquea este equipo (\"Sign in to confirm you're not a bot\"). "
-                        "Ejecuta el sourcing en local o configura cookies (youtube.cookies_file / YOUTUBE_COOKIES_B64)."
-                    )
-                    raise SourceUnavailable(self.blocked) from None
+                    index = self._local.account
+                    if index is not None:
+                        with self._turn_lock:
+                            fresh = index not in self._bad
+                            self._bad.add(index)
+                            left = len(self._sets) - len(self._bad)
+                        if fresh:
+                            print(f"   YouTube bloqueó {self._account_name(index)}; "
+                                  + (f"sigo con las otras {left} cuentas" if left else "no quedan cuentas"))
+                        if left:
+                            pause = float(self.cfg.get("account_switch_pause", 15))
+                            self._cooldown_until = max(self._cooldown_until, time.monotonic() + pause)
+                            continue
+                    self._blocked_everywhere()
                 if any(marker in lowered for marker in _RATE_MARKERS):
                     if attempt < rate_retries:
                         pause = float(self.cfg.get("rate_backoff", 20)) * 3**attempt
                         self._cooldown_until = max(self._cooldown_until, time.monotonic() + pause)
+                        attempt += 1
                         continue
                     raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429)") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
-        raise AssertionError("unreachable")
+
+    def _blocked_everywhere(self) -> None:
+        self.blocked = (
+            "YouTube bloquea este equipo (\"Sign in to confirm you're not a bot\")"
+            + (f" y las {len(self._sets)} cuentas de cookies" if self._sets else "")
+            + ". Añade o renueva cookies en ~/.config/edit-vid3/cookies/ (un .txt por cuenta)."
+        )
+        raise SourceUnavailable(self.blocked) from None
 
     def _count(self, action: str, seconds: float) -> None:
         with self._stats_lock:

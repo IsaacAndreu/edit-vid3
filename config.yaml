@@ -55,6 +55,8 @@ sourcing:
     sleep_requests: 0          # s entre peticiones HTTP internas de yt-dlp
     cookies_from_browser: null # "chrome", "firefox", "edge"... (solo en local)
     cookies_file: ~/.config/edit-vid3/youtube-cookies.txt   # si existe; o YOUTUBE_COOKIES_B64 en el entorno
+    cookies_dir: ~/.config/edit-vid3/cookies                 # varias cuentas: un .txt por cuenta secundaria, van por turnos
+    account_switch_pause: 15       # s de pausa al pasar a otra cuenta porque YouTube bloqueó una
     player_client: null        # p. ej. [android_vr] si YouTube cambia algo
   images:
     max_per_shot: 6

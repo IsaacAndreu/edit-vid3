@@ -39,19 +39,6 @@ def _spec_hash(shot: Shot, cfg: dict[str, Any]) -> str:
     return key(shot.broll.model_dump() if shot.broll else None, cfg)
 
 
-def _youtube_cookies(ctx: RunContext, yt_cfg: dict[str, Any]) -> str | None:
-    """cookies.txt contents from YOUTUBE_COOKIES_B64 (env) or youtube.cookies_file, if any."""
-
-    encoded = ctx.env("YOUTUBE_COOKIES_B64", required=False)
-    if encoded:
-        return base64.b64decode(encoded).decode("utf-8")
-    path = _cookies_file(yt_cfg)
-    if path is not None:
-        print(f"   YouTube: usando cookies de {path}")
-        return path.read_text(encoding="utf-8")
-    return None
-
-
 def _cookies_file(yt_cfg: dict[str, Any]) -> Path | None:
     if yt_cfg.get("cookies_file"):
         path = Path(str(yt_cfg["cookies_file"])).expanduser()
@@ -60,15 +47,38 @@ def _cookies_file(yt_cfg: dict[str, Any]) -> Path | None:
     return None
 
 
+def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path | None]]:
+    """Every YouTube account available: YOUTUBE_COOKIES_B64, youtube.cookies_file and each .txt in
+    youtube.cookies_dir (one per secondary account), in that order, without duplicates."""
+
+    sets: list[tuple[str, Path | None]] = []
+    encoded = ctx.env("YOUTUBE_COOKIES_B64", required=False)
+    if encoded:
+        sets.append((base64.b64decode(encoded).decode("utf-8"), None))
+    files = []
+    if _cookies_file(yt_cfg):
+        files.append(_cookies_file(yt_cfg))
+    if yt_cfg.get("cookies_dir"):
+        folder = Path(str(yt_cfg["cookies_dir"])).expanduser()
+        if folder.is_dir():
+            files += sorted(p for p in folder.glob("*.txt") if p.is_file())
+    seen = set()
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        if text.strip() and text not in seen:
+            seen.add(text)
+            sets.append((text, path))
+    return sets
+
+
 def youtube_source(ctx: RunContext) -> YouTubeSource:
-    """A YouTubeSource with this project's config and cookies; call .close() when done."""
+    """A YouTubeSource with this project's config and every cookies account; call .close() when done."""
 
     yt_cfg = ctx.section("sourcing").get("youtube", {})
-    from_env = bool(ctx.env("YOUTUBE_COOKIES_B64", required=False))
-    return YouTubeSource(
-        root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookies_text=_youtube_cookies(ctx, yt_cfg),
-        cookies_path=None if from_env else _cookies_file(yt_cfg),
-    )
+    sets = cookie_sets(ctx, yt_cfg)
+    if sets:
+        print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos")
+    return YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
 
 
 class Precomputer:
