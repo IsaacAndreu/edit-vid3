@@ -106,3 +106,16 @@ class IngestSchemaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_narrow_sources_are_fitted_not_rejected():
+    from pipeline.schemas import IngestedMedia
+
+    base = {"shotId": "s1", "kind": "video", "path": "work/v/media/s1.mp4", "source": "youtube", "candidateId": "yt:x",
+            "durationSeconds": 3.0, "fps": 30.0, "hasAudio": False, "credit": "Fuente: A", "specHash": "h"}
+    for size in ((1920, 1080), (1440, 1080), (1078, 1080), (1920, 800)):
+        IngestedMedia.model_validate({**base, "width": size[0], "height": size[1]})
+    import pytest
+
+    with pytest.raises(ValueError):
+        IngestedMedia.model_validate({**base, "width": 1280, "height": 720})

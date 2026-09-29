@@ -135,6 +135,7 @@ export interface Option {
   preview: string | null;
   previewFrom: number | null;
   previewTo: number | null;
+  usedBy?: string | null; // another shot already shows it
 }
 
 export interface Template {

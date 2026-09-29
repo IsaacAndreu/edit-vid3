@@ -240,6 +240,18 @@ def state(ctx: RunContext) -> dict[str, Any]:
 
 def options(ctx: RunContext, shot_id: str) -> list[dict[str, Any]]:
     found, candidates = _options(ctx, shot_id)
+    used: dict[str, list[tuple[str, float, float]]] = {}      # what other shots already show
+    if (ctx.work_dir / "selection.json").is_file():
+        for s in json.loads((ctx.work_dir / "selection.json").read_text("utf-8"))["selections"]:
+            if s.get("candidateId") and s["shotId"] != shot_id:
+                used.setdefault(s["candidateId"], []).append((s["shotId"], float(s.get("start") or 0), float(s.get("end") or 0)))
+
+    def used_by(option: dict[str, Any]) -> str | None:
+        for other, start, end in used.get(option["candidateId"], []):
+            if option["kind"] == "image" or (float(option.get("start") or 0) < end and start < float(option.get("end") or 0)):
+                return other
+        return None
+
     out = []
     for index, option in enumerate(found[:MAX_OPTIONS]):
         c = candidates[option["candidateId"]]
@@ -248,6 +260,7 @@ def options(ctx: RunContext, shot_id: str) -> list[dict[str, Any]]:
         out.append({"index": index, "candidateId": option["candidateId"], "start": option.get("start"), "end": option.get("end"),
                     "kind": option["kind"], "source": option["source"], "title": c["title"], "channel": c["channel"],
                     "score": round(float(option.get("total") or 0), 3), "thumb": f"/api/thumb/{shot_id}/{index}",
+                    "usedBy": used_by(option),
                     "preview": f"/root/{path}" if path.startswith("cache/") else None,
                     "previewFrom": round(float(option.get("start") or 0) - offset, 2) if option["kind"] == "video" else None,
                     "previewTo": round(float(option.get("end") or 0) - offset, 2) if option["kind"] == "video" else None})

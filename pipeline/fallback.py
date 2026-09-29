@@ -116,7 +116,8 @@ def run(ctx: RunContext) -> None:
         if h is None:
             continue
         twin = next((sid for sid, other in seen if det.hamming(h, other) <= max_hamming), None)
-        if twin:
+        chosen_by_hand = getattr(selections.get(media.shotId), "decidedBy", None) == "editor"
+        if twin and not chosen_by_hand:                  # what you pick in the editor stays, repeated or not
             done.discard(media.shotId)
             pending[media.shotId] = f"repite la imagen de {twin}"
         else:

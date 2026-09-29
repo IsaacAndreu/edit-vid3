@@ -87,6 +87,7 @@ const OptionCard: FC<{ option: Option; chosen: boolean; onPick: () => void }> = 
       </div>
       <div style={{ padding: 6 }}>
         <div title={option.title} style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{option.title}</div>
+        {option.usedBy ? <div style={{ fontSize: 10, color: 'var(--warn)' }}>Ya sale en {option.usedBy}</div> : null}
         <button className={chosen ? '' : 'primary'} disabled={chosen} onClick={onPick} style={{ width: '100%', padding: '3px 6px', marginTop: 4 }}>
           {chosen ? 'Elegido' : 'Usar'}
         </button>

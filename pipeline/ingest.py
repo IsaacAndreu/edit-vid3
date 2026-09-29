@@ -303,7 +303,7 @@ def run(ctx: RunContext) -> None:
     videos = [m for m in ordered if m.kind == "video"]
     print(f"   {len(videos)} clips HD + {len(ordered) - len(videos)} imágenes · {len(skipped)} a fallback · {len(failed)} fallidos")
     if videos:
-        print(f"   Duración máx. {max(m.durationSeconds for m in videos):.3f} s · todos 1920x1080 sin audio")
+        print(f"   Duración máx. {max(m.durationSeconds for m in videos):.3f} s · en 1920x1080 (o encajados si no son panorámicos), sin audio")
     for shot_id, error in list(failed.items())[:5]:
         print(f"   AVISO {shot_id}: {error}")
     print(f"   Ingesta en {time.monotonic() - started:.0f} s")

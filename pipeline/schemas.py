@@ -423,8 +423,11 @@ class IngestedMedia(_Strict):
                 raise ValueError(f"{self.shotId}: clip de {self.durationSeconds} s (máximo 5 s)")
             if self.hasAudio:
                 raise ValueError(f"{self.shotId}: el clip conserva audio")
-            if (self.width, self.height) != (1920, 1080):
-                raise ValueError(f"{self.shotId}: clip de {self.width}x{self.height}, se esperaba 1920x1080")
+            # widescreen sources are cover-cropped to 1920x1080; narrower ones (4:3, vertical) are fitted
+            # uncropped inside it and shown as a framed card
+            fitted = (self.height == 1080 and self.width <= 1920) or (self.width == 1920 and self.height <= 1080)
+            if not fitted:
+                raise ValueError(f"{self.shotId}: clip de {self.width}x{self.height}, no cabe en 1920x1080")
         if not self.credit.startswith("Fuente: "):
             raise ValueError(f"{self.shotId}: crédito inválido")
         return self

@@ -238,7 +238,8 @@ def scenes(timeline: dict[str, Any], story: dict[str, Any] | None, min_seconds: 
             title = "PANTALLA FINAL"
         else:
             ev = events[index] if events else {}
-            words_ = shot.get("text", "").split()
+            first_text = next((s.get("text", "") for s in shot_list[shot_list.index(shot):] if s.get("text")), "")
+            words_ = first_text.split()
             title = ev.get("tag") or (" ".join(words_[:6]) + ("…" if len(words_) > 6 else "")) or ev.get("label", "")
         out.append({"id": f"sc-{shot['id']}", "event": index, "title": title, "shots": [shot["id"]], "from": shot["from"],
                     "to": shot["from"] + shot["durationInFrames"], "fixed": index in (-1, 10_000)})
