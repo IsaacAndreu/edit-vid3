@@ -67,6 +67,8 @@ class YouTubeSource:
         self._turn_lock = threading.Lock()
         self._cookie_copies: dict[int, list[str]] = {}
         self._local = threading.local()
+        self.api: Any = None                        # YouTube Data API client (searches) when keys exist
+        self._api_lock = threading.Lock()
         self.stats: dict[str, list[float]] = {}   # action → [count, seconds], for tuning
         self._stats_lock = threading.Lock()
         self.http = requests.Session()
@@ -223,6 +225,9 @@ class YouTubeSource:
         limit = int(self.cfg.get("results_per_query", 8))
 
         def produce() -> list[dict[str, Any]]:
+            found = self._api_search(query, limit)
+            if found is not None:
+                return found
             info = self._call(
                 "search",
                 lambda: self._ydl({"extract_flat": "in_playlist", "skip_download": True}).extract_info(
@@ -233,6 +238,29 @@ class YouTubeSource:
             return [{k: entry.get(k) for k in keep} for entry in (info or {}).get("entries") or [] if isinstance(entry, dict)]
 
         return cached_json(self.cache_dir / "search" / "youtube" / f"{key(query, limit)}.json", produce)
+
+    def _api_search(self, query: str, limit: int) -> list[dict[str, Any]] | None:
+        """The same entries as a yt-dlp search, from the official API (never bot-checked). None when
+        there are no keys or the day's quota ran out: then yt-dlp searches as before."""
+
+        api = self.api
+        if api is None:
+            return None
+        try:
+            began = time.monotonic()
+            ids = api.search(query, order="relevance", max_results=limit)
+            details = {v["id"]: v for v in api.videos(ids)} if ids else {}
+            self._count("search-api", time.monotonic() - began)
+        except Exception as error:  # quota, network, bad key: fall back to yt-dlp for the rest of the run
+            with self._api_lock:
+                if self.api is not None:
+                    print(f"   API de YouTube: {str(error)[:120]} → sigo buscando con yt-dlp")
+                    self.api = None
+            return None
+        return [{"id": i, "title": details[i]["title"], "channel": details[i]["channel"],
+                 "uploader": details[i]["channel"], "duration": details[i]["duration"],
+                 "url": f"https://www.youtube.com/watch?v={i}", "live_status": None,
+                 "view_count": details[i]["views"]} for i in ids if i in details]
 
     def passes_search_filters(self, entry: dict[str, Any]) -> bool:
         duration = entry.get("duration")

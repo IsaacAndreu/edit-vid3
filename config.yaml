@@ -57,6 +57,8 @@ sourcing:
     cookies_file: ~/.config/edit-vid3/youtube-cookies.txt   # si existe; o YOUTUBE_COOKIES_B64 en el entorno
     cookies_dir: ~/.config/edit-vid3/cookies                 # varias cuentas: un .txt por cuenta secundaria, van por turnos
     account_switch_pause: 15       # s de pausa al pasar a otra cuenta porque YouTube bloqueó una
+    browser_accounts: []           # cuentas leídas de Firefox en cada ejecución (no caducan): ["firefox::Cuenta1", "firefox::Cuenta2"]
+    api_search: true               # buscar con YOUTUBE_API_KEYS (sin bloqueos); si se acaba la cuota, sigue con yt-dlp
     player_client: null        # p. ej. [android_vr] si YouTube cambia algo
   images:
     max_per_shot: 6

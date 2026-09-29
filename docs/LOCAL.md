@@ -55,6 +55,23 @@ y si YouTube bloquea una se aparta y siguen las demás.
    GitHub). También vale `~/.config/edit-vid3/cookies/`.
 3. Al lanzar verás «YouTube: 4 cuenta(s) de cookies, por turnos».
 
+**Cookies que no caducan (Firefox con contenedores).** En vez de exportar a mano, el programa puede
+leer las cookies de Firefox en cada ejecución, siempre frescas:
+
+1. Instala Firefox y la extensión oficial **Firefox Multi-Account Containers**.
+2. Crea un contenedor por cuenta (p. ej. `Cuenta1`, `Cuenta2`, `Cuenta3`) y, dentro de cada uno,
+   entra en youtube.com con esa cuenta secundaria.
+3. En `config.yaml` → `sourcing: youtube:` pon:
+   `browser_accounts: ["firefox::Cuenta1", "firefox::Cuenta2", "firefox::Cuenta3"]`
+4. Abre Firefox de vez en cuando (y mira algún vídeo con cada cuenta) para que las sesiones sigan vivas.
+
+Solo se leen las cookies de YouTube/Google, nada más del navegador. Con Chrome no funciona
+(desde 2024 cifra las cookies para que otros programas no puedan leerlas).
+
+**Búsquedas con tus claves de la API.** Con `YOUTUBE_API_KEYS` en `.env`, las búsquedas van por la
+API oficial (sin bloqueos). Cada vídeo gasta ~45.000 unidades; con ~100.000 al día cubre unos 2
+vídeos, y cuando se acaba la cuota sigue buscando con yt-dlp y tus cookies.
+
 Las cookies duran semanas o meses; cuando una caduca verás «YouTube bloqueó cuenta2.txt» y basta
 con volver a exportarla. Mantén yt-dlp al día: `pip install -U yt-dlp`.
 

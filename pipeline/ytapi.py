@@ -142,10 +142,11 @@ class YouTubeAPI:
 
     # ---- building blocks -----------------------------------------------------------------------
     def search(self, query: str, *, days: int = 0, duration: str = "any", order: str = "viewCount",
-               language: str = "", region: str = "", pages: int = 1) -> list[str]:
-        """Video ids for a query (50 per page, 100 units per page)."""
+               language: str = "", region: str = "", pages: int = 1, max_results: int = 50) -> list[str]:
+        """Video ids for a query (up to 50 per page, 100 units per page whatever the size)."""
 
-        params: dict[str, Any] = {"part": "id", "type": "video", "q": query, "maxResults": 50, "order": order}
+        params: dict[str, Any] = {"part": "id", "type": "video", "q": query, "maxResults": max(1, min(50, max_results)),
+                                  "order": order}
         if days:
             after = datetime.now(timezone.utc) - timedelta(days=days)
             params["publishedAfter"] = after.strftime("%Y-%m-%dT%H:%M:%SZ")

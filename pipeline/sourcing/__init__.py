@@ -64,6 +64,25 @@ def netscape_from_json(raw: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def browser_cookies(spec: str) -> str:
+    """YouTube/Google cookies of a browser account, read at run time (always fresh): yt-dlp's
+    syntax BROWSER[:PROFILE][::CONTAINER], e.g. "firefox::Cuenta1" for a Firefox container."""
+
+    from yt_dlp.cookies import extract_cookies_from_browser
+
+    head, _, container = spec.partition("::")
+    browser, _, profile = head.partition(":")
+    jar = extract_cookies_from_browser(browser.strip().lower(), profile.strip() or None,
+                                       container=container.strip() or None)
+    lines = ["# Netscape HTTP Cookie File"]
+    for c in jar:
+        if not any(d in c.domain for d in ("youtube.com", "google.com")):
+            continue                                  # only what YouTube needs, nothing else of the browser
+        lines.append("\t".join([c.domain, "TRUE" if c.domain.startswith(".") else "FALSE", c.path or "/",
+                                "TRUE" if c.secure else "FALSE", str(int(c.expires or 0)), c.name, c.value or ""]))
+    return "\n".join(lines) + "\n"
+
+
 def cookie_folders(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[Path]:
     """Where cookies of several accounts are looked for: <project>/cookies/ (git-ignored) and
     youtube.cookies_dir (~/.config/edit-vid3/cookies by default)."""
@@ -95,6 +114,16 @@ def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path
                     except (ValueError, KeyError, TypeError) as error:
                         print(f"   Aviso: no entiendo las cookies de {exported.name} ({error})")
             files += sorted(p for p in folder.glob("*.txt") if p.is_file())
+    for spec in yt_cfg.get("browser_accounts") or []:             # e.g. "firefox::Cuenta1" (container)
+        try:
+            text = browser_cookies(str(spec))
+        except Exception as error:
+            print(f"   Aviso: no pude leer las cookies de {spec} ({str(error)[:120]})")
+            continue
+        if "youtube.com" in text:
+            sets.append((text, None))
+        else:
+            print(f"   Aviso: {spec} no tiene sesión de YouTube (entra en youtube.com con esa cuenta)")
     seen = set()
     for path in files:
         text = path.read_text(encoding="utf-8")
@@ -118,11 +147,21 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     sets = cookie_sets(ctx, yt_cfg)
     if sets:
         print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos: "
-              + ", ".join(path.name if path else "YOUTUBE_COOKIES_B64" for _, path in sets))
+              + ", ".join(path.name if path else "navegador/entorno" for _, path in sets))
     else:
         print("   YouTube: sin cookies (busco archivos .txt/.json en "
               + " y ".join(str(f) for f in cookie_folders(ctx, yt_cfg)) + ")")
-    return YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
+    source = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
+    if yt_cfg.get("api_search", True):
+        from ..ytapi import YouTubeAPI
+
+        api = YouTubeAPI(ctx)
+        if api.keys:
+            quota = api.quota()
+            if quota["searchesLeft"] > 0:
+                source.api = api
+                print(f"   YouTube: búsquedas con la API ({len(api.keys)} claves, ~{quota['searchesLeft']} búsquedas libres hoy)")
+    return source
 
 
 class Precomputer:
