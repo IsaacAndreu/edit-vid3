@@ -1,0 +1,4 @@
+# Lista de casos (fallos) con muchos protagonistas.
+format: lista
+people:
+  max: 9            # una tarjeta para cada gimnasta de la lista
