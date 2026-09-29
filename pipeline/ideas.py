@@ -25,10 +25,23 @@ from . import notify
 STAGE = "ideas"
 HISTORY = "out/_ideas/historial.json"
 
+
+def ideas_dir(ctx: RunContext) -> Path:
+    """out/_ideas/<canal>/ (out/_ideas/ without channel profiles)."""
+
+    return ctx.root / "out" / "_ideas" / ctx.channel if ctx.channel else ctx.root / "out" / "_ideas"
+
+
+def history_path(ctx: RunContext) -> Path:
+    path = ideas_dir(ctx) / "historial.json"
+    old = ctx.root / HISTORY          # before channel profiles: the gymnastics channel's history
+    return old if not path.is_file() and old.is_file() and ctx.channel == "gimnasia" else path
+
+ABOUT = ('un canal de YouTube en español de documentales deportivos (historias de atletas: gimnasia, '
+         'atletismo, patinaje artístico…) con el formato "historia de un atleta de ~10 min"')
+
 SYSTEM = """
-Eres el estratega de contenido de un canal de YouTube en español de documentales deportivos
-(historias de atletas: gimnasia, atletismo, patinaje artístico…) con el formato "historia de un
-atleta de ~10 min". Te paso los vídeos que MEJOR están funcionando ahora mismo en la competencia
+Eres el estratega de contenido de {about}. Te paso los vídeos que MEJOR están funcionando ahora mismo en la competencia
 (outliers: muchas más visitas que la media de su canal) y los mejores vídeos del propio canal.
 Propón EXACTAMENTE 3 ideas nuevas. Devuelve SOLO JSON:
 {"ideas": [{"title": "título en español, gancho fuerte, máx. 70 caracteres",
@@ -39,7 +52,7 @@ Propón EXACTAMENTE 3 ideas nuevas. Devuelve SOLO JSON:
             "why": "qué outliers/datos de la lista lo respaldan (cita títulos o canales)",
             "research": "qué hay que comprobar/buscar antes de escribir el guion"}]}
 Reglas: no repitas temas ya hechos ni ya sugeridos (te los paso); no copies títulos: inspírate en
-el patrón (atleta + tensión + figura famosa).
+el patrón ({pattern}).
 MUY IMPORTANTE: en "title", "angle" y "hook" NO afirmes datos concretos que no estén en la lista que
 te paso (edades, fechas, número de títulos o medallas, lesiones, declaraciones de nadie). Escribe el
 gancho con la tensión de la historia sin cifras inventadas ("una gimnasta que casi lo deja", no
@@ -110,7 +123,7 @@ def done_topics(ctx: RunContext) -> list[str]:
     for folder in (ctx.root / "materiales").iterdir() if (ctx.root / "materiales").is_dir() else []:
         title = folder / "titulo.txt"
         topics.append(title.read_text("utf-8").strip() if title.is_file() else folder.name)
-    history = ctx.root / HISTORY
+    history = history_path(ctx)
     if history.is_file():
         topics += [i["title"] for i in json.loads(history.read_text("utf-8"))]
     return topics
@@ -158,8 +171,10 @@ def run(ctx: RunContext) -> Path:
     listing = "\n".join(f"- [{v['channel']}] x{v['ratio']} · {v['views']} visitas · {v['title']}" for v in outliers[:40])
     own = "\n".join(f"- {v['views']} visitas (x{v['ratio']}) · {v['title']}" for v in best_mine)
     niches = ", ".join(cfg.get("niches", ["gimnasia", "atletismo", "patinaje artístico"]))
+    system = SYSTEM.replace("{about}", str(cfg.get("about") or ABOUT)).replace(
+        "{pattern}", str(cfg.get("pattern") or "atleta + tensión + figura famosa"))
     result = complete_json(
-        ctx, stage=STAGE, section="planner", system=SYSTEM, max_tokens=3000, use_cache=False,
+        ctx, stage=STAGE, section="planner", system=system, max_tokens=3000, use_cache=False,
         user=(f"NICHOS DEL CANAL: {niches}\n\nOUTLIERS DE LA COMPETENCIA:\n{listing or '(ninguno)'}\n\n"
               f"MEJORES VÍDEOS DEL CANAL:\n{own or '(sin datos)'}\n\n"
               f"VÍDEOS QUE EL DUEÑO GUARDÓ COMO REFERENCIA:\n"
@@ -178,16 +193,18 @@ def run(ctx: RunContext) -> Path:
     if outliers:
         lines += ["## Lo que mejor funciona ahora en la competencia", ""]
         lines += [f"- x{v['ratio']} · {v['views']} visitas · [{v['channel']}] [{v['title']}]({v['url']})" for v in outliers[:10]]
-    (ctx.root / "out" / "_ideas").mkdir(parents=True, exist_ok=True)
-    (ctx.root / "out" / "_ideas" / "outliers.json").write_text(json.dumps(outliers[:40], ensure_ascii=False, indent=1),
+    folder = ideas_dir(ctx)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "outliers.json").write_text(json.dumps(outliers[:40], ensure_ascii=False, indent=1),
                                                              encoding="utf-8")    # for thumbnail/title patterns
-    out = ctx.root / "out" / "_ideas" / f"{today}.md"
+    out = folder / f"{today}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    history = ctx.root / HISTORY
+    history = history_path(ctx)
     past = json.loads(history.read_text("utf-8")) if history.is_file() else []
+    history = folder / "historial.json"
     history.write_text(json.dumps(past + [{"date": today, "title": i["title"]} for i in ideas], ensure_ascii=False, indent=1),
                        encoding="utf-8")
     body = "\n\n".join(f"{n}. {i['title']}\n{i.get('angle', '')}\nHook: {i.get('hook', '')}" for n, i in enumerate(ideas, 1))
-    notify.send(ctx, f"3 ideas de vídeo · {today}", body + f"\n\n(detalle en {out.relative_to(ctx.root)})")
+    notify.send(ctx, f"3 ideas de vídeo{' · ' + ctx.channel if ctx.channel else ''} · {today}", body + f"\n\n(detalle en {out.relative_to(ctx.root)})")
     return out

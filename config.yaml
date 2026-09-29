@@ -1,5 +1,10 @@
 # Parámetros ajustables del pipeline. Las claves de API van en .env, nunca aquí.
 
+# Perfil de canal por defecto: canales/<canal>.yaml se mezcla encima de este archivo (marca, música,
+# fuentes, ideas…). Cada vídeo puede elegir otro con `canal: robots` en materiales/<vídeo>/config.yaml.
+canal: gimnasia
+format: historia                   # historia (de una persona) | ranking (cuenta atrás; lo pone el perfil)
+
 video:
   width: 1920
   height: 1080

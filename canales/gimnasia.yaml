@@ -1,0 +1,13 @@
+# Perfil del canal de historias de atletas (gimnasia, atletismo, patinaje).
+# Se mezcla encima de config.yaml y debajo de materiales/<vídeo>/config.yaml: solo hace falta
+# poner lo que cambia respecto a config.yaml. config.yaml ya viene preparado para este canal,
+# así que aquí solo queda lo propio de su nicho.
+
+format: historia                   # historia de una persona (protagonista, tarjetas de atleta, momento cumbre)
+
+ideas:
+  about: 'un canal de YouTube en español de documentales deportivos (historias de atletas: gimnasia,
+    atletismo, patinaje artístico…) con el formato "historia de un atleta de ~10 min"'
+  pattern: atleta + tensión + figura famosa
+  competitors: ["@GymnastIcons"]
+  niches: [gimnasia, atletismo, patinaje artístico]

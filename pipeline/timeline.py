@@ -323,8 +323,17 @@ MOODS = {
     "infancia": "orígenes, niñez, familia, primeros pasos, recuerdos",
 }
 
+
+
+def moods_of(ctx: RunContext) -> dict[str, str]:
+    """The moods music files can be named after: the shared ones plus the channel's (timeline.moods)."""
+
+    extra = ctx.section("timeline").get("moods")
+    return {**MOODS, **({str(k).lower(): str(v) for k, v in extra.items()} if isinstance(extra, dict) else {})}
+
+
 MUSIC_SYSTEM = """
-Eres el montador musical de un documental deportivo. Para cada tramo numerado del guion elige el
+Eres el montador musical de un vídeo documental de YouTube. Para cada tramo numerado del guion elige el
 tono de la música de fondo, SOLO entre estos: {moods}. Evita cambiar de tono sin motivo: tramos
 seguidos con el mismo ánimo llevan el mismo tono. Devuelve SOLO JSON: {{"moods": ["tono del tramo 0", ...]}}
 """.strip()
@@ -344,7 +353,7 @@ def music_parts(ctx: RunContext, timeline: Timeline, tracks: dict[str, list[str]
             texts.append(text[:1500] or "(apertura con el sonido original de la competición)")
         try:
             listed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=600,
-                                   system=MUSIC_SYSTEM.format(moods=", ".join(f"{m} ({MOODS.get(m, m)})" for m in tracks)),
+                                   system=MUSIC_SYSTEM.format(moods=", ".join(f"{m} ({moods_of(ctx).get(m, m)})" for m in tracks)),
                                    user="\n\n".join(f"[{i}] {t}" for i, t in enumerate(texts))).get("moods", [])
             moods = [str(m).lower() if str(m).lower() in tracks else default for m in listed][:len(bounds)]
             moods += [moods[-1] if moods else default] * (len(bounds) - len(moods))
@@ -648,6 +657,12 @@ def run(ctx: RunContext) -> None:
     shutil.copy2(ctx.materials_dir / "voz.mp3", voice)
     assets = ctx.root / str(cfg.get("assets", "assets"))
 
+    def folder(name: str, prefix: str = "") -> Path:
+        """The channel's own music/sfx (e.g. assets/robots/sfx/), else the shared assets/<name>/."""
+
+        own = assets / name
+        return own if _all_audio(own, prefix) or assets == ctx.root / "assets" else ctx.root / "assets" / name
+
     def publish(path: Path | None) -> str | None:
         if path is None:
             return None
@@ -657,16 +672,16 @@ def run(ctx: RunContext) -> None:
         return str(target.relative_to(ctx.work_dir))
 
     tracks: dict[str, list[str]] = {}
-    for path in _all_audio(assets / "music", ""):
+    for path in _all_audio(folder("music"), ""):
         mood = path.stem.split("-")[0].lower()
-        tracks.setdefault(mood if mood in MOODS else "general", []).append(publish(path))
+        tracks.setdefault(mood if mood in moods_of(ctx) else "general", []).append(publish(path))
     default = str(cfg.get("music_default", "intriga"))
     default = default if default in tracks else next(iter(tracks), "")
     music = tracks[default][0] if tracks else None
-    whooshes = [publish(p) for p in _all_audio(assets / "sfx", "whoosh")]
-    pop = publish(_first_audio(assets / "sfx", "pop"))
+    whooshes = [publish(p) for p in _all_audio(folder("sfx", "whoosh"), "whoosh")]
+    pop = publish(_first_audio(folder("sfx", "pop"), "pop"))
     sfx: list[TimelineSfx] = []
-    impact = publish(_first_audio(assets / "sfx", "impact"))
+    impact = publish(_first_audio(folder("sfx", "impact"), "impact"))
     for kind, at in animation_cues(groups):
         src = pop if kind == "pop" else impact
         if src:

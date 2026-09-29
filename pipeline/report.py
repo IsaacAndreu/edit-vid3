@@ -58,9 +58,10 @@ def card(ctx: RunContext) -> dict[str, Any]:
 
 def text(result: dict[str, Any], limit: int = 8) -> str:
     verdict = "✅ Listo para subir" if not result["problems"] else "⚠️ Revisar: " + "; ".join(result["problems"])
-    lines = [verdict, "",
-             f"• {result['person'] or 'Protagonista'} en pantalla: {result['protagonist']:.0%} del tiempo",
-             f"• Metraje genérico (stock): {result['stock']:.0%}",
+    lines = [verdict, ""]
+    if result["person"]:            # rankings and topic videos have no protagonist
+        lines.append(f"• {result['person']} en pantalla: {result['protagonist']:.0%} del tiempo")
+    lines += [f"• Metraje genérico (stock): {result['stock']:.0%}",
              f"• Planos flojos: {len(result['weak'])}"]
     lines += [f"   – {w}" for w in result["weak"][:limit]]
     if len(result["weak"]) > limit:

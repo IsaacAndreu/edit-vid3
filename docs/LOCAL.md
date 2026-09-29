@@ -282,6 +282,33 @@ nueva voz, los textos en pantalla traducidos («CHAPTER», «Source»), y sus mi
 títulos en ese idioma. No vuelve a buscar ni a juzgar metraje: ~15-25 min, casi todo render.
 Si un plano queda más largo que su clip, va en cámara lenta suave.
 
+## 10c. Varios canales (perfiles) y vídeos de ranking
+
+Cada canal tiene su perfil en `canales/<canal>.yaml`. Allí van los colores, la música/SFX, las
+fuentes de confianza, la competencia, las búsquedas del panel y el formato. Se mezcla encima de
+`config.yaml`, y la `config.yaml` de cada vídeo va encima del perfil.
+
+- Por defecto se usa `canal: gimnasia` (en `config.yaml`).
+- Para un vídeo de otro canal, crea `materiales/<vídeo>/config.yaml` con:
+  ```yaml
+  canal: robots
+  ```
+- Ideas y panel de otro canal: `python main.py --ideas --canal robots` (se guardan en
+  `out/_ideas/robots/`) y `python main.py --panel --canal robots`.
+- Música y efectos del canal: `assets/robots/music/` y `assets/robots/sfx/`, con los mismos nombres
+  (`tension-*.mp3`, `whoosh-*.mp3`…). Si están vacías, se usan las de `assets/`.
+- Un canal nuevo: copia `canales/robots.yaml` con otro nombre y cambia lo que quieras.
+
+Con `format: ranking` (el perfil de robots ya lo trae), el vídeo es una cuenta atrás sin
+protagonista:
+- cada puesto que el guion presenta («en el número 7…», «puesto 3:») lleva una tarjeta **#7/10** con
+  el nombre, hasta 3 cifras dichas en ese puesto y una imagen de su metraje;
+- si el puesto es una ciudad o un país, justo después sale un mapa que vuela hasta él;
+- el resto de gráficos (comparativas, fichas técnicas, gráficas) se reparten como siempre.
+
+Si cambias el formato de un vídeo que ya estaba a medias, vuelve a lanzarlo con
+`--force planner --force timeline`.
+
 ## 11. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar

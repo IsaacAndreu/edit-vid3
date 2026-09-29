@@ -55,6 +55,19 @@ Textos en el idioma del guion, cortos. Devuelve SOLO JSON:
 """.strip()
 
 
+RANK_SYSTEM = """
+Este vídeo es un ranking / cuenta atrás. Te paso la narración en frases numeradas. Encuentra la frase
+donde se PRESENTA cada puesto ("en el número 7…", "puesto 3:", "number one is…") y devuelve SOLO JSON:
+{"total": 10 o null, "items": [{"rank": 7, "sentence": 12, "name": "nombre corto del elemento",
+ "subtitle": "país, marca o categoría dicho en el guion, o null",
+ "place": "si el elemento es un lugar: 'ciudad, país' EN INGLÉS para geolocalizarlo; si no, null",
+ "country": "si es un lugar: su país EN INGLÉS como en Natural Earth (p. ej. 'United States of America', 'China'); si no, null",
+ "stats": [{"label": "…", "value": "cifra tal como se dice"}]}]}
+Reglas: el número del puesto debe decirse en esa frase o la siguiente; "stats" (máx. 3) solo con cifras
+dichas al hablar de ese puesto; textos en el idioma del guion; nada inventado.
+""".strip()
+
+
 # --- geography ----------------------------------------------------------------------------------
 
 def country_names(root: Path) -> set[str]:
@@ -171,15 +184,65 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
 
 # --- planning -----------------------------------------------------------------------------------
 
+def ranking(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ranking videos: a "#N" card where each position is introduced and, when it is a place, a map
+    that flies to it right after. Every position gets its card (no spacing rule between them)."""
+
+    cfg = ctx.section("graphics")
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
+    try:
+        result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
+                               system=RANK_SYSTEM)
+    except Exception as error:  # the video is complete without them
+        print(f"   Tarjetas del ranking no disponibles: {str(error)[:120]}")
+        return []
+    total = result.get("total") if isinstance(result.get("total"), int) else None
+    seconds, map_seconds = float(cfg.get("rank_seconds", 5)), float(cfg.get("rank_map_seconds", 4.5))
+    countries = country_names(ctx.root) if cfg.get("rank_map", True) else set()
+    out: list[dict[str, Any]] = []
+    for item in sorted((i for i in result.get("items", []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
+        n, rank = _as_int(item.get("sentence")), item.get("rank")
+        if not 0 <= n < len(sents) or not isinstance(rank, int) or not item.get("name") or any(o["graphic"].get("rank") == rank for o in out):
+            continue
+        intro = " ".join(s["text"] for s in sents[n: n + 2])
+        if not said(rank, intro):
+            continue
+        passage = " ".join(s["text"] for s in sents[n: n + 6])
+        stats = [x for x in item.get("stats", []) if isinstance(x, dict) and x.get("value") and said(x["value"], passage)]
+        subtitle = item.get("subtitle") if isinstance(item.get("subtitle"), str) and item["subtitle"].strip() else None
+        start = sents[n]["start"]
+        if out and start < out[-1]["end"] + 1:
+            continue
+        card = {"type": "rank", "rank": rank, "total": total, "name": str(item["name"]), "subtitle": subtitle,
+                "stats": [{"label": str(x.get("label", "")), "value": str(x["value"])} for x in stats[:3]]}
+        out.append({"start": start, "end": start + seconds, "graphic": card, "ranked": True})
+        where = geocode(ctx, str(item["place"])) if countries and item.get("place") else None
+        if where:
+            country = {c.lower(): c for c in countries}.get(str(item.get("country") or "").lower())
+            out.append({"start": start + seconds, "end": start + seconds + map_seconds, "ranked": True,
+                        "graphic": {"type": "map", "title": None, "countries": [country] if country else [],
+                                    "points": [{"name": str(item["name"]), "lon": where[0], "lat": where[1], "note": None}],
+                                    "route": False, "zoom": 0, "globe": False}})
+    return out
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
 def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[dict[str, Any]]:
     """[{"start": voice s, "end": voice s, "graphic": {...}}] validated against the narration."""
 
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
         return []
+    ranked = ranking(ctx, sents) if ctx.config.get("format") == "ranking" else []
     count = max(1, round(duration / float(cfg.get("seconds_per_graphic", 100))))
     count = min(count, int(cfg.get("max", 8)))
-    allowed = [t for t in cfg.get("types", TYPES) if t in TYPES]
+    allowed = [t for t in cfg.get("types", TYPES) if t in TYPES and not (ranked and t == "rank")]
     listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
     try:
         proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
@@ -207,14 +270,15 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
         while last + 1 < len(sents) and sents[last]["end"] - sents[first]["start"] < min_s:
             last += 1
         start, end = sents[first]["start"], min(sents[last]["end"], sents[first]["start"] + max_s)   # long sentences: first 12 s
-        if start < 20 or end - start < min_s * 0.8 or any(start < o["end"] + 25 and o["start"] < end + 25 for o in out):
+        if start < 20 or end - start < min_s * 0.8 or any(start < o["end"] + 25 and o["start"] < end + 25 for o in out) \
+                or any(start < o["end"] + 3 and o["start"] < end + 3 for o in ranked):
             continue
         graphic = clean(kind, item.get("data") or {}, nearby, ctx, countries)
         if graphic:
             out.append({"start": start, "end": end, "graphic": graphic})
         if len(out) == count:
             break
-    return sorted(out, key=lambda g: g["start"])
+    return sorted([*ranked, *out], key=lambda g: g["start"])
 
 
 def portrait(ctx: RunContext, name: str, people: list[dict[str, Any]]) -> dict[str, Any] | None:

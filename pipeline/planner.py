@@ -67,6 +67,20 @@ Reglas de los capítulos:
   el primer capítulo empieza cuando arranca el desarrollo del tema.
 """.strip()
 
+RANKING_OUTLINE = """
+ESTE VÍDEO ES UN RANKING / CUENTA ATRÁS (top X de ciudades, robots, empresas…), sin protagonista:
+- "subject": "" y "peak": "".
+- "events": uno por puesto, desde la frase que lo presenta. "label" = búsqueda EN INGLÉS del elemento
+  de ese puesto y del metraje que lo enseña (p. ej. 'Shenzhen China skyline drone footage',
+  'Unitree H1 humanoid robot walking demo'); "tag" = 'Nº 7 · SHENZHEN' (máx. 30 caracteres).
+- La intro antes del primer puesto es un evento general del tema del ranking.
+- Capítulos: agrupan varios puestos (p. ej. "DEL 10 AL 7", "EL PODIO"), con las mismas reglas.
+""".strip()
+
+
+def outline_system(ctx: RunContext) -> str:
+    return OUTLINE_SYSTEM + ("\n\n" + RANKING_OUTLINE if ctx.config.get("format") == "ranking" else "")
+
 
 def _sentences(words: list[Word]) -> list[tuple[int, int]]:
     spans, start = [], 0
@@ -148,7 +162,7 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
                 ctx,
                 stage=STAGE,
                 section="planner",
-                system=OUTLINE_SYSTEM,
+                system=outline_system(ctx),
                 user=f"TÍTULO: {words_file.title}\n\nFRASES:\n{listing}{feedback}",
                 max_tokens=2000,
             )

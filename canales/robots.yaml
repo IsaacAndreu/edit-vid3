@@ -1,0 +1,58 @@
+# Perfil del canal de robots humanoides: rankings tipo "las 10 ciudades de China con más robots".
+# Úsalo poniendo `canal: robots` en materiales/<vídeo>/config.yaml (y --canal robots para --ideas / --panel).
+# Todo lo que no se pone aquí sale de config.yaml.
+
+format: ranking                    # cuenta atrás: tarjeta "#N" en cada puesto (+ mapa si el puesto es un lugar)
+
+brand:                             # tecnológico: cian eléctrico + magenta sobre casi negro azulado
+  accent: "#27e1ff"
+  accent2: "#ff3d8b"
+  canvas: "#05080f"
+  glow: "rgba(39,225,255,0.30)"
+  label: "#0f6fae"
+  wipe: "#12b5d6"
+  panel: "#0b1320"
+  panelRaised: "#122033"
+  muted: "#8ea3bd"
+  ocean: "#04070d"
+  land: "#122235"
+  border: "#1f3550"
+
+graphics:
+  seconds_per_graphic: 90
+  types: [map, compare, chart, specs, kinetic]     # "rank" lo pone la pasada del ranking en cada puesto
+  rank_seconds: 5                  # tarjeta de cada puesto
+  rank_map: true                   # si el puesto es una ciudad/país, mapa que vuela hasta él justo después
+  rank_map_seconds: 4.5
+
+people:
+  enabled: false                   # sin tarjetas de persona recortada (no hay protagonista)
+
+timeline:
+  assets: assets/robots            # assets/robots/music/*.mp3 y assets/robots/sfx/; si están vacías, usa assets/
+  music_default: tension
+  moments: 0                       # sin "momentos con el sonido original" (no hay competición)
+  moods:                           # tonos extra para nombrar la música del canal (assets/robots/music/<tono>-*.mp3)
+    futuro: "tecnología, innovación, fábricas, el futuro que llega, asombro"
+    epico: "el número 1, lo más grande, el podio del ranking"
+
+judge:
+  trusted_channels: [Boston Dynamics, Unitree, Figure, Tesla, Agility Robotics, UBTECH, Xpeng, 1X, Apptronik,
+                     Reuters, Bloomberg, CNBC, South China Morning Post, CGTN]
+
+ideas:
+  about: "un canal de YouTube en español sobre robots humanoides y tecnología, con vídeos de ranking
+    (top X: ciudades, países, empresas o robots) de ~10 min"
+  pattern: "top X + región/país + dato sorprendente"
+  my_channel: ""
+  competitors: []                  # añade los canales de la competencia: ["@canal1", "@canal2"]
+  niches: [robots humanoides, ciudades tecnológicas de China, ciudades tecnológicas de Estados Unidos]
+
+lab:
+  queries:
+    - robots humanoides
+    - humanoid robots China
+    - top cities China technology
+    - top cities USA technology
+    - ciudades de China
+    - humanoid robot factory

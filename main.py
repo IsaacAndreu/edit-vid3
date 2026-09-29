@@ -9,6 +9,12 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+# Harmless library chatter that buries the progress lines: OpenCV 5's "Targets are not supported by
+# the new graph engine" and Hugging Face's "unauthenticated requests" (only a rate limit, never reached).
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
 from pipeline.config import PROJECT_ROOT, ConfigError
 from pipeline.context import RunContext
 from pipeline.qa import QABlocked
@@ -51,6 +57,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
     parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
+    parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
     return parser
 
@@ -244,12 +251,12 @@ def main() -> None:
     if args.panel:
         from pipeline import panel
 
-        panel.serve(RunContext.create("_panel"))
+        panel.serve(RunContext.create("_panel", channel=args.canal))
         return
     if args.ideas:
         from pipeline import ideas
 
-        path = ideas.run(RunContext.create("_ideas"))
+        path = ideas.run(RunContext.create("_ideas", channel=args.canal))
         print(f"Ideas en {path}")
         return
     if args.all:

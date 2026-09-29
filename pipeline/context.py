@@ -29,6 +29,19 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
+CHANNELS_DIR = "canales"
+
+
+def channel_profile(root: Path, name: str) -> dict[str, Any]:
+    """canales/<name>.yaml: what makes a channel look and search like itself (brand, music, sources, ideas…)."""
+
+    path = root / CHANNELS_DIR / f"{name}.yaml"
+    if not path.is_file():
+        known = sorted(p.stem for p in (root / CHANNELS_DIR).glob("*.yaml")) if (root / CHANNELS_DIR).is_dir() else []
+        raise ConfigError(f"No existe el perfil de canal {path.relative_to(root)} (hay: {', '.join(known) or 'ninguno'}).")
+    return load_config(path)
+
+
 @dataclass
 class RunContext:
     """Everything a stage needs to locate its inputs and outputs. No stage state lives here."""
@@ -39,16 +52,29 @@ class RunContext:
     _env_loaded: bool = field(default=False, repr=False)
 
     @classmethod
-    def create(cls, slug: str, *, root: Path = PROJECT_ROOT, config: dict[str, Any] | None = None) -> "RunContext":
+    def create(cls, slug: str, *, root: Path = PROJECT_ROOT, config: dict[str, Any] | None = None,
+               channel: str | None = None) -> "RunContext":
+        """config.yaml ⊕ canales/<canal>.yaml ⊕ materiales/<slug>/config.yaml (later wins).
+
+        The channel is `channel`, else `canal:` in the video's config.yaml, else `canal:` in config.yaml."""
+
         if config is not None:
             return cls(slug=slug, root=root, config=config)
         base = load_config(root / "config.yaml")
         ctx = cls(slug=slug, root=root, config=base)
         # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {cold_open_seconds: 10}).
-        override = ctx.materials_dir / "config.yaml"
-        if override.is_file():
-            ctx.config = deep_merge(base, load_config(override))
+        path = ctx.materials_dir / "config.yaml"
+        override = load_config(path) if path.is_file() else {}
+        name = channel or override.get("canal") or base.get("canal")
+        if name:
+            ctx.config = deep_merge(base, channel_profile(root, str(name)))
+            ctx.config["canal"] = str(name)
+        ctx.config = deep_merge(ctx.config, {k: v for k, v in override.items() if k != "canal"})
         return ctx
+
+    @property
+    def channel(self) -> str:
+        return str(self.config.get("canal") or "")
 
     def _dir(self, key: str, default: str) -> Path:
         return self.root / str(self.config.get("paths", {}).get(key, default))
