@@ -55,6 +55,22 @@ def hamming(a: str, b: str) -> int:
     return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
+def _make_ocr(side: int):
+    """RapidOCR across its versions: some need det_model_path whenever det_* options are given
+    (KeyError 'model_path'); the oldest take no options. False if it cannot start at all."""
+
+    from rapidocr_onnxruntime import RapidOCR
+
+    for kwargs in ({"det_limit_side_len": side, "det_limit_type": "max", "det_model_path": None},
+                   {"det_limit_side_len": side, "det_limit_type": "max"}, {}):
+        try:
+            return RapidOCR(**kwargs)
+        except (KeyError, TypeError, ValueError):
+            continue
+    print("   Aviso: RapidOCR no arranca en este equipo; el análisis sigue sin detectar texto en pantalla.")
+    return False
+
+
 class Detectors:
     def __init__(self, *, cache_dir: Path, ocr_side: int = 480) -> None:
         self.cache_dir = cache_dir
@@ -83,9 +99,9 @@ class Detectors:
 
         with self._lock:
             if self._ocr is None:
-                from rapidocr_onnxruntime import RapidOCR
-
-                self._ocr = RapidOCR(det_limit_side_len=self.ocr_side, det_limit_type="max")
+                self._ocr = _make_ocr(self.ocr_side)
+            if self._ocr is False:                 # no OCR on this machine: nothing is counted as text
+                return 0.0
             results, _ = self._ocr(frame, use_det=True, use_cls=False, use_rec=True)
         mask = np.zeros(frame.shape[:2], np.uint8)
         for box, text, score in results or []:
