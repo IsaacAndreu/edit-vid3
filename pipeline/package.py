@@ -135,11 +135,13 @@ def run(ctx: RunContext) -> None:
     shorts = sorted((ctx.out_dir / "shorts").glob("short-*.mp4"))
     if shorts:
         body += f"\nShorts: {len(shorts)} en {ctx.out_dir / 'shorts'} (títulos en shorts.txt)"
-    from .factcheck import summary
+    from .report import write as report
 
-    if line := summary(ctx):
-        body += "\n" + line
-    notify.send(ctx, f"Vídeo listo: {titles[0]}", body, thumbs)
+    card = report(ctx)                                  # also out/<slug>/resumen.md
+    if card:
+        body = card + "\n\n" + body
+    flag = "✅" if card.startswith("✅") else "⚠️" if card else ""
+    notify.send(ctx, f"{flag} Vídeo listo: {titles[0]}".strip(), body, thumbs)
 
 
 def validate(ctx: RunContext) -> bool:

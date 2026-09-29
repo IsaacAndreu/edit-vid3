@@ -181,6 +181,11 @@ brand:                             # kit de marca del canal: colores de TODAS la
   land: "#1d142b"
   border: "#35274d"
 
+report:                            # resumen de la mañana (out/<slug>/resumen.md y el email): cuándo pedir revisión
+  min_protagonist: 0.5             # menos de la mitad del tiempo con el protagonista → revisar
+  max_stock: 0.10                  # más de un 10 % de metraje genérico → revisar
+  max_weak: 15                     # más de 15 planos flojos → revisar
+
 graphics:                          # gráficos animados elegidos del guion (mapas, A vs B, gráficas, línea de tiempo…)
   enabled: true
   seconds_per_graphic: 100         # ~1 gráfico cada 100 s de vídeo
