@@ -483,6 +483,9 @@ def run(ctx: RunContext) -> None:
     for selection in selections:
         if selection.source:
             stats[f"source:{selection.source}"] = stats.get(f"source:{selection.source}", 0) + 1
+    from . import editor
+
+    selections = editor.apply_footage(ctx, selections)     # footage the editor swapped by hand
     result = SelectionFile(slug=ctx.slug, selections=selections, stats=stats)
     ctx.write_json(OUTPUT, result.model_dump(exclude_none=True))
     spent = sum(e["usd"] for e in (ctx.read_json("costs.json").get("entries", []) if (ctx.work_dir / "costs.json").is_file() else [])

@@ -12,3 +12,4 @@ work/
 cache/
 cookies/
 *.cookies.txt
+editor/dist/

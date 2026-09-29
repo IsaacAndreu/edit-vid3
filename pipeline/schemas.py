@@ -358,7 +358,7 @@ class JudgeVerdict(_Strict):
 class Selection(_Strict):
     shotId: str
     status: Literal["selected", "fallback"]                 # fallback → stage 7 (Pexels / GPT Image)
-    decidedBy: Literal["score", "judge", "fallback"]
+    decidedBy: Literal["score", "judge", "fallback", "editor"]    # editor: swapped by hand before the render
     candidateId: str | None = None
     source: str | None = None                                # youtube | wikimedia | openverse | pixabay | pexels | generated
     kind: Literal["video", "image"] | None = None

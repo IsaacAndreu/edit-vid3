@@ -46,6 +46,9 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--dub", metavar="SLUG:IDIOMA",
                         help="Versión doblada reutilizando el vídeo hecho, p. ej. CarlosYulo:en con la voz en "
                              "materiales/CarlosYulo/voz-en.mp3 (+ guion-en.txt opcional) → out/CarlosYulo-en/.")
+    target.add_argument("--editor", metavar="SLUG",
+                        help="Editor antes del render: ver el montaje, cambiar planos, gráficos y textos, y renderizar "
+                             "(http://127.0.0.1:8766). Mejor con el vídeo lanzado antes con --review.")
     target.add_argument("--panel", action="store_true",
                         help="Panel web local (outliers, análisis de canales, guardados, ideas) en http://127.0.0.1:8765.")
     parser.add_argument(
@@ -247,6 +250,11 @@ def main() -> None:
         if not lang:
             raise SystemExit("Usa --dub SLUG:IDIOMA, p. ej. --dub CarlosYulo:en")
         run_one(dub.prepare(PROJECT_ROOT, slug, lang), force=set(), until=None, review=False)
+        return
+    if args.editor:
+        from pipeline import editor
+
+        editor.serve(RunContext.create(args.editor))
         return
     if args.panel:
         from pipeline import panel

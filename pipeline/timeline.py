@@ -969,7 +969,11 @@ def run(ctx: RunContext) -> None:
         if cfg.get("transitions", True):
             timeline = timeline.model_copy(update={"transitions": key_cuts(timeline, [x.from_ + 4 for x in extra])})
         sfx = timeline.audio.sfx
-    ctx.write_json(OUTPUT, timeline.model_dump(by_alias=True, exclude_none=True))
+    from . import editor
+
+    payload = timeline.model_dump(by_alias=True, exclude_none=True)
+    ctx.write_json("timeline.base.json", payload)        # as the pipeline made it; the editor's changes go on top
+    ctx.write_json(OUTPUT, editor.apply_to_timeline(payload, editor.load(ctx)))
     kinds: dict[str, int] = {}
     for group in groups:
         kinds[group.kind] = kinds.get(group.kind, 0) + 1

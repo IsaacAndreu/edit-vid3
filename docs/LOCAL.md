@@ -282,6 +282,28 @@ nueva voz, los textos en pantalla traducidos («CHAPTER», «Source»), y sus mi
 títulos en ese idioma. No vuelve a buscar ni a juzgar metraje: ~15-25 min, casi todo render.
 Si un plano queda más largo que su clip, va en cámara lenta suave.
 
+## 10d. Editor antes del render
+
+Para revisar un vídeo antes de gastar el tiempo de render:
+
+```powershell
+python main.py --slug Video1 --review     # hace todo menos el render
+python main.py --editor Video1            # abre http://127.0.0.1:8766
+```
+
+La primera vez tarda unos segundos en prepararse. El editor sirve para:
+- **Ver el vídeo montado** con los mismos gráficos, rótulos y música del render final (usa Chrome o Edge).
+- **Recorrer los planos por capítulo.** Los marcados con ⚠ son los que el juez eligió con menos seguridad;
+  con «Solo planos flojos» ves solo esos.
+- **Cambiar el metraje de un plano** por otra opción que ya se analizó: al pasar el ratón ves el fragmento.
+  Luego pulsa **«Aplicar cambios de planos»**, que descarga solo esos planos y rehace el montaje (1-3 min).
+- **Editar o quitar** los textos de los gráficos (títulos, nombres, notas…), los rótulos de nombre y
+  lugar (déjalos vacíos para quitarlos) y los títulos de capítulo. Se ven al momento.
+- **«Renderizar vídeo»:** hace el render con tus cambios y deja el resultado en `out/<vídeo>/`.
+
+Los cambios se guardan en `work/<vídeo>/edits.json` y se respetan aunque vuelvas a lanzar una etapa.
+También sirve con un vídeo ya terminado: los cambios hacen que se vuelva a renderizar.
+
 ## 10c. Varios canales (perfiles) y vídeos de ranking
 
 Cada canal tiene su perfil en `canales/<canal>.yaml`. Allí van los colores, la música/SFX, las

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor de vídeo</title>
+  <style>
+    :root { --bg: #0e0f13; --panel: #171920; --raised: #20232c; --line: #2c303b; --text: #eceef3; --muted: #9096a6;
+            --accent: #f5c451; --warn: #ff9f43; --ok: #4ade80; --bad: #f87171; }
+    * { box-sizing: border-box; }
+    html, body, #root { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--raised);
+             color: var(--text); padding: 7px 14px; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { opacity: .45; cursor: default; }
+    button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; }
+    input, textarea { font: inherit; width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+                      border-radius: 6px; padding: 6px 8px; }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="/app/app.js"></script>
+</body>
+</html>
