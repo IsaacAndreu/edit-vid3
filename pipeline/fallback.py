@@ -53,7 +53,7 @@ from .sourcing.images import ImageSources, image_query
 STAGE = "fallback"
 OUTPUT = "fallback.json"
 MEDIA_DIR = "media_fallback"
-VERSION = 5  # bump when the fallback policy changes: invalidates per-shot results
+VERSION = 6  # bump when the fallback policy changes: invalidates per-shot results
 PEXELS = "https://api.pexels.com"
 
 
@@ -233,8 +233,9 @@ def run(ctx: RunContext) -> None:
 
         # 1b. Protagonist first: any other fragment of the protagonist found for the whole video,
         # preferring the shot's own event, before any stock footage.
-        if item is None and story.subject and shot.broll:
-            pool, pool_candidates = protagonist_pool(ctx, story)
+        who = person_for(story, shot)
+        if item is None and who and shot.broll:
+            pool, pool_candidates = protagonist_pool(ctx, story, who)
             event_words = tokens(shot.broll.event or "")
             options = sorted(
                 (o for o in pool if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
@@ -246,7 +247,7 @@ def run(ctx: RunContext) -> None:
         # 1c. A web photo of whoever/whatever the shot names (then of the protagonist), in a card —
         # what sports channels do when there is no footage. Vetted by the judge like the rest.
         if item is None and shot.broll:
-            person = story.subject.split("·")[0].strip()
+            person = who
             # the people/places named → the event itself → the protagonist's photos kept in the library
             # from earlier videos → any web photo of the protagonist; stock only after all of this.
             attempts = [("web", shot.broll.entities), ("web", [shot.broll.event] if shot.broll.event else []),
@@ -394,13 +395,31 @@ def photo_option(candidate: Candidate) -> Option:
 _POOL: dict[str, tuple[list[Option], dict[str, Candidate]]] = {}
 
 
-def protagonist_pool(ctx: RunContext, story: ShotsFile) -> tuple[list[Option], dict[str, Candidate]]:
-    """Every scored fragment, across all shots, from a source whose title or channel names the protagonist."""
+def person_for(story: ShotsFile, shot: Any) -> str:
+    """Whom a shot is about: the video's protagonist, or in a video without one (a list of cases, a
+    ranking) the person named in the shot's story event, among the names the planner put on screen."""
 
-    cache_key = f"{ctx.work_dir}:{story.subject}"
+    if story.subject:
+        return story.subject.split("·")[0].strip()
+    event = tokens(getattr(shot.broll, "event", None) or "") if shot.broll else set()
+    names = [s.label.text for s in story.shots if s.label and s.label.kind == "name"]
+    found = next((n for n in names if tokens(n) and tokens(n) <= event), "")
+    if found:
+        return found.title() if found.isupper() else found
+    # the planner writes each event as "Name Surname + what + where": two capitalised words first
+    words = (getattr(shot.broll, "event", None) or "").split() if shot.broll else []
+    lead = [w for w in words[:2] if w[:1].isupper() and w.isalpha() and not w.isupper()]
+    return " ".join(lead) if len(lead) == 2 else ""
+
+
+def protagonist_pool(ctx: RunContext, story: ShotsFile, person: str | None = None) -> tuple[list[Option], dict[str, Candidate]]:
+    """Every scored fragment, across all shots, from a source whose title or channel names the protagonist
+    (or `person`, in videos without a single protagonist)."""
+
+    person = person or story.subject.split("·")[0].strip()
+    cache_key = f"{ctx.work_dir}:{person}"
     if cache_key in _POOL:
         return _POOL[cache_key]
-    person = story.subject.split("·")[0].strip()
     name = tokens(person)                     # the full name: the surname alone also matches relatives
     judge_cfg = ctx.section("judge")
     blocklist = ctx.section("content").get("title_blocklist")
