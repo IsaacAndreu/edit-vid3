@@ -47,7 +47,7 @@ ENDSCREEN = {
     "en": ("NEXT STORY", "SUBSCRIBE"), "pt": ("PRÓXIMA HISTÓRIA", "INSCREVA-SE"), "fr": ("PROCHAINE HISTOIRE", "ABONNE-TOI"),
     "it": ("PROSSIMA STORIA", "ISCRIVITI"), "de": ("NÄCHSTE GESCHICHTE", "ABONNIEREN"), "es": ("SIGUIENTE HISTORIA", "SUSCRÍBETE"),
 }
-LINKED = ("media", "media_fallback", "people", "coldopen", "audio")
+LINKED = ("media", "media_fallback", "people", "coldopen", "audio", "spotlight")
 COPIED = ("shots.json", "selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
 MAX_SLOWMO = 1.5
 MIN_SHOT_FRAMES = 12

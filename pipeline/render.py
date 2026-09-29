@@ -126,12 +126,22 @@ def media_seconds(path: Path) -> float:
 
 
 def graphic_media(graphic: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Photos/clips a graphic shows (rank, specs, the two sides of a comparison)."""
+    """Photos/clips a graphic shows (rank, specs, both sides of a comparison, a spotlight's frames…)."""
 
-    if not graphic:
-        return []
-    found = [graphic.get("media"), (graphic.get("left") or {}).get("media"), (graphic.get("right") or {}).get("media")]
-    return [m for m in found if isinstance(m, dict) and m.get("src")]
+    found: list[dict[str, Any]] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            if value.get("src") and value.get("kind") in ("image", "video"):
+                found.append(value)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(graphic or {})
+    return found
 
 
 def voice_chains(index: int, voice_from: int, gaps: list, fps: int, stereo: str) -> list[str]:

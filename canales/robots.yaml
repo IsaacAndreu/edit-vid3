@@ -20,7 +20,7 @@ brand:                             # tecnológico: cian eléctrico + magenta sob
 
 graphics:
   seconds_per_graphic: 90
-  types: [map, compare, chart, specs, kinetic]     # "rank" lo pone la pasada del ranking en cada puesto
+  types: [map, compare, chart, specs, kinetic, press, split]   # "rank" lo pone la pasada del ranking en cada puesto
   rank_seconds: 5                  # tarjeta de cada puesto
   rank_map: true                   # si el puesto es una ciudad/país, mapa que vuela hasta él justo después
   rank_map_seconds: 4.5

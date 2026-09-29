@@ -306,6 +306,23 @@ protagonista:
 - si el puesto es una ciudad o un país, justo después sale un mapa que vuela hasta él;
 - el resto de gráficos (comparativas, fichas técnicas, gráficas) se reparten como siempre.
 
+Con `format: prohibidos` (en la `config.yaml` del vídeo), el vídeo repasa cosas prohibidas de un
+deporte (elementos, técnicas, trajes…). Cada elemento que presenta el guion lleva una tarjeta con su
+clip, un sello rojo de **PROHIBIDO** que cae encima, quién lo hizo famoso, por qué se prohibió y
+«DESDE 1977», siempre que el guion lo diga.
+
+Animaciones que salen solas en cualquier formato, siempre sacadas del guion:
+- **Congelado con foco:** la primera vez que se nombra a alguien sobre un clip suyo (el título del
+  vídeo de YouTube lleva su nombre), la imagen se para con un flash, todo se oscurece salvo esa
+  persona y aparece su nombre. Máximo 3 por vídeo (`timeline.spotlights`, 0 = ninguno).
+- **Pantalla partida:** cuando el guion contrasta dos personas o dos momentos («Uchimura en Tokio,
+  Yulo en París»), sus dos clips lado a lado.
+- **Nota desglosada:** dificultad + ejecución − penalización = nota. Solo si el guion dice las
+  cifras y estas cuadran.
+- **Recortes de prensa:** titulares hechos con palabras del guion. El nombre del periódico solo
+  sale si el guion lo nombra.
+- **Reglamento:** la página del reglamento con la norma subrayada y, si prohíbe algo, un sello.
+
 Si cambias el formato de un vídeo que ya estaba a medias, vuelve a lanzarlo con
 `--force planner --force timeline`.
 

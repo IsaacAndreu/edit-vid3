@@ -16,6 +16,7 @@ and any music/SFX are copied into work/<slug>/audio/.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -383,6 +384,19 @@ def music_parts(ctx: RunContext, timeline: Timeline, tracks: dict[str, list[str]
     return parts
 
 
+def with_seconds(ctx: RunContext, media: dict[str, Any]) -> dict[str, Any]:
+    """Clips inside graphics carry their length, so Remotion slows them down or loops them instead of
+    leaving a frozen last frame when the graphic lasts longer than the clip."""
+
+    if media.get("kind") == "video" and "seconds" not in media:
+        from .render import media_seconds
+
+        seconds = media_seconds(ctx.work_dir / media["src"])
+        if seconds > 0:
+            media["seconds"] = round(seconds, 3)
+    return media
+
+
 def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
                   labels: list[TimelineLabel], fps: int, total: int) -> tuple[list[TimelineGroup], list[TimelineLabel]]:
     """Animated graphics (maps, A vs B, charts…) over the shots of the sentences they explain.
@@ -423,8 +437,37 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         def footage() -> dict[str, Any] | None:   # a photo of this passage (else a clip) for cards without a portrait
             media = [s.media for s in covered if s.media]
             pick = next((m for m in media if m.kind == "image"), media[0] if media else None)
-            return pick.model_dump(exclude_none=True) if pick else None
+            return with_seconds(ctx, pick.model_dump(exclude_none=True)) if pick else None
 
+        def clips() -> list[dict[str, Any]]:   # the passage's own clips, each once
+            seen: dict[str, dict[str, Any]] = {}
+            for s in covered:
+                if s.media and s.media.kind == "video" and s.media.src not in seen:
+                    seen[s.media.src] = with_seconds(ctx, s.media.model_dump(exclude_none=True))
+            return list(seen.values())
+
+        if graphic["type"] == "banned":
+            graphic["media"] = next(iter(clips()), None) or footage()
+        if graphic["type"] == "split":
+            options = clips()
+
+            def side(name: str, taken: str | None) -> dict[str, Any] | None:
+                wanted = set(re.findall(r"\w+", name.lower()))
+                for s in covered:
+                    if s.media and s.media.kind == "video" and s.media.src != taken \
+                            and wanted & set(re.findall(r"\w+", s.text.lower())):
+                        return with_seconds(ctx, s.media.model_dump(exclude_none=True))
+                return None
+
+            left = side(graphic["left"]["name"], None)
+            right = side(graphic["right"]["name"], left["src"] if left else None)
+            left = left or next((m for m in options if not right or m["src"] != right["src"]), None) \
+                or graphics.portrait(ctx, graphic["left"]["name"], people)
+            right = right or next((m for m in reversed(options) if not left or m["src"] != left["src"]), None) \
+                or graphics.portrait(ctx, graphic["right"]["name"], people)
+            if not left or not right or left["src"] == right["src"]:
+                continue
+            graphic["left"]["media"], graphic["right"]["media"] = left, right
         if graphic["type"] in ("rank", "specs"):
             face = graphics.portrait(ctx, graphic["name"], people)
             graphic["media"] = face or footage()
@@ -439,6 +482,123 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
               if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames for g in added)]
     if added:
         print("   Gráficos: " + ", ".join(f"{g.graphic['type']} {g.from_ / fps:.0f}s" for g in added))
+    return sorted([*groups, *added], key=lambda g: g.from_), labels
+
+
+SPOTLIGHT_DIR = "spotlight"
+
+
+def spotlight_images(ctx: RunContext, clip: Path, seconds: float, name: str, session: Any) -> dict[str, Any] | None:
+    """The frozen frame (1920x1080) and the same frame with only the person (transparent PNG), plus
+    where the person's head is (% of the frame) for the name tag; None if there is no clear person."""
+
+    import subprocess
+
+    import cv2
+    import numpy as np
+    from rembg import remove
+
+    out = ctx.work_dir / SPOTLIGHT_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    still = out / f"{name}.jpg"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{seconds:.3f}", "-i", str(clip), "-frames:v", "1",
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080", "-q:v", "2", str(still)],
+                   check=False)
+    image = cv2.imread(str(still))
+    if image is None:
+        return None
+    rgba = np.array(remove(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), session=session))
+    alpha = rgba[..., 3] > 128
+    coverage = float(alpha.mean())
+    if not 0.015 <= coverage <= 0.45:
+        return None                                        # nobody, or a crowd/close-up filling the frame
+    count, labels_, stats, _ = cv2.connectedComponentsWithStats(alpha.astype(np.uint8))
+    if count < 2:
+        return None
+    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    if stats[biggest, cv2.CC_STAT_AREA] < 0.7 * alpha.sum():
+        return None                                        # several people: no single one to point at
+    rgba[..., 3] = np.where(labels_ == biggest, rgba[..., 3], 0)
+    cutout = out / f"{name}.png"
+    cv2.imwrite(str(cutout), cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
+    x, y, w, h = (int(v) for v in stats[biggest, :4])
+    if h > 0.85 * 1080 or y < 0.03 * 1080:
+        return None                                        # a close-up or a cut-off head: nothing to point at
+    return {"still": str(still.relative_to(ctx.work_dir)), "cutout": str(cutout.relative_to(ctx.work_dir)),
+            "anchor": [round((x + w / 2) / 19.2, 1), round(y / 10.8, 1)], "height": round(h / 10.8, 1)}
+
+
+def source_title(ctx: RunContext, candidate: str) -> str:
+    """Lower-case title + channel of a YouTube candidate ("yt:<id>"), from yt-dlp's cached info."""
+
+    if not candidate.startswith("yt:"):
+        return ""
+    path = ctx.cache_dir / "videos" / candidate[3:] / "ytdlp-info.json"
+    try:
+        info = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return f"{info.get('title') or ''} {info.get('channel') or info.get('uploader') or ''}".lower()
+
+
+def with_spotlights(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
+                    labels: list[TimelineLabel], subject: str, fps: int) -> tuple[list[TimelineGroup], list[TimelineLabel]]:
+    """Freeze frame + spotlight: the first time the narration names someone over a clip, the clip
+    stops, everything but that person goes dark and their name appears next to them."""
+
+    cfg = ctx.section("timeline")
+    limit = int(cfg.get("spotlights", 3))
+    if limit <= 0:
+        return groups, labels
+    people = []
+    if (ctx.work_dir / "people.json").is_file():
+        people = [p["name"] for p in json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])]
+    subject = subject.split("·")[0].strip()
+    names = list(dict.fromkeys([n for n in [subject, *people] if n]))
+    if not names:
+        return groups, labels
+    try:
+        from rembg import new_session
+
+        session = new_session(str(ctx.section("people").get("model", "u2net_human_seg")))
+    except Exception:  # rembg missing: no spotlights, like no athlete cards
+        return groups, labels
+    sources = {}
+    if (ctx.work_dir / "media" / "_ingest.json").is_file():
+        sources = {m["shotId"]: m.get("candidateId") or "" for m in
+                   json.loads((ctx.work_dir / "media" / "_ingest.json").read_text("utf-8")).get("media", [])}
+    busy = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    added: list[TimelineGroup] = []
+    for name in names:
+        surname = re.findall(r"\w+", name.lower())[-1:]
+        mentions = [w for w in words.words if surname and re.sub(r"\W", "", w.text.lower()) == surname[0]]
+        for word in mentions[:12]:          # the first mention over a full-screen clip of that person
+            at = round(word.end * fps)
+            shot = next((s for s in shots if s.from_ <= at < s.from_ + s.durationInFrames), None)
+            if not shot or not shot.media or shot.media.kind != "video" or shot.media.layout != "full" \
+                    or surname[0] not in source_title(ctx, sources.get(shot.id, "")):
+                continue                                   # only when the clip is known to show that person
+            start = max(at, shot.from_ + round(0.5 * fps))
+            end = start + round(float(cfg.get("spotlight_seconds", 2.6)) * fps)   # full screen: may run past the cut
+            if start > shot.from_ + shot.durationInFrames - 3 or end > shots[-1].from_ + shots[-1].durationInFrames or any(a < end and start < b for a, b in busy):
+                continue
+            found = spotlight_images(ctx, ctx.work_dir / shot.media.src, (start - shot.from_) / fps,
+                                     f"{shot.id}-{len(added)}", session)
+            if not found:
+                continue
+            added.append(TimelineGroup.model_validate({
+                "id": f"spotlight-{len(added) + 1}", "kind": "graphic", "from": start, "durationInFrames": end - start,
+                "graphic": {"type": "spotlight", "name": name, "anchor": found["anchor"], "height": found["height"],
+                            "still": {"src": found["still"], "kind": "image", "source": shot.media.source},
+                            "cutout": {"src": found["cutout"], "kind": "image", "source": shot.media.source}}}))
+            busy.append((start, end))
+            break
+        if len(added) == limit:
+            break
+    if added:
+        print("   Congelados con foco: " + ", ".join(f"{g.graphic['name']} {g.from_ / fps:.0f}s" for g in added))
+    labels = [label for label in labels
+              if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames for g in added)]
     return sorted([*groups, *added], key=lambda g: g.from_), labels
 
 
@@ -510,6 +670,13 @@ def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap:
 STAT_LANDS = 18   # frame the Stat counter reaches its figure (remotion/components/Stat.tsx)
 
 
+# Frames at which the Remotion components land their big moments (keep in sync with the .tsx files).
+SCORE_LANDS = 40       # Score.tsx: the total
+PRESS_STEP = 16        # Press.tsx: one clipping every 16 frames
+RULE_STAMP = 44        # RulePage.tsx: the stamp hits the page
+BANNED_STAMP = 22      # BannedCard.tsx: the stamp hits the card
+
+
 def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
     """When each element of an animated graphic appears (same timings as its Remotion component)."""
 
@@ -533,6 +700,19 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
     if kind == "timeline":
         n = min(len(graphic.get("events") or []), 8)
         return [("pop", round(i * frames / max(1, n))) for i in range(n)]
+    if kind == "score":
+        steps = [("pop", 10), ("pop", 22)] + ([("pop", 34)] if graphic.get("penalty") else [])
+        return steps + [("impact", SCORE_LANDS + (12 if graphic.get("penalty") else 0))]
+    if kind == "press":
+        return [("pop", 4 + i * PRESS_STEP) for i in range(min(len(graphic.get("items") or []), 3))]
+    if kind == "rule":
+        return [("pop", 4)] + ([("impact", RULE_STAMP)] if graphic.get("stamp") else [])
+    if kind == "banned":
+        return [("impact", BANNED_STAMP)]
+    if kind == "split":
+        return [("pop", 4), ("pop", 12)]
+    if kind == "spotlight":
+        return [("impact", 1)]
     if kind == "kinetic":
         words = sum(len(str(line).split()) for line in graphic.get("lines") or [])
         gap = max(3, min(8, int(frames * 0.6 / max(1, words))))
@@ -649,6 +829,7 @@ def run(ctx: RunContext) -> None:
     person_cards(ctx, shots_file, shots, groups, fps)
     labels = place_labels(shots_file, shots, groups, fps, cfg)
     groups, labels = with_graphics(ctx, words, shots, groups, labels, fps, total_frames)
+    groups, labels = with_spotlights(ctx, words, shots, groups, labels, shots_file.subject or "", fps)
 
     # Audio: voice (always), music and SFX only if the files exist.
     audio_dir = ctx.work_dir / "audio"

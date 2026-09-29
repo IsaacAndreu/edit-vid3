@@ -15,6 +15,7 @@ export interface Media {
   width?: number | null;
   height?: number | null;
   focus?: [number, number] | null; // graphics: centre of the face (% of width, % of height) to crop around
+  seconds?: number | null; // clips inside graphics: their length, to slow them down or loop them
 }
 
 export interface Shot {

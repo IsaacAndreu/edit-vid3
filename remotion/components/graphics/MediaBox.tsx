@@ -1,5 +1,5 @@
 import type { CSSProperties, FC } from 'react';
-import { Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame } from 'remotion';
+import { Img, Loop, OffthreadVideo, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { alpha, theme } from '../../theme';
 import type { Media } from '../../types';
 
@@ -13,6 +13,7 @@ export const MediaBox: FC<{
   face?: boolean; // avatar circle: head and shoulders, even from a full-body cutout
 }> = ({ media, width, height, durationInFrames, style, face = false }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const zoom = interpolate(frame, [0, durationInFrames], [1.0, 1.08], { extrapolateRight: 'clamp' });
   // A cutout (transparent PNG of a person) is shown whole, standing on the bottom edge; photos and
   // clips fill the box, cropped around the upper third where faces usually are.
@@ -50,11 +51,35 @@ export const MediaBox: FC<{
     >
       {media ? (
         media.kind === 'video' ? (
-          <OffthreadVideo src={staticFile(media.src)} muted style={fill} />
+          <Clip media={media} fps={fps} durationInFrames={durationInFrames} style={fill} />
         ) : (
           <Img src={staticFile(media.src)} style={fill} />
         )
       ) : null}
     </div>
+  );
+};
+
+/** A muted clip that fills the graphic's time: slowed down (to half speed at most) when it is a bit
+ * shorter, and looped when even that is not enough — never a frozen last frame. */
+export const Clip: FC<{ media: Media; fps: number; durationInFrames: number; style: CSSProperties }> = ({
+  media,
+  fps,
+  durationInFrames,
+  style,
+}) => {
+  const clip = (media.seconds ?? 0) * fps;
+  if (!clip) {
+    return <OffthreadVideo src={staticFile(media.src)} muted style={style} />;
+  }
+  const rate = Math.max(0.5, Math.min(1, clip / durationInFrames));
+  const span = Math.max(1, Math.floor(clip / rate) - 1);
+  const video = <OffthreadVideo src={staticFile(media.src)} muted playbackRate={rate} style={style} />;
+  return span < durationInFrames ? (
+    <Loop durationInFrames={span} layout="none">
+      {video}
+    </Loop>
+  ) : (
+    video
   );
 };

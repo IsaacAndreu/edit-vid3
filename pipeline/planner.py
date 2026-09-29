@@ -78,8 +78,21 @@ ESTE VÍDEO ES UN RANKING / CUENTA ATRÁS (top X de ciudades, robots, empresas�
 """.strip()
 
 
+BANNED_OUTLINE = """
+ESTE VÍDEO REPASA COSAS PROHIBIDAS/ELIMINADAS de un deporte (elementos, técnicas, trajes, reglas…):
+- "subject": "" salvo que todo el vídeo sea sobre una sola persona; "peak": "".
+- "events": uno por elemento prohibido, desde la frase que lo presenta, y otro cuando se cuenta quién lo hizo
+  famoso. "label" = búsqueda EN INGLÉS que encuentre ese elemento en vídeo (elemento + deporte + persona +
+  año, p. ej. 'Korbut flip uneven bars Olga Korbut 1972'); "tag" = 'NOMBRE DEL ELEMENTO · AÑO' si se dice.
+- Capítulos: agrupan elementos (por aparato, por época…), con las mismas reglas.
+""".strip()
+
+FORMAT_OUTLINES = {"ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE}
+
+
 def outline_system(ctx: RunContext) -> str:
-    return OUTLINE_SYSTEM + ("\n\n" + RANKING_OUTLINE if ctx.config.get("format") == "ranking" else "")
+    extra = FORMAT_OUTLINES.get(str(ctx.config.get("format") or ""))
+    return OUTLINE_SYSTEM + ("\n\n" + extra if extra else "")
 
 
 def _sentences(words: list[Word]) -> list[tuple[int, int]]:

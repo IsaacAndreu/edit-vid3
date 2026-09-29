@@ -26,7 +26,28 @@ from .planner import _numbers, _spelled_numbers
 
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
-TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic")
+TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "rule", "split")
+
+# Fixed words drawn on the graphics, in the narration's language (a dub translates them again).
+WORDS = {
+    "es": {"stamp": "PROHIBIDO", "rulebook": "REGLAMENTO", "d": "DIFICULTAD", "e": "EJECUCIÓN", "pen": "PENALIZACIÓN",
+           "total": "NOTA", "since": "DESDE"},
+    "en": {"stamp": "BANNED", "rulebook": "RULEBOOK", "d": "DIFFICULTY", "e": "EXECUTION", "pen": "PENALTY",
+           "total": "SCORE", "since": "SINCE"},
+    "pt": {"stamp": "PROIBIDO", "rulebook": "REGULAMENTO", "d": "DIFICULDADE", "e": "EXECUÇÃO", "pen": "PENALIDADE",
+           "total": "NOTA", "since": "DESDE"},
+    "fr": {"stamp": "INTERDIT", "rulebook": "RÈGLEMENT", "d": "DIFFICULTÉ", "e": "EXÉCUTION", "pen": "PÉNALITÉ",
+           "total": "NOTE", "since": "DEPUIS"},
+    "it": {"stamp": "VIETATO", "rulebook": "REGOLAMENTO", "d": "DIFFICOLTÀ", "e": "ESECUZIONE", "pen": "PENALITÀ",
+           "total": "PUNTEGGIO", "since": "DAL"},
+    "de": {"stamp": "VERBOTEN", "rulebook": "REGELWERK", "d": "SCHWIERIGKEIT", "e": "AUSFÜHRUNG", "pen": "ABZUG",
+           "total": "WERTUNG", "since": "SEIT"},
+}
+
+
+def fixed_words(ctx: RunContext | None) -> dict[str, str]:
+    code = str(ctx.section("align").get("language", "es")) if ctx else "es"
+    return WORDS.get(code, WORDS["en"])
 
 SYSTEM = """
 Eres el grafista de un canal de documentales de YouTube. Te paso la narración en frases numeradas
@@ -48,6 +69,18 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   "subtitle": "…" o null, "specs": [{{"label": "…", "value": "número como se dice", "unit": "…" o null}}]}}
 - "rank": solo en vídeos de ranking/cuenta atrás, al presentar cada puesto. data: {{"rank": 3, "total": 10 o null,
   "name": "…", "subtitle": "…" o null, "stats": [{{"label": "…", "value": "…"}}]}}
+- "score": una nota de gimnasia con sus partes dichas en el guion (dificultad + ejecución − penalización = nota).
+  data: {{"name": "gimnasta o null", "title": "aparato/competición como se dice, o null", "d": 6.6, "e": 8.7,
+  "penalty": 0.3 o null, "total": 15.0}}
+- "press": la prensa o la gente reaccionó a algo (escándalo, polémica, hazaña). data: {{"items": [{{"outlet": "medio
+  SOLO si el guion lo nombra, si no null", "headline": "titular hecho con palabras del guion, máx. 12 palabras",
+  "date": "fecha dicha o null", "highlight": "2-4 palabras del titular a subrayar"}}]}} (1-3 titulares)
+- "rule": el guion cita o explica una norma/regla del reglamento (algo prohibido, una penalización, un cambio de
+  regla). data: {{"source": "nombre del reglamento SOLO si se dice (p. ej. 'Código de Puntuación'), si no null",
+  "article": "artículo si se dice, si no null", "text": "la norma con palabras del guion, máx. 30 palabras",
+  "highlight": "3-6 palabras de text a resaltar", "stamp": true si la norma prohíbe/elimina algo}}
+- "split": se contrastan DOS personas, momentos o ejecuciones que se ven en el metraje ("antes/ahora",
+  "ella… mientras que él…"). data: {{"title": "…" o null, "left": {{"name": "…"}}, "right": {{"name": "…"}}}}
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
 Reglas: TODOS los datos (cifras, años, nombres) deben estar en esas frases del guion; nada inventado.
 Textos en el idioma del guion, cortos. Devuelve SOLO JSON:
@@ -65,6 +98,18 @@ donde se PRESENTA cada puesto ("en el número 7…", "puesto 3:", "number one is
  "stats": [{"label": "…", "value": "cifra tal como se dice"}]}]}
 Reglas: el número del puesto debe decirse en esa frase o la siguiente; "stats" (máx. 3) solo con cifras
 dichas al hablar de ese puesto; textos en el idioma del guion; nada inventado.
+""".strip()
+
+
+BANNED_SYSTEM = """
+Este vídeo repasa cosas PROHIBIDAS/ELIMINADAS de un deporte (elementos, técnicas, trajes, reglas…). Te paso
+la narración en frases numeradas. Encuentra la frase donde se PRESENTA cada elemento prohibido y devuelve SOLO JSON:
+{"items": [{"sentence": 12, "name": "nombre corto del elemento como se dice",
+ "who": "persona asociada (quien lo hizo famoso) si se dice, si no null",
+ "year": "año en que se prohibió si se dice, si no null",
+ "reason": "por qué se prohibió, máx. 8 palabras con palabras del guion, o null",
+ "number": número si el guion los numera ("el número 5"), si no null}]}
+Reglas: nada inventado; textos en el idioma del guion.
 """.strip()
 
 
@@ -107,6 +152,16 @@ def said(value: Any, text: str) -> bool:
 
     numbers = _numbers(str(value))
     return numbers <= (_numbers(text) | _spelled_numbers(text))
+
+
+def said_words(value: Any, text: str, share: float = 1.0) -> bool:
+    """At least `share` of the meaningful words of `value` (4+ letters, and every number) are in `text`."""
+
+    spoken = set(re.findall(r"\w+", text.lower()))
+    wanted = [w for w in re.findall(r"\w+", str(value).lower()) if len(w) >= 4 or w.isdigit()]
+    if not said(value, text):
+        return False
+    return not wanted or sum(w in spoken for w in wanted) / len(wanted) >= share - 1e-9
 
 
 def _num(value: Any) -> float | None:
@@ -172,6 +227,48 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         return {"type": "rank", "rank": data["rank"], "total": data.get("total") if isinstance(data.get("total"), int) else None,
                 "name": str(data["name"]), "subtitle": data.get("subtitle"),
                 "stats": [{"label": str(s.get("label", "")), "value": str(s["value"])} for s in stats[:4]]}
+    if kind == "score":
+        d, e, total = _num(data.get("d")), _num(data.get("e")), _num(data.get("total"))
+        penalty = _num(data.get("penalty")) if data.get("penalty") not in (None, "", 0, "0") else None
+        if None in (d, e, total) or not all(said(v, text) for v in (data["d"], data["e"], data["total"])):
+            return None
+        if penalty is not None and not said(data["penalty"], text):
+            penalty = None
+        if abs(d + e - (penalty or 0) - total) > 0.051:
+            return None                                   # the parts must add up to the score that was said
+        w = fixed_words(ctx)
+        return {"type": "score", "name": data.get("name") if data.get("name") and said_words(data["name"], text) else None,
+                "title": data.get("title") if data.get("title") and said_words(data["title"], text) else None,
+                "d": d, "e": e, "penalty": penalty, "total": total,
+                "labels": {"d": w["d"], "e": w["e"], "penalty": w["pen"], "total": w["total"]}}
+    if kind == "press":
+        items = []
+        for item in data.get("items", [])[:3]:
+            if not isinstance(item, dict) or not item.get("headline"):
+                continue
+            headline = " ".join(str(item["headline"]).split())
+            if len(headline.split()) > 14 or not said_words(headline, text, 0.7):
+                continue
+            highlight = item.get("highlight") if isinstance(item.get("highlight"), str) and item["highlight"].lower() in headline.lower() else None
+            items.append({"outlet": item.get("outlet") if item.get("outlet") and said_words(item["outlet"], text) else None,
+                          "headline": headline, "date": item.get("date") if item.get("date") and said(item["date"], text)
+                          and said_words(item["date"], text) else None, "highlight": highlight})
+        return {"type": "press", "items": items} if items else None
+    if kind == "rule":
+        body = " ".join(str(data.get("text") or "").split())
+        if not body or len(body.split()) > 34 or not said_words(body, text, 0.7):
+            return None
+        highlight = data.get("highlight") if isinstance(data.get("highlight"), str) and data["highlight"].lower() in body.lower() else None
+        source = data.get("source") if data.get("source") and said_words(data["source"], text) else None
+        article = data.get("article") if data.get("article") and said(data["article"], text) and _numbers(str(data["article"])) else None
+        return {"type": "rule", "source": source or fixed_words(ctx)["rulebook"], "article": article, "text": body,
+                "highlight": highlight, "stamp": fixed_words(ctx)["stamp"] if data.get("stamp") else None}
+    if kind == "split":
+        left, right = (data.get("left") or {}).get("name"), (data.get("right") or {}).get("name")
+        if not left or not right or left == right or not said_words(left, text) or not said_words(right, text):
+            return None
+        return {"type": "split", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
+                "left": {"name": str(left)}, "right": {"name": str(right)}}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
@@ -226,6 +323,39 @@ def ranking(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
+def banned(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """"Banned" videos: a card with a stamp where each banned element is introduced."""
+
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
+    try:
+        result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=5000, user=listing[:80000],
+                               system=BANNED_SYSTEM)
+    except Exception as error:  # the video is complete without them
+        print(f"   Tarjetas de prohibidos no disponibles: {str(error)[:120]}")
+        return []
+    seconds = float(ctx.section("graphics").get("banned_seconds", 5.5))
+    w = fixed_words(ctx)
+    out: list[dict[str, Any]] = []
+    for item in sorted((i for i in result.get("items", []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
+        n = _as_int(item.get("sentence"))
+        if not 0 <= n < len(sents) or not item.get("name"):
+            continue
+        intro, passage = " ".join(s["text"] for s in sents[n: n + 2]), " ".join(s["text"] for s in sents[max(0, n - 1): n + 8])
+        if not said_words(item["name"], passage, 0.5):
+            continue
+        start = sents[n]["start"]
+        if out and start < out[-1]["end"] + 8:
+            continue
+        year = str(item["year"]) if item.get("year") and said(item["year"], passage) and _numbers(str(item["year"])) else None
+        number = item.get("number") if isinstance(item.get("number"), int) and said(item["number"], intro) else None
+        out.append({"start": start, "end": start + seconds, "ranked": True, "graphic": {
+            "type": "banned", "name": str(item["name"]), "number": number,
+            "who": item.get("who") if item.get("who") and said_words(item["who"], passage) else None,
+            "reason": item.get("reason") if item.get("reason") and said_words(item["reason"], passage, 0.7) else None,
+            "stamp": w["stamp"], "since": f"{w['since']} {year}" if year else None}})
+    return out
+
+
 def _as_int(value: Any) -> int:
     try:
         return int(value)
@@ -239,7 +369,8 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
         return []
-    ranked = ranking(ctx, sents) if ctx.config.get("format") == "ranking" else []
+    passes = {"ranking": ranking, "prohibidos": banned}
+    ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
     count = max(1, round(duration / float(cfg.get("seconds_per_graphic", 100))))
     count = min(count, int(cfg.get("max", 8)))
     allowed = [t for t in cfg.get("types", TYPES) if t in TYPES and not (ranked and t == "rank")]

@@ -3,7 +3,7 @@
 # Perfil de canal por defecto: canales/<canal>.yaml se mezcla encima de este archivo (marca, música,
 # fuentes, ideas…). Cada vídeo puede elegir otro con `canal: robots` en materiales/<vídeo>/config.yaml.
 canal: gimnasia
-format: historia                   # historia (de una persona) | ranking (cuenta atrás; lo pone el perfil)
+format: historia                   # historia (de una persona) | ranking (cuenta atrás) | prohibidos (cosas baneadas)
 
 video:
   width: 1920
@@ -198,7 +198,10 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   max: 8
   min_seconds: 4
   max_seconds: 12
-  types: [map, compare, chart, timeline, specs, kinetic]   # añade "rank" en canales de rankings / cuentas atrás
+  types: [map, compare, chart, timeline, specs, kinetic, score, press, rule, split]
+  # score: nota desglosada (D + E − penalización) · press: recortes de prensa · rule: página del reglamento
+  # con sello · split: dos clips lado a lado. "rank" y "banned" los ponen los formatos ranking y prohibidos.
+  banned_seconds: 5.5              # tarjeta de cada elemento en los vídeos de prohibidos
 
 shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
   enabled: false                   # solo cuando tú lo pidas: python main.py --shorts <vídeo>
@@ -236,6 +239,8 @@ timeline:
   moments: 2                       # momentos cumbre en los que la voz calla y suena el original (0 = ninguno)
   moment_seconds: 4.5              # duración de cada uno (máx. 5 s, clip de terceros)
   moment_volume: 1.0
+  spotlights: 3                    # congelados con foco: la 1.ª vez que se nombra a alguien sobre un clip suyo (0 = ninguno)
+  spotlight_seconds: 2.6
 
 qa:
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar

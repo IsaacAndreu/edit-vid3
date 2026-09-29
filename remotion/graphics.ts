@@ -72,7 +72,65 @@ export interface KineticGraphic {
   lines: string[]; // each line appears word by word; the last word of the last line in yellow
 }
 
+export interface ScoreGraphic {
+  type: 'score';
+  name?: string | null;
+  title?: string | null;
+  d: number;
+  e: number;
+  penalty?: number | null;
+  total: number;
+  labels: { d: string; e: string; penalty: string; total: string };
+}
+
+export interface PressGraphic {
+  type: 'press';
+  items: { outlet?: string | null; headline: string; date?: string | null; highlight?: string | null }[];
+}
+
+export interface RuleGraphic {
+  type: 'rule';
+  source: string; // "CÓDIGO DE PUNTUACIÓN" or the generic "REGLAMENTO"
+  article?: string | null;
+  text: string;
+  highlight?: string | null; // part of text swept with the marker
+  stamp?: string | null; // "PROHIBIDO": slammed over the page
+}
+
+export interface SplitGraphic {
+  type: 'split';
+  title?: string | null;
+  left: CompareSide;
+  right: CompareSide;
+}
+
+export interface BannedGraphic {
+  type: 'banned';
+  name: string;
+  number?: number | null;
+  who?: string | null;
+  reason?: string | null;
+  since?: string | null; // "DESDE 2017"
+  stamp: string;
+  media?: Media | null;
+}
+
+export interface SpotlightGraphic {
+  type: 'spotlight';
+  name: string;
+  still: Media; // the frozen frame, full screen
+  cutout: Media; // the same frame with only the person (transparent PNG)
+  anchor: [number, number]; // centre-x and top of the person, % of the frame
+  height?: number | null; // % of the frame the person fills
+}
+
 export type Graphic =
+  | ScoreGraphic
+  | PressGraphic
+  | RuleGraphic
+  | SplitGraphic
+  | BannedGraphic
+  | SpotlightGraphic
   | MapGraphic
   | RankGraphic
   | CompareGraphic
