@@ -122,6 +122,25 @@ class Detectors:
         areas = [float(f[2] * f[3] / (w * h)) for f in (found if found is not None else [])]
         return sorted((a for a in areas if a >= min_area), reverse=True)
 
+    def face_details(self, frame: np.ndarray, min_area: float = 0.002) -> list[dict]:
+        """Every face: box (x, y, w, h), area fraction and landmarks (right eye, left eye, nose,
+        right and left mouth corners), biggest first."""
+
+        h, w = frame.shape[:2]
+        with self._lock:
+            detector = self._faces.get((w, h))
+            if detector is None:
+                detector = cv2.FaceDetectorYN.create(str(self._face_model()), "", (w, h), 0.8)
+                self._faces[(w, h)] = detector
+            _, found = detector.detect(frame)
+        out = []
+        for f in found if found is not None else []:
+            area = float(f[2] * f[3] / (w * h))
+            if area >= min_area:
+                out.append({"box": [float(v) for v in f[:4]], "area": area,
+                            "landmarks": [(float(f[i]), float(f[i + 1])) for i in range(4, 14, 2)]})
+        return sorted(out, key=lambda d: -d["area"])
+
     def face_centre(self, frame: np.ndarray) -> tuple[float, float] | None:
         """Centre of the largest face as percentages (x, y) of the frame, or None."""
 

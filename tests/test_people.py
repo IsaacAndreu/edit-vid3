@@ -37,3 +37,26 @@ class PeopleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_portrait_score_rejects_flipping_figures_and_prefers_big_upright_faces():
+    import numpy as np
+    from pipeline import people
+
+    class Det:
+        def __init__(self, face):
+            self.face = face
+
+        def face_details(self, image):
+            return [self.face]
+
+    upright_face = {"box": [40, 10, 20, 24], "area": 0.02,
+                    "landmarks": [(45, 18), (55, 18), (50, 24), (46, 29), (54, 29)]}
+    image = np.zeros((1000, 800, 3), np.uint8)
+    standing = people.portrait_score(image, Det(upright_face), (0, 400, 20, 80))
+    assert standing is not None and standing > 1.0
+    low_head = {**upright_face, "box": [40, 300, 20, 24]}
+    assert people.portrait_score(image, Det(low_head), (0, 400, 20, 80)) is None       # head at the bottom
+    assert people.portrait_score(image, Det(upright_face), (0, 100, 0, 400)) is None    # lying / mid-flip
+    upside = {**upright_face, "landmarks": [(45, 29), (55, 29), (50, 24), (46, 18), (54, 18)]}
+    assert people.portrait_score(image, Det(upside), None) is None                      # eyes below the mouth

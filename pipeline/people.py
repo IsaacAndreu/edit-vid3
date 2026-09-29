@@ -11,6 +11,7 @@ Optional: without the `rembg` package (or without a usable photo) there are simp
 
 from __future__ import annotations
 
+import math
 import shutil
 from pathlib import Path
 from typing import Any
@@ -88,8 +89,50 @@ def video_frames(ctx: RunContext, person: str, detectors: Detectors, limit: int 
     return [(frame, meta) for _, frame, meta in found[:limit]]
 
 
+CUTOUT_VERSION = 3   # 2: best-scored upright portrait among the candidates (1: the first that worked)
+
+
+def upright(face: dict) -> bool:
+    """Eyes level (roll < 30°) and above the nose, the nose above the mouth: not upside down or lying."""
+
+    (rex, rey), (lex, ley), (nx, ny), (rmx, rmy), (lmx, lmy) = face["landmarks"]
+    roll = abs(math.degrees(math.atan2(ley - rey, lex - rex)))
+    roll = min(roll, 180 - roll) if lex < rex else roll       # mirrored landmarks
+    eyes, mouth = (rey + ley) / 2, (rmy + lmy) / 2
+    return roll < 30 and eyes < ny < mouth
+
+
+def portrait_score(image: np.ndarray, detectors: Detectors, box: tuple[int, int, int, int] | None) -> float | None:
+    """How good a photo is for an athlete card; None if unusable. Rewards one clear upright face,
+    big, at the top of a standing figure, in a sharp enough photo."""
+
+    faces = detectors.face_details(image)
+    if len(faces) != 1 or faces[0]["area"] < 0.004 or not upright(faces[0]):
+        return None
+    face = faces[0]
+    score = min(face["area"] / 0.04, 1.0)                     # face size, up to 4 % of the photo
+    score += 0.3 * min(image.shape[0] / 900, 1.0)             # resolution
+    if box is not None:
+        top, bottom, left, right = box
+        fx, fy, fw, fh = face["box"]
+        head = (fy + fh / 2 - top) / max(1, bottom - top)      # 0 = top of the figure
+        # The face detector reads landmarks as upright even on a flipping gymnast: the figure decides.
+        if head > 0.45 or (right - left) > 1.3 * (bottom - top):
+            return None                                      # head not at the top, or lying / mid-flip
+        score += 0.6 if head <= 0.35 else max(0.0, 0.6 - (head - 0.35) * 2)
+        score += 0.3 if (bottom - top) >= 1.1 * (right - left) else 0.0   # standing
+    return score
+
+
 def cutout(image: np.ndarray, session: Any) -> np.ndarray | None:
     """RGBA cutout cropped to the person, or None if the mask is implausible."""
+
+    found = cutout_with_box(image, session)
+    return found[0] if found else None
+
+
+def cutout_with_box(image: np.ndarray, session: Any) -> tuple[np.ndarray, tuple[int, int, int, int]] | None:
+    """(RGBA cutout cropped to the person, its box top/bottom/left/right in the image)."""
 
     from rembg import remove
 
@@ -104,7 +147,7 @@ def cutout(image: np.ndarray, session: Any) -> np.ndarray | None:
     scale = min(1.0, 1100 / crop.shape[0])
     if scale < 1.0:
         crop = cv2.resize(crop, (round(crop.shape[1] * scale), round(crop.shape[0] * scale)), interpolation=cv2.INTER_AREA)
-    return cv2.cvtColor(crop, cv2.COLOR_RGBA2BGRA)
+    return cv2.cvtColor(crop, cv2.COLOR_RGBA2BGRA), (int(top), int(bottom), int(left), int(right))
 
 
 def inputs(ctx: RunContext) -> list:
@@ -131,36 +174,40 @@ def run(ctx: RunContext) -> None:
         lib_dir = library.folder(ctx, person)
         meta = library.load(ctx, person).get("cutout")
         stored = lib_dir / "cutout.png"
-        if not (stored.is_file() and isinstance(meta, dict)):
+        if not (stored.is_file() and isinstance(meta, dict) and meta.get("v", 1) >= CUTOUT_VERSION):
             meta = None
             notes: list[str] = []
+            best: tuple[float, np.ndarray, dict[str, Any]] | None = None
             for candidate in photo_candidates(ctx, person, notes)[: int(cfg.get("tries", 8))]:
                 original = ctx.cache_dir / "images" / "original" / f"{key(candidate.mediaUrl)}{Path(candidate.mediaUrl.split('?')[0]).suffix or '.jpg'}"
                 try:
                     if not original.is_file():
                         fetch_image(http, candidate.mediaUrl, original)
                     image = cv2.imread(str(original))
-                    if image is None or len(detectors.faces(image)) != 1:
-                        continue
-                    cut = cutout(image, session)
+                    if image is None or portrait_score(image, detectors, None) is None:
+                        continue                          # no single upright face: not worth cutting out
+                    found = cutout_with_box(image, session)
                 except Exception as error:  # one bad photo: try the next
                     notes.append(f"{candidate.id}: {str(error)[:80]}")
                     continue
-                if cut is None:
+                if found is None:
                     continue
-                lib_dir.mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(stored), cut)
-                meta = {"credit": candidate.credit, "url": candidate.url, "candidateId": candidate.id,
-                        "source": candidate.source}
-                break
-            if meta is None:
+                score = portrait_score(image, detectors, found[1])
+                if score is None:
+                    continue
+                if best is None or score > best[0]:
+                    best = (score, found[0], {"credit": candidate.credit, "url": candidate.url,
+                                              "candidateId": candidate.id, "source": candidate.source})
+            if best is None:
                 for frame, frame_meta in video_frames(ctx, person, detectors):
-                    cut = cutout(frame, session)
-                    if cut is not None:
-                        lib_dir.mkdir(parents=True, exist_ok=True)
-                        cv2.imwrite(str(stored), cut)
-                        meta = frame_meta
+                    found = cutout_with_box(frame, session)
+                    if found is not None and portrait_score(frame, detectors, found[1]) is not None:
+                        best = (0.0, found[0], frame_meta)
                         break
+            if best is not None:
+                lib_dir.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(stored), best[1])
+                meta = {**best[2], "v": CUTOUT_VERSION}
             if meta is not None:
                 full = library.load(ctx, person)
                 full["cutout"] = meta
