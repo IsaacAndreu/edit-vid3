@@ -61,7 +61,7 @@ export const Podium: FC<{ graphic: PodiumGraphic; durationInFrames: number }> = 
                 position: 'absolute',
                 left: X[p.place],
                 width: 400,
-                top: base - HEIGHT[p.place] - 330,
+                bottom: 1080 - (base - HEIGHT[p.place]) + 16, // standing right on top of the block
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -73,9 +73,7 @@ export const Podium: FC<{ graphic: PodiumGraphic; durationInFrames: number }> = 
               {p.media ? (
                 <MediaBox media={p.media} width={200} height={200} durationInFrames={durationInFrames}
                   style={{ borderRadius: '50%', borderColor: METAL[p.place] }} face />
-              ) : (
-                <div style={{ height: 200 }} />
-              )}
+              ) : null}
               <div style={{ fontWeight: 900, fontSize: 44, color: theme.text, textAlign: 'center', textShadow: theme.shadow, lineHeight: 1.05 }}>
                 {p.name.toUpperCase()}
               </div>

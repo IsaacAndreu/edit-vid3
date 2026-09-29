@@ -283,9 +283,10 @@ def replay(ctx: RunContext, clip: Path, name: str, session: Any, slow: float = 0
         # motion-compensated in-between frames, computed at half size (4x faster, looks the same once scaled back)
         slowdown = (f",scale=960:-2,setpts={1 / speed:.4f}*PTS,minterpolate=fps=30:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"
                     if speed < 1 else "")
-        chains.append(f"[0:v]trim={start:.3f}:{end:.3f},setpts=PTS-STARTPTS{slowdown}[p{k}]")
+        same = f",scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=30"   # concat needs equal parts
+        chains.append(f"[0:v]trim={start:.3f}:{end:.3f},setpts=PTS-STARTPTS{slowdown}{same}[p{k}]")
         labels.append(f"[p{k}]")
-    graph = ";".join(chains) + ";" + "".join(labels) + f"concat=n={len(parts)}:v=1:a=0,scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30[v]"
+    graph = ";".join(chains) + ";" + "".join(labels) + f"concat=n={len(parts)}:v=1:a=0[v]"
     result = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(clip), "-filter_complex", graph, "-map", "[v]", "-an",
                              "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(target)],
                             capture_output=True, text=True)
@@ -295,8 +296,8 @@ def replay(ctx: RunContext, clip: Path, name: str, session: Any, slow: float = 0
     # the athlete's box, smoothed (the mask jitters from frame to frame); only when they do not fill the
     # frame — on a close-up there is nothing to point at
     track_out: list[list[float]] = []
-    if usable and float(np.median([b[3] for _, b in tracked])) < 0.7 * H \
-            and float(np.median([b[2] for _, b in tracked])) < 0.6 * W:
+    if usable and float(np.median([b[3] for _, b in tracked])) < 0.55 * H \
+            and float(np.median([b[2] for _, b in tracked])) < 0.45 * W:
         boxes = np.array([b for _, b in tracked], dtype=float)
         smooth = np.array([boxes[max(0, i - 2): i + 3].mean(axis=0) for i in range(len(boxes))])
         track_out = [[round(ramp_time(t, parts), 3), round(x / W * 100, 2), round(y / H * 100, 2),
