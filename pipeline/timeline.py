@@ -671,7 +671,7 @@ def run(ctx: RunContext) -> None:
         src = pop if kind == "pop" else impact
         if src:
             sfx.append(TimelineSfx.model_validate({"src": src, "from": at, "volume": float(
-                cfg.get("pop_volume", 0.35) if kind == "pop" else cfg.get("impact_volume", 0.6))}))
+                cfg.get("pop_volume", 0.25) if kind == "pop" else cfg.get("impact_volume", 0.22))}))
 
     timeline = Timeline(
         slug=ctx.slug, title=shots_file.title, fps=fps, width=int(video.get("width", 1920)),
@@ -706,7 +706,7 @@ def run(ctx: RunContext) -> None:
         timeline = timeline.model_copy(update={"shakes": [TimelineShake.model_validate({"from": x.from_})
                                                           for x in timeline.audio.sfx if "impact" in Path(x.src).name]})
     if whooshes:
-        extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.6)), float(cfg.get("sfx_min_gap", 4.0)),
+        extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.22)), float(cfg.get("sfx_min_gap", 4.0)),
                                str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)))
         timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
             "sfx": sorted([*timeline.audio.sfx, *extra], key=lambda x: x.from_)})})
