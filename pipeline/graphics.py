@@ -27,7 +27,14 @@ from .planner import _numbers, _spelled_numbers
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "rule", "split",
-         "strobe", "replay", "standings")
+         "strobe", "replay", "standings", "podium", "race", "card", "scale")
+
+# Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
+REFERENCES = {
+    "persona": ("Persona media", 1.75), "canasta": ("Canasta de baloncesto", 3.05), "porteria": ("Portería de fútbol", 2.44),
+    "autobus": ("Autobús de dos pisos", 4.4), "jirafa": ("Jirafa", 5.5), "casa": ("Casa de dos plantas", 6.0),
+    "barra": ("Barra fija", 2.8), "potro": ("Mesa de salto", 1.35), "red_voley": ("Red de voleibol", 2.43),
+}
 
 # Fixed words drawn on the graphics, in the narration's language (a dub translates them again).
 WORDS = {
@@ -89,6 +96,16 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   a cámara lenta. data: {{"name": "etiqueta de máx. 4 palabras del guion (p. ej. 'el doble mortal') o null"}}
 - "standings": se dicen las notas/marcas de al menos 3 participantes de una misma prueba (una final).
   data: {{"title": "…" o null, "rows": [{{"name": "…", "score": "nota como se dice"}}]}} en el orden en que se dicen
+- "podium": se dice quién quedó 1.º, 2.º y 3.º (o al menos 1.º y 2.º) de una prueba. data: {{"title": "prueba como se
+  dice" o null, "places": [{{"place": 1, "name": "…", "note": "nota/marca dicha o null"}}]}}
+- "race": la evolución de una cifra de varios países/personas a lo largo de al menos 3 años/fechas dichos (medallas por
+  país por Juegos…). data: {{"title": "…", "unit": "…" o null, "steps": [{{"label": "2012", "values": {{"China": 8, "Japón": 5}}}}]}}
+- "card": presentar a un atleta con al menos 3 cifras suyas dichas (títulos, medallas, récords, edad…), como una carta
+  de videojuego. data: {{"name": "…", "position": "especialidad/aparato como se dice o null", "headline": {{"label": "…",
+  "value": "la cifra más impresionante"}}, "stats": [{{"label": "máx. 10 letras", "value": "…"}}]}} (3-6 stats)
+- "scale": una medida física impresionante (altura de un salto, longitud, velocidad convertida a altura no). data:
+  {{"title": "…", "axis": "height"|"length", "unit": "m", "items": [{{"name": "…", "value": 2.45}}],
+  "references": [claves de {refs}, las que den escala, máx. 2]}}
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
 Reglas: TODOS los datos (cifras, años, nombres) deben estar en esas frases del guion; nada inventado.
 Textos en el idioma del guion, cortos. Devuelve SOLO JSON:
@@ -122,6 +139,10 @@ Reglas: nada inventado; textos en el idioma del guion.
 
 
 FORMAT_HINTS = {
+    "rivalidad": "Este vídeo es una rivalidad entre dos: usa \"compare\" y \"split\" cada vez que se enfrentan, \"card\" "
+                 "para presentar a cada uno, \"standings\"/\"podium\" cuando se dicen resultados de sus duelos.",
+    "records": "Este vídeo va de récords: usa \"scale\" para dar tamaño a cada marca, \"chart\"/\"race\" para su "
+               "evolución, \"card\" para quien lo tiene y \"kinetic\" para la cifra imposible.",
     "tecnica": "Este vídeo explica cómo se hace un movimiento/técnica: usa \"strobe\" y \"replay\" cada vez que se "
                "describe una fase del movimiento, y \"specs\" para la ficha del elemento (dificultad, año, quién lo creó).",
     "final": "Este vídeo narra una final/competición: usa \"standings\" cada vez que se dicen notas de varios "
@@ -301,6 +322,51 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             return None
         return {"type": "standings", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
                 "rows": [{"name": str(r["name"]), "score": str(r["score"])} for r in rows[:8]]}
+    if kind == "podium":
+        places = {}
+        for item in data.get("places", []):
+            if isinstance(item, dict) and item.get("place") in (1, 2, 3) and item.get("name") \
+                    and item["place"] not in places and said_words(item["name"], text, 0.5):
+                note = item.get("note") if item.get("note") and said(item["note"], text) and _numbers(str(item["note"])) else None
+                places[item["place"]] = {"place": item["place"], "name": str(item["name"]), "note": note}
+        if 1 not in places or len(places) < 2:
+            return None
+        return {"type": "podium", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
+                "places": [places[k] for k in sorted(places)]}
+    if kind == "race":
+        steps = []
+        for step in data.get("steps", [])[:12]:
+            if not isinstance(step, dict) or not step.get("label") or not said(step["label"], text) \
+                    or not isinstance(step.get("values"), dict):
+                continue
+            values = {str(k): _num(v) for k, v in step["values"].items()
+                      if _num(v) is not None and said(v, text) and said_words(k, text, 0.5)}
+            if len(values) >= 2:
+                steps.append({"label": str(step["label"]), "values": values})
+        if len(steps) < 3:
+            return None
+        return {"type": "race", "title": str(data.get("title") or ""), "unit": data.get("unit"), "steps": steps}
+    if kind == "card":
+        stats = [x for x in data.get("stats", []) if isinstance(x, dict) and x.get("value") and x.get("label")
+                 and said(x["value"], text) and _numbers(str(x["value"]))]
+        head = data.get("headline") if isinstance(data.get("headline"), dict) else {}
+        if not data.get("name") or len(stats) < 3 or not said_words(data["name"], text, 0.5):
+            return None
+        if not (head.get("value") and said(head["value"], text) and _numbers(str(head["value"]))):
+            head = stats[0]
+        return {"type": "card", "name": str(data["name"]),
+                "position": data.get("position") if data.get("position") and said_words(data["position"], text, 0.6) else None,
+                "headline": {"label": str(head.get("label", ""))[:14], "value": str(head["value"])},
+                "stats": [{"label": str(x["label"])[:12], "value": str(x["value"])} for x in stats[:6]]}
+    if kind == "scale":
+        items = [{"name": str(i["name"]), "value": _num(i["value"])} for i in data.get("items", [])
+                 if isinstance(i, dict) and i.get("name") and _num(i.get("value")) is not None and said(i["value"], text)]
+        if not items or data.get("axis") not in ("height", "length"):
+            return None
+        refs = [{"name": REFERENCES[r][0], "value": REFERENCES[r][1], "reference": True}
+                for r in data.get("references", [])[:2] if r in REFERENCES]
+        return {"type": "scale", "title": data.get("title"), "axis": data["axis"], "unit": str(data.get("unit") or "m"),
+                "items": items[:3] + refs}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
@@ -411,7 +477,7 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
     listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
     try:
         proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
-                                 system=SYSTEM.format(count=count)
+                                 system=SYSTEM.format(count=count, refs=", ".join(REFERENCES))
                                  + f"\nTipos permitidos en este canal: {', '.join(allowed)}."
                                  + (f"\n{FORMAT_HINTS[fmt]}" if fmt in FORMAT_HINTS else "")).get("graphics", [])
     except Exception as error:  # graphics are a bonus: the video is complete without them

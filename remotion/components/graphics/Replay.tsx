@@ -30,30 +30,41 @@ export const Replay: FC<{ graphic: ReplayGraphic; durationInFrames: number }> = 
   const flash = interpolate(frame, [peakFrame - 1, peakFrame, peakFrame + 6], [0, 0.45, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const label = spring({ frame: frame - peakFrame, fps, config: { damping: 16, stiffness: 170 } });
   const slow = Math.abs(t - graphic.peak) < 0.5 / 0.35 / 2 + 0.3;
-  const trail = graphic.track.filter((p) => p[0] <= t).map((p) => `${((p[1] + p[3] / 2) / 100) * 1920},${((p[2] + p[4] / 2) / 100) * 1080}`);
   const blink = Math.floor(frame / 12) % 2 === 0;
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
       <Clip media={graphic.video} fps={fps} durationInFrames={durationInFrames} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%)' }} />
-      <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
-        {trail.length > 1 ? (
-          <polyline points={trail.join(' ')} fill="none" stroke={theme.accent} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round"
-            style={{ filter: `drop-shadow(0 0 10px ${alpha(theme.accent, 0.9)})` }} opacity={0.9} />
-        ) : null}
-        {now ? (
-          <ellipse
-            cx={((now[0] + now[2] / 2) / 100) * 1920}
-            cy={((now[1] + now[3] * 0.98) / 100) * 1080}
-            rx={Math.max(60, (now[2] / 100) * 1920 * 0.75)}
-            ry={Math.max(18, (now[2] / 100) * 1920 * 0.2)}
-            fill="none"
-            stroke={theme.accent}
-            strokeWidth={6}
-            style={{ filter: `drop-shadow(0 0 8px ${theme.accent})` }}
-          />
-        ) : null}
-      </svg>
+      {now ? (
+        // tracking brackets around the athlete
+        <div
+          style={{
+            position: 'absolute',
+            left: `${now[0] - 1.5}%`,
+            top: `${now[1] - 2.5}%`,
+            width: `${now[2] + 3}%`,
+            height: `${now[3] + 5}%`,
+          }}
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                width: 46,
+                height: 46,
+                [i < 2 ? 'top' : 'bottom']: 0,
+                [i % 2 ? 'right' : 'left']: 0,
+                borderTop: i < 2 ? `6px solid ${theme.accent}` : undefined,
+                borderBottom: i >= 2 ? `6px solid ${theme.accent}` : undefined,
+                borderLeft: i % 2 === 0 ? `6px solid ${theme.accent}` : undefined,
+                borderRight: i % 2 ? `6px solid ${theme.accent}` : undefined,
+                filter: `drop-shadow(0 0 6px ${alpha(theme.accent, 0.9)})`,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
       <div
         style={{
           position: 'absolute',
@@ -76,12 +87,15 @@ export const Replay: FC<{ graphic: ReplayGraphic; durationInFrames: number }> = 
         {graphic.badge}
         {slow ? <span style={{ color: theme.accent, fontSize: 32 }}>× 0.35</span> : null}
       </div>
-      {graphic.name && now ? (
+      {graphic.name ? (
         <div
           style={{
             position: 'absolute',
-            left: `${Math.min(70, now[0] + now[2] + 3)}%`,
-            top: `${Math.max(12, now[1] - 4)}%`,
+            // next to the athlete when tracked, else bottom right
+            left: now ? `${Math.min(70, now[0] + now[2] + 3)}%` : undefined,
+            right: now ? undefined : 90,
+            top: now ? `${Math.max(12, now[1] - 4)}%` : undefined,
+            bottom: now ? undefined : 110,
             fontFamily,
             fontWeight: 900,
             fontSize: 60,

@@ -83,60 +83,80 @@ def track(sampled: list[tuple[float, np.ndarray]], session: Any) -> list[tuple[f
 
 
 def align(sampled: list[tuple[float, np.ndarray]], masks: list[np.ndarray | None],
-          ref: int) -> tuple[list[np.ndarray], list[np.ndarray | None]] | None:
-    """Warp every frame (and its athlete mask) onto frame `ref`, so a panning or zooming camera
-    looks still: ORB features on the background (the athlete masked out) and a RANSAC homography.
-    None when some frame cannot be matched (a cut, a blur, a crowd filling the frame)."""
+          ref: int) -> tuple[dict[int, np.ndarray], int, int] | None:
+    """Warp frames (and their athlete masks) onto frame `ref`, so a panning, tilting or zooming camera
+    looks still. Each frame is matched with its neighbour (ORB features on the background, the athlete
+    masked out, RANSAC homography) and the steps are chained towards `ref`, which copes with big
+    camera moves. A frame that cannot be matched (a cut, heavy blur) ends the usable stretch.
+    Returns ({frame: homography onto `ref`}, first, last) of that stretch; None if it is too short."""
 
     import cv2
 
-    orb = cv2.ORB_create(3000)
+    orb = cv2.ORB_create(2500)
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    cache: dict[int, Any] = {}
 
     def features(i: int):
-        grey = cv2.cvtColor(sampled[i][1], cv2.COLOR_BGR2GRAY)
-        keep = None
-        if masks[i] is not None:
-            keep = (cv2.dilate(masks[i], np.ones((31, 31), np.uint8)) < 20).astype(np.uint8) * 255
-        return orb.detectAndCompute(grey, keep)
+        if i not in cache:
+            grey = cv2.cvtColor(sampled[i][1], cv2.COLOR_BGR2GRAY)
+            keep = None
+            if masks[i] is not None:
+                keep = (cv2.dilate(masks[i], np.ones((31, 31), np.uint8)) < 20).astype(np.uint8) * 255
+            cache[i] = orb.detectAndCompute(grey, keep)
+        return cache[i]
 
-    ref_kp, ref_des = features(ref)
-    if ref_des is None:
-        return None
-    frames_out, masks_out = [], []
-    for i, (_, frame) in enumerate(sampled):
-        if i == ref:
-            frames_out.append(frame)
-            masks_out.append(masks[i])
-            continue
-        kp, des = features(i)
-        if des is None:
+    def step(i: int, j: int) -> np.ndarray | None:
+        """Homography taking frame i onto frame j (neighbours)."""
+        (ki, di), (kj, dj) = features(i), features(j)
+        if di is None or dj is None:
             return None
-        matches = sorted(matcher.match(des, ref_des), key=lambda m: m.distance)[:600]
-        if len(matches) < 40:
+        matches = sorted(matcher.match(di, dj), key=lambda m: m.distance)[:500]
+        if len(matches) < 30:
             return None
-        src = np.float32([kp[m.queryIdx].pt for m in matches])
-        dst = np.float32([ref_kp[m.trainIdx].pt for m in matches])
+        src = np.float32([ki[m.queryIdx].pt for m in matches])
+        dst = np.float32([kj[m.trainIdx].pt for m in matches])
         homography, inliers = cv2.findHomography(src, dst, cv2.RANSAC, 3.0)
-        if homography is None or int(inliers.sum()) < 30:
+        if homography is None or int(inliers.sum()) < max(25, 0.3 * len(matches)):
             return None
-        frames_out.append(cv2.warpPerspective(frame, homography, (W, H), borderMode=cv2.BORDER_CONSTANT))
-        masks_out.append(None if masks[i] is None else cv2.warpPerspective(masks[i], homography, (W, H)))
-    return frames_out, masks_out
+        return homography
+
+    to_ref: dict[int, np.ndarray] = {ref: np.eye(3)}
+    first = last = ref
+    for i in range(ref - 1, -1, -1):
+        h = step(i, i + 1)
+        if h is None:
+            break
+        to_ref[i], first = to_ref[i + 1] @ h, i
+    for i in range(ref + 1, len(sampled)):
+        h = step(i, i - 1)
+        if h is None:
+            break
+        to_ref[i], last = to_ref[i - 1] @ h, i
+    if last - first + 1 < 8:
+        return None
+    return to_ref, first, last
 
 
 def still_camera(sampled: list[tuple[float, np.ndarray]], masks: list[np.ndarray | None], background: np.ndarray) -> bool:
-    """The background barely changes outside the athlete (no pan, zoom or cut)."""
+    """After alignment the background barely changes outside the athlete (a few blurred frames are fine;
+    a cut or a failed alignment is not)."""
 
     import cv2
 
+    diffs = []
     for (_, frame), mask in zip(sampled, masks):
         keep = np.ones((H, W), bool) if mask is None else cv2.dilate(mask, np.ones((41, 41), np.uint8)) < 20
         keep &= frame.sum(axis=2) > 0                      # outside the warped frame
-        diff = np.abs(frame.astype(np.int16) - background.astype(np.int16)).mean(axis=2)
-        if float(diff[keep].mean()) > 14:
-            return False
-    return True
+        diffs.append(float(np.abs(frame.astype(np.int16) - background.astype(np.int16)).mean(axis=2)[keep].mean()))
+    return max(diffs) <= 35 and sum(d > 14 for d in diffs) <= 0.2 * len(diffs)
+
+
+WHY: dict[str, str] = {}    # last reason a stroboscope was not possible (for the logs)
+
+
+def _fail(reason: str) -> None:
+    WHY["strobe"] = reason
+    return None
 
 
 def strobe(ctx: RunContext, clip: Path, name: str, session: Any, count: int = 7) -> dict[str, Any] | None:
@@ -147,24 +167,49 @@ def strobe(ctx: RunContext, clip: Path, name: str, session: Any, count: int = 7)
 
     sampled = frames(clip)
     if len(sampled) < 8:
-        return None
+        return _fail("pocos fotogramas")
     masks = [m for _, m in track(sampled, session)]
     found = [(i, m) for i, m in enumerate(masks) if m is not None]
     if len(found) < 0.7 * len(sampled):
-        return None
-    aligned = align(sampled, masks, len(sampled) // 2)
+        return _fail("atleta no detectado")
+    middle = len(sampled) // 2
+    aligned = align(sampled, masks, middle)
     if aligned is None:
-        return None
-    images, masks = aligned
-    sampled = [(t, image) for (t, _), image in zip(sampled, images)]
+        return _fail("no se pudo alinear")
+    to_mid, first, last = aligned
+    # the view to draw in: the frame from which most of the athlete's positions are fully visible
+    # (with a camera that tilts up after a jump, the landing frame would leave the flight outside)
+    corners = {}
+    for i in range(first, last + 1):
+        if masks[i] is not None:
+            x, y, w, h = box(masks[i])
+            corners[i] = np.float32([[x, y], [x + w, y], [x, y + h], [x + w, y + h]]).reshape(-1, 1, 2)
+    inside = lambda pts: bool((pts[..., 0] > 3).all() and (pts[..., 0] < W - 3).all()
+                              and (pts[..., 1] > 3).all() and (pts[..., 1] < H - 3).all())
+
+    def visible(ref: int) -> int:
+        back = np.linalg.inv(to_mid[ref])
+        return sum(inside(cv2.perspectiveTransform(c, back @ to_mid[i])) for i, c in corners.items())
+
+    ref = max(range(first, last + 1), key=visible)
+    back = np.linalg.inv(to_mid[ref])
+    to_ref = {i: back @ to_mid[i] for i in range(first, last + 1)}
+    images = [cv2.warpPerspective(sampled[i][1], to_ref[i], (W, H), borderMode=cv2.BORDER_CONSTANT) for i in range(first, last + 1)]
+    masks = [None if masks[i] is None else cv2.warpPerspective(masks[i], to_ref[i], (W, H)) for i in range(first, last + 1)]
+    sampled = [(sampled[i][0], image) for i, image in zip(range(first, last + 1), images)]
+    # clean background in the reference view: median of the aligned frames where they cover it,
+    # the reference frame itself elsewhere (it always covers the whole view)
     stack = np.stack([f for _, f in sampled[:: max(1, len(sampled) // 15)]]).astype(np.float32)
-    valid = stack.sum(axis=3, keepdims=True) > 0             # warped borders are black: not background
-    counts = valid.sum(axis=0)
+    valid = stack.sum(axis=3, keepdims=True) > 0
     stack = np.where(valid, stack, np.nan)
-    background = np.nan_to_num(np.nanmedian(stack, axis=0), nan=0.0).astype(np.uint8)
-    if float((counts == 0).mean()) > 0.02 or not still_camera(sampled, masks, background):
-        return None
+    background = np.nanmedian(stack, axis=0)
+    background = np.where(np.isnan(background), images[ref - first], background).astype(np.uint8)
+    if not still_camera(sampled, masks, background):
+        return _fail("el fondo se mueve")
     found = [(i, m) for i, m in enumerate(masks) if m is not None and (m > 128).any()]
+    found = [(i, m) for i, m in found if inside(np.float32([[box(m)[0], box(m)[1]], [box(m)[0] + box(m)[2], box(m)[1] + box(m)[3]]]).reshape(-1, 1, 2))]
+    if len(found) < 4:
+        return _fail("posiciones cortadas por el borde")
     boxes = {i: box(m) for i, m in found}
     centres = {i: (b[0] + b[2] / 2, b[1] + b[3] / 2) for i, b in boxes.items()}
     size = float(np.median([b[2] for b in boxes.values()]))
@@ -175,7 +220,7 @@ def strobe(ctx: RunContext, clip: Path, name: str, session: Any, count: int = 7)
         if ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 >= 0.55 * size:
             chosen.append(i)
     if len(chosen) < 4:
-        return None                                        # the athlete hardly moves: nothing to show
+        return _fail("apenas se mueve")                                        # the athlete hardly moves: nothing to show
     if len(chosen) > count:
         chosen = [chosen[round(k * (len(chosen) - 1) / (count - 1))] for k in range(count)]
     out = ctx.work_dir / DIR
@@ -235,7 +280,9 @@ def replay(ctx: RunContext, clip: Path, name: str, session: Any, slow: float = 0
     target = out / f"{name}-replay.mp4"
     chains, labels = [], []
     for k, (start, end, speed) in enumerate(parts):
-        slowdown = f",setpts={1 / speed:.4f}*PTS,minterpolate=fps=30:mi_mode=blend" if speed < 1 else ""
+        # motion-compensated in-between frames, computed at half size (4x faster, looks the same once scaled back)
+        slowdown = (f",scale=960:-2,setpts={1 / speed:.4f}*PTS,minterpolate=fps=30:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"
+                    if speed < 1 else "")
         chains.append(f"[0:v]trim={start:.3f}:{end:.3f},setpts=PTS-STARTPTS{slowdown}[p{k}]")
         labels.append(f"[p{k}]")
     graph = ";".join(chains) + ";" + "".join(labels) + f"concat=n={len(parts)}:v=1:a=0,scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30[v]"
@@ -245,8 +292,15 @@ def replay(ctx: RunContext, clip: Path, name: str, session: Any, slow: float = 0
     if result.returncode != 0 or not target.is_file():
         return None
     seconds = ramp_time(length, parts)
-    track_out = [[round(ramp_time(t, parts), 3), round(x / W * 100, 2), round(y / H * 100, 2),
-                  round(w / W * 100, 2), round(h / H * 100, 2)] for t, (x, y, w, h) in tracked] if usable else []
+    # the athlete's box, smoothed (the mask jitters from frame to frame); only when they do not fill the
+    # frame — on a close-up there is nothing to point at
+    track_out: list[list[float]] = []
+    if usable and float(np.median([b[3] for _, b in tracked])) < 0.7 * H \
+            and float(np.median([b[2] for _, b in tracked])) < 0.6 * W:
+        boxes = np.array([b for _, b in tracked], dtype=float)
+        smooth = np.array([boxes[max(0, i - 2): i + 3].mean(axis=0) for i in range(len(boxes))])
+        track_out = [[round(ramp_time(t, parts), 3), round(x / W * 100, 2), round(y / H * 100, 2),
+                      round(w / W * 100, 2), round(h / H * 100, 2)] for (t, _), (x, y, w, h) in zip(tracked, smooth)]
     return {"video": {"src": str(target.relative_to(ctx.work_dir)), "kind": "video", "source": "youtube",
                       "seconds": round(seconds, 3)},
             "track": track_out, "peak": round(ramp_time(peak, parts), 3), "seconds": round(seconds, 3)}

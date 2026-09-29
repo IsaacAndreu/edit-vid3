@@ -502,6 +502,11 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             if not left or not right or left["src"] == right["src"]:
                 continue
             graphic["left"]["media"], graphic["right"]["media"] = left, right
+        if graphic["type"] == "podium":
+            for place in graphic["places"]:
+                place["media"] = graphics.portrait(ctx, place["name"], people)
+        if graphic["type"] == "card":
+            graphic["media"] = graphics.portrait(ctx, graphic["name"], people) or footage()
         if graphic["type"] in ("rank", "specs"):
             face = graphics.portrait(ctx, graphic["name"], people)
             graphic["media"] = face or footage()
@@ -709,6 +714,8 @@ SCORE_LANDS = 40       # Score.tsx: the total
 PRESS_STEP = 16        # Press.tsx: one clipping every 16 frames
 RULE_STAMP = 44        # RulePage.tsx: the stamp hits the page
 BANNED_STAMP = 22      # BannedCard.tsx: the stamp hits the card
+PODIUM_RISE = {3: 6, 2: 14, 1: 24}         # Podium.tsx: when each block rises
+CARD_LANDS = 18                             # PlayerCard.tsx: the card finishes its flip
 STROBE_START, STROBE_STEP = 8, 6            # Strobe.tsx: one position every 6 frames
 STANDINGS_START, STANDINGS_STEP = 6, 14     # Standings.tsx: one row every 14 frames
 
@@ -749,6 +756,17 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
         return [("pop", 4), ("pop", 12)]
     if kind == "spotlight":
         return [("impact", 1)]
+    if kind == "podium":
+        n = len(graphic.get("places") or [])
+        return [("pop", PODIUM_RISE[p["place"]]) for p in graphic.get("places") or [] if p["place"] != 1][: n] \
+            + [("impact", PODIUM_RISE[1] + 8)]
+    if kind == "card":
+        return [("impact", CARD_LANDS)] + [("pop", CARD_LANDS + 12 + i * 6) for i in range(min(len(graphic.get("stats") or []), 6))]
+    if kind == "scale":
+        return [("pop", 10 + i * 10) for i in range(len(graphic.get("items") or []))]
+    if kind == "race":
+        n = len(graphic.get("steps") or [])
+        return [("pop", round(i * frames * 0.85 / max(1, n - 1))) for i in range(n)]
     if kind == "strobe":
         return [("pop", STROBE_START + i * STROBE_STEP) for i in range(len(graphic.get("ghosts") or []))]
     if kind == "replay":

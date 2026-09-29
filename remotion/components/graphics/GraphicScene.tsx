@@ -16,6 +16,10 @@ import { Spotlight } from './Spotlight';
 import { Replay } from './Replay';
 import { Standings } from './Standings';
 import { Strobe } from './Strobe';
+import { PlayerCard } from './PlayerCard';
+import { Podium } from './Podium';
+import { Race } from './Race';
+import { Scale } from './Scale';
 
 /** Full-screen animated graphic of any kind. */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
@@ -52,6 +56,14 @@ export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = 
       return <Replay graphic={graphic} durationInFrames={durationInFrames} />;
     case 'standings':
       return <Standings graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'podium':
+      return <Podium graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'race':
+      return <Race graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'card':
+      return <PlayerCard graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'scale':
+      return <Scale graphic={graphic} durationInFrames={durationInFrames} />;
     default:
       return null;
   }

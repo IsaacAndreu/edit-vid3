@@ -147,7 +147,41 @@ export interface StandingsGraphic {
   rows: { name: string; score: string }[]; // in the order they are said; the board re-sorts itself
 }
 
+export interface PodiumGraphic {
+  type: 'podium';
+  title?: string | null;
+  places: { place: 1 | 2 | 3; name: string; note?: string | null; media?: Media | null }[];
+}
+
+export interface RaceGraphic {
+  type: 'race';
+  title: string;
+  unit?: string | null;
+  steps: { label: string; values: Record<string, number> }[]; // bar chart race: one step per year/date
+}
+
+export interface CardGraphic {
+  type: 'card';
+  name: string;
+  position?: string | null;
+  headline: { label: string; value: string }; // the big figure on the corner
+  stats: { label: string; value: string }[];
+  media?: Media | null;
+}
+
+export interface ScaleGraphic {
+  type: 'scale';
+  title?: string | null;
+  axis: 'height' | 'length';
+  unit: string;
+  items: { name: string; value: number; reference?: boolean }[]; // references: everyday objects for size
+}
+
 export type Graphic =
+  | PodiumGraphic
+  | RaceGraphic
+  | CardGraphic
+  | ScaleGraphic
   | StrobeGraphic
   | ReplayGraphic
   | StandingsGraphic

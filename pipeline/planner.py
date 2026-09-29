@@ -105,7 +105,23 @@ ESTE VÍDEO NARRA UNA FINAL O COMPETICIÓN CONCRETA, participante a participante
 - Capítulos: los momentos de la final (la previa, los primeros ejercicios, el giro, el desenlace).
 """.strip()
 
-FORMAT_OUTLINES = {"ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE, "tecnica": TECHNIQUE_OUTLINE,
+RIVALRY_OUTLINE = """
+ESTE VÍDEO ES UNA RIVALIDAD ENTRE DOS (personas, equipos o países):
+- "subject": "" (son dos protagonistas); "peak": búsqueda EN INGLÉS de su duelo más famoso.
+- "events": uno por cada duelo o etapa, con los DOS nombres, la competición y el año
+  (p. ej. 'Simone Biles Rebeca Andrade vault final Paris 2024'); si un tramo habla solo de uno, solo ese.
+- Capítulos: las etapas de la rivalidad (el origen, el primer duelo, el cambio, el último duelo).
+""".strip()
+
+RECORDS_OUTLINE = """
+ESTE VÍDEO VA DE RÉCORDS (marcas imposibles, quién las tiene, cuánto duran):
+- "subject": "" salvo que todo el vídeo sea el récord de una persona.
+- "events": uno por récord, desde la frase que lo presenta: "label" = búsqueda EN INGLÉS de la prueba en la
+  que se batió (persona + prueba + récord + año, p. ej. 'Javier Sotomayor high jump world record 2.45 1993');
+  "tag" = 'RÉCORD · AÑO' o la marca si se dice.
+""".strip()
+
+FORMAT_OUTLINES = {"rivalidad": RIVALRY_OUTLINE, "records": RECORDS_OUTLINE, "ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE, "tecnica": TECHNIQUE_OUTLINE,
                    "final": FINAL_OUTLINE}
 
 

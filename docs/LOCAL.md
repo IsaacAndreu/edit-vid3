@@ -329,6 +329,20 @@ Más formatos (en la `config.yaml` del vídeo):
 - `format: final`: narra una final participante a participante. Usa el marcador en directo, la nota
   desglosada y repeticiones en los momentos clave.
 
+- `format: rivalidad`: dos protagonistas (A vs B). Usa comparativas, pantalla partida, una carta de cada
+  uno y los resultados de sus duelos.
+- `format: records`: récords imposibles. Usa la comparación de escala, la carrera de barras, la carta de
+  quien lo tiene y la cifra imposible en grande.
+
+Gráficos de la tanda 3 (en cualquier formato, cuando el guion da los datos):
+- **Podio:** los bloques de bronce, plata y oro suben por turnos y cada atleta cae sobre el suyo.
+- **Carrera de barras:** una cifra de varios países o personas a lo largo de los años; las barras se
+  adelantan unas a otras.
+- **Carta de jugador:** estilo videojuego. Entra girando, lleva un brillo holográfico y sus cifras
+  (todas dichas en el guion).
+- **Escala:** una marca (altura o longitud) al lado de objetos cotidianos como una persona, una canasta
+  o un autobús. Estas medidas de referencia son conocidas y el programa las pone solo.
+
 Animaciones sacadas del propio clip (necesitan `rembg`, lo mismo que las tarjetas de atleta):
 - **Estroboscopia:** todas las posiciones de un salto en una sola imagen, que aparecen una a una.
   Si la cámara se mueve, se alinean los fotogramas; si hay un corte o no se distingue al atleta, no sale.
