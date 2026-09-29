@@ -139,6 +139,8 @@ Reglas: nada inventado; textos en el idioma del guion.
 
 
 FORMAT_HINTS = {
+    "lista": "Este vídeo es una lista de casos: en cada caso busca su momento clave para \"replay\", sus cifras para "
+             "\"score\"/\"podium\", y la reacción de la prensa o el público para \"press\".",
     "rivalidad": "Este vídeo es una rivalidad entre dos: usa \"compare\" y \"split\" cada vez que se enfrentan, \"card\" "
                  "para presentar a cada uno, \"standings\"/\"podium\" cuando se dicen resultados de sus duelos.",
     "records": "Este vídeo va de récords: usa \"scale\" para dar tamaño a cada marca, \"chart\"/\"race\" para su "

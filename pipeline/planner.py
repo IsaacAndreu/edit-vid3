@@ -121,7 +121,16 @@ ESTE VÍDEO VA DE RÉCORDS (marcas imposibles, quién las tiene, cuánto duran):
   "tag" = 'RÉCORD · AÑO' o la marca si se dice.
 """.strip()
 
-FORMAT_OUTLINES = {"rivalidad": RIVALRY_OUTLINE, "records": RECORDS_OUTLINE, "ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE, "tecnica": TECHNIQUE_OUTLINE,
+LIST_OUTLINE = """
+ESTE VÍDEO ES UNA LISTA DE CASOS SIN NUMERAR (fallos, momentos, anécdotas…), cada uno con su protagonista:
+- "subject": "" (hay varios protagonistas); "peak": "".
+- "events": uno por caso, desde la frase que lo presenta, y otro cuando dentro del caso cambia el momento
+  concreto. "label" = búsqueda EN INGLÉS de ESE momento (persona + aparato/hecho + competición + año, p. ej.
+  'Gabby Douglas balance beam fall London 2012'); "tag" = 'LUGAR · AÑO' tal como se dice.
+- Capítulos: agrupan casos (por tono o por época), con las mismas reglas.
+""".strip()
+
+FORMAT_OUTLINES = {"lista": LIST_OUTLINE, "rivalidad": RIVALRY_OUTLINE, "records": RECORDS_OUTLINE, "ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE, "tecnica": TECHNIQUE_OUTLINE,
                    "final": FINAL_OUTLINE}
 
 

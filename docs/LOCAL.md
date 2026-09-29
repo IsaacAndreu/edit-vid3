@@ -329,6 +329,8 @@ Más formatos (en la `config.yaml` del vídeo):
 - `format: final`: narra una final participante a participante. Usa el marcador en directo, la nota
   desglosada y repeticiones en los momentos clave.
 
+- `format: lista`: casos sin numerar («los fallos que sorprendieron al mundo»), con un protagonista
+  distinto en cada caso. Conviene subir `people: {max: 9}` para que cada uno tenga su tarjeta.
 - `format: rivalidad`: dos protagonistas (A vs B). Usa comparativas, pantalla partida, una carta de cada
   uno y los resultados de sus duelos.
 - `format: records`: récords imposibles. Usa la comparación de escala, la carrera de barras, la carta de
