@@ -112,6 +112,21 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
     return problems
 
 
+def update_ytdlp() -> None:
+    """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night."""
+
+    import subprocess
+
+    try:
+        result = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp"],
+                                capture_output=True, text=True, timeout=300)
+        from importlib.metadata import version
+
+        print(f"yt-dlp {version('yt-dlp')}" + ("" if result.returncode == 0 else " (no se pudo actualizar)"))
+    except Exception as error:  # offline or pip missing: the queue still runs with the installed one
+        print(f"yt-dlp: no se pudo actualizar ({type(error).__name__})")
+
+
 def notify(root: Path, text: str) -> None:
     """Email and/or Telegram, whichever is configured in .env; silent otherwise."""
 
@@ -147,6 +162,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         if not check:
             problems = []
         else:
+            update_ytdlp()
             problems = preflight(root)
         if problems:
             message = "Cola NO iniciada:\n- " + "\n- ".join(problems)

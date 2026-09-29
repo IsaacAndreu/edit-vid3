@@ -58,6 +58,7 @@ sourcing:
     cookies_dir: ~/.config/edit-vid3/cookies                 # varias cuentas: un .txt por cuenta secundaria, van por turnos
     account_switch_pause: 15       # s de pausa al pasar a otra cuenta porque YouTube bloqueó una
     browser_accounts: []           # cuentas leídas de Firefox en cada ejecución (no caducan): ["firefox::Cuenta1", "firefox::Cuenta2"]
+    api_queries_per_shot: 2        # con la API: búsqueda del evento + 1 más por plano (≈30.000 unidades/vídeo → ~3 vídeos/día)
     api_search: true               # buscar con YOUTUBE_API_KEYS (sin bloqueos); si se acaba la cuota, sigue con yt-dlp
     player_client: null        # p. ej. [android_vr] si YouTube cambia algo
   images:

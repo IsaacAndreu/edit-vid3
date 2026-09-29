@@ -525,10 +525,13 @@ class YouTubeSource:
     # --- per shot ---------------------------------------------------------------------
 
     def queries_for(self, broll: BrollSpec) -> list[str]:
-        return [
+        queries = [
             *broll.queries[: int(self.cfg.get("queries_en", 2))],
             *broll.queriesLocal[: int(self.cfg.get("queries_local", 1))],
         ]
+        if self.api is not None:   # API quota: the event search + one more (~30k units a video instead of ~46k)
+            queries = queries[: int(self.cfg.get("api_queries_per_shot", 2))]
+        return queries
 
     def candidates(self, broll: BrollSpec, notes: list[str]) -> list[Candidate]:
         queries = self.queries_for(broll)
