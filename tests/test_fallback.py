@@ -42,3 +42,18 @@ class ProtagonistPoolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_library_photos_only_those_still_on_disk(tmp_path, monkeypatch):
+    from pipeline import fallback, library
+    from pipeline.context import RunContext
+
+    ctx = RunContext.create("x", root=tmp_path, config={})
+    (tmp_path / "cache" / "images").mkdir(parents=True)
+    (tmp_path / "cache" / "images" / "a.jpg").write_bytes(b"x")
+    photo = {"source": "wikimedia", "kind": "image", "url": "u", "title": "Carlos Yulo", "license": "CC BY",
+             "credit": "Fuente: Wikimedia", "imagePath": "cache/images/a.jpg", "mediaUrl": "m", "query": "q",
+             "channel": "Wikimedia", "attribution": "a", "rankScore": 0.5}
+    monkeypatch.setattr(library, "load", lambda ctx, person: {"photos": {
+        "wm:1": {**photo, "id": "wm:1"}, "wm:2": {**photo, "id": "wm:2", "imagePath": "cache/images/gone.jpg"}}})
+    assert list(fallback.library_photos(ctx, "Carlos Yulo")) == ["wm:1"]

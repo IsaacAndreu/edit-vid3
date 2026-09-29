@@ -25,6 +25,7 @@ import numpy as np
 import requests
 
 from .analysis import detectors as det
+from . import library
 from .analysis import make_models, prompts_for
 from .context import RunContext
 from .costs import record_cost
@@ -245,14 +246,21 @@ def run(ctx: RunContext) -> None:
         # what sports channels do when there is no footage. Vetted by the judge like the rest.
         if item is None and shot.broll:
             person = story.subject.split("·")[0].strip()
-            for entities in (shot.broll.entities, [person] if person else []):
+            # the people/places named → the event itself → the protagonist's photos kept in the library
+            # from earlier videos → any web photo of the protagonist; stock only after all of this.
+            attempts = [("web", shot.broll.entities), ("web", [shot.broll.event] if shot.broll.event else []),
+                        ("library", [person] if person else []), ("web", [person] if person else [])]
+            for kind, entities in attempts:
                 if item is not None or not entities:
                     continue
-                candidates = web_photos(ctx, shot.broll.model_copy(update={"entities": entities[:2]}), tried)
+                if kind == "library":
+                    candidates = library_photos(ctx, person)
+                else:
+                    candidates = web_photos(ctx, shot.broll.model_copy(update={"entities": entities[:2]}), tried)
                 options = [photo_option(c) for c in candidates.values()
                            if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
                            and c.id not in elsewhere][:limit]
-                item = vet_and_materialise(options, candidates, "web-photo")
+                item = vet_and_materialise(options, candidates, "library-photo" if kind == "library" else "web-photo")
 
         # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
         # them is left at all: anonymous stock is exactly what that format avoids.
@@ -359,6 +367,20 @@ def web_photos(ctx: RunContext, broll: Any, notes: list[str]) -> dict[str, Candi
                           serper_key=ctx.env("SERPER_API_KEY", required=False))
     _, found = source.search(broll, notes)
     return {c.id: c for c in found}
+
+
+def library_photos(ctx: RunContext, person: str) -> dict[str, Candidate]:
+    """Photos of the person that earlier videos already used (athlete library), still on disk."""
+
+    out: dict[str, Candidate] = {}
+    for cid, raw in library.load(ctx, person).get("photos", {}).items():
+        try:
+            c = Candidate.model_validate(raw)
+        except ValueError:
+            continue
+        if c.imagePath and (ctx.root / c.imagePath).is_file():
+            out[cid] = c
+    return out
 
 
 def photo_option(candidate: Candidate) -> Option:
