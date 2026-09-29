@@ -47,6 +47,23 @@ def _cookies_file(yt_cfg: dict[str, Any]) -> Path | None:
     return None
 
 
+def netscape_from_json(raw: str) -> str:
+    """Cookies exported as JSON (browser extensions) → the Netscape cookies.txt yt-dlp reads."""
+
+    data = json.loads(raw)
+    cookies = data.get("cookies", data) if isinstance(data, dict) else data
+    lines = ["# Netscape HTTP Cookie File"]
+    for c in cookies:
+        domain = str(c["domain"])
+        host_only = c.get("hostOnly", not domain.startswith("."))
+        expires = int(float(c.get("expirationDate") or c.get("expires") or 0))
+        lines.append("\t".join([
+            domain, "FALSE" if host_only else "TRUE", str(c.get("path") or "/"),
+            "TRUE" if c.get("secure") else "FALSE", str(max(0, expires)), str(c["name"]), str(c.get("value", "")),
+        ]))
+    return "\n".join(lines) + "\n"
+
+
 def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path | None]]:
     """Every YouTube account available: YOUTUBE_COOKIES_B64, youtube.cookies_file and each .txt in
     youtube.cookies_dir (one per secondary account), in that order, without duplicates."""
@@ -61,10 +78,24 @@ def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path
     if yt_cfg.get("cookies_dir"):
         folder = Path(str(yt_cfg["cookies_dir"])).expanduser()
         if folder.is_dir():
+            for exported in sorted(folder.glob("*.json")):          # JSON export → cookies.txt next to it
+                target = exported.with_suffix(".txt")
+                if not target.is_file() or target.stat().st_mtime < exported.stat().st_mtime:
+                    try:
+                        target.write_text(netscape_from_json(exported.read_text(encoding="utf-8")), encoding="utf-8")
+                    except (ValueError, KeyError, TypeError) as error:
+                        print(f"   Aviso: no entiendo las cookies de {exported.name} ({error})")
             files += sorted(p for p in folder.glob("*.txt") if p.is_file())
     seen = set()
     for path in files:
         text = path.read_text(encoding="utf-8")
+        if text.lstrip().startswith(("[", "{")):                     # JSON pasted into a .txt
+            try:
+                text = netscape_from_json(text)
+                path.write_text(text, encoding="utf-8")
+            except (ValueError, KeyError, TypeError) as error:
+                print(f"   Aviso: no entiendo las cookies de {path.name} ({error})")
+                continue
         if text.strip() and text not in seen:
             seen.add(text)
             sets.append((text, path))

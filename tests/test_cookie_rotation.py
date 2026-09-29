@@ -44,3 +44,21 @@ def test_without_cookies_a_block_stops_youtube(tmp_path):
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0})
     with pytest.raises(SourceUnavailable):
         yt._call("search", lambda: (_ for _ in ()).throw(RuntimeError("not a bot")))
+
+
+def test_json_cookies_become_netscape(tmp_path):
+    import json
+    from pipeline.context import RunContext
+    from pipeline.sourcing import cookie_sets, netscape_from_json
+
+    raw = json.dumps([{"domain": ".youtube.com", "hostOnly": False, "path": "/", "secure": True,
+                       "expirationDate": 1893456000.5, "name": "SID", "value": "abc"}])
+    assert netscape_from_json(raw).splitlines()[1] == ".youtube.com\tTRUE\t/\tTRUE\t1893456000\tSID\tabc"
+    folder = tmp_path / "cookies"
+    folder.mkdir()
+    (folder / "cuenta1.json").write_text(raw)
+    (folder / "cuenta2.txt").write_text(raw)            # JSON pasted into a .txt
+    ctx = RunContext.create("x", root=tmp_path, config={})
+    sets = cookie_sets(ctx, {"cookies_dir": str(folder)})
+    assert len(sets) == 1                                  # same account twice → once
+    assert sets[0][0].startswith("# Netscape") and (folder / "cuenta1.txt").is_file()
