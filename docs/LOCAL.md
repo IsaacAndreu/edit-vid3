@@ -123,6 +123,13 @@ analiza o renderiza, así que el PC no se queda parado esperando a YouTube. Cada
 nombre de su vídeo y el registro completo queda en `out/_cola/<vídeo>.log`. Con `parallel_videos: 1`
 vuelve a ir de uno en uno.
 
+**Por qué iba tan lento en casa (30-09-2026):** cada tramo se bajaba por HTTPS con ffmpeg, que hace
+una única petición sin límite de tamaño, y YouTube frena a unos 30 KB/s las peticiones de más de unos
+10 MB (issues #17612 y #15036 de yt-dlp). Se comprobó con curl: un rango de 8 MB bajaba a 8 MB/s y la
+petición abierta a 0,7 MB/s. No era la IP ni las cuentas. Ahora los tramos se piden por HLS (m3u8,
+cliente `web_safari`): son unas pocas peticiones pequeñas y el corte es exacto. El método de antes
+queda solo para vídeos sin HLS (`sourcing.youtube.hls_ranges`).
+
 **Comprobación rápida:** `python main.py --probar-youtube` tarda un minuto. Descarga 10 s de un vídeo
 de prueba como la cola de noche, con y sin tus cookies, y te dice la causa y qué ejecutar: falta el
 solucionador de retos, tu cuenta está frenada, YouTube te limita (429) o es la conexión.

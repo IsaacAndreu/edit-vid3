@@ -65,7 +65,8 @@ sourcing:
     browser_accounts: []           # cuentas leídas de Firefox en cada ejecución (no caducan): ["firefox::Cuenta1", "firefox::Cuenta2"]
     api_queries_per_shot: 2        # con la API: búsqueda del evento + 1 más por plano (≈30.000 unidades/vídeo → ~3 vídeos/día)
     api_search: true               # buscar con YOUTUBE_API_KEYS (sin bloqueos); si se acaba la cuota, sigue con yt-dlp
-    player_client: null        # p. ej. [android_vr] si YouTube cambia algo
+    player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
+    hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
     force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
   images:
     max_per_shot: 6

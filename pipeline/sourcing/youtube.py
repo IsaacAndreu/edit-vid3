@@ -51,6 +51,29 @@ WARNING_COUNTS: dict[str, int] = {}
 _warning_lock = threading.Lock()
 
 
+def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> str:
+    """The same request limited to YouTube's HLS formats (muxed video+audio, served in small segments)."""
+
+    height = re.search(r"height<=(\d+)", fmt)
+    limit = f"[height<={height.group(1)}]" if height else ""
+    if audio_only:
+        return "worst[protocol^=m3u8][acodec!=none]"          # the sound only: the lightest muxed stream
+    if audio:
+        return f"b{limit}[protocol^=m3u8][acodec!=none][vcodec^=avc1]/b{limit}[protocol^=m3u8][acodec!=none]"
+    parts = [alt.split("+")[0] for alt in fmt.split("/") if alt.strip()]
+    return "/".join(f"{alt}[protocol^=m3u8]" for alt in dict.fromkeys(parts))
+
+
+def _has_hls(info_path: Path) -> bool:
+    import json
+
+    try:
+        formats = json.loads(info_path.read_text(encoding="utf-8")).get("formats") or []
+    except (OSError, ValueError):
+        return False
+    return any(str(f.get("protocol") or "").startswith("m3u8") for f in formats)
+
+
 def _upload_filter(days: int) -> str:
     """YouTube's search filter (the `sp` parameter) for videos uploaded in the last hour/day/week/month/year."""
 
@@ -455,6 +478,9 @@ class YouTubeSource:
 
     # --- downloads without re-extraction ------------------------------------------------
 
+    def _clients(self) -> list[str]:
+        return [str(c) for c in (self.cfg.get("player_client") or [])]
+
     def _full_info_path(self, video_id: str) -> Path:
         return self.cache_dir / "videos" / video_id / "ytdlp-info.json"
 
@@ -464,6 +490,7 @@ class YouTubeSource:
         import json
 
         slim = {k: v for k, v in data.items() if k not in ("automatic_captions", "subtitles", "thumbnails", "heatmap")}
+        slim["_edit_vid3_clients"] = self._clients()     # re-extract when the player clients change
         path = self._full_info_path(video_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
@@ -475,17 +502,18 @@ class YouTubeSource:
         """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed)."""
 
         import json
-        from urllib.parse import parse_qs, urlparse
 
         path = self._full_info_path(video_id)
         if path.is_file():
             try:
-                formats = json.loads(path.read_text(encoding="utf-8")).get("formats") or []
+                data = json.loads(path.read_text(encoding="utf-8"))
+                formats = data.get("formats") or []
                 expiries = [
-                    int(parse_qs(urlparse(f["url"]).query).get("expire", ["0"])[0])
-                    for f in formats if f.get("vcodec") not in (None, "none") and f.get("url")
+                    int(found.group(1)) for f in formats if f.get("vcodec") not in (None, "none") and f.get("url")
+                    # stream URLs carry ?expire=…, HLS manifests /expire/…/
+                    for found in [re.search(r"[/?&]expire[/=](\d+)", f["url"])] if found
                 ]
-                if expiries and min(expiries) - time.time() > 600:
+                if expiries and min(expiries) - time.time() > 600 and data.get("_edit_vid3_clients") == self._clients():
                     return path
             except (OSError, ValueError, KeyError):
                 pass
@@ -495,21 +523,17 @@ class YouTubeSource:
 
     def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
                        audio: bool = False, audio_only: bool = False) -> Path:
-        """Stream-copy [start, end] of the source (no re-encode) → <prefix>_<realStart>_<realEnd>.mp4.
+        """[start, end] of the source → <prefix>_<realStart>_<realEnd>.mp4 (source seconds in the name).
 
-        Without re-encoding the file begins at the keyframe before `start`; the real start is
-        measured (timestamps kept with -copyts), the file is rebased to 0 and the real range is
-        written into its name so later stages cut at exact source seconds.
+        HLS first (sourcing.youtube.hls_ranges): the range comes as a few small segment requests and is
+        cut exactly (re-encoding just those seconds). The HTTPS formats are fetched by ffmpeg as ONE open
+        request, which YouTube throttles to a crawl once it is bigger than ~10 MB (yt-dlp issues #17612,
+        #15036) — the 70 s per clip at home. HTTPS stays as the fallback, stream-copied: the file then
+        begins at the keyframe before `start` and the real start is measured (timestamps kept, -copyts).
         """
-
-        import json
-        import subprocess
-
-        from yt_dlp.utils import download_range_func
 
         target_dir = self.cache_dir / "videos" / video_id
         suffix = ".m4a" if audio_only else ".mp4"       # audio_only: just the sound of the range (sound bites)
-        stream = "a:0" if audio_only else "v:0"
         for existing in target_dir.glob(f"{prefix}_*{suffix}"):
             try:
                 _, a, b = existing.stem.split("_")
@@ -517,6 +541,28 @@ class YouTubeSource:
                     return existing
             except ValueError:
                 continue
+        # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
+        # may itself call _call(), and nesting slots deadlocks when all of them are taken.
+        info_path = self._fresh_full_info(video_id)
+        hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
+        if hls and _has_hls(info_path):
+            try:
+                return self._fetch_range(video_id, start, end, hls, prefix, audio, audio_only, info_path, exact=True)
+            except (RuntimeError, SourceUnavailable) as error:
+                if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
+                    raise
+        return self._fetch_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path, exact=False)
+
+    def _fetch_range(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
+                     audio_only: bool, info_path: Path, *, exact: bool) -> Path:
+        import json
+        import subprocess
+
+        from yt_dlp.utils import download_range_func
+
+        target_dir = self.cache_dir / "videos" / video_id
+        suffix = ".m4a" if audio_only else ".mp4"
+        stream = "a:0" if audio_only else "v:0"
         raw = target_dir / f"dl_{prefix}_{start:.2f}_{end:.2f}.mp4"
         options: dict[str, Any] = {
             "format": fmt,
@@ -524,22 +570,20 @@ class YouTubeSource:
             "overwrites": True,
             "nopart": True,
             "download_ranges": download_range_func(None, [(start, end)]),
-            "force_keyframes_at_cuts": False,
-            "external_downloader_args": {"ffmpeg_o": ["-copyts"]},
+            "force_keyframes_at_cuts": exact,             # exact: the file starts right at `start`
         }
-
-        # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
-        # may itself call _call(), and nesting slots deadlocks when all of them are taken.
-        info_file = str(self._fresh_full_info(video_id))
+        if not exact:
+            options["external_downloader_args"] = {"ffmpeg_o": ["-copyts"]}
+        info_file = str(info_path)
 
         def fetch() -> None:
             with self._ydl(options) as ydl:
                 ydl.download_with_info_file(info_file)
 
         def attempt() -> tuple[Path, dict[str, Any]] | None:
-            self._call("download", fetch)
+            self._call("download (HLS)" if exact else "download", fetch)
             produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*")
-                        if p.suffix in (".mp4", ".webm", ".mkv", ".m4a", ".opus", ".weba")]
+                        if p.suffix in (".mp4", ".webm", ".mkv", ".m4a", ".opus", ".weba", ".ts")]
             if not produced:
                 return None
             probe = subprocess.run(
@@ -564,7 +608,7 @@ class YouTubeSource:
         if got is None:
             raise RuntimeError(f"YouTube devolvió un tramo vacío ({start:.1f}-{end:.1f} s de {video_id})")
         produced, info = [got[0]], got[1]
-        real_start = float(info["streams"][0].get("start_time") or start)
+        real_start = start if exact else float(info["streams"][0].get("start_time") or start)
         real_end = real_start + float(info["format"]["duration"])
         target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}{suffix}"
         subprocess.run(
