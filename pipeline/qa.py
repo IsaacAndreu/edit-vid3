@@ -226,6 +226,9 @@ def run(ctx: RunContext) -> None:
     )
     credits = credits_text(rows)
     (ctx.out_dir / "creditos.txt").write_text(credits, encoding="utf-8")
+    from .rights import write as rights_report
+
+    warnings += rights_report(ctx, rows, timeline.durationInFrames / fps)     # out/<slug>/derechos.md
     publish.write(ctx, timeline, rows)
     register_used(ctx, rows)
     library.remember(ctx, rows)

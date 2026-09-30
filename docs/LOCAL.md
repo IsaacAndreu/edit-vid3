@@ -398,6 +398,15 @@ de, mitos, misterio…) es un fichero `formatos/<nombre>.yaml`. Se elige con `fo
 `config.yaml` del vídeo. Con `python main.py --formatos` sale la lista con ejemplos. Para crear uno
 nuevo se copia un fichero; consulta `formatos/LEEME.md`.
 
+**Riesgo de reclamaciones** (`out/<vídeo>/derechos.md`, en cada revisión automática): el metraje de
+terceros agrupado por propietario. Los canales del mismo dueño cuentan juntos: Olympics, Olympic Games,
+Paralympic Games… son el COI. Para cada uno salen los segundos, el % del vídeo y el tramo seguido más
+largo. Los propietarios que suelen reclamar (cadenas, ligas, federaciones, agencias; se añaden más en
+`rights.strict_channels`) con mucho metraje (`rights.high_seconds`, 45 s) o tramos seguidos largos
+(`rights.high_run`, 10 s) salen en riesgo **alto**, con la lista de planos y tiempos para cambiarlos en
+el editor. No bloquea nada. Ojo: los canales de confianza del juez (Olympics…) dan buen metraje, pero
+son justo los que más reclaman.
+
 **¿Es el atleta que dice el guion?** Antes de montar, la etapa de relleno revisa los clips de los
 planos que nombran a alguien:
 - **Rótulo en pantalla:** si en 2 de 3 fotogramas el marcador nombra a OTRO atleta junto a su código de
