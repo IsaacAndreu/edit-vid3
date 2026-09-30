@@ -18,10 +18,14 @@ const toLines = (words: QuestionWord[]): QuestionWord[][] => {
  * footage (no card). Each line appears, centred, when the voice starts it; inside the line the
  * words brighten as they are spoken. The block drifts slowly upwards.
  */
-export const Question: FC<{ words: QuestionWord[]; durationInFrames: number }> = ({ words, durationInFrames }) => {
+export const Question: FC<{ words: QuestionWord[]; durationInFrames: number; instant?: boolean }> = ({
+  words,
+  durationInFrames,
+  instant = false, // the opening question: fully visible on the very first frame (thumbnail, first impression)
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const enter = spring({ frame, fps, config: { damping: 200, stiffness: 160 }, durationInFrames: 10 });
+  const enter = instant ? 1 : spring({ frame, fps, config: { damping: 200, stiffness: 160 }, durationInFrames: 10 });
   const exit = interpolate(frame, [durationInFrames - 6, durationInFrames], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -51,7 +55,7 @@ export const Question: FC<{ words: QuestionWord[]; durationInFrames: number }> =
         }}
       >
         {lines.map((line, index) => {
-          const shown = interpolate(frame, [line[0].from - 3, line[0].from + 5], [0, 1], {
+          const shown = instant ? 1 : interpolate(frame, [line[0].from - 3, line[0].from + 5], [0, 1], {
             extrapolateLeft: 'clamp',
             extrapolateRight: 'clamp',
           });
@@ -73,7 +77,7 @@ export const Question: FC<{ words: QuestionWord[]; durationInFrames: number }> =
               }}
             >
               {line.map((w, i) => {
-                const lit = interpolate(frame, [w.from - 2, w.from + 4], [0, 1], {
+                const lit = instant ? 1 : interpolate(frame, [w.from - 2, w.from + 4], [0, 1], {
                   extrapolateLeft: 'clamp',
                   extrapolateRight: 'clamp',
                 });

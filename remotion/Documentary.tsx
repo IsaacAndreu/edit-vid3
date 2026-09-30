@@ -78,7 +78,7 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
           <GraphicScene graphic={group.graphic} durationInFrames={group.durationInFrames} />
         ) : null}
         {group.kind === 'question' && group.words ? (
-          <Question words={group.words} durationInFrames={group.durationInFrames} />
+          <Question words={group.words} durationInFrames={group.durationInFrames} instant={group.id === 'q-open'} />
         ) : null}
       </Sequence>
     ))}
