@@ -88,12 +88,48 @@ def question_spans(words: WordsFile) -> list[tuple[int, int]]:
     return spans
 
 
+QUESTION_STARTS = re.compile(
+    r"^(¿|quieres|queréis|sabías|sabes|sabéis|te has|os habéis|alguna vez|has |habéis|qué|que harías|cómo|como es posible|"
+    r"por qué|porque |cuánto|cuántos|cuántas|cuál|quién|dónde|crees|te imaginas|y si |podrías|puedes|es posible|"
+    r"do you|did you|have you|would you|could you|can you|what|why|how|who|where|which|is it|are you|ever wondered)",
+    re.IGNORECASE)
+
+
+def opening_question(words: WordsFile, cfg: dict[str, Any]) -> tuple[int, int] | None:
+    """The first sentence when it asks the viewer something, with or without question marks
+    ("Quieres ser dueño de un casino."); timeline.opening_question: auto | true | false."""
+
+    mode = str(cfg.get("opening_question", "auto")).lower()
+    if mode in ("false", "no", "0") or not words.words:
+        return None
+    end = next((i for i, w in enumerate(words.words) if w.sentenceEnd or w.text.rstrip(CLOSE_PUNCT).endswith((".", "!", "?", "…"))),
+               len(words.words) - 1)
+    sentence = " ".join(w.text for w in words.words[: end + 1])
+    asks = sentence.rstrip(CLOSE_PUNCT).endswith("?") or bool(QUESTION_STARTS.match(sentence.lstrip(OPEN_PUNCT + "¿")))
+    if end + 1 > int(cfg.get("question_max_words", 30)) or not (asks or mode in ("true", "yes", "1")):
+        return None
+    return 0, end
+
+
+def _as_question(texts: list[str], spanish: bool) -> list[str]:
+    """Question marks on screen even if the script has none."""
+
+    out = list(texts)
+    last = out[-1].rstrip(".…!,;:")
+    out[-1] = last if last.endswith("?") else last + "?"
+    if spanish and not out[0].lstrip(OPEN_PUNCT).startswith("¿"):
+        out[0] = "¿" + out[0][:1].upper() + out[0][1:]
+    return out
+
+
 def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
-                    total: int, cfg: dict[str, Any]) -> list[TimelineGroup]:
-    """Floating questions (centred text) that never overlap a data group or a chapter title."""
+                    total: int, cfg: dict[str, Any], spanish: bool = True) -> list[TimelineGroup]:
+    """Floating questions (centred text) that never overlap a data group or a chapter title. A video
+    that opens with a question shows it whole from the very first frame ("q-open")."""
 
     if not cfg.get("questions", True):
         return []
+    opening = opening_question(words, cfg)
     merge_gap = float(cfg.get("question_merge_gap", 2.5))
     hold = round(float(cfg.get("question_hold", 1.2)) * fps)
     lead = 3
@@ -107,6 +143,16 @@ def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[Ti
     blocked = sorted([(g.from_, g.from_ + g.durationInFrames) for g in groups]
                      + [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"])
     result: list[TimelineGroup] = []
+    if opening:
+        a, b = opening
+        spoken_end = round(words.words[b].end * fps)
+        end = min([total, spoken_end + hold] + [x for x, _ in blocked if x > 0])
+        texts = _as_question([w.text for w in words.words[a : b + 1]], spanish)
+        result.append(TimelineGroup.model_validate({
+            "id": "q-open", "kind": "question", "from": 0, "durationInFrames": max(fps, end),
+            "words": [{"text": t, "from": 0} for t in texts],        # whole question at once, from frame 0
+        }))
+        merged = [m for m in merged if m[1] < a or m[0] > b]
     for a, b in merged:
         if b - a + 1 > max_words:
             continue
@@ -884,7 +930,8 @@ def run(ctx: RunContext) -> None:
             "stat": source.stat.model_dump() if source.stat else None,
         }))
 
-    groups += question_groups(words, shots, groups, fps, total_frames, cfg)
+    groups += question_groups(words, shots, groups, fps, total_frames, cfg,
+                              spanish=str(ctx.section("align").get("language", "es")) == "es")
     groups.sort(key=lambda g: g.from_)
     person_cards(ctx, shots_file, shots, groups, fps)
     labels = place_labels(shots_file, shots, groups, fps, cfg)
@@ -951,6 +998,10 @@ def run(ctx: RunContext) -> None:
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips
         ], fps, float(cfg.get("cold_open_volume", 1.0)))
+        # the opening question stays on screen from the very first frame, over the cold open too
+        timeline = timeline.model_copy(update={"groups": [
+            g.model_copy(update={"from_": 0, "durationInFrames": g.durationInFrames + g.from_}) if g.id == "q-open" else g
+            for g in timeline.groups]})
     timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
     timeline = with_endscreen(timeline, round(float(cfg.get("endscreen_seconds", 0) or 0) * fps))
     if tracks and cfg.get("music_by_chapter", True):

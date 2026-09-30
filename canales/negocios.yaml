@@ -1,0 +1,52 @@
+# Perfil del canal de negocios: cómo ganan dinero las empresas y las industrias (casinos, aerolíneas,
+# supermercados, fútbol…), en formato explicativo de ~10 min.
+# Úsalo con `canal: negocios` en materiales/<vídeo>/config.yaml y con --canal negocios en --ideas / --panel.
+# Lo que no se pone aquí sale de config.yaml.
+
+format: historia                   # explicativo con hilo narrativo (se puede cambiar por vídeo: lista, ranking…)
+
+brand:                             # finanzas: verde dinero + azul sobre casi negro
+  accent: "#34d399"                # verde: cifras, títulos, barras
+  accent2: "#60a5fa"               # azul: segundo color (lado B de comparativas, 2.ª serie)
+  canvas: "#070b10"
+  glow: "rgba(52,211,153,0.26)"
+  label: "#0f766e"
+  wipe: "#10b981"
+  panel: "#0e151c"
+  panelRaised: "#15202a"
+  muted: "#9fb3c0"
+  ocean: "#060a0f"
+  land: "#13212b"
+  border: "#1f3342"
+
+graphics:
+  seconds_per_graphic: 80          # los datos mandan en este canal: algún gráfico más que en gimnasia
+  types: [map, compare, chart, timeline, specs, kinetic, press, rule, race, scale, split]
+
+people:
+  max: 4                           # fundadores, directivos… con su tarjeta
+
+timeline:
+  assets: assets/negocios          # assets/negocios/music y /sfx; si están vacías, usa assets/
+  opening_question: auto           # si el vídeo arranca con una pregunta, sale entera desde el primer fotograma
+
+judge:
+  trusted_channels: [Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider, The Economist,
+                     Forbes, Vox, DW, Euronews, RTVE, El País, Expansión]
+
+ideas:
+  about: "un canal de YouTube en español de negocios: cómo ganan dinero las empresas y las industrias
+    (casinos, aerolíneas, supermercados, clubes de fútbol…), en vídeos explicativos de ~10 min"
+  pattern: "cómo gana dinero X + la cifra sorprendente + el lado oscuro"
+  my_channel: ""
+  competitors: []                  # añade los canales de la competencia: ["@canal1", "@canal2"]
+  niches: [modelos de negocio, cómo ganan dinero las empresas, economía explicada]
+
+lab:
+  queries:
+    - cómo gana dinero
+    - modelo de negocio explicado
+    - how casinos make money
+    - how companies make money
+    - business explained
+    - el negocio de

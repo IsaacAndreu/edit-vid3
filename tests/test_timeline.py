@@ -155,7 +155,7 @@ class QuestionTests(unittest.TestCase):
         from pipeline.schemas import TimelineShot
         shots = [TimelineShot.model_validate({"id": "s0", "type": "broll", "from": 0, "durationInFrames": 330, "text": "t"}),
                  TimelineShot.model_validate({"id": "s1", "type": "chapter", "from": 330, "durationInFrames": 270, "text": "t"})]
-        groups = question_groups(self.WORDS, shots, [], 30, 600, {})
+        groups = question_groups(self.WORDS, shots, [], 30, 600, {"opening_question": False})   # merging only
         self.assertEqual(len(groups), 1)                    # "Esto vale?" falls on the chapter title → skipped
         q = groups[0]
         self.assertEqual(q.kind, "question")

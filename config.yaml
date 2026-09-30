@@ -231,6 +231,7 @@ timeline:
   pop_volume: 0.25                 # pop de barras/chinchetas/datos: ~8 dB por debajo de la voz
   impact_volume: 0.22              # golpe de las cifras grandes: justo por debajo de la voz
   questions: true                  # preguntas del guion (¿…?) como texto flotante en el centro
+  opening_question: auto           # si el vídeo empieza con una pregunta (con o sin ¿?), sale entera desde el primer fotograma; true/false para forzar
   question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas
   question_hold: 1.2               # s que el texto sigue tras la última palabra
   question_max_words: 30
