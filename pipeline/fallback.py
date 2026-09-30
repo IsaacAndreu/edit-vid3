@@ -45,6 +45,7 @@ from .schemas import (
     ShotScores,
     ShotsFile,
 )
+from .identity import Checker, IdentityCache, named_in
 from .sourcing import hypothetical, needs_footage, youtube_source
 from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key, tokens
 from .sourcing.images import ImageSources, image_query
@@ -91,7 +92,9 @@ def _thumbnail(http: requests.Session, url: str, cache: Path) -> np.ndarray | No
 
 
 def inputs(ctx: RunContext) -> list:
-    return [ctx.work_dir / "selection.json", ctx.work_dir / "media" / MANIFEST, ctx.work_dir / "shots.json"]
+    # people.json: the portraits the identity check compares faces with (the people stage runs first)
+    return [ctx.work_dir / "selection.json", ctx.work_dir / "media" / MANIFEST, ctx.work_dir / "shots.json",
+            ctx.work_dir / "people.json"]
 
 
 def run(ctx: RunContext) -> None:
@@ -122,6 +125,25 @@ def run(ctx: RunContext) -> None:
             pending[media.shotId] = f"repite la imagen de {twin}"
         else:
             seen.append((media.shotId, h))
+
+    # Is the athlete on screen the one the script names? On-screen captions and, in clear cases, faces.
+    people = ctx.read_json("people.json").get("people", []) if (ctx.work_dir / "people.json").is_file() else []
+    names = [p["name"] for p in people if p.get("name")] or ([story.subject.split("·")[0].strip()] if story.subject else [])
+    checker = Checker(ctx, people) if names and (cfg.get("caption_check", True) or cfg.get("face_check", True)) else None
+    identity_cache = IdentityCache(ctx)
+
+    def wrong_person(shot_id: str, path: Path, kind: str) -> str | None:
+        who = named_in(shots[shot_id], names) if checker and shot_id in shots else []
+        return identity_cache.get(checker, path, kind, who) if who else None
+
+    for media in ingest.media:
+        if media.shotId not in done or getattr(selections.get(media.shotId), "decidedBy", None) == "editor":
+            continue
+        why = wrong_person(media.shotId, ctx.root / media.path, media.kind)
+        if why:
+            done.discard(media.shotId)
+            pending[media.shotId] = why
+            print(f"   {media.shotId}: {why}")
 
     for shot_id in shots:
         if shot_id in done or shot_id in pending:
@@ -202,6 +224,9 @@ def run(ctx: RunContext) -> None:
                     continue
                 if looks_used(ctx.root / media.path, media.kind):
                     tried.append(f"{c.id}: ya está en pantalla")
+                    continue
+                if why := wrong_person(shot_id, ctx.root / media.path, media.kind):
+                    tried.append(f"{c.id}: {why}")
                     continue
                 used.append(selection)
                 return FallbackItem(

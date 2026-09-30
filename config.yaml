@@ -139,6 +139,11 @@ fallback:
   pexels_for_person: true          # en vídeos sobre una persona, Pexels solo si no queda NADA: ni vídeo suyo, ni foto de lo que se
                                    # nombra, ni del evento, ni de la biblioteca, ni suya en la web
   min_clip: 0.22                   # parecido mínimo con el plano para aceptar algo de Pexels
+  caption_check: true              # descarta un clip si el rótulo en pantalla nombra a OTRO atleta ("JARMAN 134 GBR")
+  face_check: true                 # …o si 2+ fotogramas muestran una cara grande de frente que no es la del retrato
+  face_min_size: 120               # px de la cara para contar como "grande"
+  face_reject: 0.15                # parecido máximo (SFace, coseno) para descartar; el mismo atleta suele dar 0,3-0,6
+  face_reference_min: 90           # px mínimos de la cara del retrato para fiarse de él
   generate: true                   # último recurso: imagen generada
   image_model: gpt-image-2
   image_quality: medium

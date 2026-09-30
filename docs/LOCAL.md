@@ -391,6 +391,19 @@ de, mitos, misterio…) es un fichero `formatos/<nombre>.yaml`. Se elige con `fo
 `config.yaml` del vídeo. Con `python main.py --formatos` sale la lista con ejemplos. Para crear uno
 nuevo se copia un fichero; consulta `formatos/LEEME.md`.
 
+**¿Es el atleta que dice el guion?** Antes de montar, la etapa de relleno revisa los clips de los
+planos que nombran a alguien:
+- **Rótulo en pantalla:** si en 2 de 3 fotogramas el marcador nombra a OTRO atleta junto a su código de
+  país («JARMAN … 134 GBR») y el nombrado no aparece, el clip se cambia por otro.
+- **Cara:** solo en casos claros. Descarta si hay caras grandes y de frente en 2 fotogramas y ninguna se
+  parece al retrato. Las caras de lado, pequeñas o en pleno salto nunca descartan nada.
+
+En el vídeo de Carlos Yulo encontró los 2 clips de otros gimnastas entre 103 planos, sin descartar
+ninguno bueno. La primera vez tarda unos 2 s por clip; luego queda guardado en
+`work/<vídeo>/identity.json`. Lo que eliges tú en el editor nunca se toca. Se desactiva con
+`fallback.caption_check: false` / `face_check: false`. Los modelos de caras (40 MB) se descargan solos
+la primera vez.
+
 **Sonido original en los momentos clave** (`timeline.sound_bites`, 8 por defecto; 0 en robots y
 negocios): el programa baja solo el audio de unos 24 planos de competición y busca en cada uno el
 instante claramente más fuerte que el resto del clip (el rugido del público, el grito del comentarista;
