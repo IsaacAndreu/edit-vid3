@@ -89,7 +89,7 @@ def run(ctx: RunContext) -> None:
     outliers = outliers_path(ctx)
     if outliers:
         patterns = [o["title"] for o in json.loads(outliers.read_text("utf-8"))[:12]]
-    hint = str(ctx.section("package").get("hint") or "").strip()      # the channel series' title pattern
+    hint = " ".join(str(h).strip() for h in (ctx.format.get("titulos"), ctx.section("package").get("hint")) if h)
     script = (ctx.materials_dir / "guion.txt").read_text("utf-8")[:12000]
     try:
         result: dict[str, Any] = complete_json(

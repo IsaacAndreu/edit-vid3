@@ -1,0 +1,14 @@
+# Formato «Final». Úsalo con `format: final` en la config.yaml del vídeo, del canal o de la serie.
+nombre: Final
+descripcion: Una final o competición concreta contada participante a participante, con marcador.
+ejemplos: La final de suelo de París 2024.
+guion: |
+  ESTE VÍDEO NARRA UNA FINAL O COMPETICIÓN CONCRETA, participante a participante:
+  - "subject": el protagonista de la final si lo hay; si no, "".
+  - "peak": búsqueda EN INGLÉS del momento decisivo de esa final.
+  - "events": uno por cada participante o ejercicio que se cuenta, SIEMPRE con la competición y el año
+    (p. ej. 'Carlos Yulo floor final Paris 2024 Olympics'); "tag" = 'NOMBRE · NOTA' o el lugar y año.
+  - Capítulos: los momentos de la final (la previa, los primeros ejercicios, el giro, el desenlace).
+graficos: |
+  Este vídeo narra una final/competición: usa "standings" cada vez que se dicen notas de varios participantes, "score" para la nota decisiva y "replay" en los momentos clave (caídas, aterrizajes).
+segundos_por_grafico: 60

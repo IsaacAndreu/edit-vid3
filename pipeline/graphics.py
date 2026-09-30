@@ -138,20 +138,6 @@ Reglas: nada inventado; textos en el idioma del guion.
 """.strip()
 
 
-FORMAT_HINTS = {
-    "lista": "Este vídeo es una lista de casos: en cada caso busca su momento clave para \"replay\", sus cifras para "
-             "\"score\"/\"podium\", y la reacción de la prensa o el público para \"press\".",
-    "rivalidad": "Este vídeo es una rivalidad entre dos: usa \"compare\" y \"split\" cada vez que se enfrentan, \"card\" "
-                 "para presentar a cada uno, \"standings\"/\"podium\" cuando se dicen resultados de sus duelos.",
-    "records": "Este vídeo va de récords: usa \"scale\" para dar tamaño a cada marca, \"chart\"/\"race\" para su "
-               "evolución, \"card\" para quien lo tiene y \"kinetic\" para la cifra imposible.",
-    "tecnica": "Este vídeo explica cómo se hace un movimiento/técnica: usa \"strobe\" y \"replay\" cada vez que se "
-               "describe una fase del movimiento, y \"specs\" para la ficha del elemento (dificultad, año, quién lo creó).",
-    "final": "Este vídeo narra una final/competición: usa \"standings\" cada vez que se dicen notas de varios "
-             "participantes, \"score\" para la nota decisiva y \"replay\" en los momentos clave (caídas, aterrizajes).",
-}
-
-
 # --- geography ----------------------------------------------------------------------------------
 
 def country_names(root: Path) -> set[str]:
@@ -472,7 +458,8 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
     passes = {"ranking": ranking, "prohibidos": banned}
     ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
     fmt = str(ctx.config.get("format") or "")
-    every = float((cfg.get("seconds_per_format") or {}).get(fmt, cfg.get("seconds_per_graphic", 100)))
+    every = float((cfg.get("seconds_per_format") or {}).get(fmt)
+                  or ctx.format.get("segundos_por_grafico") or cfg.get("seconds_per_graphic", 100))
     count = max(1, round(duration / every))
     count = min(count, int(cfg.get("max", 8)))
     allowed = [t for t in cfg.get("types", TYPES) if t in TYPES and not (ranked and t == "rank")]
@@ -481,7 +468,7 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
         proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
                                  system=SYSTEM.format(count=count, refs=", ".join(REFERENCES))
                                  + f"\nTipos permitidos en este canal: {', '.join(allowed)}."
-                                 + (f"\n{FORMAT_HINTS[fmt]}" if fmt in FORMAT_HINTS else "")
+                                 + (f"\n{str(ctx.format['graficos']).strip()}" if ctx.format.get("graficos") else "")
                                  + (f"\n{cfg['hint']}" if cfg.get("hint") else "")).get("graphics", [])
     except Exception as error:  # graphics are a bonus: the video is complete without them
         print(f"   Gráficos no disponibles: {str(error)[:120]}")

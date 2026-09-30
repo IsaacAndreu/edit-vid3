@@ -67,75 +67,8 @@ Reglas de los capítulos:
   el primer capítulo empieza cuando arranca el desarrollo del tema.
 """.strip()
 
-RANKING_OUTLINE = """
-ESTE VÍDEO ES UN RANKING / CUENTA ATRÁS (top X de ciudades, robots, empresas…), sin protagonista:
-- "subject": "" y "peak": "".
-- "events": uno por puesto, desde la frase que lo presenta. "label" = búsqueda EN INGLÉS del elemento
-  de ese puesto y del metraje que lo enseña (p. ej. 'Shenzhen China skyline drone footage',
-  'Unitree H1 humanoid robot walking demo'); "tag" = 'Nº 7 · SHENZHEN' (máx. 30 caracteres).
-- La intro antes del primer puesto es un evento general del tema del ranking.
-- Capítulos: agrupan varios puestos (p. ej. "DEL 10 AL 7", "EL PODIO"), con las mismas reglas.
-""".strip()
-
-
-BANNED_OUTLINE = """
-ESTE VÍDEO REPASA COSAS PROHIBIDAS/ELIMINADAS de un deporte (elementos, técnicas, trajes, reglas…):
-- "subject": "" salvo que todo el vídeo sea sobre una sola persona; "peak": "".
-- "events": uno por elemento prohibido, desde la frase que lo presenta, y otro cuando se cuenta quién lo hizo
-  famoso. "label" = búsqueda EN INGLÉS que encuentre ese elemento en vídeo (elemento + deporte + persona +
-  año, p. ej. 'Korbut flip uneven bars Olga Korbut 1972'); "tag" = 'NOMBRE DEL ELEMENTO · AÑO' si se dice.
-- Capítulos: agrupan elementos (por aparato, por época…), con las mismas reglas.
-""".strip()
-
-TECHNIQUE_OUTLINE = """
-ESTE VÍDEO EXPLICA UNA TÉCNICA O UN MOVIMIENTO (cómo se hace, por qué es tan difícil):
-- "subject": la persona que lo creó o lo hace mejor si el vídeo gira en torno a ella; si no, "".
-- "events": uno por cada ejecución o fase que se cuenta; "label" = búsqueda EN INGLÉS que encuentre ese
-  movimiento bien visible y con la cámara lo más quieta posible (p. ej. 'Yurchenko double pike vault
-  Simone Biles slow motion side view'); "tag" = nombre del movimiento y año si se dice.
-- Capítulos: las partes de la explicación (origen, cómo se hace, por qué es difícil, quién lo domina).
-""".strip()
-
-FINAL_OUTLINE = """
-ESTE VÍDEO NARRA UNA FINAL O COMPETICIÓN CONCRETA, participante a participante:
-- "subject": el protagonista de la final si lo hay; si no, "".
-- "peak": búsqueda EN INGLÉS del momento decisivo de esa final.
-- "events": uno por cada participante o ejercicio que se cuenta, SIEMPRE con la competición y el año
-  (p. ej. 'Carlos Yulo floor final Paris 2024 Olympics'); "tag" = 'NOMBRE · NOTA' o el lugar y año.
-- Capítulos: los momentos de la final (la previa, los primeros ejercicios, el giro, el desenlace).
-""".strip()
-
-RIVALRY_OUTLINE = """
-ESTE VÍDEO ES UNA RIVALIDAD ENTRE DOS (personas, equipos o países):
-- "subject": "" (son dos protagonistas); "peak": búsqueda EN INGLÉS de su duelo más famoso.
-- "events": uno por cada duelo o etapa, con los DOS nombres, la competición y el año
-  (p. ej. 'Simone Biles Rebeca Andrade vault final Paris 2024'); si un tramo habla solo de uno, solo ese.
-- Capítulos: las etapas de la rivalidad (el origen, el primer duelo, el cambio, el último duelo).
-""".strip()
-
-RECORDS_OUTLINE = """
-ESTE VÍDEO VA DE RÉCORDS (marcas imposibles, quién las tiene, cuánto duran):
-- "subject": "" salvo que todo el vídeo sea el récord de una persona.
-- "events": uno por récord, desde la frase que lo presenta: "label" = búsqueda EN INGLÉS de la prueba en la
-  que se batió (persona + prueba + récord + año, p. ej. 'Javier Sotomayor high jump world record 2.45 1993');
-  "tag" = 'RÉCORD · AÑO' o la marca si se dice.
-""".strip()
-
-LIST_OUTLINE = """
-ESTE VÍDEO ES UNA LISTA DE CASOS SIN NUMERAR (fallos, momentos, anécdotas…), cada uno con su protagonista:
-- "subject": "" (hay varios protagonistas); "peak": "".
-- "events": uno por caso, desde la frase que lo presenta, y otro cuando dentro del caso cambia el momento
-  concreto. "label" = búsqueda EN INGLÉS de ESE momento (persona + aparato/hecho + competición + año, p. ej.
-  'Gabby Douglas balance beam fall London 2012'); "tag" = 'LUGAR · AÑO' tal como se dice.
-- Capítulos: agrupan casos (por tono o por época), con las mismas reglas.
-""".strip()
-
-FORMAT_OUTLINES = {"lista": LIST_OUTLINE, "rivalidad": RIVALRY_OUTLINE, "records": RECORDS_OUTLINE, "ranking": RANKING_OUTLINE, "prohibidos": BANNED_OUTLINE, "tecnica": TECHNIQUE_OUTLINE,
-                   "final": FINAL_OUTLINE}
-
-
 def outline_system(ctx: RunContext) -> str:
-    extra = FORMAT_OUTLINES.get(str(ctx.config.get("format") or ""))
+    extra = str(ctx.format.get("guion") or "").strip()                   # formatos/<format>.yaml
     series = str(ctx.section("planner").get("outline") or "").strip()   # the channel series' own notes
     return OUTLINE_SYSTEM + "".join("\n\n" + part for part in (extra, series) if part)
 

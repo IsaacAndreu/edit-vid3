@@ -1,0 +1,18 @@
+# Formato «Mitos». Úsalo con `format: mitos` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Mitos contra realidad"
+descripcion: "Cosas que todo el mundo cree y no son verdad (o sí), cada mito con su prueba."
+ejemplos: "7 mitos de la gimnasia que te creíste, lo que nadie te dijo de los robots, mitos del dinero de los futbolistas."
+guion: |
+  ESTE VÍDEO DESMONTA MITOS: cada caso es una creencia y luego la realidad con su prueba.
+  - "subject": ""; "peak": "".
+  - "events": uno para cada mito, desde la frase que lo presenta ("label" = búsqueda EN INGLÉS de imágenes que
+    ilustren esa creencia de forma concreta), y otro para la realidad desde la frase que la explica ("label" =
+    búsqueda EN INGLÉS de la PRUEBA: el dato, el experimento, la competición o la persona que lo demuestra, con
+    año); "tag" = 'MITO' o 'REALIDAD' y el número si el guion los numera ('MITO 3').
+  - Capítulos: agrupan mitos por tema, con las mismas reglas.
+graficos: |
+  Este vídeo desmonta mitos: usa "kinetic" para enunciar cada mito ('MITO: …') y su veredicto ('FALSO', 'VERDAD A
+  MEDIAS'), "compare" para lo que se cree frente a lo real, "chart" o "scale" para el dato que lo prueba y "press"
+  si el mito salió en los medios.
+segundos_por_grafico: 55
+titulos: "patrón de título de mitos: '<N> mitos de <tema> que te creíste' o 'Lo que nadie te dijo de <tema>'."

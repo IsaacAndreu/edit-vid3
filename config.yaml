@@ -3,7 +3,7 @@
 # Perfil de canal por defecto: canales/<canal>.yaml se mezcla encima de este archivo (marca, música,
 # fuentes, ideas…). Cada vídeo puede elegir otro con `canal: robots` en materiales/<vídeo>/config.yaml.
 canal: gimnasia
-format: historia                   # historia | ranking (cuenta atrás) | prohibidos (cosas baneadas) | tecnica | final | rivalidad | records | lista
+format: historia                   # cómo se cuenta el vídeo: formatos/<formato>.yaml (lista completa: python main.py --formatos)
 
 video:
   width: 1920
@@ -202,7 +202,7 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   # score: nota desglosada (D + E − penalización) · press: recortes de prensa · rule: página del reglamento
   # con sello · split: dos clips lado a lado · strobe: estroboscopia · replay: repetición a cámara lenta con
   # el atleta señalado · standings: marcador que se reordena. "rank"/"banned": formatos ranking y prohibidos.
-  seconds_per_format: {tecnica: 55, final: 60, rivalidad: 70, records: 60, lista: 65}   # más gráficos en estos formatos
+  # seconds_per_format: {tecnica: 55}   # opcional: cambia el ritmo de un formato (el suyo está en formatos/<formato>.yaml)
   banned_seconds: 5.5              # tarjeta de cada elemento en los vídeos de prohibidos
 
 shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/

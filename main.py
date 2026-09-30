@@ -61,6 +61,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
     parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
+    target.add_argument("--formatos", action="store_true",
+                        help="Lista de formatos de vídeo (formatos/*.yaml): se eligen con format: en la config.yaml.")
     target.add_argument("--semana", metavar="CANAL",
                         help="Plan de la semana: 1 idea por cada serie del canal (canales/<canal>.yaml → series:), "
                              "en out/_ideas/<canal>/semana-<fecha>.md.")
@@ -372,6 +374,12 @@ def main() -> None:
 
         path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
         print(f"Ideas en {path}")
+        return
+    if args.formatos:
+        from pipeline import formats
+
+        print(formats.listing(PROJECT_ROOT))
+        print("\nÚsalo con `format: <nombre>` en materiales/<vídeo>/config.yaml (o en el canal / la serie).")
         return
     if args.semana:
         from pipeline import ideas

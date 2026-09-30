@@ -1,0 +1,13 @@
+# Formato «Récords». Úsalo con `format: records` en la config.yaml del vídeo, del canal o de la serie.
+nombre: Récords
+descripcion: Marcas imposibles, quién las tiene y cuánto duran, con escalas y gráficas de evolución.
+ejemplos: Los récords que nadie ha batido en 30 años.
+guion: |
+  ESTE VÍDEO VA DE RÉCORDS (marcas imposibles, quién las tiene, cuánto duran):
+  - "subject": "" salvo que todo el vídeo sea el récord de una persona.
+  - "events": uno por récord, desde la frase que lo presenta: "label" = búsqueda EN INGLÉS de la prueba en la
+    que se batió (persona + prueba + récord + año, p. ej. 'Javier Sotomayor high jump world record 2.45 1993');
+    "tag" = 'RÉCORD · AÑO' o la marca si se dice.
+graficos: |
+  Este vídeo va de récords: usa "scale" para dar tamaño a cada marca, "chart"/"race" para su evolución, "card" para quien lo tiene y "kinetic" para la cifra imposible.
+segundos_por_grafico: 60

@@ -1,0 +1,13 @@
+# Formato «Ranking / cuenta atrás». Úsalo con `format: ranking` en la config.yaml del vídeo, del canal o de la serie.
+nombre: Ranking / cuenta atrás
+descripcion: 'Top X numerado de ciudades, robots, empresas…, sin protagonista. Cada puesto lleva su tarjeta #7/10
+  y un mapa si es un lugar.'
+ejemplos: Los 10 robots más avanzados, las 7 ciudades más ricas.
+guion: |
+  ESTE VÍDEO ES UN RANKING / CUENTA ATRÁS (top X de ciudades, robots, empresas…), sin protagonista:
+  - "subject": "" y "peak": "".
+  - "events": uno por puesto, desde la frase que lo presenta. "label" = búsqueda EN INGLÉS del elemento
+    de ese puesto y del metraje que lo enseña (p. ej. 'Shenzhen China skyline drone footage',
+    'Unitree H1 humanoid robot walking demo'); "tag" = 'Nº 7 · SHENZHEN' (máx. 30 caracteres).
+  - La intro antes del primer puesto es un evento general del tema del ranking.
+  - Capítulos: agrupan varios puestos (p. ej. "DEL 10 AL 7", "EL PODIO"), con las mismas reglas.

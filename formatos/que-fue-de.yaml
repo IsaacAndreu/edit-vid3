@@ -1,0 +1,17 @@
+# Formato «Qué fue de…». Úsalo con `format: que-fue-de` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Qué fue de…"
+descripcion: "Qué pasó después con personas, equipos o empresas que fueron famosos: entonces y ahora."
+ejemplos: "Qué fue de las gimnastas de Atlanta 96, qué fue de los robots que iban a cambiarlo todo."
+guion: |
+  ESTE VÍDEO CUENTA QUÉ FUE DE VARIAS PERSONAS/EQUIPOS/EMPRESAS (o de una sola) después de su momento de fama:
+  - "subject": "" si son varios; si es uno solo, 'Nombre Apellido · actividad en inglés'.
+  - "peak": "".
+  - "events": para cada caso, uno para su momento de gloria (con la competición o el hecho y el año: 'Kerri Strug
+    vault Atlanta 1996') y otro para su vida DESPUÉS con la palabra 'today', 'now' o 'interview' y el año si se dice
+    ('Kerri Strug interview 2021'); "tag" = 'ENTONCES · 1996' / 'AHORA · 2024' o 'LUGAR · AÑO'.
+  - Capítulos: agrupan casos (por época o por lo que les pasó), con las mismas reglas.
+graficos: |
+  Este vídeo es un «qué fue de»: usa "card" para presentar a cada persona la primera vez, "compare" o "split" para
+  entonces frente a ahora, y "timeline" para lo que hizo después.
+segundos_por_grafico: 65
+titulos: "patrón de título: 'Qué fue de <grupo o persona famosa>' o '<Persona>: de <gloria> a <presente sorprendente>'."

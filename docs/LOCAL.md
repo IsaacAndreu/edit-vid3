@@ -365,6 +365,11 @@ fuentes de confianza, la competencia, las búsquedas del panel y el formato. Se 
   (`tension-*.mp3`, `whoosh-*.mp3`…). Si están vacías, se usan las de `assets/`.
 - Un canal nuevo: copia `canales/robots.yaml` con otro nombre y cambia lo que quieras.
 
+**Formatos.** Cada formato (historia, ranking, lista, explicativo, cronología, investigación, qué fue
+de, mitos, misterio…) es un fichero `formatos/<nombre>.yaml`. Se elige con `format: <nombre>` en la
+`config.yaml` del vídeo. Con `python main.py --formatos` sale la lista con ejemplos. Para crear uno
+nuevo se copia un fichero; consulta `formatos/LEEME.md`.
+
 **Series de un canal.** Un canal puede tener varias series (formatos que se repiten), como el de
 negocios: `auge-caida`, `estafas`, `negocio-oculto`, `deporte-dinero` y `economia`. Cada serie cambia
 el enfoque del guion por escenas, los gráficos, los títulos, las ideas y las búsquedas. Los colores

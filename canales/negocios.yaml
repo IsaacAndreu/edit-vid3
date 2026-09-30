@@ -60,9 +60,11 @@ lab:
 
 # --- series: los 5 formatos que se prueban cada semana (uno de cada) ---------------------------------------
 # En materiales/<vídeo>/config.yaml: `serie: estafas`. Cada serie cambia lo que pone aquí; lo demás es del canal.
-# Las listas (types, queries, trusted_channels…) se sustituyen enteras, no se suman.
+# Las listas (types, queries, trusted_channels…) se sustituyen enteras, no se suman. `format:` es el formato
+# de formatos/ que usa la serie (su guion y sus gráficos); lo de `planner`/`graphics`/`package` se añade encima.
 series:
   auge-caida:                      # «Cómo X pasó de valer 5.000 millones a nada»
+    format: cronologia
     planner:
       outline: "ESTE VÍDEO ES UN AUGE Y CAÍDA DE UNA EMPRESA: el hilo va por fechas (fundación, el éxito, la
         señal de alarma, la caída, qué queda hoy). Cada evento con su año en 'tag' ('MADRID · 2008'); los
@@ -85,6 +87,7 @@ series:
                 qué pasó con la empresa]
 
   estafas:                         # «La empresa que engañó a 400.000 familias»
+    format: investigacion
     planner:
       outline: "ESTE VÍDEO CUENTA UNA ESTAFA O FRAUDE FINANCIERO como un true crime: quién era el estafador, cómo
         funcionaba el engaño, las víctimas, cómo se descubrió y el juicio. 'tag' con lugar y año; 'label' busca
@@ -110,6 +113,7 @@ series:
                 how ponzi scheme worked]
 
   negocio-oculto:                  # «Cómo gana dinero Ryanair con billetes de 10 €»
+    format: explicativo
     planner:
       outline: "ESTE VÍDEO EXPLICA EL NEGOCIO OCULTO DE UNA MARCA CONOCIDA: de dónde sale de verdad el dinero, los
         trucos con el cliente y las cifras. Los 'label' buscan la marca en acción (tiendas, aviones, fábricas,
@@ -157,6 +161,7 @@ series:
                 how clubs make money]
 
   economia:                        # «Por qué los pisos cuestan tanto en España»
+    format: explicativo
     planner:
       outline: "ESTE VÍDEO EXPLICA UN PROBLEMA DE LA ECONOMÍA DE ESPAÑA (vivienda, sueldos, pensiones, precios…)
         con datos y casos concretos: el problema, por qué pasa, quién gana y quién pierde, qué puede venir. Los
@@ -165,7 +170,6 @@ series:
       types: [chart, map, compare, race, scale, kinetic, timeline, split, press]
       hint: "Es economía explicada: usa \"chart\" para la evolución de precios/sueldos, \"map\" para comparar
         comunidades o países, \"compare\" para antes frente a ahora y \"kinetic\" para la cifra que duele."
-      seconds_per_graphic: 60
     package:
       hint: "patrón de título: pregunta o afirmación que duele al espectador con una cifra ('Por qué un piso cuesta
         20 años de sueldo'). Evita el tono político."

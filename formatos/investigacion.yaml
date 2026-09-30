@@ -1,0 +1,20 @@
+# Formato «Investigación». Úsalo con `format: investigacion` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Investigación / true crime"
+descripcion: "Un escándalo, fraude o caso contado como true crime, con fuentes, fechas y el desenlace judicial."
+ejemplos: "El escándalo Nassar, la estafa de Fórum Filatélico, el dopaje de estado en Rusia."
+guion: |
+  ESTE VÍDEO ES UNA INVESTIGACIÓN (true crime): un caso con culpables, víctimas, pruebas y desenlace.
+  - "subject": el principal implicado si todo gira en torno a él ('Bernie Madoff · financier'); si no, "".
+  - "peak": búsqueda EN INGLÉS del momento en que estalla el caso (la detención, la portada, el juicio).
+  - "events": uno por cada fase del caso (quién era, cómo funcionaba, las primeras señales, cómo se descubrió, el
+    juicio, qué pasó después) y otro cada vez que entra una persona nueva (una víctima, un investigador). "label" =
+    búsqueda EN INGLÉS de la cobertura de NOTICIAS de ese momento con nombres, lugar y año ('Madoff arrested
+    December 2008 news report', 'Larry Nassar sentencing hearing 2018'); "tag" = 'LUGAR · AÑO'.
+  - Nada de recreaciones de películas o series: solo noticias, juicios, entrevistas y lugares reales.
+  - Capítulos: las fases del caso ('EL PLAN', 'LAS SEÑALES', 'LA CAÍDA', 'EL JUICIO').
+graficos: |
+  Este vídeo es una investigación: usa "card" para presentar a cada implicado, "timeline" para la cronología del
+  caso, "press" cuando salta a los medios, "rule" para la ley o la condena, "map" si hay lugares y "scale" o
+  "kinetic" para las cifras (dinero, víctimas, años de condena).
+segundos_por_grafico: 70
+titulos: "patrón de título de investigación: 'La estafa/el escándalo que <consecuencia>' o 'Cómo <persona> engañó a <cifra>', sin acusar de nada que el guion no diga."

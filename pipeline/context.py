@@ -79,6 +79,7 @@ class RunContext:
             ctx.config = deep_merge(ctx.config, catalog[str(serie)])
             ctx.config["serie"] = str(serie)
         ctx.config = deep_merge(ctx.config, {k: v for k, v in override.items() if k not in ("canal", "serie")})
+        ctx.format                                   # an unknown format fails here, not halfway through the night
         return ctx
 
     @property
@@ -88,6 +89,14 @@ class RunContext:
     @property
     def series(self) -> str:
         return str(self.config.get("serie") or "")
+
+    @property
+    def format(self) -> dict[str, Any]:
+        """formatos/<format>.yaml of this video ({} without a format)."""
+
+        from .formats import spec
+
+        return spec(self.root, str(self.config.get("format") or ""))
 
     def _dir(self, key: str, default: str) -> Path:
         return self.root / str(self.config.get("paths", {}).get(key, default))

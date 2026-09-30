@@ -1,0 +1,4 @@
+# Formato «Historia». Úsalo con `format: historia` en la config.yaml del vídeo, del canal o de la serie.
+nombre: Historia
+descripcion: La historia de una persona o de un hecho, por fechas y con protagonista.
+ejemplos: Biografías de atletas, la historia de una empresa.
