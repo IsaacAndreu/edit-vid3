@@ -34,31 +34,59 @@ def versions() -> dict[str, str]:
     return {"yt-dlp": get("yt-dlp"), "ejs": get("yt-dlp-ejs"), "js": runtime}
 
 
-def _try(ctx: RunContext, sets: list[Any], label: str) -> dict[str, Any]:
+PROBE_LIMIT = 90                     # seconds per attempt: slower than this is "too slow" anyway
+
+
+def _probe(ctx: RunContext, cookies: bool, ipv4: bool) -> dict[str, Any]:
+    """One download, in this process (called from a child process so it can be cut off)."""
+
+    from .sourcing import cookie_sets
     from .sourcing.youtube import WARNING_COUNTS, YouTubeSource
 
-    cfg = dict(ctx.section("sourcing").get("youtube", {}))
+    cfg = {**ctx.section("sourcing").get("youtube", {}), "force_ipv4": ipv4}
+    sets = cookie_sets(ctx, cfg) if cookies else []
     WARNING_COUNTS.clear()
     with tempfile.TemporaryDirectory() as tmp:
         source = YouTubeSource(root=ctx.root, cache_dir=Path(tmp), config=cfg, cookie_sets=sets)
         began = time.monotonic()
         try:
-            path = source.download_range(TEST_VIDEO, *TEST_RANGE, fmt=FORMAT, prefix="probe")
-            size = path.stat().st_size
-            error = ""
+            size, error = source.download_range(TEST_VIDEO, *TEST_RANGE, fmt=FORMAT, prefix="probe").stat().st_size, ""
         except Exception as exc:     # the verdict explains it
             size, error = 0, f"{type(exc).__name__}: {str(exc)[:200]}"
         finally:
             source.close()
         seconds = time.monotonic() - began
         phases = {action: round(total, 1) for action, (_, total) in source.stats.items()}
-    result = {"label": label, "seconds": round(seconds, 1), "mb": round(size / 1e6, 1), "error": error,
-              "warnings": dict(WARNING_COUNTS), "phases": phases}
-    speed = f"{result['mb'] / seconds:.1f} MB/s" if size and seconds else "—"
-    detail = f"{seconds:.1f} s para 10 s de vídeo ({result['mb']} MB, {speed})"
-    print(f"   {label}: {'ERROR ' + error if error else detail}")
-    if phases:
-        print("      por fases: " + " · ".join(f"{k} {v} s" for k, v in phases.items()))
+    return {"seconds": round(seconds, 1), "mb": round(size / 1e6, 1), "error": error,
+            "warnings": dict(WARNING_COUNTS), "phases": phases}
+
+
+def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool) -> dict[str, Any]:
+    """Run one probe in a child process, cut off after PROBE_LIMIT seconds."""
+
+    import json
+    import subprocess
+    import sys
+
+    began = time.monotonic()
+    try:
+        done = subprocess.run([sys.executable, "-m", "pipeline.ytcheck", "probe", str(int(cookies)), str(int(ipv4))],
+                              capture_output=True, text=True, timeout=PROBE_LIMIT, cwd=ctx.root)
+        lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
+        result = json.loads(lines[-1]) if lines else {"seconds": round(time.monotonic() - began, 1), "mb": 0,
+                                                       "error": (done.stderr or "sin respuesta")[-200:], "warnings": {}, "phases": {}}
+    except subprocess.TimeoutExpired:
+        result = {"seconds": float(PROBE_LIMIT), "mb": 0, "error": "", "warnings": {}, "phases": {}, "timeout": True}
+    result.update(label=label, cookies=cookies, ipv4=ipv4)
+    if result.get("timeout"):
+        print(f"   {label}: más de {PROBE_LIMIT} s para 10 s de vídeo (cortado)")
+    elif result["error"]:
+        print(f"   {label}: ERROR {result['error']}")
+    else:
+        speed = result["mb"] / result["seconds"] if result["seconds"] else 0
+        print(f"   {label}: {result['seconds']:.1f} s para 10 s de vídeo ({result['mb']} MB, {speed:.1f} MB/s)")
+    if result.get("phases"):
+        print("      por fases: " + " · ".join(f"{k} {v} s" for k, v in result["phases"].items()))
     return result
 
 
@@ -81,6 +109,20 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
 
     out: list[str] = []
     line = info.get("line")
+    v4 = next((r for r in runs if r.get("ipv4") and r.get("cookies", True) == runs[0].get("cookies", True)), None)
+    v6 = next((r for r in runs if r.get("ipv4") is False), None)
+    if v4 and v6 and not v4["error"] and not v6["error"]:
+        if v4["seconds"] <= GOOD and v6["seconds"] > SLOW:
+            out.append(f"¡Era IPv6! Con IPv4 tarda {v4['seconds']:.0f} s y por la red por defecto {v6['seconds']:.0f} s. "
+                       "Ya viene arreglado: config.yaml trae sourcing.youtube.force_ipv4: true (no lo quites).")
+        elif v6["seconds"] <= GOOD and v4["seconds"] > SLOW:
+            out.append("Aquí IPv6 va mejor que IPv4: pon sourcing: {youtube: {force_ipv4: false}} en config.yaml.")
+    slow_all = runs and all(r.get("timeout") or (not r["error"] and r["seconds"] > SLOW) for r in runs)
+    if slow_all and line is not None and line >= 2 and not any(r.get("phases") for r in runs):
+        out.append(f"Tu conexión va bien ({line} MB/s fuera de YouTube) pero YouTube va a paso de tortuga en todos los "
+                   "intentos (IPv4, IPv6, con y sin cookies): YouTube frena a tu IP. Lo más rápido: apaga el router 5 "
+                   "minutos (IP nueva) y repite la prueba; o prueba compartiendo datos del móvil — si ahí va rápido, "
+                   "es tu IP de casa.")
     fastest_run = min((r for r in runs if not r["error"]), key=lambda r: r["seconds"], default=None)
     if fastest_run and fastest_run["seconds"] > SLOW:
         phases = fastest_run.get("phases") or {}
@@ -96,8 +138,8 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
                        "antivirus (Windows Defender → Exclusiones) y vuelve a probar.")
         elif line is not None and line >= 2 and download > SLOW:
             out.append(f"Tu conexión va bien ({line} MB/s fuera de YouTube) pero YouTube te sirve el vídeo a paso de tortuga "
-                       f"({download:.0f} s de descarga): YouTube frena a tu IP o a tus cuentas. Prueba sin cookies y, si "
-                       "sigue igual, reinicia el router (IP nueva) o usa otra red una noche.")
+                       f"({download:.0f} s de descarga): YouTube frena a tu IP. Apaga el router 5 minutos (IP nueva) y "
+                       "repite la prueba, o prueba con los datos del móvil: si ahí va rápido, es tu IP de casa.")
         elif line is not None and line < 2:
             out.append(f"Tu conexión va lenta en general ({line} MB/s fuera de YouTube): no es cosa de YouTube. Prueba "
                        "por cable, sin VPN, o revisa que nada más esté descargando por la noche.")
@@ -113,7 +155,7 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
                    "(pip install -U \"yt-dlp[default]\" y deno upgrade) y vuelve a probar.")
     ok = [r for r in runs if not r["error"]]
     blocked = [r for r in runs if "sign in" in r["error"].lower() or "robot" in r["error"].lower() or "bot\"" in r["error"].lower()]
-    if any(r["label"] == "con cookies" for r in blocked) or (blocked and len(runs) == 1):
+    if any(r.get("cookies", r["label"].startswith("con cookies")) for r in blocked) or (blocked and len(runs) == 1):
         out.append("YouTube pide iniciar sesión («no eres un robot»): renueva las cookies (exporta de nuevo "
                    "youtube-cookies.txt desde el navegador) o usa browser_accounts en config.yaml.")
     elif blocked:
@@ -121,8 +163,9 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
     if "429" in warned or any("429" in r["error"] for r in runs):
         out.append("YouTube está limitando a tu conexión (429). Baja sourcing.youtube.concurrency a 1-2, sube "
                    "min_interval a 2 y deja la cola en parallel_videos: 1 unas noches.")
-    if len(ok) == 2 and ok[0]["label"] == "con cookies":
-        with_cookies, without = ok
+    with_cookies = next((r for r in ok if r.get("cookies") and r.get("ipv4", True)), None)
+    without = next((r for r in ok if r.get("cookies") is False), None)
+    if with_cookies and without:
         if with_cookies["seconds"] > SLOW and without["seconds"] < GOOD:
             out.append("Con tus cookies va lento y sin ellas rápido: YouTube frena a ESA cuenta. Exporta cookies de "
                        "otra cuenta (o quita la actual) — las búsquedas y descargas públicas no las necesitan.")
@@ -146,16 +189,24 @@ def run(ctx: RunContext) -> list[str]:
     info = versions()
     print(f"yt-dlp {info['yt-dlp'] or 'NO INSTALADO'} · retos (yt-dlp-ejs) {info['ejs'] or 'FALTA'} · "
           f"JavaScript: {info['js'] or 'NINGUNO'}")
-    sets = cookie_sets(ctx, ctx.section("sourcing").get("youtube", {}))
-    print(f"Descargando 10 s de un vídeo de prueba como en la cola de noche ({len(sets)} cuenta(s) de cookies)…")
-    runs = []
-    if sets:
-        runs.append(_try(ctx, sets, "con cookies"))
-    runs.append(_try(ctx, [], "sin cookies"))
     info["line"] = connection_speed()
-    print(f"   Conexión fuera de YouTube: {info['line'] if info['line'] is not None else '?'} MB/s")
+    print(f"Conexión fuera de YouTube: {info['line'] if info['line'] is not None else '?'} MB/s")
+    cookies = bool(cookie_sets(ctx, ctx.section("sourcing").get("youtube", {})))
+    who = "con cookies" if cookies else "sin cookies"
+    print(f"Descargando 10 s de un vídeo de prueba como en la cola de noche (cada intento se corta a los {PROBE_LIMIT} s)…")
+    runs = [_try(ctx, f"{who}, IPv4", cookies, True), _try(ctx, f"{who}, red por defecto (IPv6)", cookies, False)]
+    if cookies and all(r.get("timeout") or r["seconds"] > SLOW for r in runs):
+        runs.append(_try(ctx, "sin cookies, IPv4", False, True))
     lines = verdict(info, runs)
     print("\nQué hacer:")
     for n, line in enumerate(lines, 1):
         print(f" {n}. {line}")
     return lines
+
+
+if __name__ == "__main__":
+    import json
+    import sys
+
+    if len(sys.argv) == 4 and sys.argv[1] == "probe":
+        print(json.dumps(_probe(RunContext.create("_ytcheck"), sys.argv[2] == "1", sys.argv[3] == "1")))

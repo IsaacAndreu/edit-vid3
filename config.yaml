@@ -66,6 +66,7 @@ sourcing:
     api_queries_per_shot: 2        # con la API: búsqueda del evento + 1 más por plano (≈30.000 unidades/vídeo → ~3 vídeos/día)
     api_search: true               # buscar con YOUTUBE_API_KEYS (sin bloqueos); si se acaba la cuota, sigue con yt-dlp
     player_client: null        # p. ej. [android_vr] si YouTube cambia algo
+    force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
   images:
     max_per_shot: 6
     min_width: 1280

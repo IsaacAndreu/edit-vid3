@@ -119,6 +119,8 @@ class YouTubeSource:
         }
         if shutil.which("deno") is None and shutil.which("node") is not None:
             options["js_runtimes"] = {"node": {}}
+        if config.get("force_ipv4"):
+            options["source_address"] = "0.0.0.0"   # YouTube over IPv6 crawls with some providers
         if config.get("player_client"):
             options["extractor_args"] = {"youtube": {"player_client": list(config["player_client"])}}
         if config.get("cookies_from_browser"):

@@ -4,7 +4,8 @@ OK = {"yt-dlp": "2026.8.19", "ejs": "0.8.0", "js": "deno"}
 
 
 def run(label, seconds, error="", warnings=None):
-    return {"label": label, "seconds": seconds, "mb": 2.7, "error": error, "warnings": warnings or {}}
+    return {"label": label, "seconds": seconds, "mb": 2.7, "error": error, "warnings": warnings or {},
+            "cookies": label.startswith("con cookies"), "ipv4": "IPv6" not in label}
 
 
 def test_missing_solver_comes_first():
@@ -43,3 +44,15 @@ def test_fast_line_but_slow_download_is_youtube_throttling():
 def test_slow_line_is_the_connection():
     slow = {**run("con cookies", 330), "phases": {"info": 5, "download": 320}}
     assert "conexión va lenta" in verdict({**OK, "line": 0.4}, [slow])[0]
+
+
+def test_ipv6_is_the_culprit():
+    lines = verdict({**OK, "line": 9.0}, [run("con cookies, IPv4", 6), run("con cookies, red por defecto (IPv6)", 90)])
+    assert lines[0].startswith("¡Era IPv6!")
+
+
+def test_everything_cut_off_with_a_good_line_is_the_home_ip():
+    cut = {"timeout": True, "phases": {}}
+    runs = [{**run("con cookies, IPv4", 90), **cut}, {**run("con cookies, red por defecto (IPv6)", 90), **cut},
+            {**run("sin cookies, IPv4", 90), **cut}]
+    assert "router" in verdict({**OK, "line": 11.0}, runs)[0]
