@@ -1,0 +1,15 @@
+# Formato «Iceberg». Úsalo con `format: iceberg` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Iceberg"
+descripcion: "De lo que todo el mundo sabe a lo más oculto, nivel a nivel: la cámara se hunde en el iceberg en cada nivel."
+ejemplos: "El iceberg de la gimnasia, el iceberg de Mercadona, el iceberg de los robots secretos."
+guion: |
+  ESTE VÍDEO ES UN ICEBERG: niveles de lo más conocido (arriba) a lo más oscuro (abajo), varios casos por nivel.
+  - "subject": ""; "peak": "".
+  - "events": uno por caso, desde la frase que lo presenta. "label" = búsqueda EN INGLÉS de ese caso concreto
+    (persona, lugar, documento, noticia, año); "tag" = 'NIVEL 3' o el lugar y año si se dicen.
+  - Capítulos: uno por nivel ('NIVEL 1: LO QUE SABE TODO EL MUNDO'…), con las mismas reglas.
+graficos: |
+  Este vídeo es un iceberg: el iceberg sale solo al empezar cada nivel. Aparte, usa "press" para las noticias de
+  un caso, "timeline" para los casos con varias fechas y "kinetic" para el dato más oscuro.
+segundos_por_grafico: 110
+titulos: "patrón de título de iceberg: 'El iceberg de <tema>' o 'El iceberg de <tema>: de lo que sabes a lo que nadie cuenta'."

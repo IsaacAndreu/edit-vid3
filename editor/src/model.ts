@@ -237,7 +237,7 @@ export const GRAPHIC_NAMES: Record<string, string> = {
   map: 'Mapa', compare: 'A vs B', chart: 'Gráfica', timeline: 'Línea de tiempo', specs: 'Ficha técnica', rank: 'Puesto',
   kinetic: 'Texto cinético', score: 'Nota', press: 'Prensa', rule: 'Reglamento', split: 'Pantalla partida',
   banned: 'Prohibido', spotlight: 'Congelado', strobe: 'Estroboscopia', replay: 'Repetición', standings: 'Marcador',
-  podium: 'Podio', race: 'Carrera de barras', card: 'Carta', scale: 'Escala',
+  podium: 'Podio', race: 'Carrera de barras', card: 'Carta', scale: 'Escala', tier: 'Tier list', iceberg: 'Iceberg', receipt: 'Ticket',
 };
 
 export const groupName = (g: Group) =>

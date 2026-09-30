@@ -490,6 +490,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         people = json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])
     bounds = [s.from_ for s in shots] + [total]
     sessions: dict[str, Any] = {}
+    tier_media: dict[str, Any] = {}          # tier list: each element keeps the picture of its own passage
     added: list[TimelineGroup] = []
     blocked = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
     blocked += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter" or (s.media and s.media.layout == "person")]
@@ -550,6 +551,11 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             if not left or not right or left["src"] == right["src"]:
                 continue
             graphic["left"]["media"], graphic["right"]["media"] = left, right
+        if graphic["type"] == "tier":
+            graphic["items"] = [dict(it) for it in graphic["items"]]
+            tier_media[graphic["items"][graphic["current"]]["name"]] = footage()
+            for it in graphic["items"]:
+                it["media"] = tier_media.get(it["name"])
         if graphic["type"] == "podium":
             for place in graphic["places"]:
                 place["media"] = graphics.portrait(ctx, place["name"], people)

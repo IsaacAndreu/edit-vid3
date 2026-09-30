@@ -178,7 +178,31 @@ export interface ScaleGraphic {
   items: { name: string; value: number; reference?: boolean }[]; // references: everyday objects for size
 }
 
+export interface TierGraphic {
+  type: 'tier';
+  tiers: string[]; // rows, best first ("S", "A", "B"…)
+  items: { name: string; tier: string; media?: Media | null }[]; // everything placed so far
+  current: number; // index in items of the one being placed now (flies in)
+}
+
+export interface IcebergGraphic {
+  type: 'iceberg';
+  levels: string[]; // titles, top (known) to bottom (obscure)
+  current: number; // the level the camera sinks to
+  items: { name: string; level: number }[]; // cases of the levels above, written on their layer
+}
+
+export interface ReceiptGraphic {
+  type: 'receipt';
+  title?: string | null;
+  items: { label: string; value: string }[];
+  total?: { label: string; value: string } | null;
+}
+
 export type Graphic =
+  | TierGraphic
+  | IcebergGraphic
+  | ReceiptGraphic
   | PodiumGraphic
   | RaceGraphic
   | CardGraphic

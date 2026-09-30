@@ -26,7 +26,7 @@ brand:                             # estilo qash: verde lima sobre archivo real 
 graphics:
   seconds_per_graphic: 80          # los datos mandan en este canal: algún gráfico más que en gimnasia
   cover_weak: true                 # los gráficos van primero a las frases con imagen floja o de relleno
-  types: [map, compare, chart, timeline, specs, kinetic, press, rule, race, scale, split]
+  types: [map, compare, chart, timeline, specs, kinetic, press, rule, race, scale, split, receipt]
 
 people:
   max: 4                           # fundadores, directivos… con su tarjeta
@@ -149,7 +149,7 @@ series:
         trucos con el cliente y las cifras. Los 'label' buscan la marca en acción (tiendas, aviones, fábricas,
         anuncios con su nombre) y a sus directivos; 'tag' solo cuando se dice lugar o año."
     graphics:
-      types: [chart, compare, scale, specs, kinetic, split, map, race, press]
+      types: [chart, compare, scale, specs, kinetic, split, map, race, press, receipt]
       hint: "Es el negocio oculto de una marca: usa \"compare\" para lo que paga el cliente frente a lo que le cuesta a
         la empresa, \"chart\" para de dónde sale el dinero, \"specs\" para la ficha de la empresa y \"kinetic\" para
         el truco clave."
@@ -197,7 +197,7 @@ series:
         con datos y casos concretos: el problema, por qué pasa, quién gana y quién pierde, qué puede venir. Los
         'label' buscan imágenes de noticias concretas (ciudades, manifestaciones, ruedas de prensa) con lugar y año."
     graphics:
-      types: [chart, map, compare, race, scale, kinetic, timeline, split, press]
+      types: [chart, map, compare, race, scale, kinetic, timeline, split, press, receipt]
       hint: "Es economía explicada: usa \"chart\" para la evolución de precios/sueldos, \"map\" para comparar
         comunidades o países, \"compare\" para antes frente a ahora y \"kinetic\" para la cifra que duele."
     package:

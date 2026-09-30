@@ -1,0 +1,16 @@
+# Formato «Tier list». Úsalo con `format: tier-list` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Tier list"
+descripcion: "Elementos colocados en niveles (S, A, B, C, D…): el tablero aparece cada vez que se coloca uno, con su imagen."
+ejemplos: "Tier list de los aparatos de gimnasia, de los robots humanoides, de los supermercados de España."
+guion: |
+  ESTE VÍDEO ES UNA TIER LIST: va colocando elementos en niveles (S, A, B, C, D…), sin protagonista.
+  - "subject": ""; "peak": "".
+  - "events": uno por elemento, desde la frase que lo presenta. "label" = búsqueda EN INGLÉS que ENSEÑE ese elemento
+    (el robot, el aparato, la tienda, la persona) con lo más reconocible ('Unitree G1 humanoid robot demo',
+    'Mercadona supermarket store Spain'); "tag" = el nivel si se dice ('NIVEL S').
+  - Capítulos: agrupan por nivel ('LOS MEJORES', 'LO NORMAL', 'LO PEOR'), con las mismas reglas.
+graficos: |
+  Este vídeo es una tier list: el tablero de niveles sale solo cada vez que se coloca un elemento. Aparte, usa
+  "compare" cuando se comparan dos elementos y "specs" para la ficha de uno.
+segundos_por_grafico: 120
+titulos: "patrón de título de tier list: 'Tier list de <tema>' o 'Clasifico <N> <cosas> de peor a mejor', con el elemento polémico si lo hay."

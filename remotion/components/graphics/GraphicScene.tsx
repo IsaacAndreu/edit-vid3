@@ -20,6 +20,9 @@ import { PlayerCard } from './PlayerCard';
 import { Podium } from './Podium';
 import { Race } from './Race';
 import { Scale } from './Scale';
+import { Iceberg } from './Iceberg';
+import { Receipt } from './Receipt';
+import { TierList } from './TierList';
 
 /** Full-screen animated graphic of any kind. */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
@@ -64,6 +67,12 @@ export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = 
       return <PlayerCard graphic={graphic} durationInFrames={durationInFrames} />;
     case 'scale':
       return <Scale graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'tier':
+      return <TierList graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'iceberg':
+      return <Iceberg graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'receipt':
+      return <Receipt graphic={graphic} durationInFrames={durationInFrames} />;
     default:
       return null;
   }

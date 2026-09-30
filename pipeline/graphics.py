@@ -27,7 +27,7 @@ from .planner import _numbers, _spelled_numbers
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "rule", "split",
-         "strobe", "replay", "standings", "podium", "race", "card", "scale")
+         "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg")
 
 # Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
 REFERENCES = {
@@ -107,6 +107,10 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   {{"title": "…", "axis": "height"|"length", "unit": "m", "items": [{{"name": "…", "value": 2.45}}],
   "references": [claves de {refs}, las que den escala, máx. 2]}}
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
+- "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
+  qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
+  paga, máx. 5 palabras", "items": [{{"label": "partida, máx. 4 palabras", "value": "cifra como se dice"}}],
+  "total": {{"label": "TOTAL o como se diga", "value": "cifra dicha"}} o null}} (3-8 partidas)
 Reglas: TODOS los datos (cifras, años, nombres) deben estar en esas frases del guion; nada inventado.
 Textos en el idioma del guion, cortos. Devuelve SOLO JSON:
 {{"graphics": [{{"type": "map", "from": 12, "to": 13, "data": {{...}}}}]}}
@@ -135,6 +139,25 @@ la narración en frases numeradas. Encuentra la frase donde se PRESENTA cada ele
  "reason": "por qué se prohibió, máx. 8 palabras con palabras del guion, o null",
  "number": número si el guion los numera ("el número 5"), si no null}]}
 Reglas: nada inventado; textos en el idioma del guion.
+""".strip()
+
+
+TIER_SYSTEM = """
+Este vídeo es una TIER LIST: coloca elementos en niveles (S, A, B, C, D… o los niveles que use el guion). Te paso la
+narración en frases numeradas. Encuentra la frase donde se COLOCA cada elemento en su nivel y devuelve SOLO JSON:
+{"tiers": ["S", "A", "B", "C", "D"], "items": [{"sentence": 12, "name": "nombre corto del elemento", "tier": "A"}]}
+"tiers": los niveles en orden, del mejor al peor, tal como los nombra el guion (máx. 7, cada uno máx. 12 letras).
+Reglas: cada elemento, en la frase donde se dice en qué nivel va (o justo antes); nada inventado; textos en el
+idioma del guion.
+""".strip()
+
+ICEBERG_SYSTEM = """
+Este vídeo es un ICEBERG: niveles que van de lo más conocido (arriba, sobre el agua) a lo más oscuro (abajo del
+todo). Te paso la narración en frases numeradas. Devuelve SOLO JSON:
+{"levels": [{"sentence": 3, "title": "nombre del nivel como lo dice el guion, o 'NIVEL 1'"}],
+ "items": [{"sentence": 5, "name": "nombre corto del elemento, máx. 5 palabras", "level": 1}]}
+"levels": la frase donde EMPIEZA cada nivel, en orden (nivel 1 = el de arriba). "items": cada caso o secreto que se
+presenta, con el número de su nivel. Reglas: nada inventado; textos en el idioma del guion.
 """.strip()
 
 
@@ -355,6 +378,17 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 for r in data.get("references", [])[:2] if r in REFERENCES]
         return {"type": "scale", "title": data.get("title"), "axis": data["axis"], "unit": str(data.get("unit") or "m"),
                 "items": items[:3] + refs}
+    if kind == "receipt":
+        items = [{"label": str(x["label"])[:40], "value": str(x["value"])} for x in data.get("items", [])
+                 if isinstance(x, dict) and x.get("label") and x.get("value") and _numbers(str(x["value"]))
+                 and said(x["value"], text)]
+        total = data.get("total") if isinstance(data.get("total"), dict) else None
+        if total and not (total.get("value") and _numbers(str(total["value"])) and said(total["value"], text)):
+            total = None
+        if len(items) < 3:
+            return None
+        return {"type": "receipt", "title": str(data.get("title") or "")[:60] or None, "items": items[:8],
+                "total": {"label": str(total.get("label") or "TOTAL"), "value": str(total["value"])} if total else None}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
@@ -442,6 +476,68 @@ def banned(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]
     return out
 
 
+def tier(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tier lists: the board with every element placed so far, each new one flying into its row."""
+
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
+    try:
+        result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=5000, user=listing[:80000],
+                               system=TIER_SYSTEM)
+    except Exception as error:  # the video is complete without them
+        print(f"   Tier list no disponible: {str(error)[:120]}")
+        return []
+    tiers = [str(t).strip()[:12] for t in result.get("tiers", []) if str(t).strip()][:7]
+    if len(tiers) < 2:
+        return []
+    seconds = float(ctx.section("graphics").get("tier_seconds", 4.5))
+    placed: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
+    for item in sorted((i for i in result.get("items", []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
+        n, name, level = _as_int(item.get("sentence")), str(item.get("name") or "").strip(), str(item.get("tier") or "").strip()
+        if not 0 <= n < len(sents) or not name or level not in tiers or any(p["name"] == name for p in placed):
+            continue
+        if not said_words(name, " ".join(s["text"] for s in sents[max(0, n - 2): n + 2]), 0.5):
+            continue
+        start = sents[n]["start"]
+        if out and start < out[-1]["end"] + 0.5:
+            continue
+        placed.append({"name": name[:40], "tier": level})
+        out.append({"start": start, "end": start + seconds, "ranked": True, "graphic": {
+            "type": "tier", "tiers": tiers, "items": [dict(p) for p in placed], "current": len(placed) - 1}})
+    return out
+
+
+def iceberg(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Iceberg videos: at each new level the camera sinks to it; the cases of the levels above stay written."""
+
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
+    try:
+        result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=5000, user=listing[:80000],
+                               system=ICEBERG_SYSTEM)
+    except Exception as error:  # the video is complete without them
+        print(f"   Iceberg no disponible: {str(error)[:120]}")
+        return []
+    levels = [lv for lv in sorted((x for x in result.get("levels", []) if isinstance(x, dict)), key=lambda x: _as_int(x.get("sentence")))
+              if 0 <= _as_int(lv.get("sentence")) < len(sents) and str(lv.get("title") or "").strip()][:8]
+    if len(levels) < 2:
+        return []
+    titles = [str(lv["title"]).strip()[:40] for lv in levels]
+    items = [{"name": str(i["name"]).strip()[:40], "level": _as_int(i.get("level")) - 1, "sentence": _as_int(i.get("sentence"))}
+             for i in result.get("items", []) if isinstance(i, dict) and str(i.get("name") or "").strip()
+             and 1 <= _as_int(i.get("level")) <= len(levels) and 0 <= _as_int(i.get("sentence")) < len(sents)
+             and said_words(i["name"], " ".join(s["text"] for s in sents[max(0, _as_int(i["sentence"]) - 1): _as_int(i["sentence"]) + 2]), 0.5)]
+    seconds = float(ctx.section("graphics").get("iceberg_seconds", 5))
+    out: list[dict[str, Any]] = []
+    for k, level in enumerate(levels):
+        start = sents[_as_int(level["sentence"])]["start"]
+        if out and start < out[-1]["end"] + 1:
+            continue
+        before = [{"name": i["name"], "level": i["level"]} for i in items if i["level"] < k and sents[i["sentence"]]["start"] < start]
+        out.append({"start": start, "end": start + seconds, "ranked": True, "graphic": {
+            "type": "iceberg", "levels": titles, "current": k, "items": before[:24]}})
+    return out
+
+
 def _as_int(value: Any) -> int:
     try:
         return int(value)
@@ -462,14 +558,15 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
         return []
-    passes = {"ranking": ranking, "prohibidos": banned}
+    passes = {"ranking": ranking, "prohibidos": banned, "tier-list": tier, "iceberg": iceberg}
     ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
     fmt = str(ctx.config.get("format") or "")
     every = float((cfg.get("seconds_per_format") or {}).get(fmt)
                   or ctx.format.get("segundos_por_grafico") or cfg.get("seconds_per_graphic", 100))
     count = max(1, round(duration / every))
     count = min(count, int(cfg.get("max", 8)))
-    allowed = [t for t in cfg.get("types", TYPES) if t in TYPES and not (ranked and t == "rank")]
+    own = [str(t) for t in ctx.format.get("tipos") or []]             # graphics the format needs, whatever the channel
+    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own]) if t in TYPES and not (ranked and t == "rank")]
     weak = weak or set()
     if weak:   # one more graphic per 3 weak sentences, within the channel's maximum
         count = min(int(cfg.get("max", 8)), count + len(weak) // 3)
