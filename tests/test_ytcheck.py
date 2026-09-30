@@ -28,3 +28,18 @@ def test_bot_check_only_without_cookies_is_not_an_alarm():
 
 def test_slow_everywhere_is_the_connection():
     assert "conexión" in verdict(OK, [run("con cookies", 80), run("sin cookies", 75)])[0]
+
+
+def test_slow_info_points_to_deno():
+    slow = {**run("con cookies", 300), "phases": {"info": 280, "download": 12}}
+    assert "deno" in verdict({**OK, "line": 8.0}, [slow, {**slow, "label": "sin cookies"}])[0]
+
+
+def test_fast_line_but_slow_download_is_youtube_throttling():
+    slow = {**run("con cookies", 330), "phases": {"info": 5, "download": 320}}
+    assert "frena a tu IP" in verdict({**OK, "line": 9.5}, [slow, {**slow, "label": "sin cookies"}])[0]
+
+
+def test_slow_line_is_the_connection():
+    slow = {**run("con cookies", 330), "phases": {"info": 5, "download": 320}}
+    assert "conexión va lenta" in verdict({**OK, "line": 0.4}, [slow])[0]

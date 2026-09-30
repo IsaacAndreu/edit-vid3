@@ -51,18 +51,56 @@ def _try(ctx: RunContext, sets: list[Any], label: str) -> dict[str, Any]:
         finally:
             source.close()
         seconds = time.monotonic() - began
+        phases = {action: round(total, 1) for action, (_, total) in source.stats.items()}
     result = {"label": label, "seconds": round(seconds, 1), "mb": round(size / 1e6, 1), "error": error,
-              "warnings": dict(WARNING_COUNTS)}
+              "warnings": dict(WARNING_COUNTS), "phases": phases}
     speed = f"{result['mb'] / seconds:.1f} MB/s" if size and seconds else "—"
     detail = f"{seconds:.1f} s para 10 s de vídeo ({result['mb']} MB, {speed})"
     print(f"   {label}: {'ERROR ' + error if error else detail}")
+    if phases:
+        print("      por fases: " + " · ".join(f"{k} {v} s" for k, v in phases.items()))
     return result
+
+
+def connection_speed() -> float | None:
+    """MB/s downloading 10 MB from a CDN that is not YouTube: is the line itself slow?"""
+
+    import requests
+
+    try:
+        began = time.monotonic()
+        response = requests.get("https://speed.cloudflare.com/__down?bytes=10000000", timeout=120)
+        response.raise_for_status()
+        return round(len(response.content) / 1e6 / (time.monotonic() - began), 1)
+    except Exception:
+        return None
 
 
 def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
     """What to do, most likely cause first."""
 
     out: list[str] = []
+    line = info.get("line")
+    fastest_run = min((r for r in runs if not r["error"]), key=lambda r: r["seconds"], default=None)
+    if fastest_run and fastest_run["seconds"] > SLOW:
+        phases = fastest_run.get("phases") or {}
+        waited = phases.get("espera por límite", 0)
+        download = phases.get("download", 0)
+        info_time = sum(v for k, v in phases.items() if k not in ("download", "espera por límite"))
+        if waited > fastest_run["seconds"] / 2:
+            out.append(f"Casi todo el tiempo ({waited:.0f} s) fue esperar porque YouTube limita a tu conexión (429). "
+                       "Deja la cola en parallel_videos: 1 y sube sourcing.youtube.min_interval a 3.")
+        elif info_time > download and info_time > SLOW:
+            out.append(f"Lo lento es pedir los datos del vídeo ({info_time:.0f} s), no bajarlo: suele ser deno resolviendo "
+                       "los retos muy despacio. Prueba: deno upgrade, excluye la carpeta de deno y la del proyecto del "
+                       "antivirus (Windows Defender → Exclusiones) y vuelve a probar.")
+        elif line is not None and line >= 2 and download > SLOW:
+            out.append(f"Tu conexión va bien ({line} MB/s fuera de YouTube) pero YouTube te sirve el vídeo a paso de tortuga "
+                       f"({download:.0f} s de descarga): YouTube frena a tu IP o a tus cuentas. Prueba sin cookies y, si "
+                       "sigue igual, reinicia el router (IP nueva) o usa otra red una noche.")
+        elif line is not None and line < 2:
+            out.append(f"Tu conexión va lenta en general ({line} MB/s fuera de YouTube): no es cosa de YouTube. Prueba "
+                       "por cable, sin VPN, o revisa que nada más esté descargando por la noche.")
     if not info["ejs"] or not info["js"]:
         out.append("FALTA el solucionador de retos de YouTube (yt-dlp-ejs) o un JavaScript (deno/node). Sin él, YouTube "
                    "sirve las descargas a paso de tortuga. Arréglalo con:\n"
@@ -89,7 +127,7 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
             out.append("Con tus cookies va lento y sin ellas rápido: YouTube frena a ESA cuenta. Exporta cookies de "
                        "otra cuenta (o quita la actual) — las búsquedas y descargas públicas no las necesitan.")
     fastest = min((r["seconds"] for r in ok), default=None)
-    if fastest is not None and fastest > SLOW and not out:
+    if fastest is not None and fastest > SLOW and not out and line is None:
         out.append("Todo en orden en yt-dlp pero la descarga es lenta con y sin cookies: es la conexión o YouTube "
                    "frena a tu IP. Prueba con el cable/otra red, sin VPN, o la cola por la mañana.")
     if fastest is not None and fastest <= GOOD and not out:
@@ -114,6 +152,8 @@ def run(ctx: RunContext) -> list[str]:
     if sets:
         runs.append(_try(ctx, sets, "con cookies"))
     runs.append(_try(ctx, [], "sin cookies"))
+    info["line"] = connection_speed()
+    print(f"   Conexión fuera de YouTube: {info['line'] if info['line'] is not None else '?'} MB/s")
     lines = verdict(info, runs)
     print("\nQué hacer:")
     for n, line in enumerate(lines, 1):
