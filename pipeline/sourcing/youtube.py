@@ -518,16 +518,33 @@ class YouTubeSource:
             with self._ydl(options) as ydl:
                 ydl.download_with_info_file(info_file)
 
-        self._call("download", fetch)
-        produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*") if p.suffix in (".mp4", ".webm", ".mkv")]
-        if not produced:
-            raise RuntimeError(f"yt-dlp no produjo el tramo {start}-{end} de {video_id}")
-        probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time:format=duration",
-             "-of", "json", str(produced[0])],
-            capture_output=True, text=True, check=True,
-        )
-        info = json.loads(probe.stdout)
+        def attempt() -> tuple[Path, dict[str, Any]] | None:
+            self._call("download", fetch)
+            produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*") if p.suffix in (".mp4", ".webm", ".mkv")]
+            if not produced:
+                return None
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time:format=duration",
+                 "-of", "json", str(produced[0])],
+                capture_output=True, text=True,
+            )
+            try:
+                info = json.loads(probe.stdout or "{}")
+            except ValueError:
+                info = {}
+            if probe.returncode != 0 or not info.get("streams") or not (info.get("format") or {}).get("duration"):
+                produced[0].unlink(missing_ok=True)          # an empty or broken piece (no picture): not usable
+                return None
+            return produced[0], info
+
+        got = attempt()
+        if got is None:                                       # usually stale stream links: fresh ones, once more
+            self._full_info_path(video_id).unlink(missing_ok=True)
+            info_file = str(self._fresh_full_info(video_id))
+            got = attempt()
+        if got is None:
+            raise RuntimeError(f"YouTube devolvió un tramo vacío ({start:.1f}-{end:.1f} s de {video_id})")
+        produced, info = [got[0]], got[1]
         real_start = float(info["streams"][0].get("start_time") or start)
         real_end = real_start + float(info["format"]["duration"])
         target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}.mp4"

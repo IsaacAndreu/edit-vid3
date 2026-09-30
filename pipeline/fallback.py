@@ -53,7 +53,7 @@ from .sourcing.images import ImageSources, image_query
 STAGE = "fallback"
 OUTPUT = "fallback.json"
 MEDIA_DIR = "media_fallback"
-VERSION = 6  # bump when the fallback policy changes: invalidates per-shot results
+VERSION = 7  # bump when the fallback policy changes: invalidates per-shot results
 PEXELS = "https://api.pexels.com"
 
 
@@ -244,6 +244,16 @@ def run(ctx: RunContext) -> None:
             )[:limit]
             item = vet_and_materialise(options, pool_candidates, "protagonist")
 
+        # 1b'. Footage already analysed for the neighbouring shots of the same story event (the same casino,
+        # the same final, the same factory…): real footage of the topic before any stock. Vetted by the judge.
+        if item is None and shot.broll:
+            pool, pool_candidates = event_pool(ctx, story, shot)
+            options = [o for o in pool if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+                       and not seen_elsewhere(o, elsewhere)
+                       and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
+                                   and abs(u.start - o.start) < 4 for u in used)][:limit]
+            item = vet_and_materialise(options, pool_candidates, "event-footage")
+
         # 1c. A web photo of whoever/whatever the shot names (then of the protagonist), in a card —
         # what sports channels do when there is no footage. Vetted by the judge like the rest.
         if item is None and shot.broll:
@@ -410,6 +420,40 @@ def person_for(story: ShotsFile, shot: Any) -> str:
     words = (getattr(shot.broll, "event", None) or "").split() if shot.broll else []
     lead = [w for w in words[:2] if w[:1].isupper() and w.isalpha() and not w.isupper()]
     return " ".join(lead) if len(lead) == 2 else ""
+
+
+def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4) -> tuple[list[Option], dict[str, Candidate]]:
+    """Scored fragments of the other shots telling the same story event (or, without events, of the
+    shots next to it), best first: footage about the same place/company/fact the shot is part of."""
+
+    ordered = [s for s in story.shots if needs_footage(s)]
+    index = next((i for i, s in enumerate(ordered) if s.id == shot.id), None)
+    if index is None:
+        return [], {}
+    event = shot.broll.event if shot.broll else None
+    if event:
+        group = [s for s in ordered if s.id != shot.id and s.broll and s.broll.event == event]
+    else:
+        group = [s for s in ordered[max(0, index - reach): index + reach + 1] if s.id != shot.id]
+    judge_cfg = ctx.section("judge")
+    blocklist = ctx.section("content").get("title_blocklist")
+    options: dict[tuple[str, float | None], Option] = {}
+    candidates: dict[str, Candidate] = {}
+    for other in group:
+        cand_path = ctx.work_dir / "candidates" / f"{other.id}.json"
+        scores_path = ctx.work_dir / "scores" / f"{other.id}.json"
+        if not cand_path.is_file() or not scores_path.is_file():
+            continue
+        found = {c.id: c for c in ShotCandidates.model_validate_json(cand_path.read_text("utf-8")).candidates}
+        for total, option in ranked(ShotScores.model_validate_json(scores_path.read_text("utf-8")).options,
+                                    judge_cfg.get("source_bonus", {"youtube": 0.02})):
+            c = found.get(option.candidateId)
+            if c is None or option.kind != "video" or total < float(judge_cfg.get("min_accept", 0.22)) \
+                    or blocked_by_title(c.title, c.channel, blocklist):
+                continue
+            candidates[c.id] = c
+            options.setdefault((option.candidateId, option.start), option)
+    return sorted(options.values(), key=lambda o: -o.total), candidates
 
 
 def protagonist_pool(ctx: RunContext, story: ShotsFile, person: str | None = None) -> tuple[list[Option], dict[str, Candidate]]:

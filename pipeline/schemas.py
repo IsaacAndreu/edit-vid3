@@ -446,7 +446,7 @@ class IngestFile(_Strict):
 class FallbackItem(_Strict):
     shotId: str
     reason: str                                              # why the shot needed a fallback
-    method: Literal["next-option", "protagonist", "web-photo", "library-photo", "pexels-video", "pexels-photo", "generated"]
+    method: Literal["next-option", "protagonist", "event-footage", "web-photo", "library-photo", "pexels-video", "pexels-photo", "generated"]
     kind: Literal["video", "image"]
     path: str                                                # normalised media, relative to the project root
     source: str                                              # youtube | wikimedia | openverse | pexels | generated
