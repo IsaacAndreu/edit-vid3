@@ -283,7 +283,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         with (logs / f"{slug}.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                        encoding="utf-8", errors="replace",
-                                       env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1"})
+                                       env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1",
+                                            "PYTHONIOENCODING": "utf-8"})   # accents intact on Windows
             assert process.stdout is not None
             for line in process.stdout:
                 log.write(line)
