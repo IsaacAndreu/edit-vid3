@@ -35,6 +35,16 @@ def needs_footage(shot: Shot) -> bool:
     return shot.broll is not None and shot.type in ("broll", "chapter", "split", "stat")
 
 
+HYPOTHETICAL = "WHAT IF"
+
+
+def hypothetical(shot: Shot) -> bool:
+    """A shot of something that never happened ("¿y si…?" videos): its event starts with 'WHAT IF'. No footage
+    exists, so it is illustrated with a generated image, badged as such on screen."""
+
+    return bool(shot.broll and shot.broll.event and shot.broll.event.strip().upper().startswith(HYPOTHETICAL))
+
+
 def _spec_hash(shot: Shot, cfg: dict[str, Any]) -> str:
     return key(shot.broll.model_dump() if shot.broll else None, cfg)
 
@@ -268,6 +278,12 @@ def run(ctx: RunContext) -> None:
         notes: list[str] = []
         queries: dict[str, list[str]] = {}
         candidates = []
+        if hypothetical(shot):
+            result = ShotCandidates(shotId=shot.id, specHash=spec_hash, queries={}, candidates=[],
+                                    notes=["hipotético: se ilustra con una imagen generada"])
+            ctx.write_json(f"{OUTPUT}/{shot.id}.json", result.model_dump(exclude_none=True))
+            print(f"   {shot.id}: hipotético → imagen generada")
+            return result
         if youtube is not None:
             queries["youtube"] = youtube.queries_for(shot.broll)
             try:

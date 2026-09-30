@@ -42,6 +42,12 @@ export interface PanelStep {
   rows: DataRow[];
 }
 
+export interface Caption {
+  from: number;
+  durationInFrames: number;
+  words: QuestionWord[]; // "from" relative to the caption
+}
+
 export interface QuestionWord {
   text: string;
   from: number; // relative to the group: when the voice says it
@@ -103,6 +109,7 @@ export interface TimelineProps {
   shots: Shot[];
   groups: Group[];
   labels?: Label[];
+  captions?: Caption[]; // native vertical shorts: big captions, a few words at a time
   audio: AudioSpec;
   locale?: { chapter?: string; source?: string; next?: string; subscribe?: string };
   brand?: Brand | null;

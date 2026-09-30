@@ -568,6 +568,16 @@ class PanelStep(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class TimelineCaption(_Strict):
+    """A few words of big on-screen captions (native vertical shorts), each lit up as the voice says it."""
+
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(ge=1)
+    words: list["QuestionWord"] = Field(min_length=1)       # "from" relative to the caption
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class QuestionWord(_Strict):
     text: str
     from_: int = Field(alias="from", ge=0)                   # relative to the group: when the voice says it
@@ -644,6 +654,7 @@ class Timeline(_Strict):
     shots: list[TimelineShot]
     groups: list[TimelineGroup]
     labels: list[TimelineLabel] = Field(default_factory=list)
+    captions: list[TimelineCaption] = Field(default_factory=list)   # timeline.captions (native shorts)
     transitions: list[TimelineTransition] = Field(default_factory=list)
     shakes: list[TimelineShake] = Field(default_factory=list)
     edited: dict[str, Any] | None = None                     # scenes reordered/deleted in the editor (time map for subtitles)

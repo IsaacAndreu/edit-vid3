@@ -54,10 +54,13 @@ class RunContext:
     @classmethod
     def create(cls, slug: str, *, root: Path = PROJECT_ROOT, config: dict[str, Any] | None = None,
                channel: str | None = None, series: str | None = None) -> "RunContext":
-        """config.yaml ⊕ canales/<canal>.yaml ⊕ its series.<serie> ⊕ materiales/<slug>/config.yaml (later wins).
+        """config.yaml ⊕ formatos/<format>.yaml → ajustes ⊕ canales/<canal>.yaml ⊕ its series.<serie> ⊕
+        materiales/<slug>/config.yaml (later wins).
 
         The channel is `channel`, else `canal:` in the video's config.yaml, else `canal:` in config.yaml;
-        the series (a recurring format of the channel: estafas, auge y caída…) is `series`, else `serie:`."""
+        the series (a recurring format of the channel: estafas, auge y caída…) is `series`, else `serie:`.
+        The format (chosen anywhere in those layers) can bring settings of its own (`ajustes:`, e.g. the
+        news format's recent-footage search), which the channel, the series and the video can still change."""
 
         if config is not None:
             return cls(slug=slug, root=root, config=config)
@@ -67,19 +70,30 @@ class RunContext:
         path = ctx.materials_dir / "config.yaml"
         override = load_config(path) if path.is_file() else {}
         name = channel or override.get("canal") or base.get("canal")
-        if name:
-            ctx.config = deep_merge(base, channel_profile(root, str(name)))
-            ctx.config["canal"] = str(name)
+        profile = channel_profile(root, str(name)) if name else {}
+        catalog = profile.pop("series", None) or base.get("series") or {}
         serie = series or override.get("serie")
-        catalog = ctx.config.pop("series", None) or {}
+        chosen: dict[str, Any] = {}
         if serie:
             if str(serie) not in catalog:
                 raise ConfigError(f"El canal {name or '(ninguno)'} no tiene la serie «{serie}» "
                                   f"(hay: {', '.join(catalog) or 'ninguna'}).")
-            ctx.config = deep_merge(ctx.config, catalog[str(serie)])
-            ctx.config["serie"] = str(serie)
-        ctx.config = deep_merge(ctx.config, {k: v for k, v in override.items() if k not in ("canal", "serie")})
-        ctx.format                                   # an unknown format fails here, not halfway through the night
+            chosen = catalog[str(serie)]
+        video = {k: v for k, v in override.items() if k not in ("canal", "serie")}
+
+        def layered(extra: dict[str, Any]) -> dict[str, Any]:
+            merged = deep_merge(deep_merge(deep_merge(deep_merge(base, extra), profile), chosen), video)
+            merged.pop("series", None)
+            if name:
+                merged["canal"] = str(name)
+            if serie:
+                merged["serie"] = str(serie)
+            return merged
+
+        ctx.config = layered({})
+        adjustments = ctx.format.get("ajustes")      # an unknown format fails here, not halfway through the night
+        if isinstance(adjustments, dict) and adjustments:
+            ctx.config = layered(adjustments)
         return ctx
 
     @property

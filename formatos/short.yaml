@@ -1,0 +1,28 @@
+# Formato «Short nativo». Úsalo con `format: short` en la config.yaml del vídeo (guion de 30-60 s).
+nombre: "Short nativo (vertical)"
+descripcion: "Un Short pensado en vertical desde el guion: metraje a pantalla completa en 9:16, subtítulos grandes palabra a palabra y los gráficos en una ventana 16:9."
+ejemplos: "El salto que prohibieron por peligroso (45 s), por qué Mercadona no tiene marcas blancas… (50 s), el robot que se levanta solo."
+guion: |
+  ESTE VÍDEO ES UN SHORT VERTICAL DE MENOS DE 60 SEGUNDOS: una sola idea, ritmo muy rápido.
+  - "subject": el protagonista si lo hay; si no, "".
+  - "peak": búsqueda EN INGLÉS del momento más espectacular (va en el primer segundo).
+  - "events": uno por cada hecho concreto (3-6 en total); "label" = búsqueda EN INGLÉS del metraje MÁS visual y
+    cercano de ese hecho (personas y objetos grandes en el centro del plano: se verá recortado en vertical);
+    "tag" = lugar y año si se dicen.
+  - Sin capítulos: "chapters": [].
+graficos: |
+  Este vídeo es un Short: como mucho 2 gráficos, muy simples y legibles en pequeño ("kinetic" con la frase clave,
+  "compare" con 2 cifras, "scale"). Nunca mapas con muchos puntos ni tablas.
+segundos_por_grafico: 20
+titulos: "patrón de título de Short: una frase de máx. 50 caracteres con el gancho, sin hashtags (se añaden al subir)."
+ajustes:
+  video: {width: 1080, height: 1920}
+  render: {hybrid: false}          # todo con Remotion: el camino rápido de ffmpeg es solo para 16:9
+  timeline:
+    captions: true                 # subtítulos grandes, de 3 en 3 palabras
+    caption_words: 3
+    endscreen_seconds: 0
+    cold_open_seconds: 0
+  graphics: {max: 2}
+  people: {enabled: false}         # las tarjetas de persona están pensadas para 16:9
+  shorts: {enabled: false}

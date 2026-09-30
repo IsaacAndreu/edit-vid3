@@ -538,6 +538,87 @@ def iceberg(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
+DATA_FILE = "datos.csv"
+
+
+def _data_number(text: str) -> float | None:
+    """'1.234,5' / '1,234.5' / '1234.5' / '12 %' → float (None if it is not a number)."""
+
+    value = re.sub(r"[^\d,.\-]", "", str(text))
+    if not re.search(r"\d", value):
+        return None
+    if "," in value and "." in value:
+        value = value.replace(".", "").replace(",", ".") if value.rfind(",") > value.rfind(".") else value.replace(",", "")
+    elif "," in value:
+        value = value.replace(",", ".") if len(value.split(",")[-1]) != 3 else value.replace(",", "")
+    elif value.count(".") > 1 or (value.count(".") == 1 and len(value.split(".")[-1]) == 3
+                                  and value.split(".")[0].lstrip("-") not in ("", "0")):
+        value = value.replace(".", "")
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def read_data(path: Path) -> tuple[str, list[dict[str, Any]]]:
+    """materiales/<slug>/datos.csv: first row = header (label column, then one column per bar), then one row
+    per step (year, date…). Returns (the label column's name, steps)."""
+
+    import csv
+
+    text = path.read_text("utf-8-sig")
+    try:
+        dialect = csv.Sniffer().sniff(text.splitlines()[0], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    rows = [r for r in csv.reader(text.splitlines(), dialect) if any(c.strip() for c in r)]
+    if len(rows) < 3 or len(rows[0]) < 2:
+        raise ValueError(f"{path.name}: hacen falta una cabecera y al menos 2 filas con 2 columnas o más")
+    names = [c.strip() for c in rows[0][1:]]
+    steps = []
+    for row in rows[1:]:
+        values = {n: v for n, cell in zip(names, row[1:]) if n and (v := _data_number(cell)) is not None}
+        if row and row[0].strip() and values:
+            steps.append({"label": row[0].strip(), "values": values})
+    return rows[0][0].strip(), steps
+
+
+def data_race(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Data videos (format "datos"): the bar chart race of materiales/<slug>/datos.csv comes in each time the
+    narration says one of its steps ("en 1990…"), animating from the last step shown to that one; footage
+    plays in between. The last step shown stays a little longer."""
+
+    path = ctx.materials_dir / DATA_FILE
+    if not path.is_file():
+        print(f"   Formato de datos sin {path.relative_to(ctx.root)}: no hay carrera de barras")
+        return []
+    column, steps = read_data(path)
+    cfg = ctx.section("datos")
+    title = str(cfg.get("titulo") or cfg.get("title") or column or "")
+    unit = cfg.get("unidad") or cfg.get("unit")
+    seconds, gap = float(cfg.get("segundos", 7)), float(cfg.get("separacion", 3))
+    out: list[dict[str, Any]] = []
+    shown, cursor = -1, 0
+    for i, step in enumerate(steps):
+        wanted = set(re.findall(r"\w+", step["label"].lower()))
+        found = next((s for s in sents[cursor:] if wanted <= set(re.findall(r"\w+", s["text"].lower()))), None)
+        if found is None:
+            continue
+        cursor = found["n"] + 1
+        start = found["start"]
+        if out and start < out[-1]["end"] + gap:
+            continue
+        span = steps[max(0, shown if shown >= 0 else i - 2): i + 1]
+        if len(span) < 2:
+            span = [step, step]
+        out.append({"start": start, "end": start + min(seconds, 2.5 + 1.5 * len(span)), "ranked": True,
+                    "graphic": {"type": "race", "title": title, "unit": unit, "steps": span}})
+        shown = i
+    if out:
+        out[-1]["end"] += float(cfg.get("final_extra", 3))
+    return out
+
+
 def _as_int(value: Any) -> int:
     try:
         return int(value)
@@ -558,7 +639,7 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
         return []
-    passes = {"ranking": ranking, "prohibidos": banned, "tier-list": tier, "iceberg": iceberg}
+    passes = {"ranking": ranking, "prohibidos": banned, "tier-list": tier, "iceberg": iceberg, "datos": data_race}
     ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
     fmt = str(ctx.config.get("format") or "")
     every = float((cfg.get("seconds_per_format") or {}).get(fmt)

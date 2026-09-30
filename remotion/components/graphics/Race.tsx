@@ -24,7 +24,8 @@ export const Race: FC<{ graphic: RaceGraphic; durationInFrames: number }> = ({ g
   const rank = (i: number) => [...names].sort((a, b) => value(b, i) - value(a, i));
   const [before, after] = [rank(k), rank(k + 1)];
   const max = Math.max(...now.map((x) => x.v), 1);
-  const shown = names.slice(0, 8);
+  // the top 8 of the moment: a bar climbing into it slides in from below, one dropping out slides away
+  const shown = names.filter((n) => before.indexOf(n) < 8 || after.indexOf(n) < 8);
   const label = steps[Math.round(pos)].label;
   return (
     <AbsoluteFill style={{ fontFamily }}>
@@ -35,7 +36,8 @@ export const Race: FC<{ graphic: RaceGraphic; durationInFrames: number }> = ({ g
         const v = now.find((x) => x.n === name)!.v;
         const color = colors[names.indexOf(name) % colors.length];
         return (
-          <div key={name} style={{ position: 'absolute', left: 110, top: 220 + place * BAR, display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div key={name} style={{ position: 'absolute', left: 110, top: 220 + place * BAR, display: 'flex', alignItems: 'center', gap: 20,
+            opacity: interpolate(place, [7, 8], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) }}>
             <div style={{ width: 300, textAlign: 'right', fontWeight: 800, fontSize: 38, color: theme.text }}>{name}</div>
             <div style={{ width: (v / max) * 1150, height: BAR - 22, backgroundColor: color, borderRadius: 8 }} />
             <div style={{ fontWeight: 900, fontSize: 42, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>

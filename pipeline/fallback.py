@@ -45,7 +45,7 @@ from .schemas import (
     ShotScores,
     ShotsFile,
 )
-from .sourcing import needs_footage, youtube_source
+from .sourcing import hypothetical, needs_footage, youtube_source
 from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key, tokens
 from .sourcing.images import ImageSources, image_query
 
@@ -212,11 +212,17 @@ def run(ctx: RunContext) -> None:
                 )
             return None
 
+        if hypothetical(shot) and cfg.get("hypothetical_images", True):
+            try:
+                item = _generate(ctx, shot, reason, digest, out_dir, lut, cfg, illustration=True)
+            except Exception as error:
+                tried.append(f"recreación: {str(error)[:120]}")
+
         judge_cfg = ctx.section("judge")
         limit = int(cfg.get("next_options", 3))
 
         # 1. The next option from stage 4 — only when the choice itself was fine but its download failed.
-        if reason.startswith("descarga fallida"):
+        if item is None and reason.startswith("descarga fallida"):
             failed_id = selections[shot_id].candidateId
             scores = ShotScores.model_validate_json((ctx.work_dir / "scores" / f"{shot_id}.json").read_text("utf-8"))
             candidates = {c.id: c for c in ShotCandidates.model_validate_json(
@@ -502,16 +508,29 @@ def _frame_hash(path: Path, kind: str) -> str | None:
 
 
 def _generate(ctx: RunContext, shot: Shot, reason: str, digest: str, out_dir: Path, lut: Path | None,
-              cfg: dict[str, Any]) -> FallbackItem:
+              cfg: dict[str, Any], illustration: bool = False) -> FallbackItem:
+    """A generated still. `illustration`: a scene that never happened ("¿y si…?"), drawn as cinematic concept
+    art — never a fake photo — and with no recognisable real person."""
+
     from openai import OpenAI
 
     model = str(cfg.get("image_model", "gpt-image-2"))
     context = str(ctx.read_json("shots.json").get("context") or "")
-    prompt = (
-        "Photorealistic documentary b-roll still, 16:9 landscape, natural light, shallow depth of field. "
-        f"{shot.broll.visualIntent}. Context: {context} "
-        "No text, no letters, no numbers, no logos, no watermarks, no captions."
-    )
+    if illustration:
+        scene = (shot.broll.event or "").strip()
+        scene = scene[len("WHAT IF"):].strip(" :,-") if scene.upper().startswith("WHAT IF") else scene
+        prompt = (
+            "Cinematic digital illustration, painterly concept art with visible brushwork, dramatic lighting, "
+            f"16:9 landscape, of a hypothetical scenario: {scene}. {shot.broll.visualIntent}. Context: {context} "
+            "Clearly an illustration, not a photograph. No recognizable real people (faceless or distant figures "
+            "only), no text, no letters, no numbers, no logos, no watermarks."
+        )
+    else:
+        prompt = (
+            "Photorealistic documentary b-roll still, 16:9 landscape, natural light, shallow depth of field. "
+            f"{shot.broll.visualIntent}. Context: {context} "
+            "No text, no letters, no numbers, no logos, no watermarks, no captions."
+        )
     target_png = ctx.cache_dir / "generated" / f"{key(model, prompt, cfg.get('image_quality', 'medium'))}.png"
     usd = 0.0
     if not target_png.is_file():

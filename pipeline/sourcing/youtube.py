@@ -51,6 +51,15 @@ WARNING_COUNTS: dict[str, int] = {}
 _warning_lock = threading.Lock()
 
 
+def _upload_filter(days: int) -> str:
+    """YouTube's search filter (the `sp` parameter) for videos uploaded in the last hour/day/week/month/year."""
+
+    for limit, code in ((0, "EgQIARAB"), (1, "EgQIAhAB"), (7, "EgQIAxAB"), (31, "EgQIBBAB")):
+        if days <= limit:
+            return code
+    return "EgQIBRAB"
+
+
 class _QuietLogger:
     """yt-dlp prints errors itself even with quiet=True; we raise and report them instead. Warnings that
     explain slowness are shown once each and counted (WARNING_COUNTS)."""
@@ -250,23 +259,28 @@ class YouTubeSource:
 
     def search(self, query: str) -> list[dict[str, Any]]:
         limit = int(self.cfg.get("results_per_query", 8))
+        days = int(self.cfg.get("recent_days", 0) or 0)     # news videos: only footage uploaded lately
 
         def produce() -> list[dict[str, Any]]:
-            found = self._api_search(query, limit)
+            found = self._api_search(query, limit, days)
             if found is not None:
                 return found
-            info = self._call(
-                "search",
-                lambda: self._ydl({"extract_flat": "in_playlist", "skip_download": True}).extract_info(
-                    f"ytsearch{limit}:{query}", download=False
-                ),
-            )
+            if days:
+                from urllib.parse import quote_plus
+
+                target = f"https://www.youtube.com/results?search_query={quote_plus(query)}&sp={_upload_filter(days)}"
+                extra = {"extract_flat": "in_playlist", "skip_download": True, "playlistend": limit}
+            else:
+                target = f"ytsearch{limit}:{query}"
+                extra = {"extract_flat": "in_playlist", "skip_download": True}
+            info = self._call("search", lambda: self._ydl(extra).extract_info(target, download=False))
             keep = ("id", "title", "channel", "uploader", "duration", "url", "live_status", "view_count")
             return [{k: entry.get(k) for k in keep} for entry in (info or {}).get("entries") or [] if isinstance(entry, dict)]
 
-        return cached_json(self.cache_dir / "search" / "youtube" / f"{key(query, limit)}.json", produce)
+        name = key(query, limit) if not days else f"{key(query, limit, days)}-{time.strftime('%Y%m%d')}"   # recent: one per day
+        return cached_json(self.cache_dir / "search" / "youtube" / f"{name}.json", produce)
 
-    def _api_search(self, query: str, limit: int) -> list[dict[str, Any]] | None:
+    def _api_search(self, query: str, limit: int, days: int = 0) -> list[dict[str, Any]] | None:
         """The same entries as a yt-dlp search, from the official API (never bot-checked). None when
         there are no keys or the day's quota ran out: then yt-dlp searches as before."""
 
@@ -275,7 +289,7 @@ class YouTubeSource:
             return None
         try:
             began = time.monotonic()
-            ids = api.search(query, order="relevance", max_results=limit)
+            ids = api.search(query, order="relevance", max_results=limit, **({"days": days} if days else {}))
             details = {v["id"]: v for v in api.videos(ids)} if ids else {}
             self._count("search-api", time.monotonic() - began)
         except Exception as error:  # quota, network, bad key: fall back to yt-dlp for the rest of the run

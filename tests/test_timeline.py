@@ -66,7 +66,7 @@ class TimelineBuildTests(unittest.TestCase):
         self.assertEqual(timeline.durationInFrames, 300)
         self.assertEqual(timeline.shots[0].media.src, "media/s000.mp4")            # relative to the public dir
         self.assertEqual(timeline.shots[4].media.src, "media_fallback/s004.jpg")
-        self.assertIsNone(timeline.shots[4].media.credit)                          # generated: no credit badge
+        self.assertEqual(timeline.shots[4].media.credit, "Imagen generada (IA)")    # generated: said on screen
         self.assertEqual(timeline.shots[1].chapterTitle, "LA LICENCIA")
         panel = next(g for g in timeline.groups if g.kind == "datacard")
         self.assertEqual((panel.from_, panel.durationInFrames), (120, 120))        # one panel over two shots

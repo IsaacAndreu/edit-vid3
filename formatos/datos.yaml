@@ -1,0 +1,16 @@
+# Formato «Vídeo de datos». Úsalo con `format: datos` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Vídeo de datos"
+descripcion: "La evolución de unas cifras en el tiempo con una carrera de barras hecha con TUS datos (materiales/<vídeo>/datos.csv), que entra cada vez que la voz dice un año."
+ejemplos: "Los países con más medallas de gimnasia desde 1952, las empresas más valiosas de España desde 2000, los robots más vendidos por año."
+guion: |
+  ESTE VÍDEO CUENTA LA EVOLUCIÓN DE UNAS CIFRAS EN EL TIEMPO (quién iba primero en cada época y por qué cambió):
+  - "subject": ""; "peak": búsqueda EN INGLÉS del momento de mayor cambio.
+  - "events": uno por época o salto, SIEMPRE con el año o la fecha en el "label" y lo que ENSEÑA esa época (los líderes de
+    ese momento, la competición, la fábrica, la noticia); "tag" = 'AÑO' tal como se dice ('1976', 'AÑOS 90').
+  - Capítulos: las épocas ('EL DOMINIO SOVIÉTICO', 'LA ERA CHINA', 'HOY').
+graficos: |
+  Este vídeo es de datos: la carrera de barras con los datos del CSV sale sola cada vez que se dice un año de la
+  tabla. Aparte, usa "chart" o "compare" para cifras que NO están en la tabla, "map" para los países y "kinetic" para
+  el cambio de líder.
+segundos_por_grafico: 90
+titulos: "patrón de título de datos: 'Los <N> <cosas> más <medida> de <tema> (<año inicial>-<año final>)' o 'Así cambió <tema> en <N> años'."

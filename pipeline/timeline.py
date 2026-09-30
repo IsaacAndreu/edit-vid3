@@ -33,6 +33,7 @@ from .schemas import (
     PanelStep,
     ShotsFile,
     Timeline,
+    TimelineCaption,
     TimelineAudio,
     ColdOpenFile,
     TimelineClipAudio,
@@ -582,6 +583,38 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     return sorted([*groups, *added, *boards], key=lambda g: g.from_), labels
 
 
+def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[TimelineCaption]:
+    """Big captions for native shorts: chunks of up to `most` words (a sentence end or a pause closes one),
+    placed where the voice says them — after the cold open and any pause inserted in the voice."""
+
+    fps = timeline.fps
+
+    def at(seconds: float) -> int:
+        t = round(seconds * fps)
+        return timeline.audio.voiceFrom + t + sum(b for a, b in timeline.audio.voiceGaps if a <= t)
+
+    chunks: list[list[Any]] = []
+    for word in words.words:
+        text = word.text.strip()
+        if not text:
+            continue
+        last = chunks[-1][-1] if chunks else None
+        if (not chunks or len(chunks[-1]) >= most or word.start - last.end > 0.35
+                or re.search(r"[.!?…,;:]$", last.text)):
+            chunks.append([])
+        chunks[-1].append(word)
+    out: list[TimelineCaption] = []
+    for i, chunk in enumerate(chunks):
+        start = at(chunk[0].start)
+        end = at(chunks[i + 1][0].start) if i + 1 < len(chunks) else at(chunk[-1].end) + round(0.4 * fps)
+        end = min(end, at(chunk[-1].end) + round(0.6 * fps))
+        if end <= start:
+            continue
+        out.append(TimelineCaption.model_validate({"from": start, "durationInFrames": end - start, "words": [
+            {"text": w.text.strip(), "from": max(0, at(w.start) - start)} for w in chunk]}))
+    return out
+
+
 def weak_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
     """Sentences whose footage is weak: a low score nobody judged, a fallback stand-in, or nothing at all.
     graphics.cover_weak puts the animated graphics there first."""
@@ -926,7 +959,7 @@ def inputs(ctx: RunContext) -> list:
     return [
         ctx.work_dir / "shots.json", ctx.work_dir / "words.json", ctx.work_dir / "media" / "_ingest.json",
         ctx.work_dir / "fallback.json", ctx.work_dir / "coldopen.json", ctx.work_dir / "people.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
-    ]
+    ] + ([ctx.materials_dir / "datos.csv"] if ctx.config.get("format") == "datos" else [])
 
 
 def run(ctx: RunContext) -> None:
@@ -949,7 +982,9 @@ def run(ctx: RunContext) -> None:
         size = _size(ctx.root / item.path)
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
-            credit=item.credit, width=size[0], height=size[1],
+            # a generated image says so on screen, like a source badge (timeline.generated_badge: "" hides it)
+            credit=item.credit if item.source != "generated" else (str(cfg.get("generated_badge", "Imagen generada (IA)")) or None),
+            width=size[0], height=size[1],
         )
 
     # Frame-accurate shots: each starts where the previous ended.
@@ -1079,6 +1114,8 @@ def run(ctx: RunContext) -> None:
             g.model_copy(update={"from_": 0, "durationInFrames": g.durationInFrames + g.from_}) if g.id == "q-open" else g
             for g in timeline.groups]})
     timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
+    if cfg.get("captions"):
+        timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
     timeline = with_endscreen(timeline, round(float(cfg.get("endscreen_seconds", 0) or 0) * fps))
     if tracks and cfg.get("music_by_chapter", True):
         parts = music_parts(ctx, timeline, tracks, default)

@@ -387,6 +387,25 @@ de, mitos, misterio…) es un fichero `formatos/<nombre>.yaml`. Se elige con `fo
 `config.yaml` del vídeo. Con `python main.py --formatos` sale la lista con ejemplos. Para crear uno
 nuevo se copia un fichero; consulta `formatos/LEEME.md`.
 
+**Formatos con algo especial** (lista completa: `python main.py --formatos`):
+- `tier-list` e `iceberg`: el tablero de niveles y el iceberg salen solos, uno por elemento o nivel.
+- `cuanto-cuesta`: tickets que se imprimen con cada desglose de coste (gráfico `receipt`).
+- `que-pasaria-si`: lo real va con metraje real. Los tramos hipotéticos se ilustran con imágenes
+  generadas (ilustración, nunca foto falsa ni personas reales reconocibles) y salen marcadas en
+  pantalla. Todas las imágenes generadas llevan ahora la marca «Imagen generada (IA)»; se cambia con
+  `timeline.generated_badge`.
+- `datos`: pon tu tabla en `materiales/<vídeo>/datos.csv`. La primera fila es la cabecera («Año» y un
+  nombre por barra) y luego va una fila por año o fecha. Sirven `,` o `;` y números como `1.234,5`.
+  La carrera de barras entra cada vez que la voz dice un año de la tabla. El título y la unidad van
+  en `datos: {titulo: …, unidad: …}` de la `config.yaml` del vídeo.
+- `noticias`: el metraje se busca solo entre lo subido en los últimos 14 días. Se cambia con
+  `sourcing: {youtube: {recent_days: 7}}` en la `config.yaml` del vídeo.
+- `short`: un Short vertical nativo de 1080×1920 con un guion de 30-60 s. El metraje va a pantalla
+  completa, con subtítulos grandes de 3 en 3 palabras y los gráficos en una ventana 16:9. Se renderiza
+  entero con Remotion. Si reordenas escenas en el editor, los subtítulos no se mueven.
+- Un formato puede traer ajustes propios (`ajustes:` en su ficha). El canal, la serie y el vídeo
+  pueden cambiarlos.
+
 **Series de un canal.** Un canal puede tener varias series (formatos que se repiten), como el de
 negocios: `auge-caida`, `estafas`, `negocio-oculto`, `deporte-dinero` y `economia`. Cada serie cambia
 el enfoque del guion por escenas, los gráficos, los títulos, las ideas y las búsquedas. Los colores
