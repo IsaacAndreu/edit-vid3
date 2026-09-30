@@ -220,10 +220,10 @@ people:
 
 timeline:
   assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
-  music_volume: 0.32               # música de fondo (assets/music/, en bucle) en las pausas: ~-30 LUFS
+  music_volume: 0.2                # música de fondo en las pausas: ~-34 LUFS (antes 0.32; súbelo si la quieres más presente)
   music_by_chapter: true           # tono de la música por capítulo (assets/music/<tono>-*.mp3)
   music_default: intriga           # tono si no hay otra cosa
-  duck_db: 9                       # baja 9 dB más bajo la voz y el sonido original: ~16 dB por debajo de la voz
+  duck_db: 12                      # baja 12 dB más bajo la voz y el sonido original: ~23 dB por debajo de la voz
   whoosh_volume: 0.22              # transiciones: assets/sfx/whoosh*.mp3, se van alternando
   sfx_min_gap: 4                   # nunca dos transiciones a menos de 4 s
   whoosh_main: espada              # el que suena casi siempre (parte del nombre del archivo)
