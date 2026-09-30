@@ -486,6 +486,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     sents = sentences([w.model_dump() for w in words.words])
     weak = weak_sentences(ctx, sents) if ctx.section("graphics").get("cover_weak") else set()
     planned = graphics.plan(ctx, sents, words.durationSeconds, weak=weak)
+    from .datacheck import filter_planned
+
+    planned = filter_planned(ctx, planned, sents)       # no wrong figure goes on screen (datos-graficos.md)
     people = []
     if (ctx.work_dir / "people.json").is_file():
         people = json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])

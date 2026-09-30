@@ -229,6 +229,11 @@ def run(ctx: RunContext) -> None:
     from .rights import write as rights_report
 
     warnings += rights_report(ctx, rows, timeline.durationInFrames / fps)     # out/<slug>/derechos.md
+    datacheck = ctx.work_dir / "datacheck.json"
+    if datacheck.is_file():                                                   # out/<slug>/datos-graficos.md
+        dropped = [r for r in json.loads(datacheck.read_text("utf-8")).get("results", []) if r.get("verdict") == "wrong"]
+        if dropped:
+            warnings.append(f"{len(dropped)} gráficos quitados por datos erróneos (datos-graficos.md): corrige esas frases del guion")
     publish.write(ctx, timeline, rows)
     register_used(ctx, rows)
     library.remember(ctx, rows)

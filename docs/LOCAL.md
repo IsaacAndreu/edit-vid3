@@ -298,6 +298,13 @@ resultados, edades, récords, citas…) y las contrasta con Wikipedia y búsqued
 `out/<nombre>/verificacion.md`. Hazlo antes de grabar la voz: corregir un dato después obliga a
 regrabar. En la cola también se hace solo, pero no para el vídeo (salvo `factcheck.block_on_wrong: true`).
 
+**Datos de los gráficos.** Antes de montar, cada gráfico con datos (podio, clasificación, marcador,
+ficha, récords, comparativas, línea de tiempo, ticket de coste…) se contrasta con Wikipedia y una
+búsqueda propia. Si la verificación del guion ya marcó mal esa frase, o una prueba da literalmente
+otro valor para exactamente el mismo dato, el gráfico **no sale** en el vídeo; los que no se pueden
+confirmar se quedan y se listan. Informe: `out/<nombre>/datos-graficos.md` (el QA avisa de los
+quitados). Se desactiva con `graphics.verify: false`.
+
 ## 10. Shorts (solo cuando tú quieras)
 
 ```bash
