@@ -18,7 +18,7 @@ from .context import RunContext
 TEST_VIDEO = "aqz-KE-bpKQ"          # Big Buck Bunny (Blender Foundation, public, stable, up to 4K)
 TEST_RANGE = (60.0, 70.0)
 FORMAT = "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]"
-GOOD, SLOW = 12.0, 30.0              # seconds for the 10-s piece: the cloud does it in ~4 s
+GOOD, SLOW = 20.0, 45.0              # s for the 10-s piece (HLS + exact cut): the cloud does it in ~10 s
 
 
 def versions() -> dict[str, str]:
