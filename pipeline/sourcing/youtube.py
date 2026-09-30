@@ -37,12 +37,38 @@ class RateLimited(RuntimeError):
     pass
 
 
+# yt-dlp warnings that explain slow or failing downloads: shown once each (the rest stays quiet).
+_WARNINGS = (
+    (("challenge", "javascript runtime", "js runtime", "n function", "nsig", "ejs"),
+     "yt-dlp no puede resolver los retos de YouTube → descargas lentas o formatos que faltan. "
+     "Arréglalo con: pip install -U \"yt-dlp[default]\" deno"),
+    (("po token", "some formats may be missing", "sabr"), "YouTube esconde formatos a este cliente (PO token/SABR)"),
+    (("http error 429", "too many requests"), "YouTube limita peticiones (429): el programa espera y reintenta"),
+    (("http error 403", "forbidden"), "YouTube rechaza una descarga (403): se reintenta con enlaces nuevos"),
+    (("timed out", "timeout", "retrying"), "descargas que se cortan o tardan en responder (red lenta): se reintentan"),
+)
+WARNING_COUNTS: dict[str, int] = {}
+_warning_lock = threading.Lock()
+
+
 class _QuietLogger:
-    """yt-dlp prints errors itself even with quiet=True; we raise and report them instead."""
+    """yt-dlp prints errors itself even with quiet=True; we raise and report them instead. Warnings that
+    explain slowness are shown once each and counted (WARNING_COUNTS)."""
 
     def debug(self, msg: str) -> None: ...
     def info(self, msg: str) -> None: ...
-    def warning(self, msg: str) -> None: ...
+
+    def warning(self, msg: str) -> None:
+        lowered = msg.casefold()
+        for markers, text in _WARNINGS:
+            if any(m in lowered for m in markers):
+                with _warning_lock:
+                    first = text not in WARNING_COUNTS
+                    WARNING_COUNTS[text] = WARNING_COUNTS.get(text, 0) + 1
+                if first:
+                    print(f"   AVISO yt-dlp: {text}")
+                return
+
     def error(self, msg: str) -> None: ...
 
 
@@ -75,7 +101,7 @@ class YouTubeSource:
         self.http.headers["User-Agent"] = USER_AGENT
         options: dict[str, Any] = {
             "quiet": True,
-            "no_warnings": True,
+            "no_warnings": False,     # warnings go to _QuietLogger: the ones that explain slowness are shown once
             "noprogress": True,
             "noplaylist": True,
             "socket_timeout": 30,
@@ -169,6 +195,7 @@ class YouTubeSource:
                     delay = self._cooldown_until - time.monotonic()
                     if delay > 0:
                         time.sleep(delay)
+                        self._count("espera por límite", delay)
                     self.pacer.wait()
                     began = time.monotonic()
                     try:

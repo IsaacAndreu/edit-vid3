@@ -106,6 +106,23 @@ se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
 
 ## 6. Cola nocturna (varios vídeos seguidos)
 
+**Dos vídeos a la vez.** Con `queue: {parallel_videos: 2}` en `config.yaml` (viene así por defecto),
+la cola trabaja con dos vídeos a la vez por turnos: mientras uno busca o descarga de YouTube, el otro
+analiza o renderiza, así que el PC no se queda parado esperando a YouTube. Cada línea lleva delante el
+nombre de su vídeo y el registro completo queda en `out/_cola/<vídeo>.log`. Con `parallel_videos: 1`
+vuelve a ir de uno en uno.
+
+**Si la descarga en HD va lenta** (la etapa `ingest` tarda más de 20-30 min), casi siempre es que
+yt-dlp no puede resolver los «retos» de YouTube y este sirve los vídeos a paso de tortuga. La cola ya
+actualiza todo lo necesario al empezar y lo muestra en la primera línea
+(`yt-dlp … · retos (yt-dlp-ejs) … · JavaScript: deno`). Si sale `FALTA` o `NINGUNO`:
+
+```powershell
+pip install -U "yt-dlp[default]" deno
+```
+
+Al final de la descarga aparece `Tiempos YouTube: download N× X s …`: menos de 10 s por tramo es normal.
+
 Deja por la tarde cada vídeo en su carpeta (`materiales/<nombre>/` con `guion.txt`, `voz.mp3`,
 `titulo.txt`) y lanza:
 

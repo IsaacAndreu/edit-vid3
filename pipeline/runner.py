@@ -19,6 +19,7 @@ from typing import Callable
 
 from . import align, analysis, coldopen, factcheck, fallback, ingest, judge, package, people, planner, qa, render, shorts, sourcing, timeline
 from .context import RunContext
+from .locks import turn
 
 
 @dataclass(frozen=True)
@@ -141,8 +142,9 @@ def run_stages(
             if stage.run is None:
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             print(f"{label}: ejecutando…")
-            started = time.monotonic()
-            stage.run(ctx)
+            with turn(ctx.root, stage.name, ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
+                started = time.monotonic()
+                stage.run(ctx)
             if stage.validate is not None:
                 stage.validate(ctx)
             marker = _marker(ctx, stage)

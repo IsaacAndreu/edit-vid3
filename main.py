@@ -128,11 +128,22 @@ def update_ytdlp() -> None:
     import subprocess
 
     try:
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp"],
+        # [default] also updates yt-dlp-ejs, the part that solves YouTube's challenges: with an old one
+        # next to a new yt-dlp, YouTube serves downloads at a crawl (hours for one video's clips)
+        result = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp[default]"],
                                 capture_output=True, text=True, timeout=300)
-        from importlib.metadata import version
+        from importlib.metadata import PackageNotFoundError, version
 
-        print(f"yt-dlp {version('yt-dlp')}" + ("" if result.returncode == 0 else " (no se pudo actualizar)"))
+        try:
+            ejs = version("yt-dlp-ejs")
+        except PackageNotFoundError:
+            ejs = "FALTA"
+        runtime = next((name for name in ("deno", "node", "bun") if shutil.which(name)), None)
+        print(f"yt-dlp {version('yt-dlp')} · retos (yt-dlp-ejs) {ejs} · JavaScript: {runtime or 'NINGUNO'}"
+              + ("" if result.returncode == 0 else " (no se pudo actualizar)"))
+        if ejs == "FALTA" or runtime is None:
+            print("AVISO: sin yt-dlp-ejs o sin deno/node las descargas de YouTube van lentísimas: "
+                  "pip install -U \"yt-dlp[default]\" deno")
     except Exception as error:  # offline or pip missing: the queue still runs with the installed one
         print(f"yt-dlp: no se pudo actualizar ({type(error).__name__})")
 
@@ -186,6 +197,10 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         if limit > 0:
             slugs = slugs[:limit]
         print(f"Cola: {len(slugs)} vídeo(s) pendiente(s): {', '.join(slugs) or '—'}")
+        workers = parallel_videos(root)
+        if workers > 1 and len(slugs) > 1:
+            results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root)
+            slugs = []
         for number, slug in enumerate(slugs, start=1):
             print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
             started = time.monotonic()
@@ -210,6 +225,73 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             f"{'✅' if status == 'OK' else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
             for slug, status, seconds, detail in results))
     return failures
+
+
+def parallel_videos(root: Path) -> int:
+    try:
+        cfg = RunContext.create("_cola", root=root).section("queue")
+    except ConfigError:
+        return 1
+    return max(1, int(cfg.get("parallel_videos", 1)))
+
+
+def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
+                 root: Path) -> list[tuple[str, str, float, str]]:
+    """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
+    while one video downloads from YouTube, another one analyses or renders. Each video's lines are
+    prefixed with its name and kept in out/_cola/<video>.log."""
+
+    import subprocess
+    import threading
+    from collections import deque
+
+    logs = root / "out" / "_cola"
+    logs.mkdir(parents=True, exist_ok=True)
+    pending = deque(slugs)
+    results: list[tuple[str, str, float, str]] = []
+    lock = threading.Lock()
+
+    def run(slug: str) -> None:
+        started = time.monotonic()
+        args = [sys.executable, "-u", str(root / "main.py"), "--slug", slug, *[f"--force={f}" for f in force]]
+        if until:
+            args.append(f"--until={until}")
+        if review:
+            args.append("--review")
+        tail: deque[str] = deque(maxlen=15)
+        with (logs / f"{slug}.log").open("w", encoding="utf-8") as log:
+            process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                       encoding="utf-8", errors="replace",
+                                       env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1"})
+            assert process.stdout is not None
+            for line in process.stdout:
+                log.write(line)
+                line = line.rstrip()
+                tail.append(line)
+                if line and not line.startswith(("[h264", "libpng", "[ WARN")):
+                    print(f"[{slug}] {line}", flush=True)
+            code = process.wait()
+        detail = "" if code == 0 else next((l.strip() for l in reversed(tail) if l.strip()), f"código {code}")
+        with lock:
+            results.append((slug, "OK" if code == 0 else "ERROR", time.monotonic() - started, detail))
+            _write_report(root, results)
+
+    def worker() -> None:
+        while True:
+            with lock:
+                if not pending:
+                    return
+                slug = pending.popleft()
+            run(slug)
+
+    print(f"Cola en paralelo: {workers} vídeos a la vez (red y CPU por turnos) · registros en out/_cola/")
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(workers)]
+    for thread in threads:
+        thread.start()
+        time.sleep(2)
+    for thread in threads:
+        thread.join()
+    return results
 
 
 def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> None:

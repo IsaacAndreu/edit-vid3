@@ -291,10 +291,17 @@ def run(ctx: RunContext) -> None:
             except Exception as error:
                 detail = getattr(error, "stderr", "") or str(error)
                 failed[shot_id] = str(detail).strip()[-240:]
-            if number % 40 == 0:
-                print(f"   {number}/{len(todo)} ({time.monotonic() - started:.0f} s)")
+            if number % 20 == 0:
+                spent = time.monotonic() - started
+                print(f"   {number}/{len(todo)} ({spent:.0f} s · {spent / number:.1f} s por plano)")
 
     youtube.close()
+    if youtube.stats:                    # where the time went: slow downloads, waits after a 429, account switches
+        print(f"   Tiempos YouTube: {youtube.stats_line()}")
+        download = youtube.stats.get("download")
+        if download and download[1] / max(download[0], 1) > 25:
+            print("   AVISO: las descargas van muy lentas (más de 25 s por tramo). Casi siempre es yt-dlp sin poder "
+                  "resolver los retos de YouTube: pip install -U \"yt-dlp[default]\" deno")
     ordered = [media[s.shotId] for s in todo if s.shotId in media]
     for stale in out_dir.iterdir():
         if stale.name != MANIFEST and stale.stem not in media:

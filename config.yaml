@@ -244,6 +244,9 @@ timeline:
   spotlights: 3                    # congelados con foco: la 1.ª vez que se nombra a alguien sobre un clip suyo (0 = ninguno)
   spotlight_seconds: 2.6
 
+queue:                             # cola nocturna (python main.py --all)
+  parallel_videos: 2               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
+
 qa:
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
