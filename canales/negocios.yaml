@@ -1,7 +1,8 @@
-# Perfil del canal de negocios: cómo ganan dinero las empresas y las industrias (casinos, aerolíneas,
-# supermercados, fútbol…), en formato explicativo de ~10 min.
-# Úsalo con `canal: negocios` en materiales/<vídeo>/config.yaml y con --canal negocios en --ideas / --panel.
-# Lo que no se pone aquí sale de config.yaml.
+# Perfil del canal de negocios: historias de empresas con conflicto (auges y caídas, estafas, el negocio oculto
+# de marcas conocidas, dinero y deporte, economía de España), en documentales de ~10 min.
+# Úsalo con `canal: negocios` y `serie: <serie>` en materiales/<vídeo>/config.yaml (las series están al final).
+# --semana negocios → 1 idea por serie · --series negocios → qué serie funciona mejor en tu canal.
+# Lo que no se pone aquí sale de config.yaml; lo de cada serie se pone encima de lo de aquí.
 
 format: historia                   # explicativo con hilo narrativo (se puede cambiar por vídeo: lista, ranking…)
 
@@ -34,13 +35,19 @@ judge:
   trusted_channels: [Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider, The Economist,
                      Forbes, Vox, DW, Euronews, RTVE, El País, Expansión]
 
+package:
+  hint: "los protagonistas son empresas, marcas y sus dueños. El título lleva una marca o persona conocida, una
+    cifra concreta del guion y un conflicto (caída, engaño, secreto). Nunca 'Quieres ser dueño de X'. Textos de
+    miniatura con la cifra o el giro: '0 €', 'LA ESTAFA', 'NADIE LO VIO'."
+
 ideas:
-  about: "un canal de YouTube en español de negocios: cómo ganan dinero las empresas y las industrias
-    (casinos, aerolíneas, supermercados, clubes de fútbol…), en vídeos explicativos de ~10 min"
-  pattern: "cómo gana dinero X + la cifra sorprendente + el lado oscuro"
-  my_channel: ""
+  about: "un canal de YouTube en español de negocios: historias de empresas con conflicto (auges y caídas, estafas,
+    el negocio oculto de marcas conocidas, dinero y deporte, economía de España), documentales de ~10 min"
+  pattern: "empresa o marca conocida + cifra concreta + conflicto (caída, engaño o secreto)"
+  my_channel: ""                   # tu canal ("@tucanal"): lo usa --series para comparar las series
   competitors: []                  # añade los canales de la competencia: ["@canal1", "@canal2"]
-  niches: [modelos de negocio, cómo ganan dinero las empresas, economía explicada]
+  niches: [auge y caída de empresas, estafas financieras, el negocio oculto de las marcas, dinero y deporte,
+           economía de España]
 
 lab:
   queries:
@@ -50,3 +57,123 @@ lab:
     - how companies make money
     - business explained
     - el negocio de
+
+# --- series: los 5 formatos que se prueban cada semana (uno de cada) ---------------------------------------
+# En materiales/<vídeo>/config.yaml: `serie: estafas`. Cada serie cambia lo que pone aquí; lo demás es del canal.
+# Las listas (types, queries, trusted_channels…) se sustituyen enteras, no se suman.
+series:
+  auge-caida:                      # «Cómo X pasó de valer 5.000 millones a nada»
+    planner:
+      outline: "ESTE VÍDEO ES UN AUGE Y CAÍDA DE UNA EMPRESA: el hilo va por fechas (fundación, el éxito, la
+        señal de alarma, la caída, qué queda hoy). Cada evento con su año en 'tag' ('MADRID · 2008'); los
+        'label' buscan noticias y reportajes de esa época ('Pescanova headquarters 2013 news')."
+    graphics:
+      types: [chart, timeline, press, kinetic, scale, compare, map, card, split]
+      hint: "Es un auge y caída: usa \"chart\" para el valor/ventas a lo largo de los años (la subida y el
+        desplome), \"timeline\" para las fechas clave, \"press\" para los titulares del momento y \"kinetic\"
+        para la cifra final ('0 €', '3.000 despidos')."
+    package:
+      hint: "patrón de título: 'Cómo <empresa> pasó de <cifra> a <nada/quiebra>' o 'La caída de <empresa>'. Miniatura
+        con el logo o el producto y la cifra del desplome."
+    ideas:
+      about: "un canal de YouTube en español de historias de auge y caída de empresas (españolas, latinoamericanas
+        y mundiales), documentales de ~10 min"
+      pattern: "Cómo <empresa conocida> pasó de <cifra> a <nada>"
+      niches: [auge y caída de empresas, quiebras famosas, empresas españolas que desaparecieron]
+    lab:
+      queries: [auge y caída de, cómo quebró, la caída de, rise and fall of company, how company went bankrupt,
+                qué pasó con la empresa]
+
+  estafas:                         # «La empresa que engañó a 400.000 familias»
+    planner:
+      outline: "ESTE VÍDEO CUENTA UNA ESTAFA O FRAUDE FINANCIERO como un true crime: quién era el estafador, cómo
+        funcionaba el engaño, las víctimas, cómo se descubrió y el juicio. 'tag' con lugar y año; 'label' busca
+        la cobertura de noticias del caso ('Madoff arrest December 2008 news')."
+    graphics:
+      types: [timeline, press, rule, kinetic, card, map, scale, chart, split]
+      hint: "Es una estafa: usa \"card\" para presentar al estafador, \"chart\" o \"scale\" para explicar el
+        esquema y cuánto dinero movía, \"press\" cuando estalla el caso y \"rule\" para la condena o la ley."
+    package:
+      hint: "patrón de título: 'La estafa de <cifra> que <consecuencia>' o 'Cómo <persona/empresa> engañó a <cifra>
+        personas'. Miniatura con la cara del estafador o el logo y 'LA ESTAFA'/'X MILLONES'."
+    judge:
+      trusted_channels: [Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider, The Economist,
+                         Forbes, Vox, DW, Euronews, RTVE, El País, Expansión, ABC News, NBC News, 60 Minutes,
+                         Antena 3 Noticias, laSexta]
+    ideas:
+      about: "un canal de YouTube en español de estafas y fraudes financieros contados como true crime
+        (esquemas Ponzi, empresas fraudulentas, criptoestafas), documentales de ~10 min"
+      pattern: "La estafa de <cifra> que engañó a <quién>"
+      niches: [estafas financieras, esquemas Ponzi, fraudes de empresas, criptoestafas]
+    lab:
+      queries: [la estafa de, mayor estafa de la historia, esquema ponzi, fraude financiero, biggest financial fraud,
+                how ponzi scheme worked]
+
+  negocio-oculto:                  # «Cómo gana dinero Ryanair con billetes de 10 €»
+    planner:
+      outline: "ESTE VÍDEO EXPLICA EL NEGOCIO OCULTO DE UNA MARCA CONOCIDA: de dónde sale de verdad el dinero, los
+        trucos con el cliente y las cifras. Los 'label' buscan la marca en acción (tiendas, aviones, fábricas,
+        anuncios con su nombre) y a sus directivos; 'tag' solo cuando se dice lugar o año."
+    graphics:
+      types: [chart, compare, scale, specs, kinetic, split, map, race, press]
+      hint: "Es el negocio oculto de una marca: usa \"compare\" para lo que paga el cliente frente a lo que le cuesta a
+        la empresa, \"chart\" para de dónde sale el dinero, \"specs\" para la ficha de la empresa y \"kinetic\" para
+        el truco clave."
+    package:
+      hint: "patrón de título: 'Cómo gana dinero <marca> con <lo que parece gratis/barato>' o 'El truco de <marca>'.
+        Miniatura con el producto reconocible y la cifra."
+    ideas:
+      about: "un canal de YouTube en español que explica el negocio oculto de marcas muy conocidas (aerolíneas,
+        supermercados, apps, casinos, cadenas de comida) y sus trucos, documentales de ~10 min"
+      pattern: "Cómo gana dinero <marca conocida> con <algo que parece gratis o barato>"
+      niches: [modelos de negocio, cómo ganan dinero las empresas, trucos de las marcas]
+    lab:
+      queries: [cómo gana dinero, el truco de, modelo de negocio explicado, how does make money, business model explained,
+                el negocio de]
+
+  deporte-dinero:                  # «Las palancas del Barça», «el dinero saudí en el fútbol»
+    format: historia
+    planner:
+      outline: "ESTE VÍDEO VA DEL DINERO EN EL DEPORTE: clubes, fichajes, ligas, patrocinios, lo que ganan los
+        deportistas. Los 'label' buscan el momento deportivo o la rueda de prensa concreta ('Neymar PSG presentation
+        2017'); 'tag' con lugar y año."
+    graphics:
+      types: [race, compare, card, chart, scale, press, podium, split, standings]
+      hint: "Es dinero y deporte: usa \"race\" para comparar presupuestos o salarios de clubes/jugadores, \"card\"
+        para presentar al jugador o dueño, \"compare\" para fichaje frente a fichaje y \"scale\" para dar tamaño a las cifras."
+    judge:
+      trusted_channels: [Bloomberg, CNBC, Reuters, Financial Times, Business Insider, The Economist, Forbes, DW, RTVE,
+                         El País, Expansión, Marca, AS, Mundo Deportivo, ESPN, Sky Sports, DAZN, Movistar Plus+]
+    package:
+      hint: "patrón de título: el club, liga o jugador + la cifra + el conflicto ('El agujero de 1.000 millones del
+        Barça'). Miniatura con el jugador o el escudo y la cifra."
+    ideas:
+      about: "un canal de YouTube en español sobre el dinero en el deporte (finanzas de clubes, fichajes, ligas,
+        sueldos y patrocinios), documentales de ~10 min"
+      pattern: "<club/jugador> + cifra enorme + conflicto"
+      niches: [finanzas del fútbol, fichajes récord, dinero en el deporte, sueldos de deportistas]
+    lab:
+      queries: [finanzas del barça, cuánto gana, el negocio del fútbol, fichaje más caro, football finances explained,
+                how clubs make money]
+
+  economia:                        # «Por qué los pisos cuestan tanto en España»
+    planner:
+      outline: "ESTE VÍDEO EXPLICA UN PROBLEMA DE LA ECONOMÍA DE ESPAÑA (vivienda, sueldos, pensiones, precios…)
+        con datos y casos concretos: el problema, por qué pasa, quién gana y quién pierde, qué puede venir. Los
+        'label' buscan imágenes de noticias concretas (ciudades, manifestaciones, ruedas de prensa) con lugar y año."
+    graphics:
+      types: [chart, map, compare, race, scale, kinetic, timeline, split, press]
+      hint: "Es economía explicada: usa \"chart\" para la evolución de precios/sueldos, \"map\" para comparar
+        comunidades o países, \"compare\" para antes frente a ahora y \"kinetic\" para la cifra que duele."
+      seconds_per_graphic: 60
+    package:
+      hint: "patrón de título: pregunta o afirmación que duele al espectador con una cifra ('Por qué un piso cuesta
+        20 años de sueldo'). Evita el tono político."
+    ideas:
+      about: "un canal de YouTube en español que explica la economía de España (vivienda, sueldos, precios,
+        pensiones) con datos y sin tono político, documentales de ~10 min"
+      pattern: "Por qué <problema que sufre el espectador> + la cifra"
+      niches: [vivienda en España, sueldos en España, economía explicada, precios y supermercado]
+    lab:
+      queries: [por qué la vivienda, economía de España explicada, por qué los sueldos, precio de la vivienda,
+                crisis de la vivienda, inflación España]

@@ -61,6 +61,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
     parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
+    target.add_argument("--semana", metavar="CANAL",
+                        help="Plan de la semana: 1 idea por cada serie del canal (canales/<canal>.yaml → series:), "
+                             "en out/_ideas/<canal>/semana-<fecha>.md.")
+    target.add_argument("--series", metavar="CANAL",
+                        help="Qué serie del canal funciona mejor: visitas de tus vídeos publicados agrupadas por serie "
+                             "(out/_series/<canal>-<fecha>.md).")
+    parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
     parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
     return parser
@@ -363,8 +370,23 @@ def main() -> None:
     if args.ideas:
         from pipeline import ideas
 
-        path = ideas.run(RunContext.create("_ideas", channel=args.canal))
+        path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
         print(f"Ideas en {path}")
+        return
+    if args.semana:
+        from pipeline import ideas
+
+        print(f"Plan de la semana en {ideas.weekly(args.semana)}")
+        return
+    if args.series:
+        from pipeline import series_report
+
+        try:
+            path = series_report.report(args.series)
+        except (ConfigError, ValueError) as error:
+            raise SystemExit(f"Error: {error}") from error
+        print(path.read_text("utf-8"))
+        print(f"(guardado en {path})")
         return
     if args.all:
         failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)

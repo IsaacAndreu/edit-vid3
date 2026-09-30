@@ -481,7 +481,8 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
         proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
                                  system=SYSTEM.format(count=count, refs=", ".join(REFERENCES))
                                  + f"\nTipos permitidos en este canal: {', '.join(allowed)}."
-                                 + (f"\n{FORMAT_HINTS[fmt]}" if fmt in FORMAT_HINTS else "")).get("graphics", [])
+                                 + (f"\n{FORMAT_HINTS[fmt]}" if fmt in FORMAT_HINTS else "")
+                                 + (f"\n{cfg['hint']}" if cfg.get("hint") else "")).get("graphics", [])
     except Exception as error:  # graphics are a bonus: the video is complete without them
         print(f"   Gráficos no disponibles: {str(error)[:120]}")
         return []

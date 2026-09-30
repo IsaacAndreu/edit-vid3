@@ -136,7 +136,8 @@ FORMAT_OUTLINES = {"lista": LIST_OUTLINE, "rivalidad": RIVALRY_OUTLINE, "records
 
 def outline_system(ctx: RunContext) -> str:
     extra = FORMAT_OUTLINES.get(str(ctx.config.get("format") or ""))
-    return OUTLINE_SYSTEM + ("\n\n" + extra if extra else "")
+    series = str(ctx.section("planner").get("outline") or "").strip()   # the channel series' own notes
+    return OUTLINE_SYSTEM + "".join("\n\n" + part for part in (extra, series) if part)
 
 
 def _sentences(words: list[Word]) -> list[tuple[int, int]]:

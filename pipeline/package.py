@@ -29,9 +29,9 @@ THUMB_DIR = "miniaturas"
 ACCENTS = ["#ffd400", "#ff3b30", "#22d3ee"]
 
 SYSTEM = """
-Eres el responsable de títulos y miniaturas de un canal de YouTube de historias de atletas. Con el guion del vídeo (y los títulos que mejor funcionan ahora en la competencia, solo
+Eres el responsable de títulos y miniaturas de un canal de YouTube documental (historias de atletas, de empresas…). Con el guion del vídeo (y los títulos que mejor funcionan ahora en la competencia, solo
 como patrón) devuelve SOLO JSON:
-{"titles": ["3 títulos distintos EN EL IDIOMA DEL GUION, máx. 70 caracteres, con tensión y el nombre del atleta"],
+{"titles": ["3 títulos distintos EN EL IDIOMA DEL GUION, máx. 70 caracteres, con tensión y el nombre del protagonista (atleta, empresa, marca…)"],
  "thumbTexts": ["3 frases MUY cortas (2-5 palabras) para la miniatura, en el idioma del guion, distintas del título, p. ej. 'ÚLTIMO DE 91' o 'NADIE LO VIO VENIR'"]}
 No inventes datos: cifras y hechos solo si están en el guion. No copies títulos de la competencia.
 """.strip()
@@ -84,14 +84,17 @@ def run(ctx: RunContext) -> None:
     title_file = ctx.materials_dir / "titulo.txt"
     title = title_file.read_text("utf-8").strip() if title_file.is_file() else ctx.slug
     patterns = []
-    outliers = ctx.root / "out" / "_ideas" / "outliers.json"
-    if outliers.is_file():
+    from .ideas import outliers_path
+
+    outliers = outliers_path(ctx)
+    if outliers:
         patterns = [o["title"] for o in json.loads(outliers.read_text("utf-8"))[:12]]
+    hint = str(ctx.section("package").get("hint") or "").strip()      # the channel series' title pattern
     script = (ctx.materials_dir / "guion.txt").read_text("utf-8")[:12000]
     try:
         result: dict[str, Any] = complete_json(
             ctx, stage=STAGE, section="planner", max_tokens=800,
-            system=SYSTEM + f"\nIDIOMA OBLIGATORIO de titles y thumbTexts: {ctx.language}, aunque los ejemplos estén en otro idioma.",
+            system=SYSTEM + (f"\nEN ESTE CANAL: {hint}" if hint else "") + f"\nIDIOMA OBLIGATORIO de titles y thumbTexts: {ctx.language}, aunque los ejemplos estén en otro idioma.",
             user=f"IDIOMA DE LOS TÍTULOS Y TEXTOS: {ctx.language}\nTÍTULO DE TRABAJO: {title}\n\nTÍTULOS QUE MEJOR FUNCIONAN EN LA COMPETENCIA:\n"
                  + ("\n".join(f"- {p}" for p in patterns) or "(sin datos)") + f"\n\nGUION:\n{script}")
     except Exception as error:

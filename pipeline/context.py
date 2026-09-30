@@ -53,10 +53,11 @@ class RunContext:
 
     @classmethod
     def create(cls, slug: str, *, root: Path = PROJECT_ROOT, config: dict[str, Any] | None = None,
-               channel: str | None = None) -> "RunContext":
-        """config.yaml ⊕ canales/<canal>.yaml ⊕ materiales/<slug>/config.yaml (later wins).
+               channel: str | None = None, series: str | None = None) -> "RunContext":
+        """config.yaml ⊕ canales/<canal>.yaml ⊕ its series.<serie> ⊕ materiales/<slug>/config.yaml (later wins).
 
-        The channel is `channel`, else `canal:` in the video's config.yaml, else `canal:` in config.yaml."""
+        The channel is `channel`, else `canal:` in the video's config.yaml, else `canal:` in config.yaml;
+        the series (a recurring format of the channel: estafas, auge y caída…) is `series`, else `serie:`."""
 
         if config is not None:
             return cls(slug=slug, root=root, config=config)
@@ -69,12 +70,24 @@ class RunContext:
         if name:
             ctx.config = deep_merge(base, channel_profile(root, str(name)))
             ctx.config["canal"] = str(name)
-        ctx.config = deep_merge(ctx.config, {k: v for k, v in override.items() if k != "canal"})
+        serie = series or override.get("serie")
+        catalog = ctx.config.pop("series", None) or {}
+        if serie:
+            if str(serie) not in catalog:
+                raise ConfigError(f"El canal {name or '(ninguno)'} no tiene la serie «{serie}» "
+                                  f"(hay: {', '.join(catalog) or 'ninguna'}).")
+            ctx.config = deep_merge(ctx.config, catalog[str(serie)])
+            ctx.config["serie"] = str(serie)
+        ctx.config = deep_merge(ctx.config, {k: v for k, v in override.items() if k not in ("canal", "serie")})
         return ctx
 
     @property
     def channel(self) -> str:
         return str(self.config.get("canal") or "")
+
+    @property
+    def series(self) -> str:
+        return str(self.config.get("serie") or "")
 
     def _dir(self, key: str, default: str) -> Path:
         return self.root / str(self.config.get("paths", {}).get(key, default))

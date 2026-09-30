@@ -365,6 +365,19 @@ fuentes de confianza, la competencia, las búsquedas del panel y el formato. Se 
   (`tension-*.mp3`, `whoosh-*.mp3`…). Si están vacías, se usan las de `assets/`.
 - Un canal nuevo: copia `canales/robots.yaml` con otro nombre y cambia lo que quieras.
 
+**Series de un canal.** Un canal puede tener varias series (formatos que se repiten), como el de
+negocios: `auge-caida`, `estafas`, `negocio-oculto`, `deporte-dinero` y `economia`. Cada serie cambia
+el enfoque del guion por escenas, los gráficos, los títulos, las ideas y las búsquedas. Los colores
+y el resto son los del canal.
+- En el vídeo: `canal: negocios` y `serie: estafas` en `materiales/<vídeo>/config.yaml`.
+- `python main.py --semana negocios`: una idea por serie, en `out/_ideas/negocios/semana-<fecha>.md`.
+- `python main.py --ideas --canal negocios --serie estafas`: 3 ideas de una sola serie.
+- `python main.py --series negocios`: qué serie funciona mejor en tu canal (`ideas.my_channel`), en
+  `out/_series/negocios-<fecha>.md`. Si no encuentra un vídeo por el título, pon `youtube: <URL>` en
+  su `config.yaml`. El CTR y la retención de YouTube Studio van en
+  `estadisticas: {ctr: 5.4, retencion: 41}`.
+- El plan de prueba semanal está en `docs/HOJA-DE-RUTA-NEGOCIOS.md`.
+
 Con `format: ranking` (el perfil de robots ya lo trae), el vídeo es una cuenta atrás sin
 protagonista:
 - cada puesto que el guion presenta («en el número 7…», «puesto 3:») lleva una tarjeta **#7/10** con
