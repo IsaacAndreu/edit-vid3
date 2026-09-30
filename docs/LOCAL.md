@@ -365,6 +365,23 @@ fuentes de confianza, la competencia, las búsquedas del panel y el formato. Se 
   (`tension-*.mp3`, `whoosh-*.mp3`…). Si están vacías, se usan las de `assets/`.
 - Un canal nuevo: copia `canales/robots.yaml` con otro nombre y cambia lo que quieras.
 
+**Estilo del canal** (en `brand:` y `timeline:` del perfil; el de negocios imita a qash):
+- `brand.chapterStyle: numbered`: rótulos «CAPÍTULO I:» en el color del canal, con el título en blanco
+  y letra estrecha. Por defecto es `block` («CAPÍTULO 01» con barra).
+- `brand.statStyle: bare`: la cifra gigante directamente sobre el vídeo, sin oscurecerlo ni poner panel.
+- `brand.graphicsStyle: pizarra`: los gráficos van sobre una pizarra gris oscuro con textura.
+- `timeline.narrow_layout: archive`: el archivo 4:3 se ve a pantalla completa con bandas negras y
+  aspecto de película (grano, color cálido, viñeta), en vez de enmarcado.
+- `timeline.pizarra: true`: un plano que se queda sin imagen sale en pizarra con sus palabras clave,
+  en vez de parar el vídeo. La QA lo avisa.
+- `graphics.cover_weak: true`: los gráficos animados van primero a las frases con imagen floja.
+- `planner.shots_note`: instrucciones extra del canal para el planificador de planos (qué metraje
+  pedir, cuándo poner cifras).
+- Sin stock en un canal: `fallback: {pexels: false, generate: false}` y
+  `sourcing.images.{wikimedia,openverse,pixabay}.enabled: false`.
+
+Tras `git pull` hay que ejecutar `npm install`: hay una fuente nueva (Oswald) para los capítulos.
+
 **Formatos.** Cada formato (historia, ranking, lista, explicativo, cronología, investigación, qué fue
 de, mitos, misterio…) es un fichero `formatos/<nombre>.yaml`. Se elige con `format: <nombre>` en la
 `config.yaml` del vídeo. Con `python main.py --formatos` sale la lista con ejemplos. Para crear uno

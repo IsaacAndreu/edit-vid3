@@ -423,7 +423,7 @@ def _label_batch(
                 ctx,
                 stage=STAGE,
                 section="planner",
-                system=LABEL_SYSTEM,
+                system=LABEL_SYSTEM + (f"\n\nEN ESTE CANAL:\n{note}" if (note := str(ctx.section("planner").get("shots_note") or "").strip()) else ""),
                 user=f"{header}\n\nPLANOS:\n{json.dumps(public, ensure_ascii=False, indent=1)}{feedback}",
                 max_tokens=16000,
             )

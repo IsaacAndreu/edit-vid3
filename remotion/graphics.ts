@@ -70,6 +70,7 @@ export interface SpecsGraphic {
 export interface KineticGraphic {
   type: 'kinetic';
   lines: string[]; // each line appears word by word; the last word of the last line in yellow
+  board?: boolean; // a shot with no footage: the words on the channel canvas (chalkboard) instead of over video
 }
 
 export interface ScoreGraphic {

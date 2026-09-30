@@ -6,22 +6,26 @@
 
 format: historia                   # explicativo con hilo narrativo (se puede cambiar por vídeo: lista, ranking…)
 
-brand:                             # finanzas: verde dinero + azul sobre casi negro
-  accent: "#34d399"                # verde: cifras, títulos, barras
+brand:                             # estilo qash: verde lima sobre archivo real y pizarra gris oscuro
+  accent: "#19fe5b"                # verde lima (medido en los vídeos de qash): cifras, capítulos, títulos
   accent2: "#60a5fa"               # azul: segundo color (lado B de comparativas, 2.ª serie)
-  canvas: "#070b10"
-  glow: "rgba(52,211,153,0.26)"
-  label: "#0f766e"
-  wipe: "#10b981"
-  panel: "#0e151c"
-  panelRaised: "#15202a"
-  muted: "#9fb3c0"
-  ocean: "#060a0f"
-  land: "#13212b"
-  border: "#1f3342"
+  canvas: "#262726"                # pizarra
+  glow: "rgba(25,254,91,0.22)"
+  label: "#0b6b2c"
+  wipe: "#19fe5b"
+  panel: "#2b2c2b"
+  panelRaised: "#343534"
+  muted: "#b9bcb9"
+  ocean: "#1f2020"
+  land: "#3a3b3a"
+  border: "rgba(255,255,255,0.32)"
+  chapterStyle: numbered           # «CAPÍTULO I:» en verde + título en blanco, letra estrecha
+  statStyle: bare                  # cifra gigante en verde directamente sobre el vídeo, sin panel
+  graphicsStyle: pizarra           # gráficos sobre pizarra gris con textura, trazos finos
 
 graphics:
   seconds_per_graphic: 80          # los datos mandan en este canal: algún gráfico más que en gimnasia
+  cover_weak: true                 # los gráficos van primero a las frases con imagen floja o de relleno
   types: [map, compare, chart, timeline, specs, kinetic, press, rule, race, scale, split]
 
 people:
@@ -29,9 +33,35 @@ people:
 
 timeline:
   assets: assets/negocios          # assets/negocios/music y /sfx; si están vacías, usa assets/
+  narrow_layout: archive           # archivo 4:3 a pantalla completa con bandas negras y aspecto de película
+  card_share: 0                    # el metraje va siempre a pantalla completa (sin marco)
+  pizarra: true                    # un plano sin nada que poner sale en pizarra con sus palabras clave
   opening_question: auto           # si el vídeo arranca con una pregunta, sale entera desde el primer fotograma
 
+# Sin stock ni imágenes libres: metraje real de archivo; si no hay, foto de prensa del tema y, si tampoco, pizarra.
+fallback:
+  pexels: false
+  generate: false
+
+sourcing:
+  images:
+    wikimedia: {enabled: false}
+    openverse: {enabled: false}
+    pixabay: {enabled: false}
+
+planner:
+  shots_note: |
+    - METRAJE: pide SIEMPRE archivo real, nunca stock. En las búsquedas usa lo que da ese tipo de vídeo:
+      telediarios y reportajes ('news report', 'telediario', 'reportaje'), ruedas de prensa y juntas de
+      accionistas ('press conference', 'rueda de prensa'), entrevistas, anuncios antiguos ('old commercial',
+      'anuncio años 80'), vídeos corporativos de la empresa y documentales. Con el nombre de la empresa o la
+      persona y el año siempre que se sepa. Nunca 'stock footage', 'business people', 'money concept'.
+    - CIFRAS: en los planos con "gancho", CADA cifra que dice el texto va en un plano "stat" (value con su
+      unidad: '23.000.000 €', '60.000 €/día'; label de 1-2 palabras: 'anuales', 'al día'). Después del
+      gancho, "stat" para las cifras más impactantes de cada bloque.
+
 judge:
+  trusted_bonus: 0.05              # prioridad a telediarios y medios económicos
   trusted_channels: [Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider, The Economist,
                      Forbes, Vox, DW, Euronews, RTVE, El País, Expansión]
 

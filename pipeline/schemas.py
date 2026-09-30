@@ -486,7 +486,8 @@ class TimelineMedia(_Strict):
     kind: Literal["video", "image"]
     source: str
     credit: str | None = None                                # on-screen "Fuente: …"; None for generated images
-    layout: Literal["full", "card", "person", "parallax"] = "full"   # card: framed over the grid; person: cutout card; parallax: photo with depth
+    layout: Literal["full", "card", "person", "parallax", "archive"] = "full"   # card: framed over the grid; person: cutout card;
+    # parallax: photo with depth; archive: 4:3 footage with black side bars and a film look
     caption: str | None = None                               # person cards: the name
     width: int | None = None                                 # of the media file (cards keep the source frame)
     height: int | None = None
@@ -654,11 +655,15 @@ class Timeline(_Strict):
     @model_validator(mode="after")
     def _consistent(self) -> "Timeline":
         cursor = 0
+        # timeline.pizarra: a shot without footage shows the chalkboard canvas under a graphic or its key-word board
+        def under_graphic(shot: TimelineShot) -> bool:
+            return any(g.from_ < shot.from_ + shot.durationInFrames and shot.from_ < g.from_ + g.durationInFrames
+                       for g in self.groups)
         for shot in self.shots:
             if shot.from_ != cursor:
                 raise ValueError(f"{shot.id}: empieza en el fotograma {shot.from_}, se esperaba {cursor}")
             cursor += shot.durationInFrames
-            if shot.type not in ("datacard", "endscreen") and shot.media is None:
+            if shot.type not in ("datacard", "endscreen") and shot.media is None and not under_graphic(shot):
                 raise ValueError(f"{shot.id}: plano {shot.type} sin medio")
             if shot.media and shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
                 raise ValueError(f"{shot.id}: medio de terceros sin crédito")

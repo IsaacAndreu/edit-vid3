@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import { AbsoluteFill, Sequence } from 'remotion';
+import { ArchiveFootage } from './components/ArchiveFootage';
 import { AudioBed } from './components/AudioBed';
 import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
@@ -8,6 +9,7 @@ import { CutMotion } from './components/CutMotion';
 import { EndScreen } from './components/EndScreen';
 import { GraphicScene } from './components/graphics/GraphicScene';
 import { FramedCard } from './components/FramedCard';
+import { GridBackground } from './components/GridBackground';
 import { LowerThird } from './components/LowerThird';
 import { ParallaxPhoto } from './components/ParallaxPhoto';
 import { PersonCard } from './components/PersonCard';
@@ -22,8 +24,11 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
   if (shot.type === 'endscreen') {
     return null; // drawn on its own layer, with the localised words
   }
-  if (shot.type === 'datacard' || !shot.media) {
+  if (shot.type === 'datacard') {
     return <AbsoluteFill style={{ backgroundColor: theme.panel }} />;
+  }
+  if (!shot.media) {
+    return <GridBackground />; // a shot nothing could fill: its key words go on the channel canvas
   }
   if (shot.type === 'split') {
     // Footage in the left half, fading into the panel colour.
@@ -41,6 +46,9 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
   }
   if (shot.media.layout === 'parallax') {
     return <ParallaxPhoto media={shot.media} durationInFrames={shot.durationInFrames} seed={shot.id} />;
+  }
+  if (shot.media.layout === 'archive') {
+    return <ArchiveFootage media={shot.media} seed={shot.id} />;
   }
   if (shot.media.layout === 'card') {
     return <FramedCard media={shot.media} durationInFrames={shot.durationInFrames} />;

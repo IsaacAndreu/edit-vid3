@@ -200,6 +200,10 @@ def run(ctx: RunContext) -> None:
     if repeats:
         warnings.append(f"{len(repeats)} posibles repeticiones")
 
+    boards = [s.id for s in timeline.shots if s.media is None and s.type == "broll"]
+    if boards:   # timeline.pizarra: nothing could fill them, they show their key words on the chalkboard
+        warnings.append(f"{len(boards)} planos sin imagen, en pizarra: {', '.join(boards[:12])}")
+
     # --- shares, cost ---------------------------------------------------------------------------
     by_count = Counter(e["category"] for e in media_rows)
     by_time: Counter = Counter()

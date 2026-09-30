@@ -279,16 +279,18 @@ def _size(path: Path) -> tuple[int | None, int | None]:
         return None, None
 
 
-def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float) -> str:
+def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float, narrow: str = "card") -> str:
     """Framed card for stills and for sources that are not widescreen (kept uncropped), plus a
-    deterministic share of ordinary clips for variety, as the channel style does."""
+    deterministic share of ordinary clips for variety, as the channel style does. With
+    `narrow="archive"` (timeline.narrow_layout) narrow clips stay full screen between black bars,
+    with a film look, like TV archive footage."""
 
     if shot_type in ("chapter", "split"):
         return "full"
     if media.kind == "image":   # photos alternate between the framed card and the parallax move
         return "parallax" if int(hashlib.sha1(shot_id.encode()).hexdigest()[8:16], 16) % 2 else "card"
     if media.width and media.height and media.width / media.height < 1.6:
-        return "card"
+        return "archive" if narrow == "archive" and media.kind == "video" else "card"
     bucket = int(hashlib.sha1(shot_id.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
     return "card" if bucket < card_share else "full"
 
@@ -480,9 +482,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     from . import graphics
     from .shorts import sentences
 
-    planned = graphics.plan(ctx, sentences([w.model_dump() for w in words.words]), words.durationSeconds)
-    if not planned:
-        return groups, labels
+    sents = sentences([w.model_dump() for w in words.words])
+    weak = weak_sentences(ctx, sents) if ctx.section("graphics").get("cover_weak") else set()
+    planned = graphics.plan(ctx, sents, words.durationSeconds, weak=weak)
     people = []
     if (ctx.work_dir / "people.json").is_file():
         people = json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])
@@ -563,11 +565,72 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                 graphic[side]["media"] = graphics.portrait(ctx, graphic[side]["name"], people)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
+    boards = chalkboards(shots, [*groups, *added], fps)
     labels = [label for label in labels
-              if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames for g in added)]
+              if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames
+                         for g in [*added, *boards])]
     if added:
         print("   Gráficos: " + ", ".join(f"{g.graphic['type']} {g.from_ / fps:.0f}s" for g in added))
-    return sorted([*groups, *added], key=lambda g: g.from_), labels
+    if boards:
+        print(f"   Pizarra (plano sin imagen): {len(boards)} · " + ", ".join(f"{g.from_ / fps:.0f}s" for g in boards))
+    return sorted([*groups, *added, *boards], key=lambda g: g.from_), labels
+
+
+def weak_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
+    """Sentences whose footage is weak: a low score nobody judged, a fallback stand-in, or nothing at all.
+    graphics.cover_weak puts the animated graphics there first."""
+
+    low = float(ctx.section("qa").get("low_score", ctx.section("judge").get("min_score", 0.30)))
+    weak: set[str] = set()
+    if (ctx.work_dir / "selection.json").is_file():
+        weak |= {s["shotId"] for s in ctx.read_json("selection.json").get("selections", [])
+                 if s.get("score") is not None and s["score"] < low and not s.get("judge")}
+    if (ctx.work_dir / "fallback.json").is_file():
+        data = ctx.read_json("fallback.json")
+        weak |= {i["shotId"] for i in data.get("items", []) if i.get("method") != "next-option"} | set(data.get("unresolved", {}))
+    out: set[int] = set()
+    for shot in ShotsFile.model_validate(ctx.read_json("shots.json")).shots:
+        if shot.id not in weak:
+            continue
+        end = shot.start + shot.duration
+        for s in sents:
+            if min(end, s["end"]) - max(shot.start, s["start"]) >= 0.5 * min(shot.duration, s["end"] - s["start"]):
+                out.add(s["n"])
+    return out
+
+
+def key_phrase(text: str, most: int = 8) -> str:
+    """The script's own words that carry a sentence: the clause with most long words/numbers, ≤ `most` words."""
+
+    text = " ".join(text.split()).strip(" ,.;:¿?¡!…")
+    if len(text.split()) <= most:
+        return text
+    parts = [p.strip(" ,.;:¿?¡!…") for p in re.split(r"[,;:]|\b(?:que|y|pero|porque)\b", text) if p and p.strip()]
+    fitting = [p for p in parts if 2 <= len(p.split()) <= most]
+    if fitting:
+        return max(fitting, key=lambda p: sum(1 for w in re.findall(r"\w+", p) if len(w) > 4 or w.isdigit()))
+    return " ".join(text.split()[:most])
+
+
+def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+    """Shots left without footage (timeline.pizarra) show their key words on the chalkboard canvas."""
+
+    out: list[TimelineGroup] = []
+    for shot in shots:
+        if shot.media is not None or shot.type != "broll" or shot.groupId:
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+            continue
+        phrase = key_phrase(shot.text)
+        if not phrase:
+            continue
+        words = phrase.split()
+        lines = [" ".join(words[: (len(words) + 1) // 2]), " ".join(words[(len(words) + 1) // 2:])] if len(words) > 4 else [phrase]
+        out.append(TimelineGroup.model_validate({"id": f"board-{shot.id}", "kind": "graphic", "from": start,
+                                                 "durationInFrames": shot.durationInFrames,
+                                                 "graphic": {"type": "kinetic", "lines": [l for l in lines if l], "board": True}}))
+    return out
 
 
 SPOTLIGHT_DIR = "spotlight"
@@ -890,12 +953,19 @@ def run(ctx: RunContext) -> None:
     missing = []
     chapter_number = 0
     card_share = float(cfg.get("card_share", 0.25))
+    narrow = str(cfg.get("narrow_layout", "card"))
+    # timeline.pizarra: a shot nothing could fill (no stock, no generated images in this channel)
+    # becomes a chalkboard card with its key words instead of stopping the video
+    fallback = FallbackFile.model_validate(ctx.read_json("fallback.json"))
+    boards = set(fallback.unresolved) if cfg.get("pizarra") else set()
+    for shot_id in boards:
+        media.pop(shot_id, None)
     for index, shot in enumerate(shots_file.shots):
         m = media.get(shot.id) if needs_footage(shot) else None
-        if needs_footage(shot) and m is None:
+        if needs_footage(shot) and m is None and shot.id not in boards:
             missing.append(shot.id)
         if m is not None:
-            m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share)})
+            m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share, narrow)})
         if shot.type == "chapter":
             chapter_number += 1
         shots.append(TimelineShot.model_validate({

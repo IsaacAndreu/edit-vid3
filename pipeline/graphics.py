@@ -449,8 +449,15 @@ def _as_int(value: Any) -> int:
         return -1
 
 
-def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[dict[str, Any]]:
-    """[{"start": voice s, "end": voice s, "graphic": {...}}] validated against the narration."""
+WEAK_HINT = ("Las frases marcadas con ⚠ no tienen buen metraje (imagen floja o de relleno): pon los gráficos PRIMERO "
+             "ahí, con el tipo que mejor explique esa frase (kinetic para una idea abstracta, chart/scale/compare para "
+             "cifras). Solo después reparte el resto.")
+
+
+def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: set[int] | None = None) -> list[dict[str, Any]]:
+    """[{"start": voice s, "end": voice s, "graphic": {...}}] validated against the narration.
+
+    `weak`: sentences with poor footage (graphics.cover_weak), offered to the LLM first."""
 
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
@@ -463,13 +470,17 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float) -> list[
     count = max(1, round(duration / every))
     count = min(count, int(cfg.get("max", 8)))
     allowed = [t for t in cfg.get("types", TYPES) if t in TYPES and not (ranked and t == "rank")]
-    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
+    weak = weak or set()
+    if weak:   # one more graphic per 3 weak sentences, within the channel's maximum
+        count = min(int(cfg.get("max", 8)), count + len(weak) // 3)
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {'⚠ ' if s['n'] in weak else ''}{s['text']}" for s in sents)
     try:
         proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
                                  system=SYSTEM.format(count=count, refs=", ".join(REFERENCES))
                                  + f"\nTipos permitidos en este canal: {', '.join(allowed)}."
                                  + (f"\n{str(ctx.format['graficos']).strip()}" if ctx.format.get("graficos") else "")
-                                 + (f"\n{cfg['hint']}" if cfg.get("hint") else "")).get("graphics", [])
+                                 + (f"\n{cfg['hint']}" if cfg.get("hint") else "")
+                                 + (f"\n{WEAK_HINT}" if weak else "")).get("graphics", [])
     except Exception as error:  # graphics are a bonus: the video is complete without them
         print(f"   Gráficos no disponibles: {str(error)[:120]}")
         return []

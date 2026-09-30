@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import { fontFamily, theme } from '../../theme';
+import { GridBackground } from '../GridBackground';
 import type { KineticGraphic } from '../../graphics';
 
 /** Kinetic typography for a punchline: words drop in one by one, the final word in yellow. */
@@ -13,9 +14,11 @@ export const Kinetic: FC<{ graphic: KineticGraphic; durationInFrames: number }> 
   let n = 0;
   const out = interpolate(frame, [durationInFrames - 8, durationInFrames], [1, 0], { extrapolateLeft: 'clamp' });
   return (
+    <AbsoluteFill>
+    {graphic.board ? <GridBackground /> : null}
     <AbsoluteFill
       style={{
-        background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.82) 100%)',
+        background: graphic.board ? 'transparent' : 'radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.82) 100%)',
         justifyContent: 'center',
         alignItems: 'center',
         flexDirection: 'column',
@@ -50,6 +53,7 @@ export const Kinetic: FC<{ graphic: KineticGraphic; durationInFrames: number }> 
           })}
         </div>
       ))}
+    </AbsoluteFill>
     </AbsoluteFill>
   );
 };

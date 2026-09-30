@@ -4,6 +4,8 @@ import inter500 from '@fontsource/inter/files/inter-latin-500-normal.woff2';
 import inter600 from '@fontsource/inter/files/inter-latin-600-normal.woff2';
 import inter800 from '@fontsource/inter/files/inter-latin-800-normal.woff2';
 import inter900 from '@fontsource/inter/files/inter-latin-900-normal.woff2';
+import oswald500 from '@fontsource/oswald/files/oswald-latin-500-normal.woff2';
+import oswald700 from '@fontsource/oswald/files/oswald-latin-700-normal.woff2';
 
 // Inter from local files (no network at render time): 400 labels, 600 values, 800-900 titles/numbers.
 export const fontFamily = 'Inter';
@@ -15,6 +17,15 @@ for (const [url, weight] of [
   [inter900, '900'],
 ] as const) {
   loadFont({ family: fontFamily, url, weight });
+}
+
+// Oswald: the narrow type of numbered chapter cards ("CAPÍTULO I:").
+export const condensedFamily = 'Oswald';
+for (const [url, weight] of [
+  [oswald500, '500'],
+  [oswald700, '700'],
+] as const) {
+  loadFont({ family: condensedFamily, url, weight });
 }
 
 /** Channel brand kit. Defaults below; each channel overrides them from config.yaml (`brand:`),
@@ -37,6 +48,12 @@ const DEFAULTS = {
   negative: '#f87171',
   neutral: '#ffffff',
   shadow: '0 6px 30px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.75)',
+  // Styles (not colours): chapterStyle 'block' ("CAPÍTULO 01" + bar) | 'numbered' ("CAPÍTULO I:" in narrow type);
+  // statStyle 'panel' (dimmed frame + label) | 'bare' (only the giant figure over the footage);
+  // graphicsStyle 'grid' (dark grid + glow) | 'pizarra' (textured dark-grey chalkboard, thin lines).
+  chapterStyle: 'block',
+  statStyle: 'panel',
+  graphicsStyle: 'grid',
 };
 
 export type Brand = Partial<typeof DEFAULTS>;
