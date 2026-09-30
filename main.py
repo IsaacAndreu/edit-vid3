@@ -61,6 +61,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
     parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
+    target.add_argument("--probar-youtube", action="store_true",
+                        help="Comprueba en 1 minuto por qué YouTube descarga lento en esta máquina y qué hacer.")
     target.add_argument("--formatos", action="store_true",
                         help="Lista de formatos de vídeo (formatos/*.yaml): se eligen con format: en la config.yaml.")
     target.add_argument("--semana", metavar="CANAL",
@@ -374,6 +376,11 @@ def main() -> None:
 
         path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
         print(f"Ideas en {path}")
+        return
+    if args.probar_youtube:
+        from pipeline import ytcheck
+
+        ytcheck.run(RunContext.create("_ytcheck"))
         return
     if args.formatos:
         from pipeline import formats

@@ -123,6 +123,10 @@ analiza o renderiza, así que el PC no se queda parado esperando a YouTube. Cada
 nombre de su vídeo y el registro completo queda en `out/_cola/<vídeo>.log`. Con `parallel_videos: 1`
 vuelve a ir de uno en uno.
 
+**Comprobación rápida:** `python main.py --probar-youtube` tarda un minuto. Descarga 10 s de un vídeo
+de prueba como la cola de noche, con y sin tus cookies, y te dice la causa y qué ejecutar: falta el
+solucionador de retos, tu cuenta está frenada, YouTube te limita (429) o es la conexión.
+
 **Si la descarga en HD va lenta** (la etapa `ingest` tarda más de 20-30 min), casi siempre es que
 yt-dlp no puede resolver los «retos» de YouTube y este sirve los vídeos a paso de tortuga. La cola ya
 actualiza todo lo necesario al empezar y lo muestra en la primera línea
