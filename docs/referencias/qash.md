@@ -66,3 +66,54 @@ El narrador habla a unas 165 palabras por minuto. Los vídeos no tienen subtítu
 | 6 | Gancho con dato en vez de pregunta: objeto cotidiano, cifras, comparación, «pero ¿por qué?» | Guion (tu parte) y ficha del formato |
 | 7 | Guiones de 18 a 25 minutos | Guion (tu parte) |
 | 8 | Miniatura conceptual: un objeto o edificio destacado en un color sobre fondo limpio, con 0 a 4 palabras | Miniaturas |
+
+## Datos de NexLev (30-09-2026, 4 consultas)
+
+**qash en NexLev:**
+- Canal creado el 27-07-2025, pero el primer vídeo es del 29-05-2026.
+- 8 vídeos de unos 24 min, medio vídeo a la semana.
+- Mediana de 125.500 visitas por vídeo.
+- Puntuación de outlier de 12,6: rinde muy por encima de los canales de su nicho.
+- Ingresos estimados de 1.200 $/mes, con 626.000 visitas al mes.
+- Faceless (sin presentador) y sin IA.
+
+### Canales en español del mismo nicho que están creciendo
+
+| Canal | País | Subs | Mediana visitas/vídeo | Duración media | Desde | Nota |
+|---|---|---|---|---|---|---|
+| [@Moatseek](https://www.youtube.com/@Moatseek) | AR | 49.800 | 111.500 | 12 min | 10-2025 | outlier 11,2: el más parecido a qash en crecimiento |
+| [@CenizasdelaIndustria](https://www.youtube.com/@CenizasdelaIndustria) | MX | 24.700 | 45.000 | 60 min | 04-2026 | «Dentro de la fábrica…», vídeos de 1 h |
+| [@HammerFlex](https://www.youtube.com/@HammerFlex) | MX | 506 | 106.000 | 13 min | 09-2026 | 4 vídeos y ya a 100.000: historias de empresas |
+| [@Imperios-Olvidados](https://www.youtube.com/@Imperios-Olvidados) | CL | 33.700 | 10.500 | 42 min | 03-2026 | «El colapso de Nokia»: 1,2 M (19× su media) |
+| Crónicas del Progreso | CO | 6.780 | 16.000 | 17 min | 11-2025 | outlier 4,3 |
+
+### Canales grandes en español parecidos (referencia de techo)
+
+| Canal | Subs | Media visitas/vídeo | Duración |
+|---|---|---|---|
+| Memorias de Tiburón (ES) | 825.000 | 340.000 | 13 min |
+| VisualEconomik | 896.000 | 233.000 | 18 min |
+| Aprende algo dinero (MX) | 343.000 | 220.000 | — |
+| Gurú Financiero (ES) | 33.200 | 33.000 | 10 min |
+
+### Vídeos outlier recientes en español (negocios, sin cara, largos)
+
+| Vídeo | Canal | Visitas | × su media |
+|---|---|---|---|
+| BYD: La Mayor ESTAFA de la Industria | Marcos - Inversor Sin filtros | 1,3 M | 37× |
+| De Valer $250 Billones a la Ruina: El Colapso de Nokia | Imperios Olvidados | 1,2 M | 19× |
+| ¿Por qué el 80 % de los Zapatos son una Estafa? | Auditoría de Zapatos | 850.000 | 23× |
+| El Rascacielos de $3 Mil Millones que Está Colapsando en Nueva York | Mega Colapsos | 760.000 | 16× |
+| Cómo una Empresa Hundió a Jeep, Ram y Dodge en Menos de 4 años | Motor Expuesto | 338.000 | 13× |
+| El Corte Inglés: La Caída del Gigante que Dominó España | Raíz Española | 229.000 | 10× |
+| La Verdad Detrás de los Cierres de Sanborns | Liquidación Total MX | 149.000 | 8× |
+| Lo Que Nadie Te Cuenta Sobre El Negocio De Los Buffets Libres | Dinero Despierto | 963.000 | 60× (vídeo de 4 min) |
+
+**Lo que dicen los datos:**
+1. **Auge y caída** y **estafa de marca conocida** son los temas que más se disparan: Nokia, BYD, El Corte
+   Inglés, Jeep, Sanborns. Confirma las series `auge-caida` y `estafas`.
+2. **Una marca de tu país** funciona igual o mejor que una global: El Corte Inglés en España, Sanborns en
+   México.
+3. **La duración no frena:** hay outliers de 12, 17, 24 y hasta 60 min.
+4. **El nicho es joven:** casi todos los canales que crecen empezaron entre finales de 2025 y 2026. Hay
+   hueco.

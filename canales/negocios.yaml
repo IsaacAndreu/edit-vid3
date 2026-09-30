@@ -76,7 +76,15 @@ ideas:
     el negocio oculto de marcas conocidas, dinero y deporte, economía de España), documentales de ~10 min"
   pattern: "empresa o marca conocida + cifra concreta + conflicto (caída, engaño o secreto)"
   my_channel: ""                   # tu canal ("@tucanal"): lo usa --series para comparar las series
-  competitors: []                  # añade los canales de la competencia: ["@canal1", "@canal2"]
+  competitors:                     # de NexLev (30-09-2026): nicho en español que crece + referencias grandes
+    - "@qashYouTube"
+    - "@Moatseek"
+    - "@CenizasdelaIndustria"
+    - "@HammerFlex"
+    - "@Imperios-Olvidados"
+    - "https://www.youtube.com/channel/UC3bRVqfLpexxvzmoIyYc-KQ"   # Memorias de Tiburón
+    - "https://www.youtube.com/channel/UC5HdVtarytnZi4eLogHAfoQ"   # VisualEconomik
+    - "https://www.youtube.com/channel/UCq4MDyTCxz8peOTx3x789Qw"   # Aprende algo dinero
   niches: [auge y caída de empresas, estafas financieras, el negocio oculto de las marcas, dinero y deporte,
            economía de España]
 
