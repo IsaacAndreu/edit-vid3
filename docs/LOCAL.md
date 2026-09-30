@@ -106,6 +106,17 @@ se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
 
 ## 6. Cola nocturna (varios vídeos seguidos)
 
+**Registro y diagnóstico de cada vídeo.** Todo lo que sale por pantalla se guarda con la hora en
+`out/<vídeo>/log.txt`. Al terminar, o si falla, se escribe `out/<vídeo>/diagnostico.md` con:
+- **Qué mejorar:** consejos concretos según lo que pasó (descargas lentas y su causa, cuentas bloqueadas,
+  descargas fallidas agrupadas por motivo, demasiado stock, datos del guion incorrectos, render lento, poco
+  disco…).
+- **Detalles:** tiempo por etapa, tiempos de YouTube, de dónde salió el relleno, qué hay en pantalla, coste y
+  versiones del entorno.
+
+Si falla, también está el error completo. En `out/_cola.md` sale lo primero a mejorar de cada vídeo.
+Cuando algo vaya mal, pásame ese `diagnostico.md`: es lo más rápido para arreglarlo.
+
 **Dos vídeos a la vez.** Con `queue: {parallel_videos: 2}` en `config.yaml` (viene así por defecto),
 la cola trabaja con dos vídeos a la vez por turnos: mientras uno busca o descarga de YouTube, el otro
 analiza o renderiza, así que el PC no se queda parado esperando a YouTube. Cada línea lleva delante el

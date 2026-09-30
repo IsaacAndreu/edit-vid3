@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -68,15 +69,24 @@ def _parser() -> argparse.ArgumentParser:
 def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root: Path = PROJECT_ROOT) -> None:
     """One video, end to end. Raises on failure (the caller decides whether to stop)."""
 
+    from pipeline import diag
+
     ctx = RunContext.create(slug, root=root)
     if not ctx.materials_dir.is_dir():
         raise FileNotFoundError(f"No existe {ctx.materials_dir}")
-    if ctx.section("dub").get("of"):            # a dubbed version reuses the original's edit
-        from pipeline import dub
+    # everything printed also goes to out/<slug>/log.txt; out/<slug>/diagnostico.md says what to improve
+    with diag.logging(ctx):
+        try:
+            if ctx.section("dub").get("of"):            # a dubbed version reuses the original's edit
+                from pipeline import dub
 
-        dub.run(ctx)
-        return
-    run_stages(ctx, force=force, until=until, review=review)
+                dub.run(ctx)
+            else:
+                run_stages(ctx, force=force, until=until, review=review)
+        except BaseException as error:
+            diag.write(ctx, error)
+            raise
+        diag.write(ctx)
 
 
 def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
@@ -295,10 +305,17 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
 
 
 def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> None:
-    lines = [f"# Cola · {datetime.now():%Y-%m-%d %H:%M}", "", "| Vídeo | Estado | Tiempo | Detalle |", "|---|---|---|---|"]
+    lines = [f"# Cola · {datetime.now():%Y-%m-%d %H:%M}", "",
+             "| Vídeo | Estado | Tiempo | Detalle | Lo primero a mejorar |", "|---|---|---|---|---|"]
     for slug, status, seconds, detail in results:
         where = f"out/{slug}/video-final.mp4" if status == "OK" else detail.replace("|", "/")[:300]
-        lines.append(f"| {slug} | {status} | {seconds / 60:.0f} min | {where} |")
+        diag = root / "work" / slug / "diag.json"
+        try:
+            tips = json.loads(diag.read_text("utf-8")).get("consejos", [])
+        except (OSError, ValueError):
+            tips = []
+        tip = (tips[0].replace("|", "/")[:160] + f" (+{len(tips) - 1} en out/{slug}/diagnostico.md)") if tips else "—"
+        lines.append(f"| {slug} | {status} | {seconds / 60:.0f} min | {where} | {tip} |")
     report = root / QUEUE_REPORT
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")

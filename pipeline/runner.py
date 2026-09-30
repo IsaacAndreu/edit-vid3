@@ -141,7 +141,7 @@ def run_stages(
         else:
             if stage.run is None:
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
-            print(f"{label}: ejecutando…")
+            print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             with turn(ctx.root, stage.name, ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
                 started = time.monotonic()
                 stage.run(ctx)
@@ -163,7 +163,8 @@ def run_stages(
                 encoding="utf-8",
             )
             executed.append(stage.name)
-            print(f"{label}: hecho en {time.monotonic() - started:.1f} s")
+            spent = time.monotonic() - started
+            print(f"{label}: hecho en {spent:.1f} s" + (f" ({spent / 60:.0f} min)" if spent >= 120 else ""))
         if stage.name == last:
             if review and stage.name == "qa":
                 print("Revisión: pipeline detenido tras la QA (--review). Revisa out/<slug>/qa/ y relanza sin --review.")
