@@ -23,7 +23,15 @@ export const AudioBed: FC<{ audio: AudioSpec }> = ({ audio }) => {
       </Sequence>
       {(audio.clips ?? []).map((c, i) => (
         <Sequence key={`clip-${i}`} from={c.from} durationInFrames={c.durationInFrames} layout="none">
-          <Audio src={staticFile(c.src)} volume={c.volume ?? 1} />
+          <Audio
+            src={staticFile(c.src)}
+            volume={(f) =>
+              (c.volume ?? 1) *
+              (c.fade
+                ? Math.min(1, f / Math.max(1, Math.round(c.durationInFrames / 8)), (c.durationInFrames - f) / Math.max(1, Math.round(c.durationInFrames / 4)))
+                : 1)
+            }
+          />
         </Sequence>
       ))}
       {audio.music ? <Audio src={staticFile(audio.music)} loop volume={musicVolume} /> : null}

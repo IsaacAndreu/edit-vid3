@@ -44,6 +44,7 @@ from .schemas import (
     ShotCandidates,
     ShotScores,
     ShotsFile,
+    SoundBite,
 )
 from .sourcing import youtube_source
 from .sourcing.common import blocked_by_title, cached_json, key, tokens
@@ -323,6 +324,121 @@ def fetch(youtube, sel: Selection, start: float, length: float, target: Path, lu
     )
 
 
+# --- sound bites -------------------------------------------------------------------------------
+
+BITE_FORMAT = "ba[ext=m4a]/ba"
+
+
+def loudness(path: Path, offset: float = 0.0, length: float | None = None) -> tuple[np.ndarray, float]:
+    """RMS level in dBFS of 50 ms frames of [offset, offset+length] (mono), and the frame length in s."""
+
+    cmd = ["ffmpeg", "-v", "error", "-ss", f"{max(0.0, offset):.3f}", "-i", str(path)]
+    if length:
+        cmd += ["-t", f"{length:.3f}"]
+    raw = subprocess.run([*cmd, "-ac", "1", "-ar", "8000", "-f", "s16le", "-"], capture_output=True, check=True).stdout
+    x = np.frombuffer(raw, np.int16).astype(np.float32) / 32768
+    hop = 400
+    n = len(x) // hop
+    if n == 0:
+        return np.array([]), hop / 8000
+    frames = x[: n * hop].reshape(n, hop)
+    return 20 * np.log10(np.sqrt((frames ** 2).mean(axis=1)) + 1e-6), hop / 8000
+
+
+def best_window(db: np.ndarray, hop: float, seconds: float, speech: list[tuple[float, float]],
+                talk_penalty: float = 8.0) -> dict[str, float] | None:
+    """The loudest `seconds` of a clip relative to its usual level (a roar, a shout), preferring the
+    narration's pauses: {"at", "loudness", "contrast", "talk", "score"}."""
+
+    w = max(1, round(seconds / hop))
+    if len(db) < w + 2:
+        return None
+    usual = float(np.median(db))
+    means = np.convolve(db, np.ones(w) / w, mode="valid")
+    best: dict[str, float] | None = None
+    for i, level in enumerate(means):
+        a, b = i * hop, i * hop + seconds
+        talk = sum(max(0.0, min(b, y) - max(a, x)) for x, y in speech) / seconds
+        score = float(level) + 0.5 * (float(level) - usual) - talk_penalty * talk
+        if best is None or score > best["score"]:
+            best = {"at": round(a, 3), "loudness": round(float(level), 1), "contrast": round(float(level) - usual, 1),
+                    "talk": round(talk, 2), "score": round(score, 2)}
+    return best
+
+
+def speech_spans(ctx: RunContext, gap: float = 0.25) -> list[tuple[float, float]]:
+    spans: list[tuple[float, float]] = []
+    for word in ctx.read_json("words.json").get("words", []):
+        if spans and word["start"] - spans[-1][1] <= gap:
+            spans[-1] = (spans[-1][0], word["end"])
+        else:
+            spans.append((word["start"], word["end"]))
+    return spans
+
+
+def pick_bites(ctx: RunContext, youtube) -> list[SoundBite]:
+    """timeline.sound_bites: N short pieces of the shots' own sound (crowd roar, commentator's shout),
+    played under the voice at the instant they happen, in sync with the picture. Only competition-like
+    sound counts: a window clearly louder than the rest of its clip (steady music does not)."""
+
+    cfg = ctx.section("timeline")
+    count = int(cfg.get("sound_bites", 0) or 0)
+    if count <= 0:
+        return []
+    seconds = min(MAX_THIRD_PARTY_SECONDS, float(cfg.get("bite_seconds", 1.6)))
+    gap, earliest = float(cfg.get("bite_gap", 20)), float(cfg.get("bite_from", 8))
+    min_level, min_contrast = float(cfg.get("bite_min_db", -32)), float(cfg.get("bite_contrast", 6))
+    shots = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots}
+    replaced = {i.shotId for i in FallbackFile.model_validate(ctx.read_json("fallback.json")).items}
+    pool = [s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections
+            if s.status == "selected" and s.source == "youtube" and s.kind == "video" and s.start is not None
+            and s.shotId in shots and s.shotId not in replaced and shots[s.shotId].type == "broll"
+            and shots[s.shotId].duration <= MAX_THIRD_PARTY_SECONDS and shots[s.shotId].start >= earliest]
+    # probe the best-scored shots, spread over the video (each probe is one small audio download)
+    probes: list[Selection] = []
+    for sel in sorted(pool, key=lambda s: -(s.score or 0)):
+        if all(abs(shots[sel.shotId].start - shots[p.shotId].start) >= gap / 2 for p in probes):
+            probes.append(sel)
+        if len(probes) >= int(cfg.get("bite_candidates", max(12, count * 3))):
+            break
+    speech = speech_spans(ctx)
+    found: list[tuple[dict[str, float], Selection, Path, float]] = []
+    for sel in sorted(probes, key=lambda s: shots[s.shotId].start):
+        shot = shots[sel.shotId]
+        try:
+            audio = youtube.download_range(sel.candidateId.removeprefix("yt:"), float(sel.start),
+                                           float(sel.start) + shot.duration + 0.3, fmt=BITE_FORMAT, prefix="au", audio_only=True)
+            offset = float(sel.start) - float(audio.stem.split("_")[1])
+            db, hop = loudness(audio, offset, shot.duration)
+        except Exception as error:  # no sound for this one: the others still count
+            print(f"   {sel.shotId}: sin audio ({str(error)[-80:]})")
+            continue
+        near = [(a - shot.start, b - shot.start) for a, b in speech if b > shot.start and a < shot.end]
+        window = best_window(db, hop, min(seconds, shot.duration), near)
+        if window and window["loudness"] >= min_level and window["contrast"] >= min_contrast:
+            found.append((window, sel, audio, offset))
+    chosen: list[tuple[dict[str, float], Selection, Path, float]] = []
+    for item in sorted(found, key=lambda f: -f[0]["score"]):
+        at = shots[item[1].shotId].start + item[0]["at"]
+        if all(abs(at - (shots[c[1].shotId].start + c[0]["at"])) >= gap for c in chosen):
+            chosen.append(item)
+        if len(chosen) == count:
+            break
+    out_dir = ctx.work_dir / CLIP_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    bites: list[SoundBite] = []
+    for n, (window, sel, audio, offset) in enumerate(sorted(chosen, key=lambda c: shots[c[1].shotId].start), 1):
+        length = min(seconds, shots[sel.shotId].duration - window["at"])
+        target = out_dir / f"b{n:02d}-{key(sel.candidateId, sel.start, window['at'], length)[:8]}.m4a"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{offset + window['at']:.3f}", "-t", f"{length:.3f}",
+                        "-i", str(audio), "-af", "loudnorm=I=-20:TP=-3", "-ar", "48000", "-c:a", "aac", "-b:a", "160k",
+                        str(target)], check=True)
+        bites.append(SoundBite(path=str(target.relative_to(ctx.root)), shotId=sel.shotId, candidateId=sel.candidateId,
+                               voiceAt=round(shots[sel.shotId].start + window["at"], 3), durationSeconds=round(length, 3),
+                               loudness=window["loudness"], contrast=window["contrast"]))
+    return bites
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "selection.json", ctx.work_dir / "shots.json", ctx.work_dir / "fallback.json",
             ctx.work_dir / "words.json"]
@@ -336,7 +452,8 @@ def run(ctx: RunContext) -> None:
     picks = pick_fragments(ctx) if seconds > 0 else []
     lengths = plan_clips(seconds, len(picks))
     moments = pick_moments(ctx, moment_count, moment_seconds) if moment_count > 0 else []
-    if not lengths and not moments:
+    bite_count = int(cfg.get("sound_bites", 0) or 0)
+    if not lengths and not moments and bite_count <= 0:
         ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug).model_dump())
         print("   Sin cold open ni momentos con sonido original")
         return
@@ -346,6 +463,7 @@ def run(ctx: RunContext) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     clips: list[ColdOpenClip] = []
     pauses: list[ColdOpenClip] = []
+    bites: list[SoundBite] = []
     try:
         for sel in picks:
             if len(clips) == len(lengths):
@@ -365,17 +483,21 @@ def run(ctx: RunContext) -> None:
                     pauses.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root)), "afterSeconds": round(after, 3)}))
                     break
                 target.unlink(missing_ok=True)
+        bites = pick_bites(ctx, youtube)
     finally:
         youtube.close()
-    ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses).model_dump())
+    ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses, bites=bites).model_dump())
     total = sum(c.durationSeconds for c in clips)
     if lengths:
         print(f"   Cold open: {len(clips)} clips con sonido original · {total:.1f} s · "
               + ", ".join(c.credit.removeprefix("Fuente: ") for c in clips))
     print(f"   Momentos con sonido original: {len(pauses)} · "
           + ", ".join(f"{m.afterSeconds:.0f}s ({m.credit.removeprefix('Fuente: ')})" for m in pauses))
+    if bite_count > 0:
+        print(f"   Golpes de sonido original: {len(bites)}/{bite_count} · "
+              + ", ".join(f"{b.voiceAt:.0f}s (+{b.contrast:.0f} dB)" for b in bites))
 
 
 def validate(ctx: RunContext) -> bool:
     data = ColdOpenFile.model_validate(ctx.read_json(OUTPUT))
-    return all((ctx.root / c.path).is_file() for c in [*data.clips, *data.moments])
+    return all((ctx.root / c.path).is_file() for c in [*data.clips, *data.moments, *data.bites])

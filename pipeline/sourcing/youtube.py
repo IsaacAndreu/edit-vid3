@@ -492,7 +492,7 @@ class YouTubeSource:
         return path
 
     def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
-                       audio: bool = False) -> Path:
+                       audio: bool = False, audio_only: bool = False) -> Path:
         """Stream-copy [start, end] of the source (no re-encode) → <prefix>_<realStart>_<realEnd>.mp4.
 
         Without re-encoding the file begins at the keyframe before `start`; the real start is
@@ -506,7 +506,9 @@ class YouTubeSource:
         from yt_dlp.utils import download_range_func
 
         target_dir = self.cache_dir / "videos" / video_id
-        for existing in target_dir.glob(f"{prefix}_*.mp4"):
+        suffix = ".m4a" if audio_only else ".mp4"       # audio_only: just the sound of the range (sound bites)
+        stream = "a:0" if audio_only else "v:0"
+        for existing in target_dir.glob(f"{prefix}_*{suffix}"):
             try:
                 _, a, b = existing.stem.split("_")
                 if float(a) <= start + 1e-3 and float(b) >= end - 1e-3:
@@ -534,11 +536,12 @@ class YouTubeSource:
 
         def attempt() -> tuple[Path, dict[str, Any]] | None:
             self._call("download", fetch)
-            produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*") if p.suffix in (".mp4", ".webm", ".mkv")]
+            produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*")
+                        if p.suffix in (".mp4", ".webm", ".mkv", ".m4a", ".opus", ".weba")]
             if not produced:
                 return None
             probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time:format=duration",
+                ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time:format=duration",
                  "-of", "json", str(produced[0])],
                 capture_output=True, text=True,
             )
@@ -561,10 +564,10 @@ class YouTubeSource:
         produced, info = [got[0]], got[1]
         real_start = float(info["streams"][0].get("start_time") or start)
         real_end = real_start + float(info["format"]["duration"])
-        target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}.mp4"
+        target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}{suffix}"
         subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", "0:v:0",
-             *(["-map", "0:a:0?"] if audio else []),
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", f"0:{stream}",
+             *(["-map", "0:a:0?"] if audio and not audio_only else []),
              "-c", "copy", "-avoid_negative_ts", "make_zero", str(target)],
             check=True,
         )

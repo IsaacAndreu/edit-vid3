@@ -86,6 +86,7 @@ export interface ClipAudio {
   from: number;
   durationInFrames: number;
   volume?: number;
+  fade?: boolean; // sound bites: short fade in/out
 }
 
 export interface AudioSpec {

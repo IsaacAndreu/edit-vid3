@@ -36,6 +36,7 @@ timeline:
   narrow_layout: archive           # archivo 4:3 a pantalla completa con bandas negras y aspecto de película
   card_share: 0                    # el metraje va siempre a pantalla completa (sin marco)
   pizarra: true                    # un plano sin nada que poner sale en pizarra con sus palabras clave
+  sound_bites: 0                   # sin golpes de sonido original: en el archivo de noticias habla un presentador
   opening_question: auto           # si el vídeo arranca con una pregunta, sale entera desde el primer fotograma
 
 # Sin stock ni imágenes libres: metraje real de archivo; si no hay, foto de prensa del tema y, si tampoco, pizarra.

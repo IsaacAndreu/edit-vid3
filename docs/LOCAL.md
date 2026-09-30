@@ -391,6 +391,13 @@ de, mitos, misterio…) es un fichero `formatos/<nombre>.yaml`. Se elige con `fo
 `config.yaml` del vídeo. Con `python main.py --formatos` sale la lista con ejemplos. Para crear uno
 nuevo se copia un fichero; consulta `formatos/LEEME.md`.
 
+**Sonido original en los momentos clave** (`timeline.sound_bites`, 8 por defecto; 0 en robots y
+negocios): el programa baja solo el audio de unos 24 planos de competición y busca en cada uno el
+instante claramente más fuerte que el resto del clip (el rugido del público, el grito del comentarista;
+la música constante no cuenta). Coloca los mejores, separados al menos 20 s y preferiblemente en las
+pausas del narrador, sonando 1,6 s por debajo de la voz y sincronizados con su imagen. Son distintos
+de los `moments` (2 por vídeo), en los que la voz se calla 4,5 s.
+
 **Formatos con algo especial** (lista completa: `python main.py --formatos`):
 - `tier-list` e `iceberg`: el tablero de niveles y el iceberg salen solos, uno por elemento o nivel.
 - `cuanto-cuesta`: tickets que se imprimen con cada desglose de coste (gráfico `receipt`).

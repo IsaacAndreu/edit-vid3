@@ -511,11 +511,24 @@ class ColdOpenClip(_Strict):
     afterSeconds: float | None = None                        # moments: where the narration pauses (voice seconds)
 
 
+class SoundBite(_Strict):
+    """1-2 s of a shot's own sound (crowd, commentator) played under the narration at its loudest instant."""
+
+    path: str                                                # audio file, relative to the project root
+    shotId: str
+    candidateId: str
+    voiceAt: float = Field(ge=0)                             # narration second where it starts (in sync with the picture)
+    durationSeconds: float = Field(gt=0, le=MAX_THIRD_PARTY_SECONDS)
+    loudness: float                                          # dBFS of the window
+    contrast: float                                          # dB above the clip's usual level
+
+
 class ColdOpenFile(_Strict):
     slug: str
     seconds: float = 0
     clips: list[ColdOpenClip] = Field(default_factory=list)
     moments: list[ColdOpenClip] = Field(default_factory=list)   # mid-video pauses with the original sound
+    bites: list[SoundBite] = Field(default_factory=list)        # timeline.sound_bites: short original sound under the voice
 
 
 class TimelineTransition(_Strict):
@@ -615,6 +628,7 @@ class TimelineClipAudio(_Strict):
     from_: int = Field(alias="from", ge=0)
     durationInFrames: int = Field(ge=1)
     volume: float = Field(default=1.0, gt=0, le=1.5)
+    fade: bool = False                                       # sound bites: short fade in/out, no clicks
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

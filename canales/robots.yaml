@@ -32,6 +32,7 @@ timeline:
   assets: assets/robots            # assets/robots/music/*.mp3 y assets/robots/sfx/; si están vacías, usa assets/
   music_default: tension
   moments: 0                       # sin "momentos con el sonido original" (no hay competición)
+  sound_bites: 0                   # ni golpes de sonido original (las demos llevan música)
   moods:                           # tonos extra para nombrar la música del canal (assets/robots/music/<tono>-*.mp3)
     futuro: "tecnología, innovación, fábricas, el futuro que llega, asombro"
     epico: "el número 1, lo más grande, el podio del ranking"

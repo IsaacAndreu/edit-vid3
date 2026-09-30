@@ -583,6 +583,13 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     return sorted([*groups, *added, *boards], key=lambda g: g.from_), labels
 
 
+def voice_frame(timeline: Timeline, seconds: float) -> int:
+    """Timeline frame where the narration says its second `seconds` (after the cold open and the moments' pauses)."""
+
+    t = round(seconds * timeline.fps)
+    return timeline.audio.voiceFrom + t + sum(b for a, b in timeline.audio.voiceGaps if a <= t)
+
+
 def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[TimelineCaption]:
     """Big captions for native shorts: chunks of up to `most` words (a sentence end or a pause closes one),
     placed where the voice says them — after the cold open and any pause inserted in the voice."""
@@ -590,8 +597,7 @@ def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[Timeli
     fps = timeline.fps
 
     def at(seconds: float) -> int:
-        t = round(seconds * fps)
-        return timeline.audio.voiceFrom + t + sum(b for a, b in timeline.audio.voiceGaps if a <= t)
+        return voice_frame(timeline, seconds)
 
     chunks: list[list[Any]] = []
     for word in words.words:
@@ -1116,6 +1122,16 @@ def run(ctx: RunContext) -> None:
     timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
     if cfg.get("captions"):
         timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
+    bites = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).bites if (ctx.work_dir / "coldopen.json").is_file() else []
+    if bites:   # the shots' own sound under the voice, in sync with their picture
+        volume = float(cfg.get("bite_volume", 0.6))
+        timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={"clips": [
+            *timeline.audio.clips,
+            *[TimelineClipAudio.model_validate({"src": str((ctx.root / b.path).relative_to(ctx.work_dir)),
+                                                "from": voice_frame(timeline, b.voiceAt),
+                                                "durationInFrames": max(1, round(b.durationSeconds * fps)),
+                                                "volume": volume, "fade": True}) for b in bites]]})})
+        print(f"   Golpes de sonido original: {len(bites)}")
     timeline = with_endscreen(timeline, round(float(cfg.get("endscreen_seconds", 0) or 0) * fps))
     if tracks and cfg.get("music_by_chapter", True):
         parts = music_parts(ctx, timeline, tracks, default)

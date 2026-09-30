@@ -242,6 +242,11 @@ timeline:
   moments: 2                       # momentos cumbre en los que la voz calla y suena el original (0 = ninguno)
   moment_seconds: 4.5              # duración de cada uno (máx. 5 s, clip de terceros)
   moment_volume: 1.0
+  sound_bites: 8                   # golpes de 1-2 s del sonido original (público, comentarista) BAJO la voz, en los picos
+  bite_seconds: 1.6                # (0 = ninguno). Solo cuentan picos claros: la música de fondo constante no
+  bite_volume: 0.6
+  bite_gap: 20                     # s mínimos entre dos golpes
+  bite_contrast: 6                 # dB por encima del nivel habitual del clip para contar como pico
   spotlights: 3                    # congelados con foco: la 1.ª vez que se nombra a alguien sobre un clip suyo (0 = ninguno)
   spotlight_seconds: 2.6
 

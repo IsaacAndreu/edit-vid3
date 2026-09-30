@@ -409,7 +409,10 @@ class Renderer:
         for n, clip in enumerate(audio.get("clips", [])):
             index = add(work / clip["src"])
             delay = round(clip["from"] / self.fps * 1000)
-            chains.append(f"[{index}:a]{stereo},atrim=end={clip['durationInFrames'] / self.fps:.3f},"
+            length = clip["durationInFrames"] / self.fps
+            fades = (f"afade=t=in:d={min(0.12, length / 4):.3f},afade=t=out:st={max(0.0, length - 0.3):.3f}:d={min(0.3, length / 2):.3f},"
+                     if clip.get("fade") else "")                     # sound bites: no clicks at the edges
+            chains.append(f"[{index}:a]{stereo},atrim=end={length:.3f},{fades}"
                           f"volume={clip.get('volume', 1.0)},adelay={delay}:all=1[c{n}]")
             mix.append(f"[c{n}]")
         for n, sfx in enumerate(audio.get("sfx", [])):
