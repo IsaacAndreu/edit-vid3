@@ -67,6 +67,7 @@ judge:
                      Forbes, Vox, DW, Euronews, RTVE, El País, Expansión]
 
 package:
+  thumbnail_style: concept         # miniatura de una sola idea (imagen generada, ~0,06 $ cada una) con 0-4 palabras
   hint: "los protagonistas son empresas, marcas y sus dueños. El título lleva una marca o persona conocida, una
     cifra concreta del guion y un conflicto (caída, engaño, secreto). Nunca 'Quieres ser dueño de X'. Textos de
     miniatura con la cifra o el giro: '0 €', 'LA ESTAFA', 'NADIE LO VIO'."

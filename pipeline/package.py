@@ -6,6 +6,11 @@ Thumbnails are templates, not generated images of real people: the protagonist's
 stage) over a darkened frame of their peak moment (cold open / hook), a short huge line and an
 accent colour that changes between the three. When the video is done you get the three
 thumbnails and titles by email/Telegram (whatever is configured in .env).
+
+`package.thumbnail_style: concept` (the business channel): like the top economy channels, each
+thumbnail is ONE visual idea — a generated image (a building lit in the channel colour inside a white
+city model, a chart line diving next to the product…) with a clean background, the key element in
+the brand colour and 0-4 words on a label. No real faces, logos or text in the image itself.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import cv2
 
 from . import notify
 from .context import RunContext
+from .costs import record_cost
 from .llm import complete_json
 from .render import Renderer
 from .schemas import Timeline
@@ -35,6 +41,73 @@ como patrón) devuelve SOLO JSON:
  "thumbTexts": ["3 frases MUY cortas (2-5 palabras) para la miniatura, en el idioma del guion, distintas del título, p. ej. 'ÚLTIMO DE 91' o 'NADIE LO VIO VENIR'"]}
 No inventes datos: cifras y hechos solo si están en el guion. No copies títulos de la competencia.
 """.strip()
+
+
+CONCEPT_SYSTEM = """
+Además, propón 3 miniaturas CONCEPTUALES distintas, como las de los canales de documentales de economía que más
+funcionan: UNA sola idea visual que resuma el vídeo y dé curiosidad (un edificio o producto reconocible, una
+gráfica que se hunde junto al objeto, una maqueta de ciudad con UN edificio destacado, una persona de espaldas
+ante algo enorme…), fondo limpio y el elemento clave en el color del canal. Añade a la respuesta:
+"concepts": [{"scene": "la imagen EN INGLÉS, concreta y visual, 1-2 frases; sin texto, sin logotipos y sin caras
+reconocibles de personas reales", "text": "0-4 palabras EN MAYÚSCULAS en el idioma del guion, o '' (a veces sin texto
+es mejor)", "side": "left" o "right" (el lado que la imagen deja libre para el texto)}]
+""".strip()
+
+COLOR_NAMES = [(15, "red"), (40, "orange"), (65, "yellow"), (165, "lime green"), (195, "cyan"), (255, "blue"),
+               (290, "purple"), (335, "magenta"), (360, "red")]
+
+
+def color_name(hex_color: str) -> str:
+    """'#19fe5b' → 'lime green' (image models follow colour words better than hex codes)."""
+
+    import colorsys
+
+    value = hex_color.lstrip("#")
+    if len(value) != 6:
+        return "bright yellow"
+    r, g, b = (int(value[i: i + 2], 16) / 255 for i in (0, 2, 4))
+    hue, lightness, saturation = colorsys.rgb_to_hls(r, g, b)
+    if saturation < 0.25:
+        return "white" if lightness > 0.6 else "black"
+    degrees = hue * 360
+    return next(name for limit, name in COLOR_NAMES if degrees <= limit)
+
+
+def concept_image(ctx: RunContext, scene: str, accent: str, side: str, n: int) -> str | None:
+    """A 16:9 concept picture for thumbnail n (work/<slug>/thumbs/concept-n.png), cached by prompt."""
+
+    import base64
+
+    from .sourcing.common import key
+
+    cfg = ctx.section("package")
+    model = str(cfg.get("concept_model") or ctx.section("fallback").get("image_model", "gpt-image-2"))
+    quality = str(cfg.get("concept_quality", "medium"))
+    prompt = (
+        "YouTube thumbnail concept image, 16:9 landscape. " + scene.strip() + " "
+        f"One single clear subject, clean uncluttered background, crisp 3D render / studio photo look, strong contrast. "
+        f"The key element is {color_name(accent)} ({accent}) and it is the ONLY saturated colour; everything else is "
+        f"neutral white, grey or black. Leave the {'left' if side == 'left' else 'right'} third empty for a text label. "
+        "No text, no letters, no numbers, no logos, no watermarks, no recognizable real people's faces."
+    )
+    cached = ctx.cache_dir / "generated" / f"thumb-{key(model, prompt, quality)}.png"
+    if not cached.is_file():
+        from openai import OpenAI
+
+        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"))
+        response = client.images.generate(model=model, prompt=prompt, size="1536x1024", quality=quality, n=1)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(base64.b64decode(response.data[0].b64_json))
+        usage = getattr(response, "usage", None)
+        prices = ctx.section("fallback").get("image_usd_per_mtok", {"text_input": 5.0, "image_output": 40.0})
+        usd = ((getattr(usage, "input_tokens", 0) * float(prices.get("text_input", 5.0))
+                + getattr(usage, "output_tokens", 0) * float(prices.get("image_output", 40.0))) / 1e6
+               if usage is not None else float(cfg.get("concept_usd_estimate", 0.06)))
+        record_cost(ctx, stage=STAGE, provider="openai", operation=model, usd=usd, details={"thumbnail": n})
+    target = ctx.work_dir / "thumbs" / f"concept-{n}.png"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(cached, target)
+    return str(target.relative_to(ctx.work_dir)).replace("\\", "/")
 
 
 def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3) -> list[str]:
@@ -91,10 +164,11 @@ def run(ctx: RunContext) -> None:
         patterns = [o["title"] for o in json.loads(outliers.read_text("utf-8"))[:12]]
     hint = " ".join(str(h).strip() for h in (ctx.format.get("titulos"), ctx.section("package").get("hint")) if h)
     script = (ctx.materials_dir / "guion.txt").read_text("utf-8")[:12000]
+    concept = str(ctx.section("package").get("thumbnail_style", "frame")) == "concept"
     try:
         result: dict[str, Any] = complete_json(
-            ctx, stage=STAGE, section="planner", max_tokens=800,
-            system=SYSTEM + (f"\nEN ESTE CANAL: {hint}" if hint else "") + f"\nIDIOMA OBLIGATORIO de titles y thumbTexts: {ctx.language}, aunque los ejemplos estén en otro idioma.",
+            ctx, stage=STAGE, section="planner", max_tokens=1600 if concept else 800,
+            system=SYSTEM + (f"\n{CONCEPT_SYSTEM}" if concept else "") + (f"\nEN ESTE CANAL: {hint}" if hint else "") + f"\nIDIOMA OBLIGATORIO de titles y thumbTexts: {ctx.language}, aunque los ejemplos estén en otro idioma.",
             user=f"IDIOMA DE LOS TÍTULOS Y TEXTOS: {ctx.language}\nTÍTULO DE TRABAJO: {title}\n\nTÍTULOS QUE MEJOR FUNCIONAN EN LA COMPETENCIA:\n"
                  + ("\n".join(f"- {p}" for p in patterns) or "(sin datos)") + f"\n\nGUION:\n{script}")
     except Exception as error:
@@ -115,10 +189,22 @@ def run(ctx: RunContext) -> None:
     accents = [str(brand.get("accent") or ACCENTS[0]), str(brand.get("accent2") or ACCENTS[1]), ACCENTS[2]] if brand else ACCENTS
     variants = [{"text": texts[i], "accent": accents[i], "flip": i == 1, "cutout": cutout,
                  "background": backgrounds[i % len(backgrounds)] if backgrounds else None} for i in range(3)]
+    if concept:
+        ideas = [c for c in result.get("concepts", []) if isinstance(c, dict) and str(c.get("scene") or "").strip()][:3]
+        for i, idea in enumerate(ideas):
+            side = "left" if str(idea.get("side")) == "left" else "right"
+            try:
+                image = concept_image(ctx, str(idea["scene"]), accents[0], side, i + 1)
+            except Exception as error:  # no key or the model refused: that one stays a frame thumbnail
+                print(f"   Miniatura conceptual {i + 1} no disponible: {str(error)[:120]}")
+                continue
+            words = " ".join(str(idea.get("text") or "").split()[:4])
+            variants[i] = {"text": words, "accent": accents[0], "image": image, "side": side}
     renderer = Renderer(ctx)
     frames_dir = renderer.dir / "thumbs"
     shutil.rmtree(frames_dir, ignore_errors=True)
-    public = {v["background"] for v in variants if v["background"]} | ({cutout} if cutout else set())
+    public = ({v["background"] for v in variants if v.get("background")} | {v["image"] for v in variants if v.get("image")}
+              | ({cutout} if cutout and any(v.get("cutout") for v in variants) else set()))
     renderer.remotion("Thumbnails", {"variants": variants, "brand": brand}, frames_dir,
                       ["--sequence", "--image-format=jpeg", "--jpeg-quality=92"], public)
     out_dir = ctx.out_dir / THUMB_DIR
