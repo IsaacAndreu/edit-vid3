@@ -1004,10 +1004,10 @@ def run(ctx: RunContext) -> None:
     chapter_number = 0
     card_share = float(cfg.get("card_share", 0.25))
     narrow = str(cfg.get("narrow_layout", "card"))
-    # timeline.pizarra: a shot nothing could fill (no stock, no generated images in this channel)
-    # becomes a chalkboard card with its key words instead of stopping the video
+    # timeline.pizarra (on unless set to false): a shot nothing could fill (no stock, no generated
+    # images for a real person) becomes a card with its key words instead of stopping the video
     fallback = FallbackFile.model_validate(ctx.read_json("fallback.json"))
-    boards = set(fallback.unresolved) if cfg.get("pizarra") else set()
+    boards = set(fallback.unresolved) if cfg.get("pizarra", True) else set()
     for shot_id in boards:
         media.pop(shot_id, None)
     for index, shot in enumerate(shots_file.shots):

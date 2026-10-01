@@ -390,8 +390,8 @@ fuentes de confianza, la competencia, las búsquedas del panel y el formato. Se 
 - `brand.graphicsStyle: pizarra`: los gráficos van sobre una pizarra gris oscuro con textura.
 - `timeline.narrow_layout: archive`: el archivo 4:3 se ve a pantalla completa con bandas negras y
   aspecto de película (grano, color cálido, viñeta), en vez de enmarcado.
-- `timeline.pizarra: true`: un plano que se queda sin imagen sale en pizarra con sus palabras clave,
-  en vez de parar el vídeo. La QA lo avisa.
+- `timeline.pizarra` (activado en todos los canales salvo `false`): un plano que se queda sin imagen
+  sale como rótulo con sus palabras clave, en vez de parar el vídeo. La QA lo avisa.
 - `graphics.cover_weak: true`: los gráficos animados van primero a las frases con imagen floja.
 - `planner.shots_note`: instrucciones extra del canal para el planificador de planos (qué metraje
   pedir, cuándo poner cifras).
