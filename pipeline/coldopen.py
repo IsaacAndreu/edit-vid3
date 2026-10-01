@@ -314,7 +314,18 @@ def wrong_athlete(ctx: RunContext):
         return lambda path: None
     checker, cache = Checker(ctx, people), IdentityCache(ctx)
     name = next((p["name"] for p in people if p.get("name") and p["name"].split()[-1].lower() == person.split()[-1].lower()), person)
-    return lambda path: cache.get(checker, path, "video", [name])
+
+    def wrong(path: Path) -> str | None:
+        # the first seconds of the video must be the protagonist for sure: a caption with their name or their face,
+        # not just "nothing says it is somebody else" (a rival's routine from the same final opened the Yulo video)
+        why = cache.get(checker, path, "video", [name])
+        if why:
+            return why
+        if cfg.get("cold_open_confirm", True) and not checker.confirmed(path, name):
+            return f"no se confirma que sea {name} (ni rótulo con su nombre ni su cara)"
+        return None
+
+    return wrong
 
 
 def fetch(youtube, sel: Selection, start: float, length: float, target: Path, lut: Path | None) -> ColdOpenClip | None:

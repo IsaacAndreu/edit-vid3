@@ -340,6 +340,28 @@ class Checker:
             return f"sale {'una mujer o una chica' if expected == 'hombre' else 'un hombre'}, no {names[0]}"
         return None
 
+    def confirmed(self, path: Path, name: str) -> bool:
+        """Positive proof the clip shows `name`: the caption says their surname, or a face clearly matches."""
+
+        import cv2
+
+        frames = self.frames(path, "video")
+        if not frames:
+            return False
+        seen = " ".join(ascii_upper(t) for f in frames for t, _ in self.texts(f))
+        wanted = surname(name)
+        words = re.findall(r"[A-Z]{3,}", seen)
+        if wanted and any(wanted in w or SequenceMatcher(None, w, wanted).ratio() >= 0.8 for w in words):
+            self.learn(frames, name)
+            return True
+        refs = self.references(name)
+        if not refs or not self._face_models():
+            return False
+        recognizer = self._face_models()[1]
+        best = max((recognizer.match(feature, r, cv2.FaceRecognizerSF_FR_COSINE)
+                    for f in frames for feature, _, _ in self.faces(f) for r in refs), default=-1.0)
+        return best >= float(self.cfg.get("face_accept", 0.36))
+
     # --- both -----------------------------------------------------------------------------------
     def check(self, path: Path, kind: str, names: list[str]) -> str | None:
         """Why this clip does not show `names` (None when it does or it cannot be told)."""

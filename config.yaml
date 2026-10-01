@@ -167,6 +167,8 @@ fallback:
   identity_scope: protagonist      # comprobar TODOS los planos de la historia del protagonista, no solo los que dicen su nombre (named = solo esos)
   gender_check: true               # en la historia de un hombre, fuera los clips donde claramente sale una mujer o una niña (y al revés)
   gender_reject: 0.85              # seguridad mínima de CLIP en 2 de 5 fotogramas
+  cold_open_confirm: true          # el arranque del vídeo solo con clips donde el rótulo dice su nombre o su cara coincide (face_accept)
+  face_accept: 0.36                # parecido (SFace) para dar por buena una cara
   face_reference_min: 90           # px mínimos de la cara del retrato para fiarse de él
   generate: true                   # último recurso: imagen generada
   image_model: gpt-image-2

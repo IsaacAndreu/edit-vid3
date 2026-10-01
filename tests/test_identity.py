@@ -118,3 +118,20 @@ def test_stock_agency_previews_are_not_used():
 
     assert watermarked("https://c8.alamy.com/comp/2X/carlos-yulo.jpg") and watermarked("www.gettyimages.com/detail/1")
     assert watermarked("i.pinimg.com/736x/a.jpg") and not watermarked("https://www.rappler.com/yulo.jpg")
+
+
+def test_the_opening_needs_positive_proof(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"x")
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
+    checker.frames = lambda path, kind: [np.zeros((10, 10, 3), dtype=np.uint8)] * 3
+    checker.faces = lambda image, min_size=48: []
+    checker.texts = lambda frame: [("GBR Jake JARMAN", (0, 0, 10, 10))]
+    assert not checker.confirmed(clip, "Carlos Yulo")
+    checker.texts = lambda frame: [("PHI Carlos Edriel YULO", (0, 0, 10, 10))]
+    assert checker.confirmed(clip, "Carlos Yulo")
