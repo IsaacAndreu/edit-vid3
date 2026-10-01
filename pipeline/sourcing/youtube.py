@@ -129,6 +129,8 @@ class YouTubeSource:
         self._api_lock = threading.Lock()
         self.stats: dict[str, list[float]] = {}   # action → [count, seconds], for tuning
         self._stats_lock = threading.Lock()
+        self._whole_locks: dict[str, threading.Lock] = {}
+        self._whole_locks_guard = threading.Lock()
         self.http = requests.Session()
         self.http.headers["User-Agent"] = USER_AGENT
         options: dict[str, Any] = {
@@ -551,7 +553,76 @@ class YouTubeSource:
             except (RuntimeError, SourceUnavailable) as error:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
                     raise
+        if not audio_only and self.cfg.get("whole_fallback", True):
+            try:
+                whole = self._fetch_whole(video_id, fmt, prefix, info_path)
+            except SourceUnavailable:
+                raise
+            except Exception as error:     # the old way still works, only slower
+                print(f"   yt:{video_id}: descarga completa no disponible ({str(error)[:120]}); voy por tramo")
+                whole = None
+            if whole is not None:
+                return self._cut(whole, video_id, start, end, prefix, audio)
         return self._fetch_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path, exact=False)
+
+    def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:
+        """The whole source, fetched by yt-dlp itself in 10 MB pieces (each one a separate request, which YouTube
+        does not throttle like ffmpeg's single open request), kept in the cache for the next clips of the same
+        video. None when the video is too long or too big for it (sourcing.youtube.whole_max_minutes/_mb)."""
+
+        import json
+
+        target_dir = self.cache_dir / "videos" / video_id
+        done = next(iter(sorted(target_dir.glob(f"full_{prefix}.*"))), None)
+        if done is not None and done.suffix in (".mp4", ".mkv", ".webm"):
+            return done
+        data = json.loads(info_path.read_text(encoding="utf-8"))
+        if float(data.get("duration") or 0) > 60 * float(self.cfg.get("whole_max_minutes", 30)):
+            return None
+        fmt = "/".join(f"{alt}[protocol=https]" for alt in fmt.split("/") if alt.strip() and "+" not in alt) or fmt
+        with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
+            chosen = ydl.process_ie_result(dict(data), download=False)
+        pieces = chosen.get("requested_formats") or [chosen]
+        if any(str(f.get("protocol") or "").startswith(("m3u8", "http_dash")) for f in pieces):
+            return None
+        size = sum(float(f.get("filesize") or f.get("filesize_approx") or 0) for f in pieces)
+        if size > 1e6 * float(self.cfg.get("whole_max_mb", 600)):
+            return None
+        with self._whole_locks_guard:
+            lock = self._whole_locks.setdefault(video_id, threading.Lock())
+        with lock:                                     # two clips of one video: one download
+            done = next(iter(sorted(target_dir.glob(f"full_{prefix}.*"))), None)
+            if done is not None and done.suffix in (".mp4", ".mkv", ".webm"):
+                return done
+            target_dir.mkdir(parents=True, exist_ok=True)
+            options = {"format": fmt, "outtmpl": str(target_dir / f"wip_{prefix}.%(ext)s"), "overwrites": True,
+                       "http_chunk_size": 10 * 1024 * 1024, "merge_output_format": "mp4", "concurrent_fragment_downloads": 1}
+
+            def fetch() -> None:
+                with self._ydl(options) as ydl:
+                    ydl.download_with_info_file(str(info_path))
+
+            self._call("download (completo)", fetch)
+            produced = [p for p in target_dir.glob(f"wip_{prefix}.*") if p.stem == f"wip_{prefix}" and p.suffix in (".mp4", ".mkv", ".webm")]
+            if not produced:
+                return None
+            final = target_dir / f"full_{prefix}{produced[0].suffix}"
+            produced[0].replace(final)
+            return final
+
+    def _cut(self, whole: Path, video_id: str, start: float, end: float, prefix: str, audio: bool) -> Path:
+        """[start, end] of the downloaded source, cut exactly (re-encoding only those seconds)."""
+
+        import subprocess
+
+        target = self.cache_dir / "videos" / video_id / f"{prefix}_{start:.3f}_{end:.3f}.mp4"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
+             "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)],
+            check=True,
+        )
+        return target
 
     def _fetch_range(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
                      audio_only: bool, info_path: Path, *, exact: bool) -> Path:

@@ -291,6 +291,10 @@ def run(ctx: RunContext) -> None:
             except Exception as error:
                 detail = getattr(error, "stderr", "") or str(error)
                 failed[shot_id] = str(detail).strip()[-240:]
+            if number % 5 == 0:     # progress on disk: a cancelled run keeps what it already downloaded
+                done = {**previous, **media}
+                ctx.write_json(f"{OUTPUT}/{MANIFEST}", IngestFile(slug=ctx.slug, media=list(done.values()), skipped=skipped,
+                                                                  failed=failed).model_dump(exclude_none=True))
             if number % 20 == 0:
                 spent = time.monotonic() - started
                 print(f"   {number}/{len(todo)} ({spent:.0f} s · {spent / number:.1f} s por plano)")
