@@ -93,3 +93,28 @@ def test_faces_learnt_from_captioned_clips_count_as_references(tmp_path):
     assert checker.references("Carlos Yulo") == []
     checker.learn([np.zeros((10, 10, 3), dtype=np.uint8)] * 2, "Carlos Yulo")
     assert len(checker.references("Carlos Yulo")) == 2
+
+
+def test_a_woman_in_a_story_about_a_man_is_rejected(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
+    checker._genders["Carlos Yulo"] = "hombre"
+    frames = [np.zeros((10, 10, 3), dtype=np.uint8)] * 5
+    checker._woman_odds = lambda images: [0.96, 0.95, 0.3, 0.9, 0.2]
+    assert "mujer" in checker.gender_verdict(frames, ["Carlos Yulo"])
+    checker._woman_odds = lambda images: [0.74, 0.83, 0.1, 0.0, 0.2]          # a man in a tight singlet, a doubt
+    assert checker.gender_verdict(frames, ["Carlos Yulo"]) is None
+    checker._genders["Carlos Yulo"] = None                                     # portrait unclear: never judged
+    checker._woman_odds = lambda images: [0.99] * 5
+    assert checker.gender_verdict(frames, ["Carlos Yulo"]) is None
+
+
+def test_stock_agency_previews_are_not_used():
+    from pipeline.sourcing.images import watermarked
+
+    assert watermarked("https://c8.alamy.com/comp/2X/carlos-yulo.jpg") and watermarked("www.gettyimages.com/detail/1")
+    assert watermarked("i.pinimg.com/736x/a.jpg") and not watermarked("https://www.rappler.com/yulo.jpg")

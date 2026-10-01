@@ -46,6 +46,7 @@ from .schemas import (
     ShotsFile,
 )
 from .identity import Checker, IdentityCache, expected_people
+from .sourcing.images import watermarked
 from .sourcing import hypothetical, needs_footage, youtube_source
 from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key, tokens
 from .sourcing.images import ImageSources, image_query
@@ -141,6 +142,12 @@ def run(ctx: RunContext) -> None:
 
     for media in ingest.media:
         if media.shotId not in done or getattr(selections.get(media.shotId), "decidedBy", None) == "editor":
+            continue
+        chosen = selections.get(media.shotId)
+        if media.kind == "image" and chosen and watermarked(f"{chosen.url or ''} {chosen.mediaUrl or ''} {chosen.credit or ''}"):
+            done.discard(media.shotId)
+            pending[media.shotId] = "foto de agencia con marca de agua"
+            print(f"   {media.shotId}: foto de agencia con marca de agua ({(chosen.credit or '').removeprefix('Fuente: ')})")
             continue
         why = wrong_person(media.shotId, ctx.root / media.path, media.kind)
         if why:

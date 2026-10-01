@@ -6,7 +6,9 @@
 2. Faces (clear cases). Against the reference portrait (people.json, face ≥ 90 px) and the faces learnt
    from clips whose caption names the athlete, a clip is rejected when at least 2 of 5 frames show a large
    frontal face and none of them looks like the person. Small, turned or strained faces are kept.
-3. Who is checked: those a shot's words name and, in a video about one athlete, every shot of their
+3. Man or woman (CLIP): in a story about a man, a clip where CLIP clearly sees a woman or a girl in 2 of 5
+   frames goes (and the other way round); the protagonist's sex comes from their portrait.
+4. Who is checked: those a shot's words name and, in a video about one athlete, every shot of their
    story — most lines about them never say the name (`fallback.identity_scope`).
 
 A rejected clip goes back to the fallback stage like a repeated one, which finds another.
@@ -155,6 +157,9 @@ class Checker:
         self._faces: Any = None
         self._refs: dict[str, Any] = {}
         self._learned: dict[str, list[Any]] = {}            # faces from clips whose caption names the athlete
+        self._clip: Any = None
+        self._gender_vectors: Any = None
+        self._genders: dict[str, str | None] = {}
 
     # --- frames ---------------------------------------------------------------------------------
     @staticmethod
@@ -274,6 +279,67 @@ class Checker:
             return f"la cara no es la de {' / '.join(names)} (parecido {best:.2f})"
         return None
 
+    # --- man / woman ----------------------------------------------------------------------------
+    # tested on real frames: a woman on the bars 0.96, Comăneci 0.98; men in tight singlets stay under 0.75
+    GENDER = {"hombre": ["a photo of a male gymnast", "a man doing gymnastics"],
+              "mujer": ["a photo of a female gymnast", "a girl doing gymnastics", "a woman doing gymnastics"]}
+
+    def _woman_odds(self, images: list[np.ndarray]) -> list[float]:
+        """Per image, how likely CLIP finds the athlete is a woman/girl rather than a man (0-1): the most
+        telling of the whole frame and its left/centre/right squares (people are often off-centre)."""
+
+        if self._clip is None:
+            from .analysis.clip import ClipScorer
+
+            cfg = self.ctx.section("analysis")
+            self._clip = ClipScorer(cache_dir=self.ctx.cache_dir, model=str(cfg.get("model", "ViT-B-32")),
+                                    pretrained=str(cfg.get("pretrained", "laion2b_s34b_b79k")))
+            self._gender_vectors = np.stack([self._clip.shot_vector(self.GENDER["hombre"]),
+                                             self._clip.shot_vector(self.GENDER["mujer"])])
+        views: list[np.ndarray] = []
+        for image in images:
+            h, w = image.shape[:2]
+            squares = [image[:, x:x + h] for x in sorted({0, (w - h) // 2, w - h})] if w > h else []
+            views += [image, *squares][:4] + [image] * (4 - len([image, *squares][:4]))
+        logits = 100.0 * self._clip.embed_images(views) @ self._gender_vectors.T
+        logits -= logits.max(axis=1, keepdims=True)
+        odds = np.exp(logits)
+        woman = (odds[:, 1] / odds.sum(axis=1)).reshape(len(images), 4)
+        return [float(row.max()) for row in woman]
+
+    def gender(self, name: str) -> str | None:
+        """'hombre' / 'mujer' from the person's portrait, when CLIP is clear about it."""
+
+        import cv2
+
+        if name in self._genders:
+            return self._genders[name]
+        found = None
+        person = self.people.get(name) or {}
+        path = self.ctx.work_dir / str(person.get("image") or "")
+        if person.get("image") and path.is_file():
+            image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+            if image is not None and image.ndim == 3 and image.shape[2] == 4:
+                alpha = image[..., 3:] / 255.0
+                image = (image[..., :3] * alpha + 128 * (1 - alpha)).astype(np.uint8)
+            if image is not None:
+                woman = self._woman_odds([image])[0]
+                found = "mujer" if woman > 0.8 else "hombre" if woman < 0.2 else None
+        self._genders[name] = found
+        return found
+
+    def gender_verdict(self, frames: list[np.ndarray], names: list[str]) -> str | None:
+        """A girl's floor routine in a story about a man (and the other way round): rejected when CLIP sees the
+        other sex clearly in at least 2 of the frames."""
+
+        if len(names) != 1 or not (expected := self.gender(names[0])):
+            return None
+        odds = self._woman_odds(frames)
+        other = [o for o in odds if (o if expected == "hombre" else 1 - o) > float(self.cfg.get("gender_reject", 0.85))]
+        if len(other) >= 2:
+            return f"sale {'una mujer o una chica' if expected == 'hombre' else 'un hombre'}, no {names[0]}"
+        return None
+
     # --- both -----------------------------------------------------------------------------------
     def check(self, path: Path, kind: str, names: list[str]) -> str | None:
         """Why this clip does not show `names` (None when it does or it cannot be told)."""
@@ -293,14 +359,18 @@ class Checker:
                 if surname(name) and surname(name) in seen and self.cfg.get("face_check", True):
                     self.learn(frames, name)
         if self.cfg.get("face_check", True) and self.people:
-            return self.face_verdict(frames, names)
+            why = self.face_verdict(frames, names)
+            if why:
+                return why
+        if self.cfg.get("gender_check", True) and self.people and kind == "video":
+            return self.gender_verdict(frames, names)
         return None
 
 
 class IdentityCache:
     """work/<slug>/identity.json: verdicts per media file (path + size + mtime + names), so reruns are free."""
 
-    VERSION = 2                     # 2: five frames, learnt faces, stricter face threshold
+    VERSION = 3                     # 3: + man/woman check (CLIP)
 
     def __init__(self, ctx: RunContext):
         self.path = ctx.work_dir / "identity.json"

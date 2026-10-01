@@ -46,6 +46,19 @@ _VIDEO_WORDS = frozenset(
 )
 
 
+# Stock agencies serve their previews with a big watermark across the picture (and sell the licence).
+WATERMARKED = ("alamy", "gettyimages", "shutterstock", "istockphoto", "dreamstime", "depositphotos", "123rf",
+               "adobestock", "stock.adobe", "agefotostock", "superstock", "bigstockphoto", "pond5", "photoshelter",
+               "imago-images", "dpa-picture", "aflo", "zumapress", "sportsphoto", "pinterest", "pinimg", "asiatravel")
+
+
+def watermarked(text: str, extra: Any = None) -> bool:
+    """A picture from a stock agency (watermarked preview) or a site that only re-posts others' pictures."""
+
+    low = text.lower()
+    return any(site in low for site in (*WATERMARKED, *[str(s).lower() for s in (extra or [])]))
+
+
 def image_query(query: str, max_words: int = 4) -> str:
     kept = [w for w in query.split() if w.casefold() not in _VIDEO_WORDS]
     return " ".join(kept[:max_words]) or query
@@ -280,6 +293,8 @@ class ImageSources:
             if width < min_width or not height or not 0.5 <= width / height <= 2.6:
                 continue
             domain = site_name(item.get("domain") or page or image)
+            if watermarked(f"{domain} {page} {image}", cfg.get("blocked_sites")):
+                continue
             title = _short(str(item.get("title") or query), 80)
             results.append({
                 "id": f"web:{key(image)[:16]}", "source": "web", "landing": page or image, "title": title,

@@ -300,6 +300,23 @@ def is_competition(ctx: RunContext, clip: Path, person: str) -> bool:
     return bool(verdict.get("competition"))
 
 
+def wrong_athlete(ctx: RunContext):
+    """A check for the cold open and the moments: why a clip does not show the protagonist (caption naming
+    somebody else, a clearly different face), or None. Same checks as the fallback stage (pipeline/identity.py)."""
+
+    from .identity import Checker, IdentityCache
+
+    cfg = ctx.section("fallback")
+    subject = ShotsFile.model_validate(ctx.read_json("shots.json")).subject
+    person = subject.split("·")[0].strip() if subject else ""
+    people = ctx.read_json("people.json").get("people", []) if (ctx.work_dir / "people.json").is_file() else []
+    if not person or not (cfg.get("caption_check", True) or cfg.get("face_check", True)):
+        return lambda path: None
+    checker, cache = Checker(ctx, people), IdentityCache(ctx)
+    name = next((p["name"] for p in people if p.get("name") and p["name"].split()[-1].lower() == person.split()[-1].lower()), person)
+    return lambda path: cache.get(checker, path, "video", [name])
+
+
 def fetch(youtube, sel: Selection, start: float, length: float, target: Path, lut: Path | None) -> ColdOpenClip | None:
     """Download [start, start+length] of a YouTube source WITH its sound, normalised; None if unusable."""
 
@@ -464,6 +481,7 @@ def run(ctx: RunContext) -> None:
     clips: list[ColdOpenClip] = []
     pauses: list[ColdOpenClip] = []
     bites: list[SoundBite] = []
+    wrong = wrong_athlete(ctx)
     try:
         for sel in picks:
             if len(clips) == len(lengths):
@@ -472,6 +490,10 @@ def run(ctx: RunContext) -> None:
             start = float(sel.start)
             target = out_dir / f"c{len(clips) + 1:02d}-{key(sel.candidateId, start, length, NORMALISE_VERSION)[:8]}.mp4"
             clip = fetch(youtube, sel, start, length, target, lut)
+            if clip and (why := wrong(target)):              # the opening is the protagonist, not a rival's routine
+                print(f"   cold open {sel.candidateId}: {why}")
+                target.unlink(missing_ok=True)
+                continue
             if clip:
                 clips.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root))}))
         person = ShotsFile.model_validate(ctx.read_json("shots.json")).subject.split("·")[0].strip()
@@ -479,6 +501,9 @@ def run(ctx: RunContext) -> None:
             for sel, start in options:
                 target = out_dir / f"m{len(pauses) + 1:02d}-{key(sel.candidateId, start, moment_seconds, NORMALISE_VERSION)[:8]}.mp4"
                 clip = fetch(youtube, sel, start, moment_seconds, target, lut)
+                if clip and (why := wrong(target)):
+                    print(f"   momento {sel.candidateId}: {why}")
+                    clip = None
                 if clip and is_competition(ctx, target, person):
                     pauses.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root)), "afterSeconds": round(after, 3)}))
                     break

@@ -68,12 +68,19 @@ const PanelBody: FC<{ title?: string | null; note?: string | null; steps: PanelS
   );
 };
 
-/** Full-screen data card on the dark panel background. */
-export const DataCard: FC<{ title?: string | null; note?: string | null; steps: PanelStep[] }> = (props) => (
-  <AbsoluteFill style={{ backgroundColor: theme.panel, justifyContent: 'center', alignItems: 'center' }}>
-    <PanelBody {...props} width={1180} />
-  </AbsoluteFill>
-);
+/** Full-screen data card on the dark panel background. A card with only one or two rows is drawn bigger, so a
+ * single fact fills the frame instead of floating small in the middle of an empty screen. */
+export const DataCard: FC<{ title?: string | null; note?: string | null; steps: PanelStep[] }> = (props) => {
+  const rows = Math.max(1, ...props.steps.map((s) => s.rows.length));
+  const scale = rows <= 1 ? 1.6 : rows === 2 ? 1.4 : rows === 3 ? 1.15 : 1;
+  return (
+    <AbsoluteFill style={{ backgroundColor: theme.panel, justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ transform: `scale(${scale})` }}>
+        <PanelBody {...props} width={1180 / Math.min(scale, 1.4)} />
+      </div>
+    </AbsoluteFill>
+  );
+};
 
 /** Right half of a split screen: the panel; the footage lives in the left half (see Split). */
 export const SplitPanel: FC<{ title?: string | null; note?: string | null; steps: PanelStep[] }> = (props) => (
