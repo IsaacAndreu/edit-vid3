@@ -72,7 +72,7 @@ const GroupContent: FC<{ group: Group }> = ({ group }) => (
     {group.kind === 'datacard' ? <DataCard title={group.title} note={group.note} steps={group.steps} /> : null}
     {group.kind === 'split' ? <SplitPanel title={group.title} note={group.note} steps={group.steps} /> : null}
     {group.kind === 'graphic' && group.graphic ? (
-      <GraphicScene graphic={group.graphic} durationInFrames={group.durationInFrames} />
+      <GraphicScene graphic={group.graphic} durationInFrames={group.durationInFrames} seed={group.id} />
     ) : null}
     {group.kind === 'question' && group.words ? (
       <Question words={group.words} durationInFrames={group.durationInFrames} instant={group.id === 'q-open'} />

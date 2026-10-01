@@ -17,6 +17,7 @@ brand:                             # tecnológico: cian eléctrico + magenta sob
   ocean: "#04070d"
   land: "#122235"
   border: "#1f3550"
+  motion: tech                     # entrada con glitch, corchetes de mira, líneas de escaneo y letra mono
 
 graphics:
   seconds_per_graphic: 90

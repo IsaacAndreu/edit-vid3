@@ -242,6 +242,23 @@ Todo va solo; cada punto se puede ajustar o apagar en `config.yaml` o en el perf
   clave (se oye más fuerte que el resto de la frase), el plano se acerca un 7 %.
 - **Entrada de capítulo**: un destello de película con grano antes del rótulo «CAPÍTULO …».
 
+## 7a2. Gráficos: selección e identidad de cada canal
+
+- **Selección**: la IA propone unos 2 candidatos por gráfico y se eligen los mejores: variados (nunca dos del
+  mismo tipo seguidos, máx. 2 por tipo, `graphics.max_per_type`), repartidos por el vídeo, primero donde el
+  metraje es flojo y **nunca encima del mejor metraje** (el 15 % de clips con mejor nota, `graphics.best_share`),
+  salvo repetición, estroboscopia o pantalla partida, que usan ese metraje. Cada gráfico dura lo que se tarda
+  en leerlo.
+- **Revisión**: tras el render, `out/<vídeo>/graficos.md` con una imagen de cada gráfico, su minuto y lo que dice.
+- **Paquete de movimiento** (`brand.motion`), cambia letra, entradas, salidas, decoración y sonido de todos los gráficos:
+  - `sport` (gimnasia): letra condensada en cursiva, barrido diagonal con rebote, líneas de velocidad, franjas.
+  - `editorial` (negocios): títulos con serifa, fundido suave, filetes de revista, textura de papel.
+  - `tech` (robots): letra mono, glitch de entrada, corchetes de mira, líneas de escaneo, apagado tipo pantalla.
+  - `clean`: el aspecto neutro de antes.
+  Sonidos de entrada: `assets/sfx/grafico-<paquete>.mp3` (cámbialos por los tuyos con el mismo nombre;
+  volumen `timeline.graphic_sfx_volume`).
+- Tras `git pull` ejecuta `npm install` (fuentes nuevas: Barlow Condensed, DM Serif Display, Space Grotesk, JetBrains Mono).
+
 ## 7b. Música y transiciones
 
 - **Transiciones:** `assets/sfx/whoosh*.mp3`. Suena casi siempre la de `timeline.whoosh_main`

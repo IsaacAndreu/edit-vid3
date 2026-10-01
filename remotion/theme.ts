@@ -7,8 +7,19 @@ import inter900 from '@fontsource/inter/files/inter-latin-900-normal.woff2';
 import oswald500 from '@fontsource/oswald/files/oswald-latin-500-normal.woff2';
 import oswald700 from '@fontsource/oswald/files/oswald-latin-700-normal.woff2';
 
+import barlow500 from '@fontsource/barlow-condensed/files/barlow-condensed-latin-500-normal.woff2';
+import barlow600 from '@fontsource/barlow-condensed/files/barlow-condensed-latin-600-normal.woff2';
+import barlow700 from '@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff2';
+import barlow800 from '@fontsource/barlow-condensed/files/barlow-condensed-latin-800-normal.woff2';
+import barlow700i from '@fontsource/barlow-condensed/files/barlow-condensed-latin-700-italic.woff2';
+import barlow800i from '@fontsource/barlow-condensed/files/barlow-condensed-latin-800-italic.woff2';
+import dmSerif400 from '@fontsource/dm-serif-display/files/dm-serif-display-latin-400-normal.woff2';
+import mono500 from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2';
+import mono700 from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2';
+import grotesk500 from '@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2';
+import grotesk700 from '@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2';
+
 // Inter from local files (no network at render time): 400 labels, 600 values, 800-900 titles/numbers.
-export const fontFamily = 'Inter';
 for (const [url, weight] of [
   [inter400, '400'],
   [inter500, '500'],
@@ -16,17 +27,51 @@ for (const [url, weight] of [
   [inter800, '800'],
   [inter900, '900'],
 ] as const) {
-  loadFont({ family: fontFamily, url, weight });
+  loadFont({ family: 'Inter', url, weight });
 }
-
 // Oswald: the narrow type of numbered chapter cards ("CAPÍTULO I:").
-export const condensedFamily = 'Oswald';
 for (const [url, weight] of [
   [oswald500, '500'],
   [oswald700, '700'],
 ] as const) {
-  loadFont({ family: condensedFamily, url, weight });
+  loadFont({ family: 'Oswald', url, weight });
 }
+// The channels' own type (brand.motion): sport → Barlow Condensed, editorial → DM Serif Display titles,
+// tech → Space Grotesk + JetBrains Mono.
+for (const [family, url, weight, style] of [
+  ['Barlow Condensed', barlow500, '500', 'normal'],
+  ['Barlow Condensed', barlow600, '600', 'normal'],
+  ['Barlow Condensed', barlow700, '700', 'normal'],
+  ['Barlow Condensed', barlow800, '800', 'normal'],
+  ['Barlow Condensed', barlow700i, '700', 'italic'],
+  ['Barlow Condensed', barlow800i, '800', 'italic'],
+  ['DM Serif Display', dmSerif400, '400', 'normal'],
+  ['JetBrains Mono', mono500, '500', 'normal'],
+  ['JetBrains Mono', mono700, '700', 'normal'],
+  ['Space Grotesk', grotesk500, '500', 'normal'],
+  ['Space Grotesk', grotesk700, '700', 'normal'],
+] as const) {
+  loadFont({ family, url, weight, style });
+}
+
+// Every component writes these families; the channel's motion pack decides what they are (CSS variables set
+// by applyBrand), so one brand switch changes the type of every graphic, label and card.
+export const fontFamily = "var(--ev-body, 'Inter')";
+export const titleFamily = "var(--ev-title, 'Inter')";
+export const condensedFamily = "var(--ev-display, 'Oswald')";
+export const monoFamily = "var(--ev-mono, 'JetBrains Mono')";
+
+/** Motion packs: type and the way graphics come in and out, per channel (brand.motion). */
+export type Motion = 'clean' | 'sport' | 'editorial' | 'tech';
+export const PACKS: Record<Motion, { body: string; title: string; display: string; mono: string; titleItalic: boolean; titleUpper: boolean }> = {
+  clean: { body: "'Inter'", title: "'Inter'", display: "'Oswald'", mono: "'JetBrains Mono'", titleItalic: false, titleUpper: true },
+  sport: { body: "'Barlow Condensed', 'Inter'", title: "'Barlow Condensed', 'Inter'", display: "'Barlow Condensed', 'Oswald'",
+    mono: "'Barlow Condensed'", titleItalic: true, titleUpper: true },
+  editorial: { body: "'Inter'", title: "'DM Serif Display', 'Inter'", display: "'DM Serif Display', 'Oswald'",
+    mono: "'JetBrains Mono'", titleItalic: false, titleUpper: false },
+  tech: { body: "'Space Grotesk', 'Inter'", title: "'JetBrains Mono', 'Inter'", display: "'Space Grotesk', 'Oswald'",
+    mono: "'JetBrains Mono'", titleItalic: false, titleUpper: true },
+};
 
 /** Channel brand kit. Defaults below; each channel overrides them from config.yaml (`brand:`),
  * which reaches every composition as props.brand and is applied with applyBrand(). */
@@ -54,6 +99,9 @@ const DEFAULTS = {
   chapterStyle: 'block',
   statStyle: 'panel',
   graphicsStyle: 'grid',
+  // motion: 'clean' (neutral) | 'sport' (diagonal wipes, speed lines, condensed italic) | 'editorial' (soft fades,
+  // magazine rules, serif titles) | 'tech' (glitch, corner brackets, scanlines, mono type)
+  motion: 'clean',
 };
 
 export type Brand = Partial<typeof DEFAULTS>;
@@ -63,7 +111,17 @@ export const theme = { ...DEFAULTS };
 /** Called at the top of every composition with its props.brand (same props → same look on every frame). */
 export const applyBrand = (brand?: Brand | null): void => {
   Object.assign(theme, DEFAULTS, brand ?? {});
+  const pack = PACKS[(theme.motion as Motion) in PACKS ? (theme.motion as Motion) : 'clean'];
+  if (typeof document !== 'undefined') {
+    const root = document.documentElement.style;
+    root.setProperty('--ev-body', pack.body);
+    root.setProperty('--ev-title', pack.title);
+    root.setProperty('--ev-display', pack.display);
+    root.setProperty('--ev-mono', pack.mono);
+  }
 };
+
+export const pack = () => PACKS[(theme.motion as Motion) in PACKS ? (theme.motion as Motion) : 'clean'];
 
 /** A colour ('#rrggbb' or 'rgba(...)') with another opacity. */
 export const alpha = (color: string, a: number): string => {

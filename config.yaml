@@ -211,6 +211,8 @@ brand:                             # kit de marca del canal: colores de TODAS la
   ocean: "#0a0612"                 # mapas
   land: "#1d142b"
   border: "#35274d"
+  motion: sport                    # paquete de movimiento: sport (barridos diagonales, letra condensada en cursiva) |
+                                   # editorial (fundidos, filetes de revista, títulos con serifa) | tech (glitch, corchetes, mono) | clean
 
 report:                            # resumen de la mañana (out/<slug>/resumen.md y el email): cuándo pedir revisión
   min_protagonist: 0.5             # menos de la mitad del tiempo con el protagonista → revisar

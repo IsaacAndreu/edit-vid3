@@ -490,7 +490,8 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
 
     sents = sentences([w.model_dump() for w in words.words])
     weak = weak_sentences(ctx, sents) if ctx.section("graphics").get("cover_weak") else set()
-    planned = graphics.plan(ctx, sents, words.durationSeconds, weak=weak)
+    strong = strong_sentences(ctx, sents) if ctx.section("graphics").get("keep_best_footage", True) else set()
+    planned = graphics.plan(ctx, sents, words.durationSeconds, weak=weak, strong=strong)
     from .datacheck import filter_planned
 
     planned = filter_planned(ctx, planned, sents)       # no wrong figure goes on screen (datos-graficos.md)
@@ -627,6 +628,33 @@ def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[Timeli
         out.append(TimelineCaption.model_validate({"from": start, "durationInFrames": end - start, "words": [
             {"text": w.text.strip(), "from": max(0, at(w.start) - start)} for w in chunk]}))
     return out
+
+
+def _sentences_of(ctx: RunContext, shot_ids: set[str], sents: list[dict[str, Any]]) -> set[int]:
+    out: set[int] = set()
+    for shot in ShotsFile.model_validate(ctx.read_json("shots.json")).shots:
+        if shot.id not in shot_ids:
+            continue
+        end = shot.start + shot.duration
+        for s in sents:
+            if min(end, s["end"]) - max(shot.start, s["start"]) >= 0.5 * min(shot.duration, s["end"] - s["start"]):
+                out.add(s["n"])
+    return out
+
+
+def strong_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
+    """Sentences over the best footage of the video (the top `graphics.best_share` of chosen clips by score):
+    graphics stay off them, unless they show that footage themselves (replay, strobe, split)."""
+
+    if not (ctx.work_dir / "selection.json").is_file():
+        return set()
+    picked = [s for s in ctx.read_json("selection.json").get("selections", [])
+              if s.get("status") == "selected" and s.get("kind") == "video" and s.get("score") is not None]
+    if len(picked) < 5:
+        return set()
+    scores = sorted(float(s["score"]) for s in picked)
+    cut = scores[int(len(scores) * (1 - float(ctx.section("graphics").get("best_share", 0.15))))]
+    return _sentences_of(ctx, {s["shotId"] for s in picked if float(s["score"]) >= cut}, sents)
 
 
 def weak_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
@@ -1110,6 +1138,14 @@ def run(ctx: RunContext) -> None:
     pop = publish(_first_audio(folder("sfx", "pop"), "pop"))
     sfx: list[TimelineSfx] = []
     impact = publish(_first_audio(folder("sfx", "impact"), "impact"))
+    # each graphic comes in with its channel's sound (brand.motion): a sports hit, typewriter keys, a digital bip
+    motion = str(ctx.section("brand").get("motion", "clean"))
+    entry = publish(_first_audio(folder("sfx", f"grafico-{motion}"), f"grafico-{motion}")) if motion != "clean" else None
+    if entry:
+        for group in groups:
+            if group.kind == "graphic" and group.graphic and not group.graphic.get("board"):
+                sfx.append(TimelineSfx.model_validate({"src": entry, "from": group.from_,
+                                                       "volume": float(cfg.get("graphic_sfx_volume", 0.3))}))
     for kind, at in animation_cues(groups):
         src = pop if kind == "pop" else impact
         if src:

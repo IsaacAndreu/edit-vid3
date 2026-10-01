@@ -629,12 +629,84 @@ def _as_int(value: Any) -> int:
 WEAK_HINT = ("Las frases marcadas con ⚠ no tienen buen metraje (imagen floja o de relleno): pon los gráficos PRIMERO "
              "ahí, con el tipo que mejor explique esa frase (kinetic para una idea abstracta, chart/scale/compare para "
              "cifras). Solo después reparte el resto.")
+STRONG_HINT = ("Las frases marcadas con ★ tienen el MEJOR metraje del vídeo (el momento que el espectador quiere ver): "
+               "no pongas gráficos encima, salvo strobe, replay o split, que usan ese mismo metraje.")
+CANDIDATES_HINT = ("Propón hasta {ask} candidatos ordenados de mejor a peor: después se eligen {count} con variedad "
+                   "de tipos y bien repartidos, así que propón tipos distintos.")
+FOOTAGE_TYPES = {"strobe", "replay", "split", "spotlight"}      # these show the shot's own footage: welcome over the best clips
 
 
-def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: set[int] | None = None) -> list[dict[str, Any]]:
+def reading_seconds(graphic: dict[str, Any]) -> float:
+    """Time to take a graphic in: a couple of seconds to land plus ~0.3 s per word on screen."""
+
+    words = 0
+
+    def walk(value: Any) -> None:
+        nonlocal words
+        if isinstance(value, dict):
+            for k, v in value.items():
+                if k not in ("type", "media", "focus", "query", "board", "flip", "chart", "axis", "better", "sign"):
+                    walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+        elif isinstance(value, str):
+            words += len(value.split())
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            words += 1
+
+    walk(graphic)
+    return 2.0 + 0.3 * words
+
+
+def choose(candidates: list[dict[str, Any]], count: int, duration: float, cfg: dict[str, Any],
+           taken: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The best `count` graphics among the candidates: the LLM's order, over weak footage first, never over
+    the best footage (unless the graphic shows it), at most `max_per_type` of a kind, never the same kind
+    twice in a row, ≥ 25 s apart, and spread: a stretch of the video without graphics is preferred."""
+
+    most = int(cfg.get("max_per_type", 2))
+    bins = max(1, count)
+    where = lambda c: min(bins - 1, int(c["start"] / max(duration, 1.0) * bins))  # noqa: E731
+
+    def value(rank: int, c: dict[str, Any]) -> float:
+        v = 1.0 - 0.6 * rank / max(1, len(candidates)) + 0.6 * min(1.0, c["weak"] / 2)
+        if c["strong"]:
+            v += 0.3 if c["graphic"]["type"] in FOOTAGE_TYPES else -1.5
+        return v
+
+    def fits(c: dict[str, Any], chosen: list[dict[str, Any]]) -> bool:
+        kind = c["graphic"]["type"]
+        if sum(o["graphic"]["type"] == kind for o in chosen) >= (2 if kind == "kinetic" else most):
+            return False
+        if any(c["start"] < o["end"] + 25 and o["start"] < c["end"] + 25 for o in chosen) \
+                or any(c["start"] < o["end"] + 3 and o["start"] < c["end"] + 3 for o in taken):
+            return False
+        before = max((o for o in chosen if o["start"] < c["start"]), key=lambda o: o["start"], default=None)
+        after = min((o for o in chosen if o["start"] > c["start"]), key=lambda o: o["start"], default=None)
+        return not ((before and before["graphic"]["type"] == kind) or (after and after["graphic"]["type"] == kind))
+
+    base = [(value(rank, c), rank, c) for rank, c in enumerate(candidates)]
+    chosen: list[dict[str, Any]] = []
+    while len(chosen) < count:
+        filled = {where(o) for o in chosen}
+        options = [(v + (0.4 if where(c) not in filled else 0.0), rank, c) for v, rank, c in base
+                   if c not in chosen and fits(c, chosen)]
+        if not options:
+            break
+        best = max(options, key=lambda x: (x[0], -x[1]))
+        if best[0] < -0.2:
+            break
+        chosen.append(best[2])
+    return [{"start": c["start"], "end": c["end"], "graphic": c["graphic"]} for c in chosen]
+
+
+def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: set[int] | None = None,
+         strong: set[int] | None = None) -> list[dict[str, Any]]:
     """[{"start": voice s, "end": voice s, "graphic": {...}}] validated against the narration.
 
-    `weak`: sentences with poor footage (graphics.cover_weak), offered to the LLM first."""
+    `weak`: sentences with poor footage (graphics.cover_weak), offered to the LLM first; `strong`: the best
+    footage, kept clear. The LLM proposes about twice as many as needed and `choose` keeps the best mix."""
 
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
@@ -648,23 +720,27 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
     count = min(count, int(cfg.get("max", 8)))
     own = [str(t) for t in ctx.format.get("tipos") or []]             # graphics the format needs, whatever the channel
     allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own]) if t in TYPES and not (ranked and t == "rank")]
-    weak = weak or set()
+    weak, strong = weak or set(), (strong or set()) - (weak or set())
     if weak:   # one more graphic per 3 weak sentences, within the channel's maximum
         count = min(int(cfg.get("max", 8)), count + len(weak) // 3)
-    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {'⚠ ' if s['n'] in weak else ''}{s['text']}" for s in sents)
+    ask = min(2 * count, count + 8)
+    mark = lambda n: "⚠ " if n in weak else "★ " if n in strong else ""  # noqa: E731
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {mark(s['n'])}{s['text']}" for s in sents)
     try:
-        proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
-                                 system=SYSTEM.format(count=count, refs=", ".join(REFERENCES))
+        proposed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=8000, user=listing[:80000],
+                                 system=SYSTEM.format(count=ask, refs=", ".join(REFERENCES))
                                  + f"\nTipos permitidos en este canal: {', '.join(allowed)}."
                                  + (f"\n{str(ctx.format['graficos']).strip()}" if ctx.format.get("graficos") else "")
                                  + (f"\n{cfg['hint']}" if cfg.get("hint") else "")
-                                 + (f"\n{WEAK_HINT}" if weak else "")).get("graphics", [])
+                                 + "\n" + CANDIDATES_HINT.format(ask=ask, count=count)
+                                 + (f"\n{WEAK_HINT}" if weak else "")
+                                 + (f"\n{STRONG_HINT}" if strong else "")).get("graphics", [])
     except Exception as error:  # graphics are a bonus: the video is complete without them
         print(f"   Gráficos no disponibles: {str(error)[:120]}")
         return []
     countries = country_names(ctx.root)
     min_s, max_s = float(cfg.get("min_seconds", 4)), float(cfg.get("max_seconds", 12))
-    out: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     for item in proposed:
         if not isinstance(item, dict):
             continue
@@ -676,19 +752,24 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
             continue
         # the data must be said in the passage the LLM pointed at (even if the graphic is then shortened)
         nearby = " ".join(s["text"] for s in sents[max(0, first - 3): last + 2])
+        graphic = clean(kind, item.get("data") or {}, nearby, ctx, countries)
+        if not graphic:
+            continue
+        need = min(max_s, max(min_s, reading_seconds(graphic)))      # long enough to be read, no longer
         while last > first and sents[last]["end"] - sents[first]["start"] > max_s:
             last -= 1
-        while last + 1 < len(sents) and sents[last]["end"] - sents[first]["start"] < min_s:
+        while last + 1 < len(sents) and sents[last]["end"] - sents[first]["start"] < need:
             last += 1
         start, end = sents[first]["start"], min(sents[last]["end"], sents[first]["start"] + max_s)   # long sentences: first 12 s
-        if start < 20 or end - start < min_s * 0.8 or any(start < o["end"] + 25 and o["start"] < end + 25 for o in out) \
-                or any(start < o["end"] + 3 and o["start"] < end + 3 for o in ranked):
+        if start < 20 or end - start < min_s * 0.8:
             continue
-        graphic = clean(kind, item.get("data") or {}, nearby, ctx, countries)
-        if graphic:
-            out.append({"start": start, "end": end, "graphic": graphic})
-        if len(out) == count:
-            break
+        span = range(first, last + 1)
+        candidates.append({"start": start, "end": end, "graphic": graphic,
+                           "weak": sum(n in weak for n in span), "strong": any(n in strong for n in span)})
+    out = choose(candidates, count, duration, cfg, ranked)
+    if candidates:
+        kinds = ", ".join(o["graphic"]["type"] for o in sorted(out, key=lambda o: o["start"]))
+        print(f"   Gráficos: {len(out)} elegidos de {len(candidates)} candidatos ({kinds})")
     return sorted([*ranked, *out], key=lambda g: g["start"])
 
 

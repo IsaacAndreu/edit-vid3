@@ -238,6 +238,24 @@ def _run(cmd: list[str], what: str) -> subprocess.CompletedProcess:
     return result
 
 
+def ensure_node_modules(root: Path) -> None:
+    """`npm install` when package.json lists a package node_modules lacks (new fonts after a git pull)."""
+
+    try:
+        manifest = json.loads((root / "package.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return
+    wanted = {**manifest.get("dependencies", {}), **manifest.get("devDependencies", {})}
+    missing = [name for name in wanted if not (root / "node_modules" / name / "package.json").is_file()]
+    if not missing:
+        return
+    print(f"   Instalando paquetes de Node que faltan ({', '.join(missing[:4])}…): npm install")
+    npm = shutil.which("npm") or "npm"
+    result = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(root), capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Falló npm install (ejecútalo a mano):\n{(result.stderr or result.stdout)[-800:]}")
+
+
 def _browser(cfg: dict[str, Any]) -> str | None:
     value = str(cfg.get("browser_executable", "auto") or "auto")
     if value != "auto":
@@ -280,6 +298,7 @@ class Renderer:
         props_file.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
         npx = shutil.which("npx") or "npx"
         root = str(self.ctx.root)
+        ensure_node_modules(self.ctx.root)
         try:
             subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
                             f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
@@ -554,9 +573,66 @@ def run(ctx: RunContext) -> None:
     (ctx.out_dir / "qa").mkdir(parents=True, exist_ok=True)
     write_postflight_report(ctx.out_dir / "qa" / "postflight.json", issues)
     enforce_postflight(issues)
+    try:
+        graphics_sheet(ctx, final, timeline)
+    except Exception as error:  # a review aid: never costs the video
+        print(f"   graficos.md no disponible: {str(error)[:120]}")
     size = final.stat().st_size / 1e6
     print(f"   {final.relative_to(ctx.root)} · {timeline['durationInFrames'] / r.fps:.1f} s · {size:.0f} MB · "
           f"render total {time.monotonic() - started:.0f} s")
+
+
+def _summary(graphic: dict[str, Any]) -> str:
+    """A short line of what a graphic says: its title or name and the first figures."""
+
+    head = graphic.get("title") or graphic.get("name") or " / ".join(graphic.get("lines") or [])
+    if not head and isinstance(graphic.get("left"), dict):
+        head = f"{graphic['left'].get('name')} vs {graphic.get('right', {}).get('name')}"
+    figures: list[str] = []
+
+    def walk(value: Any) -> None:
+        if len(figures) >= 4:
+            return
+        if isinstance(value, dict):
+            for k, v in value.items():
+                if k in ("value", "score", "year", "total", "d", "e", "place") and not isinstance(v, (dict, list)):
+                    figures.append(str(v))
+                elif k not in ("media", "focus"):
+                    walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+
+    walk(graphic)
+    return (str(head or "")[:60] + (f" · {', '.join(figures)}" if figures else "")).replace("|", "/")
+
+
+def graphics_sheet(ctx: RunContext, final: Path, timeline: dict[str, Any]) -> None:
+    """out/<slug>/graficos.md: one frame of every animated graphic of the final video, with its moment and what
+    it says, to review them at a glance (and drop one in the editor if it does not convince)."""
+
+    groups = [g for g in timeline.get("groups", []) if g.get("kind") == "graphic" and g.get("graphic")]
+    folder = ctx.out_dir / "graficos"
+    if folder.is_dir():
+        for old in folder.glob("*.jpg"):
+            old.unlink()
+    if not groups:
+        return
+    folder.mkdir(parents=True, exist_ok=True)
+    fps = int(timeline.get("fps", 30))
+    lines = [f"# Gráficos · {ctx.slug}", "", f"{len(groups)} gráficos animados. Para quitar uno: el editor "
+             "(`python main.py --slug <vídeo> --review`) antes de renderizar.", "",
+             "| Momento | Tipo | Qué dice | Imagen |", "|---|---|---|---|"]
+    for n, g in enumerate(groups, 1):
+        at = (g["from"] + max(1, int(g["durationInFrames"] * 0.7))) / fps      # once it has finished coming in
+        image = folder / f"{n:02d}-{g['graphic']['type']}.jpg"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{at:.2f}", "-i", str(final), "-frames:v", "1",
+                        "-vf", "scale=640:-2", "-q:v", "4", str(image)], capture_output=True, timeout=60)
+        clock = f"{int(g['from'] / fps // 60)}:{int(g['from'] / fps % 60):02d}"
+        picture = f"![{g['graphic']['type']}](graficos/{image.name})" if image.is_file() else "—"
+        lines.append(f"| {clock} | {g['graphic']['type']} | {_summary(g['graphic'])} | {picture} |")
+    (ctx.out_dir / "graficos.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"   Revisión de gráficos: {ctx.out_dir.relative_to(ctx.root) / 'graficos.md'}")
 
 
 def _prune(folder: Path, keep: set[str]) -> None:

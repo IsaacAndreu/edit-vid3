@@ -22,6 +22,7 @@ brand:                             # estilo qash: verde lima sobre archivo real 
   chapterStyle: numbered           # «CAPÍTULO I:» en verde + título en blanco, letra estrecha
   statStyle: bare                  # cifra gigante en verde directamente sobre el vídeo, sin panel
   graphicsStyle: pizarra           # gráficos sobre pizarra gris con textura, trazos finos
+  motion: editorial                # fundidos suaves, filetes de revista y títulos con serifa (DM Serif Display)
 
 graphics:
   seconds_per_graphic: 80          # los datos mandan en este canal: algún gráfico más que en gimnasia

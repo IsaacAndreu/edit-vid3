@@ -23,9 +23,16 @@ import { Scale } from './Scale';
 import { Iceberg } from './Iceberg';
 import { Receipt } from './Receipt';
 import { TierList } from './TierList';
+import { GraphicFrame } from './GraphicFrame';
 
-/** Full-screen animated graphic of any kind. */
-export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
+/** Full-screen animated graphic of any kind, brought in and out the channel's way (GraphicFrame). */
+export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) => (
+  <GraphicFrame durationInFrames={durationInFrames} seed={seed || graphic.type}>
+    <GraphicBody graphic={graphic} durationInFrames={durationInFrames} />
+  </GraphicFrame>
+);
+
+const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   switch (graphic.type) {
     case 'map':
       return <MapScene graphic={graphic} durationInFrames={durationInFrames} />;
