@@ -68,9 +68,8 @@ sourcing:
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
     force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
-    whole_fallback: true       # sin HLS: el vídeo entero a trozos de 10 MB (no lo frenan) y se corta aquí; se guarda para otros planos
-    whole_max_minutes: 30      # vídeos más largos (o de más de whole_max_mb) siguen por tramo
-    whole_max_mb: 600
+    # (sin HLS se baja el vídeo entero a trozos y se corta aquí: whole_fallback, whole_max_minutes 30, whole_max_mb 600;
+    #  no se escriben aquí para no rehacer las búsquedas de los vídeos a medias)
   images:
     max_per_shot: 6
     min_width: 1280
