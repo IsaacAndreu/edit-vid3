@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -279,7 +280,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             args.append(f"--until={until}")
         if review:
             args.append("--review")
-        tail: deque[str] = deque(maxlen=15)
+        tail: deque[str] = deque(maxlen=200)
         with (logs / f"{slug}.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                        encoding="utf-8", errors="replace",
@@ -293,7 +294,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 if line and not line.startswith(("[h264", "libpng", "[ WARN")):
                     print(f"[{slug}] {line}", flush=True)
             code = process.wait()
-        detail = "" if code == 0 else next((l.strip() for l in reversed(tail) if l.strip()), f"código {code}")
+        detail = "" if code == 0 else _error_line(list(tail), code)
         with lock:
             results.append((slug, "OK" if code == 0 else "ERROR", time.monotonic() - started, detail))
             _write_report(root, results)
@@ -314,6 +315,19 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     for thread in threads:
         thread.join()
     return results
+
+
+NOISE = ("[h264", "[hevc", "[mov", "[aac", "libpng", "[ WARN", "frame=", "size=")
+
+
+def _error_line(tail: list[str], code: int) -> str:
+    """The line that says what failed, not ffmpeg's last decoder warning (e.g. «mmco: unref short failure»)."""
+
+    lines = [l.strip() for l in tail if l.strip() and not l.strip().startswith(NOISE)]
+    for line in reversed(lines):
+        if re.search(r"Falló|Error|error:|Exception|Traceback", line) and not line.startswith("Traceback"):
+            return line
+    return lines[-1] if lines else f"código {code}"
 
 
 def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> None:
