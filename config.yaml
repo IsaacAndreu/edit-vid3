@@ -156,8 +156,9 @@ grade:                             # color igualado entre clips (se aplica al pr
 fallback:
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)
-  pexels_for_person: true          # en vídeos sobre una persona, Pexels solo si no queda NADA: ni vídeo suyo, ni foto de lo que se
-                                   # nombra, ni del evento, ni de la biblioteca, ni suya en la web
+  pexels_for_person: false         # en vídeos sobre una persona, NUNCA Pexels (gente y ciudades genéricas que no son él): si no queda
+                                   # vídeo suyo, ni foto de lo que se nombra, ni del evento, ni suya en la web, el plano sale como
+                                   # rótulo con sus palabras clave. true = Pexels como último recurso
   min_clip: 0.22                   # parecido mínimo con el plano para aceptar algo de Pexels
   caption_check: true              # descarta un clip si el rótulo en pantalla nombra a OTRO atleta ("JARMAN 134 GBR")
   face_check: true                 # …o si 2+ fotogramas muestran una cara grande de frente que no es la del retrato
