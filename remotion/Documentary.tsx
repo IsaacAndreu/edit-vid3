@@ -7,6 +7,7 @@ import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
 import { CutMotion } from './components/CutMotion';
 import { EndScreen } from './components/EndScreen';
+import { FilmBurn } from './components/FilmBurn';
 import { GraphicScene } from './components/graphics/GraphicScene';
 import { FramedCard } from './components/FramedCard';
 import { GridBackground } from './components/GridBackground';
@@ -193,6 +194,7 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
       .map((shot) => (
         <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
           <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} word={locale?.chapter} />
+          <FilmBurn seed={shot.id} />
         </Sequence>
       ))}
     {shots

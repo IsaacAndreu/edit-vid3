@@ -57,3 +57,6 @@ lab:
     - top cities USA technology
     - ciudades de China
     - humanoid robot factory
+
+grade:
+  look: frio                     # tono común del canal (pipeline/grade.py)

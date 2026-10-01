@@ -36,6 +36,7 @@ _FUNCTION_WORDS = frozenset(
     "donde como cada".split()
 )
 _SOFT_PUNCT = (",", ";", ":", ")", "»", "”", "—")
+MAX_SHOT_SECONDS_DEFAULT = 4.0       # ordinary shots; only `slow` passages go up to MAX_SHOT_SECONDS
 
 
 # --- 1. Chapters -----------------------------------------------------------------------
@@ -129,6 +130,53 @@ def subject_person(subject: str) -> str:
 def event_at(events: list[StoryEvent], word: int) -> str | None:
     current = [e for e in events if e.startWord <= word]
     return current[-1].label if current else None
+
+
+PACING_SYSTEM = """
+Eres montador de documentales. Recibes las frases numeradas del guion. Marca el RITMO de montaje:
+- "slow": frases emotivas o reflexivas donde la imagen debe respirar (un llanto, una pérdida, una
+  confesión, el silencio antes de un golpe, una frase final que deja huella). Máximo 1 de cada 8 frases.
+- "fast": frases de acción o enumeración rápida (una rutina, una caída, una carrera, una lista de logros).
+  Máximo 1 de cada 5 frases.
+El resto queda normal. Devuelve SOLO JSON: {"slow": [números], "fast": [números]}
+""".strip()
+
+
+def pacing(ctx: RunContext, words: list[Word]) -> dict[int, str]:
+    """Sentence number → "slow" | "fast" (pacing.enabled); {} when off or the call fails."""
+
+    cfg = ctx.section("pacing")
+    if not cfg.get("enabled", True):
+        return {}
+    sentences = _sentences(words)
+    listing = "\n".join(f"[{n}] " + " ".join(w.text for w in words[a : b + 1]) for n, (a, b) in enumerate(sentences))
+    try:
+        result = complete_json(ctx, stage=STAGE, section="planner", system=PACING_SYSTEM, user=f"FRASES:\n{listing}",
+                               max_tokens=800)
+    except Exception as error:  # pacing is a nicety: never cost the plan
+        print(f"   Ritmo: sin marcar ({str(error)[:100]})")
+        return {}
+    marks: dict[int, str] = {}
+    for kind in ("fast", "slow"):                       # slow wins where both are claimed
+        for n in result.get(kind) or []:
+            if isinstance(n, int) and 0 <= n < len(sentences):
+                marks[n] = kind
+    slow = sorted(n for n, k in marks.items() if k == "slow")[: max(1, len(sentences) // 8)]
+    fast = sorted(n for n, k in marks.items() if k == "fast")[: max(1, len(sentences) // 5)]
+    return {**{n: "fast" for n in fast}, **{n: "slow" for n in slow}}
+
+
+def pace_targets(ctx: RunContext, words: list[Word], marks: dict[int, str], base: float) -> tuple[list[float], list[float], list[str | None]]:
+    """Per word: the shot length to aim at, the longest allowed and the pace label."""
+
+    cfg = ctx.section("pacing")
+    seconds = {"slow": float(cfg.get("slow_seconds", 4.3)), "fast": float(cfg.get("fast_seconds", 1.9)), None: base}
+    longest = {"slow": MAX_SHOT_SECONDS, "fast": 3.0, None: MAX_SHOT_SECONDS_DEFAULT}
+    labels: list[str | None] = [None] * len(words)
+    for n, (a, b) in enumerate(_sentences(words)):
+        for i in range(a, b + 1):
+            labels[i] = marks.get(n)
+    return [seconds[k] for k in labels], [longest[k] for k in labels], labels
 
 
 def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChapter], str, dict[str, Any]]:
@@ -245,9 +293,12 @@ def cut_shots(
     min_seconds: float = MIN_SHOT_SECONDS,
     max_seconds: float = MAX_SHOT_SECONDS,
     with_times: bool = False,
+    targets: list[float] | None = None,
+    maxes: list[float] | None = None,
 ):
     """Return shots as (firstWord, lastWord), contiguous and covering all words — and, with
-    `with_times`, the start second of each shot (a cut may fall inside a long pause)."""
+    `with_times`, the start second of each shot (a cut may fall inside a long pause).
+    `targets`/`maxes` (one per word) vary the pace: the shot starting at word a aims at targets[a]."""
 
     n = len(words)
     times = _boundary_times(words, duration)
@@ -262,6 +313,8 @@ def cut_shots(
             for a in range(b - 1, -1, -1):
                 if tb - max(times[a]) > max_seconds * 3:
                     break
+                aim = targets[a] if targets else target
+                most = min(maxes[a], max_seconds) if maxes else min(max_seconds, MAX_SHOT_SECONDS_DEFAULT)
                 if any(a < f < b for f in forced):
                     continue
                 for i, ta in enumerate(times[a]):
@@ -270,11 +323,11 @@ def cut_shots(
                     d = tb - ta
                     if d <= 0:
                         continue
-                    penalty = ((d - target) / 0.8) ** 2
+                    penalty = ((d - aim) / 0.8) ** 2
                     if d < min_seconds:
                         penalty += 1000 * (min_seconds - d + 0.1)
-                    elif d > max_seconds:
-                        penalty += 1000 * (d - max_seconds + 0.1)
+                    elif d > most:
+                        penalty += 1000 * (d - most + 0.1)
                     total = best[a][i] + penalty + cut_cost
                     if total < best[b][j]:
                         best[b][j], back[b][j] = total, (a, i)
@@ -615,6 +668,8 @@ def _with_subject(broll: dict[str, Any], person: str | None) -> dict[str, Any]:
 
 def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     shot = {k: structural[k] for k in ("id", "startWord", "endWord", "start", "end", "text", "chapter")}
+    if structural.get("pace"):
+        shot["pace"] = structural["pace"]
     kind = str(label.get("type") or "broll")
     if structural.get("chapterTitle"):
         kind = "chapter"
@@ -708,12 +763,22 @@ def run(ctx: RunContext) -> None:
     print(f"   {len(chapters)} capítulos: " + " | ".join(c.title for c in chapters if c.showTitle))
     if subject or events:
         print(f"   Protagonista: {subject or '—'} · {len(events)} tramos de la historia")
+    pace_cfg = ctx.section("pacing")
+    base = float(pace_cfg.get("base_seconds", cfg.get("target_shot_seconds", 2.6))) if pace_cfg.get("enabled", True) \
+        else float(cfg.get("target_shot_seconds", 2.6))
+    marks = pacing(ctx, words)
+    targets, maxes, paces = pace_targets(ctx, words, marks, base)
+    if marks:
+        print(f"   Ritmo: {sum(k == 'slow' for k in marks.values())} frases lentas · "
+              f"{sum(k == 'fast' for k in marks.values())} rápidas · base {base:.1f} s por plano")
     cuts, cut_starts = cut_shots(
         words,
         words_file.durationSeconds,
-        target=float(cfg.get("target_shot_seconds", 2.6)),
+        target=base,
         forced_starts={c.startWord for c in chapters},
         with_times=True,
+        targets=targets,
+        maxes=maxes,
     )
     chapter_starts = [c.startWord for c in chapters]
     structural: list[dict[str, Any]] = []
@@ -730,6 +795,8 @@ def run(ctx: RunContext) -> None:
             "text": " ".join(w.text for w in words[first : last + 1]),
             "chapter": chapter,
         }
+        if paces[first] and paces[first] == paces[last]:
+            item["pace"] = paces[first]
         if first == chapters[chapter].startWord and chapters[chapter].showTitle:
             item["chapterTitle"] = chapters[chapter].title
         if start < hook_seconds:  # first seconds: ask for the most striking footage

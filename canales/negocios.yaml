@@ -221,3 +221,6 @@ series:
     lab:
       queries: [por qué la vivienda, economía de España explicada, por qué los sueldos, precio de la vivienda,
                 crisis de la vivienda, inflación España]
+
+grade:
+  look: neutral                    # el archivo ya lleva su aspecto de película (pipeline/grade.py)

@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { AbsoluteFill, OffthreadVideo, random, staticFile, useCurrentFrame } from 'remotion';
 import type { Media } from '../types';
+import { zoomAt } from './BRoll';
 
 // Film grain: fine noise as an SVG data URI, moved to a new random offset every frame.
 const GRAIN =
@@ -28,10 +29,12 @@ export const ArchiveFootage: FC<{ media: Media; seed: string }> = ({ media, seed
         <OffthreadVideo
           src={staticFile(media.src)}
           muted
+          playbackRate={media.rate || 1}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'cover',
+            transform: `scale(${zoomAt(frame, media.zoom)})`,
             filter: `sepia(0.22) saturate(0.88) contrast(1.06) brightness(${0.97 * flicker})`,
           }}
         />

@@ -224,6 +224,24 @@ Cada mañana a las 9 (Windows, una vez desde la carpeta del proyecto):
 schtasks /create /tn "Ideas videos" /sc daily /st 08:52 /tr "cmd /c cd /d %CD% && python main.py --ideas > out\ideas.log 2>&1"
 ```
 
+## 7a. Acabado visual (color, archivo, ritmo, cámara)
+
+Todo va solo; cada punto se puede ajustar o apagar en `config.yaml` o en el perfil del canal.
+
+- **Color igualado** (`grade`): cada clip y foto se acerca al mismo brillo, contraste, saturación y
+  balance de blancos, más un tono común del canal (`grade.look`: `cine` en gimnasia, `frio` en robots,
+  `neutral` en negocios). El blanco y negro no se tiñe. Se aplica al preparar los clips, no alarga el render.
+- **Metraje antiguo como archivo** (`timeline.archive_auto`): un clip cuyo título nombra un año anterior a
+  1995 (`archive_before_year`) o que viene en ≤ 480p (`archive_max_height`) sale con aspecto de película
+  (bandas negras si es 4:3, grano, viñeta, tono cálido) y un poco más nítido, en vez de estirado.
+- **Ritmo** (`pacing`): la IA marca las frases emotivas y las de acción. Las emotivas tienen planos
+  largos (hasta 5 s) con un zoom lento; las de acción, cortes rápidos. El plano normal dura 3 s
+  (~19 cortes/min). Al entrar en cada capítulo la voz para medio segundo (`chapter_pause`).
+  Cambiar `pacing` no rehace vídeos ya planificados: para eso, `--force planner`.
+- **Zoom de énfasis** (`timeline.emphasis_zoom`): cuando el narrador remarca una cifra o una palabra
+  clave (se oye más fuerte que el resto de la frase), el plano se acerca un 7 %.
+- **Entrada de capítulo**: un destello de película con grano antes del rótulo «CAPÍTULO …».
+
 ## 7b. Música y transiciones
 
 - **Transiciones:** `assets/sfx/whoosh*.mp3`. Suena casi siempre la de `timeline.whoosh_main`

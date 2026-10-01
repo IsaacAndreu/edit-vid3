@@ -61,8 +61,36 @@ def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
     media = shot.get("media") or {}
     a, b = shot["from"], shot["from"] + shot["durationInFrames"]
     covered = any(g["from"] < b and a < g["from"] + g["durationInFrames"] for g in groups)
-    return (shot["type"] == "broll" and media.get("kind") == "video" and media.get("layout", "full") == "full"
+    return (shot["type"] == "broll" and media.get("kind") == "video" and media.get("layout", "full") in ("full", "archive")
             and not shot.get("groupId") and not covered)
+
+
+# CSS sepia(0.22) as a colour matrix, as in remotion/components/ArchiveFootage.tsx
+SEPIA = "colorchannelmixer=rr=0.866:rg=0.169:rb=0.042:gr=0.077:gg=0.931:gb=0.037:br=0.060:bg=0.117:bb=0.809"
+
+
+def zoom_filter(zoom: list[float] | None, width: int, height: int, fps: int) -> str:
+    """Scale up around the centre from frame zoom[0], over zoom[1] frames, to zoom[2] (ease-out, then hold)."""
+
+    if not zoom:
+        return ""
+    start, frames, scale = float(zoom[0]), max(1.0, float(zoom[1])), float(zoom[2])
+    z = f"(1+{scale - 1:.4f}*(1-pow(1-clip((t*{fps}-{start:.1f})/{frames:.1f},0,1),3)))"
+    return (f",scale=w='2*trunc({width}*{z}/2)':h='2*trunc({height}*{z}/2)':eval=frame:flags=bicubic,"
+            f"crop={width}:{height}:(iw-{width})/2:(ih-{height})/2")
+
+
+def shot_filter(media: dict[str, Any], frames: int, fps: int) -> str:
+    """ffmpeg chain for one fast shot: speed, zoom and, for archive footage, the film look between black bars."""
+
+    rate = float(media.get("rate") or 1.0)
+    chain = "setpts=PTS-STARTPTS" + (f",setpts=PTS/{rate:.4f},fps={fps}" if rate < 0.999 else "")
+    width, height = int(media.get("width") or 1920), int(media.get("height") or 1080)
+    chain += zoom_filter(media.get("zoom"), width, height, fps)
+    if media.get("layout") == "archive":
+        chain += (f",eq=contrast=1.06:saturation=0.88:brightness=-0.02,{SEPIA},noise=alls=12:allf=t,"
+                  f"vignette=angle=PI/5,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black")
+    return chain + f",tpad=stop_mode=clone:stop={frames}"
 
 
 def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment]:
@@ -302,12 +330,12 @@ class Renderer:
     def fast_segment(self, segment: Segment, badge: Path | None) -> Path:
         shot = segment.shots[0]
         clip = self.ctx.work_dir / shot["media"]["src"]
-        key = _hash(self.enc_key, _file_sig(clip), segment.frames, _file_sig(badge) if badge else None)
+        pad = shot_filter(shot["media"], segment.frames, self.fps)
+        key = _hash(self.enc_key, _file_sig(clip), segment.frames, _file_sig(badge) if badge else None, pad)
         out = self.dir / "segments" / f"{shot['id']}-{key}.mp4"
         if out.is_file():
             return out
         out.parent.mkdir(parents=True, exist_ok=True)
-        pad = f"setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop={segment.frames}"
         if badge:
             graph = f"[0:v]{pad}[b];[b][1:v]overlay=0:0:format=auto,format=yuv420p[v]"
             inputs = ["-i", str(clip), "-loop", "1", "-framerate", str(self.fps), "-i", str(badge)]

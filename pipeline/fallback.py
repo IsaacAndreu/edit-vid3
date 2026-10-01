@@ -233,7 +233,7 @@ def run(ctx: RunContext) -> None:
                     shotId=shot_id, reason=reason, method=method, kind=media.kind, path=media.path,
                     source=c.source, candidateId=c.id, url=c.url, start=media.start, end=media.end,
                     durationSeconds=media.durationSeconds, credit=c.credit, attribution=c.attribution,
-                    specHash=digest,
+                    specHash=digest, sourceHeight=media.sourceHeight, year=media.year,
                 )
             return None
 
@@ -344,14 +344,15 @@ def run(ctx: RunContext) -> None:
                             source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.mp4")
                             offset = min(1.0, max(0.0, float(best.get("duration") or needed) - needed))
                             target = out_dir / f"{shot_id}.mp4"
-                            normalise_video(source, target, offset=offset, duration=needed, lut=lut, cfg=ctx.section("ingest"))
+                            normalise_video(source, target, offset=offset, duration=needed, lut=lut, cfg=ctx.section("ingest"),
+                                            grade=ctx.section("grade"))
                             info = probe(target)
                             extra = {"start": offset, "end": round(offset + info["duration"], 3), "durationSeconds": round(info["duration"], 3)}
                         else:
                             link = (best.get("src") or {}).get("large2x") or (best.get("src") or {}).get("original")
                             source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.jpg")
                             target = out_dir / f"{shot_id}.jpg"
-                            normalise_image(source, target, lut=lut)
+                            normalise_image(source, target, lut=lut, grade=ctx.section("grade"))
                             extra = {}
                     except Exception as error:
                         tried.append(f"{rid}: {str(error)[:80]}")
@@ -575,7 +576,7 @@ def _generate(ctx: RunContext, shot: Shot, reason: str, digest: str, out_dir: Pa
                     details={"shot": shot.id, "estimated": True,
                              "tokens": [getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None)]})
     target = out_dir / f"{shot.id}.jpg"
-    normalise_image(target_png, target, lut=lut)
+    normalise_image(target_png, target, lut=lut, grade=ctx.section("grade"))
     return FallbackItem(
         shotId=shot.id, reason=reason, method="generated", kind="image", path=str(target.relative_to(ctx.root)),
         source="generated", candidateId=f"gen:{target_png.stem}", attribution=f"Imagen generada con {model}",

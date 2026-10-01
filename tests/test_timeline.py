@@ -32,7 +32,7 @@ class TimelineBuildTests(unittest.TestCase):
             root = Path(tmp)
             (root / "materiales" / "t").mkdir(parents=True)
             (root / "materiales" / "t" / "voz.mp3").write_bytes(b"mp3")
-            ctx = RunContext.create("t", root=root, config={"video": {"fps": 30}})
+            ctx = RunContext.create("t", root=root, config={"video": {"fps": 30}, "graphics": {"enabled": False}, "pacing": {"chapter_pause": 0}})
             ctx.write_json("shots.json", {"slug": "t", "title": "T", "durationSeconds": 10.0,
                                           "chapters": [{"title": "X", "startWord": 0, "fromScript": False}], "shots": shots})
             ctx.write_json("words.json", {

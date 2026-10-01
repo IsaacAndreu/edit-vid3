@@ -28,6 +28,7 @@ from typing import Any
 import requests
 
 from .context import RunContext
+from .grade import grade_filter
 from .schemas import MAX_THIRD_PARTY_SECONDS, IngestedMedia, IngestFile, Selection, SelectionFile, ShotsFile
 from .sourcing import youtube_source
 from .sourcing.common import USER_AGENT, Pacer, key
@@ -43,6 +44,7 @@ IMAGE_SIZE = (2304, 1296)
 # Sources narrower than this (4:3, square, vertical phone video) are not cropped to 16:9: they keep
 # their frame and the timeline shows them as a framed card over the channel background.
 FIT_BELOW_ASPECT = 1.5
+LOW_RES_HEIGHT = 480          # sources this small get a little sharpening (and look like archive)
 NORMALISE_VERSION = 3
 
 
@@ -113,12 +115,21 @@ def _frame_filter(source: Path, width: int, height: int, offset: float = 0.0) ->
     return f"{crop}scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
 
 
-def normalise_video(source: Path, target: Path, *, offset: float, duration: float, lut: Path | None, cfg: dict[str, Any]) -> None:
-    """Frame-accurate cut (decode from the file start, seek inside) + cover 1920x1080 @30, no audio."""
+def normalise_video(source: Path, target: Path, *, offset: float, duration: float, lut: Path | None, cfg: dict[str, Any],
+                    grade: dict[str, Any] | None = None) -> None:
+    """Frame-accurate cut (decode from the file start, seek inside) + cover 1920x1080 @30, no audio,
+    colour-matched to the rest of the video (grade) and a touch sharper when the source is low-res."""
 
     width, height = VIDEO_SIZE
     frames = max(1, round(duration * FPS))
-    vf = f"{_frame_filter(source, width, height, offset)},setsar=1,fps={FPS}{lut_filter(lut)},format=yuv420p"
+    fit = _frame_filter(source, width, height, offset)
+    try:
+        low_res = probe(source)["height"] <= LOW_RES_HEIGHT
+    except (subprocess.CalledProcessError, ValueError, KeyError):
+        low_res = False
+    sharpen = ",unsharp=5:5:0.7:5:5:0.0" if low_res else ""
+    colour = grade_filter(source, fit, grade, offset=offset, duration=duration)
+    vf = f"{fit},setsar=1,fps={FPS}{sharpen}{lut_filter(lut)}{colour},format=yuv420p"
     tmp = target.with_name(target.stem + ".tmp.mp4")
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-ss", f"{max(0.0, offset):.3f}",
@@ -129,9 +140,10 @@ def normalise_video(source: Path, target: Path, *, offset: float, duration: floa
     tmp.replace(target)
 
 
-def normalise_image(source: Path, target: Path, *, lut: Path | None) -> None:
+def normalise_image(source: Path, target: Path, *, lut: Path | None, grade: dict[str, Any] | None = None) -> None:
     width, height = IMAGE_SIZE
-    vf = f"{_frame_filter(source, width, height)},setsar=1{lut_filter(lut)}"
+    fit = _frame_filter(source, width, height)
+    vf = f"{fit},setsar=1{lut_filter(lut)}{grade_filter(source, fit, grade, image=True)}"
     tmp = target.with_name(target.stem + ".tmp.jpg")
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-vf", vf, "-frames:v", "1",
@@ -205,13 +217,15 @@ class Materialiser:
             )
             file_start = float(hd.stem.split("_")[1])
             target = out_dir / f"{selection.shotId}.mp4"
-            normalise_video(hd, target, offset=start - file_start, duration=duration, lut=lut, cfg=cfg)
+            normalise_video(hd, target, offset=start - file_start, duration=duration, lut=lut, cfg=cfg,
+                            grade=ctx.section("grade"))
             info = probe(target)
             return IngestedMedia(
                 shotId=selection.shotId, kind="video", path=str(target.relative_to(ctx.root)), source=selection.source,
                 candidateId=selection.candidateId, start=round(start, 3), end=round(start + info["duration"], 3),
                 durationSeconds=round(info["duration"], 3), width=info["width"], height=info["height"], fps=info["fps"],
                 hasAudio=info["hasAudio"], lut=self.lut_name(), credit=selection.credit, specHash=digest,
+                sourceHeight=source_height(hd), year=title_year(selection.title),
             )
         url = selection.mediaUrl
         if not url:
@@ -220,13 +234,27 @@ class Materialiser:
         if not original.is_file():
             fetch_image(self.http, url, original)
         target = out_dir / f"{selection.shotId}.jpg"
-        normalise_image(original, target, lut=lut)
+        normalise_image(original, target, lut=lut, grade=ctx.section("grade"))
         info = probe(target)
         return IngestedMedia(
             shotId=selection.shotId, kind="image", path=str(target.relative_to(ctx.root)), source=selection.source,
             candidateId=selection.candidateId, width=info["width"], height=info["height"],
             lut=self.lut_name(), credit=selection.credit, specHash=digest,
         )
+
+
+def source_height(path: Path) -> int | None:
+    try:
+        return int(probe(path)["height"])
+    except (subprocess.CalledProcessError, ValueError, KeyError):
+        return None
+
+
+def title_year(title: str | None) -> int | None:
+    """The earliest year a title mentions ("Olga Korbut 1972 Munich beam" → 1972): when the footage is from."""
+
+    years = [int(y) for y in re.findall(r"(?<!\d)(19\d\d|20[0-4]\d)(?!\d)", title or "")]
+    return min(years) if years else None
 
 
 def find_lut(ctx: RunContext) -> Path | None:
@@ -267,7 +295,7 @@ def run(ctx: RunContext) -> None:
     def spec_hash(selection: Selection) -> str:
         return key(selection.model_dump(exclude={"judge"}), shots[selection.shotId].start, shots[selection.shotId].end,
                    lut_hash, cfg.get("crf", 18), cfg.get("preset", "veryfast"), IMAGE_SIZE, VIDEO_SIZE,
-                   NORMALISE_VERSION)
+                   NORMALISE_VERSION, ctx.section("grade"))
 
     materialiser = Materialiser(ctx, cfg, lut, youtube, http)
 

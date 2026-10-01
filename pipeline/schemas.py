@@ -77,7 +77,7 @@ ShotType = Literal["broll", "datacard", "stat", "chapter", "split"]
 Sign = Literal["positive", "negative", "neutral"]
 PreferredShot = Literal["wide", "medium", "close-up", "aerial", "detail", "action", "archive"]
 MIN_SHOT_SECONDS = 1.5
-MAX_SHOT_SECONDS = 4.0
+MAX_SHOT_SECONDS = 5.0           # emotional passages hold longer (pacing.slow); third-party clips stay ≤ 5 s
 
 
 class BrollSpec(_Strict):
@@ -152,6 +152,7 @@ class Shot(_Strict):
     stat: StatData | None = None
     chapterTitle: str | None = Field(default=None, max_length=48)
     label: OnScreenLabel | None = None                      # lower-left tag (first mention of a person/score)
+    pace: Literal["slow", "fast"] | None = None             # emotional (long shot, slow zoom) / action (quick cuts)
 
     @property
     def duration(self) -> float:
@@ -415,6 +416,8 @@ class IngestedMedia(_Strict):
     lut: str | None = None
     credit: str
     specHash: str                                            # selection + ingest settings → skip when unchanged
+    sourceHeight: int | None = None                          # of the downloaded source (low-res → archive look)
+    year: int | None = None                                  # the year its title names (old footage → archive look)
 
     @model_validator(mode="after")
     def _checks(self) -> "IngestedMedia":
@@ -460,6 +463,8 @@ class FallbackItem(_Strict):
     clip: float | None = None                                # CLIP similarity, when measured here
     costUsd: float = 0.0
     specHash: str
+    sourceHeight: int | None = None                          # as in IngestedMedia (archive look)
+    year: int | None = None
 
     @model_validator(mode="after")
     def _checks(self) -> "FallbackItem":
@@ -491,6 +496,8 @@ class TimelineMedia(_Strict):
     caption: str | None = None                               # person cards: the name
     width: int | None = None                                 # of the media file (cards keep the source frame)
     height: int | None = None
+    zoom: list[float] | None = None                          # [start frame in the shot, frames, final scale] (pipeline/camera.py)
+    rate: float | None = None                                # playback speed < 1 when the shot outlasts its clip
 
 
 class ColdOpenClip(_Strict):

@@ -36,6 +36,13 @@ planner:
   # Precio en horario punta (el valle es la mitad): https://api-docs.deepseek.com/quick_start/pricing
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 
+pacing:                            # ritmo que respira (planner): planos más largos en lo emotivo, rápidos en la acción
+  enabled: true                    # cambiarlo no rehace los vídeos ya planificados (python main.py --slug X --force planner)
+  base_seconds: 3.0                # plano normal (~19 cortes/min; antes 2,6 ≈ 23)
+  slow_seconds: 4.3                # frases emotivas: plano largo con zoom lento (máx. 5 s)
+  fast_seconds: 1.9                # frases de acción: cortes rápidos
+  chapter_pause: 0.5               # silencio de la voz al entrar en cada capítulo (segundos; 0 = sin pausa)
+
 factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
   model: deepseek-flash
   thinking: false
@@ -136,6 +143,15 @@ ingest:
   crf: 18                          # calidad x264 (menor = mejor)
   preset: veryfast
   parallel: 3
+
+grade:                             # color igualado entre clips (se aplica al preparar cada clip/foto; pipeline/grade.py)
+  enabled: true
+  strength: 0.6                    # 0 = sin tocar, 1 = del todo a los objetivos
+  luma: 0.45                       # brillo medio objetivo (0-1)
+  contrast: 0.22                   # contraste objetivo (desviación del brillo)
+  saturation: 0.30                 # saturación media objetivo
+  warmth: 0.02                     # balance rojo-azul (0 neutro, + cálido, − frío); el blanco y negro no se tiñe
+  look: cine                       # tono común del canal: neutral | cine (sombras frías, luces cálidas) | frio | calido
 
 fallback:
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from pipeline import planner
 from pipeline.context import RunContext
-from pipeline.planner import _label_batch, check_numbers, cut_shots, normalize_groups
+from pipeline.planner import _label_batch, check_numbers, cut_shots, normalize_groups, pace_targets
 from pipeline.schemas import Shot, ShotsFile, Word
 
 
@@ -172,9 +172,9 @@ class ShotSchemaTests(unittest.TestCase):
         ShotsFile.model_validate({**base, "shots": shots})
         with self.assertRaises(ValidationError):
             ShotsFile.model_validate({**base, "durationSeconds": 5.0, "shots": shots})
-        long_shot = {**shots[0], "end": 4.5}
+        long_shot = {**shots[0], "end": 5.5}          # emotional shots may hold 5 s, never more
         with self.assertRaises(ValidationError):
-            ShotsFile.model_validate({**base, "shots": [long_shot, {**shots[1], "start": 4.5, "end": 6.0}], "durationSeconds": 6.0})
+            ShotsFile.model_validate({**base, "shots": [long_shot, {**shots[1], "start": 5.5, "end": 7.0}], "durationSeconds": 7.0})
 
 
 class LabelRetryTests(unittest.TestCase):
@@ -202,3 +202,20 @@ class LabelRetryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PacingTests(unittest.TestCase):
+    def test_slow_passages_get_long_shots_and_fast_ones_quick_cuts(self) -> None:
+        words = [Word(index=i, text=f"w{i}", start=i * 0.3, end=i * 0.3 + 0.25, matched=True, sentenceEnd=i % 20 == 19)
+                 for i in range(60)]
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = RunContext.create("t", root=Path(tmp), config={})
+            targets, maxes, labels = pace_targets(ctx, words, {0: "slow", 2: "fast"}, 3.0)
+        shots, starts = cut_shots(words, 18.0, target=3.0, forced_starts=set(), with_times=True, targets=targets, maxes=maxes)
+        ends = starts[1:] + [18.0]
+        lengths = {labels[a]: [] for a, _ in shots}
+        for (a, _), s0, s1 in zip(shots, starts, ends):
+            lengths[labels[a]].append(s1 - s0)
+        slow, fast = lengths["slow"], lengths["fast"]
+        assert max(slow) > 4.0 and max(slow) <= 5.0 + 1e-6
+        assert sum(fast) / len(fast) < sum(slow) / len(slow) - 1.5

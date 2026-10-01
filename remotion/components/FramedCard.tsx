@@ -37,7 +37,7 @@ export const FramedCard: FC<{ media: Media; durationInFrames: number }> = ({ med
           }}
         >
           {media.kind === 'video' ? (
-            <OffthreadVideo src={staticFile(media.src)} muted style={style} />
+            <OffthreadVideo src={staticFile(media.src)} muted playbackRate={media.rate || 1} style={style} />
           ) : (
             <Img src={staticFile(media.src)} style={style} />
           )}

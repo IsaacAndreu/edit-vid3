@@ -25,19 +25,38 @@ const KenBurns: FC<{ src: string; durationInFrames: number; seed: string }> = ({
   );
 };
 
+/** The camera move of a shot (media.zoom): an ease-out push-in from frame zoom[0], then hold — as the render's ffmpeg path. */
+export const zoomAt = (frame: number, zoom?: [number, number, number] | null): number => {
+  if (!zoom) {
+    return 1;
+  }
+  const [start, frames, scale] = zoom;
+  const p = Math.min(1, Math.max(0, (frame - start) / Math.max(1, frames)));
+  return 1 + (scale - 1) * (1 - (1 - p) ** 3);
+};
+
 /** Full-bleed footage: third-party video (muted, never looped) or a still with a slow Ken Burns move. */
 export const BRoll: FC<{ media: Media; durationInFrames: number; seed: string; dim?: number }> = ({
   media,
   durationInFrames,
   seed,
   dim = 0,
-}) => (
-  <AbsoluteFill style={{ backgroundColor: '#000' }}>
-    {media.kind === 'video' ? (
-      <OffthreadVideo src={staticFile(media.src)} muted style={cover} />
-    ) : (
-      <KenBurns src={media.src} durationInFrames={durationInFrames} seed={seed} />
-    )}
-    {dim > 0 ? <AbsoluteFill style={{ backgroundColor: `rgba(0,0,0,${dim})` }} /> : null}
-  </AbsoluteFill>
-);
+}) => {
+  const frame = useCurrentFrame();
+  const scale = zoomAt(frame, media.zoom);
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#000' }}>
+      {media.kind === 'video' ? (
+        <OffthreadVideo
+          src={staticFile(media.src)}
+          muted
+          playbackRate={media.rate || 1}
+          style={{ ...cover, transform: scale !== 1 ? `scale(${scale})` : undefined }}
+        />
+      ) : (
+        <KenBurns src={media.src} durationInFrames={durationInFrames} seed={seed} />
+      )}
+      {dim > 0 ? <AbsoluteFill style={{ backgroundColor: `rgba(0,0,0,${dim})` }} /> : null}
+    </AbsoluteFill>
+  );
+};

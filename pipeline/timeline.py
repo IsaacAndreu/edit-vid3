@@ -47,6 +47,7 @@ from .schemas import (
     WordsFile,
 )
 from .schemas import MAX_THIRD_PARTY_SECONDS
+from .camera import add_zooms, voice_levels, with_chapter_pauses
 from .sourcing import needs_footage
 from .sourcing.common import tokens
 
@@ -280,14 +281,18 @@ def _size(path: Path) -> tuple[int | None, int | None]:
         return None, None
 
 
-def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float, narrow: str = "card") -> str:
+def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float, narrow: str = "card",
+                  old: bool = False) -> str:
     """Framed card for stills and for sources that are not widescreen (kept uncropped), plus a
     deterministic share of ordinary clips for variety, as the channel style does. With
     `narrow="archive"` (timeline.narrow_layout) narrow clips stay full screen between black bars,
-    with a film look, like TV archive footage."""
+    with a film look, like TV archive footage; so does `old` footage (an old year in its title or a
+    low-resolution source), whatever its shape."""
 
     if shot_type in ("chapter", "split"):
         return "full"
+    if old and media.kind == "video":   # 1972 broadcast, a 360p upload: shown as archive, not stretched
+        return "archive"
     if media.kind == "image":   # photos alternate between the framed card and the parallax move
         return "parallax" if int(hashlib.sha1(shot_id.encode()).hexdigest()[8:16], 16) % 2 else "card"
     if media.width and media.height and media.width / media.height < 1.6:
@@ -982,12 +987,20 @@ def run(ctx: RunContext) -> None:
     # Media per shot: stage 6, replaced by stage 7 where fallback stepped in (failed download,
     # rejected by the judge, or a look-alike of an earlier shot). Paths relative to the public dir.
     media: dict[str, TimelineMedia] = {}
+    old: set[str] = set()      # old or low-res footage → archive look (timeline.archive_auto)
+    before = int(cfg.get("archive_before_year", 1995))
+    low = int(cfg.get("archive_max_height", 480))
     for item in IngestFile.model_validate_json((ctx.work_dir / "media" / "_ingest.json").read_text("utf-8")).media:
+        if item.kind == "video" and ((item.year and item.year < before) or (item.sourceHeight and item.sourceHeight <= low)):
+            old.add(item.shotId)
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source, credit=item.credit,
             width=item.width, height=item.height,
         )
     for item in FallbackFile.model_validate(ctx.read_json("fallback.json")).items:
+        old.discard(item.shotId)
+        if item.kind == "video" and ((item.year and item.year < before) or (item.sourceHeight and item.sourceHeight <= low)):
+            old.add(item.shotId)
         size = _size(ctx.root / item.path)
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
@@ -1015,7 +1028,8 @@ def run(ctx: RunContext) -> None:
         if needs_footage(shot) and m is None and shot.id not in boards:
             missing.append(shot.id)
         if m is not None:
-            m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share, narrow)})
+            m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share, narrow,
+                                                             old=shot.id in old and cfg.get("archive_auto", True))})
         if shot.type == "chapter":
             chapter_number += 1
         shots.append(TimelineShot.model_validate({
@@ -1063,6 +1077,12 @@ def run(ctx: RunContext) -> None:
     audio_dir.mkdir(parents=True, exist_ok=True)
     voice = audio_dir / "voz.mp3"
     shutil.copy2(ctx.materials_dir / "voz.mp3", voice)
+    # camera: slow push-in on emotional shots, a punch-in on the word the narrator stresses (pipeline/camera.py)
+    paces = {s.id: s.pace for s in shots_file.shots if s.pace}
+    levels = voice_levels(voice, words) if cfg.get("emphasis_zoom", True) else []
+    slow_zooms, punches = add_zooms(shots, paces, words, levels, fps, cfg)
+    if slow_zooms or punches:
+        print(f"   Cámara: {slow_zooms} zooms lentos (frases emotivas) · {punches} zooms de énfasis")
     assets = ctx.root / str(cfg.get("assets", "assets"))
 
     def folder(name: str, prefix: str = "") -> Path:
@@ -1107,13 +1127,16 @@ def run(ctx: RunContext) -> None:
         ),
     )
     cold = ctx.work_dir / "coldopen.json"
-    if cold.is_file():
-        opening = ColdOpenFile.model_validate(ctx.read_json("coldopen.json"))
-        clips = opening.clips
+    opening = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")) if cold.is_file() else None
+    if opening:
         timeline = with_moments(timeline, [
             (str((ctx.root / m.path).relative_to(ctx.work_dir)), m.afterSeconds, m.durationSeconds, m.credit, m.width, m.height)
             for m in opening.moments if m.afterSeconds is not None
         ], fps, float(cfg.get("moment_volume", 1.0)))
+    # half a second of silence as each chapter begins (pacing.chapter_pause), before the cold open shifts frames
+    timeline = with_chapter_pauses(timeline, float(ctx.section("pacing").get("chapter_pause", 0.5)), fps)
+    if opening:
+        clips = opening.clips
         timeline = with_cold_open(timeline, [
             (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
             for c in clips
