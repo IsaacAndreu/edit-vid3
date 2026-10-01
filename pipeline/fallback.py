@@ -45,7 +45,7 @@ from .schemas import (
     ShotScores,
     ShotsFile,
 )
-from .identity import Checker, IdentityCache, named_in
+from .identity import Checker, IdentityCache, expected_people
 from .sourcing import hypothetical, needs_footage, youtube_source
 from .sourcing.common import USER_AGENT, blocked_by_title, cached_json, http_get_json, key, tokens
 from .sourcing.images import ImageSources, image_query
@@ -132,8 +132,11 @@ def run(ctx: RunContext) -> None:
     checker = Checker(ctx, people) if names and (cfg.get("caption_check", True) or cfg.get("face_check", True)) else None
     identity_cache = IdentityCache(ctx)
 
+    protagonist = story.subject.split("·")[0].strip() if story.subject else ""
+    scope = str(cfg.get("identity_scope", "protagonist"))
+
     def wrong_person(shot_id: str, path: Path, kind: str) -> str | None:
-        who = named_in(shots[shot_id], names) if checker and shot_id in shots else []
+        who = expected_people(shots[shot_id], names, protagonist, scope) if checker and shot_id in shots else []
         return identity_cache.get(checker, path, kind, who) if who else None
 
     for media in ingest.media:

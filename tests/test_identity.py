@@ -63,3 +63,33 @@ def test_verdicts_are_cached(tmp_path):
     assert "JARMAN" in cache.get(Fake(), clip, "video", ["Carlos Yulo"])
     assert "JARMAN" in IdentityCache(ctx).get(Fake(), clip, "video", ["Carlos Yulo"])   # from work/t/identity.json
     assert len(calls) == 1
+
+
+def test_every_shot_of_the_protagonist_story_is_checked():
+    from types import SimpleNamespace
+
+    from pipeline.identity import expected_people
+
+    names = ["Carlos Yulo", "Kohei Uchimura"]
+    shot = lambda text, event=None: SimpleNamespace(text=text, broll=SimpleNamespace(entities=[], event=event))  # noqa: E731
+    assert expected_people(shot("ganó su primer oro en Stuttgart", "Carlos Yulo floor final 2019 Stuttgart"), names,
+                           "Carlos Yulo") == ["Carlos Yulo"]
+    assert expected_people(shot("el público se puso en pie"), names, "Carlos Yulo") == ["Carlos Yulo"]
+    assert expected_people(shot("su ídolo ganó en Londres", "Kohei Uchimura London 2012 all-around"), names,
+                           "Carlos Yulo") == ["Kohei Uchimura"]
+    assert expected_people(shot("ganó su primer oro"), names, "Carlos Yulo", scope="named") == []
+    assert expected_people(shot("Uchimura y Yulo"), names, "Carlos Yulo") == ["Carlos Yulo", "Kohei Uchimura"]
+
+
+def test_faces_learnt_from_captioned_clips_count_as_references(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
+    face = np.ones(128, dtype=np.float32)
+    checker.faces = lambda image, min_size=48: [(face, 150, True)]
+    assert checker.references("Carlos Yulo") == []
+    checker.learn([np.zeros((10, 10, 3), dtype=np.uint8)] * 2, "Carlos Yulo")
+    assert len(checker.references("Carlos Yulo")) == 2

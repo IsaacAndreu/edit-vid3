@@ -449,12 +449,15 @@ largo. Los propietarios que suelen reclamar (cadenas, ligas, federaciones, agenc
 el editor. No bloquea nada. Ojo: los canales de confianza del juez (Olympics…) dan buen metraje, pero
 son justo los que más reclaman.
 
-**¿Es el atleta que dice el guion?** Antes de montar, la etapa de relleno revisa los clips de los
-planos que nombran a alguien:
-- **Rótulo en pantalla:** si en 2 de 3 fotogramas el marcador nombra a OTRO atleta junto a su código de
-  país («JARMAN … 134 GBR») y el nombrado no aparece, el clip se cambia por otro.
-- **Cara:** solo en casos claros. Descarta si hay caras grandes y de frente en 2 fotogramas y ninguna se
-  parece al retrato. Las caras de lado, pequeñas o en pleno salto nunca descartan nada.
+**¿Es el atleta que dice el guion?** Antes de montar, la etapa de relleno revisa los clips de **todos los
+planos de la historia del protagonista** (aunque la frase no diga su nombre: «ganó su primer oro…») y de
+los que nombran a otra persona (`fallback.identity_scope: named` para revisar solo los que nombran a alguien):
+- **Rótulo en pantalla:** si en 2 de 5 fotogramas el marcador nombra a OTRO atleta junto a su código de
+  país («JARMAN … 134 GBR») y el nombrado no aparece, el clip se cambia por otro. Si el rótulo SÍ dice su
+  nombre, se guardan sus caras de ese clip como referencia extra.
+- **Cara:** descarta si hay caras grandes y de frente en 2 de 5 fotogramas y ninguna se parece al retrato
+  ni a las caras aprendidas (`face_reject` 0,22). Las caras de lado, pequeñas o en pleno salto no descartan.
+  Para rehacer un vídeo ya hecho con estas reglas: `python main.py --slug <vídeo>` (se rehace desde el relleno).
 
 En el vídeo de Carlos Yulo encontró los 2 clips de otros gimnastas entre 103 planos, sin descartar
 ninguno bueno. La primera vez tarda unos 2 s por clip; luego queda guardado en

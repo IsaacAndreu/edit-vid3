@@ -3,9 +3,11 @@
 1. On-screen captions (the strong one). Sports broadcasts label athletes as "SURNAME" next to a country
    code ("JARMAN … 134GBR"). If, in at least 2 of 3 frames, a caption names someone next to a country
    code while the named athlete's surname appears nowhere, the clip shows somebody else.
-2. Faces (only clear cases). With a good reference portrait (people.json, face ≥ 90 px), a clip is
-   rejected only when at least 2 frames show a large frontal face and none of them looks like the
-   person. Sports faces are often small, turned or strained mid-skill, so anything less is kept.
+2. Faces (clear cases). Against the reference portrait (people.json, face ≥ 90 px) and the faces learnt
+   from clips whose caption names the athlete, a clip is rejected when at least 2 of 5 frames show a large
+   frontal face and none of them looks like the person. Small, turned or strained faces are kept.
+3. Who is checked: those a shot's words name and, in a video about one athlete, every shot of their
+   story — most lines about them never say the name (`fallback.identity_scope`).
 
 A rejected clip goes back to the fallback stage like a repeated one, which finds another.
 """
@@ -63,6 +65,22 @@ def named_in(shot: Any, names: list[str]) -> list[str]:
 
     said = ascii_upper(" ".join([*(shot.broll.entities if shot.broll else []), shot.text]))
     return [n for n in names if surname(n) and re.search(rf"\b{re.escape(surname(n))}\b", said)]
+
+
+def expected_people(shot: Any, names: list[str], protagonist: str, scope: str = "protagonist") -> list[str]:
+    """Who must be on screen in a shot. Those its words name; otherwise, in a video about one athlete
+    (fallback.identity_scope: protagonist), the protagonist — most lines about them never say the name
+    ("ganó su primer oro en Stuttgart") — unless the shot's story event is about somebody else."""
+
+    named = named_in(shot, names)
+    if named or scope != "protagonist" or not protagonist:
+        return named
+    event = ascii_upper(getattr(shot.broll, "event", None) or "") if getattr(shot, "broll", None) else ""
+    if event and surname(protagonist) not in event:
+        others = [n for n in names if surname(n) and surname(n) != surname(protagonist) and surname(n) in event]
+        return others                                        # a rival's passage: check against the rival, if known
+    match = next((n for n in names if surname(n) == surname(protagonist)), protagonist)
+    return [match]
 
 
 def _stop(word: str) -> bool:
@@ -136,6 +154,7 @@ class Checker:
         self._ocr: Any = None
         self._faces: Any = None
         self._refs: dict[str, Any] = {}
+        self._learned: dict[str, list[Any]] = {}            # faces from clips whose caption names the athlete
 
     # --- frames ---------------------------------------------------------------------------------
     @staticmethod
@@ -148,7 +167,7 @@ class Checker:
         capture = cv2.VideoCapture(str(path))
         count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         out = []
-        for at in (0.2, 0.5, 0.8):
+        for at in (0.1, 0.3, 0.5, 0.7, 0.9):
             capture.set(cv2.CAP_PROP_POS_FRAMES, int(count * at))
             ok, frame = capture.read()
             if ok:
@@ -220,21 +239,38 @@ class Checker:
         self._refs[name] = ref
         return ref
 
+    def references(self, name: str) -> list[Any]:
+        """The portrait's face plus faces learnt from clips whose caption names the athlete."""
+
+        portrait = self.reference(name)
+        return ([portrait] if portrait is not None else []) + self._learned.get(name, [])
+
+    def learn(self, frames: list[np.ndarray], name: str) -> None:
+        """The caption says it is `name`: keep the big frontal faces of the clip as more references."""
+
+        size = int(self.cfg.get("face_min_size", 100))
+        known = self._learned.setdefault(name, [])
+        for frame in frames:
+            for feature, s, frontal in self.faces(frame):
+                if s >= size and frontal and len(known) < 12:
+                    known.append(feature)
+
     def face_verdict(self, frames: list[np.ndarray], names: list[str]) -> str | None:
         import cv2
 
-        refs = [self.reference(n) for n in names]
-        if not refs or any(r is None for r in refs):
-            return None                                      # someone named has no reliable portrait: cannot tell
+        refs = {n: self.references(n) for n in names}
+        if not refs or any(not r for r in refs.values()):
+            return None                                      # someone named has no reliable face to compare: cannot tell
         recognizer = self._face_models()[1]
         big_frames, best = 0, -1.0
-        size = int(self.cfg.get("face_min_size", 120))
+        size = int(self.cfg.get("face_min_size", 100))
         for frame in frames:
             found = self.faces(frame)
             for feature, _, _ in found:
-                best = max(best, *(recognizer.match(feature, r, cv2.FaceRecognizerSF_FR_COSINE) for r in refs))
+                best = max(best, *(recognizer.match(feature, r, cv2.FaceRecognizerSF_FR_COSINE)
+                                   for rs in refs.values() for r in rs))
             big_frames += any(s >= size and frontal for _, s, frontal in found)
-        if big_frames >= 2 and best < float(self.cfg.get("face_reject", 0.15)):
+        if big_frames >= 2 and best < float(self.cfg.get("face_reject", 0.22)):
             return f"la cara no es la de {' / '.join(names)} (parecido {best:.2f})"
         return None
 
@@ -248,9 +284,14 @@ class Checker:
         if not frames:
             return None
         if self.cfg.get("caption_check", True):
-            why = caption_verdict([self.texts(f) for f in frames], names)
+            texts = [self.texts(f) for f in frames]
+            why = caption_verdict(texts, names)
             if why:
                 return why
+            seen = " ".join(ascii_upper(t) for lines in texts for t, _ in lines)
+            for name in names:                               # the caption confirms who it is: learn the face
+                if surname(name) and surname(name) in seen and self.cfg.get("face_check", True):
+                    self.learn(frames, name)
         if self.cfg.get("face_check", True) and self.people:
             return self.face_verdict(frames, names)
         return None
@@ -259,7 +300,7 @@ class Checker:
 class IdentityCache:
     """work/<slug>/identity.json: verdicts per media file (path + size + mtime + names), so reruns are free."""
 
-    VERSION = 1
+    VERSION = 2                     # 2: five frames, learnt faces, stricter face threshold
 
     def __init__(self, ctx: RunContext):
         self.path = ctx.work_dir / "identity.json"
