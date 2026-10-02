@@ -66,3 +66,12 @@ def test_a_statement_pauses_the_narration_and_carries_its_subtitles(tmp_path):
     assert group.from_ == 120 and group.graphic["speaker"] == "Tim Clark"
     assert group.graphic["lines"][1] == {"text": "del daño que ha causado a Emirates", "from": 90, "to": 174}
     assert out.audio.voiceGaps == [(120, 180)]
+
+
+def test_subtitle_files_do_not_replace_the_caption_cues_the_analysis_reads():
+    import inspect
+
+    from pipeline.sourcing.youtube import YouTubeSource
+
+    assert "language" not in inspect.signature(YouTubeSource.captions).parameters      # analysis: list of cues
+    assert "language" in inspect.signature(YouTubeSource.subtitle_file).parameters     # quotes: a .vtt file

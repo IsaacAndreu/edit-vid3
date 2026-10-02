@@ -691,7 +691,7 @@ class YouTubeSource:
         produced[0].unlink(missing_ok=True)
         return target
 
-    def captions(self, video_id: str, language: str = "en") -> Path | None:
+    def subtitle_file(self, video_id: str, language: str = "en") -> Path | None:
         """The video's subtitles in `language` as WebVTT (uploaded ones, else YouTube's automatic ones), cached."""
 
         target_dir = self.cache_dir / "videos" / video_id

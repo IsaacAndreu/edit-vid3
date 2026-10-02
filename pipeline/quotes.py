@@ -146,7 +146,7 @@ def find_quotes(ctx: RunContext, sents: list[dict[str, Any]], count: int) -> lis
 def transcript(ctx: RunContext, youtube: Any, video_id: str, language: str, minutes: float) -> list[tuple[str, float, float]]:
     """Timed words of a video: its captions, else Whisper over its first `minutes` of audio."""
 
-    path = youtube.captions(video_id, language)
+    path = youtube.subtitle_file(video_id, language)
     if path is not None:
         return timed_words(parse_vtt(path.read_text("utf-8", errors="replace")))
     if not ctx.section("quotes").get("whisper", True):
