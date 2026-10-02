@@ -4,7 +4,7 @@ import { monoFamily, pack, theme, titleFamily } from '../../theme';
 
 /** Top-left heading of a graphic in the channel's way: a slanted accent slash (sport), a thin rule under a
  * serif title (editorial), a mono "//" tag (tech), or the plain accent bar. */
-export const GraphicTitle: FC<{ text: string }> = ({ text }) => {
+export const GraphicTitle: FC<{ text: string; color?: string }> = ({ text, color }) => {
   const frame = useCurrentFrame();
   const show = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
   const style = pack();
@@ -30,7 +30,7 @@ export const GraphicTitle: FC<{ text: string }> = ({ text }) => {
             fontFamily: titleFamily, fontWeight: motion === 'editorial' ? 400 : motion === 'tech' ? 700 : 900,
             fontStyle: style.titleItalic ? 'italic' : 'normal', fontSize: motion === 'sport' ? 72 : motion === 'tech' ? 50 : 60,
             letterSpacing: motion === 'tech' ? '0.04em' : motion === 'sport' ? '0.01em' : undefined,
-            color: theme.text, textShadow: theme.shadow, lineHeight: 1.05,
+            color: color ?? theme.text, textShadow: color ? 'none' : theme.shadow, lineHeight: 1.05,
           }}
         >
           {words}

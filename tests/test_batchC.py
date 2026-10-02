@@ -60,6 +60,10 @@ def test_what_if_images_are_illustrations(tmp_path, monkeypatch):
                               {"image_usd_estimate": 0.05}, illustration=True)
     assert item.method == "generated" and "illustration" in prompts[0].lower()
     assert "Spanish banks with no crisis" in prompts[0] and "No recognizable real people" in prompts[0]
+    # a channel that draws its story scenes (image_style: illustration): pencil and watercolor, never a photo
+    fallback._generate(ctx, _shot("Concorde first flight 1969"), "r", "h", tmp_path / "out", None,
+                       {"image_usd_estimate": 0.05, "image_style": "illustration"})
+    assert "pencil and watercolor" in prompts[1] and "Photorealistic" not in prompts[1]
 
 
 def test_data_csv_is_read_in_any_common_shape(tmp_path):

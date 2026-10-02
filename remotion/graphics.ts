@@ -22,6 +22,7 @@ export interface MapGraphic {
   globe?: boolean; // a rotating globe that turns to the first country/point
   date?: string | null; // said in the script: shown big over the map first ("17 de noviembre de 2013")
   regionLabel?: string | null; // name written inside the highlighted area ("SALÓN DE DUBÁI")
+  rings?: { point: number; km: number; label?: string | null }[]; // range circles around points (ETOPS, autonomy)
 }
 
 export interface RankGraphic {

@@ -561,6 +561,13 @@ def _generate(ctx: RunContext, shot: Shot, reason: str, digest: str, out_dir: Pa
             "Clearly an illustration, not a photograph. No recognizable real people (faceless or distant figures "
             "only), no text, no letters, no numbers, no logos, no watermarks."
         )
+    elif str(cfg.get("image_style") or "photo") == "illustration":
+        # the channel draws its story scenes (Jet Crumbs): a hand-made look that never passes for a real photo
+        prompt = (
+            "Hand-drawn pencil and watercolor illustration, documentary storyboard style, loose ink lines, muted warm "
+            f"palette on textured paper, 16:9 landscape. {shot.broll.visualIntent}. Context: {context} "
+            "People drawn loosely with no recognisable faces. No text, no letters, no numbers, no logos, no watermarks."
+        )
     else:
         prompt = (
             "Photorealistic documentary b-roll still, 16:9 landscape, natural light, shallow depth of field. "

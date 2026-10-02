@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useMemo } from 'react';
 import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoArea, geoBounds, geoCentroid, geoDistance, geoGraticule10, geoInterpolate, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
+import { geoArea, geoBounds, geoCentroid, geoCircle, geoDistance, geoGraticule10, geoInterpolate, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world from 'world-atlas/countries-50m.json';
@@ -127,6 +127,12 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
     for (const c of highlighted) {
       const [[x0, y0], [x1, y1]] = geoBounds(mainland(c));
       all.push([x0, y0], [x1, y1]);
+    }
+    for (const r of graphic.rings ?? []) {        // the whole circle in the frame
+      const p = points[r.point];
+      if (!p) continue;
+      const deg = r.km / 111.2;
+      all.push([p.lon - deg / Math.cos((p.lat * Math.PI) / 180), p.lat - deg], [p.lon + deg / Math.cos((p.lat * Math.PI) / 180), p.lat + deg]);
     }
     const start = view(box(all.length ? all : [[0, 20]], 12), !flat);
     const zoomPoint = graphic.zoom != null ? points[graphic.zoom] : undefined;
@@ -314,6 +320,18 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             filter="url(#glow)"
           />
         ))}
+        {(graphic.rings ?? []).map((r, i) => {
+          const p = points[r.point];
+          if (!p) return null;
+          // each circle grows from its airport, one after another, then stays (a true geodesic circle)
+          const grow = t(0.12 + 0.12 * i, 0.32 + 0.12 * i);
+          if (grow <= 0) return null;
+          const ring = geoCircle().center([p.lon, p.lat]).radius((r.km / 111.2) * grow).precision(2)();
+          return (
+            <path key={`ring${i}`} d={path(ring as GeoPermissibleObjects) ?? ''} fill={alpha(flat ? '#ffffff' : theme.accent, 0.07)}
+              stroke={flat ? '#ffffff' : theme.accent} strokeOpacity={0.85} strokeWidth={2.5} />
+          );
+        })}
         {routePath ? (
           <path
             d={routePath}
@@ -394,6 +412,23 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           </g>
         </svg>
       ) : null}
+      {(graphic.rings ?? []).map((r, i) => {
+        const p = points[r.point];
+        if (!p || !r.label) return null;
+        const show = t(0.3 + 0.12 * i, 0.38 + 0.12 * i);
+        const raw = projection([p.lon, Math.min(85, p.lat + r.km / 111.2)]);   // the top of the circle
+        const xy = raw ? tilt(raw as [number, number]) : null;
+        if (!xy || show <= 0) return null;
+        return (
+          <div key={`rl${i}`} style={{
+            position: 'absolute', left: xy[0], top: Math.max(40, xy[1]), transform: 'translate(-50%, -120%)', opacity: show,
+            fontFamily: condensedFamily, fontWeight: 700, fontSize: 34, color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.55)',
+            padding: '2px 12px', borderRadius: 4, whiteSpace: 'nowrap',
+          }}>
+            {r.label}
+          </div>
+        );
+      })}
       {graphic.regionLabel && highlighted.length
         ? (() => {
             const raw = projection(geoCentroid(mainland(highlighted[0])) as [number, number]);

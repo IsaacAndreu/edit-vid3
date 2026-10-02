@@ -71,7 +71,9 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   ahí (p. ej. 'Emirates' en Dubái), si no null"}}], "route": true si es un viaje/carrera de un lugar a otro,
   "zoom": índice del punto al que acercarse o null, "globe": true para presentar un país lejano,
   "date": "fecha o año DICHO en esas frases, como se dice ('17 de noviembre de 2013', '2019'), si no null",
-  "region_label": "nombre corto (máx. 3 palabras) para la zona resaltada, p. ej. 'SALÓN DE DUBÁI', o null"}}
+  "region_label": "nombre corto (máx. 3 palabras) para la zona resaltada, p. ej. 'SALÓN DE DUBÁI', o null",
+  "rings": [{{"point": índice del punto, "km": radio en km DICHO en el guion (alcance, autonomía, ETOPS: '120 minutos
+  ≈ 1.500 km' solo si se dice la distancia), "label": "texto corto, p. ej. '1.500 km'"}}] o []}}
 - "satellite": el guion nombra un LUGAR CONCRETO que se puede ver desde el cielo (una fábrica, un aeropuerto, una
   sede, un astillero): zoom de satélite hasta él. data: {{"place": "nombre en el idioma del guion",
   "query": "lugar EN INGLÉS para geolocalizarlo con precisión, p. ej. 'Boeing Everett Factory, Everett, Washington'",
@@ -241,11 +243,13 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         valid = {c.lower(): c for c in countries}
         names = [valid[c.lower()] for c in data.get("countries", []) if isinstance(c, str) and c.lower() in valid]
         points = []
-        for p in data.get("points", [])[:8]:
+        moved: dict[int, int] = {}                     # the LLM's point index → index among the points kept
+        for i, p in enumerate(data.get("points", [])[:8]):
             if not isinstance(p, dict) or not p.get("name"):
                 continue
             where = geocode(ctx, str(p.get("query") or p["name"]))
             if where:
+                moved[i] = len(points)
                 note = p.get("note") if p.get("note") and said(p.get("note"), text) else None
                 brand = str(p.get("logo") or "").strip()
                 brand = brand if brand and tokens(brand) <= tokens(text) else None   # only a company the script names
@@ -257,9 +261,16 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         date = str(data.get("date") or "").strip()
         date = date if date and all(n in _numbers(text) for n in _numbers(date)) and _numbers(date) else None
         label = str(data.get("region_label") or "").strip()[:28] or None
+        rings = []
+        for r in (data.get("rings") or [])[:6]:
+            if not isinstance(r, dict) or r.get("point") not in moved:
+                continue
+            km = _num(r.get("km"))
+            if km and 50 <= km <= 20000 and said(r["km"], text):
+                rings.append({"point": moved[r["point"]], "km": km, "label": str(r.get("label") or f"{km:,.0f} km".replace(",", "."))[:20]})
         return {"type": "map", "title": data.get("title"), "countries": names, "points": points,
                 "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom, "globe": bool(data.get("globe")),
-                "date": date, "regionLabel": label if names else None}
+                "date": date, "regionLabel": label if names else None, "rings": rings}
     if kind == "satellite":
         place = str(data.get("place") or "").strip()
         if not place or not said_words(place, text, 0.5):

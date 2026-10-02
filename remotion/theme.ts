@@ -106,6 +106,10 @@ const DEFAULTS = {
   // area filled solid with its name inside, as aviation/business explainers do); mapHighlight: that fill
   mapStyle: 'tilted',
   mapHighlight: '',
+  // articleStyle: 'dark' (navy desk, figures circled in red) | 'paper' (white page, yellow highlighter);
+  // dataStyle: 'dark' | 'light' (charts on a light background, like printed infographics)
+  articleStyle: 'dark',
+  dataStyle: 'dark',
 };
 
 export type Brand = Partial<typeof DEFAULTS>;

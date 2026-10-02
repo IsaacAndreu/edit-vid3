@@ -22,12 +22,74 @@ const Circled: FC<{ children: ReactNode; from: number }> = ({ children, from }) 
   );
 };
 
+/** A phrase swept with a yellow highlighter, left to right (the "paper" style). */
+const Marked: FC<{ children: ReactNode; from: number }> = ({ children, from }) => {
+  const frame = useCurrentFrame();
+  const sweep = interpolate(frame, [from, from + 10], [0, 100], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  return (
+    <span style={{
+      backgroundImage: 'linear-gradient(transparent 12%, rgba(255,230,0,0.85) 12%, rgba(255,230,0,0.85) 88%, transparent 88%)',
+      backgroundRepeat: 'no-repeat', backgroundSize: `${sweep}% 100%`, padding: '0 2px', boxDecorationBreak: 'clone',
+      WebkitBoxDecorationBreak: 'clone',
+    }}>
+      {children}
+    </span>
+  );
+};
+
+/** The same article as a white page (brand.articleStyle 'paper'), like a screenshot of the press or Wikipedia:
+ * masthead, headline, the paragraph, and the key words swept with a yellow highlighter. */
+const PaperArticle: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  const enter = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  const push = interpolate(frame, [0, durationInFrames], [1, 1.08]);
+  const parts: ReactNode[] = [];
+  let rest = graphic.body;
+  (graphic.circles ?? []).forEach((c, i) => {
+    const at = rest.toLowerCase().indexOf(c.toLowerCase());
+    if (at < 0) return;
+    parts.push(rest.slice(0, at));
+    parts.push(<Marked key={i} from={CIRCLE_AT + i * CIRCLE_STEP}>{rest.slice(at, at + c.length)}</Marked>);
+    rest = rest.slice(at + c.length);
+  });
+  parts.push(rest);
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#e9e6df', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+      <div style={{
+        width: 1500, backgroundColor: '#ffffff', boxShadow: '0 30px 80px rgba(0,0,0,0.25)', padding: '70px 110px',
+        transform: `scale(${push}) translateY(${(1 - enter) * 50}px)`, opacity: enter, color: '#151515',
+      }}>
+        <div style={{ textAlign: 'center', fontFamily: "'DM Serif Display', serif", fontSize: 54, letterSpacing: '0.12em',
+          textTransform: 'uppercase', borderBottom: '2px solid #151515', paddingBottom: 18, marginBottom: 34 }}>
+          {graphic.outlet || 'Noticias'}
+        </div>
+        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 64, lineHeight: 1.12, marginBottom: 18 }}>
+          {graphic.headline}
+        </div>
+        {graphic.author ? (
+          <div style={{ fontFamily, fontSize: 24, color: '#666', marginBottom: 30 }}>Por {graphic.author}</div>
+        ) : <div style={{ height: 24 }} />}
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 44, lineHeight: 1.6, color: '#2a2a2a' }}>{parts}</div>
+        {/* the rest of the story, out of focus: it reads as a real clipping without inventing words */}
+        <div style={{ marginTop: 26, display: 'flex', flexDirection: 'column', gap: 26, filter: 'blur(3px)' }}>
+          {[0.97, 0.92, 0.6].map((w, i) => (
+            <div key={i} style={{ height: 22, width: `${w * 100}%`, borderRadius: 4, backgroundColor: `rgba(0,0,0,${0.13 - i * 0.03})` }} />
+          ))}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 /**
  * A newspaper article on a dark navy desk, as aviation/business explainers show them: the outlet and byline in a
  * small card, the headline in a serif face, one paragraph of the story, and its key figures circled in red one by
  * one while the camera pushes in slowly.
  */
-export const Article: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
+export const Article: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = (props) =>
+  theme.articleStyle === 'paper' ? <PaperArticle {...props} /> : <DarkArticle {...props} />;
+
+const DarkArticle: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const frame = useCurrentFrame();
   const enter = interpolate(frame, [0, 14], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
   const push = interpolate(frame, [0, durationInFrames], [1, 1.07]);

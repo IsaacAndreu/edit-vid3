@@ -275,6 +275,16 @@ Todo va solo; cada punto se puede ajustar o apagar en `config.yaml` o en el perf
   encuentra con seguridad, no sale nada. Truco: en el guion, introduce la cita («…, dijo Clark.») y el vídeo la
   enseña dicha por él.
 
+**Toques Jet Crumbs** (activados en aviación; cualquier canal puede usarlos):
+- **Anillos de alcance** en el mapa: cuando el guion dice un radio («1.500 km de autonomía», ETOPS), un círculo crece
+  desde el punto con su cifra. Solo si el número se dice en el guion.
+- **Artículo en papel** (`brand.articleStyle: paper`): página blanca de periódico, frases clave marcadas con
+  fosforito amarillo y el resto del texto desenfocado. `dark` es el estilo anterior (escritorio azul, círculos rojos).
+- **Escenas ilustradas** (`fallback.image_style: illustration`): las imágenes que se generan para cubrir planos sin
+  metraje se dibujan a lápiz y acuarela, en vez de imitar una foto (nunca pasan por material real).
+- **Gráficos de datos claros** (`brand.dataStyle: light`): barras, líneas y tartas sobre fondo papel con tinta
+  oscura, como una infografía impresa; la barra destacada conserva el color del canal.
+
 ## 7b. Música y transiciones
 
 - **Transiciones:** `assets/sfx/whoosh*.mp3`. Suena casi siempre la de `timeline.whoosh_main`

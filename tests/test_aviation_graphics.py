@@ -61,3 +61,15 @@ def test_satellite_needs_a_named_place_and_builds_centred_layers(tmp_path, monke
     assert Image.open(c.work_dir / ready["layers"][0]["media"]["src"]).size == (1920, 1080)
     abroad = satellite.prepare(c, {**g, "lon": 1.36, "lat": 43.63, "labels": []})        # Toulouse: Sentinel only
     assert [l["z"] for l in abroad["layers"]] == [7, 9, 11, 13] and "USGS" not in abroad["credit"]
+
+
+def test_map_rings_need_a_said_radius_and_follow_the_kept_points(tmp_path, monkeypatch):
+    places = {"Madrid": (-3.7, 40.4), "Nueva York": (-74.0, 40.7)}
+    monkeypatch.setattr("pipeline.graphics.geocode", lambda c, q: places.get(q))
+    text = "Con 1.500 km de alcance desde Madrid, el avión no llegaba a Nueva York."
+    data = {"points": [{"name": "Atlántida"}, {"name": "Madrid"}, {"name": "Nueva York"}],
+            "rings": [{"point": 1, "km": 1500, "label": "1.500 km"}, {"point": 2, "km": 9000},
+                      {"point": 0, "km": 1500}]}
+    g = clean("map", data, text, ctx(tmp_path), set())
+    assert [p["name"] for p in g["points"]] == ["Madrid", "Nueva York"]
+    assert g["rings"] == [{"point": 0, "km": 1500.0, "label": "1.500 km"}]   # 9.000 km never said; Atlántida dropped

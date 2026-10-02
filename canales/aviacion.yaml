@@ -24,6 +24,8 @@ brand:                             # cabina de noche: azul cielo y ámbar de ins
   chapterStyle: numbered           # «CAPÍTULO I:» como un documental
   statStyle: bare                  # la cifra gigante directamente sobre el avión
   motion: editorial                # fundidos limpios y títulos con serifa: tono de documental de negocio, no de gaming
+  articleStyle: paper              # recortes de prensa en página blanca con frases en fosforito amarillo (Jet Crumbs)
+  dataStyle: light                 # gráficos de datos sobre fondo claro, como una infografía impresa
 
 graphics:
   seconds_per_graphic: 70          # este nicho vive de datos, mapas de rutas y comparativas
@@ -51,6 +53,7 @@ quotes:
 
 fallback:
   pexels: true                     # en este canal sí: un avión genérico despegando es b-roll válido (sin protagonista)
+  image_style: illustration        # las escenas generadas se dibujan a lápiz y acuarela (nunca pasan por foto real)
 
 judge:
   trusted_bonus: 0.05              # prioridad a fabricantes, aerolíneas y medios
