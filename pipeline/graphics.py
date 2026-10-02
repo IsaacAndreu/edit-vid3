@@ -23,10 +23,11 @@ import requests
 from .context import RunContext
 from .llm import complete_json
 from .planner import _numbers, _spelled_numbers
+from .sourcing.common import tokens
 
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
-TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "rule", "split",
+TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
          "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg")
 
 # Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
@@ -66,8 +67,11 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
 - "map": la historia cambia de lugar o nombra ciudades/países relevantes. data: {{"title": "…",
   "countries": ["nombres de países EN INGLÉS como en Natural Earth, p. ej. 'United States of America'"],
   "points": [{{"name": "nombre de la ciudad en el idioma del guion", "query": "ciudad, país en inglés para geolocalizarla",
-  "note": "dato corto dicho en el guion o null"}}], "route": true si es un viaje/carrera de un lugar a otro,
-  "zoom": índice del punto al que acercarse o null, "globe": true para presentar un país lejano}}
+  "note": "dato corto dicho en el guion o null", "logo": "empresa/aerolínea de ese lugar SOLO si el guion la nombra
+  ahí (p. ej. 'Emirates' en Dubái), si no null"}}], "route": true si es un viaje/carrera de un lugar a otro,
+  "zoom": índice del punto al que acercarse o null, "globe": true para presentar un país lejano,
+  "date": "fecha o año DICHO en esas frases, como se dice ('17 de noviembre de 2013', '2019'), si no null",
+  "region_label": "nombre corto (máx. 3 palabras) para la zona resaltada, p. ej. 'SALÓN DE DUBÁI', o null"}}
 - "compare": DOS personas, equipos, países o productos distintos (nunca dos pruebas o momentos de la misma
   persona) con al menos 2 cifras de cada uno DICHAS en el guion. data: {{"title": "…",
   "left": {{"name": "…"}}, "right": {{"name": "…"}}, "rows": [{{"label": "…", "a": número, "b": número,
@@ -85,6 +89,11 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
 - "press": la prensa o la gente reaccionó a algo (escándalo, polémica, hazaña). data: {{"items": [{{"outlet": "medio
   SOLO si el guion lo nombra, si no null", "headline": "titular hecho con palabras del guion, máx. 12 palabras",
   "date": "fecha dicha o null", "highlight": "2-4 palabras del titular a subrayar"}}]}} (1-3 titulares)
+- "article": el guion cuenta lo que publicó un periódico o una noticia concreta con cifras (un pedido, una quiebra, un
+  anuncio): una página de periódico con su titular y un párrafo, con las cifras clave rodeadas en rojo. data:
+  {{"outlet": "medio SOLO si el guion lo nombra, si no null", "author": "periodista SOLO si el guion lo nombra, si no null",
+  "headline": "titular con palabras del guion, máx. 14", "body": "1-2 frases LITERALES del guion, 20-45 palabras",
+  "circles": ["1-3 cifras o palabras de body a rodear, copiadas tal cual"]}}
 - "rule": el guion cita o explica una norma/regla del reglamento (algo prohibido, una penalización, un cambio de
   regla). data: {{"source": "nombre del reglamento SOLO si se dice (p. ej. 'Código de Puntuación'), si no null",
   "article": "artículo si se dice, si no null", "text": "la norma con palabras del guion, máx. 30 palabras",
@@ -234,13 +243,19 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             where = geocode(ctx, str(p.get("query") or p["name"]))
             if where:
                 note = p.get("note") if p.get("note") and said(p.get("note"), text) else None
-                points.append({"name": str(p["name"]), "lon": where[0], "lat": where[1], "note": note})
+                brand = str(p.get("logo") or "").strip()
+                brand = brand if brand and tokens(brand) <= tokens(text) else None   # only a company the script names
+                points.append({"name": str(p["name"]), "lon": where[0], "lat": where[1], "note": note, "logo": brand})
         if not points and not names:
             return None
         zoom = data.get("zoom")
         zoom = zoom if isinstance(zoom, int) and 0 <= zoom < len(points) else None
+        date = str(data.get("date") or "").strip()
+        date = date if date and all(n in _numbers(text) for n in _numbers(date)) and _numbers(date) else None
+        label = str(data.get("region_label") or "").strip()[:28] or None
         return {"type": "map", "title": data.get("title"), "countries": names, "points": points,
-                "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom, "globe": bool(data.get("globe"))}
+                "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom, "globe": bool(data.get("globe")),
+                "date": date, "regionLabel": label if names else None}
     if kind == "compare":
         rows = [r for r in data.get("rows", []) if isinstance(r, dict) and _num(r.get("a")) is not None
                 and _num(r.get("b")) is not None and said(r["a"], text) and said(r["b"], text)]
@@ -304,6 +319,17 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                           "headline": headline, "date": item.get("date") if item.get("date") and said(item["date"], text)
                           and said_words(item["date"], text) else None, "highlight": highlight})
         return {"type": "press", "items": items} if items else None
+    if kind == "article":
+        headline = " ".join(str(data.get("headline") or "").split())
+        body = " ".join(str(data.get("body") or "").split())
+        if not headline or len(headline.split()) > 14 or not said_words(headline, text, 0.7):
+            return None
+        if not 8 <= len(body.split()) <= 60 or not said_words(body, text, 0.85):
+            return None
+        circles = [c for c in (data.get("circles") or []) if isinstance(c, str) and c.strip() and c.lower() in body.lower()][:3]
+        return {"type": "article", "headline": headline, "body": body, "circles": circles,
+                "outlet": data.get("outlet") if data.get("outlet") and said_words(data["outlet"], text) else None,
+                "author": data.get("author") if data.get("author") and said_words(data["author"], text) else None}
     if kind == "rule":
         body = " ".join(str(data.get("text") or "").split())
         if not body or len(body.split()) > 34 or not said_words(body, text, 0.7):

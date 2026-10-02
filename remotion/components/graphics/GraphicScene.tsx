@@ -9,6 +9,7 @@ import { SpecCard } from './SpecCard';
 import { TimelineScene } from './Timeline';
 import { BannedCard } from './BannedCard';
 import { Press } from './Press';
+import { Article } from './Article';
 import { RulePage } from './RulePage';
 import { Score } from './Score';
 import { Split } from './Split';
@@ -50,6 +51,8 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <Kinetic graphic={graphic} durationInFrames={durationInFrames} />;
     case 'score':
       return <Score graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'article':
+      return <Article graphic={graphic} durationInFrames={durationInFrames} />;
     case 'press':
       return <Press graphic={graphic} durationInFrames={durationInFrames} />;
     case 'rule':

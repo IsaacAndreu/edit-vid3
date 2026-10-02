@@ -539,6 +539,11 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             graphic = made
             longest = round((6.0 if graphic["type"] == "strobe" else graphic.pop("seconds")) * fps)
             b = min(b, a + longest)                          # the shots after it show as usual
+        if graphic["type"] == "map" and any(p.get("logo") for p in graphic.get("points", [])):
+            from .logos import logo
+
+            graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
+                                 for p in graphic["points"]]
         if graphic["type"] == "banned":
             graphic["media"] = next(iter(clips()), None) or footage()
         if graphic["type"] == "split":
@@ -902,6 +907,7 @@ STAT_LANDS = 18   # frame the Stat counter reaches its figure (remotion/componen
 # Frames at which the Remotion components land their big moments (keep in sync with the .tsx files).
 SCORE_LANDS = 40       # Score.tsx: the total
 PRESS_STEP = 16        # Press.tsx: one clipping every 16 frames
+ARTICLE_CIRCLE, ARTICLE_STEP = 34, 16      # remotion/components/graphics/Article.tsx
 RULE_STAMP = 44        # RulePage.tsx: the stamp hits the page
 BANNED_STAMP = 22      # BannedCard.tsx: the stamp hits the card
 PODIUM_RISE = {3: 6, 2: 14, 1: 24}         # Podium.tsx: when each block rises
@@ -938,6 +944,8 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
         return steps + [("impact", SCORE_LANDS + (12 if graphic.get("penalty") else 0))]
     if kind == "press":
         return [("pop", 4 + i * PRESS_STEP) for i in range(min(len(graphic.get("items") or []), 3))]
+    if kind == "article":   # a pop as each figure gets its red circle
+        return [("pop", ARTICLE_CIRCLE + i * ARTICLE_STEP) for i in range(len(graphic.get("circles") or []))]
     if kind == "rule":
         return [("pop", 4)] + ([("impact", RULE_STAMP)] if graphic.get("stamp") else [])
     if kind == "banned":

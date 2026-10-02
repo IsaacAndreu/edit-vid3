@@ -8,6 +8,8 @@ export interface GeoPoint {
   lon: number;
   lat: number;
   note?: string | null; // small line under the pin label ("1.º puesto", "2019")
+  logo?: string | null; // company named there (Emirates in Dubai)
+  logoMedia?: Media | null; // its logo (Wikimedia Commons), drawn in a round badge by the pin
 }
 
 export interface MapGraphic {
@@ -18,6 +20,8 @@ export interface MapGraphic {
   route?: boolean; // draw a line through the points in order (Manila → Tokyo → Paris)
   zoom?: number | null; // index of the point to zoom into at the end (country → city)
   globe?: boolean; // a rotating globe that turns to the first country/point
+  date?: string | null; // said in the script: shown big over the map first ("17 de noviembre de 2013")
+  regionLabel?: string | null; // name written inside the highlighted area ("SALÓN DE DUBÁI")
 }
 
 export interface RankGraphic {
@@ -87,6 +91,15 @@ export interface ScoreGraphic {
 export interface PressGraphic {
   type: 'press';
   items: { outlet?: string | null; headline: string; date?: string | null; highlight?: string | null }[];
+}
+
+export interface ArticleGraphic {
+  type: 'article';
+  outlet?: string | null; // only if the script names it
+  author?: string | null;
+  headline: string;
+  body: string; // 1-2 sentences of the script
+  circles?: string[]; // figures/words of body circled in red one by one
 }
 
 export interface RuleGraphic {
@@ -212,6 +225,7 @@ export type Graphic =
   | StandingsGraphic
   | ScoreGraphic
   | PressGraphic
+  | ArticleGraphic
   | RuleGraphic
   | SplitGraphic
   | BannedGraphic

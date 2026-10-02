@@ -102,6 +102,10 @@ const DEFAULTS = {
   // motion: 'clean' (neutral) | 'sport' (diagonal wipes, speed lines, condensed italic) | 'editorial' (soft fades,
   // magazine rules, serif titles) | 'tech' (glitch, corner brackets, scanlines, mono type)
   motion: 'clean',
+  // mapStyle: 'tilted' (dark map leaning back, glowing borders) | 'flat' (top-down flat colours, the highlighted
+  // area filled solid with its name inside, as aviation/business explainers do); mapHighlight: that fill
+  mapStyle: 'tilted',
+  mapHighlight: '',
 };
 
 export type Brand = Partial<typeof DEFAULTS>;

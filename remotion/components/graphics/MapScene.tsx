@@ -1,11 +1,11 @@
 import type { FC } from 'react';
 import { useMemo } from 'react';
-import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { geoArea, geoBounds, geoCentroid, geoDistance, geoGraticule10, geoInterpolate, geoMercator, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world from 'world-atlas/countries-50m.json';
-import { alpha, fontFamily, theme } from '../../theme';
+import { alpha, condensedFamily, fontFamily, theme } from '../../theme';
 import type { MapGraphic } from '../../graphics';
 import { GraphicTitle } from './GraphicTitle';
 
@@ -86,6 +86,8 @@ const labelSpots = (pins: ([number, number] | null)[], texts: string[]) => {
 export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const flat = theme.mapStyle === 'flat' && !graphic.globe;   // top-down flat colours, solid highlight with its name
+  const fill = theme.mapHighlight || theme.accent;
   const points = graphic.points ?? [];
   const highlighted = useMemo(
     () => COUNTRIES.filter((c) => (graphic.countries ?? []).some((n) => n.toLowerCase() === c.properties.name.toLowerCase())),
@@ -115,7 +117,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       .clipAngle(90);
   } else {
     const all: [number, number][] = points.map((p) => [p.lon, p.lat]);
-    if (graphic.route) {
+    if (graphic.route && !flat) {
       // the great-circle arc between cities bows north/south: keep it in the frame
       for (let i = 1; i < points.length; i++) {
         const arc = geoInterpolate([points[i - 1].lon, points[i - 1].lat], [points[i].lon, points[i].lat]);
@@ -126,9 +128,9 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       const [[x0, y0], [x1, y1]] = geoBounds(mainland(c));
       all.push([x0, y0], [x1, y1]);
     }
-    const start = view(box(all.length ? all : [[0, 20]], 12), true);
+    const start = view(box(all.length ? all : [[0, 20]], 12), !flat);
     const zoomPoint = graphic.zoom != null ? points[graphic.zoom] : undefined;
-    const end = zoomPoint ? view(box([[zoomPoint.lon, zoomPoint.lat]], 3), true) : start;
+    const end = zoomPoint ? view(box([[zoomPoint.lon, zoomPoint.lat]], 3), !flat) : start;
     const z = zoomPoint ? t(0.55, 0.85) : 0;
     const scale = Math.exp(lerp(Math.log(start.scale), Math.log(end.scale), z));
     zoomed = z;
@@ -160,15 +162,36 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
   const light = t(0.05, 0.25);
   const pinAt = (i: number) => 0.15 + (0.45 * i) / Math.max(1, points.length);
   const route = graphic.route && points.length > 1 ? t(0.2, 0.6) : 0;
+  // flat maps: each leg a clean curve on screen (a great circle over the pole looks wrong on a flat map)
+  const screenPts = points.map((p) => projection([p.lon, p.lat]) as [number, number] | null);
+  const bend = (a: [number, number], b: [number, number]): [number, number] => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const lift = Math.min(0.22 * len, 260);
+    const nx = dy / len;
+    const ny = -dx / len;
+    const up = ny <= 0 ? 1 : -1;                          // always bow upwards on screen
+    return [(a[0] + b[0]) / 2 + nx * lift * up, (a[1] + b[1]) / 2 + ny * lift * up];
+  };
+  const quad = (a: [number, number], c: [number, number], b: [number, number], f: number): [number, number] => [
+    (1 - f) * (1 - f) * a[0] + 2 * (1 - f) * f * c[0] + f * f * b[0],
+    (1 - f) * (1 - f) * a[1] + 2 * (1 - f) * f * c[1] + f * f * b[1],
+  ];
+  const flatLegs = flat && screenPts.every(Boolean)
+    ? screenPts.slice(1).map((b, i) => ({ a: screenPts[i] as [number, number], b: b as [number, number], c: bend(screenPts[i] as [number, number], b as [number, number]) }))
+    : [];
   const routePath =
     graphic.route && points.length > 1
-      ? path({ type: 'LineString', coordinates: points.map((p) => [p.lon, p.lat]) } as GeoPermissibleObjects)
+      ? flat && flatLegs.length
+        ? flatLegs.map((l, i) => `${i ? '' : `M${l.a[0]},${l.a[1]} `}Q${l.c[0]},${l.c[1]} ${l.b[0]},${l.b[1]}`).join(' ')
+        : path({ type: 'LineString', coordinates: points.map((p) => [p.lon, p.lat]) } as GeoPermissibleObjects)
       : null;
 
   // --- camera: flat maps lean back in perspective (the SVG is tilted; labels and the plane are
   // placed on screen through the same transform so they stay upright and on their pins)
-  const tiltDeg = graphic.globe ? 0 : interpolate(frame, [0, durationInFrames], [30, 22]);
-  const S = graphic.globe ? 1 : 1.3;                    // overscan so the tilted map fills the frame
+  const tiltDeg = graphic.globe || flat ? 0 : interpolate(frame, [0, durationInFrames], [30, 22]);
+  const S = graphic.globe || flat ? 1 : 1.3;            // overscan so the tilted map fills the frame
   const P = 1500;
   const tilt = (xy: [number, number]): [number, number] => {
     if (!tiltDeg) return xy;
@@ -197,8 +220,14 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
       }
       return null;
     };
-    const here = at(route);
-    const before = at(Math.max(0, route - 0.02));
+    const flatAt = (progress: number): [number, number] | null => {
+      const k = Math.min(flatLegs.length - 1, Math.floor(progress * flatLegs.length));
+      const l = flatLegs[k];
+      return l ? quad(l.a, l.c, l.b, progress * flatLegs.length - k) : null;
+    };
+    const pick = flat && flatLegs.length ? flatAt : at;
+    const here = pick(route);
+    const before = pick(Math.max(0, route - 0.02));
     if (here && before) {
       plane = { xy: here, angle: (Math.atan2(here[1] - before[1], here[0] - before[0]) * 180) / Math.PI };
     }
@@ -238,21 +267,31 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             <path d={path(geoGraticule10()) ?? ''} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
           </>
         ) : (
-          <rect width={W} height={H} fill="url(#ocean)" />
+          <rect width={W} height={H} fill={flat ? theme.ocean : 'url(#ocean)'} />
         )}
-        <g filter="url(#relief)">
+        <g filter={flat ? undefined : 'url(#relief)'}>
           {COUNTRIES.map((c, i) => (
-            <path key={i} d={path(c as never) ?? ''} fill={theme.land} stroke={theme.border} strokeWidth={0.8} />
+            <path key={i} d={path(c as never) ?? ''} fill={theme.land} stroke={flat ? alpha('#ffffff', 0.35) : theme.border}
+              strokeWidth={flat ? 1 : 0.8} />
           ))}
         </g>
         {/* soft relief: light from above over the land */}
-        <g opacity={0.9}>
-          {COUNTRIES.map((c, i) => (
-            <path key={`s${i}`} d={path(c as never) ?? ''} fill="url(#landShade)" stroke="none" />
-          ))}
-        </g>
+        {flat ? null : (
+          <g opacity={0.9}>
+            {COUNTRIES.map((c, i) => (
+              <path key={`s${i}`} d={path(c as never) ?? ''} fill="url(#landShade)" stroke="none" />
+            ))}
+          </g>
+        )}
+        {/* flat: the highlighted area filled solid, as the explainers do */}
+        {flat
+          ? highlighted.map((c, i) => (
+              <path key={`f${i}`} d={path(c as never) ?? ''} fill={fill} fillOpacity={0.95 * light}
+                stroke="#ffffff" strokeOpacity={light} strokeWidth={2} />
+            ))
+          : null}
         {/* highlighted countries raised: a few darker copies below give them thickness */}
-        {[8, 5, 2].map((dy) =>
+        {flat ? null : [8, 5, 2].map((dy) =>
           highlighted.map((c, i) => (
             <path
               key={`x${dy}-${i}`}
@@ -263,7 +302,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             />
           )),
         )}
-        {highlighted.map((c, i) => (
+        {flat ? null : highlighted.map((c, i) => (
           <path
             key={`h${i}`}
             d={path(c as never) ?? ''}
@@ -279,13 +318,13 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           <path
             d={routePath}
             fill="none"
-            stroke={theme.accent}
+            stroke={flat ? '#ffffff' : theme.accent}
             strokeWidth={5}
             strokeLinecap="round"
             strokeDasharray="1"
             strokeDashoffset={1 - route}
             pathLength={1}
-            filter="url(#glow)"
+            filter={flat ? undefined : 'url(#glow)'}
           />
         ) : null}
         {points.map((p, i) => {
@@ -355,6 +394,57 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           </g>
         </svg>
       ) : null}
+      {graphic.regionLabel && highlighted.length
+        ? (() => {
+            const raw = projection(geoCentroid(mainland(highlighted[0])) as [number, number]);
+            const xy = raw ? tilt(raw as [number, number]) : null;
+            if (!xy || xy[0] < 0 || xy[0] > W || xy[1] < 0 || xy[1] > H) return null;
+            return (
+              <div style={{
+                position: 'absolute', left: xy[0], top: xy[1] + 70, transform: 'translate(-50%, -50%)', opacity: light,
+                fontFamily: condensedFamily, fontWeight: 700, fontSize: 44, letterSpacing: '0.04em', color: '#ffffff',
+                textTransform: 'uppercase', whiteSpace: 'nowrap', textShadow: '0 3px 12px rgba(0,0,0,0.55)',
+              }}>
+                {graphic.regionLabel}
+              </div>
+            );
+          })()
+        : null}
+      {points.map((p, i) => {
+        if (!p.logoMedia) return null;
+        const raw = projection([p.lon, p.lat]);
+        const xy = raw ? tilt(raw as [number, number]) : null;
+        if (!xy) return null;
+        const pop = spring({ frame: frame - pinAt(i) * durationInFrames - 6, fps, config: { damping: 11, stiffness: 170 } });
+        return (
+          <div key={`logo${i}`} style={{
+            position: 'absolute', left: xy[0] - 70, top: xy[1] - 170, width: 140, height: 140, borderRadius: 70,
+            backgroundColor: '#ffffff', boxShadow: '0 10px 30px rgba(0,0,0,0.45)', border: `5px solid ${fill}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            transform: `scale(${pop})`, transformOrigin: '50% 100%',
+          }}>
+            <Img src={staticFile(p.logoMedia.src)} style={{ width: '78%', height: '78%', objectFit: 'contain' }} />
+          </div>
+        );
+      })}
+      {graphic.date
+        ? (() => {
+            // the date first big over the map, then up to the corner as the story starts moving
+            const settle = interpolate(frame, [0.16 * durationInFrames, 0.26 * durationInFrames], [0, 1], {
+              extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.inOut(Easing.cubic) });
+            const appear = interpolate(frame, [0, 8], [0, 1], { extrapolateRight: 'clamp' });
+            return (
+              <div style={{
+                position: 'absolute', left: lerp(110, 70, settle), top: lerp(H / 2 - 90, graphic.title ? 170 : 60, settle),
+                opacity: appear, fontFamily: condensedFamily, fontWeight: 700, fontSize: lerp(120, 46, settle),
+                color: '#ffffff', textShadow: '0 4px 18px rgba(0,0,0,0.55)', whiteSpace: 'nowrap',
+                transform: `translateY(${(1 - appear) * 24}px)`,
+              }}>
+                {graphic.date}
+              </div>
+            );
+          })()
+        : null}
       {graphic.title ? <GraphicTitle text={graphic.title} /> : null}
     </AbsoluteFill>
   );

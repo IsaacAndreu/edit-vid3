@@ -16,8 +16,10 @@ brand:                             # cabina de noche: azul cielo y ámbar de ins
   panel: "#0b1424"
   panelRaised: "#122036"
   muted: "#93a4bf"
-  ocean: "#050a14"                 # mapas de rutas
-  land: "#13223a"
+  ocean: "#1c6b84"                 # mapas planos estilo Beyond Sky: océano azul verdoso…
+  land: "#3a8ba3"                  # …tierra un tono más clara
+  mapStyle: flat                   # mapa visto desde arriba, colores planos, la zona resaltada rellena con su nombre
+  mapHighlight: "#8c1d40"          # granate de la zona resaltada
   border: "#1e3352"
   chapterStyle: numbered           # «CAPÍTULO I:» como un documental
   statStyle: bare                  # la cifra gigante directamente sobre el avión
@@ -26,7 +28,7 @@ brand:                             # cabina de noche: azul cielo y ámbar de ins
 graphics:
   seconds_per_graphic: 70          # este nicho vive de datos, mapas de rutas y comparativas
   cover_weak: true
-  types: [map, compare, chart, timeline, specs, scale, kinetic, press, race, receipt, split]
+  types: [map, article, compare, chart, timeline, specs, scale, kinetic, press, race, receipt, split]
 
 people:
   max: 3                           # directivos (consejeros delegados de Boeing, Airbus, aerolíneas)
@@ -117,7 +119,7 @@ series:
         alarma, la caída y qué queda hoy. Cada evento con su año en 'tag' ('TOULOUSE · 2005'); los 'label' buscan ese
         avión o esa aerolínea en esa época ('Airbus A380 first flight Toulouse 2005', 'Pan Am 747 1970s')."
     graphics:
-      types: [chart, timeline, press, kinetic, specs, compare, map, scale, receipt]
+      types: [map, article, chart, timeline, press, kinetic, specs, compare, scale, receipt]
       hint: "Es un fracaso: \"chart\" para pedidos o pérdidas por año (la subida y el desplome), \"timeline\" para las
         fechas clave, \"specs\" para la ficha del avión, \"press\" para los titulares y \"kinetic\" para la cifra final
         ('251 aviones', '0 pedidos')."
@@ -133,7 +135,7 @@ series:
       outline: "ESTE VÍDEO ES UNA RIVALIDAD ENTRE DOS FABRICANTES, AVIONES O AEROLÍNEAS (Boeing y Airbus, 787 y A350,
         Ryanair y easyJet): cada 'event' con los DOS nombres y el año ('Boeing 787 Airbus A350 orders 2010')."
     graphics:
-      types: [compare, split, race, chart, timeline, specs, kinetic, press, map]
+      types: [map, article, compare, split, race, chart, timeline, specs, kinetic, press]
       hint: "Es una rivalidad: \"compare\" y \"split\" en cada duelo, \"race\" para los pedidos o la cuota de mercado
         a lo largo de los años, \"specs\" para la ficha de cada avión."
     package:
