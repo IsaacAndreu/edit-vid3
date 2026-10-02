@@ -248,6 +248,7 @@ def run(ctx: RunContext) -> None:
         language=language,
         compute_type=str(cfg.get("compute_type", "int8")),
         openai_api_key=ctx.env("OPENAI_API_KEY") if provider == "openai" else "",
+        device=str(cfg.get("device", "auto")),      # auto: an NVIDIA card if it works, else the processor
     )
     if provider == "openai" and not cached:
         record_cost(

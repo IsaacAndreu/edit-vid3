@@ -20,6 +20,16 @@ import { Stat } from './components/Stat';
 import { applyBrand, fontFamily, theme } from './theme';
 import type { Caption, Group, Shot, TimelineProps } from './types';
 
+/** A shot's footage; a piece of a split shot (render) plays from `offset` frames into the whole shot. */
+const ShotLayer: FC<{ shot: Shot }> = ({ shot }) =>
+  shot.offset ? (
+    <Sequence from={-shot.offset} name={`${shot.id} +${shot.offset}`}>
+      <ShotBackground shot={{ ...shot, durationInFrames: shot.fullDuration ?? shot.durationInFrames + shot.offset }} />
+    </Sequence>
+  ) : (
+    <ShotBackground shot={shot} />
+  );
+
 /** What fills the frame under the overlays for one shot. */
 const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
   if (shot.type === 'endscreen') {
@@ -126,7 +136,9 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
       {shots.map((shot) => (
         <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
           {shot.media && shot.type !== 'endscreen' ? (
-            <BRoll media={shot.media} durationInFrames={shot.durationInFrames} seed={shot.id} />
+            <Sequence from={-(shot.offset ?? 0)}>
+              <BRoll media={shot.media} durationInFrames={shot.fullDuration ?? shot.durationInFrames} seed={shot.id} />
+            </Sequence>
           ) : (
             <GridBackground />
           )}
@@ -176,7 +188,7 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
     <CutMotion transitions={transitions} shakes={shakes}>
     {shots.map((shot) => (
       <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
-        <ShotBackground shot={shot} />
+        <ShotLayer shot={shot} />
       </Sequence>
     ))}
     {groups.map((group) => (

@@ -131,7 +131,7 @@ judge:
   min_accept: 0.22                 # por debajo, la opción no se usa (→ fallback)
   candidates: 3                    # opciones que ve el juez por hoja
   rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
-  parallel: 4
+  parallel: 8
   source_bonus: {youtube: 0.02}    # prioridad: metraje de terceros antes que fotos
   max_phash_distance: 6            # fragmentos más parecidos que esto cuentan como repetidos
   # https://developers.openai.com/api/docs/pricing

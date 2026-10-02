@@ -27,6 +27,7 @@ class ClipScorer:
         self.threads = threads
         self._model = None
         self._tokenizer = None
+        self.device = "cpu"
         self._lock = threading.Lock()
 
     def _load(self) -> None:
@@ -39,6 +40,16 @@ class ClipScorer:
             torch.set_num_threads(self.threads)
         model, _, _ = open_clip.create_model_and_transforms(self.model_name, pretrained=self.pretrained)
         model.eval()
+        # an NVIDIA card does it several times faster; torch must be the CUDA build (docs/LOCAL.md)
+        try:
+            if torch.cuda.is_available():
+                model = model.to("cuda")      # float32: GTX 16xx cards give NaN in half precision
+                self.device = "cuda"
+                print(f"   CLIP en la gráfica ({torch.cuda.get_device_name(0)})")
+        except Exception as error:  # any CUDA trouble: stay on the processor
+            print(f"   CLIP en CPU: la gráfica no responde ({str(error)[:80]})")
+            model = model.float().to("cpu")
+            self.device = "cpu"
         self._model = model
         self._tokenizer = open_clip.get_tokenizer(self.model_name)
 
@@ -63,9 +74,11 @@ class ClipScorer:
             chunks = []
             for i in range(0, len(images), self.batch_size):
                 batch = torch.from_numpy(np.stack([self._prep(im) for im in images[i : i + self.batch_size]]))
+                if self.device == "cuda":
+                    batch = batch.to("cuda")
                 with torch.no_grad():
                     vectors = self._model.encode_image(batch).float()
-                chunks.append(torch.nn.functional.normalize(vectors, dim=-1).numpy())
+                chunks.append(torch.nn.functional.normalize(vectors, dim=-1).cpu().numpy())
         return np.concatenate(chunks)
 
     def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
@@ -73,9 +86,10 @@ class ClipScorer:
 
         with self._lock:
             self._load()
+            tokens = self._tokenizer(list(texts))
             with torch.no_grad():
-                vectors = self._model.encode_text(self._tokenizer(list(texts))).float()
-            return torch.nn.functional.normalize(vectors, dim=-1).numpy()
+                vectors = self._model.encode_text(tokens.to(self.device)).float()
+            return torch.nn.functional.normalize(vectors, dim=-1).cpu().numpy()
 
     def shot_vector(self, prompts: Sequence[str]) -> np.ndarray:
         """One direction for the shot: normalised mean of its prompt embeddings."""

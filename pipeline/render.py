@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from .context import RunContext
+from .encoder import use_nvenc, video_args
 from .postflight import enforce_postflight, inspect_render, write_postflight_report
 from .schemas import Timeline
 
@@ -53,16 +54,7 @@ class Segment:
     frames: int
     shots: list[dict[str, Any]] = field(default_factory=list)
     condensed_start: int = 0          # where the run begins in the condensed Remotion render
-
-
-def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
-    """Plain footage: only the credit badge is drawn on top, so ffmpeg can compose it."""
-
-    media = shot.get("media") or {}
-    a, b = shot["from"], shot["from"] + shot["durationInFrames"]
-    covered = any(g["from"] < b and a < g["from"] + g["durationInFrames"] for g in groups)
-    return (shot["type"] == "broll" and media.get("kind") == "video" and media.get("layout", "full") in ("full", "archive")
-            and not shot.get("groupId") and not covered)
+    offset: int = 0                   # ffmpeg: frames of the shot before this piece (a shot split around a label)
 
 
 # CSS sepia(0.22) as a colour matrix, as in remotion/components/ArchiveFootage.tsx
@@ -93,21 +85,127 @@ def shot_filter(media: dict[str, Any], frames: int, fps: int) -> str:
     return chain + f",tpad=stop_mode=clone:stop={frames}"
 
 
+MIN_FAST = 15             # a stretch of plain footage shorter than this stays in Remotion (not worth a segment)
+
+
+def _covered(a: int, b: int, overlays: list[dict[str, Any]]) -> list[tuple[int, int]]:
+    """Frames of [a, b) with something drawn over or moving the footage, merged into ranges."""
+
+    spans = sorted((max(a, o["from"]), min(b, o["from"] + o["durationInFrames"])) for o in overlays
+                   if o["from"] < b and a < o["from"] + o["durationInFrames"])
+    merged: list[list[int]] = []
+    for x, y in spans:
+        if merged and x <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], y)
+        else:
+            merged.append([x, y])
+    return [(x, y) for x, y in merged]
+
+
+def shot_pieces(shot: dict[str, Any], overlays: list[dict[str, Any]], hybrid: bool = True) -> list[tuple[str, int, int]]:
+    """(kind, start, end) of a shot: plain footage goes to ffmpeg; only the frames with a label, transition,
+    shake or graphic over them (or a shot that is not plain footage at all) go to Remotion."""
+
+    a, b = shot["from"], shot["from"] + shot["durationInFrames"]
+    media = shot.get("media") or {}
+    plain = (shot["type"] == "broll" and media.get("kind") == "video" and media.get("layout", "full") in ("full", "archive")
+             and not shot.get("groupId"))
+    card = (shot["type"] == "broll" and media.get("kind") in ("video", "image") and media.get("layout") == "card"
+            and not shot.get("groupId"))
+    if hybrid and card:            # a framed card is composed by ffmpeg too, but only whole (its pop-in and push)
+        return [("remotion" if _covered(a, b, overlays) else "ffmpeg", a, b)]
+    if not hybrid or not plain:
+        return [("remotion", a, b)]
+    pieces: list[tuple[str, int, int]] = []
+    cursor = a
+    for x, y in [*_covered(a, b, overlays), (b, b)]:
+        if x > cursor:
+            pieces.append(("ffmpeg" if x - cursor >= MIN_FAST else "remotion", cursor, x))
+        if y > x:
+            pieces.append(("remotion", x, y))
+        cursor = max(cursor, y)
+    out: list[tuple[str, int, int]] = []
+    for kind, x, y in pieces:                     # neighbouring Remotion bits become one
+        if out and out[-1][0] == kind == "remotion" and out[-1][2] == x:
+            out[-1] = (kind, out[-1][1], y)
+        else:
+            out.append((kind, x, y))
+    return out
+
+
+def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
+    """The whole shot goes to ffmpeg."""
+
+    return [p[0] for p in shot_pieces(shot, list(groups))] == ["ffmpeg"]
+
+
+CARD_MAX = (1480, 830)     # as remotion/components/FramedCard.tsx
+CARD_MARGIN = 200          # room around the card for its shadow (0 30px 90px)
+
+
+def card_box(media: dict[str, Any]) -> tuple[int, int]:
+    """Inner size of a framed card (FramedCard.tsx): the source's aspect inside 1480x830."""
+
+    w, h = media.get("width"), media.get("height")
+    aspect = w / h if w and h else 16 / 9
+    if aspect >= CARD_MAX[0] / CARD_MAX[1]:
+        return CARD_MAX[0], round(CARD_MAX[0] / aspect)
+    return round(CARD_MAX[1] * aspect), CARD_MAX[1]
+
+
+def card_graph(media: dict[str, Any], frames: int, fps: int, badge: bool) -> str:
+    """ffmpeg graph for a framed card: [0] the clip or photo, [1] the card's border and shadow (PNG), [2] the
+    channel background, [3] the credit badge. Pops in (8 frames) and pushes in to 1.035 over the shot."""
+
+    w, h = card_box(media)
+    w, h = w - 10, h - 10                               # border-box: the 5 px border is inside the card's size
+    sw, sh = w, h                                       # object-fit: cover of the source into the card
+    if media.get("width") and media.get("height"):
+        k = max(w / media["width"], h / media["height"])
+        sw, sh = max(w, math.ceil(media["width"] * k)), max(h, math.ceil(media["height"] * k))
+    rate = float(media.get("rate") or 1.0)
+    src = "setpts=PTS-STARTPTS" + (f",setpts=PTS/{rate:.4f},fps={fps}" if rate < 0.999 else "")
+    aw, ah = w + 10 + 2 * CARD_MARGIN, h + 10 + 2 * CARD_MARGIN
+    e = "(1-pow(1-min(1,n/8),3))"
+    scale = f"((0.94+0.06*{e})*(1+0.035*n/{max(1, frames)}))"
+    graph = (f"[0:v]{src},scale={sw}:{sh}:flags=bicubic,crop={w}:{h},setsar=1,format=rgba,"
+             f"tpad=stop_mode=clone:stop={frames}[v];"
+             f"[1:v]format=rgba[f];[f][v]overlay={CARD_MARGIN + 5}:{CARD_MARGIN + 5}:format=auto[c];"
+             f"[c]scale=w='2*trunc({aw}*{scale}/2)':h='2*trunc({ah}*{scale}/2)':eval=frame:flags=bicubic,"
+             f"fade=t=in:s=0:n=6:alpha=1[cs];"
+             f"[2:v][cs]overlay=x='960-overlay_w/2':y='528-overlay_h/2':eval=frame:format=auto")
+    graph += "[o];[o][3:v]overlay=0:0:format=auto,format=yuv420p[v2]" if badge else ",format=yuv420p[v2]"
+    return graph
+
+
 def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment]:
     segments: list[Segment] = []
     condensed = 0
-    groups = [*timeline.get("groups", []), *timeline.get("labels", []),   # anything drawn over the footage
-              *timeline.get("transitions", []), *timeline.get("shakes", [])]  # or moving it (zoom / whip / shake)
+    overlays = [*timeline.get("groups", []), *timeline.get("labels", []),   # anything drawn over the footage
+                *timeline.get("transitions", []), *timeline.get("shakes", [])]  # or moving it (zoom / whip / shake)
     for shot in timeline["shots"]:
-        if hybrid and is_fast(shot, groups):
-            segments.append(Segment("ffmpeg", shot["from"], shot["durationInFrames"], [shot]))
+        if hybrid and shot["type"] == "endscreen" and not _covered(shot["from"], shot["from"] + shot["durationInFrames"], overlays):
+            # the same in every video of the channel: rendered once and cached (Renderer.endscreen)
+            segments.append(Segment("endscreen", shot["from"], shot["durationInFrames"], [shot]))
             continue
-        if segments and segments[-1].kind == "remotion":
-            segments[-1].shots.append(shot)
-            segments[-1].frames += shot["durationInFrames"]
-        else:
-            segments.append(Segment("remotion", shot["from"], shot["durationInFrames"], [shot], condensed))
-        condensed += shot["durationInFrames"]
+        vertical_card = timeline.get("height", 0) > timeline.get("width", 1) and (shot.get("media") or {}).get("layout") == "card"
+        pieces = ([("remotion", shot["from"], shot["from"] + shot["durationInFrames"])] if vertical_card   # drawn as
+                  else shot_pieces(shot, overlays, hybrid))                                                 # plain b-roll
+        for kind, x, y in pieces:
+            offset = x - shot["from"]
+            if kind == "ffmpeg":
+                segments.append(Segment("ffmpeg", x, y - x, [shot], offset=offset))
+                continue
+            # a piece of a longer shot: Remotion draws only its frames, starting `offset` frames into the shot
+            piece = shot if len(pieces) == 1 else {**shot, "id": f"{shot['id']}~{offset}", "from": x,
+                                                   "durationInFrames": y - x, "offset": offset,
+                                                   "fullDuration": shot["durationInFrames"]}
+            if segments and segments[-1].kind == "remotion":
+                segments[-1].shots.append(piece)
+                segments[-1].frames += y - x
+            else:
+                segments.append(Segment("remotion", x, y - x, [piece], condensed))
+            condensed += y - x
     return segments
 
 
@@ -271,10 +369,16 @@ class Renderer:
         self.fps = ctx.fps
         self.dir = ctx.work_dir / "render"
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.set_encoder(use_nvenc(self.cfg))
+
+    def set_encoder(self, nvenc: bool) -> None:
+        """Every segment with the same settings (they are joined without re-encoding): the graphics card's
+        encoder when it works (render.encoder: auto), else x264."""
+
+        self.nvenc = nvenc
         self.encode = [
-            "-c:v", "libx264", "-preset", str(self.cfg.get("preset", "veryfast")), "-crf", str(self.cfg.get("crf", 18)),
-            "-pix_fmt", "yuv420p", "-r", str(self.fps), "-g", str(self.fps * 2), "-video_track_timescale", str(self.fps * 512),
-            "-an",
+            *video_args(self.cfg, self.cfg.get("crf", 18), str(self.cfg.get("preset", "veryfast")), nvenc=nvenc),
+            "-r", str(self.fps), "-g", str(self.fps * 2), "-video_track_timescale", str(self.fps * 512), "-an",
         ]
         self.enc_key = _hash(self.encode, VERSION)
 
@@ -340,6 +444,91 @@ class Renderer:
             shutil.rmtree(tmp, ignore_errors=True)
         return paths
 
+    def backdrop(self) -> Path:
+        """The channel background (GridBackground) as a PNG, cached by brand and Remotion code."""
+
+        path = self.ctx.cache_dir / "render" / "backdrop" / f"{_hash(self._remotion_sig(), self.ctx.section('brand'))}.png"
+        if not path.is_file():
+            tmp = self.dir / "backdrop"
+            shutil.rmtree(tmp, ignore_errors=True)
+            self.remotion("Backdrop", {"brand": self.ctx.section("brand")}, tmp,
+                          ["--sequence", "--image-format=png"], set())
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(next(tmp.iterdir())), path)
+            shutil.rmtree(tmp, ignore_errors=True)
+        return path
+
+    def card_frame(self, w: int, h: int) -> Path:
+        """Transparent PNG of a card's white border and soft shadow (FramedCard.tsx), with a hole for the footage."""
+
+        path = self.ctx.cache_dir / "render" / "cards" / f"{w}x{h}-v2.png"
+        if path.is_file():
+            return path
+        from PIL import Image, ImageDraw, ImageFilter
+
+        m = CARD_MARGIN
+        size = (w + 10 + 2 * m, h + 10 + 2 * m)
+        shadow = Image.new("L", size, 0)
+        ImageDraw.Draw(shadow).rectangle([m, m + 30, m + w + 9, m + h + 39], fill=round(0.75 * 255))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(45))
+        box = Image.new("L", size, 0)
+        ImageDraw.Draw(box).rectangle([m, m, m + w + 9, m + h + 9], fill=255)
+        alpha = Image.composite(Image.new("L", size, 0), shadow, box)      # no shadow under the card itself
+        ImageDraw.Draw(alpha).rectangle([m, m, m + w + 9, m + h + 9], fill=round(0.92 * 255))
+        ImageDraw.Draw(alpha).rectangle([m + 5, m + 5, m + w + 4, m + h + 4], fill=0)
+        colour = Image.new("RGB", size, (0, 0, 0))
+        ImageDraw.Draw(colour).rectangle([m, m, m + w + 9, m + h + 9], fill=(255, 255, 255))
+        colour.putalpha(alpha)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        colour.save(path)
+        return path
+
+    def card_segment(self, segment: Segment, badge: Path | None) -> Path:
+        shot = segment.shots[0]
+        media = shot["media"]
+        source = self.ctx.work_dir / media["src"]
+        w, h = card_box(media)
+        frame, back = self.card_frame(w - 10, h - 10), self.backdrop()
+        graph = card_graph(media, segment.frames, self.fps, badge is not None)
+        key = _hash(self.enc_key, _file_sig(source), _file_sig(frame), _file_sig(back),
+                    _file_sig(badge) if badge else None, graph)
+        out = self.dir / "segments" / f"{shot['id']}-card-{key}.mp4"
+        if out.is_file():
+            return out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        still = ["-loop", "1", "-framerate", str(self.fps)]
+        inputs = [*(still if media["kind"] == "image" else []), "-i", str(source), *still, "-i", str(frame),
+                  *still, "-i", str(back), *([*still, "-i", str(badge)] if badge else [])]
+        tmp = out.with_suffix(".tmp.mp4")
+        _run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", graph, "-map", "[v2]",
+              "-frames:v", str(segment.frames), *self.encode, str(tmp)], f"la tarjeta {shot['id']}")
+        tmp.replace(out)
+        return out
+
+    def endscreen(self, timeline: dict[str, Any], segment: Segment) -> Path:
+        """The end screen as a finished segment, cached across videos (same brand, words, length and code)."""
+
+        props = {**{k: timeline[k] for k in ("fps", "width", "height") if k in timeline},
+                 "slug": "endscreen", "title": "", "durationInFrames": segment.frames,
+                 "shots": [{**segment.shots[0], "from": 0, "text": ""}], "groups": [], "labels": [], "transitions": [],
+                 "shakes": [], "captions": [], "brand": timeline.get("brand"), "locale": timeline.get("locale"),
+                 "audio": {"voice": timeline["audio"]["voice"], "musicVolume": 0, "duckedVolume": 0, "speech": [],
+                           "sfx": [], "clips": [], "music": None, "voiceFrom": 0}}
+        key = _hash(VERSION, props, self._remotion_sig(), self.enc_key)
+        out = self.ctx.cache_dir / "render" / "endscreen" / f"{key}.mp4"
+        if not out.is_file():
+            raw = self.dir / "endscreen.tmp.mp4"
+            self.remotion("Documentary", props, raw, ["--muted", f"--concurrency={self.concurrency()}", "--codec=h264",
+                                                      "--crf=12", f"--x264-preset={self.cfg.get('preset', 'veryfast')}"],
+                          {props["audio"]["voice"]})
+            out.parent.mkdir(parents=True, exist_ok=True)
+            tmp = out.with_suffix(".tmp.mp4")
+            _run(["ffmpeg", "-y", "-v", "error", "-i", str(raw), "-frames:v", str(segment.frames), *self.encode, str(tmp)],
+                 "la pantalla final")
+            tmp.replace(out)
+            raw.unlink(missing_ok=True)
+        return out
+
     def _remotion_sig(self) -> list:
         files = sorted(p for p in (self.ctx.root / "remotion").rglob("*") if p.is_file())
         return [[str(p.relative_to(self.ctx.root)), hashlib.sha256(p.read_bytes()).hexdigest()[:12]] for p in files]
@@ -349,9 +538,11 @@ class Renderer:
     def fast_segment(self, segment: Segment, badge: Path | None) -> Path:
         shot = segment.shots[0]
         clip = self.ctx.work_dir / shot["media"]["src"]
-        pad = shot_filter(shot["media"], segment.frames, self.fps)
+        pad = shot_filter(shot["media"], segment.offset + segment.frames, self.fps)
+        if segment.offset:     # a later piece of a split shot: the same chain (speed, zoom…), from that frame
+            pad += f",trim=start_frame={segment.offset},setpts=PTS-STARTPTS"
         key = _hash(self.enc_key, _file_sig(clip), segment.frames, _file_sig(badge) if badge else None, pad)
-        out = self.dir / "segments" / f"{shot['id']}-{key}.mp4"
+        out = self.dir / "segments" / f"{shot['id']}-{segment.offset}-{key}.mp4"
         if out.is_file():
             return out
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -505,13 +696,14 @@ def run(ctx: RunContext) -> None:
     slow = [s for s in segments if s.kind == "remotion"]
     fast_frames, slow_frames = sum(s.frames for s in fast), sum(s.frames for s in slow)
     print(f"   {len(timeline['shots'])} planos · ffmpeg {fast_frames} fotogramas ({len(fast)} planos) · "
-          f"Remotion {slow_frames} fotogramas ({len(slow)} tramos)")
+          f"Remotion {slow_frames} fotogramas ({len(slow)} tramos)"
+          + (" · pantalla final aparte (en caché)" if any(s.kind == "endscreen" for s in segments) else ""))
 
     # 1. Remotion: the condensed timeline of slow shots, one pass.
     condensed_path = None
     if slow:
         props = condensed_props(timeline, segments)
-        key = _hash(r.enc_key, props, r._remotion_sig(),
+        key = _hash(VERSION, props, r._remotion_sig(),
                     sorted(_file_sig(ctx.work_dir / s["media"]["src"]) for s in props["shots"] if s.get("media")))
         condensed_path = r.dir / f"remotion-{key}.mp4"
         if not condensed_path.is_file():
@@ -535,17 +727,39 @@ def run(ctx: RunContext) -> None:
 
     credits = sorted({shown(s.shots[0]["media"]["credit"]) for s in fast if s.shots[0]["media"].get("credit")})
     badges = r.badges(credits) if credits else {}
-    cut_key = condensed_path.stem.split("-")[-1] if condensed_path else ""
+
+    # Remotion jobs share one work folder: the backdrop and the end screen before the parallel part
+    if any(s.kind == "ffmpeg" and s.shots[0]["media"].get("layout") == "card" for s in segments):
+        r.backdrop()
+    ends: dict[int, Path] = {}
 
     def build(segment: Segment) -> Path:
+        if segment.kind == "endscreen":
+            return ends[segment.start]
         if segment.kind == "ffmpeg":
             credit = segment.shots[0]["media"].get("credit")
-            return r.fast_segment(segment, badges.get(shown(credit)) if credit else None)
-        return r.cut_segment(segment, condensed_path, cut_key)
+            badge = badges.get(shown(credit)) if credit else None
+            if segment.shots[0]["media"].get("layout") == "card":
+                return r.card_segment(segment, badge)
+            return r.fast_segment(segment, badge)
+        return r.cut_segment(segment, condensed_path, _hash(condensed_path.stem, r.enc_key))
 
-    with ThreadPoolExecutor(max_workers=max(1, int(r.cfg.get("parallel", 3)))) as pool:
-        files = list(pool.map(build, segments))
-    print(f"   ffmpeg: {len(files)} segmentos en {time.monotonic() - t:.0f} s")
+    def build_all() -> list[Path]:
+        ends.clear()
+        ends.update({s.start: r.endscreen(timeline, s) for s in segments if s.kind == "endscreen"})
+        with ThreadPoolExecutor(max_workers=max(1, int(r.cfg.get("parallel", 3)))) as pool:
+            return list(pool.map(build, segments))
+
+    try:
+        files = build_all()
+    except RuntimeError as error:
+        if not r.nvenc:
+            raise
+        print(f"   La gráfica falló al codificar ({str(error).splitlines()[-1][:100]}); repito con x264")
+        r.set_encoder(False)
+        files = build_all()
+    print(f"   ffmpeg: {len(files)} segmentos en {time.monotonic() - t:.0f} s"
+          + (" (codificados con la gráfica)" if r.nvenc else ""))
 
     # 3. Audio mix + master, then join everything without re-encoding the video.
     audio = r.audio(timeline)

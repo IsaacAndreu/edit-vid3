@@ -31,6 +31,8 @@ export interface Shot {
   chapterNumber?: number | null;
   groupId?: string | null;
   coldOpen?: boolean;
+  offset?: number; // render: a piece of a longer shot that starts this many frames into it
+  fullDuration?: number; // render: the whole shot's length (Ken Burns, zoom)
 }
 
 export interface DataRow {

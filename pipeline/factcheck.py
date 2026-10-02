@@ -99,7 +99,7 @@ def web_snippets(ctx: RunContext, query: str, count: int = 5) -> list[dict[str, 
         from ddgs import DDGS
 
         return [{"title": r.get("title", ""), "snippet": r.get("body", ""), "url": r.get("href", "")}
-                for r in DDGS().text(query, max_results=count)]
+                for r in DDGS(timeout=8).text(query, max_results=count)]
     except Exception as error:  # evidence is best effort: an unverified claim is still reported
         print(f"   búsqueda «{query[:60]}»: {type(error).__name__}")
         return []
@@ -123,8 +123,24 @@ def check(ctx: RunContext) -> dict[str, Any]:
                 articles.append(page)
     print(f"   {len(claims)} afirmaciones · {len(articles)} artículos de Wikipedia")
     evidence = [f"### WIKIPEDIA: {a['title']} ({a['url']})\n{a['text']}" for a in articles]
-    for n, claim in enumerate(claims, 1):
+    # the searches at once (4 at a time); when the search engine keeps timing out, stop asking it: the claims
+    # are judged against Wikipedia alone (they were waiting ~40 s each for nothing)
+    failures = {"in_a_row": 0}
+
+    def search(claim: dict[str, Any]) -> list[dict[str, str]]:
+        if failures["in_a_row"] >= 3:
+            return []
         found = web_snippets(ctx, str(claim.get("query") or claim["claim"]))
+        failures["in_a_row"] = 0 if found else failures["in_a_row"] + 1
+        return found
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        searched = list(pool.map(search, claims))
+    if failures["in_a_row"] >= 3:
+        print("   El buscador no responde: el resto se comprueba solo con Wikipedia")
+    for n, (claim, found) in enumerate(zip(claims, searched), 1):
         claim["web"] = found
         evidence.append(f"### BÚSQUEDA para la afirmación {n}\n" + "\n".join(
             f"- {r['title']}: {r['snippet']} ({r['url']})" for r in found))

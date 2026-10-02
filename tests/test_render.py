@@ -53,9 +53,13 @@ class QuestionRenderTests(unittest.TestCase):
             "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []},
         }
         segments = plan_segments(timeline)
-        self.assertEqual([(s.kind, s.start, s.frames) for s in segments], [("ffmpeg", 0, 60), ("remotion", 60, 120)])
+        # only the frames under the question go to Remotion; the footage before and after stays in ffmpeg
+        self.assertEqual([(s.kind, s.start, s.frames, s.offset) for s in segments],
+                         [("ffmpeg", 0, 60, 0), ("ffmpeg", 60, 20, 0), ("remotion", 80, 50, 0), ("ffmpeg", 130, 50, 10)])
         props = condensed_props(timeline, segments)
-        self.assertEqual(props["groups"][0]["from"], 20)
+        self.assertEqual(props["groups"][0]["from"], 0)
+        self.assertEqual([(s["id"], s["from"], s["durationInFrames"], s["offset"], s["fullDuration"]) for s in props["shots"]],
+                         [("s001~20", 0, 40, 20, 60), ("s002~0", 40, 10, 0, 60)])
 
 
 class LayoutRenderTests(unittest.TestCase):
@@ -69,9 +73,19 @@ class LayoutRenderTests(unittest.TestCase):
             "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []},
         }
         segments = plan_segments(timeline)
+        # a framed card with nothing over it is composed by ffmpeg too; the label covers frames 124-154 of s002
+        # and the 4 frames before it are too few for their own segment
         self.assertEqual([(s.kind, s.start, s.frames) for s in segments],
-                         [("ffmpeg", 0, 60), ("remotion", 60, 120), ("ffmpeg", 180, 60)])
-        self.assertEqual(condensed_props(timeline, segments)["labels"][0]["from"], 64)
+                         [("ffmpeg", 0, 60), ("ffmpeg", 60, 60), ("remotion", 120, 34), ("ffmpeg", 154, 26),
+                          ("ffmpeg", 180, 60)])
+        self.assertEqual(condensed_props(timeline, segments)["labels"][0]["from"], 4)
+        timeline["labels"][0]["from"] = 70                       # a label over the card: the whole card to Remotion
+        self.assertEqual([(s.kind, s.start, s.frames) for s in plan_segments(timeline)][1], ("remotion", 60, 60))
+
+    def test_the_end_screen_is_its_own_cached_segment(self) -> None:
+        timeline = {"durationInFrames": 120, "shots": [_shot(0, 0, 60), _shot(1, 60, 60, "endscreen", media=None)],
+                    "groups": [], "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []}}
+        self.assertEqual([(s.kind, s.start) for s in plan_segments(timeline)], [("ffmpeg", 0), ("endscreen", 60)])
 
 
 class AudioMixTests(unittest.TestCase):

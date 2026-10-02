@@ -587,6 +587,27 @@ Animaciones sacadas del propio clip (necesitan `rembg`, lo mismo que las tarjeta
 Si cambias el formato de un vídeo que ya estaba a medias, vuelve a lanzarlo con
 `--force planner --force timeline`.
 
+## 10e. Tarjeta gráfica NVIDIA (más rápido)
+
+Con una NVIDIA (p. ej. GTX 1650) el programa la usa sola, y si algo falla vuelve al procesador sin romper nada:
+
+- **Codificar el vídeo** (render): con el chip de vídeo de la gráfica (NVENC). No hace falta instalar nada; en
+  el log sale «codificados con la gráfica». `render.encoder: x264` lo desactiva.
+- **CLIP** (sourcing, analysis, comprobar hombre/mujer) y **Whisper** (align) necesitan PyTorch con CUDA. Una vez,
+  en PowerShell desde la carpeta del proyecto:
+  ```
+  pip uninstall -y torch torchvision
+  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+  python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+  ```
+  La última línea debe decir `True NVIDIA GeForce …`. En el log verás «CLIP en la gráfica» y «Whisper en la
+  gráfica». Si Whisper dice «Whisper en CPU: la gráfica no pudo (…cudnn…)», instala además
+  `pip install nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"`.
+
+**Render más ligero:** Remotion (lento, dibuja en Chrome) ya solo dibuja los fotogramas que llevan algo encima
+(rótulos, gráficos, transiciones); el resto del plano, las tarjetas enmarcadas y la pantalla final (hecha una vez por
+canal y guardada en `cache/render/endscreen/`) los monta ffmpeg.
+
 ## 11. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar

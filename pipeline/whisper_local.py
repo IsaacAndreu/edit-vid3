@@ -25,10 +25,10 @@ def _cache_path(cache_dir: Path, audio_path: Path, provider: str, model: str, la
     return cache_dir / "whisper" / f"{key}.json"
 
 
-def _transcribe_local(audio_path: Path, model: str, language: str, compute_type: str) -> dict[str, Any]:
+def _transcribe_local(audio_path: Path, model: str, language: str, compute_type: str, device: str = "cpu") -> dict[str, Any]:
     from faster_whisper import WhisperModel
 
-    whisper = WhisperModel(model, device="cpu", compute_type=compute_type)
+    whisper = WhisperModel(model, device=device, compute_type=compute_type)
     segments, info = whisper.transcribe(
         str(audio_path),
         language=language or None,
@@ -42,6 +42,57 @@ def _transcribe_local(audio_path: Path, model: str, language: str, compute_type:
         for word in segment.words or []:
             words.append({"word": word.word.strip(), "start": float(word.start), "end": float(word.end)})
     return {"duration": float(info.duration), "language": info.language, "words": words}
+
+
+def _cuda_dlls() -> None:
+    """Windows: let CTranslate2 find cuBLAS/cuDNN where pip puts them (the CUDA build of torch, nvidia-* wheels)."""
+
+    import glob
+    import os
+    import site
+    import sys
+
+    if sys.platform != "win32":
+        return
+    roots = [*site.getsitepackages(), site.getusersitepackages()]
+    for root in roots:
+        for folder in [os.path.join(root, "torch", "lib"), *glob.glob(os.path.join(root, "nvidia", "*", "bin"))]:
+            if os.path.isdir(folder):
+                os.add_dll_directory(folder)
+                os.environ["PATH"] = folder + os.pathsep + os.environ.get("PATH", "")
+
+
+def _transcribe_gpu(audio_path: Path, model: str, language: str) -> dict[str, Any] | None:
+    """Whisper on an NVIDIA card, in a child process: a missing CUDA library (cuBLAS/cuDNN) can kill the
+    process outright, and then the narration is simply transcribed on the processor. None = use the CPU."""
+
+    import subprocess
+    import sys
+    import tempfile
+
+    try:
+        import ctranslate2
+
+        if ctranslate2.get_cuda_device_count() < 1:
+            return None
+    except Exception:
+        return None
+    with tempfile.TemporaryDirectory() as folder:
+        out = Path(folder) / "words.json"
+        code = ("import json,sys; from pipeline.whisper_local import _cuda_dlls, _transcribe_local as t; _cuda_dlls(); "
+                "json.dump(t(sys.argv[1], sys.argv[2], sys.argv[3], 'int8', 'cuda'), open(sys.argv[4], 'w', encoding='utf-8'))")
+        try:
+            result = subprocess.run([sys.executable, "-c", code, str(audio_path), model, language, str(out)],
+                                    cwd=str(Path(__file__).resolve().parent.parent), capture_output=True, text=True,
+                                    timeout=3600)
+        except subprocess.TimeoutExpired:
+            result = None
+        if result is not None and result.returncode == 0 and out.is_file():
+            print("   Whisper en la gráfica")
+            return json.loads(out.read_text("utf-8"))
+        tail = ((result.stderr or result.stdout) if result is not None else "tiempo agotado").strip().splitlines()[-1:] or ["?"]
+        print(f"   Whisper en CPU: la gráfica no pudo ({tail[0][:100]})")
+        return None
 
 
 def _transcribe_openai(audio_path: Path, api_key: str) -> dict[str, Any]:
@@ -72,6 +123,7 @@ def transcribe(
     language: str = "es",
     compute_type: str = "int8",
     openai_api_key: str = "",
+    device: str = "auto",
 ) -> tuple[dict[str, Any], bool]:
     """Return (raw transcript, served_from_cache)."""
 
@@ -85,7 +137,9 @@ def transcribe(
             pass
 
     if provider == "local":
-        raw = _transcribe_local(audio_path, model, language, compute_type)
+        raw = _transcribe_gpu(audio_path, model, language) if device in ("auto", "cuda") else None
+        if raw is None:
+            raw = _transcribe_local(audio_path, model, language, compute_type)
     elif provider == "openai":
         if not openai_api_key:
             raise RuntimeError("align.provider=openai necesita OPENAI_API_KEY en .env.")

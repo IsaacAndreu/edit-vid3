@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { AbsoluteFill, Composition, Sequence, useCurrentFrame } from "remotion";
 import { CreditBadge } from "./components/CreditBadge";
+import { GridBackground } from "./components/GridBackground";
 import { Thumbnail, type ThumbnailVariant } from "./components/Thumbnail";
 import { GraphicScene } from "./components/graphics/GraphicScene";
 import { ParallaxPhoto } from "./components/ParallaxPhoto";
@@ -37,6 +38,12 @@ const Badges: FC<BadgesProps> = ({ credits, brand }) => {
       {credit ? <CreditBadge credit={credit} /> : null}
     </AbsoluteFill>
   );
+};
+
+/** The channel background alone (one frame): the render stage puts framed cards on it with ffmpeg. */
+const Backdrop: FC<{ brand?: Brand | null; [key: string]: unknown }> = ({ brand }) => {
+  applyBrand(brand);
+  return <GridBackground />;
 };
 
 interface ThumbnailsProps {
@@ -108,6 +115,15 @@ export const RemotionRoot: FC = () => (
       calculateMetadata={({ props }) => ({
         durationInFrames: Math.max(1, props.credits.length),
       })}
+    />
+    <Composition
+      id="Backdrop"
+      component={Backdrop}
+      defaultProps={{ brand: null }}
+      durationInFrames={1}
+      fps={30}
+      width={1920}
+      height={1080}
     />
     <Composition
       id="Showcase"

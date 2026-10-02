@@ -38,3 +38,19 @@ def test_factcheck_report_groups_verdicts():
     assert "❌ 1 a corregir · ⚠️ 1 sin confirmar · ✅ 1 confirmadas" in md
     assert md.index("A corregir") < md.index("Sin confirmar") < md.index("Confirmadas")
     assert "Correcto: b" in md
+
+
+def test_factcheck_stops_asking_a_search_engine_that_keeps_timing_out(tmp_path, monkeypatch):
+    from pipeline import factcheck
+    from pipeline.context import RunContext
+
+    ctx = RunContext.create("v", root=tmp_path, config={"paths": {}})
+    (ctx.materials_dir).mkdir(parents=True, exist_ok=True)
+    (ctx.materials_dir / "guion.txt").write_text("Guion.", encoding="utf-8")
+    claims = [{"claim": f"dato {n}", "query": f"q{n}"} for n in range(10)]
+    answers = iter([{"claims": claims, "wikipedia": []}, {"results": []}])
+    monkeypatch.setattr(factcheck, "complete_json", lambda *a, **k: next(answers))
+    asked = []
+    monkeypatch.setattr(factcheck, "web_snippets", lambda c, q: asked.append(q) or [])
+    result = factcheck.check(ctx)
+    assert len(result["claims"]) == 10 and len(asked) < 10     # gave up after the timeouts in a row
