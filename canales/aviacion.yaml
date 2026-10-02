@@ -28,7 +28,7 @@ brand:                             # cabina de noche: azul cielo y ámbar de ins
 graphics:
   seconds_per_graphic: 70          # este nicho vive de datos, mapas de rutas y comparativas
   cover_weak: true
-  types: [map, article, compare, chart, timeline, specs, scale, kinetic, press, race, receipt, split]
+  types: [map, satellite, article, compare, chart, timeline, specs, scale, kinetic, press, race, receipt, split]
 
 people:
   max: 3                           # directivos (consejeros delegados de Boeing, Airbus, aerolíneas)
@@ -119,7 +119,7 @@ series:
         alarma, la caída y qué queda hoy. Cada evento con su año en 'tag' ('TOULOUSE · 2005'); los 'label' buscan ese
         avión o esa aerolínea en esa época ('Airbus A380 first flight Toulouse 2005', 'Pan Am 747 1970s')."
     graphics:
-      types: [map, article, chart, timeline, press, kinetic, specs, compare, scale, receipt]
+      types: [map, satellite, article, chart, timeline, press, kinetic, specs, compare, scale, receipt]
       hint: "Es un fracaso: \"chart\" para pedidos o pérdidas por año (la subida y el desplome), \"timeline\" para las
         fechas clave, \"specs\" para la ficha del avión, \"press\" para los titulares y \"kinetic\" para la cifra final
         ('251 aviones', '0 pedidos')."
@@ -135,7 +135,7 @@ series:
       outline: "ESTE VÍDEO ES UNA RIVALIDAD ENTRE DOS FABRICANTES, AVIONES O AEROLÍNEAS (Boeing y Airbus, 787 y A350,
         Ryanair y easyJet): cada 'event' con los DOS nombres y el año ('Boeing 787 Airbus A350 orders 2010')."
     graphics:
-      types: [map, article, compare, split, race, chart, timeline, specs, kinetic, press]
+      types: [map, satellite, article, compare, split, race, chart, timeline, specs, kinetic, press]
       hint: "Es una rivalidad: \"compare\" y \"split\" en cada duelo, \"race\" para los pedidos o la cuota de mercado
         a lo largo de los años, \"specs\" para la ficha de cada avión."
     package:
@@ -169,7 +169,7 @@ series:
           Nunca simuladores ni animaciones de otros canales.
         - Pocas cifras en pantalla: solo la que responde la pregunta en un plano "stat".
     graphics:
-      types: [map, scale, compare, chart, kinetic]
+      types: [map, satellite, scale, compare, chart, kinetic]
       seconds_per_graphic: 110       # 4-5 gráficos en 8 min, como la referencia: mapas de rutas y corrientes
       hint: "Es un por qué en estilo documental: pocos gráficos y solo donde la imagen no basta: \"map\" para rutas,
         corrientes y husos horarios, \"compare\" para dos opciones (cuatrimotor frente a bimotor), \"scale\" para

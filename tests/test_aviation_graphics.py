@@ -33,3 +33,31 @@ def test_article_needs_the_scripts_words_and_circles_inside_the_body(tmp_path):
     assert g["circles"] == ["259 aviones", "95.000 millones"] and g["outlet"] == "The Seattle Times" and g["author"] is None
     assert clean("article", {**data, "body": "Boeing vendió 600 aviones a Lufthansa en un solo día de 2015 en Berlín."},
                  TEXT, ctx(tmp_path), set()) is None
+
+
+def test_satellite_needs_a_named_place_and_builds_centred_layers(tmp_path, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    from pipeline import satellite
+
+    monkeypatch.setattr("pipeline.graphics.geocode", lambda c, q: (-122.2741, 47.9217))
+    text = "En la fábrica de Boeing en Everett, junto a Paine Field, se montaba el 777X."
+    g = clean("satellite", {"place": "Fábrica de Boeing en Everett", "query": "Boeing Everett Factory",
+                            "labels": [{"name": "Paine Field"}, {"name": "Toulouse"}]}, text, ctx(tmp_path), set())
+    assert g["place"] == "Fábrica de Boeing en Everett" and [l["name"] for l in g["labels"]] == ["Paine Field"]
+    assert clean("satellite", {"place": "Hangar de Airbus en Hamburgo"}, text, ctx(tmp_path), set()) is None
+
+    buf = io.BytesIO()
+    Image.new("RGB", (256, 256), (40, 90, 60)).save(buf, "JPEG")
+    calls = []
+    monkeypatch.setattr(satellite, "_tile", lambda c, src, z, x, y, s: calls.append((src, z)) or buf.getvalue())
+    c = ctx(tmp_path)
+    ready = satellite.prepare(c, g)
+    assert [l["z"] for l in ready["layers"]] == [10, 12, 14, 16]
+    assert {src for src, z in calls if z <= 12} == {"eox"} and {src for src, z in calls if z >= 14} == {"usgs"}
+    assert "USGS" in ready["credit"] and "CC BY 4.0" in ready["credit"]
+    assert Image.open(c.work_dir / ready["layers"][0]["media"]["src"]).size == (1920, 1080)
+    abroad = satellite.prepare(c, {**g, "lon": 1.36, "lat": 43.63, "labels": []})        # Toulouse: Sentinel only
+    assert [l["z"] for l in abroad["layers"]] == [7, 9, 11, 13] and "USGS" not in abroad["credit"]

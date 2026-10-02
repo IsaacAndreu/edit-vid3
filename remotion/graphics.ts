@@ -93,6 +93,16 @@ export interface PressGraphic {
   items: { outlet?: string | null; headline: string; date?: string | null; highlight?: string | null }[];
 }
 
+export interface SatelliteGraphic {
+  type: 'satellite';
+  place: string;
+  lon: number;
+  lat: number;
+  layers: { z: number; media: Media }[]; // 1920x1080 images centred on the place, wide → close
+  labels?: { name: string; dx: number; dy: number }[]; // other spots, in pixels from the centre of the close view
+  credit?: string | null; // imagery credit, always on screen
+}
+
 export interface ArticleGraphic {
   type: 'article';
   outlet?: string | null; // only if the script names it
@@ -226,6 +236,7 @@ export type Graphic =
   | ScoreGraphic
   | PressGraphic
   | ArticleGraphic
+  | SatelliteGraphic
   | RuleGraphic
   | SplitGraphic
   | BannedGraphic

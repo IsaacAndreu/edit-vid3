@@ -27,7 +27,7 @@ from .sourcing.common import tokens
 
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
-TYPES = ("map", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
+TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
          "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg")
 
 # Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
@@ -72,6 +72,10 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   "zoom": índice del punto al que acercarse o null, "globe": true para presentar un país lejano,
   "date": "fecha o año DICHO en esas frases, como se dice ('17 de noviembre de 2013', '2019'), si no null",
   "region_label": "nombre corto (máx. 3 palabras) para la zona resaltada, p. ej. 'SALÓN DE DUBÁI', o null"}}
+- "satellite": el guion nombra un LUGAR CONCRETO que se puede ver desde el cielo (una fábrica, un aeropuerto, una
+  sede, un astillero): zoom de satélite hasta él. data: {{"place": "nombre en el idioma del guion",
+  "query": "lugar EN INGLÉS para geolocalizarlo con precisión, p. ej. 'Boeing Everett Factory, Everett, Washington'",
+  "labels": [{{"name": "otro sitio cercano que el guion nombre (p. ej. 'Paine Field')", "query": "…en inglés"}}]}}
 - "compare": DOS personas, equipos, países o productos distintos (nunca dos pruebas o momentos de la misma
   persona) con al menos 2 cifras de cada uno DICHAS en el guion. data: {{"title": "…",
   "left": {{"name": "…"}}, "right": {{"name": "…"}}, "rows": [{{"label": "…", "a": número, "b": número,
@@ -256,6 +260,20 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         return {"type": "map", "title": data.get("title"), "countries": names, "points": points,
                 "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom, "globe": bool(data.get("globe")),
                 "date": date, "regionLabel": label if names else None}
+    if kind == "satellite":
+        place = str(data.get("place") or "").strip()
+        if not place or not said_words(place, text, 0.5):
+            return None
+        where = geocode(ctx, str(data.get("query") or place))
+        if not where:
+            return None
+        labels = []
+        for extra in (data.get("labels") or [])[:3]:
+            if isinstance(extra, dict) and extra.get("name") and said_words(extra["name"], text, 0.5):
+                spot = geocode(ctx, str(extra.get("query") or extra["name"]))
+                if spot:
+                    labels.append({"name": str(extra["name"]), "lon": spot[0], "lat": spot[1]})
+        return {"type": "satellite", "place": place, "lon": where[0], "lat": where[1], "labels": labels}
     if kind == "compare":
         rows = [r for r in data.get("rows", []) if isinstance(r, dict) and _num(r.get("a")) is not None
                 and _num(r.get("b")) is not None and said(r["a"], text) and said(r["b"], text)]

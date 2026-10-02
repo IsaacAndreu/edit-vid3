@@ -544,6 +544,12 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
 
             graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
                                  for p in graphic["points"]]
+        if graphic["type"] == "satellite":
+            from .satellite import prepare
+
+            graphic = prepare(ctx, graphic)
+            if not graphic:
+                continue
         if graphic["type"] == "banned":
             graphic["media"] = next(iter(clips()), None) or footage()
         if graphic["type"] == "split":
