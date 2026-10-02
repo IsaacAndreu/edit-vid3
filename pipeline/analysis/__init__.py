@@ -422,21 +422,38 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
     notes: dict[str, list[str]] = {s.id: [] for s in todo}
     print(f"   Pasada fina: {len(jobs)} ventanas de ~{2 * pad + 5:.0f} s a 360p")
 
-    def download(job: tuple[str, float, float]) -> Path:
-        return youtube.download_section(job[0].removeprefix("yt:"), job[1], job[2])
+    # A video with several windows comes down once, whole at 360p, and the windows are cut from it.
+    by_video: dict[str, list[tuple[str, float, float]]] = {}
+    for job in jobs:
+        by_video.setdefault(job[0], []).append(job)
+    whole_from = int(cfg.get("whole_video_windows", 3))   # 3+ windows: one 360p download pays off
+
+    def download(video: str) -> list[tuple[tuple[str, float, float], Path | Exception]]:
+        its = by_video[video]
+        if len(its) >= whole_from:
+            try:
+                youtube.prefetch_sections(video.removeprefix("yt:"))
+            except Exception:
+                pass
+        out: list[tuple[tuple[str, float, float], Path | Exception]] = []
+        for job in its:
+            try:
+                out.append((job, youtube.download_section(video.removeprefix("yt:"), job[1], job[2])))
+            except (SourceUnavailable, Exception) as error:
+                out.append((job, error))
+        return out
 
     done = 0
-    with ThreadPoolExecutor(max_workers=int(yt_cfg.get("concurrency", 3))) as pool:
-        futures = {pool.submit(download, job): job for job in jobs}
-        for future in as_completed(futures):
-            job = futures[future]
+    with ThreadPoolExecutor(max_workers=max(int(yt_cfg.get("concurrency", 3)), getattr(youtube, "concurrency", 0))) as pool:
+        futures = [pool.submit(download, video) for video in by_video]
+        arrived = ((job, result) for future in as_completed(futures) for job, result in future.result())
+        for job, result in arrived:
             done += 1
-            try:
-                path = future.result()
-            except (SourceUnavailable, Exception) as error:
+            if isinstance(result, Exception):
                 for sid in jobs[job]:
-                    notes[sid].append(f"{job[0]} {job[1]}-{job[2]}: {str(error)[:120]}")
+                    notes[sid].append(f"{job[0]} {job[1]}-{job[2]}: {str(result)[:120]}")
                 continue
+            path = result
             for sid in jobs[job]:
                 shot = next(s for s in todo if s.id == sid)
                 fine[(sid, *job)] = [

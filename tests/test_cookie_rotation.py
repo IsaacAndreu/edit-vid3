@@ -147,3 +147,15 @@ def test_whole_downloads_keep_video_and_audio_pairs():
     fmt = whole_format(AUDIO_FORMAT)
     assert fmt.split("/")[0] == "bv*[height<=1080][vcodec^=avc1][protocol=https]+ba[protocol=https]"
     assert whole_format("bv*[height<=1080]") == "bv*[height<=1080][protocol=https]"
+
+
+def test_three_accounts_allow_more_downloads_until_youtube_asks_for_calm(tmp_path):
+    import time
+
+    sets = [(f"# cookies {n}", None) for n in range(3)]
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0}, cookie_sets=sets)
+    assert yt.concurrency == 5
+    yt._calm_down()
+    time.sleep(0.2)
+    assert yt._slots._value == 3 and yt._extra_slots == 0
+    assert YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={}, cookie_sets=sets[:1]).concurrency == 3

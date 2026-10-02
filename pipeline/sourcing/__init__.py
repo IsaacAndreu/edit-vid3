@@ -284,15 +284,20 @@ def run(ctx: RunContext) -> None:
             ctx.write_json(f"{OUTPUT}/{shot.id}.json", result.model_dump(exclude_none=True))
             print(f"   {shot.id}: hipotético → imagen generada")
             return result
+        # Sources of the same person that earlier videos already vetted (other moments of them). When the
+        # library already brings a full set, one YouTube search is enough (the second video about an athlete
+        # is quicker to source).
+        per_shot = int(cfg.get("library_per_shot", 3))
+        from_library = library.candidates_for(ctx, shot.broll, set(), per_shot)
         if youtube is not None:
-            queries["youtube"] = youtube.queries_for(shot.broll)
+            fewer = 1 if per_shot and len(from_library) >= per_shot else None
+            queries["youtube"] = youtube.queries_for(shot.broll)[:fewer] if fewer else youtube.queries_for(shot.broll)
             try:
-                candidates += youtube.candidates(shot.broll, notes)
+                candidates += youtube.candidates(shot.broll, notes, max_queries=fewer)
             except SourceUnavailable as error:
                 notes.append(str(error))
-        # Sources of the same person that earlier videos already vetted (other moments of them).
-        candidates += library.candidates_for(ctx, shot.broll, {c.id for c in candidates},
-                                             int(cfg.get("library_per_shot", 3)))
+        present = {c.id for c in candidates}
+        candidates += [c for c in from_library if c.id not in present]
         image_queries, image_candidates = images.search(shot.broll, notes)
         queries.update(image_queries)
         candidates += image_candidates

@@ -122,12 +122,18 @@ class YouTubeSource:
         self.cfg = config
         self.pacer = Pacer(float(config.get("min_interval", 1.0)))
         self.blocked: str | None = None
-        # A few concurrent requests at most; a 429 pauses every thread (the limit is per account/IP).
-        self._slots = threading.Semaphore(int(config.get("concurrency", 3)))
-        self._cooldown_until = 0.0
         # One or more accounts (cookies.txt contents, file they came from). Requests take turns
         # between them; one that YouTube blocks is set aside and the rest carry on.
         self._sets: list[tuple[str, Path | None]] = list(cookie_sets or ([(cookies_text, cookies_path)] if cookies_text else []))
+        # A few concurrent requests at most; a 429 pauses every thread (the limit is per account/IP). With 3+
+        # accounts the load is spread, so a couple more (`concurrency_with_accounts`) — back to the plain
+        # number for the rest of the run at YouTube's first "too many requests".
+        base = int(config.get("concurrency", 3))
+        boosted = int(config.get("concurrency_with_accounts", 5)) if len(self._sets) >= 3 else base
+        self.concurrency = max(base, boosted)
+        self._extra_slots = self.concurrency - base
+        self._slots = threading.Semaphore(self.concurrency)
+        self._cooldown_until = 0.0
         self._bad: set[int] = set()
         self._turn = 0
         self._turn_lock = threading.Lock()
@@ -226,6 +232,15 @@ class YouTubeSource:
             options["cookiefile"] = cookie_file
         return yt_dlp.YoutubeDL(options)
 
+    def _calm_down(self) -> None:
+        """Back to `concurrency` requests at a time: the extra slots are taken and never given back."""
+
+        with self._turn_lock:
+            extra, self._extra_slots = self._extra_slots, 0
+        if extra:
+            print(f"   YouTube pide calma: vuelvo a {self.concurrency - extra} descargas a la vez")
+            threading.Thread(target=lambda: [self._slots.acquire() for _ in range(extra)], daemon=True).start()
+
     def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
         if self.blocked:
             raise SourceUnavailable(self.blocked)
@@ -265,6 +280,7 @@ class YouTubeSource:
                             continue
                     self._blocked_everywhere()
                 if any(marker in lowered for marker in _RATE_MARKERS):
+                    self._calm_down()
                     if attempt < rate_retries:
                         pause = float(self.cfg.get("rate_backoff", 20)) * 3**attempt
                         self._cooldown_until = max(self._cooldown_until, time.monotonic() + pause)
@@ -338,7 +354,10 @@ class YouTubeSource:
             return None                 # just this search goes through yt-dlp
         return [{"id": i, "title": details[i]["title"], "channel": details[i]["channel"],
                  "uploader": details[i]["channel"], "duration": details[i]["duration"],
-                 "url": f"https://www.youtube.com/watch?v={i}", "live_status": None,
+                 "url": f"https://www.youtube.com/watch?v={i}",
+                 "live_status": "is_live" if details[i].get("live") == "live" else
+                                "is_upcoming" if details[i].get("live") == "upcoming" else None,
+                 "definition": details[i].get("definition"),
                  "view_count": details[i]["views"]} for i in ids if i in details]
 
     def passes_search_filters(self, entry: dict[str, Any]) -> bool:
@@ -353,6 +372,8 @@ class YouTubeSource:
             return False
         if blocked_by_title(str(entry.get("title") or ""), str(entry.get("channel") or ""), self.cfg.get("title_blocklist")):
             return False
+        if entry.get("definition") == "sd" and int(self.cfg.get("min_height", 720)) >= 720:
+            return False        # the API already says it is under 720p: no need to ask yt-dlp for its details
         return "/shorts/" not in str(entry.get("url") or "")
 
     def _info_path(self, video_id: str) -> Path:
@@ -556,6 +577,9 @@ class YouTubeSource:
                 continue
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
+        whole = next((p for p in sorted(target_dir.glob(f"full_{prefix}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
+        if whole is not None and not audio_only:          # already downloaded whole (prefetch_sections)
+            return self._cut(whole, video_id, start, end, prefix, audio)
         info_path = self._fresh_full_info(video_id)
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
         if hls and _has_hls(info_path):
@@ -727,14 +751,23 @@ class YouTubeSource:
             return None
         return next(iter(sorted(target_dir.glob(f"subs.{language}*.vtt"))), None)
 
+    SECTION_FORMAT = "bv*[height<=360][vcodec^=avc1]/bv*[height<=360]/b[height<=360]/wv*"
+
     def download_section(self, video_id: str, start: float, end: float) -> Path:
         """360p video-only file covering [start, end] (source seconds are in its name)."""
 
-        return self.download_range(
-            video_id, start, end,
-            fmt="bv*[height<=360][vcodec^=avc1]/bv*[height<=360]/b[height<=360]/wv*",
-            prefix="a360",
-        )
+        return self.download_range(video_id, start, end, fmt=self.SECTION_FORMAT, prefix="a360")
+
+    def prefetch_sections(self, video_id: str) -> bool:
+        """The whole video at 360p (a few MB), when several windows of it will be analysed: one download instead
+        of one request per window; download_section then cuts them from it. False when it was not possible."""
+
+        try:
+            return self._fetch_whole(video_id, self.SECTION_FORMAT, "a360", self._fresh_full_info(video_id)) is not None
+        except SourceUnavailable:
+            raise
+        except Exception:
+            return False
 
     # --- per shot ---------------------------------------------------------------------
 
@@ -747,8 +780,8 @@ class YouTubeSource:
             queries = queries[: int(self.cfg.get("api_queries_per_shot", 2))]
         return queries
 
-    def candidates(self, broll: BrollSpec, notes: list[str]) -> list[Candidate]:
-        queries = self.queries_for(broll)
+    def candidates(self, broll: BrollSpec, notes: list[str], max_queries: int | None = None) -> list[Candidate]:
+        queries = self.queries_for(broll)[:max_queries] if max_queries else self.queries_for(broll)
         per_query: list[list[str]] = []
         entries: dict[str, dict[str, Any]] = {}
         for query in queries:

@@ -197,6 +197,8 @@ class YouTubeAPI:
                     "id": item["id"], "title": snippet.get("title", ""), "channelId": snippet.get("channelId", ""),
                     "channel": snippet.get("channelTitle", ""), "published": snippet.get("publishedAt", ""),
                     "duration": parse_duration(item.get("contentDetails", {}).get("duration")),
+                    "definition": item.get("contentDetails", {}).get("definition", ""),   # "hd" = 720p or more
+                    "live": snippet.get("liveBroadcastContent", "none"),
                     "views": int(stats.get("viewCount", 0)), "likes": int(stats.get("likeCount", 0)),
                     "comments": int(stats.get("commentCount", 0)),
                     "thumbnail": (thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}).get("url", ""),

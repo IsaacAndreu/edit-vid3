@@ -310,7 +310,8 @@ def run(ctx: RunContext) -> None:
     skipped = [s.shotId for s in selections if s.status != "selected"]
     media: dict[str, IngestedMedia] = {}
     failed: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 3))) as pool:
+    # as many downloads as YouTube slots (5 with 3+ cookie accounts, see sourcing.youtube.concurrency_with_accounts)
+    with ThreadPoolExecutor(max_workers=max(int(cfg.get("parallel", 3)), getattr(youtube, "concurrency", 0))) as pool:
         futures = {pool.submit(ingest, s): s.shotId for s in todo}
         for number, future in enumerate(as_completed(futures), start=1):
             shot_id = futures[future]

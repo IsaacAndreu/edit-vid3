@@ -608,6 +608,17 @@ Con una NVIDIA (p. ej. GTX 1650) el programa la usa sola, y si algo falla vuelve
 (rótulos, gráficos, transiciones); el resto del plano, las tarjetas enmarcadas y la pantalla final (hecha una vez por
 canal y guardada en `cache/render/endscreen/`) los monta ffmpeg.
 
+**YouTube más rápido:**
+- Búsquedas por la API oficial (12 claves ≈ 1.200 búsquedas al día); si una respuesta falla, solo esa va por yt-dlp.
+- Los vídeos que la API ya marca por debajo de 720p no se consultan con yt-dlp.
+- Análisis: un vídeo con 3 o más ventanas a mirar se baja una vez entero a 360p y las ventanas se cortan de ahí
+  (`analysis.whole_video_windows`).
+- Con 3 o más cuentas de cookies se descargan 5 cosas a la vez en vez de 3
+  (`sourcing.youtube.concurrency_with_accounts`); al primer «demasiadas peticiones» de YouTube vuelve a 3 solo
+  («YouTube pide calma» en el log).
+- Biblioteca por atleta: si un plano ya trae 3 vídeos del atleta guardados de vídeos anteriores, hace 1 búsqueda en
+  YouTube en vez de 2. Por eso conviene hacer seguidos los vídeos del mismo atleta.
+
 ## 11. Tiempos y coste orientativos (vídeo de 10 min)
 
 - 1,5–2 h en un PC de 4 núcleos (menos con más núcleos): lo más largo es buscar/analizar
