@@ -171,7 +171,8 @@ def pace_targets(ctx: RunContext, words: list[Word], marks: dict[int, str], base
 
     cfg = ctx.section("pacing")
     seconds = {"slow": float(cfg.get("slow_seconds", 4.3)), "fast": float(cfg.get("fast_seconds", 1.9)), None: base}
-    longest = {"slow": MAX_SHOT_SECONDS, "fast": 3.0, None: MAX_SHOT_SECONDS_DEFAULT}
+    # a calm channel (base ≥ 4 s) may hold ordinary shots up to the 5 s third-party limit too
+    longest = {"slow": MAX_SHOT_SECONDS, "fast": 3.0, None: min(MAX_SHOT_SECONDS, max(MAX_SHOT_SECONDS_DEFAULT, base + 0.6))}
     labels: list[str | None] = [None] * len(words)
     for n, (a, b) in enumerate(_sentences(words)):
         for i in range(a, b + 1):

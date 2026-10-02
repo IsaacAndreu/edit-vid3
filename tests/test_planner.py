@@ -219,3 +219,14 @@ class PacingTests(unittest.TestCase):
         slow, fast = lengths["slow"], lengths["fast"]
         assert max(slow) > 4.0 and max(slow) <= 5.0 + 1e-6
         assert sum(fast) / len(fast) < sum(slow) / len(slow) - 1.5
+
+
+class CalmPaceTests(unittest.TestCase):
+    def test_a_calm_channel_holds_shots_longer(self) -> None:
+        words = [Word(index=i, text=f"w{i}", start=i * 0.3, end=i * 0.3 + 0.25, matched=True, sentenceEnd=i % 20 == 19)
+                 for i in range(100)]
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = RunContext.create("t", root=Path(tmp), config={})
+            targets, maxes, _ = pace_targets(ctx, words, {}, 4.4)
+        shots, starts = cut_shots(words, 30.0, target=4.4, forced_starts=set(), with_times=True, targets=targets, maxes=maxes)
+        assert len(shots) <= 8 and max(b - a for a, b in zip(starts, starts[1:] + [30.0])) <= 5.0 + 1e-6

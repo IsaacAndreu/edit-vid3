@@ -140,18 +140,41 @@ series:
       hint: "patrón de título: 'Cómo <A> mató a <B>' o '<A> contra <B>: …'. Miniatura con los dos aviones enfrentados."
 
   por-que:                         # «¿Por qué los aviones cruzan el Atlántico de noche?» (Ingeniería del Aire, 759K)
+    # Analizado el vídeo de referencia (8 min): planos largos de 5-9 s (~6 cortes/min), metraje de spotter de cine
+    # (noches, atardeceres, contraluces, luces de pista, vista desde la ventanilla, cabina de noche), CERO texto en
+    # pantalla salvo 4-5 animaciones sencillas (mapa de corrientes, rutas sobre el Atlántico, globo con rutas) y voz
+    # tranquila. Gancho: pregunta + "no es casualidad" + promesa ("hoy vamos a desarmar…") en los primeros 30 s;
+    # después, una causa por bloque (física, corrientes, pasajeros, rotación de flota, tripulación y tasas).
     format: explicativo
+    pacing:
+      base_seconds: 4.4              # el estilo respira: unos 13 cortes/min en vez de 19
+      slow_seconds: 5.0
+      fast_seconds: 3.0
+    timeline:
+      emphasis_zoom: false           # imagen de cine, sin golpes de zoom
+      labels: false                  # sin rótulos de lugar/fecha
+      music_default: intriga
     planner:
-      outline: "ESTE VÍDEO RESPONDE UNA PREGUNTA CURIOSA DE LA AVIACIÓN (por qué los aviones…, por qué ya no hay…):
-        la pregunta, las causas una a una con ejemplos reales, la respuesta que sorprende. Los 'label' enseñan cada
-        causa con aviones, aeropuertos y rutas concretas."
+      outline: "ESTE VÍDEO RESPONDE UNA PREGUNTA CURIOSA DE LA AVIACIÓN (por qué los aviones…, por qué ya no hay…).
+        Estructura: en los primeros 30 s la pregunta, por qué NO es casualidad y la promesa de lo que vas a entender;
+        después una causa por bloque (física, clima, dinero, personas, normas) con ejemplos reales; al final la
+        respuesta que lo une todo. Los 'label' enseñan cada causa con aviones, aeropuertos y rutas concretas."
+      shots_note: |
+        - METRAJE DE CINE, como un spotter profesional: aviones concretos despegando o aterrizando de noche, al
+          atardecer o a contraluz, luces de pista, la vista desde la ventanilla sobre las nubes o una ciudad de noche,
+          cabina de noche, aeropuertos desde el aire. Búsquedas con aerolínea + modelo + aeropuerto + momento:
+          'Emirates A380 night takeoff Dubai', 'Boeing 777 sunset landing 4K', 'airplane wing view night city'.
+          Nunca simuladores ni animaciones de otros canales.
+        - Pocas cifras en pantalla: solo la que responde la pregunta en un plano "stat".
     graphics:
-      types: [map, compare, chart, scale, specs, kinetic, timeline]
-      hint: "Es un por qué: \"map\" para rutas y husos horarios, \"compare\" para dos opciones (cuatrimotor frente a
-        bimotor), \"scale\" para tamaños y \"kinetic\" para la respuesta."
+      types: [map, scale, compare, chart, kinetic]
+      seconds_per_graphic: 110       # 4-5 gráficos en 8 min, como la referencia: mapas de rutas y corrientes
+      hint: "Es un por qué en estilo documental: pocos gráficos y solo donde la imagen no basta: \"map\" para rutas,
+        corrientes y husos horarios, \"compare\" para dos opciones (cuatrimotor frente a bimotor), \"scale\" para
+        tamaños. Nada de gráficos sobre los planos bonitos de aviones."
     package:
-      hint: "patrón de título: 'Por qué <algo que todo el mundo ha visto y nadie se pregunta>'. Miniatura con el avión
-        y una pregunta de 1-3 palabras."
+      hint: "patrón de título: 'Por qué <algo que todo el mundo ha visto y nadie se pregunta>' (¿Por qué los aviones
+        cruzan el Atlántico de noche?). Miniatura con el avión de noche o al atardecer y una pregunta de 1-3 palabras."
     lab:
       queries: [por qué los aviones, why do planes, why airplanes, por qué ya no hay aviones, why airports]
 

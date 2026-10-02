@@ -39,3 +39,19 @@ RPM estimado en español 1,5-2,3 $ frente a 2-4 $ en inglés: el volumen tiene q
   nombre de canal). Pexels permitido: un avión genérico despegando es b-roll válido.
 - Aspecto: azul marino con ámbar de cabina y azul cielo, paquete `editorial`, cifra gigante sobre el avión,
   capítulos numerados, tono de color `frio`.
+
+## Vídeo analizado: Ingeniería del Aire, «¿Por qué los aviones cruzan el Atlántico de noche?» (759K, 8 min)
+
+- **Ritmo**: ~47 cortes en 8 min (~6 por minuto), planos de 5-9 s. Muy tranquilo.
+- **Metraje**: spotter de cine casi siempre de noche o al atardecer (contraluces, luces de pista, despegues con
+  la ciudad iluminada), vista desde la ventanilla, cabina de noche, aeropuertos desde el aire, vídeos promocionales
+  de aerolíneas (Etihad, Emirates) y algo de stock (azafatas en cabina).
+- **Texto en pantalla**: ninguno. Sin rótulos, sin cifras gigantes, sin títulos de capítulo.
+- **Gráficos**: 4-5 animaciones sencillas en 2D (mapa con las corrientes en chorro, rutas sobre el Atlántico,
+  globo con rutas, el radar de vuelos), una tarjeta con el logo al final.
+- **Guion**: pregunta + "no es casualidad" + promesa ("hoy vamos a desarmar…") en 30 s; luego una causa por bloque
+  (física del aire frío, corrientes en chorro, pasajeros dormidos, rotación de la flota y toques de queda,
+  tripulación y tasas). Tono de divulgación técnica, voz tranquila.
+- **En el programa** (serie `por-que`): planos de 4,4 s de media (~13 cortes/min, hasta 5 s), sin rótulos de
+  lugar/fecha ni zooms de énfasis, un gráfico cada ~110 s (mapas, comparativas, tamaños) y búsquedas de metraje
+  de spotter "de cine" (noche, atardecer, ventanilla, cabina).
