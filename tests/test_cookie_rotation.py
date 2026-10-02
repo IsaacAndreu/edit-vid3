@@ -111,3 +111,12 @@ def test_browser_accounts_keep_only_youtube_cookies(monkeypatch):
     monkeypatch.setattr(yt_dlp.cookies, "extract_cookies_from_browser", fake)
     text = browser_cookies("firefox::Cuenta1")
     assert ".youtube.com\tTRUE\t/\tTRUE\t1893456000\tSID\tv" in text and "bank" not in text
+
+
+def test_whole_downloads_keep_video_and_audio_pairs():
+    from pipeline.coldopen import AUDIO_FORMAT
+    from pipeline.sourcing.youtube import whole_format
+
+    fmt = whole_format(AUDIO_FORMAT)
+    assert fmt.split("/")[0] == "bv*[height<=1080][vcodec^=avc1][protocol=https]+ba[protocol=https]"
+    assert whole_format("bv*[height<=1080]") == "bv*[height<=1080][protocol=https]"

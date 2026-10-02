@@ -64,6 +64,14 @@ def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> st
     return "/".join(f"{alt}[protocol^=m3u8]" for alt in dict.fromkeys(parts))
 
 
+def whole_format(fmt: str) -> str:
+    """The same request over plain HTTPS (fetched in 10 MB pieces), video+audio pairs included: YouTube hardly
+    offers files with both any more, and dropping the pairs sent every clip with sound to the slow per-range
+    path (~4 min each in the cold open)."""
+
+    return "/".join("+".join(f"{part}[protocol=https]" for part in alt.split("+")) for alt in fmt.split("/") if alt.strip())
+
+
 def _has_hls(info_path: Path) -> bool:
     import json
 
@@ -579,7 +587,7 @@ class YouTubeSource:
         data = json.loads(info_path.read_text(encoding="utf-8"))
         if float(data.get("duration") or 0) > 60 * float(self.cfg.get("whole_max_minutes", 30)):
             return None
-        fmt = "/".join(f"{alt}[protocol=https]" for alt in fmt.split("/") if alt.strip() and "+" not in alt) or fmt
+        fmt = whole_format(fmt)
         with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
             chosen = ydl.process_ie_result(dict(data), download=False)
         pieces = chosen.get("requested_formats") or [chosen]
