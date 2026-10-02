@@ -213,12 +213,14 @@ def build_words_file(
 
 
 def read_title(ctx: RunContext) -> str:
+    """Working title: titulo.txt if there is one (optional), else the folder name. The YouTube titles themselves
+    are written from the script in the package stage either way."""
+
     path = ctx.materials_dir / "titulo.txt"
     if path.is_file():
         title = path.read_text(encoding="utf-8").strip()
         if title:
             return title
-    print(f"   Aviso: falta {path.relative_to(ctx.root)}; se usa el slug como título.")
     return ctx.slug
 
 

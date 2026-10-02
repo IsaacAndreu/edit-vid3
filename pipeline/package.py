@@ -154,8 +154,9 @@ def inputs(ctx: RunContext) -> list:
 
 def run(ctx: RunContext) -> None:
     timeline = Timeline.model_validate(ctx.read_json("timeline.json"))
-    title_file = ctx.materials_dir / "titulo.txt"
-    title = title_file.read_text("utf-8").strip() if title_file.is_file() else ctx.slug
+    from .align import read_title
+
+    title = read_title(ctx)
     patterns = []
     from .ideas import outliers_path
 

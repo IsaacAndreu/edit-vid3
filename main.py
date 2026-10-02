@@ -28,7 +28,7 @@ QUEUE_REPORT = "out/_cola.md"
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Genera un vídeo documental a partir de materiales/<slug>/{titulo.txt, guion.txt, voz.mp3}."
+        description="Genera un vídeo documental a partir de materiales/<slug>/{guion.txt, voz.mp3} (titulo.txt opcional)."
     )
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--slug", help="Carpeta dentro de materiales/, p. ej. Video1.")

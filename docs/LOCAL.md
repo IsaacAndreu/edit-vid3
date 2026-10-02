@@ -77,7 +77,8 @@ con volver a exportarla. Mantén yt-dlp al día: `pip install -U yt-dlp`.
 
 ## 5. Hacer un vídeo
 
-1. Crea `materiales/<nombre>/` con `guion.txt`, `voz.mp3` y `titulo.txt`.
+1. Crea `materiales/<nombre>/` con `guion.txt` y `voz.mp3`. `titulo.txt` es opcional: los títulos para YouTube
+   se escriben solos a partir del guion (en `out/<nombre>/`).
 2. Opcional, `materiales/<nombre>/config.yaml` con ajustes solo para ese vídeo, por ejemplo:
    ```yaml
    timeline:
@@ -145,8 +146,8 @@ pip install -U "yt-dlp[default]" deno
 
 Al final de la descarga aparece `Tiempos YouTube: download N× X s …`: menos de 10 s por tramo es normal.
 
-Deja por la tarde cada vídeo en su carpeta (`materiales/<nombre>/` con `guion.txt`, `voz.mp3`,
-`titulo.txt`) y lanza:
+Deja por la tarde cada vídeo en su carpeta (`materiales/<nombre>/` con `guion.txt` y `voz.mp3`;
+`titulo.txt` opcional) y lanza:
 
 ```bash
 python main.py --all            # todos los pendientes, uno detrás de otro
