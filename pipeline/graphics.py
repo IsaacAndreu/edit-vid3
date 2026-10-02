@@ -34,6 +34,8 @@ REFERENCES = {
     "persona": ("Persona media", 1.75), "canasta": ("Canasta de baloncesto", 3.05), "porteria": ("Portería de fútbol", 2.44),
     "autobus": ("Autobús de dos pisos", 4.4), "jirafa": ("Jirafa", 5.5), "casa": ("Casa de dos plantas", 6.0),
     "barra": ("Barra fija", 2.8), "potro": ("Mesa de salto", 1.35), "red_voley": ("Red de voleibol", 2.43),
+    "campo_futbol": ("Campo de fútbol", 105.0), "ballena_azul": ("Ballena azul", 30.0),
+    "boeing_737": ("Boeing 737-800", 39.5), "edificio_10": ("Edificio de 10 plantas", 30.0),
 }
 
 # Fixed words drawn on the graphics, in the narration's language (a dub translates them again).

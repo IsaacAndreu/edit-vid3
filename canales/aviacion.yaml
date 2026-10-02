@@ -1,0 +1,184 @@
+# Perfil del canal de aviación: el NEGOCIO de los aviones y las aerolíneas (fracasos, rivalidades, por qué pasa
+# algo, cuánto cuesta), el formato que mueve millones en inglés (Jet Crumbs, Beyond Sky, Airspeed, Air Core) y que
+# casi no tiene competencia propia en español. Investigación: docs/referencias/aviacion.md.
+# Úsalo con `canal: aviacion` y `serie: <serie>` en materiales/<vídeo>/config.yaml (las series están al final).
+# Lo que no se pone aquí sale de config.yaml; lo de cada serie se pone encima de lo de aquí.
+
+format: explicativo                # el protagonista es la pregunta ("por qué fracasó el A380"); cada serie lo cambia
+
+brand:                             # cabina de noche: azul cielo y ámbar de instrumentos sobre azul marino casi negro
+  accent: "#ffb020"                # ámbar (luces de pista, avisos de cabina): cifras, títulos, rutas
+  accent2: "#38bdf8"               # azul cielo: lado B de comparativas (Airbus frente a Boeing), 2.ª serie
+  canvas: "#060b16"
+  glow: "rgba(56,189,248,0.25)"
+  label: "#0b4f7a"
+  wipe: "#ffb020"
+  panel: "#0b1424"
+  panelRaised: "#122036"
+  muted: "#93a4bf"
+  ocean: "#050a14"                 # mapas de rutas
+  land: "#13223a"
+  border: "#1e3352"
+  chapterStyle: numbered           # «CAPÍTULO I:» como un documental
+  statStyle: bare                  # la cifra gigante directamente sobre el avión
+  motion: editorial                # fundidos limpios y títulos con serifa: tono de documental de negocio, no de gaming
+
+graphics:
+  seconds_per_graphic: 70          # este nicho vive de datos, mapas de rutas y comparativas
+  cover_weak: true
+  types: [map, compare, chart, timeline, specs, scale, kinetic, press, race, receipt, split]
+
+people:
+  max: 3                           # directivos (consejeros delegados de Boeing, Airbus, aerolíneas)
+
+timeline:
+  assets: assets/aviacion          # assets/aviacion/music y /sfx; si están vacías, usa assets/
+  narrow_layout: archive           # archivo de los 70-90 (Concorde, Pan Am) a pantalla completa con aspecto de película
+  card_share: 0.1
+  pizarra: true
+  moments: 0                       # sin «momentos con sonido original» (no hay competición)
+  sound_bites: 2                   # 2 golpes de sonido real: motores a fondo en un despegue, un aterrizaje
+  music_default: intriga
+  opening_question: auto
+  moods:
+    despegue: "auge, lanzamiento de un avión, el éxito, la ambición"
+    caida: "fracaso, quiebra, cancelación, el avión que nadie compró"
+
+fallback:
+  pexels: true                     # en este canal sí: un avión genérico despegando es b-roll válido (sin protagonista)
+
+judge:
+  trusted_bonus: 0.05              # prioridad a fabricantes, aerolíneas y medios
+  trusted_channels: [Airbus, Boeing, Embraer, Bombardier, COMAC, Emirates, Qatar Airways, Lufthansa, British Airways,
+                     Air France, Iberia, Singapore Airlines, Ryanair, Southwest Airlines, Delta, United Airlines,
+                     American Airlines, Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider,
+                     DW, RTVE, Euronews, Sam Chui, Swiss001, Cargospotter, Mentour Pilot]
+
+content:                           # nunca el material de la competencia (ya está editado; y reclaman)
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
+                    videojuego, video game, speedrun, flight simulator, msfs, x-plane, infinite flight, roblox,
+                    ptfs, excel, powerpoint, photoshop,
+                    jet crumbs, beyond sky, airspeed, air core, aviation explained, gloww, plane curious,
+                    ingeniería del aire, ingenieria del aire, wendover, real engineering, minutos de aviación]
+
+planner:
+  shots_note: |
+    - METRAJE: aviones REALES y concretos, con aerolínea, modelo y lugar: 'Emirates A380 takeoff Dubai',
+      'Boeing 777X first flight Everett 2020', 'Airbus A380 final assembly Toulouse', 'Concorde landing Heathrow
+      2003', 'Pan Am 747 1970 commercial'. Vídeos oficiales de Airbus y Boeing, anuncios antiguos de aerolíneas,
+      reportajes de noticias, aeropuertos y spotters ('planespotting'). Nunca simuladores ('flight simulator',
+      'MSFS', 'X-Plane'), ni videojuegos, ni animaciones de otros canales.
+    - ACCIDENTES: solo si el guion habla de uno, y con imágenes de noticias del suceso, nunca el impacto.
+    - CIFRAS: precio por avión, pedidos, asientos, alcance, consumo, pérdidas de la aerolínea: cada cifra fuerte en
+      un plano "stat" (value con su unidad: '445 M$', '853 asientos', '15.700 km').
+
+package:
+  thumbnail_style: concept         # una idea: el avión + 0-4 palabras ('NADIE LO QUISO', '0 PEDIDOS')
+  hint: "los protagonistas son aviones, fabricantes y aerolíneas reconocibles (A380, 747, Concorde, 777X, Boeing,
+    Airbus, Ryanair, Pan Am). Título con el avión o la aerolínea + un conflicto o una pregunta que sorprende:
+    'Por qué nadie quiso el A380', 'Cómo Boeing mató al…', 'Qué pasa cuando una aerolínea quiebra'."
+
+ideas:
+  about: "un canal de YouTube en español sobre el negocio de la aviación comercial: fracasos de aviones y
+    aerolíneas, rivalidades (Boeing contra Airbus), por qué los aviones y aeropuertos funcionan como funcionan, y
+    cuánto cuesta todo, documentales de 8-12 min"
+  pattern: "avión o aerolínea famosa + conflicto o pregunta sorprendente (por qué fracasó, cómo X mató a Y, qué pasa cuando…)"
+  my_channel: ""
+  competitors:                     # de NexLev (02-10-2026): referencias en inglés + lo que existe en español
+    - "@JetCrumbs"
+    - "@BeyondSky"
+    - "@AirspeedYT"
+    - "@AirCoreYT"
+    - "@AviationExplained"
+    - "@PlaneCuriousEspanol"
+    - "@IngenieriadelAire"
+  niches: [fracasos de aviones, quiebras de aerolíneas, Boeing contra Airbus, economía de las aerolíneas,
+           curiosidades de aviones y aeropuertos]
+
+lab:
+  queries:
+    - por qué fracasó el avión
+    - quiebra aerolínea
+    - Boeing vs Airbus
+    - why airlines
+    - why this plane failed
+    - how airlines make money
+    - aviones curiosidades
+
+grade:
+  look: frio                       # azul limpio de cielo y aeropuerto
+
+# --- series: un formato por semana para ver cuál funciona (en materiales/<vídeo>/config.yaml: `serie: fracasos`) ---
+series:
+  fracasos:                        # «Por qué nadie quiso el A380», «La caída de Pan Am»  (Jet Crumbs, 1,3-1,7M)
+    format: cronologia
+    planner:
+      outline: "ESTE VÍDEO CUENTA EL FRACASO DE UN AVIÓN O UNA AEROLÍNEA: la promesa, la apuesta, las señales de
+        alarma, la caída y qué queda hoy. Cada evento con su año en 'tag' ('TOULOUSE · 2005'); los 'label' buscan ese
+        avión o esa aerolínea en esa época ('Airbus A380 first flight Toulouse 2005', 'Pan Am 747 1970s')."
+    graphics:
+      types: [chart, timeline, press, kinetic, specs, compare, map, scale, receipt]
+      hint: "Es un fracaso: \"chart\" para pedidos o pérdidas por año (la subida y el desplome), \"timeline\" para las
+        fechas clave, \"specs\" para la ficha del avión, \"press\" para los titulares y \"kinetic\" para la cifra final
+        ('251 aviones', '0 pedidos')."
+    package:
+      hint: "patrón de título: 'Por qué nadie quiso el <avión>' o 'La caída de <aerolínea>'. Miniatura con el avión
+        reconocible y la cifra o el giro."
+    lab:
+      queries: [why the a380 failed, por qué fracasó el, airline bankruptcy, la caída de pan am, rise and fall airline]
+
+  rivalidades:                     # «Cómo Boeing mató al A380», «Airbus contra Boeing: la guerra de los 100 asientos»
+    format: rivalidad
+    planner:
+      outline: "ESTE VÍDEO ES UNA RIVALIDAD ENTRE DOS FABRICANTES, AVIONES O AEROLÍNEAS (Boeing y Airbus, 787 y A350,
+        Ryanair y easyJet): cada 'event' con los DOS nombres y el año ('Boeing 787 Airbus A350 orders 2010')."
+    graphics:
+      types: [compare, split, race, chart, timeline, specs, kinetic, press, map]
+      hint: "Es una rivalidad: \"compare\" y \"split\" en cada duelo, \"race\" para los pedidos o la cuota de mercado
+        a lo largo de los años, \"specs\" para la ficha de cada avión."
+    package:
+      hint: "patrón de título: 'Cómo <A> mató a <B>' o '<A> contra <B>: …'. Miniatura con los dos aviones enfrentados."
+
+  por-que:                         # «¿Por qué los aviones cruzan el Atlántico de noche?» (Ingeniería del Aire, 759K)
+    format: explicativo
+    planner:
+      outline: "ESTE VÍDEO RESPONDE UNA PREGUNTA CURIOSA DE LA AVIACIÓN (por qué los aviones…, por qué ya no hay…):
+        la pregunta, las causas una a una con ejemplos reales, la respuesta que sorprende. Los 'label' enseñan cada
+        causa con aviones, aeropuertos y rutas concretas."
+    graphics:
+      types: [map, compare, chart, scale, specs, kinetic, timeline]
+      hint: "Es un por qué: \"map\" para rutas y husos horarios, \"compare\" para dos opciones (cuatrimotor frente a
+        bimotor), \"scale\" para tamaños y \"kinetic\" para la respuesta."
+    package:
+      hint: "patrón de título: 'Por qué <algo que todo el mundo ha visto y nadie se pregunta>'. Miniatura con el avión
+        y una pregunta de 1-3 palabras."
+    lab:
+      queries: [por qué los aviones, why do planes, why airplanes, por qué ya no hay aviones, why airports]
+
+  dinero:                          # «Cuánto cuesta un 747», «Cómo gana dinero Ryanair con billetes de 10 €»
+    format: cuanto-cuesta
+    planner:
+      outline: "ESTE VÍDEO DESGLOSA EL DINERO DE LA AVIACIÓN: cuánto cuesta un avión, un vuelo o un aeropuerto, o cómo
+        gana dinero una aerolínea. Cada partida con su cifra; los 'label' enseñan esa partida (combustible
+        repostando, tasas de aeropuerto, tripulación, mantenimiento en hangar)."
+    graphics:
+      types: [receipt, chart, compare, scale, kinetic, specs, map]
+      hint: "Es dinero: \"receipt\" para el desglose del coste, \"chart\" para de dónde sale el dinero, \"compare\" para
+        low cost frente a tradicional y \"kinetic\" para la cifra clave."
+    package:
+      hint: "patrón de título: 'Cuánto cuesta <avión/vuelo/aeropuerto>' o 'Cómo gana dinero <aerolínea> con <algo
+        barato>'. Miniatura con el avión y la cifra."
+
+  tamanos:                         # «Comparación de tamaño de aviones» (Gloww, 765K con 3,7K subs)
+    format: records
+    planner:
+      outline: "ESTE VÍDEO COMPARA TAMAÑOS O RÉCORDS DE AVIONES (el más grande, el más rápido, el que más lejos
+        vuela), de menor a mayor. Cada 'event' es un avión concreto con su búsqueda ('Antonov An-225 takeoff')."
+    graphics:
+      types: [scale, compare, specs, chart, race, kinetic]
+      seconds_per_graphic: 45
+      hint: "Es una comparativa de tamaños: \"scale\" en cada avión (longitud o envergadura junto a referencias
+        conocidas), \"specs\" para su ficha y \"compare\" entre los dos más grandes."
+    package:
+      hint: "patrón de título: 'El avión más <grande/rápido> del mundo comparado con…'. Miniatura con dos aviones de
+        tamaños muy distintos."
