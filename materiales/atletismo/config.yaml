@@ -1,0 +1,4 @@
+# Vídeos de atletismo. Todo vídeo dentro de esta carpeta (materiales/atletismo/<vídeo>/ con guion.txt
+# y voz.mp3) se hace con el perfil de historias de atletas (canales/gimnasia.yaml: tarjetas de atleta,
+# verificación de que sale el atleta correcto, marcadores…). Lo que pongas aquí vale para todos sus vídeos.
+canal: gimnasia
