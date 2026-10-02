@@ -202,7 +202,7 @@ def run(ctx: RunContext) -> None:
             words = " ".join(str(idea.get("text") or "").split()[:4])
             variants[i] = {"text": words, "accent": accents[0], "image": image, "side": side}
     renderer = Renderer(ctx)
-    frames_dir = renderer.dir / "thumbs"
+    frames_dir = renderer.sequence_dir("thumbs")       # never a path with a dot (Remotion)
     shutil.rmtree(frames_dir, ignore_errors=True)
     public = ({v["background"] for v in variants if v.get("background")} | {v["image"] for v in variants if v.get("image")}
               | ({cutout} if cutout and any(v.get("cutout") for v in variants) else set()))

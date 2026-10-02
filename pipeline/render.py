@@ -420,6 +420,17 @@ class Renderer:
             shutil.rmtree(bundle_dir, ignore_errors=True)
             shutil.rmtree(public_dir, ignore_errors=True)
 
+    def sequence_dir(self, name: str) -> Path:
+        """Folder for a PNG sequence. Remotion takes anything after a dot in the path for an extension and refuses
+        it ('video1.ice' → '.ice\\render\\badges'), so never under the video's own folder."""
+
+        folder = self.ctx.cache_dir / "render" / f"seq-{name}-{_hash(str(self.dir))[:8]}"
+        if "." in str(folder.relative_to(self.ctx.root)):
+            import tempfile
+
+            folder = Path(tempfile.gettempdir()) / f"evseq-{name}-{_hash(str(self.dir))[:8]}"
+        return folder
+
     def concurrency(self) -> str:
         value = int(self.cfg.get("concurrency", 0) or 0)
         return str(value if value > 0 else (os.cpu_count() or 2))
@@ -432,7 +443,7 @@ class Renderer:
         missing = [c for c in credits if not paths[c].is_file()]
         if missing:
             folder.mkdir(parents=True, exist_ok=True)
-            tmp = self.dir / "badges"
+            tmp = self.sequence_dir("badges")
             shutil.rmtree(tmp, ignore_errors=True)
             self.remotion("Badges", {"credits": missing, "brand": self.ctx.section("brand")}, tmp,
                           ["--sequence", "--image-format=png", f"--concurrency={self.concurrency()}"], set())
@@ -449,7 +460,7 @@ class Renderer:
 
         path = self.ctx.cache_dir / "render" / "backdrop" / f"{_hash(self._remotion_sig(), self.ctx.section('brand'))}.png"
         if not path.is_file():
-            tmp = self.dir / "backdrop"
+            tmp = self.sequence_dir("backdrop")
             shutil.rmtree(tmp, ignore_errors=True)
             self.remotion("Backdrop", {"brand": self.ctx.section("brand")}, tmp,
                           ["--sequence", "--image-format=png"], set())

@@ -136,3 +136,12 @@ class DuckingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_png_sequences_never_go_under_a_folder_with_a_dot(tmp_path):
+    from pipeline.context import RunContext
+    from pipeline.render import Renderer
+
+    ctx = RunContext.create("video1.ice", root=tmp_path, config={"paths": {}})
+    folder = Renderer(ctx).sequence_dir("badges")
+    assert "." not in str(folder.relative_to(tmp_path)) if folder.is_relative_to(tmp_path) else "." not in folder.name
