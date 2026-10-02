@@ -74,9 +74,10 @@ def dub_slug(slug: str, lang: str) -> str:
 def pending(root: Path) -> list[tuple[str, str]]:
     """(slug, lang) whose original video is done and has a voz-<lang>.mp3 without its dubbed video yet."""
 
+    from .context import video_folders
+
     out = []
-    materials = root / "materiales"
-    for voice in sorted(materials.glob("*/voz-*.mp3")) if materials.is_dir() else []:
+    for voice in sorted(v for folder in video_folders(root) for v in folder.glob("voz-*.mp3")):
         slug, lang = voice.parent.name, voice.stem.split("-", 1)[1]
         if (root / "out" / slug / "video-final.mp4").is_file() \
                 and not (root / "out" / dub_slug(slug, lang) / "video-final.mp4").is_file():
@@ -87,11 +88,13 @@ def pending(root: Path) -> list[tuple[str, str]]:
 def prepare(root: Path, slug: str, lang: str) -> str:
     """materiales/<slug>-<lang>/ with the new voice (+ translated script) and the dub config."""
 
-    source = root / "materiales" / slug
+    from .context import find_video
+
+    source = find_video(root, slug)
     voice = source / f"voz-{lang}.mp3"
     if not voice.is_file():
         raise FileNotFoundError(f"Falta {voice} (la narración traducida)")
-    target = root / "materiales" / dub_slug(slug, lang)
+    target = source.parent / dub_slug(slug, lang)          # next to the original: same channel folder
     target.mkdir(parents=True, exist_ok=True)
     if not (target / "voz.mp3").is_file() or (target / "voz.mp3").stat().st_size != voice.stat().st_size:
         shutil.copy2(voice, target / "voz.mp3")

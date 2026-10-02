@@ -93,3 +93,22 @@ def test_series_report_groups_uploads_by_series(tmp_path, monkeypatch):
     assert rows[1].startswith("| auge | 1 | 300")
     assert "- c" in text and "- g" not in text
 
+
+
+def test_videos_inside_a_channel_folder_take_its_config(tmp_path):
+    from main import pending_slugs
+    from pipeline.context import RunContext
+
+    root = _root(tmp_path)
+    group = root / "materiales" / "n"
+    (group / "avion1").mkdir(parents=True)
+    (group / "config.yaml").write_text("canal: n\n")
+    for name in ("guion.txt", "voz.mp3"):
+        (group / "avion1" / name).write_text("x")
+    (root / "materiales" / "_hechos" / "viejo").mkdir(parents=True)
+    for name in ("guion.txt", "voz.mp3"):
+        (root / "materiales" / "_hechos" / "viejo" / name).write_text("x")
+    ctx = RunContext.create("avion1", root=root)
+    assert ctx.materials_dir == group / "avion1" and ctx.channel == "n"
+    assert ctx.work_dir == root / "work" / "avion1"
+    assert pending_slugs(root) == ["avion1"]                 # _hechos/ is never processed

@@ -38,9 +38,13 @@ def videos_of(root: Path, channel: str) -> list[dict[str, Any]]:
     """The channel's videos in materiales/ that belong to a series."""
 
     out = []
-    for folder in sorted((root / "materiales").iterdir()) if (root / "materiales").is_dir() else []:
-        path = folder / "config.yaml"
+    from .context import deep_merge, video_folders
+
+    for folder in video_folders(root):
+        path, group = folder / "config.yaml", folder.parent / "config.yaml"
         cfg = load_config(path) if path.is_file() else {}
+        if folder.parent != root / "materiales" and group.is_file():     # a channel folder's config
+            cfg = deep_merge(load_config(group), cfg)
         if cfg.get("canal") != channel or not cfg.get("serie"):
             continue
         titles = []

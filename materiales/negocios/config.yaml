@@ -1,0 +1,4 @@
+# Canal de negocios (estilo qash). Todo vídeo dentro de esta carpeta (materiales/negocios/<vídeo>/ con
+# guion.txt y voz.mp3) se hace con el perfil canales/negocios.yaml.
+# Para una serie concreta, en el config.yaml del vídeo: serie: estafas
+canal: negocios

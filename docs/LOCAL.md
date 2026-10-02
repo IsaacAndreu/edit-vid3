@@ -77,7 +77,10 @@ con volver a exportarla. Mantén yt-dlp al día: `pip install -U yt-dlp`.
 
 ## 5. Hacer un vídeo
 
-1. Crea `materiales/<nombre>/` con `guion.txt` y `voz.mp3`. `titulo.txt` es opcional: los títulos para YouTube
+1. Crea `materiales/<canal>/<nombre>/` (carpetas `gimnasia`, `negocios`, `robots`, `aviacion`: su `config.yaml`
+   pone el canal a todos sus vídeos) o `materiales/<nombre>/` (canal por defecto) con `guion.txt` y `voz.mp3`.
+   Los nombres de vídeo no se pueden repetir entre carpetas. Lo que esté en `materiales/_hechos/` (o en una carpeta
+   que empiece por `_`) la cola no lo toca. `titulo.txt` es opcional: los títulos para YouTube
    se escriben solos a partir del guion (en `out/<nombre>/`).
 2. Opcional, `materiales/<nombre>/config.yaml` con ajustes solo para ese vídeo, por ejemplo:
    ```yaml

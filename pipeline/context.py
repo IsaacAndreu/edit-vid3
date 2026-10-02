@@ -42,6 +42,35 @@ def channel_profile(root: Path, name: str) -> dict[str, Any]:
     return load_config(path)
 
 
+VIDEO_FILES = ("guion.txt", "voz.mp3", "titulo.txt")
+
+
+def video_folders(root: Path, materials: str = "materiales") -> list[Path]:
+    """Every video folder: materiales/<video>/ and, inside a channel folder, materiales/<canal>/<video>/.
+    A folder with a script, voice or title is a video; one without them that holds folders (or is named
+    after a channel) groups videos, with a config.yaml for all of them (e.g. `canal: aviacion`)."""
+
+    base = root / materials
+    out: list[Path] = []
+    for folder in sorted(base.iterdir()) if base.is_dir() else []:
+        if not folder.is_dir() or folder.name.startswith("."):
+            continue
+        subs = [sub for sub in sorted(folder.iterdir()) if sub.is_dir() and not sub.name.startswith(".")]
+        grouping = (not any((folder / name).is_file() for name in VIDEO_FILES)
+                    and (subs or (root / CHANNELS_DIR / f"{folder.name}.yaml").is_file()))
+        out += subs if grouping else [folder]
+    return out
+
+
+def find_video(root: Path, slug: str, materials: str = "materiales") -> Path:
+    """materiales/<slug>/, or materiales/<canal>/<slug>/ when the video sits in a channel folder."""
+
+    flat = root / materials / slug
+    if flat.is_dir():
+        return flat
+    return next((f for f in video_folders(root, materials) if f.name == slug), flat)
+
+
 @dataclass
 class RunContext:
     """Everything a stage needs to locate its inputs and outputs. No stage state lives here."""
@@ -55,7 +84,7 @@ class RunContext:
     def create(cls, slug: str, *, root: Path = PROJECT_ROOT, config: dict[str, Any] | None = None,
                channel: str | None = None, series: str | None = None) -> "RunContext":
         """config.yaml ⊕ formatos/<format>.yaml → ajustes ⊕ canales/<canal>.yaml ⊕ its series.<serie> ⊕
-        materiales/<slug>/config.yaml (later wins).
+        materiales/<canal>/config.yaml (a channel folder) ⊕ materiales/<slug>/config.yaml (later wins).
 
         The channel is `channel`, else `canal:` in the video's config.yaml, else `canal:` in config.yaml;
         the series (a recurring format of the channel: estafas, auge y caída…) is `series`, else `serie:`.
@@ -69,6 +98,9 @@ class RunContext:
         # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {cold_open_seconds: 10}).
         path = ctx.materials_dir / "config.yaml"
         override = load_config(path) if path.is_file() else {}
+        group = ctx.materials_dir.parent / "config.yaml"           # materiales/<canal>/config.yaml, for all its videos
+        if ctx.materials_dir.parent != ctx._dir("materials", "materiales") and group.is_file():
+            override = deep_merge(load_config(group), override)
         name = channel or override.get("canal") or base.get("canal")
         profile = channel_profile(root, str(name)) if name else {}
         catalog = profile.pop("series", None) or base.get("series") or {}
@@ -117,7 +149,8 @@ class RunContext:
 
     @property
     def materials_dir(self) -> Path:
-        return self._dir("materials", "materiales") / self.slug
+        base = self._dir("materials", "materiales")
+        return find_video(self.root, self.slug, str(base.relative_to(self.root)))
 
     @property
     def work_dir(self) -> Path:

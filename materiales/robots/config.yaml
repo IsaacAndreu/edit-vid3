@@ -1,0 +1,3 @@
+# Canal de robots y tecnología. Todo vídeo dentro de esta carpeta (materiales/robots/<vídeo>/ con
+# guion.txt y voz.mp3) se hace con el perfil canales/robots.yaml.
+canal: robots

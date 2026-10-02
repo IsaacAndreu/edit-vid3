@@ -131,7 +131,9 @@ def _channel_scored(ctx: RunContext, api: Any, handle: str, limit: int) -> list[
 
 def done_topics(ctx: RunContext) -> list[str]:
     topics = []
-    for folder in (ctx.root / "materiales").iterdir() if (ctx.root / "materiales").is_dir() else []:
+    from .context import video_folders
+
+    for folder in video_folders(ctx.root):
         title = folder / "titulo.txt"
         topics.append(title.read_text("utf-8").strip() if title.is_file() else folder.name)
     history = history_path(ctx)

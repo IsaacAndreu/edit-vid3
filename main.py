@@ -104,15 +104,17 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
 def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     """materiales/<slug>/ with a script and a voice but no final video yet, oldest first."""
 
+    from pipeline.context import video_folders
+
     materials = root / "materiales"
-    if not materials.is_dir():
-        return []
-    ready = [
-        d for d in materials.iterdir()
-        if d.is_dir() and not d.name.startswith((".", "_"))
-        and (d / "guion.txt").is_file() and (d / "voz.mp3").is_file()
-        and not (root / "out" / d.name / "video-final.mp4").is_file()
-    ]
+    ready, names = [], set()
+    for d in video_folders(root):
+        skipped = any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts)   # _hechos/, _video
+        if skipped or d.name in names or not (d / "guion.txt").is_file() or not (d / "voz.mp3").is_file():
+            continue
+        names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
+        if not (root / "out" / d.name / "video-final.mp4").is_file():
+            ready.append(d)
     return [d.name for d in sorted(ready, key=lambda d: (d.stat().st_mtime, d.name))]
 
 
