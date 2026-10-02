@@ -16,7 +16,9 @@ selection + ingest + fallback. Each file has one writer, so re-running any stage
 from __future__ import annotations
 
 import base64
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -192,9 +194,9 @@ def run(ctx: RunContext) -> None:
     items: list[FallbackItem] = []
     unresolved: dict[str, str] = {}
 
+    todo: list[tuple[str, str]] = []
     for shot_id, reason in pending.items():
         shot = shots[shot_id]
-        needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
         digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
         old = previous.get(shot_id)
         # Reuse the cached result unless a shot earlier in this run has already taken that media.
@@ -205,6 +207,21 @@ def run(ctx: RunContext) -> None:
             if h := _frame_hash(ctx.root / old.path, old.kind):
                 on_screen.append(h)
             continue
+        todo.append((shot_id, reason))
+
+    # The pending shots at once (`fallback.parallel`): almost all the time is waiting on YouTube, the web and the
+    # vision judge. What must stay in order is guarded: taking a clip (nothing twice on screen) and the identity
+    # check (face/CLIP models and identity.json, one at a time).
+    claim = threading.Lock()
+    identity_lock = threading.Lock()
+    models_lock = threading.Lock()
+    committed: set[str] = set()
+
+    def resolve(shot_id: str, reason: str) -> tuple[FallbackItem | None, list[str]]:
+        nonlocal clip
+        shot = shots[shot_id]
+        needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+        digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
         item: FallbackItem | None = None
         tried: list[str] = []
 
@@ -235,10 +252,20 @@ def run(ctx: RunContext) -> None:
                 if looks_used(ctx.root / media.path, media.kind):
                     tried.append(f"{c.id}: ya está en pantalla")
                     continue
-                if why := wrong_person(shot_id, ctx.root / media.path, media.kind):
+                with identity_lock:
+                    why = wrong_person(shot_id, ctx.root / media.path, media.kind)
+                if why:
                     tried.append(f"{c.id}: {why}")
                     continue
-                used.append(selection)
+                with claim:                    # another shot may have taken the same picture meanwhile
+                    if looks_used(ctx.root / media.path, media.kind):
+                        tried.append(f"{c.id}: ya está en pantalla")
+                        continue
+                    used.append(selection)
+                    pexels_used.add(c.id)
+                    if h := _frame_hash(ctx.root / media.path, media.kind):
+                        on_screen.append(h)
+                    committed.add(shot_id)
                 return FallbackItem(
                     shotId=shot_id, reason=reason, method=method, kind=media.kind, path=media.path,
                     source=c.source, candidateId=c.id, url=c.url, start=media.start, end=media.end,
@@ -319,8 +346,9 @@ def run(ctx: RunContext) -> None:
         # them is left at all: anonymous stock is exactly what that format avoids.
         if (item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False)
                 and (not story.subject or cfg.get("pexels_for_person", True))):
-            if clip is None:
-                clip, _ = make_models(ctx)
+            with models_lock:
+                if clip is None:
+                    clip, _ = make_models(ctx)
             vector = clip.shot_vector(prompts_for(shot))
             queries = list(dict.fromkeys(image_query(q, 4) for q in shot.broll.queries[:2]))
             for kind in ("video", "photo"):
@@ -388,14 +416,30 @@ def run(ctx: RunContext) -> None:
             except Exception as error:
                 tried.append(f"generada: {str(error)[:120]}")
 
+        if item is not None and shot_id not in committed:      # Pexels / generated: taken here
+            with claim:
+                pexels_used.add(item.candidateId)
+                if h := _frame_hash(ctx.root / item.path, item.kind):
+                    on_screen.append(h)
+        if item is not None:
+            print(f"   {shot_id}: {item.method} ({item.source}){' — ' + item.credit if item.credit else ''}")
+        return item, tried
+
+    def safely(job: tuple[str, str]) -> tuple[FallbackItem | None, list[str]]:
+        try:
+            return resolve(*job)
+        except Exception as error:         # one shot's trouble never stops the others
+            return None, [f"error: {str(error)[:160]}"]
+
+    with ThreadPoolExecutor(max_workers=max(1, int(cfg.get("parallel", 4)))) as pool:
+        results = list(pool.map(safely, todo))
+    for (shot_id, _), (item, tried) in zip(todo, results):
         if item is None:
             unresolved[shot_id] = "; ".join(tried)[:400] or "sin alternativas"
-            continue
-        items.append(item)
-        pexels_used.add(item.candidateId)
-        if h := _frame_hash(ctx.root / item.path, item.kind):
-            on_screen.append(h)
-        print(f"   {shot_id}: {item.method} ({item.source}){' — ' + item.credit if item.credit else ''}")
+        else:
+            items.append(item)
+    order = list(pending)
+    items.sort(key=lambda i: order.index(i.shotId) if i.shotId in order else len(order))
 
     youtube.close()
     ctx.write_json(OUTPUT, FallbackFile(slug=ctx.slug, items=items, unresolved=unresolved).model_dump(exclude_none=True))
