@@ -259,6 +259,22 @@ Todo va solo; cada punto se puede ajustar o apagar en `config.yaml` o en el perf
   volumen `timeline.graphic_sfx_volume`).
 - Tras `git pull` ejecuta `npm install` (fuentes nuevas: Barlow Condensed, DM Serif Display, Space Grotesk, JetBrains Mono).
 
+## 7a3. Estilo Beyond Sky (aviación, y cualquier canal que lo active)
+
+- **Mapa plano** (`brand.mapStyle: flat`, colores `ocean`/`land`/`mapHighlight`): visto desde arriba, la zona
+  resaltada rellena con su nombre, rutas en curva con el avión, la **fecha dicha en el guion en grande** al empezar
+  y el **logo** de la empresa nombrada en cada punto (Wikimedia Commons, guardado en `cache/logos/`).
+- **Artículo de prensa** (gráfico `article`): medio y periodista solo si el guion los nombra, titular, un párrafo
+  literal del guion y sus cifras rodeadas en rojo una a una.
+- **Zoom de satélite** (gráfico `satellite`): cuando el guion nombra una fábrica, un aeropuerto o una sede. Imágenes
+  libres: USGS (dominio público, muy nítido) en Estados Unidos y Sentinel-2 2016 de EOX (CC BY 4.0) en el resto,
+  con su crédito en pantalla.
+- **Declaraciones originales** (`quotes.count`, 2 en aviación): cuando el guion cita a alguien («dijo Tim Clark»), se
+  busca el vídeo donde lo dice, se localiza la frase en sus subtítulos de YouTube (o con Whisper si no tiene) y se
+  pone justo después de la frase del narrador, con su voz, subtítulos en español y su nombre y cargo. Si no se
+  encuentra con seguridad, no sale nada. Truco: en el guion, introduce la cita («…, dijo Clark.») y el vídeo la
+  enseña dicha por él.
+
 ## 7b. Música y transiciones
 
 - **Transiciones:** `assets/sfx/whoosh*.mp3`. Suena casi siempre la de `timeline.whoosh_main`

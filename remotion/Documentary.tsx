@@ -159,7 +159,8 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
       ))}
       {shots
         .filter((shot) => shot.media?.credit)
-        .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
+        .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.graphic?.type !== 'quote'
+        && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
         .map((shot) => (
           <Sequence key={`credit-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
             <CreditBadge credit={localCredit(shot.media?.credit as string, locale?.source)} />

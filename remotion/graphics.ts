@@ -93,6 +93,13 @@ export interface PressGraphic {
   items: { outlet?: string | null; headline: string; date?: string | null; highlight?: string | null }[];
 }
 
+export interface QuoteGraphic {
+  type: 'quote';
+  speaker: string;
+  role?: string | null;
+  lines: { text: string; from: number; to: number }[]; // Spanish subtitles, frames from the start of the clip
+}
+
 export interface SatelliteGraphic {
   type: 'satellite';
   place: string;
@@ -237,6 +244,7 @@ export type Graphic =
   | PressGraphic
   | ArticleGraphic
   | SatelliteGraphic
+  | QuoteGraphic
   | RuleGraphic
   | SplitGraphic
   | BannedGraphic

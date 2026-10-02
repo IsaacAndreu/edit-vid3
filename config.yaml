@@ -153,6 +153,15 @@ grade:                             # color igualado entre clips (se aplica al pr
   warmth: 0.02                     # balance rojo-azul (0 neutro, + cálido, − frío); el blanco y negro no se tiñe
   look: cine                       # tono común del canal: neutral | cine (sombras frías, luces cálidas) | frio | calido
 
+quotes:                            # declaraciones originales con subtítulos (pipeline/quotes.py)
+  count: 0                         # cuántas citas del guion buscar dichas por su autor (0 = ninguna; los canales lo activan)
+  max_seconds: 12                  # duración máxima de cada declaración
+  min_match: 0.55                  # parecido mínimo entre lo que dice el vídeo y la cita del guion
+  videos_per_quote: 4              # resultados de YouTube que se revisan por cita
+  max_video_minutes: 40            # no se leen vídeos más largos
+  whisper: true                    # sin subtítulos de YouTube: transcribir el audio (más lento)
+  whisper_minutes: 12              # …solo los primeros minutos
+
 fallback:
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)

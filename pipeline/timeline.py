@@ -175,7 +175,7 @@ def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[Ti
 
 
 def with_moments(timeline: Timeline, moments: list[tuple[str, float, float, str, int, int]], fps: int,
-                 volume: float = 1.0) -> Timeline:
+                 volume: float = 1.0, longest: float = MAX_THIRD_PARTY_SECONDS) -> Timeline:
     """Pause the narration after peak sentences: (src, voice seconds, clip seconds, credit, w, h).
 
     Called before the cold open, when frames still equal voice frames. The pause goes at the shot
@@ -191,7 +191,7 @@ def with_moments(timeline: Timeline, moments: list[tuple[str, float, float, str,
         if not options:
             continue
         at = min(options, key=lambda f: abs(f - target))
-        frames = max(1, min(round(seconds * fps), int(MAX_THIRD_PARTY_SECONDS * fps)))
+        frames = max(1, min(round(seconds * fps), int(longest * fps)))
         n = len(timeline.audio.voiceGaps) + 1
 
         def moved(item):
@@ -229,6 +229,26 @@ def with_moments(timeline: Timeline, moments: list[tuple[str, float, float, str,
             "audio": audio.model_dump(by_alias=True),
         })
     return timeline
+
+
+def with_quotes(timeline: Timeline, quotes: list[Any], ctx: RunContext, fps: int, volume: float = 1.0) -> Timeline:
+    """Real statements: the narration pauses after the sentence that quotes someone and their own clip plays, with
+    Spanish subtitles and their name and role (graphic "quote", drawn over the clip)."""
+
+    clips = [(str((ctx.root / q.path).relative_to(ctx.work_dir)), q.afterSeconds, q.durationSeconds, q.credit, q.width,
+              q.height) for q in quotes]
+    timeline = with_moments(timeline, clips, fps, volume, longest=15.0)
+    groups = list(timeline.groups)
+    for n, (q, (src, *_)) in enumerate(zip(quotes, clips), 1):
+        shot = next((s for s in timeline.shots if s.coldOpen and s.media and s.media.src == src), None)
+        if shot is None:
+            continue                                      # no shot boundary near that sentence: no pause was made
+        groups.append(TimelineGroup.model_validate({
+            "id": f"quote-{n}", "kind": "graphic", "from": shot.from_, "durationInFrames": shot.durationInFrames,
+            "graphic": {"type": "quote", "speaker": q.speaker, "role": q.role,
+                        "lines": [{"text": l.text, "from": round(l.from_ * fps), "to": round(l.to * fps)} for l in q.subtitles]},
+        }))
+    return timeline.model_copy(update={"groups": sorted(groups, key=lambda g: g.from_)})
 
 
 def with_cold_open(timeline: Timeline, clips: list[tuple[str, float, str, int, int]], fps: int,
@@ -1157,7 +1177,7 @@ def run(ctx: RunContext) -> None:
     entry = publish(_first_audio(folder("sfx", f"grafico-{motion}"), f"grafico-{motion}")) if motion != "clean" else None
     if entry:
         for group in groups:
-            if group.kind == "graphic" and group.graphic and not group.graphic.get("board"):
+            if group.kind == "graphic" and group.graphic and not group.graphic.get("board") and group.graphic.get("type") != "quote":
                 sfx.append(TimelineSfx.model_validate({"src": entry, "from": group.from_,
                                                        "volume": float(cfg.get("graphic_sfx_volume", 0.3))}))
     for kind, at in animation_cues(groups):
@@ -1183,6 +1203,8 @@ def run(ctx: RunContext) -> None:
             (str((ctx.root / m.path).relative_to(ctx.work_dir)), m.afterSeconds, m.durationSeconds, m.credit, m.width, m.height)
             for m in opening.moments if m.afterSeconds is not None
         ], fps, float(cfg.get("moment_volume", 1.0)))
+    if opening and opening.quotes:
+        timeline = with_quotes(timeline, opening.quotes, ctx, fps, float(cfg.get("quote_volume", 1.0)))
     # half a second of silence as each chapter begins (pacing.chapter_pause), before the cold open shifts frames
     timeline = with_chapter_pauses(timeline, float(ctx.section("pacing").get("chapter_pause", 0.5)), fps)
     if opening:

@@ -481,7 +481,7 @@ def run(ctx: RunContext) -> None:
     lengths = plan_clips(seconds, len(picks))
     moments = pick_moments(ctx, moment_count, moment_seconds) if moment_count > 0 else []
     bite_count = int(cfg.get("sound_bites", 0) or 0)
-    if not lengths and not moments and bite_count <= 0:
+    if not lengths and not moments and bite_count <= 0 and int(ctx.section("quotes").get("count", 0) or 0) <= 0:
         ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug).model_dump())
         print("   Sin cold open ni momentos con sonido original")
         return
@@ -520,9 +520,13 @@ def run(ctx: RunContext) -> None:
                     break
                 target.unlink(missing_ok=True)
         bites = pick_bites(ctx, youtube)
+        from .quotes import pick_quotes
+
+        quotes = pick_quotes(ctx, youtube, out_dir)
     finally:
         youtube.close()
-    ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses, bites=bites).model_dump())
+    ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses, bites=bites,
+                                        quotes=quotes).model_dump(by_alias=True))
     total = sum(c.durationSeconds for c in clips)
     if lengths:
         print(f"   Cold open: {len(clips)} clips con sonido original · {total:.1f} s · "

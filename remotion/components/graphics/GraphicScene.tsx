@@ -11,6 +11,7 @@ import { BannedCard } from './BannedCard';
 import { Press } from './Press';
 import { Article } from './Article';
 import { SatelliteZoom } from './SatelliteZoom';
+import { QuoteOverlay } from './QuoteOverlay';
 import { RulePage } from './RulePage';
 import { Score } from './Score';
 import { Split } from './Split';
@@ -28,11 +29,15 @@ import { TierList } from './TierList';
 import { GraphicFrame } from './GraphicFrame';
 
 /** Full-screen animated graphic of any kind, brought in and out the channel's way (GraphicFrame). */
-export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) => (
-  <GraphicFrame durationInFrames={durationInFrames} seed={seed || graphic.type}>
-    <GraphicBody graphic={graphic} durationInFrames={durationInFrames} />
-  </GraphicFrame>
-);
+export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) =>
+  graphic.type === 'quote' ? (
+    // subtitles over a real statement: no entrance, the clip itself is the picture
+    <QuoteOverlay graphic={graphic} durationInFrames={durationInFrames} />
+  ) : (
+    <GraphicFrame durationInFrames={durationInFrames} seed={seed || graphic.type}>
+      <GraphicBody graphic={graphic} durationInFrames={durationInFrames} />
+    </GraphicFrame>
+  );
 
 const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   switch (graphic.type) {

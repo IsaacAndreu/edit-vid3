@@ -46,6 +46,9 @@ timeline:
     despegue: "auge, lanzamiento de un avión, el éxito, la ambición"
     caida: "fracaso, quiebra, cancelación, el avión que nadie compró"
 
+quotes:
+  count: 2                         # hasta 2 declaraciones originales por vídeo (directivos de Boeing, Airbus, aerolíneas)
+
 fallback:
   pexels: true                     # en este canal sí: un avión genérico despegando es b-roll válido (sin protagonista)
 

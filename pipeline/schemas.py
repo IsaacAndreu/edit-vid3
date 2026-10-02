@@ -530,12 +530,43 @@ class SoundBite(_Strict):
     contrast: float                                          # dB above the clip's usual level
 
 
+class QuoteSubtitle(_Strict):
+    text: str
+    from_: float = Field(alias="from", ge=0)                 # seconds from the start of the clip
+    to: float = Field(gt=0)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class QuoteClip(_Strict):
+    """A real person saying what the script quotes (interview, press conference), with Spanish subtitles."""
+
+    path: str
+    candidateId: str
+    url: str
+    title: str | None = None
+    channel: str | None = None
+    start: float
+    end: float
+    durationSeconds: float = Field(gt=0, le=15.0 + 1e-6)
+    width: int
+    height: int
+    credit: str
+    attribution: str | None = None
+    afterSeconds: float                                      # the narration pauses after this voice second
+    speaker: str
+    role: str | None = None
+    match: float | None = None                               # how closely the transcript matched the quote (0-1)
+    subtitles: list[QuoteSubtitle] = Field(default_factory=list)
+
+
 class ColdOpenFile(_Strict):
     slug: str
     seconds: float = 0
     clips: list[ColdOpenClip] = Field(default_factory=list)
     moments: list[ColdOpenClip] = Field(default_factory=list)   # mid-video pauses with the original sound
     bites: list[SoundBite] = Field(default_factory=list)        # timeline.sound_bites: short original sound under the voice
+    quotes: list[QuoteClip] = Field(default_factory=list)       # quotes.count: real statements with subtitles
 
 
 class TimelineTransition(_Strict):
@@ -699,9 +730,12 @@ class Timeline(_Strict):
                 raise ValueError(f"{shot.id}: plano {shot.type} sin medio")
             if shot.media and shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
                 raise ValueError(f"{shot.id}: medio de terceros sin crédito")
-            if shot.media and shot.media.kind == "video" and shot.media.source == "youtube" \
-                    and shot.durationInFrames > MAX_THIRD_PARTY_SECONDS * self.fps + 1:
-                raise ValueError(f"{shot.id}: clip de terceros de más de 5 s")
+            # seconds of the source actually used (a slowed-down shot shows fewer); real statements with their own
+            # sound (shots marked coldOpen) may run up to 15 s
+            used = shot.durationInFrames * (shot.media.rate or 1.0) if shot.media else 0
+            limit = 15.0 if shot.coldOpen else MAX_THIRD_PARTY_SECONDS
+            if shot.media and shot.media.kind == "video" and shot.media.source == "youtube" and used > limit * self.fps + 1:
+                raise ValueError(f"{shot.id}: clip de terceros de más de {limit:.0f} s")
         if cursor != self.durationInFrames:
             raise ValueError(f"Los planos suman {cursor} fotogramas y el vídeo dura {self.durationInFrames}")
         return self

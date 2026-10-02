@@ -691,6 +691,31 @@ class YouTubeSource:
         produced[0].unlink(missing_ok=True)
         return target
 
+    def captions(self, video_id: str, language: str = "en") -> Path | None:
+        """The video's subtitles in `language` as WebVTT (uploaded ones, else YouTube's automatic ones), cached."""
+
+        target_dir = self.cache_dir / "videos" / video_id
+        for found in sorted(target_dir.glob(f"subs.{language}*.vtt")):
+            return found
+        target_dir.mkdir(parents=True, exist_ok=True)
+        options = {"skip_download": True, "writesubtitles": True, "writeautomaticsub": True,
+                   "subtitleslangs": [language, f"{language}-orig", f"{language}.*"], "subtitlesformat": "vtt",
+                   "outtmpl": str(target_dir / "subs.%(ext)s")}
+        try:
+            info_file = str(self._fresh_full_info(video_id))
+
+            def fetch() -> None:
+                with self._ydl(options) as ydl:
+                    ydl.download_with_info_file(info_file)
+
+            self._call("captions", fetch)
+        except SourceUnavailable:
+            raise
+        except Exception as error:   # no subtitles: the caller may transcribe the audio instead
+            print(f"   yt:{video_id}: sin subtítulos ({str(error)[:80]})")
+            return None
+        return next(iter(sorted(target_dir.glob(f"subs.{language}*.vtt"))), None)
+
     def download_section(self, video_id: str, start: float, end: float) -> Path:
         """360p video-only file covering [start, end] (source seconds are in its name)."""
 
