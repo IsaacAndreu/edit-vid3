@@ -92,7 +92,34 @@ def test_api_failure_falls_back_to_ytdlp_for_the_rest_of_the_run(tmp_path, monke
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0})
     yt.api = _FakeAPI(fail=True)
     monkeypatch.setattr(yt, "_call", lambda action, fn, **k: {"entries": [{"id": "ccccccccccc", "title": "x"}]})
-    assert [e["id"] for e in yt.search("q")] == ["ccccccccccc"] and yt.api is None
+    assert [e["id"] for e in yt.search("q")] == ["ccccccccccc"] and yt.api is not None   # one hiccup: keep the API
+    yt.search("q2")
+    yt.search("q3")
+    assert yt.api is None                                       # it keeps failing: yt-dlp for the rest
+
+
+def test_parallel_searches_never_read_a_half_written_quota_ledger(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from pipeline.context import RunContext
+    from pipeline.ytapi import YouTubeAPI
+
+    class Answer:
+        status_code = 200
+
+        def json(self):
+            return {"items": []}
+
+    class Session:
+        def get(self, *a, **k):
+            return Answer()
+
+    ctx = RunContext.create("v", root=tmp_path, config={"paths": {}})
+    ctx.env = lambda name, required=True: "k1,k2" if name == "YOUTUBE_API_KEYS" else ""
+    api = YouTubeAPI(ctx, session=Session())
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda n: api.get("videos", {"id": str(n)}), range(200)))
+    assert api.quota()["used"] == 200
 
 
 def test_browser_accounts_keep_only_youtube_cookies(monkeypatch):

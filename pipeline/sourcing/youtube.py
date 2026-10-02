@@ -327,12 +327,15 @@ class YouTubeSource:
             ids = api.search(query, order="relevance", max_results=limit, **({"days": days} if days else {}))
             details = {v["id"]: v for v in api.videos(ids)} if ids else {}
             self._count("search-api", time.monotonic() - began)
-        except Exception as error:  # quota, network, bad key: fall back to yt-dlp for the rest of the run
+        except Exception as error:  # no quota left or the API keeps failing: yt-dlp for the rest of the run
+            from ..ytapi import NoKeysLeft
+
             with self._api_lock:
-                if self.api is not None:
+                self._api_failures = getattr(self, "_api_failures", 0) + 1
+                if self.api is not None and (isinstance(error, NoKeysLeft) or self._api_failures >= 3):
                     print(f"   API de YouTube: {str(error)[:120]} → sigo buscando con yt-dlp")
                     self.api = None
-            return None
+            return None                 # just this search goes through yt-dlp
         return [{"id": i, "title": details[i]["title"], "channel": details[i]["channel"],
                  "uploader": details[i]["channel"], "duration": details[i]["duration"],
                  "url": f"https://www.youtube.com/watch?v={i}", "live_status": None,

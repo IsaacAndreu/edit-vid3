@@ -15,6 +15,7 @@ import hashlib
 import json
 import re
 import statistics
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -32,6 +33,17 @@ QUOTA_ERRORS = {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"}
 
 class NoKeysLeft(RuntimeError):
     pass
+
+
+_LOCK = threading.Lock()      # the quota ledger is read and rewritten by parallel searches
+
+
+def _write(path: Path, text: str) -> None:
+    """Whole or nothing: a parallel reader never sees a half-written file."""
+
+    tmp = path.with_name(f"{path.name}.{threading.get_ident()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
 
 
 def quota_day(now: datetime | None = None) -> str:
@@ -91,11 +103,14 @@ class YouTubeAPI:
     # ---- quota ---------------------------------------------------------------------------------
     def _ledger(self) -> dict[str, Any]:
         path = self.dir / "quota.json"
-        data = json.loads(path.read_text("utf-8")) if path.is_file() else {}
+        try:
+            data = json.loads(path.read_text("utf-8")) if path.is_file() else {}
+        except ValueError:          # a ledger cut short by an old crash: start the count again
+            data = {}
         return data if data.get("day") == quota_day() else {"day": quota_day(), "used": {}, "exhausted": []}
 
     def _save_ledger(self, data: dict[str, Any]) -> None:
-        (self.dir / "quota.json").write_text(json.dumps(data), encoding="utf-8")
+        _write(self.dir / "quota.json", json.dumps(data))
 
     @staticmethod
     def _key_id(key: str) -> str:   # never store the keys themselves
@@ -116,27 +131,33 @@ class YouTubeAPI:
             raise NoKeysLeft("Añade YOUTUBE_API_KEYS=clave1,clave2,… a .env")
         cache = self.dir / f"{endpoint}-{hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:20]}.json"
         if cache.is_file() and time.time() - cache.stat().st_mtime < TTL.get(endpoint, 3600):
-            return json.loads(cache.read_text("utf-8"))
+            try:
+                return json.loads(cache.read_text("utf-8"))
+            except ValueError:
+                pass
         cost = COST.get(endpoint, 1)
-        ledger = self._ledger()
         for key in self.keys:
             kid = self._key_id(key)
-            if kid in ledger["exhausted"] or ledger["used"].get(kid, 0) + cost > self.limits[key]:
-                continue
+            with _LOCK:
+                ledger = self._ledger()
+                if kid in ledger["exhausted"] or ledger["used"].get(kid, 0) + cost > self.limits[key]:
+                    continue
+                ledger["used"][kid] = ledger["used"].get(kid, 0) + cost
+                self._save_ledger(ledger)
             response = self.session.get(f"{API}/{endpoint}", params={**params, "key": key}, timeout=30)
-            ledger["used"][kid] = ledger["used"].get(kid, 0) + cost
             if response.status_code == 403:
                 reasons = {e.get("reason") for e in _error(response).get("errors", [])}
                 if reasons & QUOTA_ERRORS:
-                    ledger["exhausted"].append(kid)
-                    self._save_ledger(ledger)
+                    with _LOCK:
+                        ledger = self._ledger()
+                        ledger["exhausted"].append(kid)
+                        self._save_ledger(ledger)
                     continue
-            self._save_ledger(ledger)
             if response.status_code != 200:
                 message = _error(response).get("message") or response.text[:200]
                 raise RuntimeError(f"YouTube API {endpoint}: {response.status_code} {message}")
             data = response.json()
-            cache.write_text(json.dumps(data), encoding="utf-8")
+            _write(cache, json.dumps(data))
             return data
         raise NoKeysLeft(f"Cuota diaria agotada en las {len(self.keys)} claves (se renueva a las 9:00 en España)")
 
