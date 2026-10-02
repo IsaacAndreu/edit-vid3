@@ -42,7 +42,15 @@ SAMSUNG COCA COLA VISA ALIBABA INTEL AIRBNB ATOS PANASONIC TISSOT ADIDAS NIKE PU
 GOLD SILVER BRONZE CEREMONY RESULTS RESULT STANDING STANDINGS NEXT LEADER HIGHLIGHTS NATIONAL CUP ASIAN EUROPEAN
 PACIFIC COMMONWEALTH UNIVERSIADE ANNEAU ANNEAUX BARRES CHEVAL ARCONS POUTRE SAUT GYMNASTIQUE FEMININ MASCULIN
 EQUIPE EQUIPES CONCOURS GENERAL INDIVIDUEL SUELO ANILLAS SALTO BARRA ARZONES PARALELAS ASIMETRICAS FEMENINO
-MASCULINO EQUIPO BODEN RINGE SPRUNG RECK BARREN PAUSCHENPFERD SCHWEBEBALKEN STUFENBARREN TURNEN""".split())
+MASCULINO EQUIPO BODEN RINGE SPRUNG RECK BARREN PAUSCHENPFERD SCHWEBEBALKEN STUFENBARREN TURNEN
+WINTER SUMMER FIGURE SKATING SKATE SKATER SKATERS SHORT FREE PROGRAM PROGRAMME TECHNICAL ELEMENT ELEMENTS BASE
+COMPONENT COMPONENTS PROGRAM DEDUCTION DEDUCTIONS SEGMENT GRAND PRIX JUNIOR SENIOR LADIES PAIRS DANCE RHYTHM
+JUMP JUMPS SPIN SPINS STEP SEQUENCE CHOREO COMBO COMBINATION LUTZ FLIP AXEL LOOP SALCHOW TOELOOP QUAD TRIPLE
+DOUBLE CURRENT PLACE POINTS SKATE ISU MILANO CORTINA PYEONGCHANG SOCHI VANCOUVER BEIJING MONTPELLIER SAITAMA
+STOCKHOLM BOSTON MONTREAL HEAT HEATS LANE METRES METERS WIND RECORD RECORDS PERSONAL BEST SEASON REACTION SPLIT
+RELAY HURDLES SPRINT MARATHON JAVELIN DISCUS HAMMER POLE ATTEMPT DIAMOND LEAGUE ATHLETICS SWIMMING FREESTYLE
+BACKSTROKE BREASTSTROKE BUTTERFLY MEDLEY NBC PEACOCK EUROSPORT DISCOVERY OLYMPICSTM CHANNEL SPORTS SPORT""".split())
+STOP_PARTS = sorted((w for w in STOP if len(w) >= 4), key=len, reverse=True)
 FACE_MODELS = {
     "yunet": ("face_detection_yunet_2023mar.onnx",
               ["https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
@@ -88,7 +96,14 @@ def expected_people(shot: Any, names: list[str], protagonist: str, scope: str = 
 def _stop(word: str) -> bool:
     """A venue, sponsor or competition word — also as OCR misreads it ('QOMEGA', 'PARlS')."""
 
-    return word in STOP or any(SequenceMatcher(None, word, s).ratio() >= 0.8 for s in STOP if abs(len(s) - len(word)) <= 2)
+    if word in STOP or any(SequenceMatcher(None, word, s).ratio() >= 0.8 for s in STOP if abs(len(s) - len(word)) <= 2):
+        return True
+    # OCR glues scoreboard words together ('TECHNICALSCORE', 'WINTEROLYMPICSTM', 'SSHORTPROGRAM'): nothing but
+    # competition words (and a stray letter or two) is not a name
+    rest = word
+    for part in STOP_PARTS:
+        rest = rest.replace(part, "")
+    return len(rest) <= 2
 
 
 Box = tuple[float, float, float, float]          # x0, y0, x1, y1 of an OCR line
@@ -392,7 +407,7 @@ class Checker:
 class IdentityCache:
     """work/<slug>/identity.json: verdicts per media file (path + size + mtime + names), so reruns are free."""
 
-    VERSION = 3                     # 3: + man/woman check (CLIP)
+    VERSION = 4                     # 3: + man/woman check (CLIP); 4: scoreboard words of skating/athletics
 
     def __init__(self, ctx: RunContext):
         self.path = ctx.work_dir / "identity.json"

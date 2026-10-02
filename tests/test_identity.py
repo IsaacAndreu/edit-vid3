@@ -135,3 +135,11 @@ def test_the_opening_needs_positive_proof(tmp_path):
     assert not checker.confirmed(clip, "Carlos Yulo")
     checker.texts = lambda frame: [("PHI Carlos Edriel YULO", (0, 0, 10, 10))]
     assert checker.confirmed(clip, "Carlos Yulo")
+
+
+def test_skating_scoreboards_are_not_names():
+    board = [line("TECHNICALSCORE", 500, 850, 800, 890), line("BASE", 820, 850, 900, 890), line("USA", 500, 900, 580, 940),
+             line("WINTEROLYMPICSTM", 600, 900, 900, 940), line("SSHORTPROGRAM", 500, 950, 800, 990)]
+    assert caption_verdict([board, board, board], ["Alysa Liu"]) is None
+    rival = [*board, line("NAKAI", 600, 950, 760, 990), line("JPN", 500, 950, 580, 990)]
+    assert "NAKAI" in caption_verdict([rival, rival], ["Alysa Liu"])        # a real rival is still caught
