@@ -107,3 +107,18 @@ def test_empty_shots_in_a_row_share_one_card_with_the_whole_sentence():
     assert len(boards) == 1 and boards[0].from_ == shots[0].from_
     assert boards[0].durationInFrames == shots[0].durationInFrames + shots[1].durationInFrames
     assert " ".join(boards[0].graphic["lines"]) == "Estuvo bajo su tutela durante años"
+
+
+def test_empty_shots_borrow_far_away_footage_and_flash_their_key_words():
+    from pipeline.timeline import fill_empty_shots, punch_words
+
+    assert punch_words("Solo uno de esos oros se vendió por 176.321 dólares") == "176.321 dólares"
+    assert punch_words("La mujer") == ""                                    # nothing striking: just footage
+    shots = [_shot(i) for i in range(6)]
+    shots[4] = shots[4].model_copy(update={"media": None, "text": "Le llamaban el Gorrión de Minsk"})
+    shots[5] = shots[5].model_copy(update={"media": None, "text": "y lo sabía"})
+    punches = fill_empty_shots(shots, [], 30)
+    assert shots[4].media is not None and shots[4].media.zoom and shots[5].media is not None
+    assert shots[4].media.src == shots[0].media.src                          # the clip farthest away in time
+    assert len(punches) == 1 and punches[0].graphic["lines"] == ["Gorrión de Minsk"]
+    assert punches[0].from_ == shots[4].from_ and punches[0].durationInFrames <= 66

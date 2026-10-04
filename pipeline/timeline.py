@@ -612,7 +612,13 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                 graphic[side]["media"] = graphics.portrait(ctx, graphic[side]["name"], people)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
-    boards = chalkboards(shots, [*groups, *added], fps)
+    punches = (fill_empty_shots(shots, [*groups, *added], fps)
+               if str(ctx.section("timeline").get("empty_shots", "video")) == "video" else [])
+    boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
+    if punches:
+        print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
+              + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»" for g in punches[:12]))
+    boards += punches
     labels = [label for label in labels
               if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames
                          for g in [*added, *boards])]
@@ -722,6 +728,94 @@ def key_phrase(text: str, most: int = 8) -> str:
     if fitting:
         return max(fitting, key=lambda p: sum(1 for w in re.findall(r"\w+", p) if len(w) > 4 or w.isdigit()))
     return " ".join(text.split()[:most])
+
+
+_STOP = set("""el la los las un una unos unas de del al a en y e o u que se su sus lo le les con por para como más
+menos muy pero porque cuando donde ya no ni es era fue son está estaba estuvo ser hay había esta este esto ese esa eso
+nos me te mi tu todo toda todos todas sobre entre hasta desde sin tras también solo sólo así durante ante bajo cada
+otro otra otros otras ella él ellos ellas dijo tenía tiene sido muy aquel aquella""".split())
+
+
+def punch_words(text: str, most: int = 3) -> str:
+    """The most striking 1-3 words of a sentence, as said (a name, a figure, a long word): 'más condecorada',
+    'Knysh lo negó', '1972'. They flash over the footage for a moment instead of filling the screen."""
+
+    words = [w.strip(".,;:¿?¡!…\"«»()") for w in text.split()]
+    words = [w for w in words if w]
+
+    def score(i: int) -> float:
+        core = words[i].lower()
+        if core in _STOP or (len(core) < 3 and not any(c.isdigit() for c in core)):
+            return 0.0
+        value = 1.0
+        if any(c.isdigit() for c in core):
+            value += 3
+        if words[i][:1].isupper() and i > 0:
+            value += 2
+        if len(core) >= 7:
+            value += 1
+        return value
+
+    best, best_value = "", 0.0
+    for i in range(len(words)):
+        for size in range(1, most + 1):
+            window = list(range(i, min(len(words), i + size)))
+            if len(window) < size or score(window[0]) == 0 or score(window[-1]) == 0:
+                continue
+            value = sum(score(k) for k in window) - 0.8 * sum(1 for k in window if score(k) == 0)
+            value += 0.5 if size == 2 else 0
+            if value > best_value:
+                best, best_value = " ".join(words[k] for k in window), value
+    return best if best_value >= 3 else ""            # nothing striking (no name, figure or long word): just footage
+
+
+def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+    """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the clip used
+    farthest away in time, pushed in so it does not look repeated, and at the start of each stretch the 1-3 key
+    words of what is said flash over it for ~2 s. Changes `shots` in place; returns the word overlays."""
+
+    donors = [s for s in shots if s.media is not None and s.media.kind == "video" and not s.coldOpen
+              and (s.media.layout or "full") in ("full", "archive") and s.media.credit]
+    if not donors:
+        return []
+    uses: dict[str, int] = {}
+    overlays: list[TimelineGroup] = []
+    previous_end = -1
+    run_text: list[str] = []
+    run_start = None
+
+    def flush() -> None:
+        if run_start is None:
+            return
+        phrase = punch_words(" ".join(run_text))
+        if phrase:
+            length = min(int(2.2 * fps), previous_end - run_start)
+            if length >= int(0.8 * fps):
+                overlays.append(TimelineGroup.model_validate({"id": f"punch-{run_start}", "kind": "graphic",
+                                                              "from": run_start, "durationInFrames": length,
+                                                              "graphic": {"type": "kinetic", "lines": [phrase]}}))
+
+    for index, shot in enumerate(shots):
+        if shot.media is not None or shot.type != "broll" or shot.groupId:
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+            continue
+        fitting = [d for d in donors if uses.get(d.id, 0) < 2]
+        if not fitting:
+            continue
+        donor = max(fitting, key=lambda d: abs(d.from_ - start) - 600 * uses.get(d.id, 0))
+        uses[donor.id] = uses.get(donor.id, 0) + 1
+        rate = min(1.0, (donor.durationInFrames * (donor.media.rate or 1.0)) / shot.durationInFrames)
+        shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
+            "zoom": [0, shot.durationInFrames, 1.18], "rate": round(max(0.6, rate), 3) if rate < 0.999 else None})})
+        if start != previous_end:
+            flush()
+            run_start, run_text = start, []
+        run_text.append(shot.text)
+        previous_end = end
+    flush()
+    return overlays
 
 
 def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:

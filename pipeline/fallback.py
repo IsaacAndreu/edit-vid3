@@ -47,6 +47,7 @@ from .schemas import (
     ShotScores,
     ShotsFile,
 )
+from .content_check import ContentCheck
 from .identity import Checker, IdentityCache, expected_people
 from .sourcing.images import watermarked
 from .sourcing import hypothetical, needs_footage, youtube_source
@@ -138,7 +139,13 @@ def run(ctx: RunContext) -> None:
     protagonist = story.subject.split("·")[0].strip() if story.subject else ""
     scope = str(cfg.get("identity_scope", "protagonist"))
 
+    content = ContentCheck(ctx)
+
     def wrong_person(shot_id: str, path: Path, kind: str) -> str | None:
+        """Why this media cannot go in this shot: a cartoon or broken video (whatever the shot), or another person."""
+
+        if why := content.verdict(path, kind, shots[shot_id].text if shot_id in shots else ""):
+            return why
         who = expected_people(shots[shot_id], names, protagonist, scope) if checker and shot_id in shots else []
         return identity_cache.get(checker, path, kind, who) if who else None
 

@@ -289,6 +289,15 @@ Todo va solo; cada punto se puede ajustar o apagar en `config.yaml` o en el perf
 - **Gráficos de datos claros** (`brand.dataStyle: light`): barras, líneas y tartas sobre fondo papel con tinta
   oscura, como una infografía impresa; la barra destacada conserva el color del canal.
 
+## 7a4. Planos sin imagen y metraje que no encaja
+
+- **Plano sin nada que encaje:** antes de rendirse pone otro momento (no repetido) del metraje de la protagonista. Si
+  aun así queda vacío, toma prestado el clip del vídeo usado más lejos en el tiempo, con otro encuadre, y encima salen
+  1-3 palabras clave de lo que se dice («Gorrión de Minsk», «176.321 dólares») unos 2 s; luego, vídeo limpio. Si la
+  frase no tiene nada llamativo, solo vídeo. `timeline.empty_shots: board` vuelve a la pantalla de texto antigua.
+- **Fuera siempre:** dibujos animados (salvo que el guion hable de animación) y vídeo dañado (cuadros grises,
+  píxeles rotos), mirando 4 fotogramas por segundo de cada clip; además de las fotos con marca de agua de agencias.
+
 ## 7b. Música y transiciones
 
 - **Transiciones:** `assets/sfx/whoosh*.mp3`. Suena casi siempre la de `timeline.whoosh_main`
