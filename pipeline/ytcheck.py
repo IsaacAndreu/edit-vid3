@@ -177,8 +177,10 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
                        "Token. Para descargar desde aquí hacen falta cookies de una cuenta SECUNDARIA (nunca la de tu "
                        "canal): docs/VPS.md, «Si YouTube pide cuenta al servidor».")
     elif any(r in with_account for r in blocked):
-        out.append("YouTube pide iniciar sesión («no eres un robot») también con cuenta: renueva las cookies "
-                   "(exporta de nuevo el .txt desde el navegador) o añade otra cuenta secundaria.")
+        out.append("YouTube pide iniciar sesión («no eres un robot») también con cuenta. En casa: renueva las cookies "
+                   "(exporta de nuevo el .txt desde el navegador). En un servidor cuya IP YouTube ya bloquea sin cuenta, "
+                   "las cuentas no suelen bastar: descarga por la conexión de casa (docs/VPS.md, 3e) y quita esas "
+                   "cookies del servidor para no quemar las cuentas.")
     elif blocked:
         out.append("Sin cookies YouTube te pide iniciar sesión en esta red, pero con ellas funciona: no las quites.")
     if "429" in warned or any("429" in r["error"] for r in runs):
