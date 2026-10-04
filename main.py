@@ -258,6 +258,22 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
     retry = float(cfg.get("retry_hours", 6)) * 3600
     print(f"Vigilando {root / 'materiales'} cada {every_minutes:g} min (Ctrl+C para parar)")
     idle_since = None
+
+    def beat() -> None:                      # web «vigilando» / bot: alive also during a long video, not only between
+        import threading
+
+        def loop() -> None:
+            while True:
+                try:
+                    (root / "out").mkdir(parents=True, exist_ok=True)
+                    (root / "out" / "_vigilar.latido").write_text(datetime.now().isoformat(timespec="seconds"))
+                except OSError:
+                    pass
+                time.sleep(60)
+
+        threading.Thread(target=loop, name="latido", daemon=True).start()
+
+    beat()
     while True:
         (root / "out").mkdir(parents=True, exist_ok=True)
         (root / "out" / "_vigilar.latido").write_text(datetime.now().isoformat(timespec="seconds"))   # web: «vigilando»
