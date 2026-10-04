@@ -471,7 +471,10 @@ def run(ctx: RunContext) -> None:
         except Exception as error:         # one shot's trouble never stops the others
             return None, [f"error: {str(error)[:160]}"]
 
-    with ThreadPoolExecutor(max_workers=max(1, int(cfg.get("parallel", 4)))) as pool:
+    # `speed.fallback_parallel`, outside the `fallback` section: changing it never makes the stage (or its cached
+    # shots) run again. Most of each shot is waiting on downloads and the vision judge, so 8 fits an 8-core server.
+    workers = int(ctx.section("speed").get("fallback_parallel", cfg.get("parallel", 8)))
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         results = list(pool.map(safely, todo))
     for (shot_id, _), (item, tried) in zip(todo, results):
         if item is None:
