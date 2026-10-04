@@ -143,6 +143,13 @@ muchos 403 / «no eres un bot», la IP o la configuración no aguantan este volu
   el diagnóstico; las descargas de `cache/` sin usar en 14 días también se borran antes de cada cola. Para rehacer un
   vídeo ya limpiado, vuelve a descargar lo que necesite.
 
+**Vídeos ya subidos a YouTube** (`cleanup.published_days: 7`, `min_free_gb: 30`): un vídeo marcado como subido
+pierde a los 7 días su vídeo final, las previas, los Shorts y sus clips de trabajo (~2-4 GB), y conserva títulos,
+miniaturas, diagnóstico, registro y las imágenes de «Errores». Se marca solo si el título aparece en tu canal (tu canal
+en el estudio → Ajustes; se mira cada pocas horas) o a mano en el estudio → el vídeo → «Ya está subido a YouTube». Si
+quedan menos de 30 GB libres se borran antes (los subidos más antiguos primero) y, si aun así falta, te avisa por
+Telegram. Nunca se borra un vídeo que no esté marcado como subido, y un vídeo limpiado no se vuelve a hacer.
+
 ## 5. Avisos
 
 - Un PO Token **no garantiza** que YouTube no bloquee; solo hace las peticiones como YouTube espera de ese cliente.

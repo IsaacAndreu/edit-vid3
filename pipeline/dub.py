@@ -75,12 +75,13 @@ def pending(root: Path) -> list[tuple[str, str]]:
     """(slug, lang) whose original video is done and has a voz-<lang>.mp3 without its dubbed video yet."""
 
     from .context import video_folders
+    from .housekeeping import is_done
 
     out = []
     for voice in sorted(v for folder in video_folders(root) for v in folder.glob("voz-*.mp3")):
         slug, lang = voice.parent.name, voice.stem.split("-", 1)[1]
         if (root / "out" / slug / "video-final.mp4").is_file() \
-                and not (root / "out" / dub_slug(slug, lang) / "video-final.mp4").is_file():
+                and not is_done(root, dub_slug(slug, lang)):
             out.append((slug, lang))
     return out
 

@@ -76,7 +76,11 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     slug = folder.name
     out, work = root / "out" / slug, root / "work" / slug
     current = _json(work / "current.json")
-    done = (out / "video-final.mp4").is_file()
+    from .housekeeping import REMOVED, is_done, published
+
+    done = is_done(root, slug)
+    uploaded = published(root, slug)
+    removed = _json(out / REMOVED)
     stages = sorted((work / ".stages").glob("*.json")) if (work / ".stages").is_dir() else []
     costs = _json(work / "costs.json") or {}
     failed = watch_state.get(slug)
@@ -90,7 +94,8 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
         "error": None if done else diag.get("error") or ((failed or {}).get("status") and "falló"),
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
-        "hasVideo": done, "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),
+        "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,
+        "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),
     }
 
 
@@ -521,6 +526,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     return self._ok(feedback.label(root, urllib.parse.unquote(match.group(1)), match.group(2),
                                                    body.get("verdict"), str(body.get("reason") or "")))
+                if match := re.fullmatch(r"/api/video/([^/]+)/published", path):    # {value: bool, url}
+                    from .housekeeping import mark_published
+
+                    return self._ok(mark_published(root, urllib.parse.unquote(match.group(1)), str(body.get("url") or ""),
+                                                   bool(body.get("value", True))))
                 if match := re.fullmatch(r"/api/video/([^/]+)/fix", path):
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":

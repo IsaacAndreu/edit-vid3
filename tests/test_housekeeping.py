@@ -33,3 +33,45 @@ def test_cleanup_keeps_the_video_and_plans_and_drops_heavy_files(tmp_path):
     fresh.write_text("{}")
     housekeeping.old_cache(ctx)
     assert not old.exists() and fresh.exists()
+
+
+def test_uploaded_videos_lose_their_heavy_files_but_stay_done(tmp_path):
+    import json
+    import time
+
+    import main
+    from pipeline import housekeeping
+
+    for slug in ("subido", "nuevo"):
+        folder = tmp_path / "materiales" / slug
+        folder.mkdir(parents=True)
+        (folder / "guion.txt").write_text("x")
+        (folder / "voz.mp3").write_bytes(b"x")
+        out = tmp_path / "out" / slug
+        (out / "shorts").mkdir(parents=True)
+        (out / "video-final.mp4").write_bytes(b"0" * 1000)
+        (out / "shorts" / "short-1.mp4").write_bytes(b"0" * 100)
+        (out / "diagnostico.md").write_text("ok")
+        (tmp_path / "work" / slug / "render").mkdir(parents=True)
+        (tmp_path / "work" / slug / "render" / "seg.mp4").write_bytes(b"0" * 500)
+    housekeeping.mark_published(tmp_path, "subido", "https://youtu.be/x")
+    data = json.loads((tmp_path / "out" / "subido" / housekeeping.PUBLISHED).read_text())
+    data["at"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 8 * 86400))
+    (tmp_path / "out" / "subido" / housekeeping.PUBLISHED).write_text(json.dumps(data))
+    assert housekeeping.rotate_published(tmp_path, {}) == 0                     # not configured: never by surprise
+    cfg = {"cleanup": {"published_days": 7, "min_free_gb": 0}}
+    assert housekeeping.rotate_published(tmp_path, cfg) > 0
+    out = tmp_path / "out" / "subido"
+    assert not (out / "video-final.mp4").exists() and not (out / "shorts" / "short-1.mp4").exists()
+    assert (out / "diagnostico.md").is_file() and (out / housekeeping.REMOVED).is_file()
+    assert not (tmp_path / "work" / "subido" / "render").exists()
+    assert (tmp_path / "out" / "nuevo" / "video-final.mp4").is_file()           # not uploaded: untouched
+    assert main.pending_slugs(tmp_path) == []                                    # cleaned ≠ pending: never made again
+
+
+def test_upload_found_on_the_channel_by_title():
+    from pipeline import housekeeping
+
+    assert housekeeping._same_title("Los Fallos De Gimnasia Que SORPRENDIERON Al Mundo",
+                                    "Los fallos de gimnasia que sorprendieron al mundo 😱")
+    assert not housekeeping._same_title("Los fallos de gimnasia", "La historia de Carlos Yulo")

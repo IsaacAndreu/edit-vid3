@@ -180,7 +180,7 @@ function videoCard(v) {
   const progress = st ? `<div class="small" style="margin-top:8px">${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · ${ago(st.started)}</div>
      <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div>` : "";
   return `<div class="card click" onclick="location.hash='#/video/${encodeURIComponent(v.slug)}'">
-    <div class="row" style="justify-content:space-between"><b>${esc(v.slug)}</b>${pill(v.status)}</div>
+    <div class="row" style="justify-content:space-between"><b>${esc(v.slug)}</b><span>${v.published ? '<span class="pill hecho">en YouTube</span> ' : ""}${pill(v.status)}</span></div>
     <div class="small muted">${esc(v.channel || "—")}${v.minutes ? " · " + v.minutes + " min" : ""}${v.costUsd ? " · " + v.costUsd + " $" : ""}</div>
     ${progress}${v.error ? `<div class="small" style="color:var(--bad);margin-top:6px">${esc(String(v.error).slice(0, 140))}</div>` : ""}</div>`;
 }
@@ -321,15 +321,24 @@ async function videoPage(slug) {
   $("#app").innerHTML = `
     <div class="row" style="justify-content:space-between"><h1>${esc(v.slug)} ${pill(v.status)}</h1>
       <div class="row">${v.status === "error" ? '<button onclick="act(\'retry\')">Reintentar</button>' : ""}
-        ${v.hasVideo ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
+        ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
+        ${v.status === "hecho" && !v.published ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}</div>
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
+    ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
+      ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
+      <button style="margin-left:8px" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
     ${v.hasVideo ? `<h2>Vídeo</h2><video controls preload="metadata" src="${base}video-final.mp4"></video>
       <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a></div>` : ""}
     ${titles}${thumbs}${shorts}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div>`;
+  window.markUploaded = async (value = true) => {
+    const url = value ? prompt("Enlace del vídeo en YouTube (opcional):", "") : "";
+    if (url === null) return;
+    await post(`/api/video/${encodeURIComponent(slug)}/published`, {value, url}); route();
+  };
   window.act = async (what) => { await post(`/api/video/${encodeURIComponent(slug)}/${what}`); what === "archive" ? (location.hash = "#/") : route(); };
   const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;
   if (v.status === "haciendo") schedule(route, 10000);

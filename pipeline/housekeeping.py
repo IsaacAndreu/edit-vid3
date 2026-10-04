@@ -125,3 +125,192 @@ def old_cache(ctx: RunContext) -> None:
                 path.unlink(missing_ok=True)
     if freed:
         print(f"Limpieza de caché: {freed / 1e9:.1f} GB de descargas de hace más de {days:g} días")
+
+
+# --- videos already on YouTube: their heavy files go ----------------------------------------------------------------
+
+PUBLISHED = "publicado.json"          # in out/<slug>/: {at, url} — marked in the studio or found on your channel
+REMOVED = "borrado.json"              # in out/<slug>/: the heavy files were deleted (the video counts as done)
+OUT_HEAVY = ("*.mp4", "shorts/*.mp4", "*.mov", "*.mkv", "*.wav")
+
+
+def is_done(root: Path, slug: str) -> bool:
+    """A finished video: its final file, or already uploaded and cleaned up (never made again by the queue)."""
+
+    out = root / "out" / slug
+    return (out / "video-final.mp4").is_file() or (out / REMOVED).is_file()
+
+
+def _read(path: Path) -> dict[str, Any]:
+    import json
+
+    try:
+        return json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def published(root: Path, slug: str) -> dict[str, Any]:
+    return _read(root / "out" / slug / PUBLISHED)
+
+
+def mark_published(root: Path, slug: str, url: str = "", value: bool = True) -> dict[str, Any]:
+    import json
+
+    out = root / "out" / slug
+    if not out.is_dir():
+        raise FileNotFoundError(slug)
+    path = out / PUBLISHED
+    if not value:
+        path.unlink(missing_ok=True)
+        return {}
+    data = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "url": url.strip()}
+    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return data
+
+
+def _titles(root: Path, slug: str) -> list[str]:
+    """The titles this video may have been uploaded with: titulo.txt and the ones proposed in youtube.txt."""
+
+    import re
+
+    from .context import find_video
+
+    found = []
+    title = find_video(root, slug) / "titulo.txt"
+    if title.is_file():
+        found.append(title.read_text("utf-8").strip())
+    youtube = root / "out" / slug / "youtube.txt"
+    if youtube.is_file():
+        found += [m.group(1).strip() for m in re.finditer(r"^\s*\d\.\s+(.+)$", youtube.read_text("utf-8"), re.M)][:5]
+    return [t for t in found if t]
+
+
+def _same_title(a: str, b: str) -> bool:
+    import re
+    import unicodedata
+
+    def words(text: str) -> set[str]:
+        plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+        return {w for w in re.findall(r"[a-z0-9]+", plain) if len(w) > 2}
+
+    x, y = words(a), words(b)
+    return bool(x and y) and len(x & y) / max(1, min(len(x), len(y))) >= 0.8
+
+
+def find_uploads(root: Path) -> list[str]:
+    """Finished videos that are already on your channel (same title), marked as published. Needs your channel per
+    profile (studio → Ajustes) and YOUTUBE_API_KEYS; ~2 API units per channel."""
+
+    from .context import video_folders
+    from .mychannel import handle_for
+    from .web import _channel_of
+    from .ytapi import YouTubeAPI
+
+    pending: dict[str, list[str]] = {}
+    for folder in video_folders(root):
+        slug = folder.name
+        if (root / "out" / slug / "video-final.mp4").is_file() and not published(root, slug):
+            pending.setdefault(_channel_of(root, folder), []).append(slug)
+    marked = []
+    for channel, slugs in pending.items():
+        try:
+            handle = handle_for(root, channel) if channel else ""
+            if not handle:
+                continue
+            api = YouTubeAPI(RunContext.create("_subidos", root=root, channel=channel))
+            if not api.keys:
+                return marked
+            info = api.channel(handle)
+            uploads = api.uploads(info["uploads"], 30) if info.get("uploads") else []
+        except Exception as error:                      # never stops the queue
+            print(f"   Subidos ({channel}): {str(error)[:120]}")
+            continue
+        for slug in slugs:
+            hit = next((u for u in uploads for t in _titles(root, slug) if _same_title(t, u["title"])), None)
+            if hit:
+                mark_published(root, slug, hit["url"])
+                marked.append(slug)
+                print(f"   {slug}: ya está en YouTube ({hit['url']})")
+    return marked
+
+
+def rotate_published(root: Path, config: dict[str, Any], now: float | None = None) -> float:
+    """cleanup.published_days (7 in the server's config.local.yaml; unset = never): a video uploaded that long ago loses its heavy files — the final video, previews,
+    Shorts and the work clips — and keeps titles, thumbnails, the diagnosis, the logs and the frames the studio's
+    «Errores» page needs. Also when the disk has less than cleanup.min_free_gb free: the oldest uploads first.
+    Videos not marked as uploaded are never touched. Returns the GB freed."""
+
+    import json
+
+    from .context import video_folders
+
+    cfg = config.get("cleanup") or {}
+    if cfg.get("published_days") is None:            # only where it is set (the server's config.local.yaml), never by surprise
+        return 0.0
+    days = float(cfg["published_days"])
+    if days < 0:
+        return 0.0
+    now = now or time.time()
+    candidates = []
+    for folder in video_folders(root):
+        out = root / "out" / folder.name
+        mark = published(root, folder.name)
+        if mark and not (out / REMOVED).is_file() and (out / "video-final.mp4").is_file():
+            at = time.mktime(time.strptime(mark["at"][:19], "%Y-%m-%dT%H:%M:%S")) if mark.get("at") else now
+            candidates.append((at, folder.name))
+    candidates.sort()
+    min_free = float(cfg.get("min_free_gb", 30))
+    freed = 0
+    for at, slug in candidates:
+        disk_low = shutil.disk_usage(root).free / 1e9 < min_free
+        if now - at < days * 86400 and not disk_low:
+            continue
+        try:
+            from .feedback import shots, frame
+
+            for shot in shots(root, slug):              # «Errores» keeps working without the final video
+                frame(root, slug, shot["id"])
+        except Exception:
+            pass
+        out, work = root / "out" / slug, root / "work" / slug
+        files = [p for pattern in OUT_HEAVY for p in out.glob(pattern) if p.is_file()]
+        size = sum(p.stat().st_size for p in files)
+        for p in files:
+            p.unlink(missing_ok=True)
+        for name in HEAVY:
+            if (work / name).is_dir():
+                size += _size(work / name)
+                shutil.rmtree(work / name, ignore_errors=True)
+        (out / REMOVED).write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "gb": round(size / 1e9, 2),
+                                               "why": "espacio" if disk_low else f"subido hace {days:g}+ días"}, indent=1),
+                                   encoding="utf-8")
+        freed += size
+        print(f"   {slug}: subido a YouTube → borrados {size / 1e9:.1f} GB (vídeo final, previas, Shorts, clips)")
+    return freed / 1e9
+
+
+def published_chores(root: Path) -> None:
+    """For the watcher and the queue: find the uploads on your channel, then free the space of the old ones."""
+
+    try:
+        config = RunContext.create("_subidos", root=root).config
+    except Exception:
+        return
+    try:
+        find_uploads(root)
+    except Exception as error:
+        print(f"(Comprobación de vídeos subidos no hecha: {str(error)[:100]})")
+    try:
+        gb = rotate_published(root, config)
+        if gb:
+            print(f"Limpieza de vídeos ya subidos: {gb:.1f} GB liberados")
+        cleanup = config.get("cleanup") or {}
+        if cleanup.get("published_days") is not None and shutil.disk_usage(root).free / 1e9 < float(cleanup.get("min_free_gb", 30)):
+            from . import notify
+
+            notify.send(RunContext.create("_subidos", root=root, config={}), "⚠️ Disco casi lleno",
+                        f"Quedan {shutil.disk_usage(root).free / 1e9:.0f} GB libres en el servidor. Marca como subidos "
+                        "los vídeos que ya estén en YouTube (estudio → el vídeo → «Ya está subido») para liberar espacio.")
+    except Exception as error:
+        print(f"(Limpieza de vídeos subidos no hecha: {str(error)[:100]})")

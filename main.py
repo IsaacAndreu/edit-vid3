@@ -143,7 +143,9 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
         if skipped or d.name in names or not (d / "guion.txt").is_file() or not (d / "voz.mp3").is_file():
             continue
         names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
-        if not (root / "out" / d.name / "video-final.mp4").is_file():
+        from pipeline.housekeeping import is_done
+
+        if not is_done(root, d.name):                       # final video, or uploaded and cleaned up
             ready.append(d)
     return [d.name for d in sorted(ready, key=lambda d: (d.stat().st_mtime, d.name))]
 
@@ -262,6 +264,11 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             from pipeline import radar
 
             radar.run_if_due(root)
+            from pipeline import housekeeping
+
+            if time.time() - getattr(watch, "chores_at", 0) > 6 * 3600:    # every few hours, while idle
+                watch.chores_at = time.time()                              # type: ignore[attr-defined]
+                housekeeping.published_chores(root)
         if cfg.get("git_pull", True) and _git_update(root):
             print("Código nuevo (git pull): reinicio con él")
             os.execv(sys.executable, [sys.executable, *sys.argv])
@@ -338,6 +345,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
 
             try:
                 housekeeping.old_cache(RunContext.create("_cola", root=root))   # cleanup.cache_days (a server's disk)
+                housekeeping.published_chores(root)          # uploaded videos: their heavy files go
             except Exception as error:   # never stops the night
                 print(f"(Limpieza de caché no hecha: {str(error)[:100]})")
             problems = preflight(root)
