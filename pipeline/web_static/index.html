@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de vídeos</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1f2630; --line: #2b3440; --text: #e6edf3; --muted: #8b98a8;
+    --accent: #f5b301; --ok: #3fb950; --bad: #f85149; --work: #58a6ff; --wait: #a371f7;
+    --radius: 12px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --line: #dfe3e8; --text: #1b1f24; --muted: #5b6570; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+  a { color: var(--work); text-decoration: none; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+           display: flex; gap: 18px; align-items: center; padding: 10px 20px; flex-wrap: wrap; }
+  header b { font-size: 17px; margin-right: 8px; }
+  header nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  header nav a { color: var(--muted); padding: 6px 12px; border-radius: 8px; }
+  header nav a.on, header nav a:hover { color: var(--text); background: var(--panel2); }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 16px; } h2 { font-size: 17px; margin: 26px 0 10px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .card.click { cursor: pointer; } .card.click:hover { border-color: var(--muted); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--muted); } .small { font-size: 13px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 600;
+          background: var(--panel2); color: var(--muted); }
+  .pill.hecho { color: var(--ok); } .pill.error { color: var(--bad); } .pill.haciendo { color: var(--work); }
+  .pill["en cola"], .pill.cola { color: var(--wait); }
+  .stat { font-size: 26px; font-weight: 700; }
+  .bar { height: 8px; background: var(--panel2); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; background: var(--work); border-radius: 99px; transition: width .4s; }
+  button, .btn { font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--panel2); color: var(--text);
+                 padding: 8px 14px; border-radius: 9px; cursor: pointer; display: inline-block; }
+  button.main, .btn.main { background: var(--accent); color: #1b1300; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+                            border-radius: 9px; padding: 9px 11px; width: 100%; }
+  textarea { min-height: 260px; resize: vertical; }
+  label { display: block; font-weight: 600; margin: 14px 0 6px; } label .muted { font-weight: 400; }
+  .two { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; } @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; } td, th { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; }
+  pre { background: var(--panel2); border-radius: 9px; padding: 12px; overflow: auto; max-height: 420px; font-size: 12.5px; white-space: pre-wrap; }
+  video { width: 100%; border-radius: var(--radius); background: #000; max-height: 70vh; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 10px; }
+  .tabs button.on { background: var(--text); color: var(--bg); }
+  .md h1 { font-size: 19px; } .md h2 { font-size: 16px; } .md table { margin: 8px 0; } .md img { max-width: 100%; border-radius: 8px; }
+  .thumbs { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); } .thumbs img { width: 100%; border-radius: 8px; }
+  .notice { padding: 12px 14px; border-radius: 10px; background: var(--panel2); border-left: 4px solid var(--accent); margin: 12px 0; }
+  .notice.bad { border-color: var(--bad); } .notice.ok { border-color: var(--ok); }
+  .spend { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 10px; }
+  .spend div { flex: 1; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 2px; position: relative; }
+  .spend span { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  #login { max-width: 360px; margin: 12vh auto; }
+  .review { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .review .card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .review .card.correcta { border-color: var(--ok); } .review .card.incorrecta { border-color: var(--bad); } .review .card.dudosa { border-color: #d29922; }
+  .review img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #000; display: block; }
+  .review .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .review .quote { font-size: 14px; } .review .src { font-size: 12px; color: var(--muted); }
+  .review .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; }
+  .review .acts button { padding: 5px 10px; font-size: 13px; } .review select { width: auto; padding: 5px 8px; font-size: 13px; }
+  .b-ok { background: #238636 !important; color: #fff !important; border-color: #238636 !important; }
+  .b-bad { background: #da3633 !important; color: #fff !important; border-color: #da3633 !important; }
+  .b-doubt { background: #9e6a03 !important; color: #fff !important; border-color: #9e6a03 !important; }
+  .acts button.off { opacity: .45; }
+  .vids { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .vids .card { padding: 0; overflow: hidden; } .vids img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
+  .vids .body { padding: 10px 12px; } .big { font-size: 20px; font-weight: 800; color: var(--accent); }
+  .chips { position: sticky; top: 54px; z-index: 4; background: var(--bg); display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; }
+  .chips a { white-space: nowrap; padding: 6px 14px; border-radius: 99px; background: var(--panel2); color: var(--text); font-size: 14px; }
+  .kicker { color: var(--ok); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-top: 34px; }
+  .heat { display: grid; grid-template-columns: 44px repeat(8, 1fr); gap: 5px; font-size: 12px; }
+  .heat div { text-align: center; } .heat .c { aspect-ratio: 1.3; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #fff; } .heat .c.few { outline: 1.5px dashed rgba(255,255,255,.45); outline-offset: -2px; } .heat .c.none { background: transparent; outline: 1px dashed var(--line); }
+  .legend { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
+  .legend i { width: 26px; height: 10px; border-radius: 4px; display: inline-block; }
+  .months { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 18px; }
+  .months > div { flex: 1; display: flex; flex-direction: column-reverse; position: relative; height: 100%; }
+  .months b { position: absolute; top: -18px; width: 100%; text-align: center; font-size: 12px; }
+  .months .l { background: #3b82f6; border-radius: 4px 4px 0 0; } .months .s { background: #ea580c; border-radius: 4px 4px 0 0; }
+  .months span { position: absolute; bottom: -20px; width: 100%; text-align: center; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .trait { padding: 10px 0; border-bottom: 1px solid var(--line); } .trait .row { justify-content: space-between; }
+  .diverge { position: relative; height: 10px; background: var(--panel2); border-radius: 99px; margin-top: 6px; }
+  .diverge::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--muted); }
+  .diverge i { position: absolute; top: 0; bottom: 0; border-radius: 99px; }
+  .topic { display: grid; grid-template-columns: 28px 120px 1fr; gap: 12px; align-items: center; padding: 10px 0; }
+  .topic img { width: 120px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; }
+  .hbar { height: 10px; background: var(--panel2); border-radius: 99px; overflow: hidden; margin: 6px 0; } .hbar i { display: block; height: 100%; border-radius: 99px; }
+  .elf { background: #12301f; color: #d6f5e0; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
+  @media (prefers-color-scheme: light) { .elf { background: #e5f6ea; color: #13361f; } }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<header id="top" class="hide">
+  <b>🎬 Estudio</b>
+  <nav>
+    <a href="#/">Inicio</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Competencia</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
+  </nav>
+  <span id="service" class="small muted"></span>
+</header>
+<main id="app"></main>
+
+<div id="login" class="card hide">
+  <h1>Estudio de vídeos</h1>
+  <label>Contraseña</label>
+  <input id="pw" type="password" autocomplete="current-password">
+  <div class="row" style="margin-top:14px"><button class="main" onclick="login()">Entrar</button><span id="loginmsg" class="muted small"></span></div>
+</div>
+
+<script>
+const STAGES = {factcheck: "Verificar datos", align: "Alinear la voz", planner: "Planificar planos", sourcing: "Buscar material",
+  analysis: "Analizar clips", judge: "Elegir (juez)", ingest: "Descargar en HD", people: "Personas", fallback: "Rellenar huecos",
+  coldopen: "Apertura", timeline: "Montaje", qa: "Revisión", render: "Render", shorts: "Shorts", package: "Títulos y miniaturas"};
+const $ = (s) => document.querySelector(s);
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+let timer = null, data = null;
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {credentials: "same-origin", ...options});
+  if (res.status === 401) { showLogin(); throw new Error("login"); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || res.statusText);
+  return body;
+}
+const post = (path, body) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+
+function showLogin() { $("#login").classList.remove("hide"); $("#top").classList.add("hide"); $("#app").innerHTML = ""; $("#pw").focus(); }
+async function login() {
+  try { await post("/api/login", {password: $("#pw").value}); $("#login").classList.add("hide"); start(); }
+  catch (e) { $("#loginmsg").textContent = e.message; }
+}
+$("#pw").addEventListener("keydown", (e) => e.key === "Enter" && login());
+
+function ago(iso) {
+  if (!iso) return "";
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+function mins(s) { return s == null ? "—" : s >= 60 ? `${(s / 60).toFixed(1)} min` : `${Math.round(s)} s`; }
+
+// minimal markdown: headings, lists, tables, bold/italic, code, links, images (relative to the video's files)
+function md(text, base) {
+  if (!text) return '<p class="muted">Todavía no hay.</p>';
+  const lines = esc(text).split("\n"); let html = "", inList = false, table = [], code = false;
+  const inline = (t) => t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, a, src) => `<img alt="${a}" src="${/^https?:/.test(src) ? src : base + src.replace(/^\.?\//, "")}">`)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|\s)_([^_]+)_/g, "$1<i>$2</i>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const flush = () => { if (inList) { html += "</ul>"; inList = false; }
+    if (table.length) { html += "<table>" + table.filter((r) => !/^\|?\s*-{2,}/.test(r)).map((r, i) => "<tr>" + r.replace(/^\||\|$/g, "").split("|")
+      .map((c) => i ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join("") + "</tr>").join("") + "</table>"; table = []; } };
+  for (const line of lines) {
+    if (line.startsWith("```")) { flush(); html += code ? "</pre>" : "<pre>"; code = !code; continue; }
+    if (code) { html += line + "\n"; continue; }
+    if (/^\s*\|/.test(line)) { table.push(line.trim()); continue; }
+    if (/^\s*[-*] /.test(line)) { if (table.length) flush(); if (!inList) { html += "<ul>"; inList = true; } html += `<li>${inline(line.replace(/^\s*[-*] /, ""))}</li>`; continue; }
+    flush();
+    const h = line.match(/^(#{1,4}) (.*)/);
+    if (h) html += `<h${h[1].length + 1}>${inline(h[2])}</h${h[1].length + 1}>`;
+    else if (line.trim()) html += `<p>${inline(line)}</p>`;
+  }
+  flush(); return html;
+}
+
+function pill(status) { return `<span class="pill ${status === "en cola" ? "cola" : status}">${esc(status)}</span>`; }
+
+function videoCard(v) {
+  const st = v.stage;
+  const progress = st ? `<div class="small" style="margin-top:8px">${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · ${ago(st.started)}</div>
+     <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div>` : "";
+  return `<div class="card click" onclick="location.hash='#/video/${encodeURIComponent(v.slug)}'">
+    <div class="row" style="justify-content:space-between"><b>${esc(v.slug)}</b>${pill(v.status)}</div>
+    <div class="small muted">${esc(v.channel || "—")}${v.minutes ? " · " + v.minutes + " min" : ""}${v.costUsd ? " · " + v.costUsd + " $" : ""}</div>
+    ${progress}${v.error ? `<div class="small" style="color:var(--bad);margin-top:6px">${esc(String(v.error).slice(0, 140))}</div>` : ""}</div>`;
+}
+
+async function home() {
+  data = await api("/api/overview");
+  const s = data.service, b = data.budget, vids = data.videos.filter((v) => !v.archived);
+  const groups = {haciendo: [], "en cola": [], error: [], hecho: [], incompleto: []};
+  vids.forEach((v) => (groups[v.status] || groups.incompleto).push(v));
+  const state = s.paused ? '<span class="pill">En pausa</span>' : s.watching ? '<span class="pill hecho">Vigilando: hace los vídeos solo</span>'
+    : s.queueRunning ? '<span class="pill haciendo">Cola en marcha</span>' : '<span class="pill">Sin vigilante</span>';
+  const startBtn = !s.watching && !s.queueRunning && groups["en cola"].length ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "";
+  $("#app").innerHTML = `
+    <div class="grid">
+      <div class="card"><div class="muted small">Servidor</div><div style="margin:8px 0">${state}</div>${startBtn}</div>
+      <div class="card"><div class="muted small">Gasto de hoy</div><div class="stat">${b.today.toFixed(2)} $</div>
+        <div class="small muted">${b.limit ? "límite " + b.limit.toFixed(2) + " $" : "sin límite"}</div>
+        ${b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</div>
+      <div class="card"><div class="muted small">Vídeos</div><div class="stat">${groups.hecho.length} hechos</div>
+        <div class="small muted">${groups["en cola"].length} en cola · ${groups.haciendo.length} en marcha · ${groups.error.length} con error</div></div>
+      <div class="card"><div class="muted small">YouTube (7 días)</div>${data.youtube ? `<div class="stat">${data.youtube.ok}/${data.youtube.requests}</div>
+        <div class="small muted">${data.youtube.failed} fallidas · ${data.youtube.mbps} MB/s</div>` : '<div class="muted" style="margin-top:8px">Sin datos aún</div>'}</div>
+    </div>
+    ${section("En marcha", groups.haciendo)}${section("Con error", groups.error)}${section("En cola", groups["en cola"])}
+    ${section("Sin terminar de subir (falta guion o voz)", groups.incompleto)}${section("Hechos", groups.hecho)}
+    ${vids.length ? "" : '<div class="notice">Aún no hay vídeos. <a href="#/nuevo">Crea el primero</a>.</div>'}`;
+  schedule(home, groups.haciendo.length ? 10000 : 30000);
+}
+const section = (title, list) => list.length ? `<h2>${title}</h2><div class="grid">${list.map(videoCard).join("")}</div>` : "";
+
+async function startQueue() { await post("/api/queue"); setTimeout(route, 1500); }
+
+async function newVideo() {
+  data = data || await api("/api/overview");
+  $("#app").innerHTML = `<h1>Nuevo vídeo</h1>
+    <div class="card">
+      <div class="two">
+        <div><label>Canal</label><select id="channel">${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+        <div><label>Nombre <span class="muted">(sin espacios: avion2, olga-korbut…)</span></label><input id="name" placeholder="nombre-del-video"></div>
+      </div>
+      <div class="two">
+        <div><label>Formato <span class="muted">(opcional; si no, el del canal)</span></label><select id="format"><option value="">— el del canal —</option>
+          ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select></div>
+        <div><label>Serie <span class="muted">(opcional)</span></label><input id="serie" placeholder="p. ej. fracasos"></div>
+      </div>
+      <label>Título de trabajo <span class="muted">(opcional: los títulos de YouTube se escriben solos)</span></label><input id="title">
+      <label>Guion <span class="muted">— pégalo o</span> <input type="file" id="scriptfile" accept=".txt,.md" style="width:auto;display:inline;padding:4px"></label>
+      <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
+      <label>Voz <span class="muted">(mp3; también wav o m4a)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
+      <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><span id="msg" class="small muted"></span></div>
+      <div class="bar hide" id="upbar"><i style="width:0"></i></div>
+    </div>`;
+  $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
+}
+
+async function createVideo() {
+  const voice = $("#voice").files[0], msg = $("#msg");
+  if (!voice) { msg.textContent = "Falta el archivo de voz"; return; }
+  $("#create").disabled = true; msg.textContent = "Creando…";
+  try {
+    const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
+      serie: $("#serie").value, title: $("#title").value, script: $("#script").value});
+    msg.textContent = "Subiendo la voz…"; $("#upbar").classList.remove("hide");
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/video/${encodeURIComponent(made.slug)}/voz`);
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#upbar i").style.width = (100 * e.loaded / e.total) + "%"; };
+      xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));
+      xhr.onerror = () => reject(new Error("Fallo de red al subir"));
+      xhr.send(voice);
+    });
+    location.hash = "#/video/" + encodeURIComponent(made.slug);
+  } catch (e) { msg.textContent = e.message; $("#create").disabled = false; }
+}
+
+let tab = "diagnosis";
+async function videoPage(slug) {
+  const v = await api("/api/video/" + encodeURIComponent(slug));
+  const base = `/files/${encodeURIComponent(slug)}/`;
+  const st = v.stage;
+  const doing = st ? `<div class="card"><b>Haciendo ahora:</b> ${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · desde hace ${ago(st.started)}
+      <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div></div>` : "";
+  const titles = v.youtubeTxt ? `<h2>Para YouTube</h2><div class="card"><pre id="yt">${esc(v.youtubeTxt)}</pre>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">Copiar</button></div>` : "";
+  const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
+      `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
+  const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
+  const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], graphics: ["Gráficos", v.graphics],
+                log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
+  const body = tab === "log" ? `<pre id="log">${esc(v.log || "Todavía no hay registro.")}</pre>`
+    : tab === "script" ? `<pre>${esc(v.script)}</pre>`
+    : tab === "stages" ? `<table><tr><th>Etapa</th><th>Tiempo</th><th>RAM máx.</th><th>CPU máx.</th></tr>${v.stages.map((s) =>
+        `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td>${mins(s.seconds)}</td><td>${s.ram ?? "—"} GB</td><td>${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
+    : `<div class="md">${md(docs[tab][1], base)}</div>`;
+  $("#app").innerHTML = `
+    <div class="row" style="justify-content:space-between"><h1>${esc(v.slug)} ${pill(v.status)}</h1>
+      <div class="row">${v.status === "error" ? '<button onclick="act(\'retry\')">Reintentar</button>' : ""}
+        ${v.hasVideo ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
+        ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
+    <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}</div>
+    ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
+    ${v.hasVideo ? `<h2>Vídeo</h2><video controls preload="metadata" src="${base}video-final.mp4"></video>
+      <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a></div>` : ""}
+    ${titles}${thumbs}${shorts}
+    <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
+    <div class="card">${body}</div>`;
+  window.act = async (what) => { await post(`/api/video/${encodeURIComponent(slug)}/${what}`); what === "archive" ? (location.hash = "#/") : route(); };
+  const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;
+  if (v.status === "haciendo") schedule(route, 10000);
+}
+
+async function stats() {
+  const [o, spend] = [await api("/api/overview"), await api("/api/spending")];
+  const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
+  $("#app").innerHTML = `<h1>Estadísticas</h1>
+    <h2>YouTube (últimos 7 días)</h2>
+    ${y ? `<div class="grid">
+      <div class="card"><div class="muted small">Peticiones</div><div class="stat">${y.requests}</div><div class="small muted">${y.ok} bien · ${y.failed} fallidas</div></div>
+      <div class="card"><div class="muted small">Errores</div><div class="small" style="margin-top:6px">${Object.entries(y.errors).map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join(" · ") || "ninguno ✅"}</div></div>
+      <div class="card"><div class="muted small">Descargas</div><div class="stat">${y.files_ok}/${y.files}</div><div class="small muted">${y.megabytes} MB · ${y.mbps} MB/s</div></div>
+      <div class="card"><div class="muted small">Cómo</div><div class="small" style="margin-top:6px">Con cuenta: ${y.with_cookies} · PO Token: ${y.pot ? "sí" : "no"}<br>${esc(y.clients.join(", "))}</div></div>
+    </div>` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
+    <h2>Gasto de API por día</h2>
+    <div class="card"><div class="spend">${spend.map((d) => `<div style="height:${100 * d.usd / max}%" title="${d.usd} $"><span>${d.day.slice(5)}</span></div>`).join("")}</div>
+      <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div>`;
+}
+
+async function settingsPage() {
+  const s = await api("/api/settings");
+  $("#app").innerHTML = `<h1>Ajustes</h1>
+    <div class="card">
+      <label>Hacer vídeos</label>
+      <div class="row"><button class="${s.paused ? "main" : ""}" onclick="save({paused: ${!s.paused}})">${s.paused ? "▶ Reanudar" : "⏸ Pausar"}</button>
+        <span class="muted small">${s.paused ? "En pausa: no empieza vídeos nuevos (el que está en marcha termina)." : "Activo."}</span></div>
+      <label>Límite de gasto de API al día <span class="muted">(0 = sin límite; al llegar, espera a mañana)</span></label>
+      <div class="row"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}" style="max-width:160px"><span>$</span>
+        <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
+      <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
+    </div>
+    <h2>Mi canal de YouTube en cada perfil</h2>
+    <div class="card">
+      <p class="small muted" style="margin-top:0">Tu @canal o su URL: lo usan «Mi canal» y las ideas.</p>
+      ${s.channels.map((c) => `<label>${esc(c)}</label><input class="mine" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}">`).join("")}
+      <div class="row" style="margin-top:14px"><button onclick="save({my_channels: Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))})">Guardar</button></div>
+    </div>`;
+  window.save = async (body) => { await post("/api/settings", body); route(); };
+}
+
+const fmt = (n) => n == null ? "—" : Number(n).toLocaleString("es-ES", {maximumFractionDigits: 1});
+const kfmt = (n) => n == null ? "—" : n >= 1e6 ? fmt(n / 1e6) + " M" : n >= 1e3 ? fmt(n / 1e3) + " mil" : fmt(n);
+const times = (r) => r == null ? "—" : fmt(r) + "×";
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function jobLine(job, what) {
+  if (!job) return "";
+  if (job.running) return `<div class="notice">${what}… <span class="small muted">(se actualiza solo)</span><pre class="small">${esc(job.log.split("\n").slice(-6).join("\n"))}</pre></div>`;
+  if (job.failed) return `<div class="notice bad">Falló: <pre class="small">${esc(job.log.split("\n").slice(-10).join("\n"))}</pre></div>`;
+  return "";
+}
+
+// --- Errores: review the clips of a video -------------------------------------------------------------------------
+let reviewFilter = "todos";
+async function reviewPage(slug) {
+  const r = await api("/api/review/" + encodeURIComponent(slug));
+  const counts = {correcta: 0, incorrecta: 0, dudosa: 0};
+  r.shots.forEach((s) => s.label && counts[s.label.verdict]++);
+  const left = r.shots.length - counts.correcta - counts.incorrecta - counts.dudosa;
+  const shown = r.shots.filter((s) => reviewFilter === "todos" || (reviewFilter === "pendientes" ? !s.label : s.label && s.label.verdict === reviewFilter));
+  const options = Object.entries(r.reasons).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("");
+  $("#app").innerHTML = `
+    <div class="row" style="justify-content:space-between"><h1>Revisar clips · <a href="#/video/${encodeURIComponent(slug)}">${esc(slug)}</a></h1>
+      ${counts.incorrecta ? `<button class="main" onclick="fixVideo()" ${r.job.running ? "disabled" : ""}>Rehacer con correcciones (${counts.incorrecta})</button>` : ""}</div>
+    <div class="small muted">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
+    ${jobLine(r.job, "Rehaciendo el vídeo con tus correcciones")}
+    <div class="tabs">${[["todos", `Todos (${r.shots.length})`], ["pendientes", `Sin revisar (${left})`], ["incorrecta", `Incorrectos (${counts.incorrecta})`],
+      ["dudosa", `Dudosos (${counts.dudosa})`], ["correcta", `Correctos (${counts.correcta})`]].map(([k, n]) =>
+      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}</div>
+    <div class="review">${shown.map((s) => {
+      const v = s.label && s.label.verdict;
+      return `<div class="card ${v || ""}" id="r-${s.id}">
+        <img loading="lazy" src="/api/review/${encodeURIComponent(slug)}/frame/${s.id}.jpg" alt="">
+        <div class="body">
+          <div class="quote">«${esc(s.text || "—")}»</div>
+          <div class="src">${clock(s.at)} · ${esc(s.title || s.credit || s.source || "")}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
+          <div class="acts">
+            <button class="b-ok ${v && v !== "correcta" ? "off" : ""}" onclick="mark('${s.id}','correcta')">Correcta</button>
+            <select id="why-${s.id}">${options}</select>
+            <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="mark('${s.id}','incorrecta')">Incorrecta</button>
+            <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="mark('${s.id}','dudosa')">Dudosa</button>
+            ${v ? `<button onclick="mark('${s.id}',null)" title="Quitar">↺</button>` : ""}
+          </div></div></div>`; }).join("") || '<div class="notice">Nada en este filtro.</div>'}</div>`;
+  r.shots.forEach((s) => { const sel = document.getElementById("why-" + s.id); if (sel && s.label && s.label.reason) sel.value = s.label.reason; });
+  window.mark = async (id, verdict) => {
+    const reason = verdict === "incorrecta" ? document.getElementById("why-" + id).value : "";
+    const y = window.scrollY; await post(`/api/review/${encodeURIComponent(slug)}/${id}`, {verdict, reason}); await route(); window.scrollTo(0, y);
+  };
+  window.fixVideo = async () => { await post(`/api/video/${encodeURIComponent(slug)}/fix`); route(); };
+  if (r.job.running) schedule(route, 8000);
+}
+
+async function errorsPage() {
+  const [e, o] = [await api("/api/errors"), data && data.videos ? data : await api("/api/overview")];
+  data = o;
+  const done = o.videos.filter((v) => v.hasVideo);
+  const reviewed = new Set(e.videos.map((v) => v.slug));
+  const maxReason = Math.max(1, ...e.reasons.map((r) => r.count));
+  $("#app").innerHTML = `<h1>Errores · para ir mejorando</h1>
+    <div class="grid">
+      <div class="card"><div class="muted small">Clips bien</div><div class="stat">${e.accuracy == null ? "—" : e.accuracy + " %"}</div>
+        <div class="small muted">${e.total.correcta} correctos · ${e.total.incorrecta} incorrectos · ${e.total.dudosa} dudosos</div></div>
+      <div class="card"><div class="muted small">Vídeos revisados</div><div class="stat">${e.videos.length}</div><div class="small muted">de ${done.length} terminados</div></div>
+    </div>
+    ${e.tips.length ? `<div class="elf">🧝 ${e.tips.map(esc).join("<br>")}</div>` : ""}
+    <h2>Revisar un vídeo</h2>
+    <div class="grid">${done.map((v) => `<a class="card click" href="#/revisar/${encodeURIComponent(v.slug)}"><b>${esc(v.slug)}</b>
+      <div class="small muted">${esc(v.channel)} · ${reviewed.has(v.slug) ? "revisado" : "sin revisar"}</div></a>`).join("") || '<div class="muted">Aún no hay vídeos terminados.</div>'}</div>
+    ${e.reasons.length ? `<h2>Por qué fallan</h2><div class="card">${e.reasons.map((r) => `<div class="row" style="justify-content:space-between"><span>${esc(r.name)}</span><b>${r.count}</b></div>
+      <div class="hbar"><i style="width:${100 * r.count / maxReason}%;background:var(--bad)"></i></div>`).join("")}</div>` : ""}
+    ${e.methods.length ? `<h2>Qué parte del programa falla</h2><div class="card"><table><tr><th>Cómo se encontró el clip</th><th>Bien</th><th>Mal</th><th>Dudosos</th><th>Acierto</th></tr>
+      ${e.methods.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.correcta}</td><td>${m.incorrecta}</td><td>${m.dudosa}</td><td><b>${m.accuracy} %</b></td></tr>`).join("")}</table></div>` : ""}
+    ${e.videos.length ? `<h2>Por vídeo</h2><div class="card"><table><tr><th>Vídeo</th><th>Bien</th><th>Mal</th><th>Dudosos</th><th>Acierto</th></tr>
+      ${e.videos.map((v) => `<tr><td><a href="#/revisar/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></td><td>${v.correcta}</td><td>${v.incorrecta}</td><td>${v.dudosa}</td><td><b>${v.accuracy} %</b></td></tr>`).join("")}</table></div>` : ""}`;
+}
+
+// --- Competencia ---------------------------------------------------------------------------------------------------
+let radarChannel = null;
+function videoTile(v) {
+  return `<a class="card" href="${esc(v.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(v.thumbnail)}" alt="">
+    <div class="body"><div class="row" style="justify-content:space-between"><span class="big">${times(v.ratio)}</span>${v.new ? '<span class="pill hecho">nuevo</span>' : ""}</div>
+    <div style="margin:4px 0;color:var(--text)">${esc(v.title)}</div>
+    <div class="small muted">${esc(v.channel)}${v.subscribers != null ? " · " + kfmt(v.subscribers) + " subs" : ""} · ${kfmt(v.views)} visitas · hace ${v.ageDays} días</div>
+    ${v.why ? `<div class="small muted">${esc(v.why)}</div>` : ""}</div></a>`;
+}
+async function radarPage() {
+  const r = await api("/api/radar");
+  const latest = r.latest, names = latest ? Object.keys(latest.channels) : [];
+  radarChannel = names.includes(radarChannel) ? radarChannel : names[0];
+  const info = latest && radarChannel ? latest.channels[radarChannel] : null;
+  $("#app").innerHTML = `<div class="row" style="justify-content:space-between"><h1>Competencia</h1>
+      <button class="main" onclick="runRadar()" ${r.job.running ? "disabled" : ""}>Buscar ahora</button></div>
+    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada día con el servidor vigilando` : "Todavía no hay radar: pulsa «Buscar ahora» (necesita YOUTUBE_API_KEYS)."}
+      ${latest && latest.outOfQuota ? " · ⚠ se acabó la cuota de la API a mitad" : ""}</div>
+    ${jobLine(r.job, "Buscando en YouTube")}
+    ${names.length ? `<div class="tabs">${names.map((n) => `<button class="${n === radarChannel ? "on" : ""}" onclick="radarChannel='${esc(n)}';route()">${esc(n)}
+      (${latest.channels[n].top.filter((v) => v.new).length} nuevos)</button>`).join("")}</div>` : ""}
+    ${info ? `<h2>Lo que mejor funciona ahora en ${esc(radarChannel)}</h2>
+      ${info.top.length ? `<div class="vids">${info.top.map(videoTile).join("")}</div>` : '<div class="notice">Nada por encima de 2× en estos días. Añade competidores en canales/' + esc(radarChannel) + '.yaml (ideas.competitors).</div>'}
+      ${info.errors.length ? `<div class="small muted" style="margin-top:8px">${info.errors.map(esc).join(" · ")}</div>` : ""}` : ""}
+    <h2>Nichos nuevos</h2>
+    <div class="small muted">Cada nicho se mide en YouTube: cuántos vídeos superan 3× a su canal y cuántos de esos son de canales pequeños (menos de 100 mil subs): señal de que un canal nuevo puede entrar.</div>
+    ${r.niches.length ? `<div class="card" style="margin-top:10px">${r.niches.map((n) => `<div class="trait">
+      <div class="row" style="justify-content:space-between"><b>${esc(n.name)}</b><span class="big">${fmt(n.score)}/10</span></div>
+      <div class="hbar"><i style="width:${10 * n.score}%;background:var(--ok)"></i></div>
+      <div class="small muted">«${esc(n.query)}» · ${n.hits} outliers · <b>${n.smallHits}</b> de canales pequeños · mediana ${times(n.medianRatio)} · ${kfmt(n.medianViews)} visitas · ${n.near === "libre" ? "tema nuevo" : "cerca de " + esc(n.near)} · ${esc(n.date)}</div>
+      ${n.why ? `<div class="small">${esc(n.why)}</div>` : ""}
+      ${n.examples.length ? `<div class="row" style="margin-top:6px">${n.examples.map((v) => `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${times(v.ratio)}"><img src="${esc(v.thumbnail)}" style="width:110px;border-radius:6px"></a>`).join("")}</div>` : ""}
+    </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos medidos.</div>'}`;
+  window.runRadar = async () => { await post("/api/radar"); route(); };
+  if (r.job.running) schedule(route, 8000);
+}
+
+// --- Mi canal --------------------------------------------------------------------------------------------------------
+let myChannel = null;
+function heatColor(r) {
+  if (r == null) return "#30363d";
+  const scale = ["#e5534b", "#a8302c", "#5c1f1d", "#3a3f46", "#1c3a6e", "#1f5fbf", "#3b8bf0", "#a8cdfb"];
+  const steps = [0.5, 0.7, 0.9, 1.1, 1.3, 1.6, 2.0];
+  return scale[steps.filter((s) => r >= s).length];
+}
+async function channelPage() {
+  data = data && data.channels ? data : await api("/api/overview");
+  myChannel = myChannel || data.channels[0];
+  const c = await api("/api/mychannel/" + encodeURIComponent(myChannel));
+  const r = c.report;
+  const head = `<div class="row" style="justify-content:space-between"><h1>Mi canal</h1>
+      <div class="row"><select onchange="myChannel=this.value;route()" style="width:auto">${data.channels.map((n) => `<option ${n === myChannel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      <button class="main" onclick="analyse()" ${c.job.running || !c.handle ? "disabled" : ""}>Analizar ahora</button></div></div>
+    ${c.handle ? `<div class="small muted">${esc(c.handle)}${r ? " · análisis del " + new Date(r.generated).toLocaleString("es-ES") : ""}</div>`
+      : '<div class="notice">Falta tu canal de este perfil: ponlo en <a href="#/ajustes">Ajustes → Mi canal</a>.</div>'}
+    ${jobLine(c.job, "Analizando el canal")}`;
+  window.analyse = async () => { await post("/api/mychannel/" + encodeURIComponent(myChannel)); route(); };
+  if (c.job.running) schedule(route, 6000);
+  if (!r) { $("#app").innerHTML = head + (c.handle ? '<div class="notice">Pulsa «Analizar ahora» (necesita YOUTUBE_API_KEYS).</div>' : ""); return; }
+  const n = r.numbers, maxMonth = Math.max(1, ...r.months.map((m) => m.long + m.shorts));
+  const maxDay = Math.max(2, ...r.perDay.map((d) => d.ratio || 0));
+  const card = (label, value, sub) => `<div class="card"><div class="muted small">${label}</div><div class="stat">${value}</div><div class="small muted">${sub || ""}</div></div>`;
+  const diverge = (f) => { const w = Math.min(50, Math.abs(Math.log2(f)) * 60);
+    return `<div class="diverge"><i style="${f >= 1 ? `left:50%;width:${w}%;background:#3b82f6` : `right:50%;width:${w}%;background:#e5534b`}"></i></div>`; };
+  $("#app").innerHTML = head + `
+    <div class="chips">${["Números", "Evolución", "Ganadores", "Horarios", "Constancia", "Títulos", "Duración", "Temas"].map((t) => `<a href="javascript:document.getElementById('k-${t}').scrollIntoView({behavior:'smooth'})">${t}</a>`).join("")}</div>
+    ${r.tips.length ? `<div class="elf">🧝 ${r.tips.map(esc).join("<br>")}</div>` : ""}
+
+    <div class="kicker" id="k-Números">Números</div><h2>${esc(r.channel.title || "")}</h2>
+    <div class="grid">${card("Suscriptores", kfmt(n.subscribers))}${card("Visitas totales", kfmt(n.views))}
+      ${card("Vídeos", fmt(n.videos), `${n.long} largos · ${n.shorts} Shorts analizados`)}
+      ${card("Lo normal (mediana)", kfmt(n.medianLong), `largos · Shorts ${kfmt(n.medianShort)}`)}
+      ${card("Éxitos", fmt(n.hits), "vídeos con 2× o más")}${card("Últimos 28 días", fmt(n.last28.videos) + " vídeos", kfmt(n.last28.views) + " visitas entre ellos")}</div>
+
+    <div class="kicker" id="k-Evolución">Evolución</div><h2>Cómo rinden tus vídeos mes a mes</h2>
+    <div class="card"><table><tr><th>Mes</th><th>Vídeos</th><th>Visitas</th><th>Rinden</th></tr>
+      ${r.months.slice().reverse().map((m) => `<tr><td>${esc(m.month)}</td><td>${m.long + m.shorts}</td><td>${kfmt(m.views)}</td><td style="color:${heatColor(m.ratio)}"><b>${times(m.ratio)}</b></td></tr>`).join("")}</table></div>
+
+    <div class="kicker" id="k-Ganadores">Ganadores</div><h2>Los que más superaron a lo normal</h2>
+    <div class="vids">${r.winners.map((v) => videoTile({...v, channel: v.short ? "Short" : "Vídeo largo", ageDays: Math.round((Date.now() - new Date(v.published)) / 864e5)})).join("")}</div>
+    <h2>Los que peor fueron</h2>
+    <div class="vids">${r.losers.map((v) => videoTile({...v, channel: v.short ? "Short" : "Vídeo largo", ageDays: Math.round((Date.now() - new Date(v.published)) / 864e5)})).join("")}</div>
+
+    <div class="kicker" id="k-Horarios">Cuándo publicar</div><h2>Días y horas que mejor te funcionan</h2>
+    <div class="small muted">Hora de ${esc(r.timezone)}. Cada vídeo se compara con la mediana de su tipo, así los Shorts y los largos se pueden mezclar: 1× = un vídeo normal tuyo.</div>
+    <div class="card" style="margin-top:10px"><b>Mapa de calor: día × hora</b><div class="small muted" style="margin-bottom:10px">El número es cuántos vídeos subiste en esa franja; el color, cómo les fue.</div>
+      <div class="heat"><div></div>${r.blocks.map((b) => `<div class="muted">${b}</div>`).join("")}
+        ${r.days.map((d, i) => `<div class="muted" style="align-self:center">${d}</div>${r.heat[i].map((c) => c.count
+          ? `<div class="c ${c.count <= 2 ? "few" : ""}" style="background:${heatColor(c.ratio)}" title="${c.count} vídeos · ${times(c.ratio)}">${c.count}</div>` : '<div class="c none"></div>').join("")}`).join("")}</div>
+      <div class="legend">peor ${["#e5534b", "#a8302c", "#5c1f1d", "#3a3f46", "#1c3a6e", "#1f5fbf", "#3b8bf0", "#a8cdfb"].map((x) => `<i style="background:${x}"></i>`).join("")} mejor · borde punteado = 1 o 2 vídeos</div></div>
+    <div class="card" style="margin-top:12px"><b>Por día de la semana</b><div class="small muted">Barras por encima de la línea: rinde más que lo normal.</div>
+      <div class="months" style="height:150px;position:relative"><i style="position:absolute;left:0;right:0;bottom:calc((100% - 18px) * ${1 / maxDay});border-top:1px dashed var(--muted)" title="1× = lo normal"></i>${r.perDay.map((d) => `<div title="${d.count} vídeos"><i class="l" style="height:${100 * (d.ratio || 0) / maxDay}%;background:${heatColor(d.ratio)}"></i><b>${times(d.ratio)}</b><span>${d.day}</span></div>`).join("")}</div><div style="height:22px"></div></div>
+
+    <div class="kicker" id="k-Constancia">Constancia</div><h2>Cuántos vídeos subes por mes</h2>
+    <div class="small muted">Últimos 12 meses. Al algoritmo le gusta un ritmo parejo.</div>
+    <div class="card" style="margin-top:10px"><div class="legend"><i style="background:#3b82f6"></i> Vídeos largos <i style="background:#ea580c"></i> Shorts</div>
+      <div class="months">${r.months.map((m) => `<div><i class="l" style="height:${100 * m.long / maxMonth}%"></i><i class="s" style="height:${100 * m.shorts / maxMonth}%"></i><b>${m.long + m.shorts}</b><span title="${esc(m.month)}">${esc(m.month.split(" ")[0])}</span></div>`).join("")}</div>
+      <div style="height:22px"></div>${r.consistencyNote ? `<div class="elf">🧝 ${esc(r.consistencyNote)}</div>` : ""}</div>
+
+    <div class="kicker" id="k-Títulos">Títulos</div><h2>Qué tienen tus títulos que funcionan</h2>
+    <div class="small muted">Compara los vídeos que tienen cada rasgo con los que no (mediana frente a lo normal de su tipo). Largo típico de tus títulos: ${r.titles.typicalLength} letras.</div>
+    <div class="card" style="margin-top:10px">${r.titles.traits.map((t) => `<div class="trait"><div class="row"><b>${esc(t.name)}</b>
+      <b style="color:${t.factor >= 1 ? "var(--ok)" : "var(--bad)"}">${t.factor >= 1 ? fmt(t.factor) + "× más" : Math.round(100 * (1 - t.factor)) + " % menos"}</b></div>
+      <div class="small muted">${t.count} vídeos lo tienen</div>${diverge(t.factor)}</div>`).join("") || '<div class="muted">Pocos vídeos para comparar.</div>'}</div>
+
+    <div class="kicker" id="k-Duración">Duración</div><h2>Qué duración te funciona (vídeos largos)</h2>
+    <div class="card">${r.durations.map((d) => `<div class="trait"><div class="row"><b>${esc(d.name)}</b><span>${d.count} vídeos · <b>${times(d.ratio)}</b></span></div>
+      ${d.ratio ? diverge(d.ratio) : ""}</div>`).join("")}</div>
+
+    <div class="kicker" id="k-Temas">Temas</div><h2>Ranking de temas</h2>
+    <div class="small muted">La IA agrupó tus vídeos por tema; los números salen de tus visitas reales. Azul = rinde más que lo normal; rojo = menos.</div>
+    <div class="card" style="margin-top:10px">${r.topics.map((t, i) => `<div class="topic"><b class="muted" style="font-size:20px">${i + 1}</b>
+      ${t.thumbnail ? `<img src="${esc(t.thumbnail)}" alt="">` : "<div></div>"}
+      <div><b>${esc(t.name)}</b><div class="hbar"><i style="width:${Math.min(100, 40 * (t.ratio || 0))}%;background:${(t.ratio || 0) >= 1 ? "#3b82f6" : "#e5534b"}"></i></div>
+      <div class="small muted"><b>${times(t.ratio)}</b> lo normal · ${t.count} vídeos · ${t.hits} éxitos · mediana ${kfmt(t.medianViews)}</div></div></div>`).join("") || '<div class="muted">Sin temas (pocos vídeos o sin IA configurada).</div>'}</div>`;
+}
+
+function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (!document.hidden) fn(); else schedule(fn, ms); }, ms); }
+
+async function route() {
+  clearTimeout(timer);
+  const hash = location.hash || "#/";
+  document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
+  try {
+    if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
+    else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
+    else if (hash === "#/errores") await errorsPage();
+    else if (hash === "#/competencia") await radarPage();
+    else if (hash === "#/canal") await channelPage();
+    else if (hash === "#/nuevo") await newVideo();
+    else if (hash === "#/estadisticas") await stats();
+    else if (hash === "#/ajustes") await settingsPage();
+    else await home();
+    const s = data && data.service;
+    $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
+  } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
+async function start() {
+  const session = await fetch("/api/session").then((r) => r.json());
+  if (!session.authorised) return showLogin();
+  $("#top").classList.remove("hide");
+  window.onhashchange = () => { tab = "diagnosis"; route(); };
+  route();
+}
+start();
+</script>
+</body>
+</html>

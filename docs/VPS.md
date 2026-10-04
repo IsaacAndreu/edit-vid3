@@ -53,6 +53,32 @@ nuevo, se reinicia con él. Ver lo que hace: `journalctl -u edit-vid3 -f`; parar
 Al empezar cada fase que usa YouTube verás `YouTube: sin cuenta…` y `PO Token Provider activo · clientes default, …,
 mweb`. Si no sale lo segundo: `docker ps` (¿está `bgutil-provider`?) y `curl http://127.0.0.1:4416/ping`.
 
+## 3b. Estudio web con contraseña (sin comandos)
+
+```bash
+echo 'WEB_PASSWORD=una-contraseña-larga-de-verdad' >> .env
+bash scripts/vps/install-web.sh            # o: bash scripts/vps/install-web.sh mi-dominio.com
+```
+
+Queda en `https://<tu-ip-con-guiones>.sslip.io` (HTTPS gratis con Let's Encrypt, sin comprar dominio): subir guion y
+voz, ver en qué etapa va cada vídeo, descargarlo, revisar errores, competencia y tu canal. El estudio escucha solo en
+`127.0.0.1:8080` y Caddy pone el HTTPS delante; fuera de la VPS siempre pide la contraseña (sesión de 30 días; tras
+10 intentos fallidos en 10 minutos se bloquea un rato). Registro: `journalctl -u edit-vid3-web -f`.
+
+**Gasto**: en el estudio → Ajustes, «Límite de gasto de API al día» (o `budget.daily_usd`). Al llegar, el servidor no
+empieza más vídeos hasta el día siguiente (no cuenta como error).
+
+## 3c. Seguridad del servidor
+
+`setup-ubuntu.sh` ya deja: cortafuegos `ufw` (solo SSH, 80 y 443), `fail2ban` (bloquea IPs que prueban contraseñas
+de SSH) y parches de seguridad automáticos. Además, recomendado:
+
+1. Entra con **clave SSH** en vez de contraseña: en tu PC `ssh-keygen -t ed25519` y `ssh-copy-id usuario@ip`
+   (en Windows: `type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh usuario@ip "cat >> ~/.ssh/authorized_keys"`).
+2. Cuando entres sin contraseña, desactívalas: en `/etc/ssh/sshd_config` pon `PasswordAuthentication no` y
+   `PermitRootLogin no`, y `sudo systemctl restart ssh` (deja otra sesión abierta mientras pruebas).
+3. `.env` solo para tu usuario: `chmod 600 .env`.
+
 ## 4. Métricas (lo que decide)
 
 Cada petición a YouTube queda en `work/<vídeo>/youtube_downloads.jsonl` (qué se pidió, si fue bien, el error —403,

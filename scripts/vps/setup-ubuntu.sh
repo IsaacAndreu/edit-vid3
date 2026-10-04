@@ -3,7 +3,8 @@
 #   git clone -b claude/pensive-bell-5pi66r https://github.com/IsaacAndreu/edit-vid3.git && cd edit-vid3
 #   bash scripts/vps/setup-ubuntu.sh
 # Instala: Python (venv), ffmpeg, Node 22, Deno, las librerías de Chrome para Remotion, Docker y el
-# PO Token Provider (bgutil: servidor en Docker + plugin de yt-dlp). Se puede repetir sin romper nada.
+# PO Token Provider (bgutil: servidor en Docker + plugin de yt-dlp), y la seguridad básica (ufw, fail2ban, parches).
+# Se puede repetir sin romper nada.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
@@ -55,6 +56,17 @@ sudo docker run --name bgutil-provider -d --init --restart unless-stopped -p 127
 sleep 3
 curl -fsS http://127.0.0.1:4416/ping && echo "  PO Token Provider responde ✓" || echo "  AVISO: el PO Token Provider no responde todavía"
 
+echo "== Seguridad: cortafuegos (solo SSH y web), fail2ban (bloquea a quien prueba contraseñas) y parches automáticos"
+sudo apt-get install -y ufw fail2ban unattended-upgrades
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw --force enable
+sudo systemctl enable --now fail2ban
+echo 'APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null
+# Docker publica 4416 solo en 127.0.0.1: el PO Token Provider no se ve desde fuera aunque Docker se salte ufw
+
 echo "== Configuración de esta máquina (config.local.yaml, fuera de git)"
 if [ ! -f config.local.yaml ]; then
   cp scripts/vps/config.local.example.yaml config.local.yaml
@@ -67,3 +79,4 @@ echo "  - .env con tus claves               →  $ROOT/.env"
 echo "  - (opcional) cookies de reserva     →  ~/.config/edit-vid3/cookies/*.txt"
 echo "Prueba:   . .venv/bin/activate && python main.py --probar-youtube"
 echo "Después, que haga vídeos todo el rato:   bash scripts/vps/install-service.sh"
+echo "Y el estudio web con HTTPS (WEB_PASSWORD en .env):   bash scripts/vps/install-web.sh"

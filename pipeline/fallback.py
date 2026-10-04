@@ -32,6 +32,7 @@ from .analysis import make_models, prompts_for
 from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
+from . import feedback
 from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked, seen_elsewhere, source_lines, used_elsewhere
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
@@ -97,8 +98,10 @@ def _thumbnail(http: requests.Session, url: str, cache: Path) -> np.ndarray | No
 
 def inputs(ctx: RunContext) -> list:
     # people.json: the portraits the identity check compares faces with (the people stage runs first)
+    # revision.json: the shots marked wrong in the studio («Errores»), replaced here
+    revision = ctx.work_dir / feedback.REVISION
     return [ctx.work_dir / "selection.json", ctx.work_dir / "media" / MANIFEST, ctx.work_dir / "shots.json",
-            ctx.work_dir / "people.json"]
+            ctx.work_dir / "people.json"] + ([revision] if revision.is_file() else [])
 
 
 def run(ctx: RunContext) -> None:
@@ -149,6 +152,11 @@ def run(ctx: RunContext) -> None:
         who = expected_people(shots[shot_id], names, protagonist, scope) if checker and shot_id in shots else []
         return identity_cache.get(checker, path, kind, who) if who else None
 
+    marked_wrong = feedback.wrong_shots(ctx.work_dir)    # you said so in the studio: replace, whoever chose it
+    for shot_id, why in marked_wrong.items():
+        if shot_id in shots and shot_id in done:
+            done.discard(shot_id)
+            pending[shot_id] = f"marcado como error en la revisión: {why}"
     for media in ingest.media:
         if media.shotId not in done or getattr(selections.get(media.shotId), "decidedBy", None) == "editor":
             continue
@@ -208,6 +216,7 @@ def run(ctx: RunContext) -> None:
         old = previous.get(shot_id)
         # Reuse the cached result unless a shot earlier in this run has already taken that media.
         if (old and old.specHash == digest and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used
+                and shot_id not in marked_wrong and not feedback.is_wrong(elsewhere, old.candidateId, old.start, old.end)
                 and not looks_used(ctx.root / old.path, old.kind)):
             items.append(old)
             pexels_used.add(old.candidateId)

@@ -196,16 +196,19 @@ USED_REGISTRY = "used_fragments.json"   # in cache/: what every video of the cha
 
 
 def used_elsewhere(ctx: RunContext) -> dict[str, list[tuple[float | None, float | None]]]:
-    """Fragments/pictures other videos already used: candidateId → [(start, end)] (None = a picture)."""
+    """Fragments/pictures other videos already used, and those marked wrong in the studio's «Errores»:
+    candidateId → [(start, end)] (None = a picture, or the whole source)."""
 
+    from .feedback import wrong_fragments
+
+    out: dict[str, list[tuple[float | None, float | None]]] = wrong_fragments(ctx.root)   # marked wrong in «Errores»
     path = ctx.cache_dir / USED_REGISTRY
     if not ctx.section("judge").get("avoid_other_videos", True) or not path.is_file():
-        return {}
+        return out
     try:
         registry = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
-        return {}
-    out: dict[str, list[tuple[float | None, float | None]]] = {}
+        return out
     for slug, entries in registry.items():
         if slug == ctx.slug:
             continue

@@ -19,3 +19,6 @@ cleanup:
   after_video: true            # al terminar un vídeo, borra sus temporales pesados (render, clips, proxies del editor)
                                # y deja vídeo final, planes, logs y diagnóstico. Ojo: rehacer ese vídeo vuelve a descargar.
   cache_days: 14               # descargas de YouTube/Pexels en cache/ sin usar en 14 días → fuera
+
+budget:
+  daily_usd: 15                # tope de gasto de API al día (lo cambias en el estudio → Ajustes); al llegar, sigue mañana

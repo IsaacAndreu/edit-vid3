@@ -313,3 +313,23 @@ render:
   loudness: -16                    # LUFS del máster (YouTube)
   true_peak: -1.5
   audio_bitrate: 192k
+
+budget:
+  daily_usd: 0                     # límite de gasto de API al día (0 = sin límite; también en el estudio → Ajustes)
+
+radar:                             # radar de competencia diario (estudio → Competencia; con --vigilar, cada día)
+  enabled: true
+  hour: 7                          # a partir de esta hora, en el primer rato sin vídeos pendientes
+  days: 30                         # vídeos de los últimos N días
+  min_ratio: 2.0                   # al menos 2x las visitas normales de su canal
+  min_views: 5000
+  queries: 3                       # búsquedas del nicho (lab.queries) por canal (~200 unidades de API cada una)
+  videos_per_competitor: 30
+  keep: 20                         # vídeos que se guardan por canal
+  new_niches: 1                    # nichos cercanos nuevos por canal, medidos en YouTube
+  free_niches: 2                   # y nichos nuevos de cualquier tema
+  niche_days: 120
+
+mychannel:                         # análisis de tu canal (estudio → Mi canal; tu canal en Ajustes)
+  timezone: Europe/Madrid
+  max_videos: 400

@@ -142,6 +142,10 @@ def run_stages(
             if stage.run is None:
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
+            current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
+            current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES),
+                                           "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
+                               encoding="utf-8")
             from .housekeeping import Sampler
 
             with turn(ctx.root, stage.name, ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
@@ -166,6 +170,7 @@ def run_stages(
                 + "\n",
                 encoding="utf-8",
             )
+            current.unlink(missing_ok=True)
             executed.append(stage.name)
             spent = time.monotonic() - started
             print(f"{label}: hecho en {spent:.1f} s" + (f" ({spent / 60:.0f} min)" if spent >= 120 else ""))

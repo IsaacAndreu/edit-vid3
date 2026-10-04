@@ -108,6 +108,34 @@ Resultado en `out/<nombre>/`:
 Si algo falla, vuelve a lanzar el mismo comando: cada etapa terminada se salta y continúa donde
 se quedó. `--force <etapa>` rehace una etapa concreta (y las siguientes).
 
+## 5b. Estudio web: todo sin comandos
+
+```powershell
+python main.py --web
+```
+
+Se abre `http://127.0.0.1:8080` en el navegador (solo desde este PC; no pide contraseña). Desde ahí:
+
+- **Nuevo vídeo**: canal, nombre, guion (pegado o un .txt) y voz (mp3, wav o m4a) → queda en
+  `materiales/<canal>/<nombre>/`. Si no hay nada vigilando, **Inicio → «Hacer la cola ahora»** lo lanza.
+- **Inicio**: qué está haciendo (vídeo, etapa N/15, minutos), en cola, con error y hechos; el gasto de hoy.
+- **Un vídeo**: el vídeo (se ve y se descarga), textos para YouTube, miniaturas, Shorts, diagnóstico, verificación,
+  registro y etapas con tiempo, RAM y CPU; **Reintentar** si falló; **Revisar clips**.
+- **Errores** («para ir mejorando»): cada clip del vídeo con su frase y su fuente, y tres botones: **Correcta**,
+  **Incorrecta** (con el motivo: otra persona, no tiene que ver, dibujo, roto, texto/marca de agua, repetido) y
+  **Dudosa**. Lo que marcas mal **no se vuelve a usar en ningún vídeo** (otra persona: ese tramo y unos segundos
+  alrededor; dibujo o marca de agua: todo ese vídeo de origen). **«Rehacer con correcciones»** cambia esos planos y
+  vuelve a montar el vídeo. La página de Errores dice qué parte del programa falla más (juez, relleno del
+  protagonista, stock…) y por qué motivos.
+- **Competencia**: el radar del día por canal (los vídeos que más superan a su canal en los últimos 30 días, de tus
+  competidores y de las búsquedas del nicho, con «nuevo» en lo que no estaba ayer) y **nichos nuevos** medidos en
+  YouTube (cuántos vídeos superan 3× a su canal y cuántos son de canales pequeños). «Buscar ahora» o, con el servidor
+  vigilando, solo cada mañana (`radar:` en config.yaml). Necesita `YOUTUBE_API_KEYS`. Por comando: `--radar`.
+- **Mi canal**: pon tu @canal en Ajustes y pulsa «Analizar ahora»: números, evolución por mes, ganadores y
+  perdedores, mapa de calor día × hora (cuándo publicar), constancia, qué tienen tus títulos que funcionan, duración
+  y ranking de temas (la IA los agrupa; los números son tus visitas reales). Por comando: `--mi-canal gimnasia`.
+- **Estadísticas** (YouTube y gasto por día) y **Ajustes** (pausar, límite de gasto diario, tu canal por perfil).
+
 ## 6. Cola nocturna (varios vídeos seguidos)
 
 **Registro y diagnóstico de cada vídeo.** Todo lo que sale por pantalla se guarda con la hora en

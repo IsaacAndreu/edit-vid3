@@ -81,6 +81,15 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--youtube-stats", nargs="?", const=7.0, type=float, metavar="DÍAS",
                         help="Cómo respondió YouTube en los últimos DÍAS (7 por defecto): peticiones, 403, bloqueos, "
                              "velocidad, con o sin cuenta → out/_youtube_stats.md.")
+    target.add_argument("--web", nargs="?", const=8080, type=int, metavar="PUERTO",
+                        help="Estudio web (sin comandos): subir guion y voz, ver cómo va cada vídeo, descargar, revisar "
+                             "errores, competencia y tu canal → http://127.0.0.1:8080.")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="Con --web: dónde escucha (127.0.0.1 = solo este equipo; en la VPS lo publica Caddy).")
+    target.add_argument("--radar", action="store_true",
+                        help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
+    target.add_argument("--mi-canal", metavar="CANAL",
+                        help="Análisis de tu canal de YouTube de ese perfil (canales/<CANAL>.yaml) → out/_canal/<CANAL>.json.")
     return parser
 
 
@@ -92,6 +101,9 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
     ctx = RunContext.create(slug, root=root)
     if not ctx.materials_dir.is_dir():
         raise FileNotFoundError(f"No existe {ctx.materials_dir}")
+    from pipeline import budget
+
+    budget.check(root, ctx.config)                       # budget.daily_usd: today's spending at the limit → wait
     # everything printed also goes to out/<slug>/log.txt; out/<slug>/diagnostico.md says what to improve
     with diag.logging(ctx):
         try:
@@ -198,6 +210,11 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
     print(f"Vigilando {root / 'materiales'} cada {every_minutes:g} min (Ctrl+C para parar)")
     idle_since = None
     while True:
+        (root / "out").mkdir(parents=True, exist_ok=True)
+        (root / "out" / "_vigilar.latido").write_text(datetime.now().isoformat(timespec="seconds"))   # web: «vigilando»
+        if (root / "out" / "_pausa").is_file():                     # paused from the web studio
+            time.sleep(60)
+            continue
         try:
             state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
         except ValueError:
@@ -216,18 +233,27 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             except SystemExit as stop:               # preflight said no (keys, disk…): look again later
                 print(stop)
                 time.sleep(30 * 60)
+            waited = any(status == "en espera" for _, status, _, _ in LAST_RESULTS)
             for slug, status, _, _ in LAST_RESULTS:
+                if status == "en espera":                            # budget: not a failure, it goes tomorrow
+                    continue
                 if status == "OK":
                     state.pop(slug, None)
                 else:
                     state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status}
             state_path.parent.mkdir(parents=True, exist_ok=True)
             state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+            if waited:
+                time.sleep(30 * 60)                                  # over the daily budget: look again later
         elif idle_since is None:
             idle_since = time.time()
             print(f"{datetime.now():%H:%M} · nada pendiente"
                   + (f" ({len(skip)} con error esperando cambios: {', '.join(sorted(skip))})" if skip else "")
                   + f"; vuelvo a mirar cada {every_minutes:g} min")
+        if not waiting:                                              # quiet moment: today's competition radar
+            from pipeline import radar
+
+            radar.run_if_due(root)
         if cfg.get("git_pull", True) and _git_update(root):
             print("Código nuevo (git pull): reinicio con él")
             os.execv(sys.executable, [sys.executable, *sys.argv])
@@ -334,6 +360,13 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
                 raise
             except BaseException as error:  # SystemExit too: one bad video must not end the queue
+                from pipeline.budget import BudgetReached
+
+                if isinstance(error, BudgetReached):            # not this video's fault: the rest wait too
+                    results.append((slug, "en espera", time.monotonic() - started, str(error)))
+                    print(f"⏸ {error}")
+                    notify(root, f"⏸ {error}")
+                    break
                 traceback.print_exc()
                 results.append((slug, "ERROR", time.monotonic() - started, _describe(error)))
                 print(f"✗ {slug}: {_describe(error)} — sigo con el siguiente")
@@ -496,6 +529,23 @@ def main() -> None:
         return
     if args.vigilar is not None:
         watch(args.vigilar)
+        return
+    if args.web is not None:
+        from pipeline import web
+
+        web.serve(port=args.web, host=args.host)
+        return
+    if args.radar:
+        from pipeline import radar
+
+        print(f"Radar en {radar.run(PROJECT_ROOT, force=True)}")
+        return
+    if args.mi_canal:
+        from pipeline import mychannel
+
+        report = mychannel.run(PROJECT_ROOT, args.mi_canal)
+        print("\n".join(report["tips"]) or "Hecho")
+        print(f"Guardado en out/_canal/{args.mi_canal}.json")
         return
     if args.youtube_stats is not None:
         from pipeline import ytstats
