@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -443,3 +444,23 @@ class RetryTests(unittest.TestCase):
                 (root / "work" / "V1" / "current.json").write_text(json.dumps({"stage": "render", "pid": os.getpid()}))
                 with self.assertRaises(ValueError):
                     web.retry(root, "V1")                                        # already being made
+
+
+class QueueAgainTests(unittest.TestCase):
+    def test_with_a_watcher_a_failed_video_is_back_in_the_queue_with_its_retry_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _project(root)
+            web.create_video(root, {"name": "v1", "script": SCRIPT})
+            (root / "materiales" / "v1" / "voz.mp3").write_bytes(b"x")
+            (root / "work" / "v1").mkdir(parents=True)
+            (root / "work" / "v1" / "diag.json").write_text(json.dumps({"error": "TypeError: algo"}))
+            folder = root / "materiales" / "v1"
+            self.assertEqual(web.video_summary(root, folder, {})["status"], "error")          # nothing will retry it
+            (root / "out").mkdir(exist_ok=True)
+            (root / "out" / "_vigilar.latido").write_text("x")
+            row = web.video_summary(root, folder, {"v1": {"at": time.time(), "status": "ERROR"}})
+            self.assertEqual((row["status"], row["error"]), ("en cola", None))
+            self.assertTrue(row["lastError"].startswith("TypeError") and row["retryAt"])
+            old = web.video_summary(root, folder, {})                                          # never tried by the watcher
+            self.assertEqual((old["status"], old["retryAt"]), ("en cola", None))

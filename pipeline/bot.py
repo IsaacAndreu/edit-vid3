@@ -152,10 +152,13 @@ def videos_text(root: Path, limit: int = 12) -> str:
 def errors_text(root: Path) -> str:
     from . import web
 
-    failed = [v for v in web.overview(root)["videos"] if v["status"] == "error" and not v["archived"]]
+    failed = [v for v in web.overview(root)["videos"] if (v["status"] == "error" or v.get("lastError")) and not v["archived"]]
     if not failed:
         return "Ningún vídeo con error ✅"
-    return "\n\n".join(f"❌ {v['slug']}\n{str(v.get('error') or 'falló')[:300]}\n→ /reintentar {v['slug']}" for v in failed[:8])
+    return "\n\n".join(
+        (f"↻ {v['slug']} · en cola, " + (f"reintento solo a las {v['retryAt']}" if v.get("retryAt") else "se reintenta en su turno")
+         if v.get("lastError") else f"❌ {v['slug']}")
+        + f"\n{str(v.get('error') or v.get('lastError') or 'falló')[:300]}\n→ /reintentar {v['slug']} (ya)" for v in failed[:8])
 
 
 def video_text(root: Path, slug: str) -> str:

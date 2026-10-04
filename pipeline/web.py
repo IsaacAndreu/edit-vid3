@@ -103,8 +103,16 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     failed = watch_state.get(slug)
     diag = _json(work / "diag.json") or {}
     ready = (folder / "guion.txt").is_file() and (folder / "voz.mp3").is_file()
-    # an old failure the watcher has not tried since (it skips only what it failed itself): it is in the queue again
-    queued_again = bool(diag.get("error")) and not failed and ready and watcher_alive(root)
+    # with the watcher running a failed video is not «error»: it goes back to the queue — now if the watcher never
+    # tried it (an old failure), else after watch.retry_hours (or as soon as you change its files)
+    retry_at = None
+    queued_again = False
+    if ready and (diag.get("error") or failed) and watcher_alive(root):
+        queued_again = True
+        if failed and failed.get("at"):
+            retry_at = float(failed["at"]) + _retry_hours(root) * 3600
+            if retry_at <= time.time():
+                retry_at = None
     status = ("hecho" if done else "haciendo" if current else "en cola" if queued_again
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
@@ -112,7 +120,8 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
         "archived": any(part.startswith("_") for part in folder.relative_to(root / "materiales").parts),
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
         "error": None if done or current or queued_again else diag.get("error") or ((failed or {}).get("status") and "falló"),
-        "lastError": diag.get("error") if queued_again else None,
+        "lastError": (diag.get("error") or "falló") if queued_again else None,
+        "retryAt": time.strftime("%H:%M", time.localtime(retry_at)) if retry_at else None,
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
         "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,
         "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),
@@ -276,6 +285,23 @@ def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
     else:
         tmp.replace(folder / "voz.mp3")
     return {"ok": True, "bytes": (folder / "voz.mp3").stat().st_size}
+
+
+_RETRY: dict[str, tuple[float, float]] = {}
+
+
+def _retry_hours(root: Path) -> float:
+    """watch.retry_hours (6), read at most once a minute."""
+
+    cached = _RETRY.get(str(root))
+    if cached and time.time() - cached[0] < 60:
+        return cached[1]
+    try:
+        hours = float(RunContext.create("_web", root=root).section("watch").get("retry_hours", 6))
+    except Exception:
+        hours = 6.0
+    _RETRY[str(root)] = (time.time(), hours)
+    return hours
 
 
 def watcher_alive(root: Path) -> bool:

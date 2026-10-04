@@ -182,7 +182,8 @@ function videoCard(v) {
   return `<div class="card click" onclick="location.hash='#/video/${encodeURIComponent(v.slug)}'">
     <div class="row" style="justify-content:space-between"><b>${esc(v.slug)}</b><span>${v.published ? '<span class="pill hecho">en YouTube</span> ' : ""}${pill(v.status)}</span></div>
     <div class="small muted">${esc(v.channel || "—")}${v.minutes ? " · " + v.minutes + " min" : ""}${v.costUsd ? " · " + v.costUsd + " $" : ""}</div>
-    ${progress}${v.error ? `<div class="small" style="color:var(--bad);margin-top:6px">${esc(String(v.error).slice(0, 140))}</div>` : ""}</div>`;
+    ${progress}${v.error ? `<div class="small" style="color:var(--bad);margin-top:6px">${esc(String(v.error).slice(0, 140))}</div>` : ""}
+    ${v.lastError ? `<div class="small muted" style="margin-top:6px">↻ ${v.retryAt ? "reintento a las " + esc(v.retryAt) : "se reintenta en su turno"} · falló la última vez</div>` : ""}</div>`;
 }
 
 async function home() {
@@ -328,7 +329,8 @@ async function videoPage(slug) {
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}</div>
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
-    ${v.lastError ? `<div class="notice">En cola otra vez: el vigilante lo hará en su turno. El último intento falló: <span class="small muted">${esc(String(v.lastError).slice(0, 200))}</span></div>` : ""}
+    ${v.lastError ? `<div class="notice">En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b> (antes si cambias sus archivos o pulsas «Hacer ahora»)` : "el vigilante lo hará en su turno"}.
+      <div class="small muted" style="margin-top:4px">El último intento falló: ${esc(String(v.lastError).slice(0, 220))}</div></div>` : ""}
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
       <button style="margin-left:8px" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
