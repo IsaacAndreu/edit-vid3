@@ -244,3 +244,18 @@ def test_a_servers_bot_check_is_not_taken_for_a_video_that_needs_an_account(tmp_
         return "ok"
 
     assert yt._call("metadata", flagged_ip) == "ok" and calls[0] is None and calls[1] is not None   # again with an account
+
+
+def test_home_proxy_lets_only_youtube_through_and_the_server_uses_it(tmp_path, monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("proxy_youtube", "scripts/casa/proxy_youtube.py")
+    proxy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(proxy)
+    assert proxy.allowed("rr3---sn-h5q7rne6.googlevideo.com") and proxy.allowed("www.youtube.com")
+    assert not proxy.allowed("example.com") and not proxy.allowed("evilyoutube.com")
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"proxy": "http://100.64.0.2:8899", "po_token": "on"})
+    assert yt.base_options["proxy"] == "http://100.64.0.2:8899" and yt.http.proxies["https"] == "http://100.64.0.2:8899"
+    assert yt.pot is False                       # home IP: no PO Token made for the server's IP
+    assert "source_address" not in yt.base_options

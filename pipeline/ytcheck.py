@@ -59,9 +59,9 @@ def _probe(ctx: RunContext, cookies: bool, ipv4: bool, clients: str = "") -> dic
             source.close()
         seconds = time.monotonic() - began
         phases = {action: round(total, 1) for action, (_, total) in source.stats.items()}
-        pot, used = source.pot, source.clients
+        pot, used, proxy = source.pot, source.clients, bool(source.proxy)
     return {"seconds": round(seconds, 1), "mb": round(size / 1e6, 1), "error": error,
-            "warnings": dict(WARNING_COUNTS), "phases": phases, "pot": pot, "clients": used}
+            "warnings": dict(WARNING_COUNTS), "phases": phases, "pot": pot, "clients": used, "proxy": proxy}
 
 
 def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool, clients: str = "") -> dict[str, Any]:
@@ -82,7 +82,8 @@ def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool, clients: str = 
         result = {"seconds": float(PROBE_LIMIT), "mb": 0, "error": "", "warnings": {}, "phases": {}, "timeout": True}
     result.update(label=label, cookies=cookies, ipv4=ipv4, tried=clients)
     if result.get("clients") is not None:
-        label += f" · clientes {', '.join(result['clients'])} · PO Token {'sí' if result.get('pot') else 'NO'}"
+        label += (f" · clientes {', '.join(result['clients'])} · PO Token {'sí' if result.get('pot') else 'NO'}"
+                  + (" · por la conexión de casa (proxy)" if result.get("proxy") else ""))
     if result.get("timeout"):
         print(f"   {label}: más de {PROBE_LIMIT} s para 10 s de vídeo (cortado)")
     elif result["error"]:
@@ -158,6 +159,10 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
     if "retos" in warned and not out:
         out.append("yt-dlp no consigue resolver los retos aunque tiene deno/node: actualiza las dos cosas "
                    "(pip install -U \"yt-dlp[default]\" y deno upgrade) y vuelve a probar.")
+    if any(r.get("proxy") for r in runs) and any(w in " ".join(r["error"] for r in runs).lower()
+                                                 for w in ("proxy", "connection refused", "timed out", "unreachable")):
+        out.append("El proxy de casa no responde: ¿está encendido el PC, con Tailscale conectado y "
+                   "scripts/casa/proxy-youtube.bat abierto? (docs/VPS.md 3e)")
     ok = [r for r in runs if not r["error"] and not r.get("timeout")]
     blocked = [r for r in runs if _bot(r)]
     with_account = [r for r in runs if r.get("cookies", r["label"].startswith("con cookies"))]

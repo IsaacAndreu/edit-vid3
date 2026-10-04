@@ -98,6 +98,26 @@ esa cuenta).
 Con `cookies: fallback` (el de por defecto) también funciona: cada petición que recibe el control «no eres un bot» se
 repite con una cuenta, pero gasta una petición sin cuenta antes de cada una.
 
+## 3e. YouTube por la conexión de casa (sin cuentas)
+
+Si YouTube bloquea la IP del servidor, la alternativa a las cookies: el servidor descarga de YouTube **a través de tu
+PC de casa**, donde YouTube no pide cuenta. Todo lo demás (IA, Whisper, CLIP, render) sigue en el servidor. El PC
+solo pasa bytes: casi no usa CPU y puedes seguir usándolo. Va por **Tailscale** (red privada gratuita entre tus
+equipos): el proxy no queda abierto a internet y solo deja pasar direcciones de YouTube.
+
+1. **Tailscale en los dos:** en el PC, instálalo desde tailscale.com/download e inicia sesión. En el servidor:
+   `curl -fsSL https://tailscale.com/install.sh | sh && tailscale up` (abre el enlace que sale y entra con la misma
+   cuenta).
+2. **En el PC** (tras `git pull`): doble clic en `scripts\casa\proxy-youtube.bat`. Si Windows pregunta, permite el
+   acceso en redes privadas. La ventana dice la línea para el servidor (`http://100.x.y.z:8899`). Déjala abierta.
+3. **En el servidor**, en `config.local.yaml`, dentro de `sourcing: youtube:` añade `proxy: http://100.x.y.z:8899`
+   y prueba: `python main.py --probar-youtube` (sale «por la conexión de casa (proxy)»).
+4. Que arranque solo: `Win+R` → `shell:startup` → crea ahí un acceso directo a `proxy-youtube.bat`, y que el PC no
+   se suspenda (LOCAL.md, «Que el PC no se duerma»).
+
+Con proxy no se usa PO Token (YouTube ve la IP de casa, que no lo necesita). Gasta de tu conexión ~1-2 GB por vídeo
+(baja de YouTube y sube al servidor). Si el PC está apagado, la cola no arranca y te avisa por Telegram.
+
 ## 4. Métricas (lo que decide)
 
 Cada petición a YouTube queda en `work/<vídeo>/youtube_downloads.jsonl` (qué se pidió, si fue bien, el error —403,

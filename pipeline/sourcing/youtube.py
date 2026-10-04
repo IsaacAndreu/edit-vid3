@@ -186,7 +186,12 @@ class YouTubeSource:
         }
         if shutil.which("deno") is None and shutil.which("node") is not None:
             options["js_runtimes"] = {"node": {}}
-        if config.get("force_ipv4"):
+        proxy = str(os.environ.get("YOUTUBE_PROXY") or config.get("proxy") or "").strip()
+        if proxy:                                   # a server whose IP YouTube blocks: out through home (docs/VPS.md 3e)
+            options["proxy"] = proxy                # yt-dlp, and ffmpeg via -http_proxy (so an http:// proxy)
+            self.http.proxies = {"http": proxy, "https": proxy}
+        self.proxy = proxy
+        if config.get("force_ipv4") and not proxy:
             options["source_address"] = "0.0.0.0"   # YouTube over IPv6 crawls with some providers
         if config.get("player_client"):
             options["extractor_args"] = {"youtube": {"player_client": list(config["player_client"])}}
@@ -213,6 +218,8 @@ class YouTubeSource:
         mode = str(self.cfg.get("po_token", "auto")).lower()
         if mode in ("off", "false", "no"):
             return False
+        if self.proxy and mode != "force":       # through home: YouTube sees the home IP, which needs no PO Token
+            return False                         # (and the provider would make it here, for the server's IP)
         url = str(self.cfg.get("pot_provider_url", "http://127.0.0.1:4416")).rstrip("/")
         try:
             plugin = importlib.util.find_spec("yt_dlp_plugins.extractor.getpot_bgutil_http") is not None
