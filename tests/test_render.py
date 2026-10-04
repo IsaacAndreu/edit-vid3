@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from pipeline.render import condensed_props, music_volume_expr, plan_segments
+from pipeline.render import condensed_props, music_volume_curve, music_volume_expr, plan_segments
 
 VIDEO = {"src": "media/a.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: X"}
 IMAGE = {"src": "media/b.jpg", "kind": "image", "source": "wikimedia", "credit": "Fuente: Y"}
@@ -145,3 +145,25 @@ def test_png_sequences_never_go_under_a_folder_with_a_dot(tmp_path):
     ctx = RunContext.create("video1.ice", root=tmp_path, config={"paths": {}})
     folder = Renderer(ctx).sequence_dir("badges")
     assert "." not in str(folder.relative_to(tmp_path)) if folder.is_relative_to(tmp_path) else "." not in folder.name
+
+
+def test_the_volume_track_follows_the_ducking_expression_and_scales_to_long_videos():
+    import re
+
+    speech = [(30, 60), (90, 200), (260, 300)]
+    expr = music_volume_expr(speech, 30, 360, 0.25, 0.05)
+    curve = music_volume_curve(speech, 30, 360, 0.25, 0.05)
+    py = re.sub(r"between\(t,([\d.]+),([\d.]+)\)", r"(\1<=t<=\2)", expr)
+    for n in range(0, len(curve), 37):
+        t = n / 1000
+        assert abs(eval(py, {"min": min, "t": t}) - curve[n]) < 1e-3       # the expression rounds the ramp to 4 decimals
+    long_speech = [(i * 40, i * 40 + 30) for i in range(500)]          # ~11 min of short sentences
+    assert abs(len(music_volume_curve(long_speech, 30, 20000, 0.25, 0.05)) - 20000 / 30 * 1000) <= 2
+
+
+def test_long_figures_are_shortened_for_the_giant_number():
+    from pipeline.planner import compact_figure
+
+    assert compact_figure("25.000 millones de dólares") == "25.000 M$"
+    assert compact_figure("15.000 mil millones de euros") == "15.000 MM€"
+    assert compact_figure("2,7%") == "2,7%"

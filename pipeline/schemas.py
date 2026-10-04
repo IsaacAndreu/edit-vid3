@@ -726,7 +726,8 @@ class Timeline(_Strict):
             if shot.from_ != cursor:
                 raise ValueError(f"{shot.id}: empieza en el fotograma {shot.from_}, se esperaba {cursor}")
             cursor += shot.durationInFrames
-            if shot.type not in ("datacard", "endscreen") and shot.media is None and not under_graphic(shot):
+            # a chapter card with nothing found behind it shows its title on the channel background
+            if shot.type not in ("datacard", "endscreen", "chapter") and shot.media is None and not under_graphic(shot):
                 raise ValueError(f"{shot.id}: plano {shot.type} sin medio")
             if shot.media and shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
                 raise ValueError(f"{shot.id}: medio de terceros sin crédito")

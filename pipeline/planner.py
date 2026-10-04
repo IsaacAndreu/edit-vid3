@@ -667,6 +667,22 @@ def _with_subject(broll: dict[str, Any], person: str | None) -> dict[str, Any]:
     return {**broll, "entities": [person]}
 
 
+def compact_figure(value: str) -> str:
+    """A figure short enough for the giant number (≤ 16 characters): '25.000 millones de dólares' → '25.000 M$'."""
+
+    value = " ".join(value.split())
+    if len(value) <= 16:
+        return value
+    for pattern, short in ((r"\s*mil millones de (dólares|euros)", r" MM\1"), (r"\s*millones de (dólares|euros)", r" M\1"),
+                           (r"\s*mil millones", " MM"), (r"\s*millones", " M"), (r"\s*por ciento", " %"),
+                           (r"(dólares|dolares)", "$"), (r"euros", "€"), (r"\s*unidades", " uds."),
+                           (r"\s*kilómetros", " km"), (r"\s*pasajeros", " pax")):
+        value = re.sub(pattern, short, value, flags=re.IGNORECASE)
+    value = re.sub(r"M(M?)(dólares|dolares)", r"M\1$", value)
+    value = re.sub(r"M(M?)euros", r"M\1€", value)
+    return " ".join(value.split())
+
+
 def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     shot = {k: structural[k] for k in ("id", "startWord", "endWord", "start", "end", "text", "chapter")}
     if structural.get("pace"):
@@ -694,6 +710,12 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
         shot.pop("broll", None), shot.pop("stat", None)
     if kind == "stat":
         shot.pop("panel", None), shot.pop("panelId", None)
+        stat = shot.get("stat") if isinstance(shot.get("stat"), dict) else None
+        if stat is not None:
+            stat["value"] = compact_figure(str(stat.get("value") or ""))
+            if len(stat["value"]) > 16 and isinstance(shot.get("broll"), dict):   # still too long for the giant figure
+                shot["type"] = "broll"
+                shot.pop("stat", None)
     if kind == "split":
         shot.pop("stat", None)
     return shot

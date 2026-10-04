@@ -316,6 +316,55 @@ def music_volume_expr(speech: list[list[int]] | list[tuple[int, int]], fps: int,
     return "+".join(terms)
 
 
+ENVELOPE_RATE = 1000      # samples per second of the music volume track
+
+
+def music_volume_curve(speech: list[list[int]] | list[tuple[int, int]], fps: int, total: int,
+                       music: float, ducked: float, rate: int = ENVELOPE_RATE) -> "np.ndarray":
+    """The same ducking curve as music_volume_expr, sampled `rate` times a second. A long video makes the
+    expression thousands of terms long, more than ffmpeg can build ("Cannot allocate memory")."""
+
+    import numpy as np
+
+    t = np.arange(int(math.ceil(total / fps * rate)) + 1, dtype=np.float64) / rate
+    if not speech:
+        return np.full_like(t, music)
+    ramp = RAMP_FRAMES / fps
+    gaps, cursor = [], 0
+    for a, b in speech:
+        if a > cursor:
+            gaps.append((cursor, a, cursor > 0))
+        cursor = max(cursor, b)
+    if cursor < total:
+        gaps.append((cursor, total, True))
+    curve = np.full_like(t, ducked)
+    for a, b, after_speech in gaps:
+        t0, t1 = a / fps, b / fps
+        inside = (t >= t0) & (t <= t1)
+        level = np.ones_like(t)
+        if after_speech:
+            level = np.minimum(level, (t - t0) / ramp)
+        if b < total:
+            level = np.minimum(level, (t1 - t) / ramp)
+        curve += np.where(inside, (music - ducked) * np.clip(level, None, 1), 0.0)
+    return curve
+
+
+def write_envelope(curve: "np.ndarray", path: Path, rate: int = ENVELOPE_RATE) -> None:
+    """A mono 16-bit WAV whose samples are the gain (1.0 = full scale), multiplied into the music by ffmpeg."""
+
+    import wave
+
+    import numpy as np
+
+    data = (np.clip(curve, 0, 1) * 32767).astype("<i2").tobytes()
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(rate)
+        out.writeframes(data)
+
+
 def _hash(*parts: Any) -> str:
     digest = hashlib.sha256()
     for part in parts:
@@ -649,10 +698,16 @@ class Renderer:
             # ducked under the voice AND under the original sound of the cold open / moments
             busy = sorted([*[tuple(s) for s in audio.get("speech", [])],
                            *[(c["from"], c["from"] + c["durationInFrames"]) for c in audio.get("clips", [])]])
-            expr = music_volume_expr(busy, self.fps, total, audio["musicVolume"], audio["duckedVolume"])
+            curve = music_volume_curve(busy, self.fps, total, audio["musicVolume"], audio["duckedVolume"])
+            envelope = self.dir / f"envelope-{_hash(busy, total, audio['musicVolume'], audio['duckedVolume'])}.wav"
+            if not envelope.is_file():
+                write_envelope(curve, envelope)
+            gain = add(envelope)
             fade = min(3.0, seconds / 4)          # the music fades out with the end screen
-            chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f},volume=eval=frame:volume='{expr}',"
-                          f"afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}[music]")
+            flat = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+            chains.append(f"[{index}:a]{stereo},{flat},atrim=end={seconds:.4f}[bed]")
+            chains.append(f"[{gain}:a]aresample=48000,{flat},atrim=end={seconds:.4f}[gain]")
+            chains.append(f"[bed][gain]amultiply,afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}[music]")
             mix.append("[music]")
         # Original sound of the cold-open clips (the only clip audio ever used), then SFX.
         for n, clip in enumerate(audio.get("clips", [])):
@@ -787,6 +842,9 @@ def run(ctx: RunContext) -> None:
     for old in r.dir.glob("remotion-*.mp4"):
         if old != condensed_path:
             old.unlink()
+    for old in r.dir.glob("envelope-*.wav"):
+        if old.name not in str(audio) and old.stat().st_mtime < time.time() - 3600:
+            old.unlink(missing_ok=True)
     for old in r.dir.glob("audio-*.wav"):
         if old != audio:
             old.unlink()
