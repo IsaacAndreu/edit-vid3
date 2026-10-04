@@ -142,9 +142,12 @@ def run_stages(
             if stage.run is None:
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
+            from .housekeeping import Sampler
+
             with turn(ctx.root, stage.name, ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
                 started = time.monotonic()
-                stage.run(ctx)
+                with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
+                    stage.run(ctx)
             if stage.validate is not None:
                 stage.validate(ctx)
             marker = _marker(ctx, stage)
@@ -156,6 +159,7 @@ def run_stages(
                         "inputsHash": fingerprint(ctx, stage),
                         "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                         "seconds": round(time.monotonic() - started, 1),
+                        **usage.fields(),
                     },
                     indent=2,
                 )

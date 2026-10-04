@@ -14,3 +14,8 @@ render:
 
 queue:
   parallel_videos: 1           # con 4 vCPU, de uno en uno; con 8, prueba 2
+
+cleanup:
+  after_video: true            # al terminar un vídeo, borra sus temporales pesados (render, clips, proxies del editor)
+                               # y deja vídeo final, planes, logs y diagnóstico. Ojo: rehacer ese vídeo vuelve a descargar.
+  cache_days: 14               # descargas de YouTube/Pexels en cache/ sin usar en 14 días → fuera

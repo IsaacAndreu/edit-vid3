@@ -185,7 +185,8 @@ def collect(ctx: RunContext) -> dict[str, Any]:
     markers = sorted(stages_dir.glob("*.json"), key=lambda m: order.get(m.stem, 99)) if stages_dir.is_dir() else []
     for marker in markers:
         info = _read(marker) or {}
-        data["etapas"][marker.stem] = {"segundos": info.get("seconds"), "hecha": info.get("completedAt")}
+        data["etapas"][marker.stem] = {"segundos": info.get("seconds"), "hecha": info.get("completedAt"),
+                                       "ram": info.get("ramPeakGb"), "cpu": info.get("cpuPeak"), "cpu_media": info.get("cpuMean")}
     selection = _read(work / "selection.json")
     if selection:
         data["juez"] = selection.get("stats", {})
@@ -316,8 +317,10 @@ def markdown(data: dict[str, Any], tips: list[str], error: str | None) -> str:
     if error:
         lines += ["## ❌ Error", "", "```", error.strip()[-3000:], "```", ""]
     lines += ["## Qué mejorar", ""] + ([f"- {t}" for t in tips] or ["- Nada destacable: todo dentro de lo normal ✅"]) + [""]
-    lines += ["## Tiempo por etapa", "", "| Etapa | Tiempo |", "|---|---|"]
-    lines += [f"| {k} | {_fmt(v.get('segundos'))} |" for k, v in data.get("etapas", {}).items()]
+    lines += ["## Tiempo por etapa", "", "| Etapa | Tiempo | RAM máx. | CPU máx. / media |", "|---|---|---|---|"]
+    lines += [f"| {k} | {_fmt(v.get('segundos'))} | {str(v['ram']) + ' GB' if v.get('ram') is not None else '—'} | "
+              + (f"{v['cpu']} % / {v.get('cpu_media', '—')} %" if v.get("cpu") is not None else "—") + " |"
+              for k, v in data.get("etapas", {}).items()]
     if data.get("youtube"):
         lines += ["", "## YouTube", ""]
         for stage, stats in data["youtube"].items():

@@ -61,6 +61,16 @@ Tras una o dos semanas: si los fallidos se quedan en un pequeño porcentaje y si
 muchos 403 / «no eres un bot», la IP o la configuración no aguantan este volumen: antes de pagar nada más, prueba
 `cookies: fallback` frente a `never`, y comprueba el PO Token. No hace falta rotar cuentas ni proxies para empezar.
 
+## 4b. Disco y recursos
+
+- Cada `diagnostico.md` trae, por etapa, el tiempo, la **RAM máxima** y la **CPU máxima / media** de la máquina: así
+  ves si Remotion (render), Whisper (align) o CLIP (analysis) se comen los 16 GB. Si la RAM roza el total, baja
+  `render.concurrency` en `config.local.yaml`; si la CPU media es baja, súbelo.
+- `cleanup: {after_video: true, cache_days: 14}` (ya en el `config.local.yaml` de la VPS): al terminar un vídeo se
+  borran sus temporales pesados (~3 GB: render, clips, proxies del editor) y se quedan el vídeo, los planes, los logs y
+  el diagnóstico; las descargas de `cache/` sin usar en 14 días también se borran antes de cada cola. Para rehacer un
+  vídeo ya limpiado, vuelve a descargar lo que necesite.
+
 ## 5. Avisos
 
 - Un PO Token **no garantiza** que YouTube no bloquee; solo hace las peticiones como YouTube espera de ese cliente.

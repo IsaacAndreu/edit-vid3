@@ -98,6 +98,10 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
                 dub.run(ctx)
             else:
                 run_stages(ctx, force=force, until=until, review=review)
+                if until is None and not review:
+                    from pipeline import housekeeping
+
+                    housekeeping.after_video(ctx)          # cleanup.after_video (a server's small disk)
         except BaseException as error:
             diag.write(ctx, error)
             raise
@@ -211,6 +215,12 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             problems = []
         else:
             update_ytdlp()
+            from pipeline import housekeeping
+
+            try:
+                housekeeping.old_cache(RunContext.create("_cola", root=root))   # cleanup.cache_days (a server's disk)
+            except Exception as error:   # never stops the night
+                print(f"(Limpieza de caché no hecha: {str(error)[:100]})")
             problems = preflight(root)
         if problems:
             message = "Cola NO iniciada:\n- " + "\n- ".join(problems)
