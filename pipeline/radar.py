@@ -122,7 +122,10 @@ def measure(ctx: RunContext, api: Any, query: str, days: int = 120) -> dict[str,
     score = round(min(10.0, len(hits) * 0.4 + len(small) * 0.8 + max(0.0, median_ratio - 1) * 2), 1)
     return {"videos": len(videos), "hits": len(hits), "smallHits": len(small), "medianRatio": median_ratio,
             "medianViews": int(statistics.median([v["views"] for v in videos])) if videos else 0, "score": score,
-            "examples": [_slim(v, "") for v in sorted(hits, key=lambda v: -(v["ratio"] or 0))[:4]]}
+            "examples": [_slim(v, "") for v in sorted(hits, key=lambda v: -(v["ratio"] or 0))[:4]],
+            # what works there, for «Ideas para este nicho» and for its competitors if it becomes a channel
+            "titles": [{k: v.get(k) for k in ("title", "channel", "channelHandle", "views", "ratio")}
+                       for v in sorted(videos, key=lambda v: -(v["ratio"] or 0))[:15]]}
 
 
 def propose_niches(ctx: RunContext, about: str, known: list[str], count: int) -> list[dict[str, Any]]:

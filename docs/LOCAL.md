@@ -131,6 +131,13 @@ Se abre `http://127.0.0.1:8080` en el navegador (solo desde este PC; no pide con
   competidores y de las búsquedas del nicho, con «nuevo» en lo que no estaba ayer) y **nichos nuevos** medidos en
   YouTube (cuántos vídeos superan 3× a su canal y cuántos son de canales pequeños). «Buscar ahora» o, con el servidor
   vigilando, solo cada mañana (`radar:` en config.yaml). Necesita `YOUTUBE_API_KEYS`. Por comando: `--radar`.
+  - **💡 Ideas para este nicho** (y **💡 Ideas como este** en cada vídeo de la competencia): 5 ideas de vídeo sacadas
+    de lo que funciona ahí, cada una con título, formato, enfoque, gancho, esquema por capítulos, qué metraje hay y
+    qué comprobar antes de escribir. «Más ideas» pide otras sin repetir. Cada idea: **Crear vídeo** (abre «Nuevo
+    vídeo» con título, nombre, formato y canal puestos, y guarda el esquema como `idea.md` junto al guion) o
+    **Guardar** (salen arriba en «Ideas guardadas»).
+  - **Convertir este nicho en canal**: crea `canales/<nombre>.yaml` con la búsqueda del nicho y, como competidores,
+    los canales que más ganan en él, más su carpeta en `materiales/`. Desde el día siguiente el radar lo sigue.
 - **Mi canal**: pon tu @canal en Ajustes y pulsa «Analizar ahora»: números, evolución por mes, ganadores y
   perdedores, mapa de calor día × hora (cuándo publicar), constancia, qué tienen tus títulos que funcionan, duración
   y ranking de temas (la IA los agrupa; los números son tus visitas reales). Por comando: `--mi-canal gimnasia`.

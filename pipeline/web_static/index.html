@@ -93,6 +93,10 @@
   .topic { display: grid; grid-template-columns: 28px 120px 1fr; gap: 12px; align-items: center; padding: 10px 0; }
   .topic img { width: 120px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; }
   .hbar { height: 10px; background: var(--panel2); border-radius: 99px; overflow: hidden; margin: 6px 0; } .hbar i { display: block; height: 100%; border-radius: 99px; }
+  .modal { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.55); display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; padding: 4vh 12px; }
+  .modal > div { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; width: min(860px, 100%); padding: 18px 18px 24px; }
+  .idea { margin-top: 14px; } .idea h3 { margin: 0 0 6px; font-size: 17px; } .idea ol { margin: 6px 0; padding-left: 22px; }
+  .idea p { margin: 6px 0; }
   .elf { background: #12301f; color: #d6f5e0; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
   @media (prefers-color-scheme: light) { .elf { background: #e5f6ea; color: #13361f; } }
   .hide { display: none !important; }
@@ -211,7 +215,17 @@ async function startQueue() { await post("/api/queue"); setTimeout(route, 1500);
 
 async function newVideo() {
   data = data || await api("/api/overview");
+  let pre = window.prefill;
+  if (!pre) { try { pre = JSON.parse(sessionStorage.getItem("prefill") || "null"); } catch (e) {} }
+  window.prefill = pre;
+  const idea = pre && pre.idea;
   $("#app").innerHTML = `<h1>Nuevo vídeo</h1>
+    ${idea ? `<div class="notice"><div class="row" style="justify-content:space-between"><b>Idea: ${esc(idea.title)}</b>
+        <button onclick="window.prefill=null;try{sessionStorage.removeItem('prefill')}catch(e){};route()">Quitar idea</button></div>
+      <div class="small">${esc(idea.angle || "")}</div>${idea.hook ? `<div class="small"><b>Gancho:</b> ${esc(idea.hook)}</div>` : ""}
+      ${idea.outline && idea.outline.length ? `<ol class="small">${idea.outline.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+      ${idea.research ? `<div class="small muted"><b>Comprobar antes:</b> ${esc(idea.research)}</div>` : ""}
+      <div class="small muted" style="margin-top:6px">Se guarda como idea.md junto al guion. Escribe el guion con este esquema y graba la voz.</div></div>` : ""}
     <div class="card">
       <div class="two">
         <div><label>Canal</label><select id="channel">${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
@@ -230,6 +244,12 @@ async function newVideo() {
       <div class="bar hide" id="upbar"><i style="width:0"></i></div>
     </div>`;
   $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
+  if (idea) {
+    if (pre.channel && data.channels.includes(pre.channel)) $("#channel").value = pre.channel;
+    if (idea.format) $("#format").value = idea.format;
+    $("#title").value = idea.title || "";
+    $("#name").value = (idea.title || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  }
 }
 
 async function createVideo() {
@@ -238,7 +258,8 @@ async function createVideo() {
   $("#create").disabled = true; msg.textContent = "Creando…";
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
-      serie: $("#serie").value, title: $("#title").value, script: $("#script").value});
+      serie: $("#serie").value, title: $("#title").value, script: $("#script").value, idea: window.prefill ? window.prefill.idea : null});
+    window.prefill = null; try { sessionStorage.removeItem("prefill"); } catch (e) {}
     msg.textContent = "Subiendo la voz…"; $("#upbar").classList.remove("hide");
     await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -403,15 +424,72 @@ async function errorsPage() {
 
 // --- Competencia ---------------------------------------------------------------------------------------------------
 let radarChannel = null;
-function videoTile(v) {
-  return `<a class="card" href="${esc(v.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(v.thumbnail)}" alt="">
+function videoTile(v, actions = "") {
+  return `<div class="card"><a href="${esc(v.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(v.thumbnail)}" alt=""></a>
     <div class="body"><div class="row" style="justify-content:space-between"><span class="big">${times(v.ratio)}</span>${v.new ? '<span class="pill hecho">nuevo</span>' : ""}</div>
-    <div style="margin:4px 0;color:var(--text)">${esc(v.title)}</div>
+    <a href="${esc(v.url)}" target="_blank" rel="noopener" style="display:block;margin:4px 0;color:var(--text)">${esc(v.title)}</a>
     <div class="small muted">${esc(v.channel)}${v.subscribers != null ? " · " + kfmt(v.subscribers) + " subs" : ""} · ${kfmt(v.views)} visitas · hace ${v.ageDays} días</div>
-    ${v.why ? `<div class="small muted">${esc(v.why)}</div>` : ""}</div></a>`;
+    ${v.why ? `<div class="small muted">${esc(v.why)}</div>` : ""}${actions ? `<div class="row" style="margin-top:8px">${actions}</div>` : ""}</div></div>`;
+}
+
+// --- ideas: for a niche, or «like this video» ---------------------------------------------------------------------
+let ideaSeeds = [], shownIdeas = {};
+function seedButton(seed, label) {
+  ideaSeeds.push(seed);
+  return `<button onclick="openIdeas(${ideaSeeds.length - 1})">${label}</button>`;
+}
+function ideaCard(i, channel) {
+  shownIdeas[i.id] = i;
+  return `<div class="card idea"><h3>${esc(i.title)}</h3>
+    <div class="row small">${i.format ? `<span class="pill">${esc(i.format)}</span>` : ""}${i.protagonist ? `<span class="muted">${esc(i.protagonist)}</span>` : ""}</div>
+    <p>${esc(i.angle)}</p>${i.hook ? `<p class="small"><b>Gancho:</b> ${esc(i.hook)}</p>` : ""}
+    ${i.outline && i.outline.length ? `<ol class="small">${i.outline.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+    ${i.footage ? `<p class="small muted"><b>Metraje:</b> ${esc(i.footage)}</p>` : ""}
+    ${i.why ? `<p class="small muted"><b>Por qué:</b> ${esc(i.why)}</p>` : ""}
+    ${i.research ? `<p class="small muted"><b>Comprobar antes:</b> ${esc(i.research)}</p>` : ""}
+    <div class="row" style="margin-top:8px"><button class="main" onclick="ideaToVideo('${i.id}','${esc(channel || "")}')">Crear vídeo</button>
+      <button onclick="saveIdea('${i.id}','${esc(channel || "")}',this)">Guardar</button></div></div>`;
+}
+function closeIdeas() { const m = document.getElementById("modal"); if (m) m.remove(); route(); }
+async function openIdeas(n, more = false) {
+  const seed = ideaSeeds[n];
+  let box = document.getElementById("modal");
+  if (!box) { box = document.createElement("div"); box.id = "modal"; box.className = "modal"; box.onclick = (e) => e.target === box && closeIdeas(); document.body.appendChild(box); }
+  const title = seed.kind === "niche" ? `Ideas · ${esc(seed.name || seed.query)}` : `Ideas como «${esc(seed.title)}»`;
+  const keep = more && box.querySelector("#ideas-list") ? box.querySelector("#ideas-list").innerHTML : "";
+  box.innerHTML = `<div><div class="row" style="justify-content:space-between"><h1 style="margin:0">${title}</h1><button onclick="closeIdeas()">✕</button></div>
+    <div id="ideas-list">${keep}</div><div class="notice" id="ideas-wait">Pensando ideas a partir de lo que funciona… (~20-40 s)</div></div>`;
+  try {
+    const r = await post("/api/ideas", {seed, more});
+    const channel = seed.channel || (seed.near && seed.near !== "libre" ? seed.near : "");
+    box.firstElementChild.innerHTML = `<div class="row" style="justify-content:space-between"><h1 style="margin:0">${title}</h1><button onclick="closeIdeas()">✕</button></div>
+      <div class="small muted" style="margin-top:6px">Basadas en ${r.evidence.length} vídeos que superan a su canal: ${r.evidence.slice(0, 3).map((v) => "«" + esc(v.title) + "»").join(", ")}…</div>
+      <div id="ideas-list">${r.ideas.map((i) => ideaCard(i, channel)).join("")}</div>
+      <div class="row" style="margin-top:16px"><button onclick="openIdeas(${n}, true)">Más ideas</button>
+        ${seed.kind === "niche" ? `<button onclick="nicheChannel(${n})">Convertir este nicho en canal</button>` : ""}</div>`;
+  } catch (e) { const w = box.querySelector("#ideas-wait"); if (w) { w.className = "notice bad"; w.textContent = e.message; } }
+}
+async function saveIdea(id, channel, button) {
+  await post("/api/ideas/save", {idea: shownIdeas[id], channel}); button.textContent = "Guardada ✓"; button.disabled = true;
+}
+function ideaToVideo(id, channel) {
+  try { sessionStorage.setItem("prefill", JSON.stringify({idea: shownIdeas[id], channel})); } catch (e) {}
+  window.prefill = {idea: shownIdeas[id], channel};
+  const m = document.getElementById("modal"); if (m) m.remove();
+  location.hash = "#/nuevo";
+}
+async function nicheChannel(n) {
+  const seed = ideaSeeds[n];
+  const name = prompt("Nombre del canal nuevo (sin espacios):", (seed.name || seed.query).toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30));
+  if (!name) return;
+  try { const r = await post("/api/niche-channel", {query: seed.query, name});
+    alert(`Canal «${r.channel}» creado: el radar lo sigue desde mañana` + (r.competitors.length ? ` (competidores: ${r.competitors.join(", ")})` : "") + ". Ponle colores y formato en canales/" + r.channel + ".yaml cuando quieras.");
+    data = null;
+  } catch (e) { alert(e.message); }
 }
 async function radarPage() {
   const r = await api("/api/radar");
+  ideaSeeds = [];
   const latest = r.latest, names = latest ? Object.keys(latest.channels) : [];
   radarChannel = names.includes(radarChannel) ? radarChannel : names[0];
   const info = latest && radarChannel ? latest.channels[radarChannel] : null;
@@ -423,8 +501,13 @@ async function radarPage() {
     ${names.length ? `<div class="tabs">${names.map((n) => `<button class="${n === radarChannel ? "on" : ""}" onclick="radarChannel='${esc(n)}';route()">${esc(n)}
       (${latest.channels[n].top.filter((v) => v.new).length} nuevos)</button>`).join("")}</div>` : ""}
     ${info ? `<h2>Lo que mejor funciona ahora en ${esc(radarChannel)}</h2>
-      ${info.top.length ? `<div class="vids">${info.top.map(videoTile).join("")}</div>` : '<div class="notice">Nada por encima de 2× en estos días. Añade competidores en canales/' + esc(radarChannel) + '.yaml (ideas.competitors).</div>'}
+      ${info.top.length ? `<div class="vids">${info.top.map((v) => videoTile(v, seedButton({kind: "video", id: v.id, title: v.title,
+        author: v.channel, views: v.views, ratio: v.ratio, channel: radarChannel}, "💡 Ideas como este"))).join("")}</div>` : '<div class="notice">Nada por encima de 2× en estos días. Añade competidores en canales/' + esc(radarChannel) + '.yaml (ideas.competitors).</div>'}
       ${info.errors.length ? `<div class="small muted" style="margin-top:8px">${info.errors.map(esc).join(" · ")}</div>` : ""}` : ""}
+    ${r.saved.length ? `<h2>Ideas guardadas (${r.saved.length})</h2><div class="card">${r.saved.map((i) => { shownIdeas[i.id] = i;
+      return `<div class="trait"><div class="row"><b>${esc(i.title)}</b><span class="small muted">${esc(i.channel || "")}${i.format ? " · " + esc(i.format) : ""}</span></div>
+      <div class="small muted">${esc(i.angle || "")}</div><div class="row" style="margin-top:6px"><button class="main" onclick="ideaToVideo('${i.id}','${esc(i.channel || "")}')">Crear vídeo</button>
+      <button onclick="post('/api/ideas/save', {remove: '${i.id}'}).then(route)">Quitar</button></div></div>`; }).join("")}</div>` : ""}
     <h2>Nichos nuevos</h2>
     <div class="small muted">Cada nicho se mide en YouTube: cuántos vídeos superan 3× a su canal y cuántos de esos son de canales pequeños (menos de 100 mil subs): señal de que un canal nuevo puede entrar.</div>
     ${r.niches.length ? `<div class="card" style="margin-top:10px">${r.niches.map((n) => `<div class="trait">
@@ -432,6 +515,7 @@ async function radarPage() {
       <div class="hbar"><i style="width:${10 * n.score}%;background:var(--ok)"></i></div>
       <div class="small muted">«${esc(n.query)}» · ${n.hits} outliers · <b>${n.smallHits}</b> de canales pequeños · mediana ${times(n.medianRatio)} · ${kfmt(n.medianViews)} visitas · ${n.near === "libre" ? "tema nuevo" : "cerca de " + esc(n.near)} · ${esc(n.date)}</div>
       ${n.why ? `<div class="small">${esc(n.why)}</div>` : ""}
+      <div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: n.query, name: n.name, near: n.near}, n.ideas ? `💡 Ver ideas (${n.ideas})` : "💡 Ideas para este nicho")}</div>
       ${n.examples.length ? `<div class="row" style="margin-top:6px">${n.examples.map((v) => `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${times(v.ratio)}"><img src="${esc(v.thumbnail)}" style="width:110px;border-radius:6px"></a>`).join("")}</div>` : ""}
     </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos medidos.</div>'}`;
   window.runRadar = async () => { await post("/api/radar"); route(); };

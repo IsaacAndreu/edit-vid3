@@ -168,6 +168,10 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     (folder / "guion.txt").write_text(script + "\n", encoding="utf-8")
     if str(body.get("title") or "").strip():
         (folder / "titulo.txt").write_text(str(body["title"]).strip() + "\n", encoding="utf-8")
+    if isinstance(body.get("idea"), dict):                 # made from a radar idea: the brief next to the script
+        from .niche_ideas import brief
+
+        (folder / "idea.md").write_text(brief(body["idea"]), encoding="utf-8")
     extra = {k: str(body[k]).strip() for k in ("serie", "format") if str(body.get(k) or "").strip()}
     if extra:
         (folder / "config.yaml").write_text("".join(f"{k}: {v}\n" for k, v in extra.items()), encoding="utf-8")
@@ -283,7 +287,15 @@ def fix_video(root: Path, slug: str) -> dict[str, Any]:
 def radar_state(root: Path) -> dict[str, Any]:
     from . import radar
 
-    return {"latest": radar.latest(root), "niches": radar.niches(root)[:40], "job": job_state(root, "radar")}
+    from . import niche_ideas
+
+    niches = radar.niches(root)[:40]
+    counts = niche_ideas.cached_ideas(root)
+    for niche in niches:
+        niche["ideas"] = counts.get(niche_ideas.seed_key({"kind": "niche", "query": niche["query"]}), 0)
+        niche.pop("titles", None)
+    return {"latest": radar.latest(root), "niches": niches, "job": job_state(root, "radar"),
+            "saved": niche_ideas.saved(root), "channels": channels(root)}
 
 
 def mychannel_state(root: Path, channel: str) -> dict[str, Any]:
@@ -495,6 +507,23 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":
                     return self._ok(background(root, "radar", ["--radar"]))
+                if path == "/api/ideas":                   # {seed: {kind: niche|video, …}, more: bool}
+                    from . import niche_ideas
+
+                    seed = body.get("seed") or {}
+                    if seed.get("kind") not in ("niche", "video"):
+                        raise ValueError("¿Ideas de qué?")
+                    return self._ok(niche_ideas.ideas(root, seed, more=bool(body.get("more"))))
+                if path == "/api/ideas/save":
+                    from . import niche_ideas
+
+                    if body.get("remove"):
+                        return self._ok(niche_ideas.unsave(root, str(body["remove"])))
+                    return self._ok(niche_ideas.save(root, body.get("idea") or {}, str(body.get("channel") or "")))
+                if path == "/api/niche-channel":
+                    from . import niche_ideas
+
+                    return self._ok(niche_ideas.make_profile(root, str(body.get("query") or ""), str(body.get("name") or "")))
                 if match := re.fullmatch(r"/api/mychannel/([^/]+)", path):
                     channel = urllib.parse.unquote(match.group(1))
                     if channel not in channels(root):

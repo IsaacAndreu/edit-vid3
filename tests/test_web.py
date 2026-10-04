@@ -242,3 +242,50 @@ class HttpTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NicheIdeasTests(unittest.TestCase):
+    def test_ideas_more_ideas_save_make_a_video_and_a_channel(self) -> None:
+        from pipeline import niche_ideas
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _project(root)
+            shutil.copytree(REPO / "formatos", root / "formatos")
+            titles = [{"title": f"Historia {i}", "channel": f"C{i}", "channelHandle": f"@c{i % 3}", "views": 1000 * i, "ratio": 10 - i}
+                      for i in range(8)]
+            (root / "out" / "_radar").mkdir(parents=True)
+            (root / "out" / "_radar" / "nichos.json").write_text(json.dumps([
+                {"name": "Pilotos de F1", "query": "F1 driver story", "why": "w", "score": 7, "titles": titles, "examples": []}]))
+            calls = []
+
+            def fake_llm(ctx, **kwargs):
+                calls.append(kwargs["user"])
+                n = len(calls)
+                return {"ideas": [{"title": f"Idea {n}-{k}", "format": "historia" if k else "inventado", "angle": "a",
+                                   "outline": ["uno", "dos"]} for k in range(2)]}
+
+            seed = {"kind": "niche", "query": "F1 driver story", "name": "Pilotos de F1"}
+            with patch("pipeline.llm.complete_json", side_effect=fake_llm):
+                first = niche_ideas.ideas(root, seed, count=2)
+                again = niche_ideas.ideas(root, seed, count=2)                    # cached: no new call
+                more = niche_ideas.ideas(root, seed, count=2, more=True)
+            self.assertEqual(len(calls), 2)
+            self.assertIn("Historia 0", calls[0])                                  # the niche's winners are the evidence
+            self.assertIn("Idea 1-0", calls[1])                                    # «más ideas» knows what was proposed
+            self.assertEqual((len(first["ideas"]), len(again["ideas"]), len(more["ideas"])), (2, 2, 4))
+            self.assertEqual(first["ideas"][0]["format"], "")                      # unknown format dropped
+            niche_ideas.save(root, first["ideas"][1], "gimnasia")
+            self.assertEqual(niche_ideas.saved(root)[0]["channel"], "gimnasia")
+            niche_ideas.unsave(root, first["ideas"][1]["id"])
+            self.assertEqual(niche_ideas.saved(root), [])
+            web.create_video(root, {"name": "f1-idea", "script": SCRIPT, "idea": first["ideas"][1]})
+            self.assertIn("## Esquema", (root / "materiales" / "f1-idea" / "idea.md").read_text())
+            made = niche_ideas.make_profile(root, "F1 driver story", "Pilotos F1")
+            self.assertEqual(made["channel"], "pilotos-f1")
+            self.assertEqual(made["competitors"], ["@c0", "@c1", "@c2"])
+            ctx = RunContext.create("x", root=root, channel="pilotos-f1")
+            self.assertEqual(ctx.section("lab")["queries"][0], "F1 driver story")
+            with self.assertRaises(ValueError):
+                niche_ideas.make_profile(root, "F1 driver story", "Pilotos F1")       # never overwrite
+            self.assertIn("pilotos-f1", web.channels(root))
