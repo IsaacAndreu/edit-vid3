@@ -10,7 +10,7 @@ sourcing:
 
 render:
   encoder: x264                # la VPS no tiene gráfica NVIDIA
-  concurrency: 0               # pestañas de Chrome para Remotion = núcleos
+  concurrency: 4               # pestañas de Chrome para Remotion: empieza en 4 y mira RAM/CPU (htop); sube si sobra
 
 queue:
   parallel_videos: 1           # con 4 vCPU, de uno en uno; con 8, prueba 2

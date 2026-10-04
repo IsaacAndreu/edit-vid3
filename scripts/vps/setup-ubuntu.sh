@@ -14,6 +14,12 @@ sudo apt-get install -y python3 python3-venv python3-pip git curl unzip ffmpeg c
   libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
   libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-liberation
 
+echo "== Swap de 8 GB (un pico de Chromium/PyTorch no mata el proceso)"
+if ! swapon --show | grep -q /swapfile; then
+  sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+  grep -q /swapfile /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+fi
+
 echo "== Node 22 (Remotion)"
 if ! command -v node >/dev/null || [ "$(node -v | cut -c2- | cut -d. -f1)" -lt 20 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
