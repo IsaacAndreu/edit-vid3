@@ -167,6 +167,61 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
     }
 
 
+CHANNEL = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}$")
+
+
+def _list(value: Any) -> list[str]:
+    items = value if isinstance(value, list) else re.split(r"[,\n]", str(value or ""))
+    return [str(v).strip() for v in items if str(v).strip()]
+
+
+def create_channel(root: Path, body: dict[str, Any]) -> dict[str, Any]:
+    """canales/<nombre>.yaml from the studio: what it is about, competitors, searches, the default format, and the
+    look (colours, music, graphics) copied from an existing channel if chosen. Never overwrites a channel."""
+
+    import yaml
+
+    from .context import deep_merge
+
+    name = str(body.get("name") or "").strip().lower()
+    if not CHANNEL.match(name):
+        raise ValueError("El nombre del canal: minúsculas, números y guiones (2-31), p. ej. «coches» o «historia-f1»")
+    path = root / "canales" / f"{name}.yaml"
+    if path.exists():
+        raise ValueError(f"Ya existe el canal {name}")
+    about = str(body.get("about") or "").strip()
+    if len(about) < 15:
+        raise ValueError("Describe de qué va el canal (una frase)")
+    base = str(body.get("base") or "").strip()
+    profile: dict[str, Any] = {}
+    if base:
+        if base not in channels(root):
+            raise ValueError(f"No existe el canal {base}")
+        profile = load_config(root / "canales" / f"{base}.yaml")
+    ideas = {"about": f"un canal de YouTube en español de {about}" if not about.lower().startswith("un canal") else about,
+             "my_channel": str(body.get("my_channel") or "").strip(),
+             "competitors": _list(body.get("competitors")), "niches": _list(body.get("niches")) or [name]}
+    if str(body.get("pattern") or "").strip():
+        ideas["pattern"] = str(body["pattern"]).strip()
+    profile = deep_merge(profile, {"ideas": ideas, "lab": {"queries": _list(body.get("queries")) or [about[:60]]}})
+    profile.pop("series", None)                       # the base channel's series are its own
+    fmt = str(body.get("format") or "").strip()
+    if fmt:
+        if fmt not in formats(root):
+            raise ValueError(f"No existe el formato {fmt}")
+        profile["format"] = fmt
+    header = (f"# Canal «{name}», creado desde el estudio ({time.strftime('%d-%m-%Y')})"
+              + (f" con el aspecto de «{base}»" if base else "") + ".\n"
+              "# Se mezcla encima de config.yaml: aquí solo lo propio de este canal (format, brand, music, ideas…).\n\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(header + yaml.safe_dump(profile, allow_unicode=True, sort_keys=False, width=110), encoding="utf-8")
+    group = root / "materiales" / name
+    group.mkdir(parents=True, exist_ok=True)
+    if not (group / "config.yaml").exists():
+        (group / "config.yaml").write_text(f"canal: {name}\n", encoding="utf-8")
+    return {"channel": name}
+
+
 def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     name = str(body.get("name") or "").strip()
     channel = str(body.get("channel") or "").strip()
@@ -246,9 +301,15 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
     if body is not None:
         if "daily_usd" in body:
             current["daily_usd"] = max(0.0, float(body["daily_usd"] or 0))
-        if isinstance(body.get("my_channels"), dict):
-            current["my_channels"] = {str(k): str(v).strip() for k, v in body["my_channels"].items()
-                                      if k in channels(root) and str(v).strip()}
+        if isinstance(body.get("my_channels"), dict):        # merged: an empty value removes that channel's entry
+            mine = dict(current.get("my_channels") or {})
+            for k, v in body["my_channels"].items():
+                if k in channels(root):
+                    if str(v).strip():
+                        mine[str(k)] = str(v).strip()
+                    else:
+                        mine.pop(str(k), None)
+            current["my_channels"] = mine
         if "paused" in body:
             flag = root / "out" / "_pausa"
             flag.parent.mkdir(parents=True, exist_ok=True)
@@ -529,6 +590,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(settings(root, body))
                 if path == "/api/queue":
                     return self._ok(start_queue(root))
+                if path == "/api/channels":                # a new channel profile
+                    return self._ok(create_channel(root, body))
                 if path == "/api/hook":                    # {title, script, channel}: before recording
                     from . import hook
 

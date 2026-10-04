@@ -142,6 +142,9 @@ Se abre `http://127.0.0.1:8080` en el navegador (solo desde este PC; no pide con
   perdedores, mapa de calor día × hora (cuándo publicar), constancia, qué tienen tus títulos que funcionan, duración
   y ranking de temas (la IA los agrupa; los números son tus visitas reales). Por comando: `--mi-canal gimnasia`.
 - **Estadísticas** (YouTube y gasto por día) y **Ajustes** (pausar, límite de gasto diario, tu canal por perfil).
+- **Nuevo canal** (Ajustes → «+ Añadir canal», o «+ nuevo canal» al crear un vídeo): nombre, de qué va, tus
+  competidores, las búsquedas del nicho, el formato habitual y de qué canal copiar el aspecto (colores, música,
+  gráficos). Crea `canales/<nombre>.yaml` y su carpeta en `materiales/`; el radar lo sigue desde el día siguiente.
 
 ## 6. Cola nocturna (varios vídeos seguidos)
 

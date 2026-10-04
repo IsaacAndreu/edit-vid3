@@ -228,7 +228,7 @@ async function newVideo() {
       <div class="small muted" style="margin-top:6px">Se guarda como idea.md junto al guion. Escribe el guion con este esquema y graba la voz.</div></div>` : ""}
     <div class="card">
       <div class="two">
-        <div><label>Canal</label><select id="channel">${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+        <div><label>Canal <a class="small" href="#/canal-nuevo" style="font-weight:400">+ nuevo canal</a></label><select id="channel">${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
         <div><label>Nombre <span class="muted">(sin espacios: avion2, olga-korbut…)</span></label><input id="name" placeholder="nombre-del-video"></div>
       </div>
       <div class="two">
@@ -386,6 +386,9 @@ async function settingsPage() {
       ${!guessUrl ? '<div class="small muted" style="margin-top:6px">En tu PC el estudio solo se abre en el propio PC: los avisos llegan igual, pero el botón solo funciona con el estudio de la VPS.</div>' : ""}
       <div class="row" style="margin-top:14px"><button class="main" id="tg-go">${n.telegram ? "Guardar y enviar prueba" : "Conectar y probar"}</button><span id="tg-msg" class="small muted"></span></div>
     </div>
+    <h2>Canales</h2>
+    <div class="card"><div class="row">${s.channels.map((c) => `<span class="pill">${esc(c)}</span>`).join("")}
+      <a class="btn main" href="#/canal-nuevo">+ Añadir canal</a></div></div>
     <h2>Mi canal de YouTube en cada perfil</h2>
     <div class="card">
       <p class="small muted" style="margin-top:0">Tu @canal o su URL: lo usan «Mi canal» y las ideas.</p>
@@ -658,6 +661,42 @@ async function channelPage() {
       <div class="small muted"><b>${times(t.ratio)}</b> lo normal · ${t.count} vídeos · ${t.hits} éxitos · mediana ${kfmt(t.medianViews)}</div></div></div>`).join("") || '<div class="muted">Sin temas (pocos vídeos o sin IA configurada).</div>'}</div>`;
 }
 
+async function newChannelPage() {
+  data = await api("/api/overview");
+  $("#app").innerHTML = `<h1>Nuevo canal</h1>
+    <div class="card">
+      <div class="two">
+        <div><label>Nombre <span class="muted">(minúsculas, sin espacios: coches, historia-f1…)</span></label><input id="ch-name" placeholder="coches"></div>
+        <div><label>Tu canal en YouTube <span class="muted">(opcional: @TuCanal)</span></label><input id="ch-mine" placeholder="@TuCanal"></div>
+      </div>
+      <label>¿De qué va? <span class="muted">(una frase; la usan las ideas y el radar)</span></label>
+      <input id="ch-about" placeholder="documentales sobre la historia de marcas de coches y sus fracasos, de ~10 min">
+      <div class="two">
+        <div><label>Aspecto copiado de <span class="muted">(colores, música, gráficos)</span></label><select id="ch-base"><option value="">— el de por defecto —</option>
+          ${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+        <div><label>Formato habitual</label><select id="ch-format"><option value="">— historia (por defecto) —</option>
+          ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select></div>
+      </div>
+      <label>Competidores <span class="muted">(@canales separados por comas; el radar mira sus vídeos que mejor van)</span></label>
+      <input id="ch-comp" placeholder="@canal1, @canal2">
+      <label>Búsquedas del nicho <span class="muted">(una por línea; para el radar y las ideas)</span></label>
+      <textarea id="ch-queries" style="min-height:110px" placeholder="historia de marcas de coches&#10;car brand history&#10;why this car failed"></textarea>
+      <label>Patrón de títulos <span class="muted">(opcional, p. ej. «marca + fracaso + cifra»)</span></label><input id="ch-pattern">
+      <div class="row" style="margin-top:18px"><button class="main" id="ch-go">Crear canal</button><span id="ch-msg" class="small muted"></span></div>
+    </div>`;
+  $("#ch-go").onclick = async () => {
+    const msg = $("#ch-msg"); msg.textContent = "Creando…";
+    try {
+      const r = await post("/api/channels", {name: $("#ch-name").value, about: $("#ch-about").value, base: $("#ch-base").value,
+        format: $("#ch-format").value, competitors: $("#ch-comp").value, queries: $("#ch-queries").value,
+        pattern: $("#ch-pattern").value, my_channel: $("#ch-mine").value});
+      if ($("#ch-mine").value.trim()) await post("/api/settings", {my_channels: {[r.channel]: $("#ch-mine").value.trim()}});
+      data = null; msg.textContent = `✅ Canal «${r.channel}» creado. Ya puedes elegirlo al crear un vídeo.`;
+      setTimeout(() => { location.hash = "#/nuevo"; }, 1200);
+    } catch (e) { msg.textContent = e.message; }
+  };
+}
+
 function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (!document.hidden) fn(); else schedule(fn, ms); }, ms); }
 
 async function route() {
@@ -670,6 +709,7 @@ async function route() {
     else if (hash === "#/errores") await errorsPage();
     else if (hash === "#/competencia") await radarPage();
     else if (hash === "#/canal") await channelPage();
+    else if (hash === "#/canal-nuevo") await newChannelPage();
     else if (hash === "#/nuevo") await newVideo();
     else if (hash === "#/estadisticas") await stats();
     else if (hash === "#/ajustes") await settingsPage();

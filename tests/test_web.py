@@ -369,3 +369,29 @@ class PhoneNoticeTests(unittest.TestCase):
             self.assertIn("STUDIO_URL=https://1-2-3-4.sslip.io\n", env)
             self.assertTrue(out["ok"] and out["telegram"])
             self.assertEqual(post.call_args.kwargs["data"]["chat_id"], "777")
+
+
+class NewChannelTests(unittest.TestCase):
+    def test_a_channel_from_the_studio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _project(root)
+            shutil.copytree(REPO / "formatos", root / "formatos")
+            made = web.create_channel(root, {"name": "coches", "about": "documentales sobre marcas de coches y sus fracasos",
+                                             "base": "negocios", "format": "historia", "competitors": "@uno, @dos",
+                                             "queries": "historia marcas coches\ncar brand history", "my_channel": "@MiCoches"})
+            self.assertEqual(made["channel"], "coches")
+            ctx = RunContext.create("x", root=root, channel="coches")
+            self.assertEqual(ctx.section("ideas")["competitors"], ["@uno", "@dos"])
+            self.assertEqual(ctx.section("lab")["queries"], ["historia marcas coches", "car brand history"])
+            self.assertIn("marcas de coches", ctx.section("ideas")["about"])
+            negocios = RunContext.create("x", root=root, channel="negocios")
+            self.assertEqual(ctx.section("brand"), negocios.section("brand"))          # the look of the base channel
+            self.assertTrue((root / "materiales" / "coches" / "config.yaml").is_file())
+            for bad in ({"name": "Con Espacio", "about": "algo largo de verdad aquí"}, {"name": "coches", "about": "otra vez el mismo"},
+                        {"name": "nuevo", "about": "corto"}, {"name": "nuevo", "about": "algo largo de verdad", "base": "nada"}):
+                with self.assertRaises(ValueError):
+                    web.create_channel(root, bad)
+            web.settings(root, {"my_channels": {"gimnasia": "@Gym"}})
+            web.settings(root, {"my_channels": {"coches": "@MiCoches"}})               # merged, not replaced
+            self.assertEqual(web.settings(root)["my_channels"], {"gimnasia": "@Gym", "coches": "@MiCoches"})
