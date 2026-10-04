@@ -228,6 +228,11 @@ def collect(ctx: RunContext) -> dict[str, Any]:
             verdicts[claim.get("verdict", "?")] = verdicts.get(claim.get("verdict", "?"), 0) + 1
         data["verificacion"] = verdicts
     data.update(_log_facts(ctx))
+    from . import ytstats
+
+    rows = ytstats.read(work / "youtube_downloads.jsonl")
+    if rows:
+        data["youtube_metricas"] = ytstats.summary(rows)
     return data
 
 
@@ -282,6 +287,13 @@ def hints(data: dict[str, Any], ctx: RunContext) -> list[str]:
     if wrong:
         out.append(f"La verificación marcó {wrong} dato(s) como incorrectos: corrígelos en el guion antes de subir "
                    f"(out/{ctx.slug}/verificacion.md).")
+    metrics = data.get("youtube_metricas") or {}
+    if metrics.get("requests"):
+        blocked = metrics["errors"].get("bot", 0) + metrics["errors"].get("403", 0)
+        if blocked / metrics["requests"] > 0.05:
+            out.append(f"YouTube rechazó {blocked} de {metrics['requests']} peticiones (403 o «no eres un bot»): "
+                       + ("revisa el PO Token Provider (docs/VPS.md)." if not metrics.get("pot") else
+                          "esta IP o esta configuración no aguantan este volumen."))
     fps = data.get("render_fps")
     if fps is not None and fps < 5:
         out.append(f"Render lento ({fps:.1f} fps en Remotion): cierra otros programas o baja `render.concurrency`.")
@@ -312,6 +324,10 @@ def markdown(data: dict[str, Any], tips: list[str], error: str | None) -> str:
             lines.append(f"- {stage}: " + " · ".join(f"{k} {n}× {s:.1f} s" for k, (n, s) in stats.items()))
         if data.get("cuentas_bloqueadas"):
             lines.append(f"- Cuentas bloqueadas: {data['cuentas_bloqueadas']}")
+    if data.get("youtube_metricas"):
+        from . import ytstats
+
+        lines += ["", "## YouTube: cómo respondió", "", *ytstats.lines(data["youtube_metricas"])]
     if data.get("descarga"):
         d = data["descarga"]
         lines += ["", "## Descarga en HD", "", f"{d['clips']} clips · {d['imagenes']} imágenes · {d['fallidas']} fallidas", ""]

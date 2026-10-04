@@ -13,3 +13,4 @@ cache/
 cookies/
 *.cookies.txt
 editor/dist/
+config.local.yaml

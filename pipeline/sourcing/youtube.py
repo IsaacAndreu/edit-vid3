@@ -29,6 +29,27 @@ from .common import USER_AGENT, Pacer, SourceUnavailable, blocked_by_title, cach
 
 
 _BLOCK_MARKERS = ("sign in to confirm", "not a bot")
+# the video itself needs an account (age, members, private): the only case where cookies.mode=fallback uses one
+_AUTH_MARKERS = ("confirm your age", "age-restricted", "age restricted", "inappropriate for some users", "members-only",
+                 "join this channel", "private video", "this video is private", "login required", "use --cookies",
+                 "sign in to view")
+
+
+def error_kind(message: str) -> str:
+    """What a yt-dlp error means, for the metrics: auth, bot, 403, 429, unavailable or other."""
+
+    low = message.casefold()
+    if any(marker in low for marker in _AUTH_MARKERS):
+        return "auth"
+    if any(marker in low for marker in _BLOCK_MARKERS):
+        return "bot"
+    if "http error 403" in low or "403: forbidden" in low:
+        return "403"
+    if any(marker in low for marker in _RATE_MARKERS):
+        return "429"
+    if "video unavailable" in low or "not available" in low:
+        return "unavailable"
+    return "other"
 _RATE_MARKERS = ("http error 429", "too many requests")
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
@@ -125,11 +146,18 @@ class YouTubeSource:
         # One or more accounts (cookies.txt contents, file they came from). Requests take turns
         # between them; one that YouTube blocks is set aside and the rest carry on.
         self._sets: list[tuple[str, Path | None]] = list(cookie_sets or ([(cookies_text, cookies_path)] if cookies_text else []))
+        # cookies: rotate (every request with an account, by turns: home PC) | fallback (no account; one only
+        # when a video needs it: age, members, private) | never. `cookies: false` in the config = fallback.
+        mode = config.get("cookies", "rotate")
+        self.cookies_mode = "fallback" if mode is False else "rotate" if mode is True else str(mode or "rotate").lower()
+        if self.cookies_mode == "never":
+            self._sets = []
         # A few concurrent requests at most; a 429 pauses every thread (the limit is per account/IP). With 3+
         # accounts the load is spread, so a couple more (`concurrency_with_accounts`) — back to the plain
         # number for the rest of the run at YouTube's first "too many requests".
         base = int(config.get("concurrency", 3))
-        boosted = int(config.get("concurrency_with_accounts", 5)) if len(self._sets) >= 3 else base
+        boosted = (int(config.get("concurrency_with_accounts", 5))
+                   if len(self._sets) >= 3 and self.cookies_mode == "rotate" else base)
         self.concurrency = max(base, boosted)
         self._extra_slots = self.concurrency - base
         self._slots = threading.Semaphore(self.concurrency)
@@ -168,7 +196,70 @@ class YouTubeSource:
             options["ratelimit"] = _parse_rate(str(config["rate_limit"]))
         if config.get("sleep_requests"):
             options["sleep_interval_requests"] = float(config["sleep_requests"])
+        self.pot = self._po_tokens(options)
         self.base_options = options
+        self.clients = list((options.get("extractor_args") or {}).get("youtube", {}).get("player_client") or ["default"])
+        self.metrics_path: Path | None = None       # work/<slug>/youtube_downloads.jsonl (set by youtube_source)
+        self.stage = ""
+        self._metrics_lock = threading.Lock()
+
+    def _po_tokens(self, options: dict[str, Any]) -> bool:
+        """PO Token Provider (bgutil-ytdlp-pot-provider: the yt-dlp plugin + its small server, see docs/VPS.md)
+        with the mweb client, as yt-dlp's PO Token guide recommends for servers. `po_token: auto` (default) uses it
+        when the plugin is installed and the server answers; `on` warns when it cannot; `off` never."""
+
+        import importlib.util
+
+        mode = str(self.cfg.get("po_token", "auto")).lower()
+        if mode in ("off", "false", "no"):
+            return False
+        url = str(self.cfg.get("pot_provider_url", "http://127.0.0.1:4416")).rstrip("/")
+        try:
+            plugin = importlib.util.find_spec("yt_dlp_plugins.extractor.getpot_bgutil_http") is not None
+        except (ImportError, ValueError):
+            plugin = False
+        server = False
+        if plugin:
+            try:
+                local = requests.Session()
+                local.trust_env = False                 # the provider runs on this machine: never via a proxy
+                server = local.get(f"{url}/ping", timeout=3).ok
+            except requests.RequestException:
+                server = False
+        if not (plugin and server):
+            if mode in ("on", "true", "yes"):
+                print(f"   AVISO PO Token: {'falta el plugin bgutil-ytdlp-pot-provider' if not plugin else 'el servidor no responde en ' + url}"
+                      " (docs/VPS.md); sigo sin PO Token")
+            return False
+        args = options.setdefault("extractor_args", {})
+        youtube = args.setdefault("youtube", {})
+        clients = list(youtube.get("player_client") or ["default"])
+        if "mweb" not in clients:
+            clients.append("mweb")
+        youtube["player_client"] = clients
+        args["youtubepot-bgutilhttp"] = {"base_url": [url]}
+        return True
+
+    def _metric(self, action: str, *, ok: bool, seconds: float, error: str = "", attempt: int = 0,
+                cookies: bool = False, size: int | None = None) -> None:
+        """One line per request to YouTube in work/<slug>/youtube_downloads.jsonl: what was asked, how it went,
+        with or without an account, client and PO Token (python main.py --youtube-stats sums them up)."""
+
+        if self.metrics_path is None:
+            return
+        import json
+
+        row: dict[str, Any] = {"ts": round(time.time(), 1), "stage": self.stage, "action": action,
+                               "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
+                               "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
+                               "seconds": round(seconds, 2)}
+        if size is not None:
+            row["bytes"] = size
+            row["mbps"] = round(size / 1e6 / max(seconds, 0.01), 2)
+        with self._metrics_lock:
+            self.metrics_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.metrics_path.open("a", encoding="utf-8") as out:
+                out.write(json.dumps(row) + "\n")
 
     # --- yt-dlp plumbing ------------------------------------------------------------
 
@@ -245,10 +336,14 @@ class YouTubeSource:
         if self.blocked:
             raise SourceUnavailable(self.blocked)
         attempt = 0
+        tries = 0
+        with_account = self.cookies_mode == "rotate"
         while True:
-            self._local.account = self._next_account()
-            if self._sets and self._local.account is None:
+            self._local.account = self._next_account() if with_account else None
+            if with_account and self._sets and self._local.account is None:
                 self._blocked_everywhere()
+            tries += 1
+            began = time.monotonic()
             try:
                 with self._slots:
                     delay = self._cooldown_until - time.monotonic()
@@ -258,12 +353,23 @@ class YouTubeSource:
                     self.pacer.wait()
                     began = time.monotonic()
                     try:
-                        return fn()
+                        result = fn()
                     finally:
                         self._count(action, time.monotonic() - began)
+                self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
+                             cookies=self._local.account is not None)
+                return result
             except Exception as error:
                 message = str(error)
                 lowered = message.casefold()
+                kind = error_kind(message)
+                self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
+                             cookies=self._local.account is not None)
+                if kind == "auth" and self.cookies_mode == "fallback" and self._sets and not with_account:
+                    with_account = True          # this video needs an account: try it once with one
+                    continue
+                if kind == "auth":
+                    raise RuntimeError(f"yt-dlp {action}: el vídeo necesita una cuenta ({message[:160]})") from None
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
                     index = self._local.account
                     if index is not None:
@@ -380,6 +486,7 @@ class YouTubeSource:
         return self.cache_dir / "videos" / video_id / "info.json"
 
     def info(self, video_id: str) -> dict[str, Any]:
+        self._local.video_id = video_id
         path = self._info_path(video_id)
         if path.is_file():
             try:
@@ -557,6 +664,23 @@ class YouTubeSource:
 
     def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
                        audio: bool = False, audio_only: bool = False) -> Path:
+        """See _download_range; also records the file's size and speed in the metrics."""
+
+        self._local.video_id = video_id
+        began = time.monotonic()
+        before = getattr(self._local, "fetched", 0)
+        try:
+            path = self._download_range(video_id, start, end, fmt=fmt, prefix=prefix, audio=audio, audio_only=audio_only)
+        except Exception as error:
+            self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)))
+            raise
+        if getattr(self._local, "fetched", 0) != before:      # downloaded now, not taken from the cache
+            size = path.stat().st_size if path.is_file() else 0
+            self._metric(f"archivo {prefix}", ok=True, seconds=time.monotonic() - began, size=size)
+        return path
+
+    def _download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
+                        audio: bool = False, audio_only: bool = False) -> Path:
         """[start, end] of the source → <prefix>_<realStart>_<realEnd>.mp4 (source seconds in the name).
 
         HLS first (sourcing.youtube.hls_ranges): the range comes as a few small segment requests and is
@@ -575,6 +699,7 @@ class YouTubeSource:
                     return existing
             except ValueError:
                 continue
+        self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
         whole = next((p for p in sorted(target_dir.glob(f"full_{prefix}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
@@ -729,6 +854,7 @@ class YouTubeSource:
     def subtitle_file(self, video_id: str, language: str = "en") -> Path | None:
         """The video's subtitles in `language` as WebVTT (uploaded ones, else YouTube's automatic ones), cached."""
 
+        self._local.video_id = video_id
         target_dir = self.cache_dir / "videos" / video_id
         for found in sorted(target_dir.glob(f"subs.{language}*.vtt")):
             return found

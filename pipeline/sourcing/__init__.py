@@ -153,15 +153,28 @@ def cookie_sets(ctx: RunContext, yt_cfg: dict[str, Any]) -> list[tuple[str, Path
 def youtube_source(ctx: RunContext) -> YouTubeSource:
     """A YouTubeSource with this project's config and every cookies account; call .close() when done."""
 
+    import inspect
+
     yt_cfg = ctx.section("sourcing").get("youtube", {})
-    sets = cookie_sets(ctx, yt_cfg)
-    if sets:
+    mode = yt_cfg.get("cookies", "rotate")
+    mode = "fallback" if mode is False else "rotate" if mode is True else str(mode or "rotate").lower()
+    sets = cookie_sets(ctx, yt_cfg) if mode != "never" else []
+    if mode == "never":
+        print("   YouTube: sin cuenta (cookies: never)")
+    elif sets and mode == "fallback":
+        print(f"   YouTube: sin cuenta; {len(sets)} cuenta(s) de reserva solo para vídeos que la pidan (edad, miembros)")
+    elif sets:
         print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos: "
               + ", ".join(path.name if path else "navegador/entorno" for _, path in sets))
     else:
         print("   YouTube: sin cookies (busco archivos .txt/.json en "
               + " y ".join(str(f) for f in cookie_folders(ctx, yt_cfg)) + ")")
     source = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
+    source.metrics_path = ctx.work_dir / "youtube_downloads.jsonl"
+    caller = inspect.stack()[1].filename
+    source.stage = Path(caller).parent.name if Path(caller).stem == "__init__" else Path(caller).stem
+    if source.pot:
+        print(f"   YouTube: PO Token Provider activo · clientes {', '.join(source.clients)}")
     if yt_cfg.get("api_search", True):
         from ..ytapi import YouTubeAPI
 

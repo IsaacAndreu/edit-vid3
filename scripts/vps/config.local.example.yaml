@@ -1,0 +1,16 @@
+# config.local.yaml: solo para ESTA máquina (la VPS). Va encima de config.yaml y no se sube a git.
+sourcing:
+  youtube:
+    cookies: fallback          # sin cuenta; una cookie de reserva solo para vídeos que la pidan (edad, miembros).
+                               # never = nunca; rotate = todas las peticiones con cuenta, por turnos (el PC de casa)
+    po_token: on               # PO Token Provider (bgutil) + cliente mweb; avisa si no está
+    pot_provider_url: http://127.0.0.1:4416
+    player_client: [default, web_safari]   # se añade mweb solo con el PO Token
+    concurrency: 3
+
+render:
+  encoder: x264                # la VPS no tiene gráfica NVIDIA
+  concurrency: 0               # pestañas de Chrome para Remotion = núcleos
+
+queue:
+  parallel_videos: 1           # con 4 vCPU, de uno en uno; con 8, prueba 2

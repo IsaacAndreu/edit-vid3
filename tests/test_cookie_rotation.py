@@ -159,3 +159,68 @@ def test_three_accounts_allow_more_downloads_until_youtube_asks_for_calm(tmp_pat
     time.sleep(0.2)
     assert yt._slots._value == 3 and yt._extra_slots == 0
     assert YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={}, cookie_sets=sets[:1]).concurrency == 3
+
+
+def test_without_an_account_cookies_are_only_a_fallback_for_videos_that_need_one(tmp_path):
+    import json
+
+    sets = [(f"# cookies {n}", None) for n in range(2)]
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": False}, cookie_sets=sets)
+    yt.metrics_path = tmp_path / "youtube_downloads.jsonl"
+    assert yt.cookies_mode == "fallback" and yt.concurrency == 3
+    used = []
+
+    def public():
+        used.append(yt._local.account)
+        return "ok"
+
+    assert yt._call("metadata", public) == "ok" and used == [None]          # public video: no account
+    calls = []
+
+    def age_restricted():
+        calls.append(yt._local.account)
+        if yt._local.account is None:
+            raise RuntimeError("ERROR: Sign in to confirm your age. This video may be inappropriate for some users.")
+        return "ok"
+
+    assert yt._call("metadata", age_restricted) == "ok" and calls[0] is None and calls[1] is not None
+    rows = [json.loads(line) for line in yt.metrics_path.read_text().splitlines()]
+    assert [(r["ok"], r["error"], r["cookies"]) for r in rows] == [(True, "", False), (False, "auth", False), (True, "", True)]
+    never = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"cookies": "never"}, cookie_sets=sets)
+    assert never._sets == []
+
+
+def test_youtube_stats_sum_up_requests_errors_and_speed(tmp_path):
+    import json
+    import time
+
+    from pipeline import ytstats
+
+    rows = [{"ts": time.time(), "action": "metadata", "ok": True, "attempt": 1, "pot": True, "clients": ["default", "mweb"]},
+            {"ts": time.time(), "action": "download (HLS)", "ok": False, "error": "403", "attempt": 1},
+            {"ts": time.time(), "action": "archivo hd", "ok": True, "bytes": 20_000_000, "seconds": 4.0}]
+    folder = tmp_path / "work" / "v1"
+    folder.mkdir(parents=True)
+    (folder / "youtube_downloads.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    s = ytstats.summary(rows)
+    assert (s["requests"], s["failed"], s["errors"], s["files_ok"], s["mbps"], s["pot"]) == (2, 1, {"403": 1}, 1, 5.0, True)
+    text = ytstats.report(tmp_path, 7).read_text("utf-8")
+    assert "| v1 | 2 | 1 | 1 | 0 | 0 | 1/1 | 5.0 | 0 |" in text
+
+
+def test_po_token_needs_the_plugin_and_its_server(tmp_path, monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"po_token": "auto"})
+    assert yt.pot is False and "youtubepot-bgutilhttp" not in (yt.base_options.get("extractor_args") or {})
+
+    class Ok:
+        ok = True
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr("requests.Session.get", lambda self, url, timeout=3: Ok())
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"po_token": "auto", "player_client": ["default", "web_safari"]})
+    args = yt.base_options["extractor_args"]
+    assert yt.pot and args["youtube"]["player_client"] == ["default", "web_safari", "mweb"]
+    assert args["youtubepot-bgutilhttp"] == {"base_url": ["http://127.0.0.1:4416"]}

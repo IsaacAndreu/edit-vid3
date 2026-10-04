@@ -94,6 +94,9 @@ class RunContext:
         if config is not None:
             return cls(slug=slug, root=root, config=config)
         base = load_config(root / "config.yaml")
+        local = root / "config.local.yaml"          # this machine only (a VPS: cookies, PO Token…), never in git
+        if local.is_file():
+            base = deep_merge(base, load_config(local))
         ctx = cls(slug=slug, root=root, config=base)
         # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {cold_open_seconds: 10}).
         path = ctx.materials_dir / "config.yaml"

@@ -112,3 +112,12 @@ def test_videos_inside_a_channel_folder_take_its_config(tmp_path):
     assert ctx.materials_dir == group / "avion1" and ctx.channel == "n"
     assert ctx.work_dir == root / "work" / "avion1"
     assert pending_slugs(root) == ["avion1"]                 # _hechos/ is never processed
+
+
+def test_config_local_yaml_is_this_machines_layer_on_top_of_config_yaml(tmp_path):
+    from pipeline.context import RunContext
+
+    root = _root(tmp_path)
+    (root / "config.local.yaml").write_text("sourcing:\n  youtube:\n    cookies: never\n")
+    ctx = RunContext.create("x", root=root)
+    assert ctx.section("sourcing")["youtube"]["cookies"] == "never"

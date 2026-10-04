@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# edit-vid3 en una VPS Ubuntu 24.04 (4-8 vCPU, 8-16 GB). Uso, como usuario normal con sudo:
+#   git clone -b claude/pensive-bell-5pi66r https://github.com/IsaacAndreu/edit-vid3.git && cd edit-vid3
+#   bash scripts/vps/setup-ubuntu.sh
+# Instala: Python (venv), ffmpeg, Node 22, Deno, las librerías de Chrome para Remotion, Docker y el
+# PO Token Provider (bgutil: servidor en Docker + plugin de yt-dlp). Se puede repetir sin romper nada.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+ROOT="$(pwd)"
+
+echo "== Paquetes del sistema"
+sudo apt-get update -y
+sudo apt-get install -y python3 python3-venv python3-pip git curl unzip ffmpeg ca-certificates \
+  libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+  libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-liberation
+
+echo "== Node 22 (Remotion)"
+if ! command -v node >/dev/null || [ "$(node -v | cut -c2- | cut -d. -f1)" -lt 20 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
+
+echo "== Deno (retos JavaScript de YouTube para yt-dlp)"
+if ! command -v deno >/dev/null; then
+  curl -fsSL https://deno.land/install.sh | sh -s -- -y
+  echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
+  export PATH="$HOME/.deno/bin:$PATH"
+fi
+
+echo "== Python (venv en .venv) — torch para CPU: la VPS no tiene gráfica"
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -U pip wheel
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+pip install -U "yt-dlp[default]" yt-dlp-ejs bgutil-ytdlp-pot-provider
+
+echo "== Paquetes de Node"
+npm install
+
+echo "== Docker + servidor del PO Token Provider (bgutil) en 127.0.0.1:4416"
+if ! command -v docker >/dev/null; then
+  curl -fsSL https://get.docker.com | sudo sh
+  sudo usermod -aG docker "$USER" || true
+fi
+sudo docker rm -f bgutil-provider >/dev/null 2>&1 || true
+sudo docker run --name bgutil-provider -d --init --restart unless-stopped -p 127.0.0.1:4416:4416 \
+  brainicism/bgutil-ytdlp-pot-provider
+sleep 3
+curl -fsS http://127.0.0.1:4416/ping && echo "  PO Token Provider responde ✓" || echo "  AVISO: el PO Token Provider no responde todavía"
+
+echo "== Configuración de esta máquina (config.local.yaml, fuera de git)"
+if [ ! -f config.local.yaml ]; then
+  cp scripts/vps/config.local.example.yaml config.local.yaml
+  echo "  creado config.local.yaml (sin cuenta, PO Token, mweb)"
+fi
+
+echo
+echo "Listo. Falta copiar a mano (nunca por git):"
+echo "  - .env con tus claves               →  $ROOT/.env"
+echo "  - (opcional) cookies de reserva     →  ~/.config/edit-vid3/cookies/*.txt"
+echo "Prueba:   . .venv/bin/activate && python main.py --probar-youtube"
+echo "Cola cada noche (03:00):   bash scripts/vps/install-cron.sh"

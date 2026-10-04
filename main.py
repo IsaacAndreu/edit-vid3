@@ -75,6 +75,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
     parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
+    target.add_argument("--youtube-stats", nargs="?", const=7.0, type=float, metavar="DÍAS",
+                        help="Cómo respondió YouTube en los últimos DÍAS (7 por defecto): peticiones, 403, bloqueos, "
+                             "velocidad, con o sin cuenta → out/_youtube_stats.md.")
     return parser
 
 
@@ -393,6 +396,13 @@ def main() -> None:
 
         path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
         print(f"Ideas en {path}")
+        return
+    if args.youtube_stats is not None:
+        from pipeline import ytstats
+
+        path = ytstats.report(PROJECT_ROOT, args.youtube_stats)
+        print(path.read_text("utf-8"))
+        print(f"Guardado en {path}")
         return
     if args.probar_youtube:
         from pipeline import ytcheck
