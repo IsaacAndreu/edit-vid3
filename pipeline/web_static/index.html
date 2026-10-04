@@ -320,7 +320,8 @@ async function videoPage(slug) {
     : `<div class="md">${md(docs[tab][1], base)}</div>`;
   $("#app").innerHTML = `
     <div class="row" style="justify-content:space-between"><h1>${esc(v.slug)} ${pill(v.status)}</h1>
-      <div class="row">${v.status === "error" ? '<button onclick="act(\'retry\')">Reintentar</button>' : ""}
+      <div class="row">${v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>' : ""}
+        ${v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>' : ""}
         ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
         ${v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : ""}
         ${v.status === "hecho" && !v.published ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
@@ -340,7 +341,13 @@ async function videoPage(slug) {
     if (url === null) return;
     await post(`/api/video/${encodeURIComponent(slug)}/published`, {value, url}); route();
   };
-  window.act = async (what) => { await post(`/api/video/${encodeURIComponent(slug)}/${what}`); what === "archive" ? (location.hash = "#/") : route(); };
+  window.act = async (what) => {
+    try {
+      const r = await post(`/api/video/${encodeURIComponent(slug)}/${what}`);
+      if (r.message) alert(r.message);
+      what === "archive" ? (location.hash = "#/") : setTimeout(route, 2500);
+    } catch (e) { alert(e.message); }
+  };
   const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;
   if (v.status === "haciendo") schedule(route, 10000);
 }

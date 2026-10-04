@@ -28,6 +28,7 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=$ROOT/.venv/bin/python main.py --web 8080 --host 127.0.0.1
 Restart=always
 RestartSec=10
+KillMode=process          # a video started from the studio keeps going when the studio restarts
 
 [Install]
 WantedBy=multi-user.target

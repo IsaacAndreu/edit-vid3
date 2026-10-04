@@ -274,13 +274,27 @@ def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
     return {"ok": True, "bytes": (folder / "voz.mp3").stat().st_size}
 
 
+def watcher_alive(root: Path) -> bool:
+    beat = root / "out" / "_vigilar.latido"
+    return beat.is_file() and time.time() - beat.stat().st_mtime < 15 * 60 and not (root / "out" / "_pausa").is_file()
+
+
 def retry(root: Path, slug: str) -> dict[str, Any]:
+    """«Reintentar» / «Hacer ahora»: with the watcher running, it takes the video on its next round; without it,
+    the studio starts the video itself in the background (it survives closing the SSH window)."""
+
+    find_video(root, slug)
+    if running(_json(root / "work" / slug / "current.json")):
+        raise ValueError("Este vídeo ya se está haciendo")
     path = root / "out" / "_vigilar.json"
     state = _json(path) or {}
     state.pop(slug, None)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=1), encoding="utf-8")
-    return {"ok": True}
+    if watcher_alive(root):
+        return {"ok": True, "message": "El vigilante lo vuelve a intentar en su próxima vuelta (unos minutos)."}
+    background(root, f"video-{slug}", ["--slug", slug])
+    return {"ok": True, "started": True, "message": "En marcha desde el estudio: sigue avanzando aunque cierres todo."}
 
 
 def archive(root: Path, slug: str) -> dict[str, Any]:

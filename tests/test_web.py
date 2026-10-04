@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -424,3 +425,21 @@ class DecisionsTests(unittest.TestCase):
             self.assertTrue(any("demasiado estricto" in t for t in tips))
             self.assertEqual(decisions.kind_of("el juez no aceptó ninguna opción"), "El juez no aceptó ninguna opción")
             self.assertIn("feedback", fallback.run.__code__.co_names)
+
+
+class RetryTests(unittest.TestCase):
+    def test_retry_starts_the_video_when_nothing_is_watching(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _video_with_timeline(root)
+            started = []
+            with patch("pipeline.web.background", side_effect=lambda r, name, args: started.append(args) or {"ok": True}):
+                out = web.retry(root, "V1")
+                self.assertTrue(out.get("started"))
+                self.assertEqual(started, [["--slug", "V1"]])
+                (root / "out").mkdir(exist_ok=True)
+                (root / "out" / "_vigilar.latido").write_text("x")              # a live watcher takes it instead
+                self.assertFalse(web.retry(root, "V1").get("started"))
+                (root / "work" / "V1" / "current.json").write_text(json.dumps({"stage": "render", "pid": os.getpid()}))
+                with self.assertRaises(ValueError):
+                    web.retry(root, "V1")                                        # already being made
