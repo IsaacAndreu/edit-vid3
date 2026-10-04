@@ -88,6 +88,14 @@ def fingerprint(ctx: RunContext, stage: Stage) -> str:
     return digest.hexdigest()
 
 
+def _turn_group(ctx: RunContext, stage: str) -> str:
+    """Whisper through the OpenAI API uses no CPU here: that transcription takes no turn (several at once)."""
+
+    if stage == "align" and str(ctx.section("align").get("provider", "local")) == "openai":
+        return "align-api"
+    return stage
+
+
 def _marker(ctx: RunContext, stage: Stage) -> Path:
     return ctx.work_dir / ".stages" / f"{stage.name}.json"
 
@@ -149,7 +157,7 @@ def run_stages(
                                encoding="utf-8")
             from .housekeeping import Sampler
 
-            with turn(ctx.root, stage.name, ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
+            with turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
                 started = time.monotonic()
                 with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
                     stage.run(ctx)
