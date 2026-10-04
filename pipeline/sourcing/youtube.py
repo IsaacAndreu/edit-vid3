@@ -28,7 +28,7 @@ from ..schemas import BrollSpec, Candidate, Storyboard
 from .common import USER_AGENT, Pacer, SourceUnavailable, blocked_by_title, cached_json, fuse_ranks, key, tokens
 
 
-_BLOCK_MARKERS = ("sign in to confirm", "not a bot")
+_BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
 # the video itself needs an account (age, members, private): the only case where cookies.mode=fallback uses one
 _AUTH_MARKERS = ("confirm your age", "age-restricted", "age restricted", "inappropriate for some users", "members-only",
                  "join this channel", "private video", "this video is private", "login required", "use --cookies",
@@ -39,10 +39,10 @@ def error_kind(message: str) -> str:
     """What a yt-dlp error means, for the metrics: auth, bot, 403, 429, unavailable or other."""
 
     low = message.casefold()
+    if any(marker in low for marker in _BLOCK_MARKERS):      # first: the bot check also says "use --cookies"
+        return "bot"
     if any(marker in low for marker in _AUTH_MARKERS):
         return "auth"
-    if any(marker in low for marker in _BLOCK_MARKERS):
-        return "bot"
     if "http error 403" in low or "403: forbidden" in low:
         return "403"
     if any(marker in low for marker in _RATE_MARKERS):
@@ -234,7 +234,7 @@ class YouTubeSource:
         args = options.setdefault("extractor_args", {})
         youtube = args.setdefault("youtube", {})
         clients = list(youtube.get("player_client") or ["default"])
-        if "mweb" not in clients:
+        if "mweb" not in clients and not self.cfg.get("pot_keep_clients"):
             clients.append("mweb")
         youtube["player_client"] = clients
         args["youtubepot-bgutilhttp"] = {"base_url": [url]}
@@ -367,6 +367,10 @@ class YouTubeSource:
                              cookies=self._local.account is not None)
                 if kind == "auth" and self.cookies_mode == "fallback" and self._sets and not with_account:
                     with_account = True          # this video needs an account: try it once with one
+                    continue
+                if (kind == "bot" and self.cookies_mode == "fallback" and self._sets and not with_account
+                        and self.cfg.get("cookies_on_bot", True)):
+                    with_account = True          # this IP gets the bot check (a server's): the request again with an account
                     continue
                 if kind == "auth":
                     raise RuntimeError(f"yt-dlp {action}: el vídeo necesita una cuenta ({message[:160]})") from None

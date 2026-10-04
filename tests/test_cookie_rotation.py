@@ -224,3 +224,23 @@ def test_po_token_needs_the_plugin_and_its_server(tmp_path, monkeypatch):
     args = yt.base_options["extractor_args"]
     assert yt.pot and args["youtube"]["player_client"] == ["default", "web_safari", "mweb"]
     assert args["youtubepot-bgutilhttp"] == {"base_url": ["http://127.0.0.1:4416"]}
+
+
+def test_a_servers_bot_check_is_not_taken_for_a_video_that_needs_an_account(tmp_path):
+    from pipeline.sourcing.youtube import error_kind
+
+    bot = ("ERROR: [youtube] aqz-KE-bpKQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies "
+           "for the authentication.")
+    assert error_kind(bot) == "bot"
+    assert error_kind("ERROR: Sign in to confirm your age. Use --cookies") == "auth"
+    sets = [(f"# cookies {n}", None) for n in range(2)]
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "fallback"}, cookie_sets=sets)
+    calls = []
+
+    def flagged_ip():
+        calls.append(yt._local.account)
+        if yt._local.account is None:
+            raise RuntimeError(bot)
+        return "ok"
+
+    assert yt._call("metadata", flagged_ip) == "ok" and calls[0] is None and calls[1] is not None   # again with an account

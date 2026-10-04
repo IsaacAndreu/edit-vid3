@@ -37,13 +37,15 @@ def versions() -> dict[str, str]:
 PROBE_LIMIT = 90                     # seconds per attempt: slower than this is "too slow" anyway
 
 
-def _probe(ctx: RunContext, cookies: bool, ipv4: bool) -> dict[str, Any]:
+def _probe(ctx: RunContext, cookies: bool, ipv4: bool, clients: str = "") -> dict[str, Any]:
     """One download, in this process (called from a child process so it can be cut off)."""
 
     from .sourcing import cookie_sets
     from .sourcing.youtube import WARNING_COUNTS, YouTubeSource
 
     cfg = {**ctx.section("sourcing").get("youtube", {}), "force_ipv4": ipv4}
+    if clients:                                   # trying other YouTube clients (a server's IP)
+        cfg = {**cfg, "player_client": clients.split(","), "pot_keep_clients": True}
     sets = cookie_sets(ctx, cfg) if cookies else []
     WARNING_COUNTS.clear()
     with tempfile.TemporaryDirectory() as tmp:
@@ -57,11 +59,12 @@ def _probe(ctx: RunContext, cookies: bool, ipv4: bool) -> dict[str, Any]:
             source.close()
         seconds = time.monotonic() - began
         phases = {action: round(total, 1) for action, (_, total) in source.stats.items()}
+        pot, used = source.pot, source.clients
     return {"seconds": round(seconds, 1), "mb": round(size / 1e6, 1), "error": error,
-            "warnings": dict(WARNING_COUNTS), "phases": phases}
+            "warnings": dict(WARNING_COUNTS), "phases": phases, "pot": pot, "clients": used}
 
 
-def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool) -> dict[str, Any]:
+def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool, clients: str = "") -> dict[str, Any]:
     """Run one probe in a child process, cut off after PROBE_LIMIT seconds."""
 
     import json
@@ -70,14 +73,16 @@ def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool) -> dict[str, An
 
     began = time.monotonic()
     try:
-        done = subprocess.run([sys.executable, "-m", "pipeline.ytcheck", "probe", str(int(cookies)), str(int(ipv4))],
+        done = subprocess.run([sys.executable, "-m", "pipeline.ytcheck", "probe", str(int(cookies)), str(int(ipv4)), clients],
                               capture_output=True, text=True, timeout=PROBE_LIMIT, cwd=ctx.root)
         lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
         result = json.loads(lines[-1]) if lines else {"seconds": round(time.monotonic() - began, 1), "mb": 0,
                                                        "error": (done.stderr or "sin respuesta")[-200:], "warnings": {}, "phases": {}}
     except subprocess.TimeoutExpired:
         result = {"seconds": float(PROBE_LIMIT), "mb": 0, "error": "", "warnings": {}, "phases": {}, "timeout": True}
-    result.update(label=label, cookies=cookies, ipv4=ipv4)
+    result.update(label=label, cookies=cookies, ipv4=ipv4, tried=clients)
+    if result.get("clients") is not None:
+        label += f" · clientes {', '.join(result['clients'])} · PO Token {'sí' if result.get('pot') else 'NO'}"
     if result.get("timeout"):
         print(f"   {label}: más de {PROBE_LIMIT} s para 10 s de vídeo (cortado)")
     elif result["error"]:
@@ -153,11 +158,22 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
     if "retos" in warned and not out:
         out.append("yt-dlp no consigue resolver los retos aunque tiene deno/node: actualiza las dos cosas "
                    "(pip install -U \"yt-dlp[default]\" y deno upgrade) y vuelve a probar.")
-    ok = [r for r in runs if not r["error"]]
-    blocked = [r for r in runs if "sign in" in r["error"].lower() or "robot" in r["error"].lower() or "bot\"" in r["error"].lower()]
-    if any(r.get("cookies", r["label"].startswith("con cookies")) for r in blocked) or (blocked and len(runs) == 1):
-        out.append("YouTube pide iniciar sesión («no eres un robot»): renueva las cookies (exporta de nuevo "
-                   "youtube-cookies.txt desde el navegador) o usa browser_accounts en config.yaml.")
+    ok = [r for r in runs if not r["error"] and not r.get("timeout")]
+    blocked = [r for r in runs if _bot(r)]
+    with_account = [r for r in runs if r.get("cookies", r["label"].startswith("con cookies"))]
+    if blocked and not with_account:              # no account configured, and YouTube wants one from this IP
+        working = [r for r in ok if r.get("tried")]
+        if working:
+            best = min(working, key=lambda r: r["seconds"])
+            out.append(f"Sin cuenta, el cliente «{best['tried']}» sí pasa: pon en config.local.yaml "
+                       f"sourcing.youtube.player_client: [{best['tried']}] y repite esta prueba.")
+        else:
+            out.append("YouTube pide cuenta a ESTA IP (es de un centro de datos) con todos los clientes, con y sin PO "
+                       "Token. Para descargar desde aquí hacen falta cookies de una cuenta SECUNDARIA (nunca la de tu "
+                       "canal): docs/VPS.md, «Si YouTube pide cuenta al servidor».")
+    elif any(r in with_account for r in blocked):
+        out.append("YouTube pide iniciar sesión («no eres un robot») también con cuenta: renueva las cookies "
+                   "(exporta de nuevo el .txt desde el navegador) o añade otra cuenta secundaria.")
     elif blocked:
         out.append("Sin cookies YouTube te pide iniciar sesión en esta red, pero con ellas funciona: no las quites.")
     if "429" in warned or any("429" in r["error"] for r in runs):
@@ -183,6 +199,11 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def _bot(run: dict[str, Any]) -> bool:
+    error = run.get("error", "").lower()
+    return "sign in" in error or "not a bot" in error or "robot" in error
+
+
 def run(ctx: RunContext) -> list[str]:
     from .sourcing import cookie_sets
 
@@ -197,6 +218,10 @@ def run(ctx: RunContext) -> list[str]:
     runs = [_try(ctx, f"{who}, IPv4", cookies, True), _try(ctx, f"{who}, red por defecto (IPv6)", cookies, False)]
     if cookies and all(r.get("timeout") or r["seconds"] > SLOW for r in runs):
         runs.append(_try(ctx, "sin cookies, IPv4", False, True))
+    if not cookies and all(_bot(r) for r in runs):     # a server's IP: does another YouTube client get through?
+        print("YouTube pide cuenta a esta IP; pruebo otros clientes de YouTube…")
+        for clients in ("tv", "web_safari", "mweb", "web_embedded"):
+            runs.append(_try(ctx, f"sin cookies, IPv4, solo {clients}", False, True, clients))
     lines = verdict(info, runs)
     print("\nQué hacer:")
     for n, line in enumerate(lines, 1):
@@ -208,5 +233,6 @@ if __name__ == "__main__":
     import json
     import sys
 
-    if len(sys.argv) == 4 and sys.argv[1] == "probe":
-        print(json.dumps(_probe(RunContext.create("_ytcheck"), sys.argv[2] == "1", sys.argv[3] == "1")))
+    if len(sys.argv) >= 4 and sys.argv[1] == "probe":
+        print(json.dumps(_probe(RunContext.create("_ytcheck"), sys.argv[2] == "1", sys.argv[3] == "1",
+                                sys.argv[4] if len(sys.argv) > 4 else "")))

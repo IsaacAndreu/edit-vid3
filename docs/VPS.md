@@ -79,6 +79,25 @@ de SSH) y parches de seguridad automáticos. Además, recomendado:
    `PermitRootLogin no`, y `sudo systemctl restart ssh` (deja otra sesión abierta mientras pruebas).
 3. `.env` solo para tu usuario: `chmod 600 .env`.
 
+## 3d. Si YouTube pide cuenta al servidor
+
+`--probar-youtube` dice «YouTube pide cuenta a ESTA IP» cuando la IP del servidor (de centro de datos) recibe el
+control «Sign in to confirm you're not a bot» con todos los clientes, con y sin PO Token. Desde aquí solo se puede
+descargar con cookies de una **cuenta secundaria** (nunca la de tu canal: yt-dlp con cuenta puede acabar en bloqueo de
+esa cuenta).
+
+1. Crea 1-3 cuentas de Google nuevas solo para esto.
+2. Por cada una, en tu PC: ventana **privada** → entra en YouTube con esa cuenta → abre
+   `https://www.youtube.com/robots.txt` → exporta las cookies con la extensión «Get cookies.txt LOCALLY» →
+   **cierra la ventana privada sin cerrar sesión** (cerrar sesión invalida las cookies).
+3. Súbelas (PowerShell): `scp cuenta1.txt root@<ip>:/opt/video-app/edit-vid3/cookies/` (la carpeta `cookies/` del
+   proyecto no va a git).
+4. En `config.local.yaml`: `cookies: rotate` (todas las peticiones con cuenta, por turnos; en esta IP todas la
+   necesitan) y repite `python main.py --probar-youtube`.
+
+Con `cookies: fallback` (el de por defecto) también funciona: cada petición que recibe el control «no eres un bot» se
+repite con una cuenta, pero gasta una petición sin cuenta antes de cada una.
+
 ## 4. Métricas (lo que decide)
 
 Cada petición a YouTube queda en `work/<vídeo>/youtube_downloads.jsonl` (qué se pidió, si fue bien, el error —403,
