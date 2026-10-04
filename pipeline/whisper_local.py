@@ -41,7 +41,10 @@ def decode_audio(audio_path: Path, rate: int = 16000):
 def _transcribe_local(audio_path: Path, model: str, language: str, compute_type: str, device: str = "cpu") -> dict[str, Any]:
     from faster_whisper import WhisperModel
 
-    whisper = WhisperModel(model, device=device, compute_type=compute_type)
+    import os
+
+    # every core: faster-whisper uses 4 threads by default, half of an 8-core server
+    whisper = WhisperModel(model, device=device, compute_type=compute_type, cpu_threads=os.cpu_count() or 4)
     segments, info = whisper.transcribe(
         decode_audio(audio_path),
         language=language or None,
