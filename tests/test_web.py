@@ -395,3 +395,32 @@ class NewChannelTests(unittest.TestCase):
             web.settings(root, {"my_channels": {"gimnasia": "@Gym"}})
             web.settings(root, {"my_channels": {"coches": "@MiCoches"}})               # merged, not replaced
             self.assertEqual(web.settings(root)["my_channels"], {"gimnasia": "@Gym", "coches": "@MiCoches"})
+
+
+class DecisionsTests(unittest.TestCase):
+    def test_picks_teach_the_program(self) -> None:
+        from pipeline import decisions, fallback
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _video_with_timeline(root)
+            item = {"shot": "s002", "text": "Otra frase", "reason": "otra persona: rótulo «Jake Jarman»",
+                    "kind": "Otra persona en pantalla", "options": [
+                        {"key": "yt:AAA@10.0", "original": True, "title": "Vídeo A", "channel": "x", "kind": "video", "score": 0.5},
+                        {"key": "yt:CCC@4.0", "original": False, "title": "Vídeo C", "channel": "y", "kind": "video", "score": 0.4}]}
+            with patch("pipeline.decisions.items", return_value=[item]):
+                decisions.decide(root, "V1", "s002", pick="yt:AAA@10.0")       # the clip a check threw out was right
+                with self.assertRaises(ValueError):
+                    decisions.decide(root, "V1", "s002", pick="yt:ZZZ@1.0")
+            approved = decisions.approved_fragments(root)
+            self.assertTrue(feedback.is_wrong(approved, "yt:AAA", 11.0, 12.0))      # never thrown out again
+            self.assertEqual(feedback.labels(root)["V1/s002"]["reason"], "habia_mejor")
+            self.assertNotIn("yt:BBB", feedback.wrong_fragments(root))             # «there was better» blocks nothing
+            for n in range(3):
+                with patch("pipeline.decisions.items", return_value=[{**item, "shot": f"s1{n}",
+                                                                      "reason": "el juez no aceptó ninguna opción"}]):
+                    decisions.decide(root, "V1", f"s1{n}", pick="yt:CCC@4.0")
+            tips = decisions.summary(root)["tips"]
+            self.assertTrue(any("demasiado estricto" in t for t in tips))
+            self.assertEqual(decisions.kind_of("el juez no aceptó ninguna opción"), "El juez no aceptó ninguna opción")
+            self.assertIn("feedback", fallback.run.__code__.co_names)

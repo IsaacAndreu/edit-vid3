@@ -534,6 +534,21 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if image is None:
                         return self._fail(404, "Sin imagen")
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
+                if match := re.fullmatch(r"/api/decisions/([^/]+)", path):
+                    from . import decisions
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    return self._ok({"items": decisions.items(root, slug), "summary": decisions.summary(root),
+                                     "job": job_state(root, f"corregir-{slug}")})
+                if match := re.fullmatch(r"/api/decisions/([^/]+)/frame", path):
+                    from . import decisions
+
+                    query = urllib.parse.parse_qs(url.query)
+                    image = decisions.frame(root, urllib.parse.unquote(match.group(1)), (query.get("shot") or [""])[0],
+                                            (query.get("key") or [""])[0])
+                    if image is None:
+                        return self._fail(404, "Sin imagen")
+                    return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/errors":
                     from . import feedback
 
@@ -616,6 +631,24 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     return self._ok(mark_published(root, urllib.parse.unquote(match.group(1)), str(body.get("url") or ""),
                                                    bool(body.get("value", True))))
+                if match := re.fullmatch(r"/api/decisions/([^/]+)/apply", path):
+                    from . import decisions
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    if (root / "work" / slug / "current.json").is_file() and running(_json(root / "work" / slug / "current.json")):
+                        raise ValueError("Este vídeo se está haciendo ahora: espera a que termine")
+                    count = decisions.apply(root, slug)
+                    from .feedback import wrong_shots
+
+                    if not count and not wrong_shots(root / "work" / slug):
+                        raise ValueError("No has elegido ninguna opción todavía")
+                    return self._ok({**background(root, f"corregir-{slug}", ["--slug", slug, "--force", "fallback"]),
+                                     "applied": count})
+                if match := re.fullmatch(r"/api/decisions/([^/]+)/([A-Za-z0-9_-]+)", path):
+                    from . import decisions
+
+                    return self._ok(decisions.decide(root, urllib.parse.unquote(match.group(1)), match.group(2),
+                                                     ok=body.get("ok"), pick=body.get("pick")))
                 if match := re.fullmatch(r"/api/video/([^/]+)/fix", path):
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":

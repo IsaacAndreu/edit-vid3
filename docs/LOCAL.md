@@ -127,6 +127,11 @@ Se abre `http://127.0.0.1:8080` en el navegador (solo desde este PC; no pide con
   alrededor; dibujo o marca de agua: todo ese vídeo de origen). **«Rehacer con correcciones»** cambia esos planos y
   vuelve a montar el vídeo. La página de Errores dice qué parte del programa falla más (juez, relleno del
   protagonista, stock…) y por qué motivos.
+- **Decisiones del relleno** (en cada vídeo, o desde Errores): los planos donde el programa no pudo usar la
+  primera elección y buscó otra cosa (el juez no aceptó ninguna opción, salía otra persona, repetía imagen, no se
+  descargó…). Ves por qué, lo que puso y las demás opciones analizadas con su imagen: «Bien así» o «Usar esta», y
+  **«Aplicar y rehacer»** monta el vídeo con tus elecciones. Aprende: un clip que una comprobación había tirado y tú
+  recuperas no se vuelve a tirar, y si eliges a menudo opciones que el juez rechazó te dice que es demasiado estricto.
 - **Competencia**: el radar del día por canal (los vídeos que más superan a su canal en los últimos 30 días, de tus
   competidores y de las búsquedas del nicho, con «nuevo» en lo que no estaba ayer) y **nichos nuevos** medidos en
   YouTube (cuántos vídeos superan 3× a su canal y cuántos son de canales pequeños). «Buscar ahora» o, con el servidor

@@ -322,6 +322,7 @@ async function videoPage(slug) {
     <div class="row" style="justify-content:space-between"><h1>${esc(v.slug)} ${pill(v.status)}</h1>
       <div class="row">${v.status === "error" ? '<button onclick="act(\'retry\')">Reintentar</button>' : ""}
         ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
+        ${v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : ""}
         ${v.status === "hecho" && !v.published ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}</div>
@@ -471,14 +472,47 @@ async function errorsPage() {
     </div>
     ${e.tips.length ? `<div class="elf">🧝 ${e.tips.map(esc).join("<br>")}</div>` : ""}
     <h2>Revisar un vídeo</h2>
-    <div class="grid">${done.map((v) => `<a class="card click" href="#/revisar/${encodeURIComponent(v.slug)}"><b>${esc(v.slug)}</b>
-      <div class="small muted">${esc(v.channel)} · ${reviewed.has(v.slug) ? "revisado" : "sin revisar"}</div></a>`).join("") || '<div class="muted">Aún no hay vídeos terminados.</div>'}</div>
+    <div class="grid">${done.map((v) => `<div class="card"><b>${esc(v.slug)}</b>
+      <div class="small muted">${esc(v.channel)} · ${reviewed.has(v.slug) ? "revisado" : "sin revisar"}</div>
+      <div class="row" style="margin-top:8px"><a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Clips</a>
+        <a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a></div></div>`).join("") || '<div class="muted">Aún no hay vídeos terminados.</div>'}</div>
     ${e.reasons.length ? `<h2>Por qué fallan</h2><div class="card">${e.reasons.map((r) => `<div class="row" style="justify-content:space-between"><span>${esc(r.name)}</span><b>${r.count}</b></div>
       <div class="hbar"><i style="width:${100 * r.count / maxReason}%;background:var(--bad)"></i></div>`).join("")}</div>` : ""}
     ${e.methods.length ? `<h2>Qué parte del programa falla</h2><div class="card"><table><tr><th>Cómo se encontró el clip</th><th>Bien</th><th>Mal</th><th>Dudosos</th><th>Acierto</th></tr>
       ${e.methods.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.correcta}</td><td>${m.incorrecta}</td><td>${m.dudosa}</td><td><b>${m.accuracy} %</b></td></tr>`).join("")}</table></div>` : ""}
     ${e.videos.length ? `<h2>Por vídeo</h2><div class="card"><table><tr><th>Vídeo</th><th>Bien</th><th>Mal</th><th>Dudosos</th><th>Acierto</th></tr>
       ${e.videos.map((v) => `<tr><td><a href="#/revisar/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></td><td>${v.correcta}</td><td>${v.incorrecta}</td><td>${v.dudosa}</td><td><b>${v.accuracy} %</b></td></tr>`).join("")}</table></div>` : ""}`;
+}
+
+// --- Decisiones del relleno ----------------------------------------------------------------------------------------
+async function decisionsPage(slug) {
+  const r = await api("/api/decisions/" + encodeURIComponent(slug));
+  const picks = r.items.filter((i) => i.pick).length;
+  const img = (shot, key) => `/api/decisions/${encodeURIComponent(slug)}/frame?shot=${shot}&key=${encodeURIComponent(key)}`;
+  $("#app").innerHTML = `
+    <div class="row" style="justify-content:space-between"><h1>Decisiones del relleno · <a href="#/video/${encodeURIComponent(slug)}">${esc(slug)}</a></h1>
+      <button class="main" onclick="applyPicks()" ${r.job.running ? "disabled" : ""}>Aplicar y rehacer${picks ? ` (${picks})` : ""}</button></div>
+    <div class="small muted">Planos donde el programa no pudo usar la primera elección y buscó otra cosa. Mira lo que puso: si está bien, «Bien así»; si no, elige la opción que debería ir. Aprende de ello: lo que recuperas no vuelve a descartarse y te dice qué comprobación es demasiado estricta.</div>
+    ${r.summary.tips.length ? `<div class="elf">🧝 ${r.summary.tips.map(esc).join("<br>")}</div>` : ""}
+    ${jobLine(r.job, "Rehaciendo el vídeo con tus elecciones")}
+    ${r.items.map((i) => `<div class="card" style="margin-top:14px">
+      <div class="row" style="justify-content:space-between"><b>${esc(i.shot)} · «${esc(i.text)}»</b>
+        <span class="pill ${i.verdict === "correcta" ? "hecho" : i.pick ? "haciendo" : ""}">${i.verdict === "correcta" ? "bien así" : i.pick ? "elegida otra" : "sin revisar"}</span></div>
+      <div class="small" style="margin:6px 0"><b>Por qué buscó otra cosa:</b> ${esc(i.kind)}${i.reason && i.kind !== i.reason ? ` <span class="muted">(${esc(i.reason.slice(0, 140))}${i.reason.length > 140 ? "…" : ""})</span>` : ""}</div>
+      ${i.judgeReason ? `<details class="small muted"><summary>Lo que dijo el juez</summary>${esc(i.judgeReason)}</details>` : ""}
+      <div class="vids" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
+        <div class="card" style="border-color:var(--work)"><img loading="lazy" src="${img(i.shot, "final")}" alt="">
+          <div class="body small"><b>Lo que puso</b>${i.method ? ` · ${esc(i.method)}` : ""}${i.resolved ? "" : " · (no encontró nada)"}
+          <div class="row" style="margin-top:6px"><button class="b-ok" onclick="decide('${i.shot}', {ok: true})">Bien así</button></div></div></div>
+        ${i.options.map((o) => `<div class="card ${i.pick === o.key ? "correcta" : ""}" style="${i.pick === o.key ? "border-color:var(--ok)" : ""}">
+          <img loading="lazy" src="${img(i.shot, o.key)}" alt="">
+          <div class="body small">${o.original ? '<b>La que eligió el juez</b> (descartada) · ' : ""}${esc(o.title).slice(0, 80)}
+            <div class="muted">${esc(o.channel)}${o.score != null ? ` · nota ${o.score}` : ""}${o.kind === "image" ? " · foto" : ""}</div>
+            <div class="row" style="margin-top:6px"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? "✓ Elegida" : "Usar esta"}</button></div></div></div>`).join("")}
+      </div></div>`).join("") || '<div class="notice ok">En este vídeo el relleno no tuvo que decidir nada.</div>'}`;
+  window.decide = async (shot, body) => { const y = window.scrollY; await post(`/api/decisions/${encodeURIComponent(slug)}/${shot}`, body); await route(); window.scrollTo(0, y); };
+  window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { alert(e.message); } };
+  if (r.job.running) schedule(route, 8000);
 }
 
 // --- Competencia ---------------------------------------------------------------------------------------------------
@@ -706,6 +740,7 @@ async function route() {
   try {
     if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
+    else if (hash.startsWith("#/decisiones/")) await decisionsPage(decodeURIComponent(hash.slice(13)));
     else if (hash === "#/errores") await errorsPage();
     else if (hash === "#/competencia") await radarPage();
     else if (hash === "#/canal") await channelPage();

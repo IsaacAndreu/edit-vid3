@@ -31,8 +31,10 @@ REASONS = {
     "roto": "Roto, negro o muy mala calidad",
     "texto_marca_agua": "Texto encima o marca de agua",
     "repetido": "Repetido",
+    "habia_mejor": "Había una opción mejor",
     "otro": "Otro",
 }
+NOT_BLOCKED = {"habia_mejor", "repetido"}       # the clip itself is fine elsewhere: it is not put on the black list
 WHOLE_SOURCE = {"dibujo_animado", "texto_marca_agua"}   # the whole source video is out
 WIDER = {"persona_equivocada": 4.0}           # another athlete is usually on screen for a while: block around it too
 METHODS = {"judge": "Juez (búsqueda del plano)", "score": "Puntuación directa", "editor": "Elegido a mano",
@@ -182,7 +184,7 @@ def wrong_fragments(root: Path) -> dict[str, list[tuple[float | None, float | No
     out: dict[str, list[tuple[float | None, float | None]]] = {}
     for entry in labels(root).values():
         cid = entry.get("candidateId")
-        if entry.get("verdict") != "incorrecta" or not cid:
+        if entry.get("verdict") != "incorrecta" or not cid or entry.get("reason") in NOT_BLOCKED:
             continue
         whole = entry.get("reason") in WHOLE_SOURCE or entry.get("start") is None
         pad = WIDER.get(entry.get("reason"), 0.0)

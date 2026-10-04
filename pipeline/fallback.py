@@ -152,6 +152,9 @@ def run(ctx: RunContext) -> None:
         who = expected_people(shots[shot_id], names, protagonist, scope) if checker and shot_id in shots else []
         return identity_cache.get(checker, path, kind, who) if who else None
 
+    from .decisions import approved_fragments
+
+    approved = approved_fragments(ctx.root)
     marked_wrong = feedback.wrong_shots(ctx.work_dir)    # you said so in the studio: replace, whoever chose it
     for shot_id, why in marked_wrong.items():
         if shot_id in shots and shot_id in done:
@@ -166,6 +169,8 @@ def run(ctx: RunContext) -> None:
             pending[media.shotId] = "foto de agencia con marca de agua"
             print(f"   {media.shotId}: foto de agencia con marca de agua ({(chosen.credit or '').removeprefix('Fuente: ')})")
             continue
+        if chosen and chosen.candidateId and feedback.is_wrong(approved, chosen.candidateId, chosen.start, chosen.end):
+            continue                                     # you said this clip is right («Decisiones del relleno»)
         why = wrong_person(media.shotId, ctx.root / media.path, media.kind)
         if why:
             done.discard(media.shotId)
