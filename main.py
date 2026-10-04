@@ -374,6 +374,21 @@ def _describe(error: BaseException) -> str:
     return f"{type(error).__name__}: {error}"
 
 
+def _clear_stale_lock(lock: Path) -> None:
+    """A queue lock left by a process that no longer exists (killed by a restart, power cut) is removed: otherwise
+    the watcher would think a queue is running and wait for ever."""
+
+    from pipeline.locks import _alive
+
+    try:
+        pid = int(lock.read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return
+    if pid != os.getpid() and not _alive(pid):
+        print(f"(Quito {QUEUE_LOCK}: era de un proceso que ya no existe, pid {pid})")
+        lock.unlink(missing_ok=True)
+
+
 LAST_RESULTS: list[tuple[str, str, float, str]] = []      # the last queue's (slug, status, seconds, detail)
 
 
@@ -383,6 +398,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
 
     lock = root / QUEUE_LOCK
     lock.parent.mkdir(parents=True, exist_ok=True)
+    _clear_stale_lock(lock)
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         os.write(fd, f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
@@ -429,6 +445,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 results.append((slug, "OK", time.monotonic() - started, ""))
             except KeyboardInterrupt:
                 results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
+                raise
+            except Stopped as stop:          # systemctl restart/stop: the whole queue stops, not just this video
+                results.append((slug, "interrumpido", time.monotonic() - started, str(stop)))
                 raise
             except BaseException as error:  # SystemExit too: one bad video must not end the queue
                 from pipeline.budget import BudgetReached

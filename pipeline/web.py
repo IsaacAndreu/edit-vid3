@@ -128,6 +128,17 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     }
 
 
+def _lock_alive(lock: Path) -> bool:
+    """The queue lock exists AND its process is alive (a restart can leave it behind)."""
+
+    from .locks import _alive
+
+    try:
+        return _alive(int(lock.read_text().split()[0]))
+    except (OSError, ValueError, IndexError):
+        return False
+
+
 def overview(root: Path) -> dict[str, Any]:
     from . import budget, ytstats
 
@@ -143,7 +154,7 @@ def overview(root: Path) -> dict[str, Any]:
     config = RunContext.create("_web", root=root).config
     since = time.time() - 7 * 86400
     rows = [r for p in (root / "work").glob("*/youtube_downloads.jsonl") for r in ytstats.read(p, since)]
-    queue_running = (root / "work" / ".cola.lock").is_file()
+    queue_running = _lock_alive(root / "work" / ".cola.lock")
     return {
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,
                     "lastBeat": beat.read_text().strip() if beat.is_file() else None},

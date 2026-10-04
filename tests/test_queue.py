@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,7 +55,7 @@ class QueueTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "work").mkdir()
-            (root / main.QUEUE_LOCK).write_text("123 ayer")
+            (root / main.QUEUE_LOCK).write_text(f"{os.getppid()} ayer")   # a live process: another queue
             with self.assertRaises(SystemExit):
                 main.run_queue(force=set(), until=None, review=False, root=root, check=False)
 
@@ -142,3 +143,16 @@ def test_two_runs_of_one_video_never_overlap(tmp_path):
         with main._one_process(ctx):
             pass
     assert not (ctx.work_dir / ".proceso").exists()
+
+
+def test_stale_queue_lock_is_removed(tmp_path):
+    import main
+
+    lock = tmp_path / "work" / ".cola.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("999999999 2026-10-04T20:00:00\n")
+    main._clear_stale_lock(lock)
+    assert not lock.exists()
+    lock.write_text(f"{os.getpid()} 2026-10-04T20:00:00\n")
+    main._clear_stale_lock(lock)
+    assert lock.exists()
