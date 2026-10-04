@@ -75,6 +75,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
     parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
+    target.add_argument("--vigilar", nargs="?", const=5.0, type=float, metavar="MIN",
+                        help="Servidor: hace los vídeos de materiales/ en cuanto aparecen, mirando cada MIN minutos "
+                             "(5); no repite en bucle uno que falló; se actualiza con git pull.")
     target.add_argument("--youtube-stats", nargs="?", const=7.0, type=float, metavar="DÍAS",
                         help="Cómo respondió YouTube en los últimos DÍAS (7 por defecto): peticiones, 403, bloqueos, "
                              "velocidad, con o sin cuenta → out/_youtube_stats.md.")
@@ -153,6 +156,85 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
     return problems
 
 
+WATCH_STATE = "out/_vigilar.json"
+
+
+def _materials_signature(root: Path, slug: str) -> float:
+    from pipeline.context import find_video
+
+    folder = find_video(root, slug)
+    files = [p for p in folder.rglob("*") if p.is_file()] if folder.is_dir() else []
+    parent = folder.parent / "config.yaml"
+    return max([p.stat().st_mtime for p in files + ([parent] if parent.is_file() else [])] or [0.0])
+
+
+def _git_update(root: Path) -> bool:
+    """git pull; True when it brought new code (the watcher then restarts with it)."""
+
+    import subprocess
+
+    def head() -> str:
+        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True)
+        return out.stdout.strip()
+
+    before = head()
+    pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
+    if pulled.returncode != 0:
+        print(f"(git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-200:]})")
+        return False
+    return bool(before) and head() != before
+
+
+def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
+    """A server that makes videos all the time: whenever materiales/ has pending videos, the queue runs; otherwise
+    it looks again every `every_minutes`. A video that failed is not retried until its files change or
+    `watch.retry_hours` (6) pass. Between runs it updates the code (git pull) and restarts itself with it."""
+
+    import json
+
+    state_path = root / WATCH_STATE
+    cfg = RunContext.create("_vigilar", root=root).section("watch") if (root / "config.yaml").is_file() else {}
+    retry = float(cfg.get("retry_hours", 6)) * 3600
+    print(f"Vigilando {root / 'materiales'} cada {every_minutes:g} min (Ctrl+C para parar)")
+    idle_since = None
+    while True:
+        try:
+            state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
+        except ValueError:
+            state = {}
+        skip = {slug for slug, info in state.items()
+                if info.get("sig") == _materials_signature(root, slug) and time.time() - info.get("at", 0) < retry}
+        from pipeline import dub
+
+        waiting = [slug for slug in pending_slugs(root) if slug not in skip] + [
+            slug for slug, _ in dub.pending(root)]
+        if waiting:
+            idle_since = None
+            LAST_RESULTS.clear()
+            try:
+                run_queue(force=set(), until=None, review=False, root=root, skip=skip)
+            except SystemExit as stop:               # preflight said no (keys, disk…): look again later
+                print(stop)
+                time.sleep(30 * 60)
+            for slug, status, _, _ in LAST_RESULTS:
+                if status == "OK":
+                    state.pop(slug, None)
+                else:
+                    state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status}
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        elif idle_since is None:
+            idle_since = time.time()
+            print(f"{datetime.now():%H:%M} · nada pendiente"
+                  + (f" ({len(skip)} con error esperando cambios: {', '.join(sorted(skip))})" if skip else "")
+                  + f"; vuelvo a mirar cada {every_minutes:g} min")
+        if cfg.get("git_pull", True) and _git_update(root):
+            print("Código nuevo (git pull): reinicio con él")
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+        if not waiting:
+            time.sleep(every_minutes * 60)
+
+
 def update_ytdlp() -> None:
     """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night."""
 
@@ -196,8 +278,11 @@ def _describe(error: BaseException) -> str:
     return f"{type(error).__name__}: {error}"
 
 
+LAST_RESULTS: list[tuple[str, str, float, str]] = []      # the last queue's (slug, status, seconds, detail)
+
+
 def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT,
-              check: bool = True) -> int:
+              check: bool = True, skip: set[str] | None = None) -> int:
     """Process every pending video; never stop the night because one video failed. Returns failures."""
 
     lock = root / QUEUE_LOCK
@@ -231,6 +316,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
 
         slugs += [dub.prepare(root, slug, lang) for slug, lang in dub.pending(root)
                   if dub.dub_slug(slug, lang) not in slugs]    # dubs of videos already finished
+        slugs = [slug for slug in slugs if slug not in (skip or set())]   # --vigilar: failed lately, unchanged
         if limit > 0:
             slugs = slugs[:limit]
         print(f"Cola: {len(slugs)} vídeo(s) pendiente(s): {', '.join(slugs) or '—'}")
@@ -255,6 +341,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
     finally:
         lock.unlink(missing_ok=True)
         _write_report(root, results)
+    LAST_RESULTS[:] = results
     failures = sum(1 for _, status, _, _ in results if status != "OK")
     print(f"\nCola terminada: {len(results) - failures} OK · {failures} con error · resumen en {QUEUE_REPORT}")
     if results:
@@ -406,6 +493,9 @@ def main() -> None:
 
         path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
         print(f"Ideas en {path}")
+        return
+    if args.vigilar is not None:
+        watch(args.vigilar)
         return
     if args.youtube_stats is not None:
         from pipeline import ytstats

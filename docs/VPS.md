@@ -40,8 +40,15 @@ Copia a mano, **nunca por git**: `.env` (tus claves) y, si quieres cuentas de re
 . .venv/bin/activate
 python main.py --probar-youtube          # 1 minuto: ¿descarga?
 python main.py --slug <un vídeo>         # un vídeo completo
-bash scripts/vps/install-cron.sh 03:00   # la cola cada noche
+bash scripts/vps/install-service.sh      # y desde aquí, todo el rato
 ```
+
+`install-service.sh` deja `python main.py --vigilar` como servicio del sistema: en cuanto hay un vídeo pendiente en
+`materiales/` (de cualquier canal) lo hace; si no hay nada, vuelve a mirar cada 5 minutos. Arranca solo al encender
+la VPS y se reinicia si algo lo tumba. Un vídeo que falla **no se repite en bucle** (gastaría API): espera a que
+cambies sus archivos o a que pasen 6 horas (`watch.retry_hours`). Entre vídeo y vídeo hace `git pull` y, si hay código
+nuevo, se reinicia con él. Ver lo que hace: `journalctl -u edit-vid3 -f`; parar: `sudo systemctl stop edit-vid3`.
+(`install-cron.sh` sigue ahí si prefieres una hora fija.)
 
 Al empezar cada fase que usa YouTube verás `YouTube: sin cuenta…` y `PO Token Provider activo · clientes default, …,
 mweb`. Si no sale lo segundo: `docker ps` (¿está `bgutil-provider`?) y `curl http://127.0.0.1:4416/ping`.

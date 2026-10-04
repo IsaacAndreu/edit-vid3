@@ -76,3 +76,49 @@ class QueueTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_the_watcher_does_not_retry_a_failed_video_until_its_files_change(tmp_path, monkeypatch):
+    import json
+    import os
+    import time as clock
+
+    import main
+
+    root = tmp_path
+    (root / "config.yaml").write_text("watch: {git_pull: false}\n")
+    folder = root / "materiales" / "v1"
+    folder.mkdir(parents=True)
+    for name in ("guion.txt", "voz.mp3"):
+        (folder / name).write_text("x")
+    runs = []
+
+    def fake_queue(**kwargs):
+        runs.append(sorted(kwargs.get("skip") or []))
+        main.LAST_RESULTS[:] = [("v1", "ERROR", 1.0, "boom")]
+        return 1
+
+    naps = []
+
+    def nap(seconds):
+        naps.append(seconds)
+        if len(naps) >= 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(main, "run_queue", fake_queue)
+    monkeypatch.setattr(main.time, "sleep", nap)
+    try:
+        main.watch(0.01, root=root)
+    except KeyboardInterrupt:
+        pass
+    assert runs == [[]]                                   # failed once, then left alone while unchanged
+    state = json.loads((root / "out" / "_vigilar.json").read_text())
+    assert state["v1"]["status"] == "ERROR"
+    later = clock.time() + 5
+    os.utime(folder / "guion.txt", (later, later))        # you fix the script: it is tried again
+    naps.clear()
+    try:
+        main.watch(0.01, root=root)
+    except KeyboardInterrupt:
+        pass
+    assert len(runs) == 2
