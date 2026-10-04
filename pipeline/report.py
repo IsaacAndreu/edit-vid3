@@ -48,6 +48,8 @@ def card(ctx: RunContext) -> dict[str, Any]:
         problems.append(f"{person} sale poco")
     if stock > float(cfg.get("max_stock", 0.1)):
         problems.append("mucho metraje genérico")
+    if not ctx.section("factcheck").get("notices", False):    # the script you upload is the script: no notices
+        wrong = []
     if wrong:
         problems.append(f"{len(wrong)} dato(s) del guion a corregir")
     if len(weak) > int(cfg.get("max_weak", 15)):
@@ -66,7 +68,8 @@ def text(result: dict[str, Any], limit: int = 8) -> str:
     lines += [f"   – {w}" for w in result["weak"][:limit]]
     if len(result["weak"]) > limit:
         lines.append(f"   – … y {len(result['weak']) - limit} más (qa/report.md)")
-    lines.append(f"• Datos marcados ❌ en la verificación: {len(result['wrong'])}")
+    if result["wrong"]:
+        lines.append(f"• Datos marcados ❌ en la verificación: {len(result['wrong'])}")
     lines += [f"   – «{(c.get('quote') or c.get('claim') or '')[:110]}» → {(c.get('correction') or '?')[:160]}"
               for c in result["wrong"][:5]]
     return "\n".join(lines)

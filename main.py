@@ -99,14 +99,51 @@ def _parser() -> argparse.ArgumentParser:
 def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root: Path = PROJECT_ROOT) -> None:
     """One video, end to end. Raises on failure (the caller decides whether to stop)."""
 
-    from pipeline import diag
-
     ctx = RunContext.create(slug, root=root)
     if not ctx.materials_dir.is_dir():
         raise FileNotFoundError(f"No existe {ctx.materials_dir}")
     from pipeline import budget
 
     budget.check(root, ctx.config)                       # budget.daily_usd: today's spending at the limit → wait
+    with _one_process(ctx):                               # never two runs of one video at once
+        _run_one(ctx, force=force, until=until, review=review)
+
+
+class _one_process:
+    """work/<slug>/.proceso holds the pid of the run making this video; a second run stops right away instead of
+    rewriting the same files (two runs mixed their candidates and the judge crashed with a KeyError)."""
+
+    def __init__(self, ctx: RunContext) -> None:
+        self.path = ctx.work_dir / ".proceso"
+
+    def __enter__(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            other = int(self.path.read_text().split()[0]) if self.path.is_file() else 0
+        except (OSError, ValueError, IndexError):
+            other = 0
+        if other and other != os.getpid():
+            try:
+                os.kill(other, 0)
+                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}). "
+                                 f"Si no es así, borra {self.path}")
+            except ProcessLookupError:
+                pass                                       # a run that died: take over
+            except PermissionError:
+                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}).") from None
+        self.path.write_text(f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n")
+
+    def __exit__(self, *exc) -> None:
+        try:
+            if int(self.path.read_text().split()[0]) == os.getpid():
+                self.path.unlink(missing_ok=True)
+        except (OSError, ValueError, IndexError):
+            pass
+
+
+def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: bool) -> None:
+    from pipeline import diag
+
     # everything printed also goes to out/<slug>/log.txt; out/<slug>/diagnostico.md says what to improve
     with diag.logging(ctx):
         try:

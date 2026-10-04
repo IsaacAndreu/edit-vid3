@@ -5,7 +5,7 @@ from pipeline.context import RunContext
 
 
 def _video(tmp_path, stock=0.02, wrong=0, weak=2):
-    ctx = RunContext.create("v", root=tmp_path, config={})
+    ctx = RunContext.create("v", root=tmp_path, config={"factcheck": {"notices": True}})
     (ctx.out_dir / "qa").mkdir(parents=True)
     ctx.work_dir.mkdir(parents=True)
     rows = [{"shotId": "a", "start": 0, "end": 6, "media": "m/a.mp4", "title": "Carlos Yulo floor final", "decidedBy": "judge"},
@@ -30,3 +30,10 @@ def test_video_that_needs_a_look(tmp_path):
     text = report.write(_video(tmp_path, stock=0.25, wrong=2, weak=20))
     assert text.startswith("⚠️ Revisar: mucho metraje genérico; 2 dato(s) del guion a corregir; 20 planos flojos")
     assert "… y 12 más" in text and "«dato» → otro" in text
+
+
+def test_the_uploaded_script_is_the_script_no_fact_notices_by_default(tmp_path):
+    ctx = _video(tmp_path, stock=0.5, wrong=2, weak=20)
+    plain = RunContext.create("v", root=tmp_path, config={})
+    text = report.text(report.card(plain))
+    assert "dato" not in text

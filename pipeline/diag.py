@@ -285,7 +285,7 @@ def hints(data: dict[str, Any], ctx: RunContext) -> list[str]:
     if discards.get("poco relevante", 0) / total > 0.5:
         out.append("Más de la mitad de lo descartado es «poco relevante»: las búsquedas son demasiado genéricas.")
     wrong = (data.get("verificacion") or {}).get("wrong", 0)
-    if wrong:
+    if wrong and ctx.section("factcheck").get("notices", False):    # off: the script you upload is the script
         out.append(f"La verificación marcó {wrong} dato(s) como incorrectos: corrígelos en el guion antes de subir "
                    f"(out/{ctx.slug}/verificacion.md).")
     metrics = data.get("youtube_metricas") or {}

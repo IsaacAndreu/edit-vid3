@@ -365,6 +365,14 @@ def run(ctx: RunContext) -> None:
         for c in ShotCandidates.model_validate_json((ctx.work_dir / "candidates" / f"{shot.id}.json").read_text("utf-8")).candidates:
             candidates[c.id] = c
         scores[shot.id] = ShotScores.model_validate_json((ctx.work_dir / "scores" / f"{shot.id}.json").read_text("utf-8"))
+    stray = 0
+    for shot_id, shot_scores in scores.items():           # options of a candidate this run no longer has (two runs
+        kept = [o for o in shot_scores.options if o.candidateId in candidates]    # of one video wrote different lists)
+        stray += len(shot_scores.options) - len(kept)
+        if len(kept) != len(shot_scores.options):
+            scores[shot_id] = shot_scores.model_copy(update={"options": kept})
+    if stray:
+        print(f"   {stray} opciones de candidatos que ya no existen, descartadas (¿dos procesos con el mismo vídeo?)")
 
     bonus = cfg.get("source_bonus", {"youtube": 0.02})
     margin = float(cfg.get("margin", 0.02))

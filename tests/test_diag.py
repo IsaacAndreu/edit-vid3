@@ -20,7 +20,7 @@ def test_log_keeps_everything_with_times(tmp_path):
 
 
 def test_hints_explain_slow_downloads_failures_and_stock(tmp_path):
-    ctx = RunContext.create("v", root=tmp_path, config={"report": {"max_stock": 0.1}})
+    ctx = RunContext.create("v", root=tmp_path, config={"report": {"max_stock": 0.1}, "factcheck": {"notices": True}})
     data = {"entorno": {"yt-dlp-ejs": "0.8.0", "javascript": "deno", "disco_libre_gb": 200},
             "youtube": {"ingest": {"download": (40, 71.3), "espera por límite": (3, 120.0)}},
             "descarga": {"causas": {"YouTube devolvió un tramo vacío": ["s1", "s2", "s3"],

@@ -122,3 +122,23 @@ def test_the_watcher_does_not_retry_a_failed_video_until_its_files_change(tmp_pa
     except KeyboardInterrupt:
         pass
     assert len(runs) == 2
+
+
+def test_two_runs_of_one_video_never_overlap(tmp_path):
+    import os
+
+    import pytest
+
+    from pipeline.context import RunContext
+
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    lock = main._one_process(ctx)
+    with lock:
+        assert (ctx.work_dir / ".proceso").read_text().split()[0] == str(os.getpid())
+        (ctx.work_dir / ".proceso").write_text(f"{os.getppid()} x")              # another live process holds it
+        with pytest.raises(SystemExit):
+            main._one_process(ctx).__enter__()
+        (ctx.work_dir / ".proceso").write_text("999999 x")                       # a dead one: taken over
+        with main._one_process(ctx):
+            pass
+    assert not (ctx.work_dir / ".proceso").exists()
