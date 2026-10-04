@@ -25,12 +25,25 @@ def _cache_path(cache_dir: Path, audio_path: Path, provider: str, model: str, la
     return cache_dir / "whisper" / f"{key}.json"
 
 
+def decode_audio(audio_path: Path, rate: int = 16000):
+    """16 kHz mono float32 with ffmpeg, so faster-whisper never opens the file itself: its PyAV call broke with
+    av 19 («open() got an unexpected keyword argument 'metadata_errors'»)."""
+
+    import subprocess
+
+    import numpy as np
+
+    done = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(audio_path), "-f", "s16le", "-ac", "1",
+                           "-ar", str(rate), "-"], capture_output=True, check=True)
+    return np.frombuffer(done.stdout, np.int16).astype(np.float32) / 32768.0
+
+
 def _transcribe_local(audio_path: Path, model: str, language: str, compute_type: str, device: str = "cpu") -> dict[str, Any]:
     from faster_whisper import WhisperModel
 
     whisper = WhisperModel(model, device=device, compute_type=compute_type)
     segments, info = whisper.transcribe(
-        str(audio_path),
+        decode_audio(audio_path),
         language=language or None,
         word_timestamps=True,
         vad_filter=False,

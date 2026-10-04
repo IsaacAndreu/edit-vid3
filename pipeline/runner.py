@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -143,7 +144,7 @@ def run_stages(
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
-            current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES),
+            current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),
                                            "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
                                encoding="utf-8")
             from .housekeeping import Sampler

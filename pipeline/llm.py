@@ -23,6 +23,31 @@ class LLMError(RuntimeError):
     pass
 
 
+def _within(seconds: float, call):
+    """The call, or TimeoutError after `seconds` of wall clock. The API keeps a slow request alive by sending blank
+    lines, so the client's read timeout never fires: a planner call once hung for six hours."""
+
+    import queue
+    import threading
+
+    box: "queue.Queue[tuple[bool, Any]]" = queue.Queue()
+
+    def run() -> None:
+        try:
+            box.put((True, call()))
+        except BaseException as error:          # handed back to the caller
+            box.put((False, error))
+
+    threading.Thread(target=run, daemon=True).start()
+    try:
+        ok, value = box.get(timeout=seconds)
+    except queue.Empty:
+        raise TimeoutError from None
+    if not ok:
+        raise value
+    return value
+
+
 def complete_json(
     ctx: RunContext,
     *,
@@ -45,14 +70,24 @@ def complete_json(
         except (OSError, json.JSONDecodeError, KeyError):
             pass
 
-    client = OpenAI(api_key=ctx.env("LLM_API_KEY"), base_url=str(cfg.get("base_url", DEEPSEEK_BASE_URL)))
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        response_format={"type": "json_object"},
-        max_tokens=max_tokens,
-        extra_body={"thinking": {"type": "enabled" if thinking else "disabled"}},
-    )
+    client = OpenAI(api_key=ctx.env("LLM_API_KEY"), base_url=str(cfg.get("base_url", DEEPSEEK_BASE_URL)),
+                    timeout=120, max_retries=1)
+    deadline = float(cfg.get("timeout_seconds", 420))
+    response = None
+    for attempt in range(int(cfg.get("deadline_retries", 2)) + 1):
+        try:
+            response = _within(deadline, lambda: client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                response_format={"type": "json_object"},
+                max_tokens=max_tokens,
+                extra_body={"thinking": {"type": "enabled" if thinking else "disabled"}},
+            ))
+            break
+        except TimeoutError:
+            print(f"   {model} no terminó en {deadline:.0f} s (intento {attempt + 1}); repito la petición")
+    if response is None:
+        raise LLMError(f"{model} no respondió a tiempo ({deadline:.0f} s, varias veces): el servicio va saturado")
     usage = response.usage
     if usage is not None:
         prices = cfg.get("usd_per_mtok", {})

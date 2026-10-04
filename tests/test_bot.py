@@ -92,3 +92,30 @@ def test_thumbnails_can_be_left_to_you(tmp_path):
     assert package.outputs(ctx) == [ctx.out_dir / "youtube.txt"]
     ctx = RunContext.create("v", root=tmp_path, config={})
     assert package.outputs(ctx)[0].name == "miniatura-1.jpg"
+
+
+def test_a_hung_llm_call_is_cut_off_and_a_killed_run_is_not_shown_as_running(tmp_path):
+    import pytest
+
+    from pipeline import llm, web
+
+    assert llm._within(2, lambda: 7) == 7
+    with pytest.raises(TimeoutError):
+        llm._within(0.2, lambda: time.sleep(3))
+    with pytest.raises(ValueError):
+        llm._within(2, lambda: (_ for _ in ()).throw(ValueError("x")))
+    assert web.running({"stage": "planner", "pid": os.getpid()})
+    assert web.running({"stage": "planner", "pid": 999999}) is None             # the process is gone
+    assert web.running({"stage": "planner"})                                     # old files without pid
+
+
+def test_whisper_audio_is_decoded_by_ffmpeg(tmp_path):
+    import subprocess
+
+    from pipeline.whisper_local import decode_audio
+
+    wav = tmp_path / "a.wav"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                    "-ar", "44100", str(wav)], check=True)
+    audio = decode_audio(wav)
+    assert audio.dtype.name == "float32" and 15000 <= len(audio) <= 17000 and float(abs(audio).max()) <= 1.0

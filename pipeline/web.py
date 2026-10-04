@@ -72,10 +72,27 @@ def _json_yaml(path: Path) -> dict[str, Any]:
         return {}
 
 
+def running(current: dict[str, Any] | None) -> dict[str, Any] | None:
+    """current.json only while its process lives (a killed run leaves the file behind)."""
+
+    if not current:
+        return None
+    pid = current.get("pid")
+    if not pid:
+        return current
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return None
+    except (PermissionError, OSError, ValueError):
+        return current
+    return current
+
+
 def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict[str, Any]:
     slug = folder.name
     out, work = root / "out" / slug, root / "work" / slug
-    current = _json(work / "current.json")
+    current = running(_json(work / "current.json"))
     from .housekeeping import REMOVED, is_done, published
 
     done = is_done(root, slug)
@@ -85,14 +102,13 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     costs = _json(work / "costs.json") or {}
     failed = watch_state.get(slug)
     diag = _json(work / "diag.json") or {}
-    status = ("hecho" if done else "error" if failed or diag.get("error") and not current else
-              "haciendo" if current else "en cola" if (folder / "guion.txt").is_file() and (folder / "voz.mp3").is_file()
+    status = ("hecho" if done else "haciendo" if current else "error" if failed or diag.get("error") else "en cola" if (folder / "guion.txt").is_file() and (folder / "voz.mp3").is_file()
               else "incompleto")
     return {
         "slug": slug, "channel": _channel_of(root, folder), "status": status,
         "archived": any(part.startswith("_") for part in folder.relative_to(root / "materiales").parts),
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
-        "error": None if done else diag.get("error") or ((failed or {}).get("status") and "falló"),
+        "error": None if done or current else diag.get("error") or ((failed or {}).get("status") and "falló"),
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
         "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,
         "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),

@@ -325,6 +325,23 @@ class Bot:
             self.send(f"💸 Límite diario alcanzado ({_money(budget.spent_today(self.root))} de {_money(cap)}): "
                       "no empieza más vídeos hasta mañana. /limite <dólares> para cambiarlo.")
             warnings["budget"] = datetime.now().date().isoformat()
+        from . import web
+
+        stuck_hours = float(self.cfg.get("stuck_hours", 3))
+        stuck = warnings.setdefault("stuck", {})
+        for folder in (self.root / "work").glob("*/current.json"):
+            try:
+                current = web.running(json.loads(folder.read_text("utf-8")))
+                started = datetime.fromisoformat(str((current or {}).get("started")).replace("Z", "+00:00"))
+            except (OSError, ValueError, TypeError):
+                continue
+            hours = (datetime.now(timezone.utc) - started).total_seconds() / 3600
+            key = f"{folder.parent.name}:{current.get('stage')}"
+            if hours >= stuck_hours and key not in stuck:
+                stuck[key] = True
+                self.send(f"⚠️ {folder.parent.name} lleva {hours:.1f} h en la etapa "
+                          f"{STAGES.get(current.get('stage'), current.get('stage'))}: puede estar colgado.\n"
+                          "Míralo en el estudio (Registro) o en el servidor: journalctl -u edit-vid3 -n 50")
         free = shutil.disk_usage(self.root).free / 1e9
         low = free < float((config.get("cleanup") or {}).get("min_free_gb", 30))
         if low and not warnings.get("disk"):

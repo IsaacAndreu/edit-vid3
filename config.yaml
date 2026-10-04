@@ -350,3 +350,4 @@ bot:                               # bot de Telegram (python main.py --bot; en l
   hourly: true                     # parte cada hora: qué está haciendo, terminados, errores, gasto, disco
   quiet_hours: []                  # horas sin parte, p. ej. [1, 2, 3, 4, 5, 6, 7] (los errores llegan igual)
   watcher_alert_minutes: 20        # avisa si el vigilante deja de dar señales de vida
+  stuck_hours: 3                   # avisa si un vídeo lleva más de esto en la misma etapa
