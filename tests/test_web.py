@@ -289,3 +289,83 @@ class NicheIdeasTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 niche_ideas.make_profile(root, "F1 driver story", "Pilotos F1")       # never overwrite
             self.assertIn("pilotos-f1", web.channels(root))
+
+
+class PhoneNoticeTests(unittest.TestCase):
+    class _Response:
+        def __init__(self, code=200, data=None):
+            self.status_code, self._data = code, data or {"ok": True}
+
+        def json(self):
+            return self._data
+
+    def _ctx(self, root: Path, **env: str) -> RunContext:
+        (root / ".env").write_text("".join(f"{k}={v}\n" for k, v in env.items()))
+        return RunContext.create("V1", root=root, config={})
+
+    def test_ready_card_has_thumbnail_summary_and_buttons(self) -> None:
+        from pipeline import notify
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=False):
+            root = Path(tmp)
+            _video_with_timeline(root)
+            work = root / "work" / "V1"
+            (work / ".stages").mkdir()
+            (work / ".stages" / "render.json").write_text(json.dumps({"seconds": 4500}))
+            (work / "costs.json").write_text(json.dumps({"totalUsd": 1.1}))
+            thumb = root / "m.jpg"
+            thumb.write_bytes(b"jpg")
+            for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "STUDIO_URL", "SMTP_HOST"):
+                __import__("os").environ.pop(key, None)
+            ctx = self._ctx(root, TELEGRAM_BOT_TOKEN="1:x", TELEGRAM_CHAT_ID="42", STUDIO_URL="https://1-2-3-4.sslip.io/")
+            with patch("pipeline.notify.requests.post", return_value=self._Response()) as post:
+                notify.video_ready(ctx, title="El salto", duration=642, verdict="✅ Listo para subir",
+                                   details="• Planos flojos: 0", thumbnails=[thumb], titles=["El salto", "Otro"])
+            photo, details = post.call_args_list
+            self.assertTrue(photo.args[0].endswith("/sendPhoto"))
+            caption = photo.kwargs["data"]["caption"]
+            self.assertIn("«El salto»", caption)
+            self.assertIn("10:42 de vídeo · hecho en 1 h 15 min · 1,10 $", caption)
+            self.assertIn("2 clips para revisar", caption)
+            buttons = json.loads(photo.kwargs["data"]["reply_markup"])["inline_keyboard"]
+            self.assertEqual(buttons[0][0]["url"], "https://1-2-3-4.sslip.io/#/revisar/V1")
+            self.assertIn("Otro", details.kwargs["data"]["text"])
+
+    def test_without_https_the_links_go_in_the_text_and_failures_are_sent(self) -> None:
+        from pipeline import notify
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=False):
+            root = Path(tmp)
+            _video_with_timeline(root)
+            for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "STUDIO_URL", "SMTP_HOST"):
+                __import__("os").environ.pop(key, None)
+            ctx = self._ctx(root, TELEGRAM_BOT_TOKEN="1:x", TELEGRAM_CHAT_ID="42", STUDIO_URL="http://192.168.1.5:8080")
+            (root / "work" / "V1" / "current.json").write_text(json.dumps({"stage": "render", "number": 13, "of": 15}))
+            with patch("pipeline.notify.requests.post", return_value=self._Response()) as post:
+                notify.video_failed(ctx, RuntimeError("Cannot allocate memory"))
+            text = post.call_args.kwargs["data"]["text"]
+            self.assertIn("etapa 13/15 (render)", text)
+            self.assertIn("http://192.168.1.5:8080/#/video/V1", text)
+            self.assertNotIn("reply_markup", post.call_args.kwargs["data"])
+
+    def test_setup_from_the_studio_saves_token_and_finds_the_chat(self) -> None:
+        from pipeline import notify
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {}, clear=False):
+            root = Path(tmp)
+            for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "STUDIO_URL"):
+                __import__("os").environ.pop(key, None)
+            ctx = self._ctx(root, OPENAI_API_KEY="k", STUDIO_URL="https://viejo")
+            with self.assertRaises(ValueError):
+                notify.setup(ctx, token="no-es-un-token")
+            updates = self._Response(data={"ok": True, "result": [{"message": {"chat": {"id": 777}}}]})
+            with patch("pipeline.notify.requests.get", return_value=updates), \
+                    patch("pipeline.notify.requests.post", return_value=self._Response()) as post:
+                out = notify.setup(ctx, token="123456789:" + "A" * 30, studio_url="https://1-2-3-4.sslip.io/")
+            env = (root / ".env").read_text()
+            self.assertIn("OPENAI_API_KEY=k", env)                                  # the other keys stay
+            self.assertIn("TELEGRAM_CHAT_ID=777", env)
+            self.assertEqual(env.count("STUDIO_URL="), 1)
+            self.assertIn("STUDIO_URL=https://1-2-3-4.sslip.io\n", env)
+            self.assertTrue(out["ok"] and out["telegram"])
+            self.assertEqual(post.call_args.kwargs["data"]["chat_id"], "777")

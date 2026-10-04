@@ -218,20 +218,14 @@ def run(ctx: RunContext) -> None:
     shutil.rmtree(frames_dir, ignore_errors=True)
     write_titles(ctx.out_dir / "youtube.txt", titles)
     print(f"   {len(thumbs)} miniaturas · títulos: " + " | ".join(titles))
-    minutes = timeline.durationInFrames / timeline.fps / 60
-    body = ("Títulos:\n" + "\n".join(f"{n}. {t}" for n, t in enumerate(titles, 1))
-            + f"\n\nVídeo ({minutes:.1f} min): {ctx.out_dir / 'video-final.mp4'}"
-            + f"\nDescripción, capítulos y etiquetas: {ctx.out_dir / 'youtube.txt'}")
-    shorts = sorted((ctx.out_dir / "shorts").glob("short-*.mp4"))
-    if shorts:
-        body += f"\nShorts: {len(shorts)} en {ctx.out_dir / 'shorts'} (títulos en shorts.txt)"
     from .report import write as report
 
     card = report(ctx)                                  # also out/<slug>/resumen.md
-    if card:
-        body = card + "\n\n" + body
-    flag = "✅" if card.startswith("✅") else "⚠️" if card else ""
-    notify.send(ctx, f"{flag} Vídeo listo: {titles[0]}".strip(), body, thumbs)
+    shorts = sorted((ctx.out_dir / "shorts").glob("short-*.mp4"))
+    extra = f"\n• Shorts: {len(shorts)} (títulos en shorts.txt)" if shorts else ""
+    verdict = card.splitlines()[0] if card else ""            # «✅ Listo para subir» / «⚠️ Revisar: …»
+    notify.video_ready(ctx, title=titles[0], duration=timeline.durationInFrames / timeline.fps, verdict=verdict,
+                       details=("\n".join(card.splitlines()[1:]) + extra).strip(), thumbnails=thumbs, titles=titles)
 
 
 def validate(ctx: RunContext) -> bool:

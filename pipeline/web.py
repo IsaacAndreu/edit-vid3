@@ -427,6 +427,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(spending(root))
                 if path == "/api/settings":
                     return self._ok(settings(root))
+                if path == "/api/notify":
+                    from . import notify
+
+                    return self._ok(notify.status(RunContext.create("_web", root=root)))
                 if match := re.fullmatch(r"/api/video/([^/]+)", path):
                     return self._ok(video_detail(root, urllib.parse.unquote(match.group(1))))
                 if match := re.fullmatch(r"/api/review/([^/]+)", path):
@@ -498,6 +502,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(settings(root, body))
                 if path == "/api/queue":
                     return self._ok(start_queue(root))
+                if path == "/api/notify":                  # {token?, studio_url?}: save, find the chat, send a test
+                    from . import notify
+
+                    return self._ok(notify.setup(RunContext.create("_web", root=root), str(body.get("token") or ""),
+                                                 str(body.get("studio_url") or "")))
                 if match := re.fullmatch(r"/api/review/([^/]+)/([A-Za-z0-9_-]+)", path):
                     from . import feedback
 

@@ -119,6 +119,13 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
                     housekeeping.after_video(ctx)          # cleanup.after_video (a server's small disk)
         except BaseException as error:
             diag.write(ctx, error)
+            if not isinstance(error, KeyboardInterrupt):
+                from pipeline import notify as messages
+
+                try:
+                    messages.video_failed(ctx, error)       # to the phone: stage, error, link to the log
+                except Exception:
+                    pass
             raise
         diag.write(ctx)
 

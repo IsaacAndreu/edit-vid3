@@ -57,5 +57,8 @@ $DOMAIN {
 CADDY
 sudo systemctl reload caddy || sudo systemctl restart caddy
 if command -v ufw >/dev/null && sudo ufw status | grep -q active; then sudo ufw allow 80/tcp && sudo ufw allow 443/tcp; fi
+# the Telegram messages link to the studio («Revisar clips»)
+grep -q '^STUDIO_URL=' .env || echo "STUDIO_URL=https://$DOMAIN" >> .env
+sudo systemctl restart edit-vid3 2>/dev/null || true      # the watcher reads .env at start
 echo
 echo "Listo: https://$DOMAIN   (la primera vez tarda ~30 s en sacar el certificado)"

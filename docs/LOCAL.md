@@ -203,12 +203,21 @@ python main.py --all --limit 3  # como mucho 3 esta noche
 Antes de empezar, la cola comprueba claves, espacio libre (mínimo 20 GB), ffmpeg/Node y que YouTube
 responda; si algo falla no arranca y lo dice (mejor saberlo a las 0:00 que a las 3:00).
 
-**Aviso al móvil (opcional, Telegram):** al terminar (o si no puede arrancar) te llega el resumen.
+**Aviso al móvil (Telegram):** cada vídeo terminado te llega como una tarjeta: la miniatura, el título, la
+duración, cuánto tardó y costó, «✅ Listo para subir» o «⚠️ Revisar: …», y dos botones: **🔎 Revisar clips** (la
+página de Errores de ese vídeo, para marcar Correcta / Incorrecta / Dudosa desde el móvil) y **▶️ Ver y descargar**.
+Debajo, un segundo mensaje con el detalle y los 3 títulos. Si un vídeo falla: en qué etapa, el error y un botón al
+registro. Al final de la cola, el resumen de siempre.
 
-1. En Telegram, habla con **@BotFather** → `/newbot` → te da un token.
-2. Escribe cualquier cosa a tu bot nuevo y abre
-   `https://api.telegram.org/bot<TOKEN>/getUpdates` en el navegador: el número `"chat":{"id": …}` es tu chat.
-3. Añade a `.env`: `TELEGRAM_BOT_TOKEN=...` y `TELEGRAM_CHAT_ID=...`.
+Se configura en el estudio → **Ajustes → Avisos al móvil**:
+1. En Telegram, **@BotFather** → `/newbot` → copia el token.
+2. Abre tu bot nuevo y pulsa **Iniciar**.
+3. Pega el token y pulsa «Conectar y probar»: el estudio encuentra tu chat solo, lo guarda en `.env`
+   (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `STUDIO_URL`) y te manda un mensaje de prueba.
+
+Los botones necesitan la dirección del estudio en https (la de la VPS, que `install-web.sh` ya guarda en `.env`). En el
+PC el estudio solo se abre en el propio PC: el aviso llega igual, pero sin botón útil. Si cambias el token con el
+servidor vigilando, reinícialo (`sudo systemctl restart edit-vid3`).
 
 **Que el PC no se duerma:** si entra en suspensión, la cola se pausa.
 

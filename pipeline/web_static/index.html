@@ -327,7 +327,8 @@ async function stats() {
 }
 
 async function settingsPage() {
-  const s = await api("/api/settings");
+  const [s, n] = [await api("/api/settings"), await api("/api/notify")];
+  const guessUrl = n.studioUrl || (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "" : location.origin);
   $("#app").innerHTML = `<h1>Ajustes</h1>
     <div class="card">
       <label>Hacer vídeos</label>
@@ -338,6 +339,19 @@ async function settingsPage() {
         <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
       <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
     </div>
+    <h2>Avisos al móvil (Telegram)</h2>
+    <div class="card">
+      <div>${n.telegram ? '<span class="pill hecho">Conectado</span> Cada vídeo terminado te llega con su miniatura y un botón a «Revisar clips»; si uno falla, también.' : '<span class="pill">Sin conectar</span>'}</div>
+      ${n.telegram ? "" : `<ol class="small" style="margin:10px 0 0;padding-left:20px">
+        <li>En Telegram abre <b>@BotFather</b>, escribe <code>/newbot</code>, ponle un nombre y copia el <b>token</b> que te da.</li>
+        <li>Abre tu bot nuevo (el enlace t.me/… que te da BotFather) y pulsa <b>Iniciar</b>.</li>
+        <li>Pega el token aquí y pulsa «Conectar y probar».</li></ol>`}
+      ${n.token && n.telegram ? "" : `<label>Token del bot</label><input id="tg-token" placeholder="123456789:AA…" autocomplete="off">`}
+      <label>Dirección del estudio <span class="muted">(para el botón «Revisar clips»; en la VPS: https://…sslip.io)</span></label>
+      <input id="tg-url" placeholder="https://1-2-3-4.sslip.io" value="${esc(guessUrl)}">
+      ${!guessUrl ? '<div class="small muted" style="margin-top:6px">En tu PC el estudio solo se abre en el propio PC: los avisos llegan igual, pero el botón solo funciona con el estudio de la VPS.</div>' : ""}
+      <div class="row" style="margin-top:14px"><button class="main" id="tg-go">${n.telegram ? "Guardar y enviar prueba" : "Conectar y probar"}</button><span id="tg-msg" class="small muted"></span></div>
+    </div>
     <h2>Mi canal de YouTube en cada perfil</h2>
     <div class="card">
       <p class="small muted" style="margin-top:0">Tu @canal o su URL: lo usan «Mi canal» y las ideas.</p>
@@ -345,6 +359,14 @@ async function settingsPage() {
       <div class="row" style="margin-top:14px"><button onclick="save({my_channels: Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))})">Guardar</button></div>
     </div>`;
   window.save = async (body) => { await post("/api/settings", body); route(); };
+  $("#tg-go").onclick = async () => {
+    const msg = $("#tg-msg"); msg.textContent = "Enviando…";
+    try {
+      const r = await post("/api/notify", {token: $("#tg-token") ? $("#tg-token").value : "", studio_url: $("#tg-url").value});
+      msg.textContent = r.ok ? "✅ Mira tu Telegram: te ha llegado un mensaje de prueba." : "No se pudo enviar";
+      if (r.ok) setTimeout(route, 2500);
+    } catch (e) { msg.textContent = e.message; }
+  };
 }
 
 const fmt = (n) => n == null ? "—" : Number(n).toLocaleString("es-ES", {maximumFractionDigits: 1});
