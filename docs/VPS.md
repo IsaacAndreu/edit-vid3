@@ -68,6 +68,24 @@ voz, ver en qué etapa va cada vídeo, descargarlo, revisar errores, competencia
 **Gasto**: en el estudio → Ajustes, «Límite de gasto de API al día» (o `budget.daily_usd`). Al llegar, el servidor no
 empieza más vídeos hasta el día siguiente (no cuenta como error).
 
+## 3b2. Bot de Telegram
+
+Con Telegram conectado (estudio → Ajustes → Avisos al móvil), `install-service.sh` deja también el servicio
+`edit-vid3-bot` (si lo conectas después: `sudo systemctl enable --now edit-vid3-bot`). Escríbele al bot:
+
+- `/estado` — qué vídeo está haciendo y en qué etapa, la cola, el gasto de hoy y el disco libre.
+- `/gasto` — gasto de hoy, de la última hora y de 7 días, por vídeo y por servicio.
+- `/videos`, `/errores`, `/video <nombre>`, `/youtube` (cómo respondió YouTube en 24 h).
+- `/pausa`, `/seguir`, `/limite <dólares>`, `/reintentar <nombre>`.
+
+Cada hora manda un parte (qué hace, terminados y errores de esa hora, gasto, peticiones a YouTube); `bot.quiet_hours`
+en config.local.yaml para silenciar la noche. Además avisa al momento si el vigilante deja de dar señales, si se llega
+al límite de gasto o si el disco se llena; cada vídeo que falla manda su propio mensaje. Solo contesta a tu chat.
+Registro: `journalctl -u edit-vid3-bot -f`.
+
+**Miniaturas:** `miniaturas: {enabled: false}` (por defecto): no se generan; el aviso al móvil lleva un fotograma del
+vídeo. `true` para volver a las 3 miniaturas automáticas.
+
 ## 3c. Seguridad del servidor
 
 `setup-ubuntu.sh` ya deja: cortafuegos `ufw` (solo SSH, 80 y 443), `fail2ban` (bloquea IPs que prueban contraseñas

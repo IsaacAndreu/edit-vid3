@@ -55,7 +55,7 @@ STAGES: list[Stage] = [
     Stage("render", lambda ctx: [ctx.out_dir / render.OUTPUT], render.inputs, render.run, render.validate, ("render", "video")),
     Stage("shorts", shorts.outputs, shorts.inputs, shorts.run, shorts.validate,
           ("shorts",)),
-    Stage("package", lambda ctx: [ctx.out_dir / package.THUMB_DIR / "miniatura-1.jpg"], package.inputs, package.run,
+    Stage("package", package.outputs, package.inputs, package.run,
           package.validate, ("package",)),
 ]
 STAGE_NAMES = [stage.name for stage in STAGES]

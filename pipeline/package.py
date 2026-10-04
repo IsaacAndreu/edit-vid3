@@ -185,6 +185,11 @@ def run(ctx: RunContext) -> None:
     if people.is_file():
         found = json.loads(people.read_text("utf-8")).get("people", [])
         cutout = found[0]["image"] if found else None
+    if not ctx.section("miniaturas").get("enabled", True):     # you make the thumbnails yourself
+        write_titles(ctx.out_dir / "youtube.txt", titles)
+        print("   Miniaturas desactivadas (miniaturas.enabled: false): solo títulos")
+        _finish(ctx, timeline, titles, [], preview=_preview_frame(ctx))
+        return
     backgrounds = background_frames(ctx, timeline)
     brand = ctx.section("brand")
     accents = [str(brand.get("accent") or ACCENTS[0]), str(brand.get("accent2") or ACCENTS[1]), ACCENTS[2]] if brand else ACCENTS
@@ -218,6 +223,25 @@ def run(ctx: RunContext) -> None:
     shutil.rmtree(frames_dir, ignore_errors=True)
     write_titles(ctx.out_dir / "youtube.txt", titles)
     print(f"   {len(thumbs)} miniaturas · títulos: " + " | ".join(titles))
+    _finish(ctx, timeline, titles, thumbs)
+
+
+def _preview_frame(ctx: RunContext) -> Path | None:
+    """A frame of the final video for the phone notice when there are no thumbnails (not a thumbnail)."""
+
+    import subprocess
+
+    final = ctx.out_dir / "video-final.mp4"
+    target = ctx.work_dir / "thumbs" / "aviso.jpg"
+    if not final.is_file():
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    done = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "20", "-i", str(final), "-frames:v", "1",
+                           "-vf", "scale=1280:-2", "-q:v", "3", str(target)], capture_output=True)
+    return target if done.returncode == 0 and target.is_file() else None
+
+
+def _finish(ctx: RunContext, timeline: Timeline, titles: list[str], thumbs: list[Path], preview: Path | None = None) -> None:
     from .report import write as report
 
     card = report(ctx)                                  # also out/<slug>/resumen.md
@@ -225,8 +249,17 @@ def run(ctx: RunContext) -> None:
     extra = f"\n• Shorts: {len(shorts)} (títulos en shorts.txt)" if shorts else ""
     verdict = card.splitlines()[0] if card else ""            # «✅ Listo para subir» / «⚠️ Revisar: …»
     notify.video_ready(ctx, title=titles[0], duration=timeline.durationInFrames / timeline.fps, verdict=verdict,
-                       details=("\n".join(card.splitlines()[1:]) + extra).strip(), thumbnails=thumbs, titles=titles)
+                       details=("\n".join(card.splitlines()[1:]) + extra).strip(),
+                       thumbnails=thumbs or ([preview] if preview else []), titles=titles)
+
+
+def outputs(ctx: RunContext) -> list[Path]:
+    if not ctx.section("miniaturas").get("enabled", True):
+        return [ctx.out_dir / "youtube.txt"]
+    return [ctx.out_dir / THUMB_DIR / "miniatura-1.jpg"]
 
 
 def validate(ctx: RunContext) -> bool:
+    if not ctx.section("miniaturas").get("enabled", True):
+        return (ctx.out_dir / "youtube.txt").is_file()
     return all((ctx.out_dir / THUMB_DIR / f"miniatura-{n}.jpg").is_file() for n in (1, 2, 3))

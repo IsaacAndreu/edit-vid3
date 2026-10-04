@@ -342,3 +342,11 @@ apertura:                          # todo vídeo largo empieza con algo que se v
 gancho:                            # revisión del principio del guion antes de grabar (--check y el estudio)
   payoff_seconds: 20               # lo que promete el título tiene que verse/contarse antes de este segundo
   words_per_second: 2.6            # ritmo de locución para estimar tiempos sin voz grabada
+
+miniaturas:
+  enabled: false                   # las miniaturas las haces tú; true = 3 miniaturas automáticas en out/<vídeo>/miniaturas/
+
+bot:                               # bot de Telegram (python main.py --bot; en la VPS, servicio edit-vid3-bot)
+  hourly: true                     # parte cada hora: qué está haciendo, terminados, errores, gasto, disco
+  quiet_hours: []                  # horas sin parte, p. ej. [1, 2, 3, 4, 5, 6, 7] (los errores llegan igual)
+  watcher_alert_minutes: 20        # avisa si el vigilante deja de dar señales de vida

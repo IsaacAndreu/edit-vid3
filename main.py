@@ -87,6 +87,8 @@ def _parser() -> argparse.ArgumentParser:
                              "errores, competencia y tu canal → http://127.0.0.1:8080.")
     parser.add_argument("--host", default="127.0.0.1",
                         help="Con --web: dónde escucha (127.0.0.1 = solo este equipo; en la VPS lo publica Caddy).")
+    target.add_argument("--bot", action="store_true",
+                        help="Bot de Telegram: /estado, /gasto, /videos, /errores… y un parte cada hora (TELEGRAM_* en .env).")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
     target.add_argument("--mi-canal", metavar="CANAL",
@@ -557,6 +559,11 @@ def main() -> None:
         from pipeline import web
 
         web.serve(port=args.web, host=args.host)
+        return
+    if args.bot:
+        from pipeline import bot
+
+        bot.Bot().run()
         return
     if args.radar:
         from pipeline import radar
