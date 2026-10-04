@@ -225,15 +225,20 @@ def run(ctx: RunContext) -> None:
         item: FallbackItem | None = None
         tried: list[str] = []
 
-        def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str) -> FallbackItem | None:
-            """Nobody has looked at these yet: the vision judge vets them, then the first that downloads wins."""
+        def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str,
+                                vet: bool = True) -> FallbackItem | None:
+            """Nobody has looked at these yet: the vision judge vets them (unless `vet` is off), then the first
+            that downloads (and passes the identity check) wins."""
 
             if not options:
                 return None
-            verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
-                                 story.context or story.title, False, story.subject, source_lines(options, candidates))
-            by_letter = dict(zip(LETTERS, options))
-            accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
+            if vet:
+                verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
+                                     story.context or story.title, False, story.subject, source_lines(options, candidates))
+                by_letter = dict(zip(LETTERS, options))
+                accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
+            else:
+                accepted = list(options)
             if not accepted:
                 tried.append(f"{method}: el juez las rechazó ({verdict.get('reason', '')[:100]})")
             for option in accepted:
@@ -408,6 +413,20 @@ def run(ctx: RunContext) -> None:
                     break
                 if item is not None:
                     break
+
+        # 2b. Still nothing for what this line describes exactly (an interview nobody filmed, a 2018 report…):
+        # another unused moment of the protagonist's own footage, as documentary channels do over narration,
+        # rather than a text card. The identity check still applies; the judge does not (it would want the
+        # exact scene again).
+        if item is None and who and shot.broll and cfg.get("protagonist_filler", True):
+            pool, pool_candidates = protagonist_pool(ctx, story, who)
+            options = sorted((o for o in pool if o.kind == "video"
+                              and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+                              and not seen_elsewhere(o, elsewhere)
+                              and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
+                                          and abs(u.start - o.start) < 6 for u in used)),
+                             key=lambda o: -o.total)[: limit * 2]
+            item = vet_and_materialise(options, pool_candidates, "protagonist-filler", vet=False)
 
         # 3. Generated image — the last resort, never for a video about a real person.
         if item is None and cfg.get("generate", True) and not story.subject:

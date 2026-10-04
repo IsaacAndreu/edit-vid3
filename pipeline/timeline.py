@@ -725,22 +725,32 @@ def key_phrase(text: str, most: int = 8) -> str:
 
 
 def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
-    """Shots left without footage (timeline.pizarra) show their key words on the chalkboard canvas."""
+    """Shots left without footage (timeline.pizarra) show their key words on the chalkboard canvas. Shots in a
+    row without footage share ONE card with the key words of the whole stretch (one sentence, not a word per
+    3-second shot: «ESTUVO» … «BAJO SU TUTELA»)."""
 
-    out: list[TimelineGroup] = []
+    runs: list[list[TimelineShot]] = []
     for shot in shots:
         if shot.media is not None or shot.type != "broll" or shot.groupId:
             continue
         start, end = shot.from_, shot.from_ + shot.durationInFrames
         if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
             continue
-        phrase = key_phrase(shot.text)
+        if runs and runs[-1][-1].from_ + runs[-1][-1].durationInFrames == start:
+            runs[-1].append(shot)
+        else:
+            runs.append([shot])
+    out: list[TimelineGroup] = []
+    for run in runs:
+        text = " ".join(s.text for s in run)
+        phrase = key_phrase(text, most=10 if len(run) > 1 else 8)
         if not phrase:
             continue
         words = phrase.split()
         lines = [" ".join(words[: (len(words) + 1) // 2]), " ".join(words[(len(words) + 1) // 2:])] if len(words) > 4 else [phrase]
-        out.append(TimelineGroup.model_validate({"id": f"board-{shot.id}", "kind": "graphic", "from": start,
-                                                 "durationInFrames": shot.durationInFrames,
+        start = run[0].from_
+        out.append(TimelineGroup.model_validate({"id": f"board-{run[0].id}", "kind": "graphic", "from": start,
+                                                 "durationInFrames": run[-1].from_ + run[-1].durationInFrames - start,
                                                  "graphic": {"type": "kinetic", "lines": [l for l in lines if l], "board": True}}))
     return out
 

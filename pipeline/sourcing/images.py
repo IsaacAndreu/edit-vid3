@@ -49,7 +49,9 @@ _VIDEO_WORDS = frozenset(
 # Stock agencies serve their previews with a big watermark across the picture (and sell the licence).
 WATERMARKED = ("alamy", "gettyimages", "shutterstock", "istockphoto", "dreamstime", "depositphotos", "123rf",
                "adobestock", "stock.adobe", "agefotostock", "superstock", "bigstockphoto", "pond5", "photoshelter",
-               "imago-images", "dpa-picture", "aflo", "zumapress", "sportsphoto", "pinterest", "pinimg", "asiatravel")
+               "imago-images", "dpa-picture", "aflo", "zumapress", "sportsphoto", "pinterest", "pinimg", "asiatravel",
+               "bridgemanimages", "bridgeman", "granger.com", "topfoto", "akg-images", "maryevans", "ullsteinbild",
+               "mediadrumimages", "rexfeatures", "artofit", "fity.club")
 
 
 def watermarked(text: str, extra: Any = None) -> bool:

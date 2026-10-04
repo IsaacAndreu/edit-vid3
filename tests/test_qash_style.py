@@ -97,3 +97,13 @@ def test_graphics_prompt_marks_weak_sentences(monkeypatch):
     graphics.plan(ctx, sents, 180, weak={2})
     assert "⚠ frase 2" in seen["user"] and "⚠ frase 1" not in seen["user"]
     assert graphics.WEAK_HINT in seen["system"]
+
+
+def test_empty_shots_in_a_row_share_one_card_with_the_whole_sentence():
+    shots = [_shot(0, media=False), _shot(1, media=False), _shot(2)]
+    shots[0] = shots[0].model_copy(update={"text": "Estuvo"})
+    shots[1] = shots[1].model_copy(update={"text": "bajo su tutela durante años"})
+    boards = chalkboards(shots, [], 30)
+    assert len(boards) == 1 and boards[0].from_ == shots[0].from_
+    assert boards[0].durationInFrames == shots[0].durationInFrames + shots[1].durationInFrames
+    assert " ".join(boards[0].graphic["lines"]) == "Estuvo bajo su tutela durante años"

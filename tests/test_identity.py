@@ -103,6 +103,7 @@ def test_a_woman_in_a_story_about_a_man_is_rejected(tmp_path):
 
     checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
     checker._genders["Carlos Yulo"] = "hombre"
+    checker._face_models = lambda: None                 # without the face detector every frame counts
     frames = [np.zeros((10, 10, 3), dtype=np.uint8)] * 5
     checker._woman_odds = lambda images: [0.96, 0.95, 0.3, 0.9, 0.2]
     assert "mujer" in checker.gender_verdict(frames, ["Carlos Yulo"])
@@ -143,3 +144,20 @@ def test_skating_scoreboards_are_not_names():
     assert caption_verdict([board, board, board], ["Alysa Liu"]) is None
     rival = [*board, line("NAKAI", 600, 950, 760, 990), line("JPN", 500, 950, 580, 990)]
     assert "NAKAI" in caption_verdict([rival, rival], ["Alysa Liu"])        # a real rival is still caught
+
+
+def test_wide_arena_shots_are_never_rejected_for_the_athletes_sex(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Olga Korbut"}])
+    checker._genders["Olga Korbut"] = "mujer"
+    frames = [np.zeros((1080, 1920, 3), dtype=np.uint8)] * 5
+    checker._woman_odds = lambda images: [0.02, 0.05, 0.03, 0.4, 0.01]       # judges and coaches fill the frame
+    checker._face_models = lambda: True
+    checker.faces = lambda image, min_size=48: []                            # nobody close to the camera
+    assert checker.gender_verdict(frames, ["Olga Korbut"]) is None
+    checker.faces = lambda image, min_size=48: [(None, 200, True)]           # a man's face in close-up
+    assert "hombre" in checker.gender_verdict(frames, ["Olga Korbut"])

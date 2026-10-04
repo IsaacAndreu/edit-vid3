@@ -350,7 +350,13 @@ class Checker:
         if len(names) != 1 or not (expected := self.gender(names[0])):
             return None
         odds = self._woman_odds(frames)
-        other = [o for o in odds if (o if expected == "hombre" else 1 - o) > float(self.cfg.get("gender_reject", 0.85))]
+        limit = float(self.cfg.get("gender_reject", 0.85))
+        other = [i for i, o in enumerate(odds) if (o if expected == "hombre" else 1 - o) > limit]
+        # Only frames with someone close to the camera count: in a wide arena shot (old broadcasts above all)
+        # the athlete is tiny and CLIP judges the officials, coaches and crowd around her instead.
+        if self._face_models():
+            close = int(self.cfg.get("gender_face_px", 70)) * max(1, frames[0].shape[0]) // 1080 if frames else 70
+            other = [i for i in other if self.faces(frames[i], min_size=max(32, close))]
         if len(other) >= 2:
             return f"sale {'una mujer o una chica' if expected == 'hombre' else 'un hombre'}, no {names[0]}"
         return None
@@ -407,7 +413,7 @@ class Checker:
 class IdentityCache:
     """work/<slug>/identity.json: verdicts per media file (path + size + mtime + names), so reruns are free."""
 
-    VERSION = 4                     # 3: + man/woman check (CLIP); 4: scoreboard words of skating/athletics
+    VERSION = 5                     # 3: + man/woman check (CLIP); 4: scoreboard words; 5: man/woman only on close faces
 
     def __init__(self, ctx: RunContext):
         self.path = ctx.work_dir / "identity.json"
