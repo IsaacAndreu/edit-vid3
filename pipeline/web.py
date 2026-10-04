@@ -374,6 +374,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             match = re.search(r"(?:^|;\s*)studio=([^;]+)", cookie)
             return bool(password) and bool(match) and valid(match.group(1))
 
+        def handle_one_request(self) -> None:
+            try:
+                super().handle_one_request()
+            except (BrokenPipeError, ConnectionResetError):   # the browser closed the page mid-answer: nothing to do
+                self.close_connection = True
+
         def _send(self, code: int, body: bytes, kind: str = "application/json", headers: dict[str, str] | None = None) -> None:
             self.send_response(code)
             self.send_header("Content-Type", kind)
