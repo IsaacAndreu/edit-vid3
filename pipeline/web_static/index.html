@@ -315,7 +315,8 @@ async function videoPage(slug) {
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics],
                 log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
   const body = tab === "log" ? `<pre id="log">${esc(v.log || "Todavía no hay registro.")}</pre>`
-    : tab === "script" ? `<pre>${esc(v.script)}</pre>`
+    : tab === "script" ? `<div class="row" style="margin:8px 0"><audio controls preload="none" src="/api/video/${encodeURIComponent(v.slug)}/voz.mp3"></audio>
+        <a class="btn" href="/api/video/${encodeURIComponent(v.slug)}/voz.mp3?download">Descargar voz</a></div><pre>${esc(v.script)}</pre>`
     : tab === "stages" ? `<table><tr><th>Etapa</th><th>Tiempo</th><th>RAM máx.</th><th>CPU máx.</th></tr>${v.stages.map((s) =>
         `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td>${mins(s.seconds)}</td><td>${s.ram ?? "—"} GB</td><td>${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
     : `<div class="md">${md(docs[tab][1], base)}</div>`;

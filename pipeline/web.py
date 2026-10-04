@@ -576,6 +576,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(notify.status(RunContext.create("_web", root=root)))
                 if match := re.fullmatch(r"/api/video/([^/]+)", path):
                     return self._ok(video_detail(root, urllib.parse.unquote(match.group(1))))
+                if match := re.fullmatch(r"/api/video/([^/]+)/voz\.mp3", path):     # to check it is the right voice
+                    slug = urllib.parse.unquote(match.group(1))
+                    voice = find_video(root, slug) / "voz.mp3"
+                    if slug.startswith(".") or "/" in slug or not voice.is_file():
+                        return self._fail(404, "No hay voz")
+                    return self._file(voice)
                 if match := re.fullmatch(r"/api/review/([^/]+)", path):
                     from . import feedback
 

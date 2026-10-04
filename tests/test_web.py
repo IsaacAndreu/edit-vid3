@@ -464,3 +464,21 @@ class QueueAgainTests(unittest.TestCase):
             self.assertTrue(row["lastError"].startswith("TypeError") and row["retryAt"])
             old = web.video_summary(root, folder, {})                                          # never tried by the watcher
             self.assertEqual((old["status"], old["retryAt"]), ("en cola", None))
+
+
+def test_voice_is_served_for_checking(tmp_path):
+    import threading
+    import urllib.request
+
+    from pipeline import web
+
+    folder = tmp_path / "materiales" / "avion1"
+    folder.mkdir(parents=True)
+    (folder / "voz.mp3").write_bytes(b"ID3fake")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), web.make_handler(tmp_path, ""))   # no password: local access
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_address[1]
+        assert urllib.request.urlopen(f"http://127.0.0.1:{port}/api/video/avion1/voz.mp3").read() == b"ID3fake"
+    finally:
+        server.shutdown()
