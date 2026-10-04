@@ -219,7 +219,8 @@ def run(ctx: RunContext) -> list[str]:
           f"JavaScript: {info['js'] or 'NINGUNO'}")
     info["line"] = connection_speed()
     print(f"Conexión fuera de YouTube: {info['line'] if info['line'] is not None else '?'} MB/s")
-    cookies = bool(cookie_sets(ctx, ctx.section("sourcing").get("youtube", {})))
+    yt_cfg = ctx.section("sourcing").get("youtube", {})
+    cookies = str(yt_cfg.get("cookies", "")).lower() != "never" and bool(cookie_sets(ctx, yt_cfg))
     who = "con cookies" if cookies else "sin cookies"
     print(f"Descargando 10 s de un vídeo de prueba como en la cola de noche (cada intento se corta a los {PROBE_LIMIT} s)…")
     runs = [_try(ctx, f"{who}, IPv4", cookies, True), _try(ctx, f"{who}, red por defecto (IPv6)", cookies, False)]
