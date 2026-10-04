@@ -423,6 +423,18 @@ otro valor para exactamente el mismo dato, el gráfico **no sale** en el vídeo;
 confirmar se quedan y se listan. Informe: `out/<nombre>/datos-graficos.md` (el QA avisa de los
 quitados). Se desactiva con `graphics.verify: false`.
 
+
+**El gancho (también en `--check`):** además de los datos, revisa si el arranque cumple lo que promete el título
+→ `out/<vídeo>/gancho.md`: qué promete el título, en qué segundo se cumple por primera vez (tiene que ser antes del
+20, `gancho.payoff_seconds`), si las primeras frases son genéricas («X es uno de los deportes más…»), cuál es el momento
+más fuerte del guion y una **apertura de ~15 s** que empieza por él, hecha solo con lo que ya dice tu guion. En el
+estudio: **Nuevo vídeo → «Revisar el gancho (antes de grabar)»**, con botón para poner esa apertura al principio.
+
+**Apertura automática:** todo vídeo largo empieza con 7 s que se ven y se oyen (`apertura:` en config.yaml). Con
+protagonista, sus mejores clips; sin protagonista (listas, «los fallos de…») o si ninguno pasa la comprobación, un
+**avance** de los momentos más fuertes de todo el vídeo, con su sonido original, antes de la voz. Para quitarla en un
+vídeo: `timeline: {cold_open_seconds: 0}` en su config.yaml; en un canal entero: `apertura: {enabled: false}`.
+
 ## 10. Shorts (solo cuando tú quieras)
 
 ```bash

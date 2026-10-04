@@ -138,7 +138,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "stages": stages,
         "log": log.read_text("utf-8", errors="replace")[-12000:] if log.is_file() else "",
         "diagnosis": read("diagnostico.md"), "factcheck": read("verificacion.md"), "youtubeTxt": read("youtube.txt"),
-        "graphics": read("graficos.md"),
+        "graphics": read("graficos.md"), "hook": read("gancho.md"),
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],
         "files": files,
@@ -502,6 +502,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(settings(root, body))
                 if path == "/api/queue":
                     return self._ok(start_queue(root))
+                if path == "/api/hook":                    # {title, script, channel}: before recording
+                    from . import hook
+
+                    channel = str(body.get("channel") or "")
+                    ctx = RunContext.create("_gancho", root=root, channel=channel if channel in channels(root) else None)
+                    title = str(body.get("title") or "").strip()
+                    if not title:
+                        raise ValueError("Pon el título que vas a usar: el gancho se mide contra él")
+                    return self._ok(hook.review(ctx, title, str(body.get("script") or "")))
                 if path == "/api/notify":                  # {token?, studio_url?}: save, find the chat, send a test
                     from . import notify
 

@@ -42,7 +42,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="3 ideas de vídeo basadas en los outliers de la competencia y tus mejores vídeos "
                              "(out/_ideas/<fecha>.md, y por email/Telegram si está configurado).")
     target.add_argument("--check", metavar="SLUG",
-                        help="Solo verifica los datos del guion de materiales/SLUG (antes de grabar la voz) → out/SLUG/verificacion.md.")
+                        help="Antes de grabar la voz: verifica los datos del guion de materiales/SLUG (→ out/SLUG/verificacion.md) "
+                             "y si su arranque cumple lo que promete el título (→ out/SLUG/gancho.md).")
     target.add_argument("--shorts", metavar="SLUG",
                         help="Hace 3 Shorts verticales de un vídeo ya terminado → out/SLUG/shorts/.")
     target.add_argument("--dub", metavar="SLUG:IDIOMA",
@@ -499,6 +500,13 @@ def main() -> None:
             raise SystemExit(f"No existe {ctx.materials_dir / 'guion.txt'}")
         factcheck.run(ctx)
         print(factcheck.summary(ctx))
+        from pipeline import hook
+
+        try:
+            path = hook.run(ctx)                    # does the opening keep the title's promise? → gancho.md
+            print(path.read_text("utf-8").split("\n")[2] + f" ({path.relative_to(ctx.root)})")
+        except Exception as error:
+            print(f"Gancho no revisado: {str(error)[:160]}")
         return
     if args.shorts:
         from pipeline import shorts

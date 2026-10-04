@@ -333,3 +333,12 @@ radar:                             # radar de competencia diario (estudio → Co
 mychannel:                         # análisis de tu canal (estudio → Mi canal; tu canal en Ajustes)
   timezone: Europe/Madrid
   max_videos: 400
+
+apertura:                          # todo vídeo largo empieza con algo que se ve y se oye, nunca con la voz sobre relleno
+  enabled: true
+  seconds: 7                       # si el vídeo no pone timeline.cold_open_seconds; sin protagonista (listas, fallos)
+                                   # o sin clips suyos válidos: avance con los momentos más fuertes de todo el vídeo
+
+gancho:                            # revisión del principio del guion antes de grabar (--check y el estudio)
+  payoff_seconds: 20               # lo que promete el título tiene que verse/contarse antes de este segundo
+  words_per_second: 2.6            # ritmo de locución para estimar tiempos sin voz grabada

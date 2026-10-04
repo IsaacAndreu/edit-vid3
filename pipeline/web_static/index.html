@@ -240,6 +240,8 @@ async function newVideo() {
       <label>Guion <span class="muted">— pégalo o</span> <input type="file" id="scriptfile" accept=".txt,.md" style="width:auto;display:inline;padding:4px"></label>
       <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
       <label>Voz <span class="muted">(mp3; también wav o m4a)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
+      <div class="row" style="margin-top:18px"><button id="hookbtn" onclick="checkHook()">Revisar el gancho (antes de grabar)</button><span id="hookmsg" class="small muted"></span></div>
+      <div id="hookbox"></div>
       <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><span id="msg" class="small muted"></span></div>
       <div class="bar hide" id="upbar"><i style="width:0"></i></div>
     </div>`;
@@ -250,6 +252,29 @@ async function newVideo() {
     $("#title").value = idea.title || "";
     $("#name").value = (idea.title || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
   }
+}
+
+async function checkHook() {
+  const msg = $("#hookmsg"); msg.textContent = "Leyendo el arranque… (~15 s)"; $("#hookbtn").disabled = true;
+  try {
+    const r = await post("/api/hook", {title: $("#title").value, script: $("#script").value, channel: $("#channel").value});
+    msg.textContent = "";
+    const cls = r.ok ? "ok" : r.verdict.startsWith("❌") ? "bad" : "";
+    $("#hookbox").innerHTML = `<div class="notice ${cls}"><b>${esc(r.verdict)}</b>
+      <div class="small" style="margin-top:6px"><b>Lo que promete el título:</b> ${esc(r.promise)}</div>
+      ${r.payoffSentence ? `<div class="small"><b>Se cumple por primera vez (≈${Math.round(r.payoffSeconds)} s):</b> «${esc(r.payoffSentence)}»</div>` : ""}
+      ${r.strongestSentence ? `<div class="small"><b>Lo más fuerte del guion (≈${Math.round(r.strongestSeconds)} s):</b> «${esc(r.strongestSentence)}»</div>` : ""}
+      ${r.problems.length ? `<ul class="small">${r.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+      ${r.newOpening ? `<div class="small" style="margin-top:8px"><b>Apertura propuesta (~15 s):</b></div><blockquote id="newopen" style="margin:6px 0;padding-left:10px;border-left:3px solid var(--accent)">${esc(r.newOpening)}</blockquote>
+        <div class="row"><button onclick="useOpening()">Poner esta apertura al principio del guion</button><button onclick="navigator.clipboard.writeText(document.getElementById('newopen').innerText)">Copiar</button></div>` : ""}
+      ${r.tips.length ? `<ul class="small">${r.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
+  } catch (e) { msg.textContent = e.message; }
+  $("#hookbtn").disabled = false;
+}
+function useOpening() {
+  const box = $("#script"), text = document.getElementById("newopen").innerText.trim();
+  if (!box.value.startsWith(text)) box.value = text + "\n\n" + box.value;
+  $("#hookmsg").textContent = "Añadida al principio: ajusta el resto del arranque para que no se repita y vuelve a revisar.";
 }
 
 async function createVideo() {
@@ -286,7 +311,7 @@ async function videoPage(slug) {
   const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
       `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
-  const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], graphics: ["Gráficos", v.graphics],
+  const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics],
                 log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
   const body = tab === "log" ? `<pre id="log">${esc(v.log || "Todavía no hay registro.")}</pre>`
     : tab === "script" ? `<pre>${esc(v.script)}</pre>`

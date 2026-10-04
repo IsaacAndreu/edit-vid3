@@ -6,6 +6,13 @@ the video opens with N seconds of the protagonist's peak moments WITH their orig
 protagonist alone in action (judge-vetted), are never reused later in the video, are at most 5 s
 each and carry their source credit; their audio is levelled and mixed under nothing else.
 
+Always an opening (`apertura:`): when the video does not set `timeline.cold_open_seconds`, it gets
+`apertura.seconds` (7). Without a protagonist (lists, «los fallos de…», rankings), or when no clip of the
+protagonist passes the checks, it is a flash-forward instead: the LLM picks the strongest visible moments of the whole
+video — what the title promises — and their own clips play first, with their sound, as a teaser. A video never
+starts with the narration's generic first sentence over random footage (the «Fallos de gimnasia» lesson: a third of
+the audience gone by 0:30 and the first fall at 2:07).
+
 Moments (`timeline.moments: N`, default 2): the same idea in the middle of the video, like the
 reference channels do at the climax. The LLM picks the sentences after which the story peaks (the
 landing that wins the gold, the score appearing, the fall); the narration pauses there for
@@ -136,7 +143,7 @@ def pick_fragments(ctx: RunContext) -> list[Selection]:
         "event": None,
     })})
     accepted: list[Option] = []
-    needed = len(plan_clips(float(ctx.section("timeline").get("cold_open_seconds", 0) or 0), len(options)))
+    needed = len(plan_clips(opening_seconds(ctx), len(options)))
     for start in range(0, min(len(options), 9), 3):
         sheet_options = options[start : start + 3]
         verdict = call_judge(ctx, brief, contact_sheet(sheet_options, candidates, ctx.root), LETTERS[: len(sheet_options)],
@@ -155,6 +162,80 @@ def pick_fragments(ctx: RunContext) -> list[Selection]:
             kind="video", start=option.start, end=option.end, url=c.url, title=c.title, channel=c.channel,
             license=c.license, credit=c.credit, attribution=c.attribution, score=option.total,
         ))
+    return picks
+
+
+def opening_seconds(ctx: RunContext) -> float:
+    """`timeline.cold_open_seconds` when the video, series, channel or format sets it (0 = none, e.g. Shorts),
+    else `apertura.seconds` (7) unless `apertura.enabled: false`."""
+
+    timeline_cfg = ctx.section("timeline")
+    if "cold_open_seconds" in timeline_cfg:
+        return float(timeline_cfg.get("cold_open_seconds") or 0)
+    cfg = ctx.section("apertura")
+    return float(cfg.get("seconds", 7)) if cfg.get("enabled", True) else 0.0
+
+
+TEASER_SYSTEM = """
+Eres montador de documentales de YouTube. El vídeo se titula «{title}». Te paso la narración partida en planos
+numerados (lo que dice la voz mientras se ve cada plano). Elige los {count} planos en los que SE VE el momento más
+impactante de todo el vídeo, justo lo que promete el título (la caída, el choque, el fallo, el récord, la reacción):
+irán como avance en los primeros segundos, antes de la voz, con su sonido original. El plano exacto del instante
+(«sufrió una caída aparatosa»), no el que lo presenta («en la final por equipos…»). Nada de entrevistas, fotos,
+gráficos ni reflexiones; lo más fuerte primero, de partes distintas del vídeo.
+Devuelve SOLO JSON: {{"shots": [{{"shot": 12}}]}}
+""".strip()
+
+
+def pick_teaser(ctx: RunContext, count: int = 3) -> list[tuple[Selection, float]]:
+    """A flash-forward: the clips already chosen for the strongest moments of the video, (source, start) best first.
+    Showing them again later is the point of a teaser (QA does not count the cold open as a repeat)."""
+
+    from .feedback import is_wrong, wrong_fragments
+
+    story = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
+    replaced = set()
+    if (ctx.work_dir / "fallback.json").is_file():
+        replaced = {i.shotId for i in FallbackFile.model_validate(ctx.read_json("fallback.json")).items}
+    blocklist = ctx.section("content").get("title_blocklist")
+    wrong = wrong_fragments(ctx.root)
+
+    def usable(shot: Any) -> Selection | None:
+        sel = selections.get(shot.id)
+        if (sel is None or shot.id in replaced or sel.status != "selected" or sel.source != "youtube"
+                or sel.kind != "video" or sel.start is None or TALK.search(sel.title or "")
+                or blocked_by_title(sel.title or "", sel.channel or "", blocklist)
+                or is_wrong(wrong, sel.candidateId, sel.start, sel.end)):
+            return None
+        return sel
+
+    shots = [s for s in story.shots if s.text]
+    if not shots:
+        return []
+    listing = "\n".join(f"[{n}] ({s.start:.0f}s) {s.text}" + ("" if usable(s) else " (sin clip utilizable)")
+                        for n, s in enumerate(shots))
+    try:
+        chosen = complete_json(ctx, stage=STAGE, section="planner", max_tokens=600, user=listing[:60000],
+                               system=TEASER_SYSTEM.format(title=story.title or ctx.slug, count=count + 2)).get("shots", [])
+    except Exception as error:
+        print(f"   Sin avance: {str(error)[:120]}")
+        return []
+    picks: list[tuple[Selection, float]] = []
+    for item in chosen:
+        try:
+            n = int(item["shot"])
+            shot = shots[n]
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+        # that shot, or the nearest usable one of the same moment (a shot replaced by the fallback has no clip of it)
+        for other in [shot] + [shots[i] for i in (n + 1, n - 1) if 0 <= i < len(shots)]:
+            sel = usable(other)
+            if sel and all(p.candidateId != sel.candidateId for p, _ in picks):
+                picks.append((sel, float(sel.start)))
+                break
+        if len(picks) >= count:
+            break
     return picks
 
 
@@ -474,10 +555,15 @@ def inputs(ctx: RunContext) -> list:
 
 def run(ctx: RunContext) -> None:
     cfg = ctx.section("timeline")
-    seconds = float(cfg.get("cold_open_seconds", 0) or 0)
+    seconds = opening_seconds(ctx)
     moment_count = int(cfg.get("moments", 2) or 0)
     moment_seconds = min(MAX_THIRD_PARTY_SECONDS, float(cfg.get("moment_seconds", 4.5)))
-    picks = pick_fragments(ctx) if seconds > 0 else []
+    story = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    person = story.subject.split("·")[0].strip() if story.subject else ""
+    picks = [(sel, float(sel.start)) for sel in pick_fragments(ctx)] if seconds > 0 and person else []
+    teaser = seconds > 0 and not picks                  # no protagonist (a list) or none of their clips: flash-forward
+    if teaser:
+        picks = pick_teaser(ctx, len(plan_clips(seconds, 9)))
     lengths = plan_clips(seconds, len(picks))
     moments = pick_moments(ctx, moment_count, moment_seconds) if moment_count > 0 else []
     bite_count = int(cfg.get("sound_bites", 0) or 0)
@@ -494,20 +580,29 @@ def run(ctx: RunContext) -> None:
     bites: list[SoundBite] = []
     wrong = wrong_athlete(ctx)
     try:
-        for sel in picks:
+        for sel, start in picks:
             if len(clips) == len(lengths):
                 break
-            length = lengths[len(clips)]
-            start = float(sel.start)
+            length = min(lengths[len(clips)], MAX_THIRD_PARTY_SECONDS)
             target = out_dir / f"c{len(clips) + 1:02d}-{key(sel.candidateId, start, length, NORMALISE_VERSION)[:8]}.mp4"
             clip = fetch(youtube, sel, start, length, target, lut)
-            if clip and (why := wrong(target)):              # the opening is the protagonist, not a rival's routine
+            if clip and not teaser and (why := wrong(target)):   # the opening is the protagonist, not a rival's routine
                 print(f"   cold open {sel.candidateId}: {why}")
                 target.unlink(missing_ok=True)
                 continue
             if clip:
                 clips.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root))}))
-        person = ShotsFile.model_validate(ctx.read_json("shots.json")).subject.split("·")[0].strip()
+        if seconds > 0 and not clips and picks and not teaser:   # none of the protagonist's passed: the teaser instead
+            teaser = True
+            backup = pick_teaser(ctx, len(plan_clips(seconds, 9)))
+            backup_lengths = plan_clips(seconds, len(backup))
+            for sel, start in backup:
+                if len(clips) == len(backup_lengths):
+                    break
+                length = backup_lengths[len(clips)]
+                target = out_dir / f"c{len(clips) + 1:02d}-{key(sel.candidateId, start, length, NORMALISE_VERSION)[:8]}.mp4"
+                if clip := fetch(youtube, sel, start, length, target, lut):
+                    clips.append(clip.model_copy(update={"path": str(target.relative_to(ctx.root))}))
         for after, options in moments:
             for sel, start in options:
                 target = out_dir / f"m{len(pauses) + 1:02d}-{key(sel.candidateId, start, moment_seconds, NORMALISE_VERSION)[:8]}.mp4"
@@ -528,9 +623,12 @@ def run(ctx: RunContext) -> None:
     ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses, bites=bites,
                                         quotes=quotes).model_dump(by_alias=True))
     total = sum(c.durationSeconds for c in clips)
-    if lengths:
-        print(f"   Cold open: {len(clips)} clips con sonido original · {total:.1f} s · "
+    if seconds > 0:
+        kind = "avance de los mejores momentos" if teaser else "apertura"
+        print(f"   Cold open ({kind}): {len(clips)} clips con sonido original · {total:.1f} s · "
               + ", ".join(c.credit.removeprefix("Fuente: ") for c in clips))
+        if not clips:
+            print("   AVISO: el vídeo empieza sin apertura (ningún clip pasó): revisa los primeros 30 s")
     print(f"   Momentos con sonido original: {len(pauses)} · "
           + ", ".join(f"{m.afterSeconds:.0f}s ({m.credit.removeprefix('Fuente: ')})" for m in pauses))
     if bite_count > 0:
