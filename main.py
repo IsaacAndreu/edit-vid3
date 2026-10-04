@@ -500,8 +500,31 @@ def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> Non
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+class Stopped(SystemExit):
+    """The process was told to stop (closed SSH window, systemctl stop, kill): said in the log and the diagnosis
+    instead of vanishing without a trace."""
+
+
+def _stop_signals() -> None:
+    import signal
+
+    names = {getattr(signal, n): n for n in ("SIGHUP", "SIGTERM") if hasattr(signal, n)}
+
+    def stop(number, _frame):
+        why = {"SIGHUP": "se cerró la ventana/sesión SSH desde la que se lanzó (usa tmux o el servicio)",
+               "SIGTERM": "alguien o algo lo paró (systemctl stop, kill, reinicio)"}.get(names.get(number, ""), "")
+        raise Stopped(f"Parado por la señal {names.get(number, number)}: {why}")
+
+    for number in names:
+        try:
+            signal.signal(number, stop)
+        except (ValueError, OSError):            # not the main thread / not supported here
+            pass
+
+
 def main() -> None:
     args = _parser().parse_args()
+    _stop_signals()
     if args.check:
         from pipeline import factcheck
 
