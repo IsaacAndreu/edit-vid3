@@ -95,6 +95,7 @@ words), whether it is a screen / UI / chart / document dominated by text, and wh
 belongs to the video's topic (for a video about a person: same sport/discipline, not another
 athlete shown as if they were the subject). Then rank. A candidate flagged as screen or off-topic is
 never used, whatever the ranking says.
+Be brief (you are billed per word): "shows" is at most 10 words, "reason" one sentence of at most 20 words.
 """
 
 VERDICT_SCHEMA = {
