@@ -328,6 +328,7 @@ async function videoPage(slug) {
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}</div>
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
+    ${v.lastError ? `<div class="notice">En cola otra vez: el vigilante lo hará en su turno. El último intento falló: <span class="small muted">${esc(String(v.lastError).slice(0, 200))}</span></div>` : ""}
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
       <button style="margin-left:8px" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}

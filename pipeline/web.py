@@ -102,13 +102,17 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     costs = _json(work / "costs.json") or {}
     failed = watch_state.get(slug)
     diag = _json(work / "diag.json") or {}
-    status = ("hecho" if done else "haciendo" if current else "error" if failed or diag.get("error") else "en cola" if (folder / "guion.txt").is_file() and (folder / "voz.mp3").is_file()
-              else "incompleto")
+    ready = (folder / "guion.txt").is_file() and (folder / "voz.mp3").is_file()
+    # an old failure the watcher has not tried since (it skips only what it failed itself): it is in the queue again
+    queued_again = bool(diag.get("error")) and not failed and ready and watcher_alive(root)
+    status = ("hecho" if done else "haciendo" if current else "en cola" if queued_again
+              else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
         "slug": slug, "channel": _channel_of(root, folder), "status": status,
         "archived": any(part.startswith("_") for part in folder.relative_to(root / "materiales").parts),
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
-        "error": None if done or current else diag.get("error") or ((failed or {}).get("status") and "falló"),
+        "error": None if done or current or queued_again else diag.get("error") or ((failed or {}).get("status") and "falló"),
+        "lastError": diag.get("error") if queued_again else None,
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
         "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,
         "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),
