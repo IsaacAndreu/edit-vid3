@@ -30,11 +30,23 @@ def allowed(host: str) -> bool:
 
 
 def tailscale_ip() -> str | None:
-    try:
-        out = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=10).stdout.split()
-        return out[0] if out else None
-    except (OSError, subprocess.SubprocessError):
-        return None
+    """This PC's Tailscale address: the tailscale command (also where Windows installs it), else any 100.64/10 IP."""
+
+    for exe in ("tailscale", r"C:\Program Files\Tailscale\tailscale.exe", r"C:\Program Files (x86)\Tailscale\tailscale.exe"):
+        try:
+            out = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True, timeout=10).stdout.split()
+            if out:
+                return out[0]
+        except (OSError, subprocess.SubprocessError):
+            continue
+    try:                                          # last resort: an address in Tailscale's range on this machine
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            a, b = (int(x) for x in info[4][0].split(".")[:2])
+            if a == 100 and 64 <= b <= 127:
+                return info[4][0]
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def pipe(a: socket.socket, b: socket.socket) -> None:
