@@ -22,3 +22,20 @@ def test_pause_is_written_once_and_resume_clears_it(tmp_path: Path, monkeypatch)
 
 def test_blocked_is_a_runtime_error() -> None:
     assert issubclass(ytpause.YouTubeBlocked, RuntimeError)
+
+
+def test_a_video_over_its_budget_stops_and_leaves_the_queue(tmp_path: Path) -> None:
+    import json
+
+    import pytest
+
+    from pipeline import budget
+
+    work, folder = tmp_path / "work" / "v", tmp_path / "materiales" / "v"
+    work.mkdir(parents=True)
+    folder.mkdir(parents=True)
+    (work / "costs.json").write_text(json.dumps({"totalUsd": 3.0}))
+    budget.check_video(tmp_path, {}, work, folder, started_at=2.0)          # this attempt: 1.0 $ ≤ 1.5 $
+    with pytest.raises(budget.VideoOverBudget):
+        budget.check_video(tmp_path, {}, work, folder, started_at=1.0)      # 2.0 $ > 1.5 $
+    assert (folder / ".en-espera").is_file()

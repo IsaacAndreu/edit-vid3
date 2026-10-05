@@ -142,6 +142,9 @@ def run_stages(
 
     executed: list[str] = []
     ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    from . import budget
+
+    spent_before = budget.video_spent(ctx.work_dir)      # budget.per_video_usd counts this attempt only
     for number, stage in enumerate(STAGES, start=1):
         label = f"[{number}/{len(STAGES)}] {stage.name}"
         forced = "all" in force or stage.name in force
@@ -150,6 +153,7 @@ def run_stages(
         else:
             if stage.run is None:
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
+            budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
             current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),

@@ -2,6 +2,10 @@
 
 `budget.daily_usd` (0 = no limit; the web studio's settings can change it): before each video the queue adds up what
 every video spent today (work/*/costs.json, UTC day) and, at the limit, waits until tomorrow instead of starting.
+
+`budget.per_video_usd` (1.5; also in the studio): what ONE attempt at a video may spend. Over it, before the next
+stage, the video stops and leaves the queue (it is put on hold) with a message: a video that keeps costing is a video
+that is going wrong (negocio2-4 on 05-10: 1.4-1.5 $ each for chalkboard videos).
 """
 
 from __future__ import annotations
@@ -41,6 +45,40 @@ def limit(root: Path, config: dict) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+class VideoOverBudget(RuntimeError):
+    pass
+
+
+PER_VIDEO_DEFAULT = 1.5
+
+
+def per_video(root: Path, config: dict) -> float:
+    value = settings(root).get("per_video_usd", (config.get("budget") or {}).get("per_video_usd", PER_VIDEO_DEFAULT))
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return PER_VIDEO_DEFAULT
+
+
+def video_spent(work_dir: Path) -> float:
+    try:
+        return float(json.loads((work_dir / "costs.json").read_text("utf-8")).get("totalUsd") or 0)
+    except (OSError, ValueError):
+        return 0.0
+
+
+def check_video(root: Path, config: dict, work_dir: Path, folder: Path, started_at: float) -> None:
+    """Between stages: this attempt (what was spent since it began) over budget.per_video_usd → out of the queue."""
+
+    cap = per_video(root, config)
+    spent = video_spent(work_dir) - started_at
+    if cap > 0 and spent > cap:
+        (folder / ".en-espera").write_text(datetime.now().isoformat(timespec="seconds"), encoding="utf-8")
+        raise VideoOverBudget(
+            f"Este intento ya ha gastado {spent:.2f} $ (límite por vídeo {cap:.2f} $): se para y sale de la cola para "
+            "que lo mires. Si está bien, súbelo en Ajustes → «Límite por vídeo» y pulsa «Volver a la cola».")
 
 
 def check(root: Path, config: dict) -> None:

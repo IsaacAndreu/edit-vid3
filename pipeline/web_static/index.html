@@ -395,6 +395,9 @@ async function settingsPage() {
       <label>Límite de gasto de API al día <span class="muted">(0 = sin límite; al llegar, espera a mañana)</span></label>
       <div class="row"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}" style="max-width:160px"><span>$</span>
         <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
+      <label>Límite por vídeo <span class="muted">(lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite)</span></label>
+      <div class="row"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}" style="max-width:160px"><span>$</span>
+        <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div>
       <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
     </div>
     <h2>Avisos al móvil (Telegram)</h2>

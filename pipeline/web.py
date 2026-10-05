@@ -417,6 +417,8 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
     if body is not None:
         if "daily_usd" in body:
             current["daily_usd"] = max(0.0, float(body["daily_usd"] or 0))
+        if "per_video_usd" in body:
+            current["per_video_usd"] = max(0.0, float(body["per_video_usd"] or 0))
         if isinstance(body.get("my_channels"), dict):        # merged: an empty value removes that channel's entry
             mine = dict(current.get("my_channels") or {})
             for k, v in body["my_channels"].items():
