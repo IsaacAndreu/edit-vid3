@@ -122,3 +122,10 @@ def test_empty_shots_borrow_far_away_footage_and_flash_their_key_words():
     assert shots[4].media.src == shots[0].media.src                          # the clip farthest away in time
     assert len(punches) == 1 and punches[0].graphic["lines"] == ["Gorrión de Minsk"]
     assert punches[0].from_ == shots[4].from_ and punches[0].durationInFrames <= 66
+
+
+def test_punch_words_never_join_two_sentences():
+    from pipeline.timeline import punch_words
+
+    assert punch_words("con el mismo objetivo. Veamos cómo") != "objetivo Veamos"
+    assert "Imagina" not in punch_words("Nadie quiere mejorar nada. Imagina a un cliente cualquiera.")

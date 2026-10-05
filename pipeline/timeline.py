@@ -740,8 +740,22 @@ def punch_words(text: str, most: int = 3) -> str:
     """The most striking 1-3 words of a sentence, as said (a name, a figure, a long word): 'más condecorada',
     'Knysh lo negó', '1972'. They flash over the footage for a moment instead of filling the screen."""
 
-    words = [w.strip(".,;:¿?¡!…\"«»()") for w in text.split()]
-    words = [w for w in words if w]
+    # words with the number of their sentence: a pick never joins the end of one sentence and the start of the next
+    # («cliente Imagina»), and a capital that only starts a sentence («Veamos», «Según») is not a name
+    words: list[str] = []
+    sentence: list[int] = []
+    first: set[int] = set()
+    number, starts = 0, True
+    for raw in text.split():
+        word = raw.strip(".,;:¿?¡!…\"«»()")
+        if word:
+            if starts:
+                first.add(len(words))
+            words.append(word)
+            sentence.append(number)
+            starts = False
+        if raw.rstrip("\"»)").endswith((".", "!", "?", "…", ":", ";")):
+            number, starts = number + 1, True
 
     def score(i: int) -> float:
         core = words[i].lower()
@@ -750,7 +764,7 @@ def punch_words(text: str, most: int = 3) -> str:
         value = 1.0
         if any(c.isdigit() for c in core):
             value += 3
-        if words[i][:1].isupper() and i > 0:
+        if words[i][:1].isupper() and i not in first:
             value += 2
         if len(core) >= 7:
             value += 1
@@ -762,11 +776,16 @@ def punch_words(text: str, most: int = 3) -> str:
             window = list(range(i, min(len(words), i + size)))
             if len(window) < size or score(window[0]) == 0 or score(window[-1]) == 0:
                 continue
+            if sentence[window[0]] != sentence[window[-1]]:
+                continue
             value = sum(score(k) for k in window) - 0.8 * sum(1 for k in window if score(k) == 0)
             value += 0.5 if size == 2 else 0
             if value > best_value:
                 best, best_value = " ".join(words[k] for k in window), value
     return best if best_value >= 3 else ""            # nothing striking (no name, figure or long word): just footage
+
+
+PUNCH_GAP = 40               # s between two flashes of key words over borrowed footage
 
 
 def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
@@ -786,6 +805,9 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
 
     def flush() -> None:
         if run_start is None:
+            return
+        # words on every gap read as a slideshow (negocios1: 55 in 14 min): at most one every PUNCH_GAP seconds
+        if overlays and run_start - overlays[-1].from_ < PUNCH_GAP * fps:
             return
         phrase = punch_words(" ".join(run_text))
         if phrase:
