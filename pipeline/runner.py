@@ -79,12 +79,34 @@ def _hash_path(digest: "hashlib._Hash", path: Path) -> None:
         digest.update(b"<missing>")
 
 
-def fingerprint(ctx: RunContext, stage: Stage) -> str:
+# How fast or by which road, never what: changing these must not make a stage run again (raising the YouTube
+# downloads at once on 05-10 re-ran every video's searches — and that load got the connection blocked).
+SPEED_KEYS = frozenset({
+    "parallel", "concurrency", "concurrency_with_accounts", "min_interval", "rate_backoff", "sleep_requests",
+    "account_switch_pause", "rate_limit", "proxy", "player_client", "force_ipv4", "cookies", "cookies_on_bot",
+    "cookies_file", "cookies_dir", "cookies_from_browser", "browser_accounts", "po_token", "pot_provider_url",
+    "pot_keep_clients", "batch_size", "precompute_during_sourcing", "browser_executable", "timeout_seconds",
+})
+
+
+def _without_speed(value):
+    if isinstance(value, dict):
+        return {k: _without_speed(v) for k, v in value.items() if k not in SPEED_KEYS}
+    if isinstance(value, list):
+        return [_without_speed(v) for v in value]
+    return value
+
+
+def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
+    """What a stage's result depends on: its input files and its config sections, minus the speed knobs
+    (`legacy`: with them, as markers written before SPEED_KEYS existed were hashed)."""
+
     digest = hashlib.sha256()
     for path in stage.inputs(ctx):
         _hash_path(digest, path)
     for section in stage.config_sections:
-        digest.update(json.dumps(ctx.section(section), sort_keys=True).encode())
+        value = ctx.section(section)
+        digest.update(json.dumps(value if legacy else _without_speed(value), sort_keys=True).encode())
     return digest.hexdigest()
 
 
@@ -108,7 +130,7 @@ def is_up_to_date(ctx: RunContext, stage: Stage) -> bool:
         recorded = json.loads(marker.read_text(encoding="utf-8")).get("inputsHash")
     except (OSError, json.JSONDecodeError):
         return False
-    if recorded != fingerprint(ctx, stage):
+    if recorded != fingerprint(ctx, stage) and recorded != fingerprint(ctx, stage, legacy=True):
         return False
     if stage.validate is not None:
         try:
