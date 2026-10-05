@@ -137,11 +137,24 @@ DEFAULT_TITLE_BLOCKLIST = (
 )
 
 
+# Always out, whatever the channel's own list says: footage that is never on topic in a documentary, or that brings
+# a Content ID claim (negocios1 on 05-10 had «The Office», JoBlo movie clips, a kids' music channel and EDM Nation).
+ALWAYS_BLOCKED_TERMS = ("asmr", "nursery rhymes", "kids music", "canciones infantiles", "movie clip", "full episode",
+                        "official trailer", "tráiler oficial", "lyrics video", "lyric video")
+ALWAYS_BLOCKED_CHANNELS = ("the office", "joblo", "movieclips", "kiboomers", "cocomelon", "super simple songs",
+                           "edm nation", "rancho humilde", "netflix", "hbo max", "disney plus", "warner bros")
+
+
+def _has(term: str, text: str) -> bool:
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(term.casefold())}(?![a-z0-9])", text))
+
+
 def blocked_by_title(title: str, channel: str, blocklist: list[str] | tuple[str, ...] | None = None) -> str | None:
     """The blocklisted term found in a source's title/channel (video games, gameplay...), if any."""
 
     text = f" {title} {channel} ".casefold()
-    for term in blocklist if blocklist is not None else DEFAULT_TITLE_BLOCKLIST:
-        if re.search(rf"(?<![a-z0-9]){re.escape(term.casefold())}(?![a-z0-9])", text):
+    for term in [*(blocklist if blocklist is not None else DEFAULT_TITLE_BLOCKLIST), *ALWAYS_BLOCKED_TERMS]:
+        if _has(term, text):
             return term
-    return None
+    name = f" {channel or ''} ".casefold()
+    return next((term for term in ALWAYS_BLOCKED_CHANNELS if _has(term, name)), None)

@@ -72,7 +72,8 @@ def test_business_profile_has_the_qash_look():
     brand = ctx.section("brand")
     assert brand["accent"] == "#19fe5b"
     assert (brand["chapterStyle"], brand["statStyle"], brand["graphicsStyle"]) == ("numbered", "bare", "pizarra")
-    assert ctx.section("fallback")["pexels"] is False and ctx.section("fallback")["generate"] is False
+    # stock only as the last resort (05-10: without it, 80-95 % of the shots ended as chalkboards); never generated
+    assert ctx.section("fallback")["pexels"] is True and ctx.section("fallback")["generate"] is False
     images = ctx.section("sourcing")["images"]
     assert not any(images[k]["enabled"] for k in ("wikimedia", "openverse", "pixabay")) and images["web"]["enabled"]
     timeline = ctx.section("timeline")

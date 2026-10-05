@@ -40,10 +40,16 @@ timeline:
   sound_bites: 0                   # sin golpes de sonido original: en el archivo de noticias habla un presentador
   opening_question: auto           # si el vídeo arranca con una pregunta, sale entera desde el primer fotograma
 
-# Sin stock ni imágenes libres: metraje real de archivo; si no hay, foto de prensa del tema y, si tampoco, pizarra.
+# Metraje real de archivo; si no hay, foto de prensa del tema; si tampoco, stock de Pexels (elegido por parecido con
+# la frase) y solo al final pizarra. Sin stock, negocio2-4 (05-10) salieron con el 80-95 % de los planos en pizarra:
+# en temas de consumo (marcas blancas, neumáticos, cremas) no existe archivo de una empresa concreta.
 fallback:
-  pexels: false
+  pexels: true
+  pexels_for_person: true          # aunque la historia tenga protagonista (un directivo): el stock va al final igual
   generate: false
+
+pacing:
+  base_seconds: 4.0                # planos de ~4 s (antes 3): ~225 planos en 15 min en vez de ~300, menos huecos
 
 sourcing:
   images:
