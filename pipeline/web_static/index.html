@@ -32,7 +32,7 @@
   .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 600;
           background: var(--panel2); color: var(--muted); }
   .pill.hecho { color: var(--ok); } .pill.error { color: var(--bad); } .pill.haciendo { color: var(--work); }
-  .pill["en cola"], .pill.cola { color: var(--wait); }
+  .pill["en cola"], .pill.cola { color: var(--wait); } .pill.pausa { color: var(--muted, #888); }
   .stat { font-size: 26px; font-weight: 700; }
   .bar { height: 8px; background: var(--panel2); border-radius: 99px; overflow: hidden; margin-top: 8px; }
   .bar > i { display: block; height: 100%; background: var(--work); border-radius: 99px; transition: width .4s; }
@@ -173,7 +173,7 @@ function md(text, base) {
   flush(); return html;
 }
 
-function pill(status) { return `<span class="pill ${status === "en cola" ? "cola" : status}">${esc(status)}</span>`; }
+function pill(status) { return `<span class="pill ${status === "en cola" ? "cola" : status === "en pausa" ? "pausa" : status}">${esc(status)}</span>`; }
 
 function videoCard(v) {
   const st = v.stage;
@@ -189,7 +189,7 @@ function videoCard(v) {
 async function home() {
   data = await api("/api/overview");
   const s = data.service, b = data.budget, vids = data.videos.filter((v) => !v.archived);
-  const groups = {haciendo: [], "en cola": [], error: [], hecho: [], incompleto: []};
+  const groups = {haciendo: [], "en cola": [], error: [], "en pausa": [], hecho: [], incompleto: []};
   vids.forEach((v) => (groups[v.status] || groups.incompleto).push(v));
   const state = s.paused ? '<span class="pill">En pausa</span>' : s.watching ? '<span class="pill hecho">Vigilando: hace los vídeos solo</span>'
     : s.queueRunning ? '<span class="pill haciendo">Cola en marcha</span>' : '<span class="pill">Sin vigilante</span>';
@@ -208,6 +208,7 @@ async function home() {
         <div class="small muted">${data.youtube.failed} fallidas · ${data.youtube.mbps} MB/s</div>` : '<div class="muted" style="margin-top:8px">Sin datos aún</div>'}</div>
     </div>
     ${section("En marcha", groups.haciendo)}${section("Con error", groups.error)}${section("En cola", groups["en cola"])}
+    ${section("Fuera de la cola (en pausa)", groups["en pausa"])}
     ${section("Sin terminar de subir (falta guion o voz)", groups.incompleto)}${section("Hechos", groups.hecho)}
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos. <a href="#/nuevo">Crea el primero</a>.</div>'}`;
   schedule(home, groups.haciendo.length ? 10000 : 30000);
@@ -331,6 +332,9 @@ async function videoPage(slug) {
     <div class="row" style="justify-content:space-between"><h1>${esc(v.slug)} ${pill(v.status)}</h1>
       <div class="row">${v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>' : ""}
         ${v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>' : ""}
+        ${v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : ""}
+        ${v.status === "haciendo" ? '<button onclick="if(confirm(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\'))act(\'stop\')">Parar</button>' : ""}
+        ${v.status === "en pausa" ? '<button class="main" onclick="act(\'unhold\')">Volver a la cola</button>' : ""}
         ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
         ${v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : ""}
         ${v.status === "hecho" && !v.published ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}

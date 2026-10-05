@@ -107,13 +107,14 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     # tried it (an old failure), else after watch.retry_hours (or as soon as you change its files)
     retry_at = None
     queued_again = False
-    if ready and not current and (diag.get("error") or failed) and watcher_alive(root):   # running now: no old error
+    held = (folder / HOLD).is_file()
+    if ready and not current and not held and (diag.get("error") or failed) and watcher_alive(root):   # running now: no old error
         queued_again = True
         if failed and failed.get("at"):
             retry_at = float(failed["at"]) + _retry_hours(root) * 3600
             if retry_at <= time.time():
                 retry_at = None
-    status = ("hecho" if done else "haciendo" if current else "en cola" if queued_again
+    status = ("hecho" if done else "haciendo" if current else "en pausa" if held else "en cola" if queued_again
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
         "slug": slug, "channel": _channel_of(root, folder), "status": status,
@@ -353,6 +354,39 @@ def retry_all(root: Path) -> dict[str, Any]:
         return {"ok": True, "count": count, "message": "Hay una cola en marcha: los hará al acabar la actual."}
     start_queue(root)
     return {"ok": True, "count": count, "started": True, "message": "Cola en marcha desde el estudio."}
+
+
+HOLD = ".en-espera"        # = main.HOLD: the queue skips the video while this file is in its folder
+
+
+def hold(root: Path, slug: str, on: bool = True) -> dict[str, Any]:
+    """«Quitar de la cola» / «Volver a la cola»: nothing is deleted, the video just waits."""
+
+    marker = find_video(root, slug) / HOLD
+    if on:
+        marker.write_text(time.strftime("%Y-%m-%dT%H:%M:%S"), encoding="utf-8")
+        return {"ok": True, "message": "Fuera de la cola: no se hará hasta que pulses «Volver a la cola»."}
+    marker.unlink(missing_ok=True)
+    if watcher_alive(root):
+        (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+    return {"ok": True, "message": "De vuelta en la cola."}
+
+
+def stop(root: Path, slug: str) -> dict[str, Any]:
+    """«Parar»: the video being made stops now and leaves the queue. What it finished stays (it resumes from there
+    with «Volver a la cola»). With the watcher as a service, the watcher restarts itself in about a minute."""
+
+    import signal
+
+    current = running(_json(root / "work" / slug / "current.json"))
+    hold(root, slug, True)
+    if not current or not current.get("pid"):
+        return {"ok": True, "message": "No se estaba haciendo: queda fuera de la cola."}
+    try:
+        os.kill(int(current["pid"]), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, ValueError) as error:
+        return {"ok": False, "message": f"No se pudo parar ({type(error).__name__}); queda fuera de la cola igualmente."}
+    return {"ok": True, "message": "Parado y fuera de la cola. La cola sigue con el siguiente en un minuto."}
 
 
 def archive(root: Path, slug: str) -> dict[str, Any]:
@@ -676,9 +710,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if path == "/api/videos":
                     return self._ok(create_video(root, body))
-                if match := re.fullmatch(r"/api/video/([^/]+)/(retry|archive)", path):
-                    action = retry if match.group(2) == "retry" else archive
-                    return self._ok(action(root, urllib.parse.unquote(match.group(1))))
+                if match := re.fullmatch(r"/api/video/([^/]+)/(retry|archive|hold|unhold|stop)", path):
+                    slug, verb = urllib.parse.unquote(match.group(1)), match.group(2)
+                    if verb in ("hold", "unhold"):
+                        return self._ok(hold(root, slug, verb == "hold"))
+                    action = {"retry": retry, "archive": archive, "stop": stop}[verb]
+                    return self._ok(action(root, slug))
                 if path == "/api/settings":
                     return self._ok(settings(root, body))
                 if path == "/api/queue":

@@ -181,12 +181,23 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
         skipped = any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts)   # _hechos/, _video
         if skipped or d.name in names or not (d / "guion.txt").is_file() or not (d / "voz.mp3").is_file():
             continue
+        if (d / HOLD).is_file():           # «Quitar de la cola» in the studio
+            continue
         names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
         from pipeline.housekeeping import is_done
 
         if not is_done(root, d.name):                       # final video, or uploaded and cleaned up
             ready.append(d)
     return [d.name for d in sorted(ready, key=lambda d: (d.stat().st_mtime, d.name))]
+
+
+HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»
+
+
+def on_hold(root: Path, slug: str) -> bool:
+    from pipeline.context import find_video
+
+    return (find_video(root, slug) / HOLD).is_file()
 
 
 REQUIRED_KEYS = ("LLM_API_KEY", "OPENAI_API_KEY")
@@ -296,6 +307,8 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             LAST_RESULTS.clear()
             try:
                 run_queue(force=set(), until=None, review=False, root=root, skip=skip)
+            except Stopped:                          # systemctl stop / «Parar» in the studio: end now
+                raise
             except SystemExit as stop:               # preflight said no (keys, disk…): look again later
                 print(stop)
                 time.sleep(30 * 60)
@@ -443,6 +456,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root)
             slugs = []
         for number, slug in enumerate(slugs, start=1):
+            if on_hold(root, slug):
+                print(f"{slug}: quitado de la cola, se salta")
+                continue
             print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
             started = time.monotonic()
             try:
@@ -535,6 +551,9 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 if not pending:
                     return
                 slug = pending.popleft()
+            if on_hold(root, slug):
+                print(f"{slug}: quitado de la cola, se salta")
+                continue
             run(slug)
 
     print(f"Cola en paralelo: {workers} vídeos a la vez (red y CPU por turnos) · registros en out/_cola/")

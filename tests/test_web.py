@@ -497,3 +497,28 @@ def test_retry_all_clears_waits_and_wakes_the_watcher(tmp_path):
     assert result["count"] == 2
     assert json.loads((tmp_path / "out" / "_vigilar.json").read_text()) == {}
     assert (tmp_path / "out" / "_despertar").is_file()
+
+
+def test_hold_takes_a_video_out_of_the_queue_and_back(tmp_path):
+    import main
+    from pipeline import web
+
+    folder = tmp_path / "materiales" / "negocio2"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text("Hola.")
+    (folder / "voz.mp3").write_bytes(b"ID3")
+    assert main.pending_slugs(tmp_path) == ["negocio2"]
+    web.hold(tmp_path, "negocio2", True)
+    assert main.pending_slugs(tmp_path) == []
+    assert (folder / web.HOLD).is_file()
+    web.hold(tmp_path, "negocio2", False)
+    assert main.pending_slugs(tmp_path) == ["negocio2"]
+
+
+def test_stop_without_a_running_video_only_holds_it(tmp_path):
+    from pipeline import web
+
+    folder = tmp_path / "materiales" / "negocio3"
+    folder.mkdir(parents=True)
+    assert web.stop(tmp_path, "negocio3")["ok"]
+    assert (folder / web.HOLD).is_file()
