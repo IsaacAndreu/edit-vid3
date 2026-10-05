@@ -351,6 +351,14 @@ def run(ctx: RunContext) -> None:
     print(f"   Planos con YouTube: {summary['shotsWithYouTube']} · sin ningún candidato: {len(empty)}")
     for warning in notes:
         print(f"   AVISO: {warning}")
+    # YouTube blocked this machine half way (negocio2, after raising the downloads at once: 109 of 299 shots left
+    # with nothing): going on makes a video of chalkboards. Stop; the next run searches again (retry_if) once the
+    # block is over — failed searches are never cached.
+    if any("bloquea" in n for n in notes) and ctx.section("sourcing").get("youtube", {}).get("stop_when_blocked", True):
+        raise RuntimeError(
+            f"YouTube ha bloqueado las búsquedas a mitad ({len(empty)} de {len(results)} planos sin candidatos). "
+            "Suele pasar al pedir demasiado a la vez: baja sourcing.youtube.concurrency y espera unas horas; "
+            "el vídeo se reintenta solo y vuelve a buscar.")
 
 
 def validate(ctx: RunContext) -> bool:
