@@ -482,3 +482,18 @@ def test_voice_is_served_for_checking(tmp_path):
         assert urllib.request.urlopen(f"http://127.0.0.1:{port}/api/video/avion1/voz.mp3").read() == b"ID3fake"
     finally:
         server.shutdown()
+
+
+def test_retry_all_clears_waits_and_wakes_the_watcher(tmp_path):
+    import json
+    import time as _time
+
+    from pipeline import web
+
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "_vigilar.json").write_text(json.dumps({"a": {"at": _time.time()}, "b": {"at": _time.time()}}))
+    (tmp_path / "out" / "_vigilar.latido").write_text("now")
+    result = web.retry_all(tmp_path)
+    assert result["count"] == 2
+    assert json.loads((tmp_path / "out" / "_vigilar.json").read_text()) == {}
+    assert (tmp_path / "out" / "_despertar").is_file()

@@ -338,6 +338,23 @@ def retry(root: Path, slug: str) -> dict[str, Any]:
     return {"ok": True, "started": True, "message": "En marcha desde el estudio: sigue avanzando aunque cierres todo."}
 
 
+def retry_all(root: Path) -> dict[str, Any]:
+    """«Reintentar todos ahora»: every failed video back in the queue at once, without waiting for its retry time."""
+
+    path = root / "out" / "_vigilar.json"
+    state = _json(path) or {}
+    count = len(state)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}", encoding="utf-8")
+    if watcher_alive(root):
+        (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+        return {"ok": True, "count": count, "message": f"{count} vídeo(s) de vuelta a la cola: el vigilante empieza ya."}
+    if _lock_alive(root / "work" / ".cola.lock"):
+        return {"ok": True, "count": count, "message": "Hay una cola en marcha: los hará al acabar la actual."}
+    start_queue(root)
+    return {"ok": True, "count": count, "started": True, "message": "Cola en marcha desde el estudio."}
+
+
 def archive(root: Path, slug: str) -> dict[str, Any]:
     """Out of the queue for good: materiales/_hechos/<slug>."""
 
@@ -666,6 +683,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(settings(root, body))
                 if path == "/api/queue":
                     return self._ok(start_queue(root))
+                if path == "/api/queue/retry-all":
+                    return self._ok(retry_all(root))
                 if path == "/api/channels":                # a new channel profile
                     return self._ok(create_channel(root, body))
                 if path == "/api/hook":                    # {title, script, channel}: before recording

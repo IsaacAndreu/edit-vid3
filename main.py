@@ -218,6 +218,7 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
 
 
 WATCH_STATE = "out/_vigilar.json"
+WAKE = "out/_despertar"          # the studio's «Reintentar todos ahora»: the watcher looks again without waiting
 
 
 def _materials_signature(root: Path, slug: str) -> float:
@@ -328,7 +329,11 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             print("Código nuevo (git pull): reinicio con él")
             os.execv(sys.executable, [sys.executable, *sys.argv])
         if not waiting:
-            time.sleep(every_minutes * 60)
+            wake = root / WAKE
+            deadline = time.time() + every_minutes * 60
+            while time.time() < deadline and not wake.is_file():      # «Reintentar todos» wakes it at once
+                time.sleep(5)
+            wake.unlink(missing_ok=True)
 
 
 def update_ytdlp() -> None:

@@ -193,7 +193,9 @@ async function home() {
   vids.forEach((v) => (groups[v.status] || groups.incompleto).push(v));
   const state = s.paused ? '<span class="pill">En pausa</span>' : s.watching ? '<span class="pill hecho">Vigilando: hace los vídeos solo</span>'
     : s.queueRunning ? '<span class="pill haciendo">Cola en marcha</span>' : '<span class="pill">Sin vigilante</span>';
-  const startBtn = !s.watching && !s.queueRunning && groups["en cola"].length ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "";
+  const failed = vids.filter((v) => v.status === "error" || v.lastError).length;
+  const startBtn = (!s.watching && !s.queueRunning && groups["en cola"].length ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "")
+    + (failed ? `<button class="main" style="margin-left:6px" onclick="retryAll()">Reintentar todos ahora (${failed})</button><div id="retrymsg" class="small muted" style="margin-top:6px"></div>` : "");
   $("#app").innerHTML = `
     <div class="grid">
       <div class="card"><div class="muted small">Servidor</div><div style="margin:8px 0">${state}</div>${startBtn}</div>
@@ -213,6 +215,11 @@ async function home() {
 const section = (title, list) => list.length ? `<h2>${title}</h2><div class="grid">${list.map(videoCard).join("")}</div>` : "";
 
 async function startQueue() { await post("/api/queue"); setTimeout(route, 1500); }
+async function retryAll() {
+  const r = await post("/api/queue/retry-all");
+  const box = $("#retrymsg"); if (box) box.textContent = r.message;
+  setTimeout(route, 4000);
+}
 
 async function newVideo() {
   data = data || await api("/api/overview");
