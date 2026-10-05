@@ -191,7 +191,8 @@ async function home() {
   const s = data.service, b = data.budget, vids = data.videos.filter((v) => !v.archived);
   const groups = {haciendo: [], "en cola": [], error: [], "en pausa": [], hecho: [], incompleto: []};
   vids.forEach((v) => (groups[v.status] || groups.incompleto).push(v));
-  const state = s.paused ? '<span class="pill">En pausa</span>' : s.watching ? '<span class="pill hecho">Vigilando: hace los vídeos solo</span>'
+  const state = s.youtubeBlocked ? `<span class="pill error">YouTube bloqueado desde las ${esc(s.youtubeBlocked)}</span><div class="small muted" style="margin-top:6px">Cola en pausa automática: prueba YouTube cada hora y sigue sola.</div>`
+    : s.paused ? '<span class="pill">En pausa</span>' : s.watching ? '<span class="pill hecho">Vigilando: hace los vídeos solo</span>'
     : s.queueRunning ? '<span class="pill haciendo">Cola en marcha</span>' : '<span class="pill">Sin vigilante</span>';
   const failed = vids.filter((v) => v.status === "error" || v.lastError).length;
   const startBtn = (!s.watching && !s.queueRunning && groups["en cola"].length ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "")

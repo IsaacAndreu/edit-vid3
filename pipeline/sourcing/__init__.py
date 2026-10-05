@@ -355,7 +355,9 @@ def run(ctx: RunContext) -> None:
     # with nothing): going on makes a video of chalkboards. Stop; the next run searches again (retry_if) once the
     # block is over — failed searches are never cached.
     if any("bloquea" in n for n in notes) and ctx.section("sourcing").get("youtube", {}).get("stop_when_blocked", True):
-        raise RuntimeError(
+        from ..ytpause import YouTubeBlocked
+
+        raise YouTubeBlocked(
             f"YouTube ha bloqueado las búsquedas a mitad ({len(empty)} de {len(results)} planos sin candidatos). "
             "Suele pasar al pedir demasiado a la vez: baja sourcing.youtube.concurrency y espera unas horas; "
             "el vídeo se reintenta solo y vuelve a buscar.")

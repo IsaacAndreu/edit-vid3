@@ -159,7 +159,11 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
                     housekeeping.after_video(ctx)          # cleanup.after_video (a server's small disk)
         except BaseException as error:
             diag.write(ctx, error)
-            if not isinstance(error, KeyboardInterrupt):
+            from pipeline import ytpause
+
+            if isinstance(error, ytpause.YouTubeBlocked):    # the whole queue waits (one message, not one per video)
+                ytpause.pause(ctx.root, str(error))
+            elif not isinstance(error, KeyboardInterrupt):
                 from pipeline import notify as messages
 
                 try:
@@ -292,6 +296,19 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
         if (root / "out" / "_pausa").is_file():                     # paused from the web studio
             time.sleep(60)
             continue
+        from pipeline import ytpause
+
+        if ytpause.paused(root):                                    # YouTube blocked: test it now and then
+            if ytpause.due(root, float(cfg.get("youtube_probe_minutes", 60))):
+                if ytpause.probe(root):
+                    ytpause.resume(root)
+                    state_path.unlink(missing_ok=True)              # what failed on the block goes again now
+                    print(f"{datetime.now():%H:%M} · YouTube vuelve a dejar pasar: sigo con la cola")
+                else:
+                    print(f"{datetime.now():%H:%M} · YouTube sigue bloqueando: cola en pausa, pruebo en una hora")
+            if ytpause.paused(root):
+                time.sleep(60)
+                continue
         try:
             state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
         except ValueError:
@@ -455,7 +472,12 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         if workers > 1 and len(slugs) > 1:
             results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root)
             slugs = []
+        from pipeline import ytpause
+
         for number, slug in enumerate(slugs, start=1):
+            if ytpause.paused(root):
+                print("YouTube bloqueado: la cola se para aquí (sigue sola cuando YouTube deje pasar)")
+                break
             if on_hold(root, slug):
                 print(f"{slug}: quitado de la cola, se salta")
                 continue
@@ -551,6 +573,10 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 if not pending:
                     return
                 slug = pending.popleft()
+            from pipeline import ytpause
+
+            if ytpause.paused(root):
+                return
             if on_hold(root, slug):
                 print(f"{slug}: quitado de la cola, se salta")
                 continue

@@ -129,6 +129,15 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     }
 
 
+def _youtube_blocked(root: Path) -> str | None:
+    """The queue paused itself because YouTube blocks the connection (pipeline/ytpause.py): since when."""
+
+    from . import ytpause
+
+    state = ytpause.paused(root)
+    return time.strftime("%H:%M", time.localtime(float(state.get("at") or 0))) if state else None
+
+
 def _lock_alive(lock: Path) -> bool:
     """The queue lock exists AND its process is alive (a restart can leave it behind)."""
 
@@ -158,6 +167,7 @@ def overview(root: Path) -> dict[str, Any]:
     queue_running = _lock_alive(root / "work" / ".cola.lock")
     return {
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,
+                    "youtubeBlocked": _youtube_blocked(root),
                     "lastBeat": beat.read_text().strip() if beat.is_file() else None},
         "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config)},
         "videos": videos, "channels": channels(root), "formats": formats(root),

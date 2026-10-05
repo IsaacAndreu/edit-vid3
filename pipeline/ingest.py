@@ -350,7 +350,10 @@ def run(ctx: RunContext) -> None:
     # atlet1: 95 of 95 clips failed (YouTube blocking, the home proxy off) and the video went on to the render with
     # no footage at all. Stop instead: what downloaded is kept and the watcher tries again later.
     if len(todo) >= 10 and len(failed) / len(todo) > 0.5:
-        raise RuntimeError(
+        from .ytpause import YouTubeBlocked
+
+        blocked = any(re.search(r"bot|bloquea|429|sign in|too many", e, re.I) for e in failed.values())
+        raise (YouTubeBlocked if blocked else RuntimeError)(
             f"YouTube no deja descargar: fallaron {len(failed)} de {len(todo)} clips. ¿Está encendido el proxy de casa "
             "(proxy-youtube.bat) y el PC sin suspender? No se sigue con un vídeo sin imágenes: se reintenta más tarde "
             "(o pulsa «Reintentar» cuando el proxy funcione).")
