@@ -347,6 +347,13 @@ def run(ctx: RunContext) -> None:
     for shot_id, error in list(failed.items())[:5]:
         print(f"   AVISO {shot_id}: {error}")
     print(f"   Ingesta en {time.monotonic() - started:.0f} s")
+    # atlet1: 95 of 95 clips failed (YouTube blocking, the home proxy off) and the video went on to the render with
+    # no footage at all. Stop instead: what downloaded is kept and the watcher tries again later.
+    if len(todo) >= 10 and len(failed) / len(todo) > 0.5:
+        raise RuntimeError(
+            f"YouTube no deja descargar: fallaron {len(failed)} de {len(todo)} clips. ¿Está encendido el proxy de casa "
+            "(proxy-youtube.bat) y el PC sin suspender? No se sigue con un vídeo sin imágenes: se reintenta más tarde "
+            "(o pulsa «Reintentar» cuando el proxy funcione).")
 
 
 def validate(ctx: RunContext) -> bool:
