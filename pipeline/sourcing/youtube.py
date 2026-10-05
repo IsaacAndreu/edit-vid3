@@ -228,9 +228,9 @@ class YouTubeSource:
         server = False
         if plugin:
             try:
-                local = requests.Session()
-                local.trust_env = False                 # the provider runs on this machine: never via a proxy
-                server = local.get(f"{url}/ping", timeout=3).ok
+                with requests.Session() as local:
+                    local.trust_env = False             # the provider runs on this machine: never via a proxy
+                    server = local.get(f"{url}/ping", timeout=3).ok
             except requests.RequestException:
                 server = False
         if not (plugin and server):
@@ -320,6 +320,18 @@ class YouTubeSource:
             for path in copies:
                 path.unlink(missing_ok=True)
         self._cookie_copies.clear()
+
+    def _extract(self, url: str, extra: dict[str, Any]) -> Any:
+        """extract_info with the YoutubeDL closed afterwards: an open one keeps its connections (and cookie file),
+        and a few hundred of them in the analysis stage ran the process out of files («Too many open files»)."""
+
+        ydl = self._ydl(extra)
+        try:
+            return ydl.extract_info(url, download=False)
+        finally:
+            close = getattr(ydl, "close", None)
+            if close:
+                close()
 
     def _ydl(self, extra: dict[str, Any] | None = None) -> Any:
         import yt_dlp
@@ -441,7 +453,7 @@ class YouTubeSource:
             else:
                 target = f"ytsearch{limit}:{query}"
                 extra = {"extract_flat": "in_playlist", "skip_download": True}
-            info = self._call("search", lambda: self._ydl(extra).extract_info(target, download=False))
+            info = self._call("search", lambda: self._extract(target, extra))
             keep = ("id", "title", "channel", "uploader", "duration", "url", "live_status", "view_count")
             return [{k: entry.get(k) for k in keep} for entry in (info or {}).get("entries") or [] if isinstance(entry, dict)]
 
@@ -512,9 +524,7 @@ class YouTubeSource:
         def produce() -> dict[str, Any]:
             data = self._call(
                 "metadata",
-                lambda: self._ydl({"skip_download": True}).extract_info(
-                    f"https://www.youtube.com/watch?v={video_id}", download=False
-                ),
+                lambda: self._extract(f"https://www.youtube.com/watch?v={video_id}", {"skip_download": True}),
             )
             self._save_full_info(video_id, data)
             formats = data.get("formats") or []

@@ -582,6 +582,23 @@ class Stopped(SystemExit):
     instead of vanishing without a trace."""
 
 
+def _more_open_files() -> None:
+    """Linux gives a process 1024 open files by default; the analysis of a long video (hundreds of downloads through
+    the proxy, threads, models) can need more. Raised to what the system allows, up to 65536."""
+
+    try:
+        import resource
+    except ImportError:          # Windows: no such limit
+        return
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        wanted = 65536 if hard == resource.RLIM_INFINITY else min(65536, hard)
+        if soft != resource.RLIM_INFINITY and soft < wanted:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, hard))
+    except (ValueError, OSError):
+        pass
+
+
 def _stop_signals() -> None:
     import signal
 
@@ -602,6 +619,7 @@ def _stop_signals() -> None:
 def main() -> None:
     args = _parser().parse_args()
     _stop_signals()
+    _more_open_files()
     if args.check:
         from pipeline import factcheck
 

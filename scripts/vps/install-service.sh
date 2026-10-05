@@ -21,6 +21,8 @@ ExecStart=$ROOT/.venv/bin/python main.py --vigilar $EVERY
 Restart=always
 RestartSec=60
 Nice=5
+LimitNOFILE=65536
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
