@@ -765,6 +765,10 @@ def run(ctx: RunContext) -> None:
           f"Remotion {slow_frames} fotogramas ({len(slow)} tramos)"
           + (" · pantalla final aparte (en caché)" if any(s.kind == "endscreen" for s in segments) else ""))
 
+    # The sound does not depend on the picture: mixed and mastered meanwhile (mostly one core), not after it.
+    audio_pool = ThreadPoolExecutor(max_workers=1)
+    audio_job = audio_pool.submit(r.audio, timeline)
+
     # 1. Remotion: the condensed timeline of slow shots, one pass.
     condensed_path = None
     if slow:
@@ -777,9 +781,10 @@ def run(ctx: RunContext) -> None:
             public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
             public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
             tmp = r.dir / "remotion.tmp.mp4"
+            # an intermediate: every piece is cut from it and encoded again, so the cheapest preset (same crf 12)
             r.remotion("Documentary", props, tmp,
                        ["--muted", f"--concurrency={r.concurrency()}", "--codec=h264", "--crf=12",
-                        f"--x264-preset={r.cfg.get('preset', 'veryfast')}"], public)
+                        "--x264-preset=ultrafast"], public)
             tmp.replace(condensed_path)
             spent = time.monotonic() - t
             print(f"   Remotion: {slow_frames} fotogramas en {spent:.0f} s ({slow_frames / max(spent, 0.1):.1f} fps)")
@@ -827,8 +832,9 @@ def run(ctx: RunContext) -> None:
     print(f"   ffmpeg: {len(files)} segmentos en {time.monotonic() - t:.0f} s"
           + (" (codificados con la gráfica)" if r.nvenc else ""))
 
-    # 3. Audio mix + master, then join everything without re-encoding the video.
-    audio = r.audio(timeline)
+    # 3. Audio mix + master (started at the beginning), then join everything without re-encoding the video.
+    audio = audio_job.result()
+    audio_pool.shutdown()
     listing = r.dir / "segments.txt"
     listing.write_text("".join(f"file '{f.resolve()}'\n" for f in files), encoding="utf-8")
     ctx.out_dir.mkdir(parents=True, exist_ok=True)
