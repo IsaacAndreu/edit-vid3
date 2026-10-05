@@ -295,6 +295,8 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         raise RuntimeError("No se pudo codificar la hoja de contactos.")
     image_bytes = encoded.tobytes()
     prompt = f"{shot_brief(shot, topic, hook, subject)}\nCandidates on the sheet: {', '.join(letters)}."
+    if cfg.get("note"):                      # the channel's own rule (canales/<canal>.yaml → judge.note)
+        prompt += f"\nChannel rule: {' '.join(str(cfg['note']).split())}"
     if sources:
         prompt += f"\nSource of each candidate:\n{sources}"
     cache_key = hashlib.sha256(

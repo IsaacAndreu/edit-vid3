@@ -64,6 +64,13 @@ planner:
 
 judge:
   trusted_bonus: 0.05              # prioridad a telediarios y medios económicos
+  # negocio2-4 salieron con el 80-95 % de los planos sin imagen: el juez rechazaba el archivo de la empresa porque
+  # no era la escena exacta que pedía el planificador. En este canal vale cualquier imagen real del tema.
+  note: "This is a business documentary. Real footage of the company or case being narrated (its offices, stores,
+    warehouses, products, logo on a building, executives, news reports or press conferences about it, its website
+    or app) is ACCEPTABLE for any line about that company, even if it does not show the exact action described.
+    Rank the closest one first. Reject only what is off-topic, another company, a presenter talking to camera, or
+    has burned-in subtitles."
   trusted_channels: [Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider, The Economist,
                      Forbes, Vox, DW, Euronews, RTVE, El País, Expansión]
 
