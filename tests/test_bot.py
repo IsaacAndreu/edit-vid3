@@ -19,8 +19,10 @@ class _Http:
         self.sent = []
 
     def post(self, url, data=None, json=None, timeout=None):
-        if data:
+        if data and "text" in data:
             self.sent.append(data["text"])
+        elif json and "text" in json:
+            self.sent.append(json["text"])
 
     def get(self, *a, **k):
         raise AssertionError("no network in tests")
@@ -119,3 +121,20 @@ def test_whisper_audio_is_decoded_by_ffmpeg(tmp_path):
                     "-ar", "44100", str(wav)], check=True)
     audio = decode_audio(wav)
     assert audio.dtype.name == "float32" and 15000 <= len(audio) <= 17000 and float(abs(audio).max()) <= 1.0
+
+
+def test_calendar_commands_morning_and_the_uploaded_button(tmp_path):
+    root = _root(tmp_path)
+    (root / "work" / "avion1" / "current.json").unlink()
+    (root / "out" / "avion1").mkdir(parents=True)
+    (root / "out" / "avion1" / "video-final.mp4").write_bytes(b"x")
+    b, http = _bot(root)
+    for command in ("/hoy", "/semana", "/huecos"):
+        b.handle({"message": {"chat": {"id": 42}, "text": command}})
+    assert len(http.sent) == 3 and http.sent[0].startswith("📅")
+    noon = datetime.now().replace(hour=12, minute=0).timestamp()
+    b.calendar_chores(noon)
+    b.calendar_chores(noon + 60)                                       # the morning summary only once a day
+    assert sum(t.startswith("☀️") for t in http.sent) == 1
+    b.handle({"callback_query": {"id": "1", "data": "subido:avion1", "message": {"chat": {"id": 42}}}})
+    assert (root / "out" / "avion1" / "publicado.json").is_file() and "marcado como subido" in http.sent[-1]

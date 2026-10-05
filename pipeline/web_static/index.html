@@ -58,6 +58,17 @@
   .spend div { flex: 1; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 2px; position: relative; }
   .spend span { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
   #login { max-width: 360px; margin: 12vh auto; }
+  .cal-day { margin: 16px 0 6px; font-weight: 700; } .cal-day.today { color: var(--accent); }
+  .slot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px;
+          background: var(--panel); border: 1px solid var(--line); margin: 6px 0; }
+  .slot.gap { border-color: var(--bad); } .slot.ok { border-color: var(--ok); } .slot.past { opacity: .55; }
+  .slot b { min-width: 110px; } .slot select { width: auto; padding: 5px 8px; }
+  .days label { display: inline-flex; gap: 4px; align-items: center; margin: 0 8px 0 0; font-weight: 400; }
+  .days input { width: auto; }
+  .kanban { display: grid; gap: 12px; grid-template-columns: repeat(5, minmax(200px, 1fr)); overflow-x: auto; }
+  .kanban .col { background: var(--panel2); border-radius: var(--radius); padding: 10px; min-height: 200px; }
+  .kanban .col h3 { margin: 4px 4px 10px; font-size: 14px; }
+  .kanban .item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 13.5px; }
   .review { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
   .review .card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
   .review .card.correcta { border-color: var(--ok); } .review .card.incorrecta { border-color: var(--bad); } .review .card.dudosa { border-color: #d29922; }
@@ -106,7 +117,7 @@
 <header id="top" class="hide">
   <b>🎬 Estudio</b>
   <nav>
-    <a href="#/">Inicio</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Competencia</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
+    <a href="#/">Inicio</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Competencia</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
   </nav>
   <span id="service" class="small muted"></span>
 </header>
@@ -721,6 +732,86 @@ async function channelPage() {
       <div class="small muted"><b>${times(t.ratio)}</b> lo normal · ${t.count} vídeos · ${t.hits} éxitos · mediana ${kfmt(t.medianViews)}</div></div></div>`).join("") || '<div class="muted">Sin temas (pocos vídeos o sin IA configurada).</div>'}</div>`;
 }
 
+// --- Calendario: días de publicación por canal y qué vídeo sale en cada uno --------------------------------------
+const DAY = (iso) => { const d = new Date(iso + "T12:00:00"); return d.toLocaleDateString("es-ES", {weekday: "long", day: "numeric", month: "short"}); };
+async function calendarPage() {
+  const a = await api("/api/agenda"), st = a.settings, today = new Date().toISOString().slice(0, 10);
+  const byDay = {};
+  a.plan.forEach((s) => (byDay[s.date] = byDay[s.date] || []).push(s));
+  const free = (channel) => a.videos.filter((v) => v.channel === channel && !["subido"].includes(v.status));
+  const slot = (s) => {
+    const v = s.video, cls = s.ok ? "ok" : s.gap ? "gap" : "";
+    const state = !v ? `<span class="pill error">hueco</span> <span class="small muted">${s.past ? "" : (s.late ? "⏰ ya vas tarde" : "guion y voz antes del " + DAY(s.deadline.slice(0, 10)) + " " + s.deadline.slice(11))}</span>`
+      : `<a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a> ${pill(v.status === "subido" ? "hecho" : v.status)} ${v.status === "subido" ? '<span class="small muted">subido</span>' : ""}
+         ${s.pinned ? '<span class="small muted">📌 fijado</span>' : ""}
+         ${s.gap && !s.past ? `<span class="small muted">${s.late ? "⏰ ya vas tarde" : "listo antes del " + DAY(s.deadline.slice(0, 10)) + " " + s.deadline.slice(11)}</span>` : ""}`;
+    const choose = s.past ? "" : `<select onchange="pin(this.value, '${s.date}')"><option value="">Poner otro…</option>${free(s.channel).map((x) =>
+      `<option value="${esc(x.slug)}">${esc(x.slug)} (${esc(x.status)})</option>`).join("")}</select>`;
+    const done = v && v.status === "hecho" && s.date <= today ? `<button onclick="uploaded('${esc(v.slug)}')">Ya está subido</button>` : "";
+    const unpin = s.pinned ? `<button onclick="pin('${esc(v.slug)}', '')">Quitar fijado</button>` : "";
+    return `<div class="slot ${cls} ${s.past ? "past" : ""}"><b>${esc(s.channel)} · ${esc(s.time)}</b><span>${state}</span>
+      <span style="margin-left:auto" class="row">${done}${unpin}${choose}</span></div>`;
+  };
+  const reserve = Object.entries(a.reserve).map(([c, n]) => `<span class="pill ${n < st.buffer ? "error" : "hecho"}">${esc(c)}: ${n} listo${n === 1 ? "" : "s"}</span>`).join(" ");
+  const rules = Object.entries(st.schedule).map(([c, r]) => `<div class="card" style="margin-bottom:10px">
+      <div class="row" style="justify-content:space-between"><b>${esc(c)}</b>
+        <label style="margin:0;font-weight:400"><input type="checkbox" style="width:auto" ${r.enabled ? "checked" : ""} onchange="rule('${esc(c)}', {enabled: this.checked})"> publica en este canal</label></div>
+      <div class="days" style="margin-top:8px">${a.weekdays.map((d, i) => `<label><input type="checkbox" ${r.days.includes(i) ? "checked" : ""}
+        onchange="toggleDay('${esc(c)}', ${i}, this.checked)"> ${d.slice(0, 3)}</label>`).join("")}
+        <input type="time" value="${esc(r.time)}" style="width:auto;margin-left:8px" onchange="rule('${esc(c)}', {time: this.value})"></div></div>`).join("");
+  window.agendaRules = st.schedule;
+  $("#app").innerHTML = `<h1>Calendario</h1>
+    <div class="row">${reserve} <span class="small muted">vídeos listos sin subir por canal (objetivo ${st.buffer})</span></div>
+    ${Object.keys(byDay).sort().map((d) => `<div class="cal-day ${d === today ? "today" : ""}">${DAY(d)}${d === today ? " · hoy" : ""}</div>${byDay[d].map(slot).join("")}`).join("")
+      || '<div class="notice">No hay días de publicación: márcalos abajo.</div>'}
+    <h2>Días de publicación</h2>${rules}
+    <div class="card"><div class="two">
+      <div><label>Margen para tener guion y voz <span class="muted">(horas antes de publicar)</span></label>
+        <input type="number" min="6" step="1" value="${st.lead_hours}" onchange="option({lead_hours: +this.value})"></div>
+      <div><label>Vídeos de reserva por canal <span class="muted">(aviso si hay menos)</span></label>
+        <input type="number" min="0" step="1" value="${st.buffer}" onchange="option({buffer: +this.value})"></div>
+      <div><label>Hora del resumen de la mañana <span class="muted">(Telegram)</span></label>
+        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`;
+  window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
+  window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
+    await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); calendarPage(); };
+  window.rule = async (channel, change) => { await post("/api/agenda", {channel, ...change}); calendarPage(); };
+  window.toggleDay = (channel, day, on) => { const days = new Set(window.agendaRules[channel].days); on ? days.add(day) : days.delete(day); rule(channel, {days: [...days]}); };
+  window.option = async (change) => { await post("/api/agenda", change); calendarPage(); };
+}
+
+// --- Tablero: de la idea al vídeo subido ---------------------------------------------------------------------------
+async function boardPage() {
+  const b = await api("/api/board"), names = {"idea": "💡 Ideas", "falta voz": "📝 Falta guion o voz", "en cola": "⏳ En cola", "hecho": "✅ Hecho", "subido": "📺 Subido"};
+  window.boardIdeas = {};
+  const card = (x) => {
+    if (x.kind === "idea") {
+      window.boardIdeas[x.id] = x;
+      return `<div class="item"><b>${esc(x.title)}</b><div class="small muted">${esc(x.channel || "sin canal")}${x.date ? " · para el " + esc(DAY(x.date)) : ""}</div>
+        ${x.note ? `<div class="small" style="margin-top:4px">${esc(String(x.note).slice(0, 160))}</div>` : ""}
+        <div class="row" style="margin-top:8px"><button class="main" onclick="makeVideo('${esc(x.id)}')">Crear vídeo</button>
+        <button onclick="dropIdea('${esc(x.id)}')">Quitar</button></div></div>`;
+    }
+    return `<div class="item"><a href="#/video/${encodeURIComponent(x.slug)}"><b>${esc(x.title || x.slug)}</b></a>
+      <div class="small muted">${esc(x.channel)} · ${esc(x.status)}${x.date ? " · sale el " + esc(DAY(x.date)) : x.published ? " · " + esc(x.published) : ""}</div></div>`;
+  };
+  $("#app").innerHTML = `<h1>Tablero</h1>
+    <div class="card" style="margin-bottom:14px"><div class="row">
+      <input id="bt" placeholder="Nueva idea: título" style="flex:2;min-width:220px">
+      <select id="bc" style="flex:1;min-width:140px"><option value="">canal…</option>${b.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select>
+      <input id="bd" type="date" style="flex:1;min-width:150px" title="Para qué día (opcional)">
+      <button class="main" onclick="addIdea()">Añadir idea</button></div>
+      <input id="bn" placeholder="Notas (opcional): ángulo, gancho, fuentes…" style="margin-top:8px"></div>
+    <div class="kanban">${Object.entries(b.columns).map(([k, items]) => `<div class="col"><h3>${names[k] || k} <span class="muted">${items.length}</span></h3>
+      ${items.map(card).join("") || '<div class="small muted" style="padding:4px">—</div>'}</div>`).join("")}</div>`;
+  window.addIdea = async () => { try { await post("/api/board/idea", {title: $("#bt").value, channel: $("#bc").value, date: $("#bd").value, note: $("#bn").value}); boardPage(); }
+    catch (e) { alert(e.message); } };
+  window.dropIdea = async (id) => { if (!confirm("¿Quitar esta idea?")) return; await post("/api/board/idea", {delete: id}); boardPage(); };
+  window.makeVideo = (id) => { const x = window.boardIdeas[id], idea = {...(x.idea || {}), title: x.title};
+    try { sessionStorage.setItem("prefill", JSON.stringify({idea, channel: x.channel})); } catch (e) {}
+    window.prefill = {idea, channel: x.channel}; location.hash = "#/nuevo"; };
+}
+
 async function newChannelPage() {
   data = await api("/api/overview");
   $("#app").innerHTML = `<h1>Nuevo canal</h1>
@@ -772,6 +863,8 @@ async function route() {
     else if (hash === "#/canal") await channelPage();
     else if (hash === "#/canal-nuevo") await newChannelPage();
     else if (hash === "#/nuevo") await newVideo();
+    else if (hash === "#/calendario") await calendarPage();
+    else if (hash === "#/tablero") await boardPage();
     else if (hash === "#/estadisticas") await stats();
     else if (hash === "#/ajustes") await settingsPage();
     else await home();

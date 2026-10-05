@@ -35,7 +35,9 @@ STAGES = {"factcheck": "Verificar datos", "align": "Alinear la voz", "planner": 
           "people": "Personas", "fallback": "Rellenar huecos", "coldopen": "Apertura", "timeline": "Montaje",
           "qa": "Revisión", "render": "Render", "shorts": "Shorts", "package": "Títulos"}
 ICONS = {"hecho": "✅", "haciendo": "▶️", "en cola": "⏳", "error": "❌", "incompleto": "📝"}
-COMMANDS = [("estado", "Qué está haciendo ahora"), ("gasto", "Gasto de API"), ("videos", "Últimos vídeos"),
+COMMANDS = [("hoy", "Qué toca publicar hoy"), ("semana", "Calendario de los próximos 7 días"),
+            ("huecos", "Días sin vídeo y plazos"),
+            ("estado", "Qué está haciendo ahora"), ("gasto", "Gasto de API"), ("videos", "Últimos vídeos"),
             ("errores", "Vídeos con error"), ("youtube", "Cómo responde YouTube (24 h)"), ("pausa", "No empezar más vídeos"),
             ("seguir", "Volver a hacer vídeos"), ("ayuda", "Lista de comandos")]
 
@@ -256,6 +258,21 @@ class Bot:
         if not words:
             return ""
         command, args = words[0].lstrip("/").split("@")[0].lower(), words[1:]
+        from . import agenda
+
+        if command == "hoy":
+            return agenda.today_text(self.root)
+        if command in ("semana", "calendario"):
+            return agenda.week_text(self.root)
+        if command == "huecos":
+            return "\n\n".join(t for t in (agenda.gaps_text(self.root), agenda.reserve_text(self.root)) if t)
+        if command == "subido":
+            if not args:
+                return "Dime cuál: /subido <nombre> [enlace de YouTube]"
+            from . import housekeeping
+
+            housekeeping.mark_published(self.root, args[0], args[1] if len(args) > 1 else "")
+            return f"✅ {args[0]} marcado como subido."
         if command in ("estado", "start", "status"):
             return status_text(self.root)
         if command in ("gasto", "coste", "dinero"):
@@ -287,9 +304,92 @@ class Bot:
             web.retry(self.root, args[0])
             return f"🔁 {args[0]} se vuelve a intentar en la próxima vuelta del vigilante (unos minutos)."
         return "Comandos:\n" + "\n".join(f"/{name} — {what}" for name, what in COMMANDS) + \
-            "\n/video <nombre> — un vídeo\n/limite <dólares> — gasto máximo al día\n/reintentar <nombre>"
+            "\n/video <nombre> — un vídeo\n/limite <dólares> — gasto máximo al día\n/reintentar <nombre>" \
+            "\n/subido <nombre> [enlace] — marcarlo como subido a YouTube"
+
+    def send_buttons(self, text: str, buttons: list[list[dict[str, str]]]) -> None:
+        try:
+            self.http.post(f"{self.base}/sendMessage", timeout=30,
+                           json={"chat_id": self.chat, "text": text[:4000], "reply_markup": {"inline_keyboard": buttons}})
+        except requests.RequestException as error:
+            print(f"Telegram: {type(error).__name__}")
+
+    def pressed(self, query: dict[str, Any]) -> None:
+        """A button under a message: «Ya está subido»."""
+
+        if str(((query.get("message") or {}).get("chat") or {}).get("id")) != self.chat:
+            return
+        data = str(query.get("data") or "")
+        reply = ""
+        if data.startswith("subido:"):
+            from . import housekeeping
+
+            slug = data.split(":", 1)[1]
+            try:
+                housekeeping.mark_published(self.root, slug)
+                reply = f"✅ {slug} marcado como subido. Si quieres que siga sus vistas, mándame el enlace: /subido {slug} <enlace>"
+            except FileNotFoundError:
+                reply = f"No encuentro {slug}"
+        try:
+            self.http.post(f"{self.base}/answerCallbackQuery", data={"callback_query_id": query.get("id")}, timeout=30)
+        except requests.RequestException:
+            pass
+        if reply:
+            self.send(reply)
+
+    def morning(self) -> None:
+        from . import agenda
+        from .notify import studio_link
+
+        ctx = RunContext.create("_bot", root=self.root)
+        today = datetime.now().date().isoformat()
+        buttons = []
+        for slot in agenda.plan(self.root, days=1):
+            video = slot["video"]
+            if slot["date"] == today and video and video["status"] == "hecho":
+                row = [{"text": f"✅ Ya subí {video['slug']}", "callback_data": f"subido:{video['slug']}"[:64]}]
+                link = studio_link(ctx, f"video/{video['slug']}")
+                if link.startswith("https://"):
+                    row.append({"text": "▶️ Ver y copiar textos", "url": link})
+                buttons.append(row)
+        text = agenda.morning_text(self.root)
+        self.send_buttons(text, buttons) if buttons else self.send(text)
+
+    def calendar_chores(self, now: float) -> None:
+        """The morning summary, the Sunday summary, deadlines about to pass and the views of what went out."""
+
+        from . import agenda
+
+        cfg = agenda.settings(self.root)
+        moment = datetime.fromtimestamp(now)
+        today = moment.date().isoformat()
+        if moment.hour >= cfg["morning_hour"] and self.state.get("morning") != today:
+            self.state["morning"] = today
+            self.morning()
+        if moment.weekday() == 6 and moment.hour >= 19 and self.state.get("weekly") != today:
+            self.state["weekly"] = today
+            self.send(agenda.weekly_text(self.root))
+        told = self.state.setdefault("deadlines", {})
+        for slot in agenda.plan(self.root, days=7, now=moment):
+            key = f"{slot['channel']}:{slot['date']}"
+            left = (datetime.fromisoformat(slot["deadline"]) - moment).total_seconds() / 3600
+            if slot["gap"] and left <= 24 and key not in told:
+                told[key] = today
+                what = "no tiene vídeo" if not slot["video"] else f"«{slot['video']['slug']}» está en «{slot['video']['status']}»"
+                self.send(f"⏰ {slot['channel']} publica {agenda._day(slot['date'])} a las {slot['time']} y {what}.\n"
+                          + ("Ya vas tarde para tenerlo a tiempo." if left <= 0 else
+                             f"Sube guion y voz antes de {agenda._deadline(slot['deadline'])} (quedan {left:.0f} h)."))
+        for key in [k for k, v in told.items() if v < (moment.date() - timedelta(days=14)).isoformat()]:
+            told.pop(key)
+        if now - float(self.state.get("views_at") or 0) >= 3600:
+            self.state["views_at"] = now
+            for message in agenda.tracking(self.root, now):
+                self.send(message)
 
     def handle(self, update: dict[str, Any]) -> None:
+        if update.get("callback_query"):
+            self.pressed(update["callback_query"])
+            return
         message = update.get("message") or {}
         if str((message.get("chat") or {}).get("id")) != self.chat:   # only your chat
             return
@@ -351,6 +451,10 @@ class Bot:
             self.send(f"💾 Disco casi lleno: quedan {free:.0f} GB. Marca como subidos los vídeos que ya estén en YouTube "
                       "(estudio → el vídeo → «Ya está subido») para liberar espacio.")
         warnings["disk"] = low
+        try:
+            self.calendar_chores(now)
+        except Exception as error:                       # the calendar never stops the bot
+            print(f"Calendario: {type(error).__name__}: {str(error)[:160]}")
         self._save()
 
     def run(self) -> None:

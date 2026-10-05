@@ -192,7 +192,10 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
 
         if not is_done(root, d.name):                       # final video, or uploaded and cleaned up
             ready.append(d)
-    return [d.name for d in sorted(ready, key=lambda d: (d.stat().st_mtime, d.name))]
+    from pipeline import agenda
+
+    due = agenda.priority(root) if ready else {}          # the video that goes out first is made first
+    return [d.name for d in sorted(ready, key=lambda d: (due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
 
 
 HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»

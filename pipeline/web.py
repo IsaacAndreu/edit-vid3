@@ -633,6 +633,17 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(spending(root))
                 if path == "/api/settings":
                     return self._ok(settings(root))
+                if path == "/api/agenda":                  # the publishing calendar (pipeline/agenda.py)
+                    from . import agenda
+
+                    listed = agenda.videos(root)
+                    return self._ok({"settings": agenda.settings(root), "weekdays": agenda.WEEKDAYS,
+                                     "plan": agenda.plan(root, days=28, listed=listed),
+                                     "reserve": agenda.reserve(root, listed), "videos": listed})
+                if path == "/api/board":
+                    from . import agenda
+
+                    return self._ok({"columns": agenda.board(root), "channels": agenda.channels(root)})
                 if path == "/api/notify":
                     from . import notify
 
@@ -734,6 +745,18 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(start_queue(root))
                 if path == "/api/queue/retry-all":
                     return self._ok(retry_all(root))
+                if path == "/api/agenda":                  # days and time of a channel, options, pin a video to a day
+                    from . import agenda
+
+                    return self._ok(agenda.update(root, body))
+                if path == "/api/board/idea":
+                    from . import agenda
+
+                    if body.get("delete"):
+                        agenda.remove_idea(root, str(body["delete"]))
+                        return self._ok({"ok": True})
+                    return self._ok(agenda.add_idea(root, str(body.get("title") or ""), str(body.get("channel") or ""),
+                                                    str(body.get("note") or ""), str(body.get("date") or "")))
                 if path == "/api/channels":                # a new channel profile
                     return self._ok(create_channel(root, body))
                 if path == "/api/hook":                    # {title, script, channel}: before recording
