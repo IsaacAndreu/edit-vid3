@@ -494,6 +494,14 @@ def run(ctx: RunContext) -> None:
           f"sin resolver: {len(unresolved)} · coste {spent:.3f} $ · {time.monotonic() - started:.0f} s")
     for shot_id, why in unresolved.items():
         print(f"   AVISO {shot_id}: {why[:200]}")
+    # Most of the video without a picture is a slideshow of chalkboards (negocio2-4: 80-95 % of the shots): stop
+    # here, before the render, instead of making it. qa.max_empty_share (0.5) of the footage shots, at most.
+    limit = float(ctx.section("qa").get("max_empty_share", 0.5))
+    if shots and len(unresolved) / len(shots) > limit:
+        raise RuntimeError(
+            f"{len(unresolved)} de {len(shots)} planos sin ninguna imagen ({len(unresolved) / len(shots):.0%}): no se "
+            "monta, saldría un vídeo de pizarras de texto. Revisa «Decisiones del relleno» (el juez rechazó casi todo) "
+            "o permite el stock como último recurso en el canal (fallback: pexels: true).")
 
 
 def web_photos(ctx: RunContext, broll: Any, notes: list[str]) -> dict[str, Candidate]:

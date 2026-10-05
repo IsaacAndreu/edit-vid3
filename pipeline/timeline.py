@@ -612,8 +612,10 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                 graphic[side]["media"] = graphics.portrait(ctx, graphic[side]["name"], people)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
-    punches = (fill_empty_shots(shots, [*groups, *added], fps)
-               if str(ctx.section("timeline").get("empty_shots", "video")) == "video" else [])
+    borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
+    punches = fill_empty_shots(shots, [*groups, *added], fps) if borrow else []
+    if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
+        fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False)
     boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
     if punches:
         print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
@@ -778,17 +780,23 @@ def punch_words(text: str, most: int = 3) -> str:
                 continue
             if sentence[window[0]] != sentence[window[-1]]:
                 continue
+            # only something that says something: a figure or a name («2.500 millones», «Lina Khan»), never two
+            # long words that happen to be there («mismo objetivo», «cliente cualquiera»)
+            if not any(any(c.isdigit() for c in words[k]) or (words[k][:1].isupper() and k not in first)
+                       for k in window):
+                continue
             value = sum(score(k) for k in window) - 0.8 * sum(1 for k in window if score(k) == 0)
             value += 0.5 if size == 2 else 0
             if value > best_value:
                 best, best_value = " ".join(words[k] for k in window), value
-    return best if best_value >= 3 else ""            # nothing striking (no name, figure or long word): just footage
+    return best if best_value >= 3 else ""            # nothing striking (no name or figure): just footage
 
 
 PUNCH_GAP = 40               # s between two flashes of key words over borrowed footage
 
 
-def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
+                     words: bool = True) -> list[TimelineGroup]:
     """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the clip used
     farthest away in time, pushed in so it does not look repeated, and at the start of each stretch the 1-3 key
     words of what is said flash over it for ~2 s. Changes `shots` in place; returns the word overlays."""
@@ -804,7 +812,7 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
     run_start = None
 
     def flush() -> None:
-        if run_start is None:
+        if run_start is None or not words:
             return
         # words on every gap read as a slideshow (negocios1: 55 in 14 min): at most one every PUNCH_GAP seconds
         if overlays and run_start - overlays[-1].from_ < PUNCH_GAP * fps:
@@ -823,7 +831,7 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
         start, end = shot.from_, shot.from_ + shot.durationInFrames
         if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
             continue
-        fitting = [d for d in donors if uses.get(d.id, 0) < 2]
+        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses]
         if not fitting:
             continue
         donor = max(fitting, key=lambda d: abs(d.from_ - start) - 600 * uses.get(d.id, 0))
@@ -852,7 +860,10 @@ def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int
         start, end = shot.from_, shot.from_ + shot.durationInFrames
         if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
             continue
-        if runs and runs[-1][-1].from_ + runs[-1][-1].durationInFrames == start:
+        # one board never stays more than ~6 s (negocio2: the same sentence for 75 s): a long stretch is split and
+        # each part shows the words of what is being said then
+        if (runs and runs[-1][-1].from_ + runs[-1][-1].durationInFrames == start
+                and start - runs[-1][0].from_ < 6 * fps):
             runs[-1].append(shot)
         else:
             runs.append([shot])
