@@ -69,7 +69,9 @@ Reject (leave out of the ranking) a candidate that:
   of the very person the video is about is fine when the narration quotes or describes them);
 - is blurry, black, frozen, a cartoon/animation or video-game footage (unless asked), or a slide;
 - has burned-in subtitles or captions, even small ones;
-- is a screen recording or tutorial of software, a spreadsheet, a form, a website or an app;
+- is a screen recording or tutorial of software, a spreadsheet, a form, a website or an app — UNLESS the narration
+  is about that app, website or interface itself (how a service signs people up or makes it hard to cancel, an
+  app's design, a platform's settings): then a clear recording of that screen IS the right footage, accept it;
 - takes the viewer out of the video's topic: a comparison or metaphor illustrated literally
   (a restaurant kitchen for "it is not like opening a restaurant"), or generic office/stock
   footage for an abstract idea, when footage of the topic itself would fit.
@@ -91,8 +93,8 @@ Prefer real footage of the exact named entity over generic footage, and moving f
 stills when both fit. Return an empty ranking only if none is acceptable.
 
 First describe every candidate in "candidates": what its frames really show (a few plain
-words), whether it is a screen / UI / chart / document dominated by text, and whether it
-belongs to the video's topic (for a video about a person: same sport/discipline, not another
+words), whether it is a screen / UI / chart / document dominated by text (false for a clear recording of the very
+app or website the narration is about), and whether it belongs to the video's topic (for a video about a person: same sport/discipline, not another
 athlete shown as if they were the subject). Then rank. A candidate flagged as screen or off-topic is
 never used, whatever the ranking says.
 Be brief (you are billed per word): "shows" is at most 10 words, "reason" one sentence of at most 20 words.
