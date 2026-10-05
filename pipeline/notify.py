@@ -160,9 +160,51 @@ def video_ready(ctx: RunContext, *, title: str, duration: float, verdict: str, d
              ("▶️ Ver y descargar", studio_link(ctx, f"video/{ctx.slug}"))]
     more = details + ("\n\nTítulos:\n" + "\n".join(f"{n}. {t}" for n, t in enumerate(titles, 1)) if titles else "")
     telegram_card(ctx, caption, thumbnails[0] if thumbnails else None, links, more.strip())
+    sheet = contact_sheet(ctx.out_dir / "video-final.mp4", ctx.out_dir / "hoja.jpg", duration)
+    if sheet:                    # the whole video at a glance: chalkboards, repeats, black frames show at once
+        telegram_photo(ctx, sheet, f"Vista rápida de «{title}»: un fotograma cada {sheet_step(duration):.0f} s")
     body = caption + "\n\n" + more + "".join(f"\n{label}: {url}" for label, url in links if url) + \
         f"\n\nVídeo: {ctx.out_dir / 'video-final.mp4'}\nDescripción, capítulos y etiquetas: {ctx.out_dir / 'youtube.txt'}"
     email(ctx, caption.splitlines()[0] + f": {title}", body, list(thumbnails))
+
+
+def sheet_step(duration: float, tiles: int = 60) -> float:
+    return max(5.0, duration / tiles)
+
+
+def contact_sheet(video: Path, target: Path, duration: float) -> Path | None:
+    """One picture with 60 frames of the video in a 6x10 grid, each with its minute: hoja.jpg."""
+
+    import subprocess
+
+    if not video.is_file() or duration <= 0:
+        return None
+    import math
+
+    step = sheet_step(duration)
+    rows = max(1, min(10, math.ceil(math.ceil(duration / step) / 6)))
+    stamp = "drawtext=text='%{pts\\:hms}':x=5:y=5:fontsize=18:fontcolor=yellow:box=1:boxcolor=black,"
+    for draw in (stamp, ""):            # without a font for drawtext, the same grid without the minutes
+        done = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(video), "-vf",
+                               f"fps=1/{step:.3f},scale=320:-1,setpts=N/(1/{step:.3f})/TB,{draw}tile=6x{rows}",
+                               "-frames:v", "1", "-q:v", "4", str(target)], capture_output=True)
+        if done.returncode == 0 and target.is_file():
+            return target
+    return None
+
+
+def telegram_photo(ctx: RunContext, photo: Path, caption: str) -> bool:
+    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False), ctx.env("TELEGRAM_CHAT_ID", required=False)
+    if not token or not chat:
+        return False
+    try:
+        with photo.open("rb") as handle:
+            requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id": chat, "caption": caption[:1024]},
+                          files={"photo": handle}, timeout=60)
+        return True
+    except (requests.RequestException, OSError) as error:
+        print(f"Aviso: no se pudo enviar la vista rápida a Telegram ({type(error).__name__})")
+        return False
 
 
 def video_failed(ctx: RunContext, error: BaseException) -> None:
