@@ -238,3 +238,28 @@ def test_the_subtitles_give_word_timings_and_align_skips_whisper(tmp_path, monke
 def test_cues_from_srt_too():
     cues = tts.parse_cues("1\n00:00:01,200 --> 00:00:02,000\n<b>Hola</b> mundo\n\n2\n00:00:02,000 --> 00:00:03,500\nadiós\n")
     assert cues == [(1.2, 2.0, "Hola mundo"), (2.0, 3.5, "adiós")]
+
+
+class _Credits:
+    def __init__(self, amount):
+        self.amount, self.calls = amount, 0
+
+    def request(self, method, url, headers=None, timeout=None, json=None, params=None):
+        assert url.endswith("/v1/labs/credits")
+        self.calls += 1
+        return _Response(payload=[{"amount": self.amount, "expire_at": "2027-01-01T00:00:00Z"}])
+
+
+def test_low_credits_are_told_once_a_day(tmp_path, monkeypatch):
+    _negocios(tmp_path)
+    told = []
+    monkeypatch.setattr(tts, "_tell", lambda root, text: told.append(text))
+    api = _Credits(756_769)
+    state = tts.check_credits(tmp_path, "k", api, now=1_000_000)
+    assert state["videos"] > 50 and not told                             # ~54 voices left: nothing to say
+    assert tts.check_credits(tmp_path, "k", api, now=1_000_100) is None and api.calls == 1    # once an hour
+    api.amount = 40_000
+    tts.check_credits(tmp_path, "k", api, now=1_004_000)
+    assert len(told) == 1 and "unas 3 voces" in told[0]
+    tts.check_credits(tmp_path, "k", api, now=1_008_000)
+    assert len(told) == 1                                                # not again until tomorrow

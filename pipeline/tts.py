@@ -487,6 +487,10 @@ def prepare_all(root: Path, log: Any = print) -> int:
 
     if not voices(root):
         return 0
+    try:
+        check_credits(root, RunContext.create("_voces", root=root).env("GENAIPRO_API_KEY", required=False) or "")
+    except Exception as error:                   # never stops the voices
+        log(f"Créditos de GenAIPro: {type(error).__name__}: {str(error)[:150]}")
     made = 0
     materials = root / "materiales"
     for folder in sorted(video_folders(root), key=lambda d: d.stat().st_mtime):
@@ -518,6 +522,52 @@ def prepare_all(root: Path, log: Any = print) -> int:
                 _tell(root, f"🎙️ No se pudo generar la voz de {folder.name} con GenAIPro:\n{str(error)[:300]}\n\n"
                             f"Lo reintento cada {RETRY_MINUTES} min.")
     return made
+
+
+CREDITS_STATE = "out/_voces_creditos.json"
+VIDEO_CHARS = 14000              # a 15-minute script, until real ones are measured (voz.genaipro.json)
+
+
+def chars_per_video(root: Path) -> float:
+    from .context import video_folders
+
+    made = []
+    for folder in video_folders(root):
+        try:
+            made.append(float(json.loads((folder / "voz.genaipro.json").read_text("utf-8"))["chars"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return sum(made) / len(made) if made else VIDEO_CHARS
+
+
+def check_credits(root: Path, token: str, session: Any = None, now: float | None = None) -> dict[str, Any] | None:
+    """Every hour: GenAIPro's credits; a Telegram message (once a day) when they cover fewer than
+    `tts.min_videos` (5) narrations, so the queue does not run dry in the middle of the night."""
+
+    now = time.time() if now is None else now
+    path = root / CREDITS_STATE
+    try:
+        state = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    if now - float(state.get("checked") or 0) < 3600 or not token or not voices(root):
+        return None
+    from .context import RunContext
+
+    cfg = RunContext.create("_voces", root=root).section("tts") if (root / "config.yaml").is_file() else {}
+    rows = GenAIPro(token, session).credits()
+    left = sum(float(r.get("amount") or 0) for r in (rows if isinstance(rows, list) else [rows]) if isinstance(r, dict))
+    per_video = chars_per_video(root) * float(cfg.get("credits_per_char", 1.0))
+    videos = left / per_video if per_video else 0
+    state.update(checked=now, credits=left, videos=round(videos, 1))
+    minimum = float(cfg.get("min_videos", 5))
+    if videos < minimum and now - float(state.get("alerted") or 0) > 20 * 3600:
+        state["alerted"] = now
+        _tell(root, f"🎙️ Quedan {left:,.0f} créditos de GenAIPro: unas {videos:.0f} voces más "
+                    f"(~{per_video:,.0f} por vídeo). Recarga antes de que la cola se quede sin voz.".replace(",", "."))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    return state
 
 
 def _tell(root: Path, text: str) -> None:
