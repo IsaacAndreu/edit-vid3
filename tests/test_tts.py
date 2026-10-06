@@ -263,3 +263,25 @@ def test_low_credits_are_told_once_a_day(tmp_path, monkeypatch):
     assert len(told) == 1 and "unas 3 voces" in told[0]
     tts.check_credits(tmp_path, "k", api, now=1_008_000)
     assert len(told) == 1                                                # not again until tomorrow
+
+
+def test_a_dropped_connection_while_waiting_is_retried_but_a_create_is_not(tmp_path, monkeypatch):
+    import requests
+
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    fake = _FakeGenAIPro(b"mp3")
+    real = fake.request
+    drops = {"n": 0}
+
+    def flaky(method, url, **kw):
+        if method == "GET" and drops["n"] < 2:
+            drops["n"] += 1
+            raise requests.ConnectionError("reset")
+        return real(method, url, **kw)
+
+    fake.request = flaky
+    api = tts.GenAIPro("k", fake)
+    assert api.wait("t1").endswith("t1.mp3") and drops["n"] == 2
+    fake.request = lambda method, url, **kw: (_ for _ in ()).throw(requests.ConnectionError("reset"))
+    with pytest.raises(tts.TTSError):
+        api.create("hola", {**tts.DEFAULTS, "voice_id": "V1"})

@@ -364,6 +364,11 @@ def retry_all(root: Path) -> dict[str, Any]:
     path = root / "out" / "_vigilar.json"
     state = _json(path) or {}
     count = len(state)
+    from . import tts
+    from .context import video_folders
+
+    for folder in video_folders(root):                 # a voice GenAIPro failed: try it now too, not in 30 min
+        (folder / tts.FAILED).unlink(missing_ok=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{}", encoding="utf-8")
     if watcher_alive(root):

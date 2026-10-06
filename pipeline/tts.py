@@ -94,11 +94,25 @@ class GenAIPro:
         self.http = session or requests.Session()
         self.headers = {"Authorization": f"Bearer {token}"}
 
+    RETRIES = (2, 5, 10, 20, 40)       # seconds between tries of a read (avion7: one ConnectionError lost a voice)
+
     def _call(self, method: str, path: str, **kwargs: Any) -> Any:
-        try:
-            response = self.http.request(method, BASE + path, headers=self.headers, timeout=60, **kwargs)
-        except requests.RequestException as error:
-            raise TTSError(f"GenAIPro no responde ({type(error).__name__})") from error
+        """One API call. Reads (GET) are retried on network errors, 429 and 5xx; a POST is never repeated blindly
+        (a task created twice is paid twice)."""
+
+        waits = list(self.RETRIES) if method == "GET" else []
+        while True:
+            try:
+                response = self.http.request(method, BASE + path, headers=self.headers, timeout=60, **kwargs)
+            except requests.RequestException as error:
+                if waits:
+                    time.sleep(waits.pop(0))
+                    continue
+                raise TTSError(f"GenAIPro no responde ({type(error).__name__})") from error
+            if waits and (response.status_code == 429 or response.status_code >= 500):
+                time.sleep(waits.pop(0))
+                continue
+            break
         if response.status_code >= 400:
             try:
                 detail = response.json()
@@ -157,16 +171,21 @@ class GenAIPro:
         return str(url)
 
     def download(self, url: str, target: Path) -> Path:
-        try:
-            with self.http.get(url, stream=True, timeout=300) as response:
-                response.raise_for_status()
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with target.open("wb") as out:
-                    for chunk in response.iter_content(1 << 16):
-                        out.write(chunk)
-        except requests.RequestException as error:
-            raise TTSError(f"No se pudo bajar el audio de GenAIPro ({type(error).__name__})") from error
-        return target
+        waits = list(self.RETRIES)
+        while True:
+            try:
+                with self.http.get(url, stream=True, timeout=300) as response:
+                    response.raise_for_status()
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with target.open("wb") as out:
+                        for chunk in response.iter_content(1 << 16):
+                            out.write(chunk)
+                return target
+            except (requests.RequestException, RuntimeError) as error:
+                if waits:
+                    time.sleep(waits.pop(0))
+                    continue
+                raise TTSError(f"No se pudo bajar el audio de GenAIPro ({type(error).__name__})") from error
 
 
 # --- the script → the narration ---------------------------------------------------------------------------------
