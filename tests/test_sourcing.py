@@ -287,3 +287,15 @@ class WebPhotoTests(unittest.TestCase):
                                       "mediaUrl": "https://x/1.jpg", "width": 1200, "height": 800})
         option = photo_option(c)
         self.assertEqual((option.kind, option.analysisPath, option.total), ("image", "cache/images/web/1.jpg", 0.4))
+
+
+class BroaderSearchTests(unittest.TestCase):
+    def test_untried_queries_names_and_short_forms(self) -> None:
+        from pipeline.sourcing import broader
+
+        wide = broader(BROLL)
+        self.assertEqual(wide.queries[:2], ["casino entrance night", "Gran Casino de Madrid"])
+        self.assertIn("gran casino madrid", wide.queries)              # the first query, shortened
+        self.assertNotIn("casino building spain", wide.queries)        # already searched
+        self.assertEqual(wide.queriesLocal, ["Gran Casino"])
+        self.assertEqual(wide.visualIntent, BROLL.visualIntent)

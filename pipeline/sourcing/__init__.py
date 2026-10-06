@@ -29,6 +29,7 @@ from .youtube import YouTubeSource
 STAGE = "sourcing"
 OUTPUT = "candidates"
 SUMMARY = "_summary.json"
+WIDENED = "búsqueda amplia hecha"
 
 
 def needs_footage(shot: Shot) -> bool:
@@ -43,6 +44,26 @@ def hypothetical(shot: Shot) -> bool:
     exists, so it is illustrated with a generated image, badged as such on screen."""
 
     return bool(shot.broll and shot.broll.event and shot.broll.event.strip().upper().startswith(HYPOTHETICAL))
+
+
+def broader(broll: Any) -> Any:
+    """A wider search for a shot that found nothing: the queries not tried yet, the names alone, then the first
+    words of each query («Booking.com multa CNMC suspendida Audiencia Nacional» → «Booking.com multa CNMC»)."""
+
+    def first_words(query: str) -> str:
+        words = query.split()[:3]
+        while len(words) > 1 and len(words[-1]) <= 3:     # not ending on «de», «the», «en»
+            words.pop()
+        return " ".join(words)
+
+    short = [first_words(q) for q in [*broll.queries, *broll.queriesLocal]]
+    english = list(dict.fromkeys(q for q in [*broll.queries[2:], *broll.entities, *short[: len(broll.queries)]]
+                                 if q and q not in broll.queries[:2]))
+    local = list(dict.fromkeys(q for q in [*broll.queriesLocal[1:], *short[len(broll.queries):]]
+                               if q and q not in broll.queriesLocal[:1]))
+    if not english and not local:
+        return None
+    return broll.model_copy(update={"queries": english or broll.queries, "queriesLocal": local or broll.queriesLocal})
 
 
 def _spec_hash(shot: Shot, cfg: dict[str, Any]) -> str:
@@ -162,7 +183,7 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     if mode == "never":
         print("   YouTube: sin cuenta (cookies: never)")
     elif sets and mode == "fallback":
-        print(f"   YouTube: sin cuenta; {len(sets)} cuenta(s) de reserva solo para vídeos que la pidan (edad, miembros)")
+        print(f"   YouTube: sin cuenta; {len(sets)} cuenta(s) de reserva si YouTube pide cuenta o «no eres un bot»")
     elif sets:
         print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos: "
               + ", ".join(path.name if path else "navegador/entorno" for _, path in sets))
@@ -322,8 +343,41 @@ def run(ctx: RunContext) -> None:
         print(f"   {shot.id}: " + (", ".join(f"{k} {v}" for k, v in counts.items()) or "sin candidatos"))
         return result
 
+    def widen(shot: Shot, result: ShotCandidates) -> ShotCandidates:
+        """Second chance for a shot with nothing: broader queries (once; the note keeps it from repeating)."""
+
+        wide = broader(shot.broll)
+        if wide is None:
+            return result
+        notes = [*result.notes, WIDENED]
+        candidates = []
+        if youtube is not None:
+            try:
+                candidates += youtube.candidates(wide, notes)
+            except SourceUnavailable as error:
+                notes.append(str(error))
+        queries = {**result.queries, **{f"{k} (amplia)": v for k, v in images.queries_for(wide).items()}}
+        candidates += images.search(wide, notes)[1]
+        widened = ShotCandidates(shotId=shot.id, specHash=result.specHash, queries=queries, candidates=candidates,
+                                 notes=notes)
+        ctx.write_json(f"{OUTPUT}/{shot.id}.json", widened.model_dump(exclude_none=True))
+        counts: dict[str, int] = {}
+        for c in candidates:
+            counts[c.source] = counts.get(c.source, 0) + 1
+        print(f"   {shot.id} (búsqueda amplia): " + (", ".join(f"{k} {v}" for k, v in counts.items()) or "nada"))
+        if precompute is not None:
+            precompute.submit(candidates)
+        return widened
+
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 3))) as pool:
         results = list(pool.map(process, shots))
+        blocked = any("bloquea" in n for r in results for n in r.notes)
+        retry = [i for i, r in enumerate(results) if not r.candidates and WIDENED not in r.notes
+                 and shots[i].broll is not None and not hypothetical(shots[i])]
+        if retry and not blocked and cfg.get("widen_empty", True):
+            print(f"   {len(retry)} planos sin candidatos: segunda búsqueda más amplia…")
+            for i, widened in zip(retry, pool.map(lambda i: widen(shots[i], results[i]), retry)):
+                results[i] = widened
     if youtube is not None:
         youtube.close()
         if youtube.stats:
