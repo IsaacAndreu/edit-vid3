@@ -117,7 +117,7 @@
 <header id="top" class="hide">
   <b>🎬 Estudio</b>
   <nav>
-    <a href="#/">Inicio</a><a href="#/subir">Para subir</a><a href="#/guiones">Guiones</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Competencia</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
+    <a href="#/">Inicio</a><a href="#/subir">Para subir</a><a href="#/guiones">Guiones</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/biblioteca">Biblioteca</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Competencia</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
   </nav>
   <span id="service" class="small muted"></span>
 </header>
@@ -937,6 +937,43 @@ async function scriptsPage(days = 14) {
   };
 }
 
+// --- Biblioteca: las buenas fuentes de cada persona y tema (pipeline/library.py) -------------------------------
+async function libraryPage() {
+  const r = await api("/api/library");
+  const people = r.entities.filter((e) => e.kind === "person"), topics = r.entities.filter((e) => e.kind !== "person");
+  const tile = (e) => `<a class="card" href="#/biblioteca/${encodeURIComponent(e.key)}" style="display:block;text-decoration:none;color:inherit;margin:0">
+    <b>${esc(e.name)}</b>${e.cutout ? ' <span class="small muted">· recorte</span>' : ""}
+    <div class="small muted">${e.videos} vídeo(s) · ${e.photos} foto(s) · usada en ${e.inVideos} vídeo(s)</div></a>`;
+  const grid = (list) => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${list.map(tile).join("")}</div>`;
+  $("#app").innerHTML = `<h1>Biblioteca</h1>
+    <div class="small muted" style="margin-bottom:12px">Lo que ha funcionado de cada persona y tema. El próximo vídeo que hable de ellos parte de aquí
+      (otros momentos de las mismas fuentes: nunca repite un fragmento). Se llena sola con cada vídeo terminado; «Correcta» en Errores sube una fuente.</div>
+    <input id="libfilter" placeholder="Buscar persona o tema…" oninput="document.querySelectorAll('#libgrid a.card').forEach((a) => a.style.display = a.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none')">
+    <div id="libgrid">
+      <h2>Personas (${people.length})</h2>${people.length ? grid(people) : '<div class="small muted">Aún ninguna.</div>'}
+      <h2>Temas, empresas, lugares (${topics.length})</h2>${topics.length ? grid(topics) : '<div class="small muted">Se llenan con los próximos vídeos terminados.</div>'}
+    </div>`;
+}
+async function libraryEntity(key) {
+  const e = await api(`/api/library/${encodeURIComponent(key)}`);
+  $("#app").innerHTML = `<div class="small"><a href="#/biblioteca">← Biblioteca</a></div>
+    <div class="row" style="justify-content:space-between"><h1>${esc(e.name)}</h1>
+      <button onclick="libRemove('${esc(key)}', null)">Borrar todo</button></div>
+    <div class="small muted" style="margin-bottom:12px">${e.kind === "person" ? "Persona" : "Tema"} · ${e.sources.length} fuente(s). Quita las que no quieras volver a ver con «Quitar».</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">${e.sources.map((x) => `<div class="card" style="margin:0">
+      ${x.preview ? `<img loading="lazy" src="/api/library/${encodeURIComponent(key)}/preview?id=${encodeURIComponent(x.id)}" style="width:100%;border-radius:6px">` : ""}
+      <div style="margin-top:6px"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.id)}</a></div>
+      <div class="small muted">${esc(x.channel)} · ${x.kind === "videos" ? "vídeo" : "foto"}</div>
+      <div class="small">${x.used ? `✅ usada ${x.used}` : ""} ${x.approved ? `👍 buena ${x.approved}` : ""} ${x.right ? `⭐ correcta ${x.right}` : ""}
+        <span class="muted">${x.videos.length ? "· " + x.videos.map(esc).join(", ") : ""}</span></div>
+      <button style="margin-top:6px" onclick="libRemove('${esc(key)}', '${esc(x.id)}')">Quitar</button></div>`).join("")}</div>`;
+}
+window.libRemove = async (key, id) => {
+  if (!confirm(id ? "¿Quitar esta fuente? No volverá a ofrecerse para este tema." : "¿Borrar toda la biblioteca de este tema?")) return;
+  await post(`/api/library/${encodeURIComponent(key)}/remove`, id ? {id} : {});
+  if (id) libraryEntity(key); else location.hash = "#/biblioteca";
+};
+
 // --- Tablero: de la idea al vídeo subido ---------------------------------------------------------------------------
 async function boardPage() {
   const b = await api("/api/board"), names = {"idea": "💡 Ideas", "falta voz": "📝 Falta guion o voz", "en cola": "⏳ En cola", "hecho": "✅ Hecho", "subido": "📺 Subido"};
@@ -1022,6 +1059,8 @@ async function route() {
     else if (hash === "#/nuevo") await newVideo();
     else if (hash === "#/calendario") await calendarPage();
     else if (hash === "#/subir") await uploadPage();
+    else if (hash === "#/biblioteca") await libraryPage();
+    else if (hash.startsWith("#/biblioteca/")) await libraryEntity(decodeURIComponent(hash.slice(13)));
     else if (hash === "#/guiones") await scriptsPage();
     else if (hash === "#/voces") await voicesPage();
     else if (hash === "#/tablero") await boardPage();

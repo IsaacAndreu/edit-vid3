@@ -167,6 +167,13 @@ def label(root: Path, slug: str, shot_id: str, verdict: str | None, reason: str 
                          "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
         _write(root / LABELS, data)
         _revision(root, slug, data)
+    if verdict == "correcta" and item.get("candidateId"):
+        try:
+            from . import library
+
+            library.mark_right(root, item["candidateId"])    # a source you approved ranks higher next time
+        except Exception:
+            pass
     return data.get(key) or {}
 
 

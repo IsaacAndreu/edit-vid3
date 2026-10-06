@@ -115,6 +115,12 @@ def old_cache(ctx: RunContext) -> None:
     days = float(ctx.section("cleanup").get("cache_days", 0) or 0)
     if days <= 0:
         return
+    try:
+        from . import library
+
+        library.protect(ctx)                  # the library's thumbnails are kept out of this cleanup
+    except Exception:
+        pass
     limit = time.time() - days * 86400
     freed = 0
     for name in CACHED:

@@ -670,6 +670,19 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
                     return self._ok(tts.GenAIPro(key).credits())
+                if path == "/api/library":                 # «Biblioteca»: people and topics (pipeline/library.py)
+                    from . import library
+
+                    return self._ok({"entities": library.overview(root)})
+                if match := re.fullmatch(r"/api/library/([a-z0-9-]+)", path):
+                    from . import library
+
+                    return self._ok(library.entity(root, match.group(1)))
+                if match := re.fullmatch(r"/api/library/([a-z0-9-]+)/preview", path):
+                    from . import library
+
+                    found = library.preview(root, match.group(1), (urllib.parse.parse_qs(url.query).get("id") or [""])[0])
+                    return self._file(found) if found else self._fail(404, "No existe")
                 if path == "/api/upload":                  # «Para subir» (pipeline/organizar.py)
                     from . import organizar
 
@@ -808,6 +821,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
                     tts.generate(key, text, voice, root / "out" / "_voces" / name, log=lambda *_: None)
                     return self._ok({"url": f"/files/_voces/{name}"})
+                if match := re.fullmatch(r"/api/library/([a-z0-9-]+)/remove", path):    # {id} or {} (all of it)
+                    from . import library
+
+                    library.remove(root, match.group(1), body.get("id") or None)
+                    return self._ok({"ok": True})
                 if path == "/api/scripts/draft":           # {channel, idea: {title, note…}} → a first draft
                     from . import organizar
 
