@@ -870,10 +870,14 @@ async function uploadPage() {
         <div class="row" style="flex-wrap:wrap;gap:6px;margin:12px 0">${UPLOAD_STEPS.map(([k, name]) =>
           `<label class="small" style="display:flex;gap:4px;align-items:center;font-weight:400"><input type="checkbox" style="width:auto"
             ${checked(v.slug, k) ? "checked" : ""} onchange="check('${esc(v.slug)}','${k}',this.checked)">${name}</label>`).join("")}</div>
-        <div class="row" style="flex-wrap:wrap;gap:8px">${v.files.filter((x) => !x.image).map((x) =>
+        <div class="row" style="flex-wrap:wrap;gap:8px">${v.files.filter((x) => !x.image && !x.still).map((x) =>
           `<a class="btn" href="${f(x.path)}" download>⬇ ${esc(x.label)}${x.mb ? ` (${x.mb} MB)` : ""}</a>`).join("")}</div>
         ${v.files.some((x) => x.image) ? `<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">${v.files.filter((x) => x.image).map((x) =>
           `<a href="${f(x.path)}" download title="Descargar"><img src="${f(x.path)}" style="width:200px;border-radius:6px"></a>`).join("")}</div>` : ""}
+        ${v.files.some((x) => x.still) ? `<div style="margin-top:12px"><b class="small">Fotogramas para tu miniatura (1920×1080, clic para descargar)</b>
+          <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap">${v.files.filter((x) => x.still).map((x) =>
+          `<a href="${f(x.path)}" download title="${esc(x.label)}"><img loading="lazy" src="${f(x.path)}" style="width:160px;border-radius:6px"></a>`).join("")}</div></div>` : ""}
+        ${s["IDEAS PARA LA MINIATURA"] ? copyBox("Ideas de texto para la miniatura", s["IDEAS PARA LA MINIATURA"], 3) : ""}
         ${v.titles.length ? `<div style="margin-top:10px"><b class="small">Título (elige uno)</b>${v.titles.map((t) => copyBox("", t, 1)).join("")}</div>` : ""}
         ${s["DESCRIPCIÓN"] ? copyBox("Descripción (con capítulos y fuentes)", s["DESCRIPCIÓN"], 6) : ""}
         ${s["ETIQUETAS"] ? copyBox("Etiquetas", s["ETIQUETAS"], 2) : ""}

@@ -93,6 +93,8 @@ def test_thumbnails_can_be_left_to_you(tmp_path):
     ctx = RunContext.create("v", root=tmp_path, config={"miniaturas": {"enabled": False}})
     assert package.outputs(ctx) == [ctx.out_dir / "youtube.txt"]
     ctx = RunContext.create("v", root=tmp_path, config={})
+    assert package.outputs(ctx) == [ctx.out_dir / "youtube.txt"]                 # off unless you ask for them
+    ctx = RunContext.create("v", root=tmp_path, config={"miniaturas": {"enabled": True}})
     assert package.outputs(ctx)[0].name == "miniatura-1.jpg"
 
 
@@ -138,3 +140,31 @@ def test_calendar_commands_morning_and_the_uploaded_button(tmp_path):
     assert sum(t.startswith("☀️") for t in http.sent) == 1
     b.handle({"callback_query": {"id": "1", "data": "subido:avion1", "message": {"chat": {"id": 42}}}})
     assert (root / "out" / "avion1" / "publicado.json").is_file() and "marcado como subido" in http.sent[-1]
+
+
+def test_material_for_your_own_thumbnail(tmp_path):
+    import subprocess
+
+    from pipeline.schemas import Timeline
+
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    clip = ctx.work_dir / "media" / "s1.mp4"
+    clip.parent.mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=1",
+                    str(clip)], check=True)
+    cut = ctx.work_dir / "people" / "ana.png"
+    cut.parent.mkdir(parents=True)
+    cut.write_bytes(b"png")
+    timeline = Timeline.model_construct(fps=30, shots=[type("S", (), {"coldOpen": False, "from_": 0, "media": type(
+        "M", (), {"kind": "video", "src": "media/s1.mp4"})()})()])
+    ctx.out_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.out_dir / "youtube.txt").write_text("TÍTULO\nX\n", encoding="utf-8")
+    assert package.material_for_thumbnail(ctx, timeline, ["ÚLTIMO DE 91", "DOBLE ORO"], "people/ana.png") == 1
+    still = ctx.out_dir / "fotogramas" / "fotograma-1.jpg"
+    import cv2
+
+    assert cv2.imread(str(still)).shape[:2] == (1080, 1920)
+    assert (ctx.out_dir / "fotogramas" / "recorte.png").is_file()
+    package.material_for_thumbnail(ctx, timeline, ["ÚLTIMO DE 91"], None)          # a rerun: one block, not two
+    text = (ctx.out_dir / "youtube.txt").read_text("utf-8")
+    assert text.count("IDEAS PARA LA MINIATURA") == 1 and "- ÚLTIMO DE 91" in text

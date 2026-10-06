@@ -18,7 +18,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-SECTIONS = ("TÍTULO", "DESCRIPCIÓN", "ETIQUETAS", "COMENTARIO FIJADO", "POST DE COMUNIDAD", "SUBTÍTULOS")
+SECTIONS = ("TÍTULO", "DESCRIPCIÓN", "ETIQUETAS", "COMENTARIO FIJADO", "POST DE COMUNIDAD", "SUBTÍTULOS",
+            "IDEAS PARA LA MINIATURA")
 
 
 def youtube_sections(text: str) -> dict[str, str]:
@@ -61,6 +62,13 @@ def to_upload(root: Path) -> list[dict[str, Any]]:
                           "mb": round((folder / "video-final.mp4").stat().st_size / 1e6)})
         files += [{"label": f"Miniatura {n}", "path": f"miniaturas/{p.name}", "image": True}
                   for n, p in enumerate(sorted((folder / "miniaturas").glob("*.jpg")), start=1)]
+        if not (folder / "fotogramas").is_dir() and (folder / "video-final.mp4").is_file():
+            stills_from_final(folder)                          # videos made before the stills existed
+        files += [{"label": f"Fotograma {n}", "path": f"fotogramas/{p.name}", "still": True}
+                  for n, p in enumerate(sorted((folder / "fotogramas").glob("fotograma-*.jpg"),
+                                               key=lambda p: int(re.findall(r"\d+", p.stem)[-1])), start=1)]
+        files += [{"label": "Recorte del protagonista (PNG)", "path": f"fotogramas/{p.name}"}
+                  for p in sorted((folder / "fotogramas").glob("recorte.*"))]
         files += [{"label": f"Subtítulos ({p.stem.split('.')[-1]})", "path": p.name} for p in sorted(folder.glob("subtitulos*.srt"))]
         files += [{"label": f"Short {n}", "path": f"shorts/{p.name}"}
                   for n, p in enumerate(sorted((folder / "shorts").glob("*.mp4")), start=1)]
@@ -71,6 +79,29 @@ def to_upload(root: Path) -> list[dict[str, Any]]:
             "shortsText": _read(folder / "shorts" / "shorts.txt"),
         })
     return sorted(out, key=lambda v: (v["date"] or "9999", v["doneAt"] or 0))
+
+
+def stills_from_final(folder: Path, count: int = 8) -> int:
+    """Stills of an already finished video (its final file, graphics included), spread over it, skipping the ends."""
+
+    import subprocess
+
+    video = folder / "video-final.mp4"
+    try:
+        duration = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                         str(video)], capture_output=True, text=True, timeout=30).stdout.strip())
+    except (ValueError, subprocess.SubprocessError):
+        return 0
+    out = folder / "fotogramas"
+    out.mkdir(exist_ok=True)
+    made = 0
+    for n in range(count):
+        at = duration * (0.05 + 0.85 * n / max(1, count - 1))
+        target = out / f"fotograma-{n + 1}.jpg"
+        done = subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{at:.2f}", "-i", str(video), "-frames:v", "1",
+                               "-q:v", "2", str(target)], capture_output=True, timeout=60)
+        made += int(done.returncode == 0 and target.is_file())
+    return made
 
 
 def _read(path: Path) -> str:

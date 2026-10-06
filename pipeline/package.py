@@ -110,13 +110,21 @@ def concept_image(ctx: RunContext, scene: str, accent: str, side: str, n: int) -
     return str(target.relative_to(ctx.work_dir)).replace("\\", "/")
 
 
-def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3) -> list[str]:
-    """Middle frames of the cold-open clips, then of the hook's video shots, as 1280x720 JPEGs."""
+def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3, out_dir: Path | None = None,
+                      size: tuple[int, int] = (1280, 720), spread: bool = False) -> list[str]:
+    """Middle frames of the cold-open clips, then of the hook's video shots, as 1280x720 JPEGs. With `spread`, after
+    the cold open the video shots of the whole video, evenly (stills for your own thumbnail)."""
 
     shots = [s for s in timeline.shots if s.coldOpen and s.media]
-    shots += [s for s in timeline.shots if not s.coldOpen and s.media and s.media.kind == "video"
-              and s.from_ < 40 * timeline.fps]
-    out_dir = ctx.work_dir / "thumbs"
+    if spread:
+        rest = [s for s in timeline.shots if not s.coldOpen and s.media and s.media.kind == "video"]
+        step = max(1, len(rest) // max(1, count))
+        shots += rest[::step]
+    else:
+        shots += [s for s in timeline.shots if not s.coldOpen and s.media and s.media.kind == "video"
+                  and s.from_ < 40 * timeline.fps]
+    width, height = size
+    out_dir = out_dir or ctx.work_dir / "thumbs"
     out_dir.mkdir(parents=True, exist_ok=True)
     frames: list[str] = []
     for shot in shots:
@@ -127,12 +135,12 @@ def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3) -> li
         if not ok:
             continue
         h, w = frame.shape[:2]
-        scale = max(1280 / w, 720 / h)
-        frame = cv2.resize(frame, (round(w * scale), round(h * scale)))
-        y, x = (frame.shape[0] - 720) // 2, (frame.shape[1] - 1280) // 2
-        target = out_dir / f"bg-{len(frames) + 1}.jpg"
-        cv2.imwrite(str(target), frame[y : y + 720, x : x + 1280], [cv2.IMWRITE_JPEG_QUALITY, 90])
-        frames.append(str(target.relative_to(ctx.work_dir)).replace("\\", "/"))
+        scale = max(width / w, height / h)
+        frame = cv2.resize(frame, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_CUBIC)
+        y, x = (frame.shape[0] - height) // 2, (frame.shape[1] - width) // 2
+        target = out_dir / f"{'fotograma' if spread else 'bg'}-{len(frames) + 1}.jpg"
+        cv2.imwrite(str(target), frame[y : y + height, x : x + width], [cv2.IMWRITE_JPEG_QUALITY, 92])
+        frames.append(str(target.relative_to(ctx.work_dir if not spread else out_dir.parent)).replace("\\", "/"))
         if len(frames) == count:
             break
     return frames
@@ -185,9 +193,10 @@ def run(ctx: RunContext) -> None:
     if people.is_file():
         found = json.loads(people.read_text("utf-8")).get("people", [])
         cutout = found[0]["image"] if found else None
-    if not ctx.section("miniaturas").get("enabled", True):     # you make the thumbnails yourself
+    if not ctx.section("miniaturas").get("enabled", False):    # you make the thumbnails yourself
         write_titles(ctx.out_dir / "youtube.txt", titles)
-        print("   Miniaturas desactivadas (miniaturas.enabled: false): solo títulos")
+        stills = material_for_thumbnail(ctx, timeline, texts, cutout)
+        print(f"   Miniaturas: las haces tú · {stills} fotogramas en out/{ctx.slug}/{STILLS_DIR}/ y 3 textos en youtube.txt")
         _finish(ctx, timeline, titles, [], preview=_preview_frame(ctx))
         return
     backgrounds = background_frames(ctx, timeline)
@@ -226,6 +235,33 @@ def run(ctx: RunContext) -> None:
     _finish(ctx, timeline, titles, thumbs)
 
 
+STILLS_DIR = "fotogramas"
+
+
+def material_for_thumbnail(ctx: RunContext, timeline: Timeline, texts: list[str], cutout: str | None) -> int:
+    """For the thumbnail you make yourself: 8 clean 1920x1080 stills of the video (cold open first, then spread over
+    the whole video), the protagonist's cutout (transparent PNG) and 3 short texts in youtube.txt. How many stills."""
+
+    out_dir = ctx.out_dir / STILLS_DIR
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        stills = background_frames(ctx, timeline, int(ctx.section("miniaturas").get("stills", 8)), out_dir,
+                                   (1920, 1080), spread=True)
+    except Exception as error:               # stills are a help, never a reason to fail the video
+        print(f"   Fotogramas para la miniatura no disponibles: {str(error)[:120]}")
+        stills = []
+    if cutout and (ctx.work_dir / cutout).is_file():
+        shutil.copy2(ctx.work_dir / cutout, out_dir / ("recorte" + Path(cutout).suffix))
+    youtube = ctx.out_dir / "youtube.txt"
+    if youtube.is_file() and texts:
+        text = youtube.read_text("utf-8")
+        block = "IDEAS PARA LA MINIATURA (texto corto)\n" + "\n".join(f"- {t}" for t in dict.fromkeys(texts)) + "\n"
+        text = re.sub(r"\nIDEAS PARA LA MINIATURA[^\n]*\n(?:- .*\n)*", "\n", text)
+        youtube.write_text(text.rstrip("\n") + "\n\n" + block, encoding="utf-8")
+    return len(stills)
+
+
 def _preview_frame(ctx: RunContext) -> Path | None:
     """A frame of the final video for the phone notice when there are no thumbnails (not a thumbnail)."""
 
@@ -254,12 +290,12 @@ def _finish(ctx: RunContext, timeline: Timeline, titles: list[str], thumbs: list
 
 
 def outputs(ctx: RunContext) -> list[Path]:
-    if not ctx.section("miniaturas").get("enabled", True):
+    if not ctx.section("miniaturas").get("enabled", False):
         return [ctx.out_dir / "youtube.txt"]
     return [ctx.out_dir / THUMB_DIR / "miniatura-1.jpg"]
 
 
 def validate(ctx: RunContext) -> bool:
-    if not ctx.section("miniaturas").get("enabled", True):
+    if not ctx.section("miniaturas").get("enabled", False):
         return (ctx.out_dir / "youtube.txt").is_file()
     return all((ctx.out_dir / THUMB_DIR / f"miniatura-{n}.jpg").is_file() for n in (1, 2, 3))

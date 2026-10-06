@@ -86,3 +86,16 @@ def test_a_draft_uses_the_channels_style_and_length(tmp_path: Path, monkeypatch)
     assert d["check"] == 1 and d["script"].startswith("## UNO")
     with pytest.raises(ValueError):
         organizar.draft_script(root, "negocios", {"title": ""})
+
+
+def test_finished_videos_get_stills_for_your_thumbnail(tmp_path: Path):
+    import subprocess
+
+    root = _site(tmp_path)
+    _video(root, "negocios", "n1", done=True)
+    final = root / "out" / "n1" / "video-final.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10:duration=4",
+                    str(final)], check=True)
+    v = organizar.to_upload(root)[0]
+    stills = [f for f in v["files"] if f.get("still")]
+    assert len(stills) == 8 and stills[0]["path"] == "fotogramas/fotograma-1.jpg"
