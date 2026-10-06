@@ -508,8 +508,15 @@ def radar_state(root: Path) -> dict[str, Any]:
     for niche in niches:
         niche["ideas"] = counts.get(niche_ideas.seed_key({"kind": "niche", "query": niche["query"]}), 0)
         niche.pop("titles", None)
+    from . import noticias
+
+    news = noticias.latest(root)
+    for stories in (news or {}).get("channels", {}).values():
+        for story in stories:
+            story["idea"] = noticias.idea_for(story)
     return {"latest": radar.latest(root), "niches": niches, "job": job_state(root, "radar"),
-            "saved": niche_ideas.saved(root), "channels": channels(root)}
+            "saved": niche_ideas.saved(root), "channels": channels(root), "news": news,
+            "newsJob": job_state(root, "noticias")}
 
 
 def mychannel_state(root: Path, channel: str) -> dict[str, Any]:
@@ -891,6 +898,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":
                     return self._ok(background(root, "radar", ["--radar"]))
+                if path == "/api/news":                    # «Noticias del día» now, not tomorrow morning
+                    return self._ok(background(root, "noticias", ["--noticias"]))
                 if path == "/api/ideas":                   # {seed: {kind: niche|video, …}, more: bool}
                     from . import niche_ideas
 

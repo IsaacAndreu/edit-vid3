@@ -203,6 +203,7 @@ class YouTubeAPI:
                     "comments": int(stats.get("commentCount", 0)),
                     "thumbnail": (thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}).get("url", ""),
                     "url": f"https://www.youtube.com/watch?v={item['id']}",
+                    "description": str(snippet.get("description") or "")[:700],
                 })
         return out
 

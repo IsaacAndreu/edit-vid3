@@ -117,7 +117,7 @@
 <header id="top" class="hide">
   <b>🎬 Estudio</b>
   <nav>
-    <a href="#/">Inicio</a><a href="#/subir">Para subir</a><a href="#/guiones">Guiones</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/biblioteca">Biblioteca</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Competencia</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
+    <a href="#/">Inicio</a><a href="#/subir">Para subir</a><a href="#/guiones">Guiones</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/biblioteca">Biblioteca</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Radar</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
   </nav>
   <span id="service" class="small muted"></span>
 </header>
@@ -625,39 +625,98 @@ async function nicheChannel(n) {
     data = null;
   } catch (e) { alert(e.message); }
 }
+let newsTab = null, nicheFilter = "todos";
 async function radarPage() {
   const r = await api("/api/radar");
   ideaSeeds = [];
   const latest = r.latest, names = latest ? Object.keys(latest.channels) : [];
   radarChannel = names.includes(radarChannel) ? radarChannel : names[0];
   const info = latest && radarChannel ? latest.channels[radarChannel] : null;
-  $("#app").innerHTML = `<div class="row" style="justify-content:space-between"><h1>Competencia</h1>
-      <button class="main" onclick="runRadar()" ${r.job.running ? "disabled" : ""}>Buscar ahora</button></div>
-    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada día con el servidor vigilando` : "Todavía no hay radar: pulsa «Buscar ahora» (necesita YOUTUBE_API_KEYS)."}
+  const news = r.news, newsNames = news ? Object.keys(news.channels) : [];
+  newsTab = newsNames.includes(newsTab) ? newsTab : newsNames[0];
+  window.newsIdeas = {};
+  const ago = (h) => h < 1 ? "hace un momento" : h < 24 ? `hace ${Math.round(h)} h` : `hace ${Math.round(h / 24)} d`;
+  const storyCard = (st, i) => { window.newsIdeas[i] = st.idea;
+    return `<div class="card" style="margin:0">
+      <div class="row" style="justify-content:space-between;align-items:flex-start"><div><div style="font-size:1.25em;font-weight:700">${esc(st.name)}</div>
+        <div class="small muted">${kfmt(st.views)} visitas · ${st.channels} canal(es) lo cuentan</div></div>
+        <span class="pill ${st.channels >= 2 ? "error" : "haciendo"}" title="visitas por hora entre todos sus vídeos">🔥 ${kfmt(st.speed)}/h</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px">${st.videos.slice(0, 3).map((v) =>
+        `<a href="${esc(v.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><img loading="lazy" src="${esc(v.thumbnail)}" style="width:100%;border-radius:6px">
+          <div class="small" style="line-height:1.25;margin-top:2px">${esc(v.title.slice(0, 70))}</div>
+          <div class="small muted">${esc(v.channel)} · ${kfmt(v.perHour)}/h · ${ago(v.ageHours)}</div></a>`).join("")}</div>
+      <div class="row" style="margin-top:10px;gap:6px"><button class="main" onclick="newsDraft(${i}, this)">✍️ Guion «caso real»</button>
+        <button onclick="newsSave(${i}, this)">Guardar idea</button></div></div>`; };
+  const originLabel = (n) => n.near === "descubierto" ? "🔎 descubierto en YouTube" : n.near === "libre" ? "✨ tema libre" : "🧭 cerca de " + n.near;
+  const niches = r.niches.filter((n) => nicheFilter === "todos" || (nicheFilter === "descubiertos" ? n.near === "descubierto"
+    : nicheFilter === "libres" ? n.near === "libre" : !["descubierto", "libre"].includes(n.near)));
+  const scoreColor = (x) => x >= 7 ? "var(--ok)" : x >= 4 ? "var(--accent)" : "var(--muted,#888)";
+  $("#app").innerHTML = `<div class="row" style="justify-content:space-between"><h1>Radar</h1>
+      <div class="row" style="gap:6px"><button onclick="runNews()" ${r.newsJob.running ? "disabled" : ""}>📰 Noticias ahora</button>
+      <button class="main" onclick="runRadar()" ${r.job.running ? "disabled" : ""}>Buscar todo ahora</button></div></div>
+    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada mañana con el servidor vigilando` : "Todavía no hay radar: pulsa «Buscar todo ahora» (necesita YOUTUBE_API_KEYS)."}
       ${latest && latest.outOfQuota ? " · ⚠ se acabó la cuota de la API a mitad" : ""}</div>
-    ${jobLine(r.job, "Buscando en YouTube")}
+    ${jobLine(r.job, "Buscando en YouTube")}${jobLine(r.newsJob, "Buscando noticias")}
+
+    <h2>📰 Noticias del día</h2>
+    <div class="small muted">Historias de tus nichos que están subiendo ahora (vídeos de las últimas 48 h). Un vídeo en 24 h sobre ellas llega cuando la gente lo busca.
+      ${news ? `Actualizado: ${esc(news.at.replace("T", " "))}.` : ""}</div>
+    ${news ? `<div class="tabs">${newsNames.map((n) => `<button class="${n === newsTab ? "on" : ""}" onclick="newsTab='${esc(n)}';route()">${esc(n)} (${news.channels[n].length})</button>`).join("")}</div>
+      ${(news.channels[newsTab] || []).length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">${news.channels[newsTab].map((st, i) => storyCard(st, i)).join("")}</div>`
+        : '<div class="notice">Nada sube con fuerza ahora en este nicho. Pon búsquedas propias en canales/<canal>.yaml → radar.news_queries.</div>'}
+      ${news.errors && news.errors.length ? `<div class="small muted" style="margin-top:6px">${news.errors.map(esc).join(" · ")}</div>` : ""}`
+      : '<div class="notice">Aún no hay noticias: pulsa «📰 Noticias ahora».</div>'}
+
+    <h2>🏆 Lo que mejor funciona en tus nichos</h2>
     ${names.length ? `<div class="tabs">${names.map((n) => `<button class="${n === radarChannel ? "on" : ""}" onclick="radarChannel='${esc(n)}';route()">${esc(n)}
       (${latest.channels[n].top.filter((v) => v.new).length} nuevos)</button>`).join("")}</div>` : ""}
-    ${info ? `<h2>Lo que mejor funciona ahora en ${esc(radarChannel)}</h2>
-      ${info.top.length ? `<div class="vids">${info.top.map((v) => videoTile(v, seedButton({kind: "video", id: v.id, title: v.title,
+    ${info ? `${info.top.length ? `<div class="vids">${info.top.map((v) => videoTile(v, seedButton({kind: "video", id: v.id, title: v.title,
         author: v.channel, views: v.views, ratio: v.ratio, channel: radarChannel}, "💡 Ideas como este"))).join("")}</div>` : '<div class="notice">Nada por encima de 2× en estos días. Añade competidores en canales/' + esc(radarChannel) + '.yaml (ideas.competitors).</div>'}
-      ${info.errors.length ? `<div class="small muted" style="margin-top:8px">${info.errors.map(esc).join(" · ")}</div>` : ""}` : ""}
+      ${info.errors.length ? `<div class="small muted" style="margin-top:8px">${info.errors.map(esc).join(" · ")}</div>` : ""}` : '<div class="notice">Sale con el primer radar completo.</div>'}
     ${r.saved.length ? `<h2>Ideas guardadas (${r.saved.length})</h2><div class="card">${r.saved.map((i) => { shownIdeas[i.id] = i;
       return `<div class="trait"><div class="row"><b>${esc(i.title)}</b><span class="small muted">${esc(i.channel || "")}${i.format ? " · " + esc(i.format) : ""}</span></div>
       <div class="small muted">${esc(i.angle || "")}</div><div class="row" style="margin-top:6px"><button class="main" onclick="ideaToVideo('${i.id}','${esc(i.channel || "")}')">Crear vídeo</button>
       <button onclick="post('/api/ideas/save', {remove: '${i.id}'}).then(route)">Quitar</button></div></div>`; }).join("")}</div>` : ""}
-    <h2>Nichos nuevos</h2>
-    <div class="small muted">Cada nicho se mide en YouTube: cuántos vídeos superan 3× a su canal y cuántos de esos son de canales pequeños (menos de 100 mil subs): señal de que un canal nuevo puede entrar.</div>
-    ${r.niches.length ? `<div class="card" style="margin-top:10px">${r.niches.map((n) => `<div class="trait">
-      <div class="row" style="justify-content:space-between"><b>${esc(n.name)}</b><span class="big">${fmt(n.score)}/10</span></div>
-      <div class="hbar"><i style="width:${10 * n.score}%;background:var(--ok)"></i></div>
-      <div class="small muted">«${esc(n.query)}» · ${n.hits} outliers · <b>${n.smallHits}</b> de canales pequeños · mediana ${times(n.medianRatio)} · ${kfmt(n.medianViews)} visitas · ${n.near === "libre" ? "tema nuevo" : "cerca de " + esc(n.near)} · ${esc(n.date)}</div>
-      ${n.why ? `<div class="small">${esc(n.why)}</div>` : ""}
+
+    <h2>🧭 Nichos nuevos</h2>
+    <div class="small muted">Cada día busca en YouTube vídeos de canales pequeños (menos de 100 mil subs) que triplican sus visitas normales, los agrupa en nichos y los mide.
+      Nota alta = muchos éxitos de canales pequeños: un canal nuevo puede entrar.</div>
+    <div class="chips" style="margin:10px 0">${["todos", "descubiertos", "cerca", "libres"].map((f) => `<a href="javascript:nicheFilter='${f}';route()" class="${f === nicheFilter ? "on" : ""}"
+      style="${f === nicheFilter ? "font-weight:700;text-decoration:underline" : ""}">${{todos: "Todos", descubiertos: "🔎 Descubiertos en YouTube", cerca: "🧭 Cerca de mis canales", libres: "✨ Libres"}[f]}</a>`).join("")}</div>
+    ${niches.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">${niches.map((n) => `<div class="card" style="margin:0">
+      <div class="row" style="justify-content:space-between;align-items:flex-start"><div><div style="font-size:1.15em;font-weight:700">${esc(n.name)}</div>
+        <div class="small muted">${originLabel(n)} · ${esc(n.date)}</div></div>
+        <div style="text-align:center;min-width:56px"><div style="font-size:1.6em;font-weight:800;color:${scoreColor(n.score)}">${fmt(n.score)}</div><div class="small muted">/10</div></div></div>
+      <div class="hbar" style="margin:8px 0"><i style="width:${10 * n.score}%;background:${scoreColor(n.score)}"></i></div>
+      ${n.examples.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">${n.examples.slice(0, 3).map((v) => `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${times(v.ratio)} · ${esc(v.channel || "")}"><img loading="lazy" src="${esc(v.thumbnail)}" style="width:100%;border-radius:6px"></a>`).join("")}</div>` : ""}
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+        <span class="pill hecho" title="éxitos de canales pequeños">🌱 ${n.smallHits} pequeños</span>
+        <span class="pill" title="vídeos que triplican a su canal">🚀 ${n.hits} éxitos</span>
+        <span class="pill" title="mediana de visitas">👁 ${kfmt(n.medianViews)}</span>
+        <span class="pill" title="mediana frente a lo normal del canal">${times(n.medianRatio)}</span></div>
+      ${n.why ? `<div class="small" style="margin-top:6px">${esc(n.why)}</div>` : ""}
+      <div class="small muted">«${esc(n.query)}»</div>
       <div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: n.query, name: n.name, near: n.near}, n.ideas ? `💡 Ver ideas (${n.ideas})` : "💡 Ideas para este nicho")}</div>
-      ${n.examples.length ? `<div class="row" style="margin-top:6px">${n.examples.map((v) => `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${times(v.ratio)}"><img src="${esc(v.thumbnail)}" style="width:110px;border-radius:6px"></a>`).join("")}</div>` : ""}
-    </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos medidos.</div>'}`;
+    </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos en este filtro.</div>'}`;
   window.runRadar = async () => { await post("/api/radar"); route(); };
-  if (r.job.running) schedule(route, 8000);
+  window.runNews = async () => { await post("/api/news"); route(); };
+  window.newsDraft = async (i, button) => {
+    const idea = window.newsIdeas[i], channel = newsTab === "general" ? (data && data.channels ? data.channels[0] : "") : newsTab;
+    button.disabled = true; button.textContent = "Escribiendo… (~1 min)";
+    try {
+      const d = await post("/api/scripts/draft", {channel, idea});
+      if (d.check) alert(`Borrador de ${d.words} palabras con ${d.check} dato(s) [COMPROBAR]: revísalos antes de crear el vídeo.`);
+      const pre = {channel, idea: {...idea, title: d.title || idea.title, format: d.format || "caso-real"}, script: d.script};
+      try { sessionStorage.setItem("prefill", JSON.stringify(pre)); } catch (e) {}
+      window.prefill = pre; location.hash = "#/nuevo";
+    } catch (e) { alert(e.message); button.disabled = false; button.textContent = "✍️ Guion «caso real»"; }
+  };
+  window.newsSave = async (i, button) => {
+    const idea = window.newsIdeas[i];
+    await post("/api/board/idea", {title: idea.title, channel: newsTab === "general" ? "" : newsTab, note: idea.note.slice(0, 600)});
+    button.textContent = "Guardada en Tablero ✓"; button.disabled = true;
+  };
+  if (r.job.running || r.newsJob.running) schedule(route, 8000);
 }
 
 // --- Mi canal --------------------------------------------------------------------------------------------------------

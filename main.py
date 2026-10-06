@@ -91,6 +91,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="Bot de Telegram: /estado, /gasto, /videos, /errores… y un parte cada hora (TELEGRAM_* en .env).")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
+    target.add_argument("--noticias", action="store_true",
+                        help="Noticias del día: las historias que suben ahora en tus nichos → out/_radar/noticias.json.")
     target.add_argument("--mi-canal", metavar="CANAL",
                         help="Análisis de tu canal de YouTube de ese perfil (canales/<CANAL>.yaml) → out/_canal/<CANAL>.json.")
     return parser
@@ -766,6 +768,12 @@ def main() -> None:
         from pipeline import bot
 
         bot.Bot().run()
+        return
+    if args.noticias:
+        from pipeline import noticias
+
+        report = noticias.scan(PROJECT_ROOT)
+        print("\n".join(noticias.telegram_lines(report)) or "Nada que suba ahora mismo.")
         return
     if args.radar:
         from pipeline import radar

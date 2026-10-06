@@ -36,6 +36,53 @@ Devuelve SOLO JSON: {"niches": [{"name": "nombre corto en español",
 """.strip()
 
 
+DISCOVERY = ["la historia de", "el caso de", "qué pasó con", "la verdad sobre", "el misterio de", "documental",
+             "por qué nadie habla de", "cómo se hizo", "el día que", "la caída de", "el hombre que", "la mujer que"]
+
+DISCOVER_SYSTEM = """
+Eres analista de nichos de YouTube. Te paso vídeos en español que han superado 3 veces o más las visitas normales de
+su canal en el último mes, todos de canales pequeños (menos de 100 mil suscriptores): la señal de que un tema funciona
+y aún se puede entrar. Agrúpalos en nichos (un tema que da para 50+ vídeos de documental sin cara, con metraje de
+archivo) y devuelve como mucho {count} nichos que NO estén en la lista de ya conocidos, del más prometedor al menos.
+Devuelve SOLO JSON: {"niches": [{"name": "nombre corto en español", "query": "búsqueda de YouTube de 2-5 palabras",
+  "why": "qué tienen en común los vídeos que funcionan (1 frase)", "videos": ["ids de los vídeos del grupo"]}]}
+""".strip()
+
+
+def discover(ctx: RunContext, api: Any, cfg: dict[str, Any], known: list[str], today: date | None = None) -> list[dict[str, Any]]:
+    """New niches found in YouTube itself, not imagined: small channels' outliers of the last month for a few broad
+    documentary searches (a different few every day), grouped into niches by the LLM."""
+
+    from . import lab
+    from .llm import complete_json
+
+    seeds = [str(q) for q in cfg.get("discovery_queries", DISCOVERY)]
+    per_day = int(cfg.get("discovery_per_day", 4))
+    if not seeds or per_day <= 0:
+        return []
+    start = ((today or date.today()).toordinal() * per_day) % len(seeds)
+    chosen = [seeds[(start + i) % len(seeds)] for i in range(min(per_day, len(seeds)))]
+    hits: dict[str, dict[str, Any]] = {}
+    for query in chosen:
+        for v in lab.outliers(ctx, query, days=30, min_ratio=3, max_subs=100_000, language="es", api=api):
+            hits.setdefault(v["id"], {**_slim(v, f"búsqueda «{query}»"), "seed": query})
+    if len(hits) < 3:
+        return []
+    listing = "\n".join(f"{v['id']} · x{v['ratio']} · {v['views']} visitas · {v['subscribers']} subs · «{v['title']}» ({v['channel']})"
+                        for v in sorted(hits.values(), key=lambda v: -(v["ratio"] or 0))[:60])
+    result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=1800, use_cache=False,
+                           system=DISCOVER_SYSTEM.replace("{count}", str(int(cfg.get("discovered_niches", 3)))),
+                           user="NICHOS YA CONOCIDOS (no repetir):\n" + "\n".join(f"- {k}" for k in known[-150:])
+                                + "\n\nVÍDEOS QUE FUNCIONAN:\n" + listing)
+    out = []
+    for niche in result.get("niches", []):
+        if isinstance(niche, dict) and niche.get("query"):
+            found = [hits[i] for i in niche.get("videos", []) if i in hits]
+            out.append({"name": str(niche.get("name") or niche["query"]), "query": str(niche["query"]),
+                        "why": str(niche.get("why") or ""), "found": found[:6]})
+    return out
+
+
 def _read(path: Path) -> Any:
     try:
         return json.loads(path.read_text("utf-8"))
@@ -173,6 +220,21 @@ def run(root: Path, *, force: bool = False) -> Path:
     asks.append(("libre", "nada: busca nichos de documental en español que crezcan ahora, de cualquier tema",
                  int(cfg.get("free_niches", 2))))
     fresh: list[dict[str, Any]] = []
+    if not out_of_quota and cfg.get("discovery", True):        # niches found in YouTube itself
+        try:
+            for niche in discover(base, api, cfg, known):
+                stats = measure(base, api, niche["query"], int(cfg.get("niche_days", 120)))
+                entry = {"name": niche["name"], "query": niche["query"], "why": niche["why"], "near": "descubierto",
+                         "date": today, **stats}
+                if niche["found"]:                             # the videos that revealed it come first
+                    entry["examples"] = (niche["found"] + entry["examples"])[:6]
+                fresh.append(entry)
+                known += [entry["name"], entry["query"]]
+                print(f"   nicho descubierto «{entry['name']}»: nota {entry['score']} · {entry['smallHits']} éxitos de canales pequeños")
+        except NoKeysLeft:
+            out_of_quota = True
+        except Exception as error:
+            print(f"   descubrir nichos: {str(error)[:160]}")
     for near, about, count in asks:
         if out_of_quota or count <= 0:
             break
@@ -198,6 +260,13 @@ def run(root: Path, *, force: bool = False) -> Path:
     measured = sorted(measured + fresh, key=lambda n: -n["score"])[:200]
     _write(root / FOLDER / "nichos.json", measured)
     report["niches"] = fresh
+    if not out_of_quota and cfg.get("news", True):            # «Noticias del día» (pipeline/noticias.py)
+        try:
+            from . import noticias
+
+            report["news"] = noticias.scan(root, api)
+        except Exception as error:
+            print(f"   noticias: {str(error)[:160]}")
     report["outOfQuota"] = out_of_quota
     report["finished"] = datetime.now().isoformat(timespec="seconds")
     _write(target, report)
@@ -214,6 +283,12 @@ def _notify(ctx: RunContext, report: dict[str, Any]) -> None:
         if new:
             lines.append(f"{name}:")
             lines += [f"  x{v['ratio']} · {v['views']:,} · {v['title']} ({v['channel']})".replace(",", ".") for v in new]
+    if report.get("news"):
+        from .noticias import telegram_lines
+
+        news = telegram_lines(report["news"])
+        if news:
+            lines += ["📰 Noticias que suben ahora (vídeo en 24 h):", *news]
     best = sorted(report.get("niches", []), key=lambda n: -n["score"])[:3]
     if best:
         lines.append("Nichos nuevos:")
