@@ -670,6 +670,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
                     return self._ok(tts.GenAIPro(key).credits())
+                if path == "/api/upload":                  # «Para subir» (pipeline/organizar.py)
+                    from . import organizar
+
+                    return self._ok({"videos": organizar.to_upload(root)})
+                if path == "/api/scripts":                 # «Guiones»: what each channel's calendar still needs
+                    from . import organizar
+
+                    days = int((urllib.parse.parse_qs(url.query).get("days") or ["14"])[0])
+                    return self._ok({"channels": organizar.scripts_needed(root, days), "days": days})
                 if path == "/api/board":
                     from . import agenda
 
@@ -799,6 +808,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
                     tts.generate(key, text, voice, root / "out" / "_voces" / name, log=lambda *_: None)
                     return self._ok({"url": f"/files/_voces/{name}"})
+                if path == "/api/scripts/draft":           # {channel, idea: {title, note…}} → a first draft
+                    from . import organizar
+
+                    return self._ok(organizar.draft_script(root, str(body.get("channel") or ""), body.get("idea") or {}))
                 if path == "/api/board/idea":
                     from . import agenda
 

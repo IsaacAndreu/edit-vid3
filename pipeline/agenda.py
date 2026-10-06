@@ -341,6 +341,12 @@ def weekly_text(root: Path) -> str:
         lines += ["", "Gasto de API: " + ", ".join(f"{c} {usd:.2f} $" for c, usd in sorted(spent.items(), key=lambda kv: -kv[1]))
                   + f" · total {sum(spent.values()):.2f} $"]
     lines += ["", week_text(root), "", gaps_text(root)]
+    try:
+        from .organizar import scripts_text
+
+        lines += ["", scripts_text(root)]
+    except Exception:
+        pass
     return "\n".join(lines)
 
 
