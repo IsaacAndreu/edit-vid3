@@ -109,6 +109,7 @@ def shots(root: Path, slug: str) -> list[dict[str, Any]]:
             "text": shot.get("text") or texts.get(base, ""), "credit": media.get("credit", ""),
             "kind": media.get("kind"), "source": media.get("source") or src.get("source"),
             "title": src.get("title") or "", "url": src.get("url") or "", "method": src.get("method") or "",
+            "channel": src.get("channel") or "",
             "candidateId": src.get("candidateId"), "start": src.get("start"), "end": src.get("end"),
             "label": marked.get(f"{slug}/{shot['id']}"),
         })
@@ -160,7 +161,9 @@ def label(root: Path, slug: str, shot_id: str, verdict: str | None, reason: str 
             data.pop(key, None)
         else:
             data[key] = {"verdict": verdict, "reason": reason if verdict == "incorrecta" else "",
-                         **{k: item[k] for k in ("candidateId", "start", "end", "method", "text", "source", "url", "title")},
+                         **{k: item[k] for k in ("candidateId", "start", "end", "method", "text", "source", "url", "title",
+                                                 "channel")},
+                         "videoChannel": _video_channel(root, slug),
                          "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
         _write(root / LABELS, data)
         _revision(root, slug, data)
@@ -210,6 +213,90 @@ def wrong_shots(work: Path) -> dict[str, str]:
             ((_read(work / REVISION) or {}).get("wrong") or {}).items()}
 
 
+# --- what the program learns from the labels ---------------------------------------------------------------
+
+CHANNEL_FAULTS = {"no_tiene_que_ver", "dibujo_animado", "roto", "texto_marca_agua"}   # the source channel's fault
+BLOCK_AFTER = 3                               # a YouTube channel with this many such clips marked wrong is out
+
+
+def _video_channel(root: Path, slug: str) -> str:
+    try:
+        from .context import find_video
+        from .web import _channel_of
+
+        return _channel_of(root, find_video(root, slug))
+    except Exception:
+        return ""
+
+
+def _with_channels(root: Path) -> list[dict[str, Any]]:
+    """The labels, with the source channel and the video's channel filled in for old ones (saved without them)."""
+
+    out, sources, channels = [], {}, {}
+    for key, entry in labels(root).items():
+        slug = key.split("/", 1)[0]
+        entry = dict(entry)
+        if not entry.get("channel") and entry.get("candidateId"):
+            if slug not in sources:
+                sources[slug] = {v.get("candidateId"): v.get("channel") for v in _sources(root / "work" / slug).values()}
+            entry["channel"] = sources[slug].get(entry["candidateId"]) or ""
+        if "videoChannel" not in entry:
+            if slug not in channels:
+                channels[slug] = _video_channel(root, slug)
+            entry["videoChannel"] = channels[slug]
+        out.append({**entry, "slug": slug})
+    return out
+
+
+def blocked_channels(root: Path, after: int = BLOCK_AFTER) -> dict[str, int]:
+    """Source channel → clips marked wrong because of the source (unrelated, cartoon, broken, watermark), for the
+    channels with at least `after` of them and more wrong than right: never searched or chosen again."""
+
+    wrong: dict[str, int] = {}
+    right: dict[str, int] = {}
+    names: dict[str, str] = {}
+    for entry in _with_channels(root):
+        name = str(entry.get("channel") or "").strip()
+        if not name or entry.get("source") not in (None, "youtube"):
+            continue
+        key = name.casefold()
+        names.setdefault(key, name)
+        if entry.get("verdict") == "incorrecta" and entry.get("reason") in CHANNEL_FAULTS:
+            wrong[key] = wrong.get(key, 0) + 1
+        elif entry.get("verdict") == "correcta":
+            right[key] = right.get(key, 0) + 1
+    return {names[k]: n for k, n in sorted(wrong.items(), key=lambda kv: -kv[1]) if n >= after and n > right.get(k, 0)}
+
+
+def load_learned(root: Path) -> list[str]:
+    """Before a video's stages: the channels you taught it to avoid go into the blocklist of every search/choice."""
+
+    from .sourcing import common
+
+    try:
+        names = list(blocked_channels(root))
+    except Exception:            # a broken labels file never stops a video
+        names = []
+    common.LEARNED_BLOCKED_CHANNELS = {n.casefold() for n in names}
+    return names
+
+
+def lessons(root: Path, video_channel: str, limit: int = 10) -> str:
+    """Your corrections on this channel's videos, as short examples for the judge (newest first, mostly mistakes)."""
+
+    entries = [e for e in _with_channels(root) if e.get("videoChannel") == video_channel and e.get("text")
+               and e.get("verdict") in ("correcta", "incorrecta") and e.get("reason") != "habia_mejor"]
+    entries.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
+    wrong = [e for e in entries if e["verdict"] == "incorrecta"][: max(1, limit * 2 // 3)]
+    right = [e for e in entries if e["verdict"] == "correcta"][: limit - len(wrong)]
+    lines = []
+    for e in [*wrong, *right]:
+        what = f"\"{str(e.get('title') or '')[:70]}\"" + (f" ({str(e.get('channel'))[:30]})" if e.get("channel") else "")
+        verdict = ("WRONG: " + REASONS.get(e.get("reason"), e.get("reason") or "")) if e["verdict"] == "incorrecta" else "RIGHT"
+        lines.append(f"- Narration «{' '.join(str(e['text']).split())[:110]}» → clip {what} → {verdict}")
+    return "\n".join(lines)
+
+
 # --- «Para ir mejorando» -------------------------------------------------------------------------------------
 
 def summary(root: Path) -> dict[str, Any]:
@@ -233,6 +320,10 @@ def summary(root: Path) -> dict[str, Any]:
     if worst and worst[1]["incorrecta"] >= 3:
         n = worst[1]["correcta"] + worst[1]["incorrecta"]
         tips.append(f"La mayoría de fallos vienen de «{METHODS.get(worst[0], worst[0])}»: {worst[1]['incorrecta']} de {n} mal.")
+    blocked = blocked_channels(root)
+    if blocked:
+        tips.append("Canales de YouTube que ya no se usan por tus correcciones: "
+                    + ", ".join(f"{name} ({n} mal)" for name, n in blocked.items()) + ".")
     if per_reason.get("persona_equivocada", 0) >= 3:
         tips.append("Muchos clips con otra persona: sube fallback.identity_scope a «all» o añade fotos del atleta a la "
                     "biblioteca para que la comprobación de caras tenga con qué comparar.")

@@ -167,6 +167,11 @@ def run_stages(
     from . import budget
 
     spent_before = budget.video_spent(ctx.work_dir)      # budget.per_video_usd counts this attempt only
+    from . import feedback
+
+    learned = feedback.load_learned(ctx.root)            # channels your «Errores» labels taught it to avoid
+    if learned:
+        print(f"Canales de YouTube bloqueados por tus correcciones: {', '.join(learned)}")
     for number, stage in enumerate(STAGES, start=1):
         label = f"[{number}/{len(STAGES)}] {stage.name}"
         forced = "all" in force or stage.name in force

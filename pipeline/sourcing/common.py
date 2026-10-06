@@ -145,6 +145,9 @@ ALWAYS_BLOCKED_CHANNELS = ("the office", "joblo", "movieclips", "kiboomers", "co
                            "edm nation", "rancho humilde", "netflix", "hbo max", "disney plus", "warner bros")
 
 
+LEARNED_BLOCKED_CHANNELS: set[str] = set()     # from your «Errores» labels (feedback.load_learned), casefolded
+
+
 def _has(term: str, text: str) -> bool:
     return bool(re.search(rf"(?<![a-z0-9]){re.escape(term.casefold())}(?![a-z0-9])", text))
 
@@ -157,4 +160,6 @@ def blocked_by_title(title: str, channel: str, blocklist: list[str] | tuple[str,
         if _has(term, text):
             return term
     name = f" {channel or ''} ".casefold()
+    if name.strip() in LEARNED_BLOCKED_CHANNELS:
+        return name.strip()
     return next((term for term in ALWAYS_BLOCKED_CHANNELS if _has(term, name)), None)

@@ -299,6 +299,9 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         prompt += f"\nChannel rule: {' '.join(str(cfg['note']).split())}"
     if sources:
         prompt += f"\nSource of each candidate:\n{sources}"
+    taught = _lessons(ctx)
+    if taught:
+        prompt += ("\nThe editor's past corrections on this channel (learn the standard, not the clips):\n" + taught)
     cache_key = hashlib.sha256(
         json.dumps([model, JUDGE_INSTRUCTIONS, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
         + image_bytes
@@ -330,6 +333,26 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         return json.loads(response.output_text)
 
     return usable(cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce), letters)
+
+
+def _lessons(ctx: RunContext) -> str:
+    """Your «Errores» corrections on this channel (pipeline/feedback.py), once per video."""
+
+    if not ctx.section("judge").get("learn", True):
+        return ""
+    cached = getattr(ctx, "_judge_lessons", None)
+    if cached is None:
+        from . import feedback
+
+        try:
+            cached = feedback.lessons(ctx.root, ctx.channel or "", int(ctx.section("judge").get("lessons", 10)))
+        except Exception:
+            cached = ""
+        try:
+            object.__setattr__(ctx, "_judge_lessons", cached)
+        except Exception:
+            pass
+    return cached
 
 
 def source_lines(options: list[Option], candidates: dict[str, Candidate]) -> str:
