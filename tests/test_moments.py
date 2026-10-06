@@ -79,3 +79,13 @@ def test_music_parts_by_chapter_rotate_across_videos(tmp_path, monkeypatch):
         ("intriga", "audio/intriga-a.mp3", 0, 120), ("triunfo", "audio/triunfo-a.mp3", 120, 180)]
     second = tl.music_parts(RunContext.create("v2", root=tmp_path, config={}), t, tracks, "intriga")
     assert second[0]["src"] == "audio/intriga-b.mp3"            # the next video starts with the other intriga track
+
+
+def test_the_opening_gets_a_swoosh_on_its_cuts():
+    from pipeline.timeline import transition_sfx
+
+    t = _timeline()
+    plain = [s.from_ for s in transition_sfx(t, ["a.mp3"], 0.6, min_gap=4.0)]
+    hooked = [s.from_ for s in transition_sfx(t, ["a.mp3"], 0.6, min_gap=4.0, hook_seconds=30, hook_gap=1.0)]
+    assert set(plain) < set(hooked)
+    assert all(b - a >= 30 for a, b in zip(sorted(hooked), sorted(hooked)[1:]))

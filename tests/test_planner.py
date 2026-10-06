@@ -222,7 +222,7 @@ class PacingTests(unittest.TestCase):
         words = [Word(index=i, text=f"w{i}", start=i * 0.3, end=i * 0.3 + 0.25, matched=True, sentenceEnd=i % 20 == 19)
                  for i in range(60)]
         with tempfile.TemporaryDirectory() as tmp:
-            ctx = RunContext.create("t", root=Path(tmp), config={})
+            ctx = RunContext.create("t", root=Path(tmp), config={"pacing": {"hook_seconds": 0}})
             targets, maxes, labels = pace_targets(ctx, words, {0: "slow", 2: "fast"}, 3.0)
         shots, starts = cut_shots(words, 18.0, target=3.0, forced_starts=set(), with_times=True, targets=targets, maxes=maxes)
         ends = starts[1:] + [18.0]
@@ -239,7 +239,23 @@ class CalmPaceTests(unittest.TestCase):
         words = [Word(index=i, text=f"w{i}", start=i * 0.3, end=i * 0.3 + 0.25, matched=True, sentenceEnd=i % 20 == 19)
                  for i in range(100)]
         with tempfile.TemporaryDirectory() as tmp:
-            ctx = RunContext.create("t", root=Path(tmp), config={})
+            ctx = RunContext.create("t", root=Path(tmp), config={"pacing": {"hook_seconds": 0}})
             targets, maxes, _ = pace_targets(ctx, words, {}, 4.4)
         shots, starts = cut_shots(words, 30.0, target=4.4, forced_starts=set(), with_times=True, targets=targets, maxes=maxes)
         assert len(shots) <= 8 and max(b - a for a, b in zip(starts, starts[1:] + [30.0])) <= 5.0 + 1e-6
+
+
+class HookPaceTests(unittest.TestCase):
+    def test_the_first_half_minute_cuts_fast(self) -> None:
+        words = [Word(index=i, text=f"w{i}", start=i * 0.3, end=i * 0.3 + 0.25, matched=True, sentenceEnd=i % 10 == 9)
+                 for i in range(200)]
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = RunContext.create("t", root=Path(tmp), config={})
+            targets, maxes, _ = pace_targets(ctx, words, {0: "slow"}, 3.0)
+        shots, starts = cut_shots(words, 60.0, target=3.0, forced_starts=set(), with_times=True, targets=targets, maxes=maxes)
+        ends = starts[1:] + [60.0]
+        opening = [e - s for s, e in zip(starts, ends) if s < 28]
+        rest = [e - s for s, e in zip(starts, ends) if s > 32]
+        self.assertLess(sum(opening) / len(opening), 2.2)
+        self.assertGreater(sum(rest) / len(rest), 2.6)
+        self.assertTrue(all(d >= 1.5 - 1e-3 for d in opening))

@@ -177,7 +177,15 @@ def pace_targets(ctx: RunContext, words: list[Word], marks: dict[int, str], base
     for n, (a, b) in enumerate(_sentences(words)):
         for i in range(a, b + 1):
             labels[i] = marks.get(n)
-    return [seconds[k] for k in labels], [longest[k] for k in labels], labels
+    targets, maxes = [seconds[k] for k in labels], [longest[k] for k in labels]
+    # The opening cuts fast (the channels that hold viewers cut every ~1.2 s in their first half minute): the first
+    # `pacing.hook_seconds` of narration aim at `hook_shot_seconds` per shot, emotional sentences included.
+    hook = float(cfg.get("hook_seconds", 30) or 0)
+    quick = float(cfg.get("hook_shot_seconds", 1.6))
+    for i, word in enumerate(words):
+        if word.start < hook and quick < targets[i]:
+            targets[i], maxes[i] = quick, min(maxes[i], max(quick + 0.8, 2.4))
+    return targets, maxes, labels
 
 
 def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChapter], str, dict[str, Any]]:
@@ -405,6 +413,9 @@ El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISU
   ESA persona siempre que el texto hable de ella, con su nombre en "entities" y en las búsquedas
   (nombre + prueba/acción + año/lugar, p. ej. "Simone Biles vault final 2023 Antwerp"): competiciones, entrenamientos, podios.
 - Los planos con "gancho": true son los primeros segundos: deciden si el espectador se queda.
+  Son cortos (1,5-2 s). Si su texto dice una FECHA, una HORA o una CIFRA clave («30 de septiembre»,
+  «19:46», «413 millones»), haz de ese plano un "stat" con ese dato tal como se dice: en grande
+  sobre el metraje, como un titular.
   Si hay PROTAGONISTA, muestran su momento cumbre (el "evento" del plano), no lo que narra el texto.
   Pide el metraje más espectacular e inconfundible del tema (el protagonista en su mejor
   momento, planos aéreos, multitudes, momentos cumbre), nunca algo genérico.

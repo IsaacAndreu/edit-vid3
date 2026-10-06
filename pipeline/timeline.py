@@ -1031,7 +1031,8 @@ def key_cuts(timeline: Timeline, cuts: list[int], half: int = 6) -> list[Timelin
 
 
 def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap: float = 4.0,
-                   main: str = "", other_every: int = 4) -> list[TimelineSfx]:
+                   main: str = "", other_every: int = 4, hook_seconds: float = 0.0,
+                   hook_gap: float = 2.5) -> list[TimelineSfx]:
     """Whooshes at the transitions, rotating through the files, never two closer than `min_gap` s.
 
     By priority: chapter cards, entering/leaving the original-sound moments and the cold open,
@@ -1051,6 +1052,12 @@ def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap:
     for point in points:
         at = max(0, point - 4)                    # the swoosh peaks just as the cut lands
         if at < timeline.durationInFrames and all(abs(at - p) >= min_gap * fps for p in placed):
+            placed.append(at)
+    # the opening: a swoosh on (almost) every cut of its fast shots, `hook_gap` s apart at least
+    hook_end = round(hook_seconds * fps) + timeline.audio.voiceFrom
+    for shot in timeline.shots:
+        at = max(0, shot.from_ - 4)
+        if 0 < shot.from_ < hook_end and all(abs(at - p) >= hook_gap * fps for p in placed):
             placed.append(at)
     first = next((f for f in files if main and main.lower() in Path(f).name.lower()), None)
     others = [f for f in files if f != first] or files
@@ -1378,7 +1385,8 @@ def run(ctx: RunContext) -> None:
                                                           for x in timeline.audio.sfx if "impact" in Path(x.src).name]})
     if whooshes:
         extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.22)), float(cfg.get("sfx_min_gap", 4.0)),
-                               str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)))
+                               str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)),
+                               float(cfg.get("hook_whoosh_seconds", 30) or 0), float(cfg.get("hook_whoosh_gap", 2.5)))
         timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
             "sfx": sorted([*timeline.audio.sfx, *extra], key=lambda x: x.from_)})})
         if cfg.get("transitions", True):
