@@ -916,11 +916,15 @@ async function scriptsPage(days = 14) {
             ${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ""}</div>
             <div class="row" style="gap:6px"><button onclick="draftFrom('${esc(id)}', this)">✍️ Borrador de guion</button><button onclick="writeOwn('${esc(id)}')">Lo escribo yo</button></div></div>`; }).join("")
           : `<div class="small muted">No hay ideas para este canal: añádelas en <a href="#/tablero">Tablero</a> o búscalas en <a href="#/competencia">Competencia</a>.</div>`}
+        <div class="row" style="margin-top:8px;gap:6px"><span class="small muted">Formato del borrador:</span>
+          <select id="fmt-${esc(c.channel)}" style="width:auto"><option value="">— el del canal —</option>
+          ${(data.formats || []).map((f) => `<option ${f === "caso-real" ? "" : ""}>${esc(f)}</option>`).join("")}</select></div>
         <div class="row" style="margin-top:8px;gap:6px"><input id="quick-${esc(c.channel)}" placeholder="Idea rápida: un título…" style="flex:1">
           <button onclick="quickDraft('${esc(c.channel)}', this)">✍️ Borrador</button></div></div>` : ""}
     </div>`).join("")}`;
   const toNew = (channel, idea, draft) => {
-    const pre = {channel, idea: {...idea, title: (draft && draft.title) || idea.title}, script: draft ? draft.script : ""};
+    const pre = {channel, idea: {...idea, title: (draft && draft.title) || idea.title, format: (draft && draft.format) || idea.format || ""},
+      script: draft ? draft.script : ""};
     try { sessionStorage.setItem("prefill", JSON.stringify(pre)); } catch (e) {}
     window.prefill = pre; location.hash = "#/nuevo";
   };
@@ -932,12 +936,14 @@ async function scriptsPage(days = 14) {
       toNew(channel, idea, d);
     } catch (e) { alert(e.message); button.disabled = false; button.textContent = label; }
   };
-  window.draftFrom = (id, button) => { const x = window.scriptIdeas[id]; draft(x.channel, x.idea, button); };
+  const withFormat = (channel, idea) => { const f = (document.getElementById(`fmt-${channel}`) || {}).value;
+    return f ? {...idea, format: f} : idea; };
+  window.draftFrom = (id, button) => { const x = window.scriptIdeas[id]; draft(x.channel, withFormat(x.channel, x.idea), button); };
   window.writeOwn = (id) => { const x = window.scriptIdeas[id]; toNew(x.channel, x.idea, null); };
   window.quickDraft = (channel, button) => {
     const title = document.getElementById(`quick-${channel}`).value.trim();
     if (!title) return alert("Escribe el título de la idea");
-    draft(channel, {title}, button);
+    draft(channel, withFormat(channel, {title}), button);
   };
 }
 

@@ -12,6 +12,7 @@ del canal o en una serie. Para ver la lista: `python main.py --formatos`.
 | `segundos_por_grafico` | Cada cuántos segundos va un gráfico, más o menos (el valor por defecto es 100). |
 | `tipos` | Gráficos que el formato necesita aunque el canal no los tenga en `graphics.types` (p. ej. `[receipt]`). |
 | `titulos` | El patrón de los títulos y de los textos de la miniatura. |
+| `escritura` | La estructura del guion para el «Borrador de guion» (página Guiones), p. ej. `caso-real`. |
 
 **Un formato nuevo:** copia el que más se parezca, cámbiale el nombre y edítalo. No hay que tocar
 código. Solo `ranking` y `prohibidos` tienen además código propio (tarjetas de puesto y sello

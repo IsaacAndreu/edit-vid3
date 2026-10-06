@@ -1,0 +1,32 @@
+# Formato «Caso real». Úsalo con `format: caso-real` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Caso real (crimen, juicio, polémica)"
+descripcion: "Un caso real contado como un thriller: se empieza por el clímax y se vuelve atrás para entenderlo."
+ejemplos: "La mujer que sobrevivió a su propia ejecución, el novio que murió el día de su cumpleaños."
+# Para el «Borrador de guion» (Guiones): la estructura que debe tener el texto.
+escritura: |
+  FORMATO CASO REAL (como un thriller, no como una biografía):
+  1. 0:00-0:50 EL CLÍMAX, en presente y con detalles que se ven: fecha, hora y lugar exactos dichos en voz alta
+     («Miércoles 30 de septiembre, 19:46. Sala de ejecuciones de…»), lo que hace cada persona, lo que se oye.
+     Frases muy cortas. Cierra con una revelación de 2-4 palabras («Está viva.»).
+  2. ~0:50-1:20 EL GIRO: por qué es algo sin precedentes, y «Pero no nos adelantemos. Para entender cómo se llegó
+     a esta noche hay que volver a <año>, a <lugar>…» con 2 detalles inquietantes del origen.
+  3. ~1:20 EL TÍTULO DICHO: «Este es el caso de <nombre>, <la frase del título>.»
+  4. El origen y los hechos en orden, con fechas y lugares concretos; cada 60-90 s un pequeño giro o promesa
+     («y entonces pasa algo que nadie esperaba»). Separa hechos probados de acusaciones («según el juicio…»).
+  5. Vuelta al presente: lo que pasó después del clímax y lo que se sabe hoy.
+  6. CIERRE: 2-3 preguntas abiertas que dividan opiniones, pide que lo comenten y promete una segunda parte
+     «cuando se resuelva». Respeto por la víctima: nombrarla y recordar quién era.
+guion: |
+  ESTE VÍDEO ES UN CASO REAL contado como un thriller: empieza por el clímax y vuelve atrás.
+  - "subject": la persona principal del caso ('Nombre Apellido · true crime / court case'); si no hay, "".
+  - "peak": búsqueda EN INGLÉS de la noticia del clímax (p. ej. 'Christa Pike execution Riverbend prison news').
+  - "events": uno por cada hecho con fecha y lugar. "label" = búsqueda EN INGLÉS de las noticias, lugares,
+    juicios y personas REALES con año ('Christa Pike trial Knoxville 1996 news'); "tag" = 'LUGAR · AÑO'.
+  - Capítulos con gancho y concretos ('LA NOCHE DEL 30', 'EL BOSQUE DE KNOXVILLE', 'EL CORREDOR DE LA MUERTE').
+  - Nunca recreaciones de violencia ni imágenes de la víctima herida: noticias, lugares, documentos, retratos.
+graficos: |
+  Este vídeo es un caso real: usa "press" para titulares de prensa, "timeline" para la cronología, "map" para los
+  lugares, "card" para las personas implicadas, "article" para documentos del juicio y "kinetic" para las preguntas
+  del final. En el arranque, fechas y horas en grande.
+segundos_por_grafico: 60
+titulos: "patrón de título de caso real: 'NOMBRE: La MUJER que <hecho insólito>' o 'NOMBRE: <lo que pasó HOY> y todos <reacción> por ESTO', palabras clave en MAYÚSCULAS, sin afirmar como hecho lo que es acusación."

@@ -207,6 +207,14 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         raise ValueError("La idea necesita un título")
     ctx = RunContext.create("_guiones", root=root, channel=channel or None)
     words = _words_per_video(root, channel)
+    format_name = str(idea.get("format") or "")
+    if format_name:
+        from .formats import spec
+
+        writing = str(spec(root, format_name).get("escritura") or "").strip()
+    else:                                        # the channel's own format, if it has one
+        format_name = str(ctx.config.get("format") or "")
+        writing = str((ctx.format or {}).get("escritura") or "").strip()
     brief = [f"CANAL: {channel}", f"IDEA: {title}"]
     for key, label in (("note", "NOTA"), ("angle", "ÁNGULO"), ("hook", "GANCHO"), ("research", "COMPROBAR")):
         if idea.get(key):
@@ -214,6 +222,8 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     if idea.get("outline"):
         brief.append("ESQUEMA:\n" + "\n".join(f"- {x}" for x in idea["outline"]))
     brief.append(f"LONGITUD: unas {words} palabras (como los vídeos del canal).")
+    if writing:
+        brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
     reference = _reference_script(root, channel)
     if reference:
         brief.append(f"GUION DE REFERENCIA DEL CANAL (solo el estilo):\n{reference}")
@@ -223,4 +233,4 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     if len(script.split()) < 200:
         raise RuntimeError("El borrador ha salido demasiado corto; vuelve a probar")
     return {"title": str(result.get("title") or title).strip(), "script": script + "\n", "words": len(script.split()),
-            "check": script.count("[COMPROBAR]")}
+            "check": script.count("[COMPROBAR]"), "format": format_name}

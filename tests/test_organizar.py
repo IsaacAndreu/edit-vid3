@@ -99,3 +99,22 @@ def test_finished_videos_get_stills_for_your_thumbnail(tmp_path: Path):
     v = organizar.to_upload(root)[0]
     stills = [f for f in v["files"] if f.get("still")]
     assert len(stills) == 8 and stills[0]["path"] == "fotogramas/fotograma-1.jpg"
+
+
+def test_a_real_case_draft_follows_its_structure(tmp_path: Path, monkeypatch):
+    import shutil
+
+    root = _site(tmp_path)
+    (root / "formatos").mkdir()
+    for name in ("caso-real", "historia"):
+        shutil.copy(Path(__file__).parents[1] / "formatos" / f"{name}.yaml", root / "formatos" / f"{name}.yaml")
+    seen = {}
+
+    def fake(ctx, **kwargs):
+        seen.update(kwargs)
+        return {"title": "Christa Pike", "script": "Miércoles 30 de septiembre. " * 100}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    d = organizar.draft_script(root, "negocios", {"title": "Christa Pike", "format": "caso-real"})
+    assert "ESTRUCTURA OBLIGATORIA DEL FORMATO «caso-real»" in seen["user"] and "EL CLÍMAX" in seen["user"]
+    assert d["format"] == "caso-real"
