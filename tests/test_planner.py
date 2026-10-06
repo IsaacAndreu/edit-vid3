@@ -199,6 +199,19 @@ class LabelRetryTests(unittest.TestCase):
         self.assertIn("RESPONDE SOLO con los planos s002", prompts[1])
         self.assertIn("99%", prompts[1])
 
+    def test_a_stubborn_datacard_without_broll_becomes_broll_instead_of_failing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = RunContext.create("t", root=Path(tmp), config={})
+            batch = [_structural(1, "dice 2,7%"), _structural(2, "otra cosa")]
+            panel = {"title": "Notas", "rows": [{"label": "dif", "value": "4,22"}]}
+            first = {"shots": [{"id": "s001", "type": "broll", "broll": BROLL},
+                               {"id": "s002", "type": "datacard", "panel": panel}]}
+            again = {"shots": [{"id": "s002", "type": "datacard", "panel": panel}]}
+            with patch.object(planner, "complete_json", side_effect=[first, again, again]):
+                result = _label_batch(ctx, batch, "H", 3, {"s001": "dice 2,7%", "s002": "otra cosa"})
+        self.assertEqual([s["type"] for s in result], ["broll", "broll"])
+        self.assertEqual(result[1]["broll"]["visualIntent"], result[0]["broll"]["visualIntent"])
+
 
 if __name__ == "__main__":
     unittest.main()

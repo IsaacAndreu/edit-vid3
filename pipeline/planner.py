@@ -532,6 +532,22 @@ def _label_batch(
             continue
         print(f"   {shot['id']}: la cifra no se dice en el texto → se queda como b-roll")
         good[shot["id"]] = plain
+    # Still missing (no footage of its own, or never valid): b-roll with the nearest good shot's search, so one
+    # stubborn shot never fails the whole video (pati2: «4,22» kept coming back on a datacard without b-roll).
+    order = [s["id"] for s in batch]
+    for index, shot in enumerate(batch):
+        if shot["id"] in good:
+            continue
+        nearest = sorted((abs(order.index(sid) - index), sid) for sid, c in good.items() if isinstance(c.get("broll"), dict))
+        if not nearest:
+            continue
+        plain = _merge(shot, {"type": "broll", "broll": dict(good[nearest[0][1]]["broll"])})
+        try:
+            Shot.model_validate(plain)
+        except ValidationError:
+            continue
+        print(f"   {shot['id']}: sin plano válido tras {attempts} intentos → b-roll como {nearest[0][1]}")
+        good[shot["id"]] = plain
     if len(good) == len(batch):
         return [good[s["id"]] for s in batch]
     raise RuntimeError("El planner no produjo planos válidos tras varios intentos: " + " | ".join(errors[:8]))
