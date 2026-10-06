@@ -346,6 +346,10 @@ def ensure(ctx: Any, wait: bool = True) -> bool:
 
 def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bool:
     text = narration_text(script.read_text("utf-8"))
+    if str(ctx.section("align").get("language", "es")).startswith("es") and ctx.section("tts").get("numbers_in_words", True):
+        from .numeros import spoken_numbers
+
+        text = spoken_numbers(text)              # «413.240.000» read right; the graphics keep the digits
     print(f"Voz con GenAIPro ({voice.get('name') or voice['voice_id']}, {voice['model_id']}): {len(text)} caracteres")
     started = time.monotonic()
     result = generate(ctx.env("GENAIPRO_API_KEY", required=False), text, voice, voice_file)
