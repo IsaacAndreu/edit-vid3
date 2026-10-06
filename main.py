@@ -152,8 +152,9 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
 
                 dub.run(ctx)
             else:
-                from pipeline import tts
+                from pipeline import capitulos, tts
 
+                capitulos.ensure(ctx)                   # `## ` chapters in a new script that has none
                 tts.ensure(ctx)                         # no voz.mp3 but a voice for the channel: GenAIPro makes it
                 run_stages(ctx, force=force, until=until, review=review)
                 if until is None and not review:
