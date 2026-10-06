@@ -19,7 +19,6 @@ import json
 import os
 import re
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -129,10 +128,13 @@ class GenAIPro:
         ends = time.monotonic() + timeout
         while time.monotonic() < ends:
             task = self._call("GET", f"/v1/labs/task/{task_id}")
-            status = str(task.get("status") or "")
-            if status == "completed" and task.get("result"):
-                return str(task["result"])
-            if status in ("failed", "error"):
+            status = str(task.get("status") or "").lower()
+            result = task.get("result")
+            if isinstance(result, dict):
+                result = result.get("url") or result.get("audio") or ""
+            if status in ("completed", "complete", "done", "success", "succeeded") and result:
+                return str(result)
+            if status in ("failed", "error", "cancelled", "canceled"):
                 raise TTSError(f"GenAIPro: la tarea {task_id} falló ({str(task.get('error') or task)[:200]})")
             time.sleep(every)
         raise TTSError(f"GenAIPro: la tarea {task_id} no terminó en {timeout / 60:.0f} min")
@@ -194,34 +196,68 @@ def pieces(text: str, max_chars: int = MAX_CHARS) -> list[str]:
 
 def generate(token: str, text: str, voice: dict[str, Any], target: Path, session: Any = None,
              log: Any = print) -> dict[str, Any]:
-    """The whole text as one mp3 at `target`. Returns {"chars", "pieces", "tasks"}."""
+    """The whole text as one mp3 at `target`. Returns {"chars", "pieces", "tasks"}.
+
+    Each piece's task and audio are kept in `.voz-trozos/` next to `target` until the end: after a restart (or a
+    failure half way) the pieces already made are reused, not paid again."""
+
+    import hashlib
 
     api = GenAIPro(token, session)
     parts = pieces(text, int(voice.get("max_chars", MAX_CHARS)))
     if not parts:
         raise TTSError("El guion está vacío")
-    tasks = []
-    with tempfile.TemporaryDirectory() as tmp:
-        files = []
-        for number, part in enumerate(parts, start=1):
+    work = target.parent / ".voz-trozos"
+    work.mkdir(parents=True, exist_ok=True)
+    state_file = work / "tareas.json"
+    try:
+        state = json.loads(state_file.read_text("utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    settings = json.dumps({k: voice.get(k) for k in ("voice_id", *DEFAULTS)}, sort_keys=True)
+    tasks, files = [], []
+    for number, part in enumerate(parts, start=1):
+        key = hashlib.sha1((settings + part).encode("utf-8")).hexdigest()[:16]
+        piece = work / f"{key}.mp3"
+        files.append(piece)
+        if piece.is_file() and piece.stat().st_size > 0:
+            log(f"   Voz {number}/{len(parts)}: ya hecha antes, la reutilizo")
+            tasks.append(state.get(key, ""))
+            continue
+        task_id = state.get(key)
+        if task_id:
+            log(f"   Voz {number}/{len(parts)}: retomo la tarea {task_id}")
+        else:
             task_id = api.create(part, voice)
-            tasks.append(task_id)
+            state[key] = task_id
+            state_file.write_text(json.dumps(state), encoding="utf-8")
             log(f"   Voz {number}/{len(parts)}: {len(part)} caracteres → tarea {task_id}")
-            url = api.wait(task_id)
-            files.append(api.download(url, Path(tmp) / f"{number:03d}.mp3"))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        partial = target.with_suffix(".generando.mp3")
-        if len(files) == 1:
-            partial.write_bytes(files[0].read_bytes())
-        else:                                   # one file, re-encoded so the joins are clean
-            listing = Path(tmp) / "list.txt"
-            listing.write_text("".join(f"file '{f}'\n" for f in files), encoding="utf-8")
-            done = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i",
-                                   str(listing), "-c:a", "libmp3lame", "-b:a", "192k", str(partial)],
-                                  capture_output=True, text=True)
-            if done.returncode != 0:
-                raise TTSError(f"No se pudieron unir los trozos de voz: {done.stderr[-200:]}")
-        partial.replace(target)
+        tasks.append(task_id)
+        if (target.parent / LOCK).is_file():                  # still alive: a long narration is not a stale lock
+            (target.parent / LOCK).touch()
+        url = api.wait(task_id)
+        log(f"   Voz {number}/{len(parts)}: lista, descargando")
+        partial_piece = piece.with_suffix(".bajando")
+        api.download(url, partial_piece)
+        if partial_piece.stat().st_size == 0:
+            raise TTSError(f"GenAIPro devolvió un audio vacío (tarea {task_id})")
+        partial_piece.replace(piece)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_suffix(".generando.mp3")
+    if len(files) == 1:
+        partial.write_bytes(files[0].read_bytes())
+    else:                                       # one file, re-encoded so the joins are clean
+        listing = work / "list.txt"
+        listing.write_text("".join(f"file '{f.resolve()}'\n" for f in files), encoding="utf-8")
+        done = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i",
+                               str(listing), "-c:a", "libmp3lame", "-b:a", "192k", str(partial)],
+                              capture_output=True, text=True)
+        if done.returncode != 0:
+            raise TTSError(f"No se pudieron unir los trozos de voz: {done.stderr[-200:]}")
+    partial.replace(target)
+    import shutil
+
+    shutil.rmtree(work, ignore_errors=True)
     return {"chars": sum(len(p) for p in parts), "pieces": len(parts), "tasks": tasks}
 
 

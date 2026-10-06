@@ -175,3 +175,27 @@ def test_the_queue_waits_for_the_voice_being_made_elsewhere(tmp_path, monkeypatc
     monkeypatch.setattr(tts.time, "sleep", sleep)
     monkeypatch.setattr(tts, "generate", lambda *a, **k: pytest.fail("made twice"))
     assert tts.ensure(ctx) is False and (folder / "voz.mp3").is_file()
+
+
+def test_a_restart_reuses_the_pieces_already_made(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    fake = _FakeGenAIPro(_mp3(tmp_path / "piece.mp3"))
+    voice = {**tts.DEFAULTS, "voice_id": "V1", "max_chars": 40}
+    text = "Primera frase del guion. Segunda frase.\n\nTercer párrafo con más texto."
+    target = tmp_path / "v" / "voz.mp3"
+    calls = {"n": 0}
+    real_download = tts.GenAIPro.download
+
+    def dies_on_the_second(self, url, path):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise tts.TTSError("restart")
+        return real_download(self, url, path)
+
+    monkeypatch.setattr(tts.GenAIPro, "download", dies_on_the_second)
+    with pytest.raises(tts.TTSError):
+        tts.generate("k", text, voice, target, session=fake, log=lambda *_: None)
+    created = len(fake.created)
+    tts.generate("k", text, voice, target, session=fake, log=lambda *_: None)
+    assert target.is_file() and len(fake.created) == created          # no task paid twice
+    assert not (target.parent / ".voz-trozos").exists()
