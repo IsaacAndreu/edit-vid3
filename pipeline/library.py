@@ -43,8 +43,13 @@ def person_key(name: str) -> str:
 
 
 def _base(root_or_ctx: Any) -> Path:
-    cache = root_or_ctx.cache_dir if hasattr(root_or_ctx, "cache_dir") else Path(root_or_ctx) / "cache"
-    return cache / LIB_DIR
+    if hasattr(root_or_ctx, "cache_dir"):
+        return root_or_ctx.cache_dir / LIB_DIR
+    root = Path(root_or_ctx)
+    try:                                       # the studio: the same cache the videos use (paths.cache)
+        return RunContext.create("_biblioteca", root=root).cache_dir / LIB_DIR
+    except Exception:
+        return root / "cache" / LIB_DIR
 
 
 def folder(ctx: RunContext, person: str) -> Path:
