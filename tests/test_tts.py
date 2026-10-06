@@ -103,3 +103,75 @@ def test_a_channel_with_a_voice_puts_a_script_only_video_in_the_queue(tmp_path):
     tts.set_voice(tmp_path, "negocios", {"voice_id": "V1", "name": "Narrador", "speed": 1.5})
     assert tts.voice_for(tmp_path, "negocios")["speed"] == 1.2        # clamped to GenAIPro's range
     assert main.pending_slugs(tmp_path) == ["n1"]
+    (folder / tts.LOCK).write_text(f"{__import__('os').getpid()} now\n")
+    assert main.pending_slugs(tmp_path) == []                         # being made in the background: next video first
+    (folder / tts.LOCK).unlink()
+
+
+def _negocios(tmp_path: Path) -> Path:
+    (tmp_path / "config.yaml").write_text("canal: ''\n", encoding="utf-8")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "negocios.yaml").write_text("format: historia\n", encoding="utf-8")
+    folder = tmp_path / "materiales" / "negocios" / "n1"
+    folder.mkdir(parents=True)
+    (folder.parent / "config.yaml").write_text("canal: negocios\n", encoding="utf-8")
+    (folder / "guion.txt").write_text("## UNO\n" + "Hola. " * 5, encoding="utf-8")
+    tts.set_voice(tmp_path, "negocios", {"voice_id": "V1"})
+    return folder
+
+
+def test_the_background_makes_the_voice_as_soon_as_the_video_appears(tmp_path, monkeypatch):
+    folder = _negocios(tmp_path)
+    made = []
+
+    def fake_generate(token, text, voice, target, session=None, log=print):
+        assert (folder / tts.LOCK).is_file()                          # nobody else makes it meanwhile
+        made.append(text)
+        target.write_bytes(b"mp3")
+        return {"chars": len(text), "pieces": 1, "tasks": ["t1"]}
+
+    monkeypatch.setattr(tts, "generate", fake_generate)
+    assert tts.prepare_all(tmp_path, log=lambda *_: None) == 1
+    assert (folder / "voz.mp3").read_bytes() == b"mp3" and not (folder / tts.LOCK).exists()
+    assert "UNO" not in made[0]
+    assert tts.prepare_all(tmp_path, log=lambda *_: None) == 0       # already there: nothing more
+
+
+def test_a_failure_is_noted_and_retried_later_not_every_loop(tmp_path, monkeypatch):
+    folder = _negocios(tmp_path)
+    calls, told = [], []
+
+    def failing(*a, **k):
+        calls.append(1)
+        raise tts.TTSError("GenAIPro 402: sin créditos")
+
+    monkeypatch.setattr(tts, "generate", failing)
+    monkeypatch.setattr(tts, "_tell", lambda root, text: told.append(text))
+    assert tts.prepare_all(tmp_path, log=lambda *_: None) == 0
+    assert "sin créditos" in (folder / tts.FAILED).read_text("utf-8") and not (folder / tts.LOCK).exists()
+    tts.prepare_all(tmp_path, log=lambda *_: None)
+    assert len(calls) == 1 and len(told) == 1                         # waits RETRY_MINUTES before trying again
+
+
+def test_held_videos_wait(tmp_path, monkeypatch):
+    folder = _negocios(tmp_path)
+    (folder / ".en-espera").write_text("x")
+    monkeypatch.setattr(tts, "generate", lambda *a, **k: pytest.fail("held video"))
+    assert tts.prepare_all(tmp_path, log=lambda *_: None) == 0
+
+
+def test_the_queue_waits_for_the_voice_being_made_elsewhere(tmp_path, monkeypatch):
+    from pipeline.context import RunContext
+
+    folder = _negocios(tmp_path)
+    (folder / tts.LOCK).write_text(f"{__import__('os').getpid()} now\n")
+    ctx = RunContext.create("n1", root=tmp_path)
+    assert tts.ensure(ctx, wait=False) is False                       # the background has it: don't make it twice
+
+    def sleep(_):                                                      # the other one finishes while we wait
+        (folder / "voz.mp3").write_bytes(b"mp3")
+        (folder / tts.LOCK).unlink()
+
+    monkeypatch.setattr(tts.time, "sleep", sleep)
+    monkeypatch.setattr(tts, "generate", lambda *a, **k: pytest.fail("made twice"))
+    assert tts.ensure(ctx) is False and (folder / "voz.mp3").is_file()

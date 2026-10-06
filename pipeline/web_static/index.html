@@ -194,6 +194,7 @@ function videoCard(v) {
     <div class="row" style="justify-content:space-between"><b>${esc(v.slug)}</b><span>${v.published ? '<span class="pill hecho">en YouTube</span> ' : ""}${pill(v.status)}</span></div>
     <div class="small muted">${esc(v.channel || "—")}${v.minutes ? " · " + v.minutes + " min" : ""}${v.costUsd ? " · " + v.costUsd + " $" : ""}</div>
     ${progress}${v.error ? `<div class="small" style="color:var(--bad);margin-top:6px">${esc(String(v.error).slice(0, 140))}</div>` : ""}
+    ${v.voice ? `<div class="small muted" style="margin-top:6px">🎙️ ${v.voice === "generando" ? "generando la voz con GenAIPro…" : "voz: " + esc(v.voice)}</div>` : ""}
     ${v.lastError ? `<div class="small muted" style="margin-top:6px">↻ ${v.retryAt ? "reintento a las " + esc(v.retryAt) : "se reintenta en su turno"} · falló la última vez</div>` : ""}</div>`;
 }
 

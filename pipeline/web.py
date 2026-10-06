@@ -116,6 +116,12 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
             retry_at = float(failed["at"]) + _retry_hours(root) * 3600
             if retry_at <= time.time():
                 retry_at = None
+    voice = None                               # GenAIPro in the background (tts.prepare_all)
+    if not (folder / "voz.mp3").is_file() and (folder / "guion.txt").is_file():
+        if tts.generating(folder):
+            voice = "generando"
+        elif (folder / tts.FAILED).is_file():
+            voice = "error: " + str((_json(folder / tts.FAILED) or {}).get("error") or "falló")[:200]
     status = ("hecho" if done else "haciendo" if current else "en pausa" if held else "en cola" if queued_again
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
@@ -124,6 +130,7 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
         "error": None if done or current or queued_again else diag.get("error") or ((failed or {}).get("status") and "falló"),
         "lastError": (diag.get("error") or "falló") if queued_again else None,
+        "voice": voice,
         "retryAt": time.strftime("%H:%M", time.localtime(retry_at)) if retry_at else None,
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
         "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,

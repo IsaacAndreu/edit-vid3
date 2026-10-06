@@ -3,8 +3,10 @@
 - The key: GENAIPRO_API_KEY in .env (genaipro.io → avatar → Manage Account → API Key). Never in the repository.
 - A voice per channel: studio → Ajustes → «Voces por canal» (out/_voces.json): the voice ID, the model and the
   settings. The studio also searches GenAIPro's voices and plays a test with a channel's voice.
-- A video with its script and no voz.mp3, in a channel that has a voice, is in the queue like any other: before its
-  first stage the narration is generated (main._run_one → ensure). A voz.mp3 you upload is always used as it is.
+- A video with its script and no voz.mp3, in a channel that has a voice, is in the queue like any other. The
+  watcher makes its narration as soon as the video appears (a thread of its own, `prepare_all`, one video at a
+  time), without waiting for its turn: when the turn comes, voz.mp3 is already in its folder. If it is not yet,
+  ensure() (main._run_one) waits for the one being made or makes it. A voz.mp3 you upload is always used as it is.
 - The text is the script without the `## chapter` lines (they are not narrated) and without markdown marks. A long
   script goes in pieces of up to `max_chars` (cut at paragraphs, then sentences), joined into one mp3.
 - API (docs.genaipro.io/openapi.yaml): POST /v1/labs/task → task_id; GET /v1/labs/task/{id} until status
@@ -14,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -30,6 +33,9 @@ DEFAULTS = {"model_id": "eleven_multilingual_v2", "stability": 0.5, "similarity"
             "use_speaker_boost": True}
 MAX_CHARS = 4500
 WAIT_SECONDS = 1800
+LOCK = ".voz.generando"          # in the video's folder while its narration is being made (pid, time)
+FAILED = "voz.error.json"        # the last failure: the background retries it after RETRY_MINUTES
+RETRY_MINUTES = 30
 
 
 class TTSError(RuntimeError):
@@ -219,8 +225,58 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
     return {"chars": sum(len(p) for p in parts), "pieces": len(parts), "tasks": tasks}
 
 
-def ensure(ctx: Any) -> bool:
-    """Before a video's first stage: no voz.mp3, a script, and a voice for its channel → generate it. True if made."""
+def _lock_alive(lock: Path) -> bool:
+    try:
+        pid = int(lock.read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return lock.is_file() and time.time() - lock.stat().st_mtime < WAIT_SECONDS
+    if time.time() - lock.stat().st_mtime > WAIT_SECONDS * 2:       # a crash left it behind long ago
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _take(lock: Path) -> bool:
+    """The right to make this narration (one process, one thread at a time)."""
+
+    if lock.is_file() and not _lock_alive(lock):
+        lock.unlink(missing_ok=True)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w") as out:
+        out.write(f"{os.getpid()} {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+    return True
+
+
+def clear_own_locks(root: Path) -> None:
+    """At the watcher's start: a lock with our own pid is from before a self-restart (exec keeps the pid)."""
+
+    from .context import video_folders
+
+    for folder in video_folders(root):
+        lock = folder / LOCK
+        try:
+            if int(lock.read_text().split()[0]) == os.getpid():
+                lock.unlink(missing_ok=True)
+        except (OSError, ValueError, IndexError):
+            pass
+
+
+def generating(folder: Path) -> bool:
+    return _lock_alive(folder / LOCK)
+
+
+def ensure(ctx: Any, wait: bool = True) -> bool:
+    """No voz.mp3, a script, and a voice for its channel → generate it. True if made here.
+
+    While another thread or process is making it (the watcher's background), wait for it (`wait`) or return."""
 
     voice_file = ctx.materials_dir / "voz.mp3"
     script = ctx.materials_dir / "guion.txt"
@@ -229,6 +285,30 @@ def ensure(ctx: Any) -> bool:
     voice = voice_for(ctx.root, ctx.channel or "")
     if not voice:
         return False
+    lock = ctx.materials_dir / LOCK
+    while not _take(lock):
+        if not wait:
+            return False
+        print("   La voz se está generando en segundo plano: espero a que acabe…")
+        while _lock_alive(lock) and not voice_file.is_file():
+            time.sleep(5)
+        if voice_file.is_file():
+            return False
+    try:
+        if voice_file.is_file():                 # made while we waited for the lock
+            return False
+        made = _make(ctx, voice, script, voice_file)
+        (ctx.materials_dir / FAILED).unlink(missing_ok=True)
+        return made
+    except Exception as error:
+        (ctx.materials_dir / FAILED).write_text(json.dumps(
+            {"at": time.time(), "error": f"{type(error).__name__}: {str(error)[:300]}"}, ensure_ascii=False), encoding="utf-8")
+        raise
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bool:
     text = narration_text(script.read_text("utf-8"))
     print(f"Voz con GenAIPro ({voice.get('name') or voice['voice_id']}, {voice['model_id']}): {len(text)} caracteres")
     started = time.monotonic()
@@ -245,6 +325,55 @@ def ensure(ctx: Any) -> bool:
         pass
     print(f"   voz.mp3 lista en {time.monotonic() - started:.0f} s ({result['pieces']} trozo(s))")
     return True
+
+
+def prepare_all(root: Path, log: Any = print) -> int:
+    """The watcher's background: every video waiting in the queue whose narration GenAIPro has to make, made now
+    (oldest first), not when its turn comes. Held videos («Quitar de la cola») and finished ones are left alone; a
+    failure is retried after RETRY_MINUTES and told to Telegram once. Returns how many it made."""
+
+    from .context import RunContext, video_folders
+
+    if not voices(root):
+        return 0
+    made = 0
+    materials = root / "materiales"
+    for folder in sorted(video_folders(root), key=lambda d: d.stat().st_mtime):
+        if any(part.startswith(("_", ".")) for part in folder.relative_to(materials).parts):
+            continue
+        if (folder / "voz.mp3").is_file() or (folder / ".en-espera").is_file() or not has_auto_voice(root, folder):
+            continue
+        try:
+            failed = json.loads((folder / FAILED).read_text("utf-8"))
+        except (OSError, ValueError):
+            failed = None
+        if failed and time.time() - float(failed.get("at") or 0) < RETRY_MINUTES * 60:
+            continue
+        from .housekeeping import is_done
+
+        if is_done(root, folder.name) or generating(folder):
+            continue
+        try:
+            ctx = RunContext.create(folder.name, root=root)
+            if ensure(ctx, wait=False):
+                made += 1
+                log(f"Voz de {folder.name} lista (generada en segundo plano)")
+        except Exception as error:
+            log(f"Voz de {folder.name}: {type(error).__name__}: {str(error)[:200]}")
+            if not failed:                       # one message per video, not one every half hour
+                _tell(root, f"🎙️ No se pudo generar la voz de {folder.name} con GenAIPro:\n{str(error)[:300]}\n\n"
+                            f"Lo reintento cada {RETRY_MINUTES} min.")
+    return made
+
+
+def _tell(root: Path, text: str) -> None:
+    try:
+        from .context import RunContext
+        from .notify import telegram
+
+        telegram(RunContext.create("_voces", root=root), text)
+    except Exception:            # a message is never worth stopping anything for
+        pass
 
 
 def has_auto_voice(root: Path, folder: Path) -> bool:

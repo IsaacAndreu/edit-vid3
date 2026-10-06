@@ -193,6 +193,8 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
 
             if not tts.has_auto_voice(root, d):      # its channel has a GenAIPro voice: made before the first stage
                 continue
+            if tts.generating(d):                # being made in the background: the next video goes first
+                continue
         if (d / HOLD).is_file():           # «Quitar de la cola» in the studio
             continue
         names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
@@ -300,7 +302,28 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
 
         threading.Thread(target=loop, name="latido", daemon=True).start()
 
+    def voices() -> None:                    # GenAIPro narrations made as soon as a video appears, not on its turn
+        import threading
+
+        def loop() -> None:
+            from pipeline import tts
+
+            try:
+                tts.clear_own_locks(root)
+            except Exception:
+                pass
+            while True:
+                try:
+                    if not (root / "out" / "_pausa").is_file():
+                        tts.prepare_all(root)
+                except Exception as error:       # never stops the watcher
+                    print(f"Voces en segundo plano: {type(error).__name__}: {error}")
+                time.sleep(20)
+
+        threading.Thread(target=loop, name="voces", daemon=True).start()
+
     beat()
+    voices()
     while True:
         (root / "out").mkdir(parents=True, exist_ok=True)
         (root / "out" / "_vigilar.latido").write_text(datetime.now().isoformat(timespec="seconds"))   # web: «vigilando»
@@ -366,7 +389,11 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             if time.time() - getattr(watch, "chores_at", 0) > 6 * 3600:    # every few hours, while idle
                 watch.chores_at = time.time()                              # type: ignore[attr-defined]
                 housekeeping.published_chores(root)
-        if cfg.get("git_pull", True) and _git_update(root):
+        from pipeline import tts
+        from pipeline.context import video_folders
+
+        voicing = any(tts.generating(d) for d in video_folders(root))       # never cut a narration being made
+        if cfg.get("git_pull", True) and not voicing and _git_update(root):
             print("Código nuevo (git pull): reinicio con él")
             os.execv(sys.executable, [sys.executable, *sys.argv])
         if not waiting:
