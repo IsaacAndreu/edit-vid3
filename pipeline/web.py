@@ -102,7 +102,9 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     costs = _json(work / "costs.json") or {}
     failed = watch_state.get(slug)
     diag = _json(work / "diag.json") or {}
-    ready = (folder / "guion.txt").is_file() and (folder / "voz.mp3").is_file()
+    from . import tts
+
+    ready = (folder / "guion.txt").is_file() and ((folder / "voz.mp3").is_file() or tts.has_auto_voice(root, folder))
     # with the watcher running a failed video is not «error»: it goes back to the queue — now if the watcher never
     # tried it (an old failure), else after watch.retry_hours (or as soon as you change its files)
     retry_at = None
@@ -640,6 +642,27 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok({"settings": agenda.settings(root), "weekdays": agenda.WEEKDAYS,
                                      "plan": agenda.plan(root, days=28, listed=listed),
                                      "reserve": agenda.reserve(root, listed), "videos": listed})
+                if path == "/api/voices":                  # GenAIPro voices per channel (pipeline/tts.py)
+                    from . import tts
+
+                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
+                    return self._ok({"voices": tts.voices(root), "channels": channels(root), "models": list(tts.MODELS),
+                                     "defaults": tts.DEFAULTS, "hasKey": bool(key)})
+                if path == "/api/voices/search":
+                    from . import tts
+
+                    query = urllib.parse.parse_qs(url.query)
+                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
+                    found = tts.GenAIPro(key).search((query.get("q") or [""])[0], (query.get("language") or [""])[0],
+                                                     (query.get("gender") or [""])[0])
+                    keep = ("voice_id", "name", "gender", "age", "accent", "language", "descriptive", "use_case",
+                            "category", "preview_url", "description")
+                    return self._ok([{k: v.get(k) for k in keep} for v in found if isinstance(v, dict)])
+                if path == "/api/voices/credits":
+                    from . import tts
+
+                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
+                    return self._ok(tts.GenAIPro(key).credits())
                 if path == "/api/board":
                     from . import agenda
 
@@ -749,6 +772,26 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import agenda
 
                     return self._ok(agenda.update(root, body))
+                if path == "/api/voices":                  # {channel, voice_id, name, model_id, stability, …}
+                    from . import tts
+
+                    if str(body.get("channel") or "") not in channels(root):
+                        raise ValueError("Canal desconocido")
+                    return self._ok(tts.set_voice(root, str(body["channel"]), body))
+                if path == "/api/voices/test":             # {channel | voice_id, text}: a short sample to listen to
+                    from . import tts
+
+                    voice = tts.voice_for(root, str(body.get("channel") or "")) or {}
+                    if body.get("voice_id"):
+                        voice = {**tts.DEFAULTS, **voice, "voice_id": str(body["voice_id"])}
+                    if not voice.get("voice_id"):
+                        raise ValueError("Pon el ID de la voz")
+                    text = str(body.get("text") or "").strip()[:600] or \
+                        "Esta es una prueba de la voz del canal. Así sonará la narración de tus vídeos."
+                    name = f"prueba-{re.sub(r'[^a-z0-9-]', '', str(body.get('channel') or 'voz').lower())}-{int(time.time())}.mp3"
+                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
+                    tts.generate(key, text, voice, root / "out" / "_voces" / name, log=lambda *_: None)
+                    return self._ok({"url": f"/files/_voces/{name}"})
                 if path == "/api/board/idea":
                     from . import agenda
 

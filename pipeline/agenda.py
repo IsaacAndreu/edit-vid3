@@ -147,7 +147,7 @@ def videos(root: Path) -> list[dict[str, Any]]:
             status = "haciendo"
         elif not (folder / "guion.txt").is_file():
             status = "falta guion"
-        elif not (folder / "voz.mp3").is_file():
+        elif not (folder / "voz.mp3").is_file() and not _auto_voice(root, folder):
             status = "falta voz"
         else:
             status = "error" if slug in failed else "en cola"
@@ -159,6 +159,12 @@ def videos(root: Path) -> list[dict[str, Any]]:
             "doneAt": final.stat().st_mtime if final.is_file() else None, "created": folder.stat().st_mtime,
         })
     return out
+
+
+def _auto_voice(root: Path, folder: Path) -> bool:
+    from .tts import has_auto_voice
+
+    return has_auto_voice(root, folder)
 
 
 # --- the plan ----------------------------------------------------------------------------------------------------

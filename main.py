@@ -152,6 +152,9 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
 
                 dub.run(ctx)
             else:
+                from pipeline import tts
+
+                tts.ensure(ctx)                         # no voz.mp3 but a voice for the channel: GenAIPro makes it
                 run_stages(ctx, force=force, until=until, review=review)
                 if until is None and not review:
                     from pipeline import housekeeping
@@ -183,8 +186,13 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     ready, names = [], set()
     for d in video_folders(root):
         skipped = any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts)   # _hechos/, _video
-        if skipped or d.name in names or not (d / "guion.txt").is_file() or not (d / "voz.mp3").is_file():
+        if skipped or d.name in names or not (d / "guion.txt").is_file():
             continue
+        if not (d / "voz.mp3").is_file():
+            from pipeline import tts
+
+            if not tts.has_auto_voice(root, d):      # its channel has a GenAIPro voice: made before the first stage
+                continue
         if (d / HOLD).is_file():           # «Quitar de la cola» in the studio
             continue
         names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
