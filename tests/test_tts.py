@@ -199,3 +199,42 @@ def test_a_restart_reuses_the_pieces_already_made(tmp_path, monkeypatch):
     tts.generate("k", text, voice, target, session=fake, log=lambda *_: None)
     assert target.is_file() and len(fake.created) == created          # no task paid twice
     assert not (target.parent / ".voz-trozos").exists()
+
+
+class _FakeWithSubtitles(_FakeGenAIPro):
+    def request(self, method, url, headers=None, timeout=None, json=None, params=None):
+        if method == "POST" and "/v1/labs/task/subtitle/" in url:
+            task = url.rsplit("/", 1)[1]
+            return _Response(payload={"subtitle": f"https://media.example/{task}.vtt"})
+        return super().request(method, url, headers=headers, timeout=timeout, json=json, params=params)
+
+    def get(self, url, stream=False, timeout=None):
+        if url.endswith(".vtt"):
+            return _Response(content=b"WEBVTT\n\n00:00:00.000 --> 00:00:00.500\nHola mundo\n\n"
+                                     b"00:00:00.500 --> 00:00:01.000\nadios\n")
+        return super().get(url, stream, timeout)
+
+
+def test_the_subtitles_give_word_timings_and_align_skips_whisper(tmp_path, monkeypatch):
+    from pipeline import align
+
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    fake = _FakeWithSubtitles(_mp3(tmp_path / "piece.mp3"))
+    voice = {**tts.DEFAULTS, "voice_id": "V1", "max_chars": 20}
+    folder = tmp_path / "v"
+    target = folder / "voz.mp3"
+    tts.generate("k", "Hola mundo adios.\n\nHola mundo adios.", voice, target, session=fake, log=lambda *_: None)
+    spoken = tts.timings(target)
+    assert spoken and [w["word"] for w in spoken["words"]] == ["Hola", "mundo", "adios"] * 2
+    second = spoken["words"][3]
+    assert 0.9 < second["start"] < 1.2                                # the second piece shifted by the first's length
+    raw = align.build_words_file(slug="v", title="", script="## UNO\nHola mundo adios.\nHola mundo adios.", raw=spoken,
+                                 provider="genaipro", model="subtitles", language="es")
+    assert raw.alignment.matchRatio == 1.0
+    target.write_bytes(target.read_bytes() + b"x")                    # another voz.mp3: its timings no longer count
+    assert tts.timings(target) is None
+
+
+def test_cues_from_srt_too():
+    cues = tts.parse_cues("1\n00:00:01,200 --> 00:00:02,000\n<b>Hola</b> mundo\n\n2\n00:00:02,000 --> 00:00:03,500\nadiós\n")
+    assert cues == [(1.2, 2.0, "Hola mundo"), (2.0, 3.5, "adiós")]

@@ -239,6 +239,18 @@ def run(ctx: RunContext) -> None:
         if not required.is_file():
             raise FileNotFoundError(f"Falta {required}")
 
+    from .tts import timings
+
+    spoken = timings(audio) if cfg.get("use_tts_timings", True) else None
+    if spoken is not None:                  # a GenAIPro voice: its subtitles give the times, no Whisper needed
+        words_file = build_words_file(slug=ctx.slug, title=read_title(ctx), script=script_path.read_text(encoding="utf-8"),
+                                      raw=spoken, provider="genaipro", model="subtitles", language=language)
+        if words_file.alignment.matchRatio >= max(float(cfg.get("min_match_ratio", 0.8)), 0.85):
+            print(f"   Tiempos de las palabras de GenAIPro (sin Whisper): {len(spoken['words'])} palabras")
+            _finish(ctx, words_file)
+            return
+        print(f"   Los tiempos de GenAIPro solo cuadran un {words_file.alignment.matchRatio:.0%}: uso Whisper")
+
     print(f"   Whisper ({provider}/{model})…")
     raw, cached = transcribe(
         audio,
@@ -271,6 +283,17 @@ def run(ctx: RunContext) -> None:
     )
     stats = words_file.alignment
     min_ratio = float(cfg.get("min_match_ratio", 0.8))
+    if stats.matchRatio < min_ratio:
+        raise RuntimeError(
+            f"Solo el {stats.matchRatio:.0%} de las palabras del guion se oyen en la voz "
+            f"(mínimo {min_ratio:.0%}). ¿Corresponden guion.txt y voz.mp3?"
+        )
+    _finish(ctx, words_file)
+
+
+def _finish(ctx: RunContext, words_file: WordsFile) -> None:
+    stats = words_file.alignment
+    min_ratio = float(ctx.section("align").get("min_match_ratio", 0.8))
     if stats.matchRatio < min_ratio:
         raise RuntimeError(
             f"Solo el {stats.matchRatio:.0%} de las palabras del guion se oyen en la voz "

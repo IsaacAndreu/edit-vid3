@@ -35,6 +35,8 @@ WAIT_SECONDS = 1800
 LOCK = ".voz.generando"          # in the video's folder while its narration is being made (pid, time)
 FAILED = "voz.error.json"        # the last failure: the background retries it after RETRY_MINUTES
 RETRY_MINUTES = 30
+TIMINGS = "voz.palabras.json"    # word timings from GenAIPro's subtitles: the align stage skips Whisper with them
+SUBTITLE_CHARS = 18              # short cues → each word's time is close (the cue's span shared by its words)
 
 
 class TTSError(RuntimeError):
@@ -139,6 +141,21 @@ class GenAIPro:
             time.sleep(every)
         raise TTSError(f"GenAIPro: la tarea {task_id} no terminó en {timeout / 60:.0f} min")
 
+    def subtitle(self, task_id: str, timeout: float = 120, every: float = 3.0) -> str:
+        """The subtitle file's URL (short cues: a few words each, for word timings)."""
+
+        made = self._call("POST", f"/v1/labs/task/subtitle/{task_id}",
+                          json={"max_characters_per_line": SUBTITLE_CHARS, "max_lines_per_cue": 1,
+                                "max_seconds_per_cue": 2})
+        url = made.get("subtitle") if isinstance(made, dict) else None
+        ends = time.monotonic() + timeout
+        while not url and time.monotonic() < ends:
+            time.sleep(every)
+            url = self._call("GET", f"/v1/labs/task/{task_id}").get("subtitle")
+        if not url:
+            raise TTSError(f"GenAIPro no dio los subtítulos de la tarea {task_id}")
+        return str(url)
+
     def download(self, url: str, target: Path) -> Path:
         try:
             with self.http.get(url, stream=True, timeout=300) as response:
@@ -242,6 +259,19 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         if partial_piece.stat().st_size == 0:
             raise TTSError(f"GenAIPro devolvió un audio vacío (tarea {task_id})")
         partial_piece.replace(piece)
+    cues: list[list[tuple[float, float, str]]] | None = []
+    for number, (task_id, piece) in enumerate(zip(tasks, files), start=1):
+        vtt = piece.with_suffix(".vtt")
+        try:
+            if not vtt.is_file():
+                if not task_id:
+                    raise TTSError("sin tarea")
+                api.download(api.subtitle(task_id), vtt)
+            cues.append(parse_cues(vtt.read_text("utf-8", errors="replace")))
+        except Exception as error:      # no subtitles: the align stage uses Whisper as always
+            log(f"   Subtítulos de GenAIPro no disponibles ({str(error)[:120]}): se alineará con Whisper")
+            cues = None
+            break
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".generando.mp3")
     if len(files) == 1:
@@ -255,10 +285,91 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         if done.returncode != 0:
             raise TTSError(f"No se pudieron unir los trozos de voz: {done.stderr[-200:]}")
     partial.replace(target)
+    (target.parent / TIMINGS).unlink(missing_ok=True)
+    if cues:
+        try:
+            write_timings(target, files, cues)
+        except Exception as error:
+            log(f"   No se pudieron guardar los tiempos de palabras ({str(error)[:120]}): se alineará con Whisper")
     import shutil
 
     shutil.rmtree(work, ignore_errors=True)
     return {"chars": sum(len(p) for p in parts), "pieces": len(parts), "tasks": tasks}
+
+
+# --- word timings from the subtitles (instead of Whisper) ---------------------------------------------------------
+
+_CUE_TIME = re.compile(r"(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})")
+
+
+def _seconds(h: str | None, m: str, s: str, ms: str) -> float:
+    return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms.ljust(3, "0")) / 1000
+
+
+def parse_cues(text: str) -> list[tuple[float, float, str]]:
+    """WebVTT or SRT → [(start, end, text)]."""
+
+    cues = []
+    for block in re.split(r"\n\s*\n", text.replace("\r", "")):
+        lines = [l for l in block.strip().splitlines() if l.strip()]
+        for i, line in enumerate(lines):
+            found = _CUE_TIME.search(line)
+            if found:
+                g = found.groups()
+                words = re.sub(r"<[^>]+>", "", " ".join(lines[i + 1:])).strip()
+                if words:
+                    cues.append((_seconds(*g[:4]), _seconds(*g[4:]), words))
+                break
+    return cues
+
+
+def _duration(path: Path) -> float:
+    done = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                          capture_output=True, text=True)
+    return float(done.stdout.strip())
+
+
+def _audio_id(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha1()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_timings(target: Path, files: list[Path], cues: list[list[tuple[float, float, str]]]) -> None:
+    """voz.palabras.json: every spoken word with its time in voz.mp3 (each piece shifted by those before it); the
+    words of a cue share its span by length. Tied to this voz.mp3 by its hash: another voice → Whisper."""
+
+    words, offset = [], 0.0
+    for piece, piece_cues in zip(files, cues):
+        for start, end, text in piece_cues:
+            tokens = text.split()
+            total = sum(max(1, len(t)) for t in tokens)
+            cursor = start
+            for token in tokens:
+                width = (end - start) * max(1, len(token)) / total
+                words.append({"word": token, "start": round(offset + cursor, 3), "end": round(offset + cursor + width, 3)})
+                cursor += width
+        offset += _duration(piece)
+    if not words:
+        raise TTSError("subtítulos vacíos")
+    data = {"source": "genaipro", "audio": _audio_id(target), "duration": round(_duration(target), 3), "words": words}
+    (target.parent / TIMINGS).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def timings(audio: Path) -> dict[str, Any] | None:
+    """The GenAIPro word timings of this voz.mp3 (as Whisper's {"words", "duration"}), if it has them."""
+
+    try:
+        data = json.loads((audio.parent / TIMINGS).read_text("utf-8"))
+        if data.get("audio") == _audio_id(audio) and data.get("words"):
+            return {"words": data["words"], "duration": float(data["duration"]), "language": "es"}
+    except (OSError, ValueError, TypeError, KeyError):
+        pass
+    return None
 
 
 def _lock_alive(lock: Path) -> bool:
