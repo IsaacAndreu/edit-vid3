@@ -57,14 +57,20 @@ def probe(root: Path) -> bool:
     """A 10-second download as the queue would make it (a child process, cut off after 90 s)."""
 
     from .context import RunContext
+    from .sourcing import cookie_sets
     from .ytcheck import _try
 
     ctx = RunContext.create("_ytcheck", root=root)
+    yt_cfg = ctx.section("sourcing").get("youtube", {})
+    try:                         # with the account's cookies when the queue uses them, as it would download
+        cookies = str(yt_cfg.get("cookies", "")).lower() != "never" and bool(cookie_sets(ctx, yt_cfg))
+    except Exception:
+        cookies = False
     state = paused(root) or {}
     path = root / FLAG
     if path.is_file():
         path.write_text(json.dumps({**state, "checked": time.time()}), encoding="utf-8")
-    result = _try(ctx, "prueba de YouTube (cola en pausa)", cookies=False, ipv4=True)
+    result = _try(ctx, "prueba de YouTube (cola en pausa)", cookies=cookies, ipv4=True)
     return not result.get("error") and not result.get("timeout") and float(result.get("mb") or 0) > 0
 
 
