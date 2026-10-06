@@ -172,6 +172,11 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
             best = min(working, key=lambda r: r["seconds"])
             out.append(f"Sin cuenta, el cliente «{best['tried']}» sí pasa: pon en config.local.yaml "
                        f"sourcing.youtube.player_client: [{best['tried']}] y repite esta prueba.")
+        elif any(r.get("proxy") for r in runs):    # through home: YouTube is punishing the home connection
+            out.append("YouTube pide cuenta a TU CONEXIÓN DE CASA (por el proxy) con todos los clientes: suele ser un "
+                       "castigo por demasiadas peticiones y se levanta solo en 24-48 h sin peticiones. Mientras: prueba "
+                       "sourcing.youtube.po_token: force, o cookies de una cuenta SECUNDARIA (nunca la de tu canal) con "
+                       "cookies: fallback. La cola se queda en pausa y sigue sola cuando YouTube deje pasar.")
         else:
             out.append("YouTube pide cuenta a ESTA IP (es de un centro de datos) con todos los clientes, con y sin PO "
                        "Token. Para descargar desde aquí hacen falta cookies de una cuenta SECUNDARIA (nunca la de tu "
