@@ -118,3 +118,38 @@ def test_a_real_case_draft_follows_its_structure(tmp_path: Path, monkeypatch):
     d = organizar.draft_script(root, "negocios", {"title": "Christa Pike", "format": "caso-real"})
     assert "ESTRUCTURA OBLIGATORIA DEL FORMATO «caso-real»" in seen["user"] and "EL CLÍMAX" in seen["user"]
     assert d["format"] == "caso-real"
+
+
+def test_winners_are_the_videos_that_beat_their_channel(tmp_path: Path, monkeypatch):
+    def row(slug, channel, views, vs):
+        return {"slug": slug, "channel": channel, "title": slug, "youtube": {"views": views, "vsChannel": vs}}
+
+    report = {"videos": [row("a", "negocios", 1000, 1.0), row("b", "negocios", 9000, 3.2), row("c", "negocios", 500, 0.5),
+                         row("solo", "gimnasia", 800, 1.0), row("x", "fails", 300, 1.0), row("y", "fails", 200, 0.7)]}
+    monkeypatch.setattr("pipeline.estadisticas.report", lambda root, refresh=False: report)
+    wins = organizar.winners(tmp_path)
+    assert [w["slug"] for w in wins["negocios"]] == ["b"]           # only the one well above the channel's usual
+    assert [w["slug"] for w in wins["fails"]] == ["x"]              # none stands out: the best one
+    assert "gimnasia" not in wins                                   # one video says nothing yet
+
+
+def test_more_like_the_winner_avoids_what_was_done(tmp_path: Path, monkeypatch):
+    root = _site(tmp_path)
+    _video(root, "negocios", "n1", done=True)
+    folder = root / "materiales" / "negocios" / "n1"
+    (folder / "guion.txt").write_text("Booking pagó 413 millones.", encoding="utf-8")
+    seen = {"calls": 0}
+
+    def fake(ctx, **kwargs):
+        seen["calls"] += 1
+        seen.update(kwargs)
+        return {"ideas": [{"title": "La multa de Ryanair", "note": "otra multa récord"}, {"title": ""}]}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    d = organizar.similar_ideas(root, "n1", count=3)
+    assert "Booking pagó" in seen["user"] and "TEMAS YA HECHOS" in seen["user"] and "3 temas" in seen["system"]
+    assert [i["title"] for i in d["ideas"]] == ["La multa de Ryanair"] and d["channel"] == "negocios"
+    organizar.similar_ideas(root, "n1")                              # cached: no second call
+    assert seen["calls"] == 1
+    organizar.similar_ideas(root, "n1", refresh=True)
+    assert seen["calls"] == 2

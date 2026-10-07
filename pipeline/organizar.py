@@ -134,7 +134,9 @@ def scripts_needed(root: Path, days: int = 14) -> list[dict[str, Any]]:
     for video in listed:
         if video["status"] in ("hecho", "en cola", "haciendo", "error", "falta voz"):
             ready[video["channel"]] = ready.get(video["channel"], 0) + (video["status"] != "falta voz")
+    wins = winners(root)
     for channel, entry in per.items():
+        entry["winners"] = wins.get(channel, [])
         entry["missing"] = len(entry["empty"]) + len(entry["noScript"])
         entry["ideas"] = [i for i in ideas if i["channel"] in (channel, "")][:8]
         entry["ready"] = ready.get(channel, 0)
@@ -234,3 +236,82 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         raise RuntimeError("El borrador ha salido demasiado corto; vuelve a probar")
     return {"title": str(result.get("title") or title).strip(), "script": script + "\n", "words": len(script.split()),
             "check": script.count("[COMPROBAR]"), "format": format_name}
+
+
+# --- «doblar lo que gana»: more of what works -------------------------------------------------------------------
+
+SIMILAR = "out/_ideas_similares"
+
+SIMILAR_SYSTEM = """
+Eres el estratega de contenidos de un canal documental de YouTube. Te paso un vídeo del canal que ha funcionado
+MUCHO mejor que los demás (su título, su formato y el arranque del guion) y los temas que el canal ya ha hecho.
+Propón {count} temas NUEVOS que repitan lo que hizo funcionar ese vídeo (el mismo tipo de historia, de gancho y de
+promesa del título, para el mismo público), sin repetir ninguno de los hechos. Devuelve SOLO JSON:
+{"ideas": [{"title": "título de trabajo con gancho", "note": "el ángulo en 1 frase: por qué es «otro como ese»"}]}
+""".strip()
+
+
+def winners(root: Path, top: int = 3) -> dict[str, list[dict[str, Any]]]:
+    """Per channel, the videos that beat the channel's usual on YouTube (from Estadísticas), best first."""
+
+    try:
+        from .estadisticas import report
+
+        videos = report(root)["videos"]
+    except Exception:
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for v in videos:
+        yt = v.get("youtube") or {}
+        if not yt.get("views"):
+            continue
+        out.setdefault(v["channel"], []).append({"slug": v["slug"], "title": yt.get("title") or v["title"],
+                                                 "views": yt["views"], "vsChannel": yt.get("vsChannel"),
+                                                 "thumbnail": yt.get("thumbnail") or ""})
+    for channel, rows in out.items():
+        rows.sort(key=lambda r: (-(r["vsChannel"] or 0), -r["views"]))
+        good = [r for r in rows if (r["vsChannel"] or 0) >= 1.3]
+        out[channel] = (good or rows[:1] if len(rows) >= 2 else [])[:top]
+        for r in out[channel]:
+            r["format"] = _format_name(root, r["slug"])
+    return {c: r for c, r in out.items() if r}
+
+
+def _format_name(root: Path, slug: str) -> str:
+    try:
+        from .context import RunContext
+
+        return str(RunContext.create(slug, root=root).config.get("format") or "")
+    except Exception:
+        return ""
+
+
+def similar_ideas(root: Path, slug: str, count: int = 5, refresh: bool = False) -> dict[str, Any]:
+    """New topics «like this one that worked»: same kind of story, hook and audience, none already done."""
+
+    import json
+
+    from . import agenda
+    from .context import RunContext, find_video
+    from .llm import complete_json
+
+    cache = root / SIMILAR / f"{slug}.json"
+    if cache.is_file() and not refresh:
+        return json.loads(cache.read_text("utf-8"))
+    folder = find_video(root, slug)
+    ctx = RunContext.create(slug, root=root)
+    title = (folder / "titulo.txt").read_text("utf-8").strip() if (folder / "titulo.txt").is_file() else slug
+    script = (folder / "guion.txt").read_text("utf-8")[:1500] if (folder / "guion.txt").is_file() else ""
+    channel = next((v["channel"] for v in agenda.videos(root) if v["slug"] == slug), "")
+    done = [v["title"] or v["slug"] for v in agenda.videos(root) if v["channel"] == channel]
+    format_name = str(ctx.config.get("format") or "")
+    result = complete_json(ctx, stage="ideas", section="planner", max_tokens=1200, use_cache=False,
+                           system=SIMILAR_SYSTEM.replace("{count}", str(count)),
+                           user=f"VÍDEO QUE FUNCIONÓ: {title}\nFORMATO: {format_name or '(el del canal)'}\n\nARRANQUE DEL GUION:\n{script}"
+                                f"\n\nTEMAS YA HECHOS (no repetir):\n" + "\n".join(f"- {t}" for t in done[-80:]))
+    ideas = [{"title": str(i.get("title") or "").strip(), "note": str(i.get("note") or "").strip(), "format": format_name}
+             for i in result.get("ideas", []) if isinstance(i, dict) and str(i.get("title") or "").strip()][:count]
+    data = {"slug": slug, "title": title, "channel": channel, "format": format_name, "ideas": ideas}
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return data

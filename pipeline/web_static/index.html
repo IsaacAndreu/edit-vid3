@@ -1048,6 +1048,12 @@ async function scriptsPage(days = 14) {
     ${r.channels.map((c) => `<div class="card">
       <div class="row" style="justify-content:space-between"><b style="font-size:1.1em">${esc(c.channel)}</b>
         <span class="pill ${c.missing ? "error" : "hecho"}">${c.missing ? `faltan ${c.missing}` : "cubierto"} · ${c.ready} en marcha o hechos</span></div>
+      ${c.winners && c.winners.length ? `<div style="margin-top:10px;padding:8px;border-radius:8px;background:var(--panel2)">
+        <b class="small">🏆 Lo que mejor te funciona en ${esc(c.channel)}</b>${c.winners.map((w) => `<div class="row" style="justify-content:space-between;margin-top:6px;gap:8px;flex-wrap:nowrap">
+          <div class="row" style="gap:8px;flex-wrap:nowrap">${w.thumbnail ? `<img src="${esc(w.thumbnail)}" style="width:80px;border-radius:4px">` : ""}
+            <div><div class="small">${esc(w.title)}</div><div class="small muted">${kfmt(w.views)} visitas${w.vsChannel ? ` · ${times(w.vsChannel)} tu media` : ""}${w.format ? ` · formato ${esc(w.format)}` : ""}</div></div></div>
+          <button onclick="moreLike('${esc(w.slug)}', '${esc(c.channel)}', this)">💡 Más como este</button></div>`).join("")}
+        <div id="similar-${esc(c.channel)}"></div></div>` : ""}
       ${c.empty.length ? `<div class="small" style="margin-top:8px"><b>Días sin vídeo:</b> ${c.empty.map((x) => `${DAY(x.date)} ${esc(x.time)} <span class="muted">(guion antes del ${DAY(x.deadline.slice(0, 10))}, ${esc(x.deadline.slice(11))})</span>`).join(" · ")}</div>` : ""}
       ${c.noScript.length ? `<div class="small" style="margin-top:4px"><b>Vídeos sin guion:</b> ${c.noScript.map((x) => `<a href="#/video/${encodeURIComponent(x.slug)}">${esc(x.slug)}</a> (${DAY(x.date)})`).join(", ")}</div>` : ""}
       ${c.missing ? `<div style="margin-top:12px"><b class="small">Ideas para ${esc(c.channel)}</b>
@@ -1078,6 +1084,19 @@ async function scriptsPage(days = 14) {
   };
   const withFormat = (channel, idea) => { const f = (document.getElementById(`fmt-${channel}`) || {}).value;
     return f ? {...idea, format: f} : idea; };
+  window.moreLike = async (slug, channel, button) => {
+    button.disabled = true; button.textContent = "Pensando… (~20 s)";
+    try {
+      const r = await post("/api/scripts/similar", {slug});
+      const box = document.getElementById(`similar-${channel}`);
+      box.innerHTML = `<div class="small muted" style="margin-top:8px">Otros como «${esc(r.title)}»:</div>` + r.ideas.map((i, n) => {
+        const id = `similar:${slug}:${n}`; window.scriptIdeas[id] = {channel, idea: {title: i.title, note: i.note, format: i.format}};
+        return `<div class="row" style="justify-content:space-between;border-top:1px solid var(--line);padding:6px 0"><div><div>${esc(i.title)}</div>
+          <div class="small muted">${esc(i.note)}</div></div><button onclick="draftFrom('${esc(id)}', this)">✍️ Borrador</button></div>`; }).join("");
+      button.textContent = "💡 Más como este";
+    } catch (e) { alert(e.message); button.textContent = "💡 Más como este"; }
+    button.disabled = false;
+  };
   window.draftFrom = (id, button) => { const x = window.scriptIdeas[id]; draft(x.channel, withFormat(x.channel, x.idea), button); };
   window.writeOwn = (id) => { const x = window.scriptIdeas[id]; toNew(x.channel, x.idea, null); };
   window.quickDraft = (channel, button) => {

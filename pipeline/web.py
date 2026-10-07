@@ -867,6 +867,13 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     library.remove(root, match.group(1), body.get("id") or None)
                     return self._ok({"ok": True})
+                if path == "/api/scripts/similar":         # {slug, refresh?}: «más como este» (a video that worked)
+                    from . import organizar
+
+                    slug = str(body.get("slug") or "")
+                    if not re.fullmatch(r"[\w-]{1,80}", slug):
+                        raise ValueError("Vídeo no válido")
+                    return self._ok(organizar.similar_ideas(root, slug, refresh=bool(body.get("refresh"))))
                 if path == "/api/compilations":            # {channel}: a long compilation, in the background
                     channel = str(body.get("channel") or "")
                     if not CHANNEL.match(channel):
