@@ -271,3 +271,27 @@ def test_a_year_in_a_label_must_be_said():
     assert len(errors) == 1 and "2024" in errors[0]
     shot["panel"]["rows"][0]["label"] = "Japón 2026"
     assert check_numbers(shot, text) == []
+
+
+def test_script_chapters_still_get_the_protagonist(tmp_path, monkeypatch):
+    from pipeline.schemas import AlignmentStats, Chapter, WordsFile
+
+    words = _words(28)
+    words_file = WordsFile(slug="t", title="Trusova", language="es", durationSeconds=12.0, words=words,
+                           chapters=[Chapter(title="DE RIAZÁN A MOSCÚ", wordIndex=7, start=2.8, spoken=False)],
+                           alignment=AlignmentStats(provider="x", model="x", scriptWords=28, whisperWords=28,
+                                                    matchedWords=28, matchRatio=1.0))
+    seen = {}
+
+    def fake(ctx, **kwargs):
+        seen.update(kwargs)
+        return {"context": "figure skating", "chapters": [], "subject": "Alexandra Trusova · figure skating",
+                "events": [{"sentence": 1, "label": "Alexandra Trusova 2018 Junior Worlds Sofia"}]}
+
+    monkeypatch.setattr(planner, "complete_json", fake)
+    ctx = RunContext.create("t", root=tmp_path, config={})
+    chapters, context, outline = planner.plan_chapters(ctx, words_file)
+    assert [c.title for c in chapters if c.fromScript] == ["DE RIAZÁN A MOSCÚ"] and context == "figure skating"
+    assert "ya están en el guion" in seen["user"]
+    subject, events = planner.parse_story(outline, planner._sentences(words))
+    assert subject.startswith("Alexandra Trusova") and events

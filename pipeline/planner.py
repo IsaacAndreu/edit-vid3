@@ -191,17 +191,27 @@ def pace_targets(ctx: RunContext, words: list[Word], marks: dict[int, str], base
 def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChapter], str, dict[str, Any]]:
     words = words_file.words
     sentences = _sentences(words)
+    listing = "\n".join(
+        f"[{n}] ({_fmt_time(words[a].start)}) " + " ".join(w.text for w in words[a : b + 1])
+        for n, (a, b) in enumerate(sentences)
+    )
     if words_file.chapters:
         chapters = [
             PlanChapter(title=c.title.upper()[:48], startWord=c.wordIndex, fromScript=True) for c in words_file.chapters
         ]
-        context = ""
-        result = {}
+        # The chapters come from the script («## »), but the rest of the outline is still needed: the protagonist,
+        # the story's events and the visual context. Skipping it (pati2, every script with automatic chapters)
+        # left a story about Trusova without protagonist: no identity checks, no judge context, Pexels people.
+        try:
+            result = complete_json(
+                ctx, stage=STAGE, section="planner", system=outline_system(ctx), max_tokens=2000,
+                user=f"TÍTULO: {words_file.title}\n\nLos capítulos ya están en el guion: devuelve \"chapters\": [].\n\n"
+                     f"FRASES:\n{listing}")
+        except LLMError as error:
+            print(f"   Aviso: sin análisis de la historia ({str(error)[:120]})")
+            result = {}
+        context = str(result.get("context") or "").strip()[:400]
     else:
-        listing = "\n".join(
-            f"[{n}] ({_fmt_time(words[a].start)}) " + " ".join(w.text for w in words[a : b + 1])
-            for n, (a, b) in enumerate(sentences)
-        )
         result: dict[str, Any] = {}
         error: Exception | None = None
         for _ in range(int(ctx.section("planner").get("max_attempts", 3))):
