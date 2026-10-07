@@ -259,3 +259,15 @@ class HookPaceTests(unittest.TestCase):
         self.assertLess(sum(opening) / len(opening), 2.2)
         self.assertGreater(sum(rest) / len(rest), 2.6)
         self.assertTrue(all(d >= 1.5 - 1e-3 for d in opening))
+
+
+def test_a_year_in_a_label_must_be_said():
+    from pipeline.planner import check_numbers
+
+    shot = {"id": "s203", "type": "datacard", "panel": {"title": "Comparación", "rows": [
+        {"label": "Japón 2024", "value": "221,06"}, {"label": "Pekín 2022", "value": "251,73"}]}}
+    text = "Septiembre de 2026. Su total en Japón, 221,06, queda lejos de los 251,73 de Pekín en 2022."
+    errors = check_numbers(shot, text)
+    assert len(errors) == 1 and "2024" in errors[0]
+    shot["panel"]["rows"][0]["label"] = "Japón 2026"
+    assert check_numbers(shot, text) == []

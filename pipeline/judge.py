@@ -425,6 +425,22 @@ def run(ctx: RunContext) -> None:
         return trusted_bonus if channel and any(t <= channel for t in trusted) else 0.0
 
     elsewhere = used_elsewhere(ctx)
+    # A story about one athlete: a confident CLIP score is not enough when the best clip's title does not name
+    # them (pati2: Trusova's world records went on «Yuzuru Hanyu - Olympic record» unseen) → the judge, who
+    # reads the titles and rejects another identifiable athlete.
+    from .identity import ascii_upper, expected_people, surname
+
+    protagonist = (subject or "").split("·")[0].strip()
+    scope = str(ctx.section("fallback").get("identity_scope", "protagonist"))
+
+    def unnamed(shot: Shot, option: Option) -> bool:
+        if not protagonist or not cfg.get("judge_unnamed", True):
+            return False
+        who = expected_people(shot, [protagonist], protagonist, scope)
+        c = candidates[option.candidateId]
+        said = ascii_upper(f"{c.title} {c.channel}")
+        return bool(who) and not any(surname(n) and surname(n) in said for n in who)
+
     for shot in shots:
         order = sorted((
             (s + official(o), o) for s, o in ranked(scores[shot.id].options, bonus)
@@ -432,9 +448,10 @@ def run(ctx: RunContext) -> None:
             and not seen_elsewhere(o, elsewhere)
         ), key=lambda pair: -pair[0])
         plans[shot.id] = [o for _, o in order]
-        if order and (judge_all or is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds):
+        if order and (judge_all or is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds
+                      or unnamed(shot, order[0][1])):
             doubtful.append(shot)
-    print(f"   {len(shots)} planos · {len(doubtful)} {'en total' if judge_all else 'con duda o en el gancho'} → juez ({cfg.get('model', 'gpt-5-mini')})")
+    print(f"   {len(shots)} planos · {len(doubtful)} {'en total' if judge_all else 'con duda, en el gancho o sin el protagonista en el título'} → juez ({cfg.get('model', 'gpt-5-mini')})")
 
     verdicts: dict[str, tuple[dict[str, Any], list[Option]]] = {}
 

@@ -296,8 +296,12 @@ class Checker:
 
     # --- man / woman ----------------------------------------------------------------------------
     # tested on real frames: a woman on the bars 0.96, Comăneci 0.98; men in tight singlets stay under 0.75
-    GENDER = {"hombre": ["a photo of a male gymnast", "a man doing gymnastics"],
-              "mujer": ["a photo of a female gymnast", "a girl doing gymnastics", "a woman doing gymnastics"]}
+    # any sport (pati2: men's figure skating passed in a story about a woman with gymnastics-only prompts)
+    GENDER = {"hombre": ["a photo of a male gymnast", "a man doing gymnastics", "a photo of a male athlete",
+                         "a man figure skating", "a man competing in a sport"],
+              "mujer": ["a photo of a female gymnast", "a girl doing gymnastics", "a woman doing gymnastics",
+                        "a photo of a female athlete", "a woman figure skating", "a girl figure skating",
+                        "a woman competing in a sport"]}
 
     def _woman_odds(self, images: list[np.ndarray]) -> list[float]:
         """Per image, how likely CLIP finds the athlete is a woman/girl rather than a man (0-1): the most
@@ -413,7 +417,7 @@ class Checker:
 class IdentityCache:
     """work/<slug>/identity.json: verdicts per media file (path + size + mtime + names), so reruns are free."""
 
-    VERSION = 5                     # 3: + man/woman check (CLIP); 4: scoreboard words; 5: man/woman only on close faces
+    VERSION = 6                     # 3: + man/woman check (CLIP); 4: scoreboard words; 5: man/woman only on close faces; 6: any sport
 
     def __init__(self, ctx: RunContext):
         self.path = ctx.work_dir / "identity.json"

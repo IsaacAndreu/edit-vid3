@@ -623,6 +623,16 @@ def check_numbers(shot: dict[str, Any], nearby_text: str) -> list[str]:
         shown.append(value)
     if isinstance(shot.get("panel"), dict):
         shown += [str(row.get("value", "")) for row in shot["panel"].get("rows", []) if isinstance(row, dict)]
+    # years in the labels too (pati2: «Japón 2024» for a 2026 competition the narration dates right)
+    labels = [str(shot["stat"].get("label", ""))] if isinstance(shot.get("stat"), dict) else []
+    if isinstance(shot.get("panel"), dict):
+        labels += [str(shot["panel"].get("title", ""))]
+        labels += [str(row.get("label", "")) for row in shot["panel"].get("rows", []) if isinstance(row, dict)]
+    for label in labels:
+        years = sorted({int(y) for y in re.findall(r"(?<!\d)(1[89]\d\d|20\d\d)(?!\d)", label)} - {int(n) for n in said})
+        if years:
+            errors.append(f"{shot['id']}: el año {years[0]} de la etiqueta {label!r} no se dice en este plano ni en los "
+                          "anteriores; quítalo o usa el que dice el texto")
     for value in shown:
         invented = sorted(n for n in _numbers(value) if n not in said)
         if invented:
