@@ -89,3 +89,23 @@ def test_old_libraries_get_their_thumbnails_protected(tmp_path):
     library.save(ctx, "Carlos Yulo", data)
     assert library.protect(ctx) == 1 and library.protect(ctx) == 0
     assert library.load(ctx, "Carlos Yulo")["videos"]["yt:c"]["storyboard"]["sheets"][0].startswith("cache/library/_media/")
+
+
+def test_the_clips_on_screen_are_kept_small_and_listed(tmp_path):
+    import subprocess
+
+    ctx = _job(tmp_path)
+    clip = ctx.work_dir / "media" / "s001.mp4"
+    clip.parent.mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30:duration=4",
+                    str(clip)], check=True)
+    library.remember(ctx, [{"shotId": "s001", "candidateId": "yt:a", "decidedBy": "judge", "kind": "video",
+                            "media": "media/s001.mp4", "sourceStart": 12.5}])
+    key = library.person_key("Booking.com")
+    used = next(s for s in library.entity(tmp_path, key)["sources"] if s["id"] == "yt:a")
+    assert len(used["clips"]) == 1 and used["clips"][0]["video"] == "n1"
+    saved = library.clip_file(tmp_path, used["clips"][0]["file"])
+    assert saved is not None and saved.stat().st_size < clip.stat().st_size
+    assert library.clip_file(tmp_path, "../../etc/passwd") is None
+    approved = next(s for s in library.entity(tmp_path, key)["sources"] if s["id"] == "yt:b")
+    assert approved["clips"] == []                                         # not on screen: no clip

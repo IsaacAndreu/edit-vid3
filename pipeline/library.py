@@ -35,6 +35,7 @@ LIB_DIR = "library"
 MEDIA = "_media"                 # cache/library/_media/<source>/: storyboards and photos kept for the library
 MAX_SOURCES = 250                # per entity and kind: the least useful go first
 APPROVED_PER_SHOT = 2
+CLIPS = "_clips"                 # cache/library/_clips/: the clips that went on screen, 720p without sound (~1-2 MB)
 
 
 def person_key(name: str) -> str:
@@ -118,6 +119,46 @@ def _keep_media(ctx: RunContext, candidate: Candidate) -> Candidate:
     return candidate
 
 
+def _keep_clip(ctx: RunContext, row: dict[str, Any]) -> str | None:
+    """The clip of this shot as it went on screen, small (720p, no sound, ≤ 6 s), in cache/library/_clips/."""
+
+    import subprocess
+
+    if row.get("kind") != "video" or not row.get("media"):
+        return None
+    source = ctx.work_dir / str(row["media"])
+    if not source.is_file():
+        return None
+    start = float(row.get("sourceStart") or 0)
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{row['candidateId']}_{start:.1f}") + ".mp4"
+    target = _base(ctx) / CLIPS / name
+    if not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        done = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(source), "-t", "6", "-an",
+                               "-vf", "scale=-2:720", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                               "-movflags", "+faststart", str(target)], capture_output=True, timeout=120)
+        if done.returncode != 0 or not target.is_file():
+            target.unlink(missing_ok=True)
+            return None
+    return name
+
+
+def _trim_clips(ctx: RunContext) -> None:
+    """library.clips_max_gb (15): above it, the oldest clips go (their sources stay in the library)."""
+
+    folder = _base(ctx) / CLIPS
+    if not folder.is_dir():
+        return
+    cap = float(ctx.section("library").get("clips_max_gb", 15)) * 1e9
+    files = sorted(folder.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    total = sum(p.stat().st_size for p in files)
+    for path in files:
+        if total <= cap:
+            break
+        total -= path.stat().st_size
+        path.unlink(missing_ok=True)
+
+
 def _value(stats: dict[str, Any]) -> float:
     return float(stats.get("used", 0)) + 0.5 * float(stats.get("approved", 0)) + 2 * float(stats.get("right", 0))
 
@@ -155,14 +196,25 @@ def remember(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
         for c in ShotCandidates.model_validate_json(path.read_text("utf-8")).candidates:
             known[c.id] = c
     used_by_shot: dict[str, set[str]] = {}
+    on_screen: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
         if row.get("candidateId") and row.get("decidedBy") not in ("people", "coldopen"):
-            used_by_shot.setdefault(str(row["shotId"]).split("-")[0], set()).add(row["candidateId"])
+            base_id = str(row["shotId"]).split("-")[0]
+            used_by_shot.setdefault(base_id, set()).add(row["candidateId"])
+            on_screen.setdefault((base_id, row["candidateId"]), []).append(row)
+    keep_clips = bool(ctx.section("library").get("clips", True))
+    clip_names: dict[tuple[str, str], list[str]] = {}
+
+    def clips_of(shot_id: str, cid: str) -> list[str]:
+        key = (shot_id, cid)
+        if key not in clip_names:
+            clip_names[key] = [n for n in (_keep_clip(ctx, r) for r in on_screen.get(key, [])) if n] if keep_clips else []
+        return clip_names[key]
     min_score = float(ctx.section("library").get("min_score", 0.35))
     wrong, blocked = _excluded(ctx.root)
     learned: dict[str, dict[str, Any]] = {}            # entity name → its library, loaded once
 
-    def add(entity: str, candidate: Candidate, how: str) -> None:
+    def add(entity: str, candidate: Candidate, how: str, clips: list[str] | None = None, text: str = "") -> None:
         if candidate.id in wrong or (candidate.channel or "").casefold() in blocked:
             return
         data = learned.get(entity)
@@ -180,6 +232,9 @@ def remember(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
             stats["videos"].append(ctx.slug)
             stats[how] = stats.get(how, 0) + 1
         stats["last"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        for name in clips or []:
+            if name not in {c["file"] for c in stats.setdefault("clips", [])}:
+                stats["clips"].append({"file": name, "video": ctx.slug, "text": " ".join(text.split())[:160]})
 
     for shot in story.shots:
         if shot.broll is None:
@@ -209,8 +264,11 @@ def remember(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
             named = [e for e in entities if names_person(candidate, e)]
             if not named and how == "used" and len(shot.broll.entities) == 1 and shot.broll.entities[0] != person:
                 named = list(shot.broll.entities)              # the judge put it on a shot about that topic alone
+            clips = clips_of(shot.id, cid) if how == "used" and named else []
             for entity in named:
-                add(entity, candidate, how)
+                add(entity, candidate, how, clips, shot.text)
+    if keep_clips:
+        _trim_clips(ctx)
     total = 0
     for entity, data in learned.items():
         _trim(data)
@@ -310,7 +368,10 @@ def entity(root: Path, key: str) -> dict[str, Any]:
     for bucket in ("videos", "photos"):
         for cid, raw in data[bucket].items():
             stats = data["stats"].get(cid, {})
+            clip_dir = _base(root) / CLIPS
+            clips = [c for c in stats.get("clips", []) if (clip_dir / c["file"]).is_file()]
             sources.append({"id": cid, "kind": bucket, "title": raw.get("title") or "", "channel": raw.get("channel") or "",
+                            "clips": clips,
                             "url": raw.get("url") or "", "used": stats.get("used", 0), "approved": stats.get("approved", 0),
                             "right": stats.get("right", 0), "videos": stats.get("videos", []), "last": stats.get("last") or "",
                             "preview": bool((raw.get("storyboard") or {}).get("sheets") or raw.get("imagePath"))})
@@ -325,6 +386,13 @@ def preview(root: Path, key: str, cid: str) -> Path | None:
         return None
     sheets = (raw.get("storyboard") or {}).get("sheets") or []
     path = root / (sheets[0] if sheets else raw.get("imagePath") or "")
+    return path if path.is_file() else None
+
+
+def clip_file(root: Path, name: str) -> Path | None:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.mp4", name):
+        return None
+    path = _base(root) / CLIPS / name
     return path if path.is_file() else None
 
 

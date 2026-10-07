@@ -690,6 +690,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import library
 
                     return self._ok(library.entity(root, match.group(1)))
+                if path == "/api/library/clip":            # a clip that went on screen (?file=)
+                    from . import library
+
+                    found = library.clip_file(root, (urllib.parse.parse_qs(url.query).get("file") or [""])[0])
+                    return self._file(found) if found else self._fail(404, "No existe")
                 if match := re.fullmatch(r"/api/library/([a-z0-9-]+)/preview", path):
                     from . import library
 

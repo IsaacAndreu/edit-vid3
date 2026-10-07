@@ -1030,7 +1030,13 @@ async function libraryEntity(key) {
       <button onclick="libRemove('${esc(key)}', null)">Borrar todo</button></div>
     <div class="small muted" style="margin-bottom:12px">${e.kind === "person" ? "Persona" : "Tema"} · ${e.sources.length} fuente(s). Quita las que no quieras volver a ver con «Quitar».</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">${e.sources.map((x) => `<div class="card" style="margin:0">
-      ${x.preview ? `<img loading="lazy" src="/api/library/${encodeURIComponent(key)}/preview?id=${encodeURIComponent(x.id)}" style="width:100%;border-radius:6px">` : ""}
+      ${x.clips && x.clips.length ? `<video controls muted playsinline preload="none" style="width:100%;border-radius:6px;background:#000"
+          poster="${x.preview ? `/api/library/${encodeURIComponent(key)}/preview?id=${encodeURIComponent(x.id)}` : ""}"
+          src="/api/library/clip?file=${encodeURIComponent(x.clips[0].file)}"></video>
+        <div class="small muted">🎞 ${x.clips.length} clip(s) usados${x.clips.length > 1 ? ": " + x.clips.slice(1, 6).map((c, i) =>
+          `<a href="/api/library/clip?file=${encodeURIComponent(c.file)}" target="_blank" title="${esc(c.text)}">${i + 2}</a>`).join(" ") : ""}
+          · «${esc((x.clips[0].text || "").slice(0, 80))}» (${esc(x.clips[0].video)})</div>`
+      : x.preview ? `<img loading="lazy" src="/api/library/${encodeURIComponent(key)}/preview?id=${encodeURIComponent(x.id)}" style="width:100%;border-radius:6px" title="miniaturas de todo el vídeo (aún sin clip guardado)">` : ""}
       <div style="margin-top:6px"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.id)}</a></div>
       <div class="small muted">${esc(x.channel)} · ${x.kind === "videos" ? "vídeo" : "foto"}</div>
       <div class="small">${x.used ? `✅ usada ${x.used}` : ""} ${x.approved ? `👍 buena ${x.approved}` : ""} ${x.right ? `⭐ correcta ${x.right}` : ""}
