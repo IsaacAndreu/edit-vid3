@@ -123,7 +123,7 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
             voice = "generando"
         elif (folder / tts.FAILED).is_file():
             voice = "error: " + str((_json(folder / tts.FAILED) or {}).get("error") or "falló")[:200]
-    status = ("hecho" if done else "haciendo" if current else "en pausa" if held else "en cola" if queued_again
+    status = ("haciendo" if current else "hecho" if done else "en pausa" if held else "en cola" if queued_again
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
         "slug": slug, "channel": _channel_of(root, folder), "status": status,
