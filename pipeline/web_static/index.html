@@ -215,14 +215,15 @@ async function home() {
       <div class="card"><div class="muted small">Gasto de hoy</div><div class="stat">${b.today.toFixed(2)} $</div>
         <div class="small muted">${b.limit ? "límite " + b.limit.toFixed(2) + " $" : "sin límite"}</div>
         ${b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</div>
-      <div class="card"><div class="muted small">Vídeos</div><div class="stat">${groups.hecho.length} hechos</div>
+      <div class="card"><div class="muted small">Vídeos</div><div class="stat">${groups.hecho.length} hechos</div><div class="small muted">${groups.hecho.filter((v) => !v.published).length} por subir · ${groups.hecho.filter((v) => v.published).length} en YouTube</div>
         <div class="small muted">${groups["en cola"].length} en cola · ${groups.haciendo.length} en marcha · ${groups.error.length} con error</div></div>
       <div class="card"><div class="muted small">YouTube (7 días)</div>${data.youtube ? `<div class="stat">${data.youtube.ok}/${data.youtube.requests}</div>
         <div class="small muted">${data.youtube.failed} fallidas · ${data.youtube.mbps} MB/s</div>` : '<div class="muted" style="margin-top:8px">Sin datos aún</div>'}</div>
     </div>
     ${section("En marcha", groups.haciendo)}${section("Con error", groups.error)}${section("En cola", groups["en cola"])}
     ${section("Fuera de la cola (en pausa)", groups["en pausa"])}
-    ${section("Sin terminar de subir (falta guion o voz)", groups.incompleto)}${section("Hechos", groups.hecho)}
+    ${section("Sin terminar de subir (falta guion o voz)", groups.incompleto)}${section(`Pendientes de subir (${groups.hecho.filter((v) => !v.published).length}) <a class="small" href="#/subir" style="font-weight:400">→ Para subir</a>`, groups.hecho.filter((v) => !v.published))}
+    ${section("Subidos a YouTube", groups.hecho.filter((v) => v.published))}
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos. <a href="#/nuevo">Crea el primero</a>.</div>'}`;
   schedule(home, groups.haciendo.length ? 10000 : 30000);
 }
