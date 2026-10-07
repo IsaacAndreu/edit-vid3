@@ -1,0 +1,80 @@
+# Perfil del canal de coste de vida: cuánto cuesta de verdad vivir y viajar en un país, en 10 precios en moneda local
+# y en dólares frente al sueldo de allí (referencias: «¿Cuánto cuesta vivir?», 1,5 M en Nicaragua con 26 mil subs;
+# «Explora los Países», 2,1 M en Cuba con 20 mil). Formato precios-pais (formatos/precios-pais.yaml).
+# Úsalo con `canal: costevida` en materiales/<vídeo>/config.yaml.
+
+format: precios-pais
+
+brand:                             # billete y mercado: verde dólar y amarillo de etiqueta de precio
+  accent: "#ffd23f"                # amarillo etiqueta: precios, cifras, títulos
+  accent2: "#2ec27e"               # verde billete: el equivalente en dólares, lo barato
+  canvas: "#0b0f0c"
+  glow: "rgba(255,210,63,0.22)"
+  label: "#1f3a2a"
+  wipe: "#ffd23f"
+  panel: "#111712"
+  panelRaised: "#18211a"
+  muted: "#a3b2a7"
+  ocean: "#1a4f6b"
+  land: "#3f7a55"
+  mapStyle: flat
+  mapHighlight: "#d9a400"
+  border: "#243528"
+  chapterStyle: numbered
+  statStyle: bare                  # el precio gigante directamente sobre la calle o el mercado
+  motion: editorial
+
+graphics:
+  seconds_per_graphic: 45          # vive de precios, comparaciones y mapas
+  cover_weak: true
+  types: [map, satellite, compare, scale, receipt, chart, kinetic, split]
+
+people:
+  max: 1
+
+timeline:
+  assets: assets/costevida         # assets/costevida/music y /sfx; si están vacías, assets/
+  moments: 0
+  sound_bites: 0
+  music_default: intriga
+
+fallback:
+  pexels: true                     # un surtidor, unos huevos o un móvil genéricos valen para lo universal
+
+judge:
+  trusted_bonus: 0.03
+  trusted_channels: [DW Documentary, DW Español, BBC News Mundo, CNN en Español, France 24 Español, Lonely Planet]
+
+content:                           # nunca el material de la competencia (ya montado, con sus gráficos y su voz)
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
+                    red dead, videojuego, video game, sims 4, simulator, speedrun,
+                    "así es la vida real en", "asi es la vida real en", explora los países, explora los paises]
+
+planner:
+  shots_note: |
+    - METRAJE REAL DEL PAÍS: calles, mercados, buses, comida callejera, barrios, gasolineras, supermercados y
+      paisajes de ESE país, con ciudad y cosa: 'Managua bus interior Nicaragua', 'Mercado Oriental Managua',
+      'fritanga street food Leon Nicaragua'. Vlogs de viaje (sobre todo los que enseñan precios), reportajes y
+      tomas de dron. Para lo universal (huevos, un surtidor, un móvil), metraje general.
+    - CIFRAS: cada precio en un plano "stat" con la moneda local en value ('2,50 C$') y su equivalente en dólares
+      en el label ('pasaje de bus · 0,07 $'); sueldo frente a precio en "compare".
+    - Nunca vídeos de otros canales de coste de vida (ya montados).
+
+package:
+  thumbnail_style: concept         # la calle o el mercado del país + el precio o el sueldo en grande
+  hint: "título con el PAÍS en mayúsculas y una cifra dura en moneda local y en dólares ('Así es la VIDA REAL en
+    NICARAGUA: 6.188 córdobas de sueldo, menos de 180 $ al mes'). Los países con contraste (barato para el
+    viajero, duro para el que vive allí) son los que más funcionan."
+
+ideas:
+  about: "un canal de YouTube en español sobre el coste de vida real en países de Latinoamérica y del mundo: cuánto
+    cuestan comer, dormir, moverse y vivir, en moneda local y en dólares, frente al sueldo de allí, en cuenta
+    atrás de 10 datos, 15-20 min"
+  pattern: "PAÍS + una cifra dura (sueldo mínimo o precio sorprendente) en moneda local y en dólares"
+  words: 3000                      # 15-20 min de narración
+  my_channel: ""
+  competitors: []                  # pon los @ de «¿Cuánto cuesta vivir?» y «Explora los Países» para el radar
+  niches: [coste de vida, precios por país, sueldo mínimo, vivir con poco dinero, viajar barato]
+
+lab:
+  queries: [cuánto cuesta vivir en, así es la vida real en, salario mínimo en, precios en, vivir con 100 dólares en]

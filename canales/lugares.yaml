@@ -68,8 +68,9 @@ judge:
                      WWF, Smithsonian Channel, Lonely Planet]
 
 content:                           # nunca el material de la competencia (ya montado, con su voz; y reclaman)
-  title_blocklist: [sin coordenadas, exploradores épicos, exploradores epicos, mundo inexplorado, virella,
-                    instintoria, gameplay, minecraft, roblox, video game, videojuego, ai generated, ia generada]
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
+                    red dead, videojuego, video game, sims 4, simulator, speedrun, ai generated, ia generada,
+                    sin coordenadas, exploradores épicos, exploradores epicos, mundo inexplorado, virella, instintoria]
 
 planner:
   shots_note: |
