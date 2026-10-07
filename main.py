@@ -91,6 +91,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="Bot de Telegram: /estado, /gasto, /videos, /errores… y un parte cada hora (TELEGRAM_* en .env).")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
+    target.add_argument("--compilar", metavar="CANAL",
+                        help="Compilación larga (2-3 h) con los mejores vídeos terminados del canal → out/compilacion-…/.")
     target.add_argument("--limpiar", action="store_true",
                         help="Libera disco ya: borra vídeo final, previas, Shorts y clips de los vídeos marcados como "
                              "subidos a YouTube, y las descargas de cache/ sin usar en 14 días.")
@@ -792,6 +794,11 @@ def main() -> None:
 
         bot.Bot().run()
         return
+    if args.compilar:
+        from pipeline import compilacion
+
+        print(f"Compilación lista: {compilacion.build(PROJECT_ROOT, args.compilar)}")
+        return
     if args.limpiar:
         import shutil
 
@@ -802,7 +809,8 @@ def main() -> None:
         cleanup = {**ctx.section("cleanup"), "published_days": 0}
         cleanup["cache_days"] = cleanup.get("cache_days") or 14
         cleanup["whole_hours"] = min(float(cleanup.get("whole_hours", 12)), 2)   # whole sources: only the current video's stay
-        gb = housekeeping.rotate_published(PROJECT_ROOT, {**ctx.config, "cleanup": cleanup})
+        gb = housekeeping.rotate_published(PROJECT_ROOT, {**ctx.config, "cleanup": cleanup,       # now: finals too
+                                                          "compilations": {**ctx.section("compilations"), "keep_finals": False}})
         housekeeping.old_cache(RunContext.create("_limpiar", root=PROJECT_ROOT, config={**ctx.config, "cleanup": cleanup}))
         after = shutil.disk_usage(PROJECT_ROOT).free / 1e9
         print(f"Vídeos subidos: {gb:.1f} GB liberados · libre: {before:.0f} GB → {after:.0f} GB")

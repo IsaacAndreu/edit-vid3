@@ -355,6 +355,24 @@ def rotate_published(root: Path, config: dict[str, Any], now: float | None = Non
     candidates.sort()
     min_free = float(cfg.get("min_free_gb", 30))
     freed = 0
+    comp = config.get("compilations") or {}
+    keep_finals = bool(comp.get("keep_finals", True))      # an uploaded video's final waits for a long compilation
+    keep_days = float(comp.get("keep_days", 30))
+    try:
+        compiled = {s for c in json.loads((root / "out" / "_compilaciones.json").read_text("utf-8")).values()
+                    for s in c.get("videos", [])}
+    except (OSError, ValueError):
+        compiled = set()
+    for folder in video_folders(root):                  # finals kept earlier: out once compiled, old or short of disk
+        out = root / "out" / folder.name
+        final = out / "video-final.mp4"
+        if (out / REMOVED).is_file() and final.is_file():
+            mark = published(root, folder.name) or {}
+            at = time.mktime(time.strptime(mark["at"][:19], "%Y-%m-%dT%H:%M:%S")) if mark.get("at") else now
+            low = shutil.disk_usage(root).free / 1e9 < min_free
+            if not keep_finals or low or folder.name in compiled or now - at >= keep_days * 86400:
+                freed += final.stat().st_size
+                final.unlink(missing_ok=True)
     for at, slug in candidates:
         disk_low = shutil.disk_usage(root).free / 1e9 < min_free
         if now - at < days * 86400 and not disk_low:
@@ -367,7 +385,9 @@ def rotate_published(root: Path, config: dict[str, Any], now: float | None = Non
         except Exception:
             pass
         out, work = root / "out" / slug, root / "work" / slug
-        files = [p for pattern in OUT_HEAVY for p in out.glob(pattern) if p.is_file()]
+        keep_final = keep_finals and not disk_low and slug not in compiled and now - at < keep_days * 86400
+        files = [p for pattern in OUT_HEAVY for p in out.glob(pattern) if p.is_file()
+                 and not (keep_final and p.name == "video-final.mp4")]     # kept for a long compilation
         size = sum(p.stat().st_size for p in files)
         for p in files:
             p.unlink(missing_ok=True)

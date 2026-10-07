@@ -62,6 +62,10 @@ def test_uploaded_videos_lose_their_heavy_files_but_stay_done(tmp_path):
     cfg = {"cleanup": {"published_days": 7, "min_free_gb": 0}}
     assert housekeeping.rotate_published(tmp_path, cfg) > 0
     out = tmp_path / "out" / "subido"
+    assert (out / "video-final.mp4").exists() and not (out / "shorts" / "short-1.mp4").exists()   # kept for a compilation
+    (tmp_path / "out" / "_compilaciones.json").write_text(json.dumps({"c1": {"videos": ["subido"]}}))
+    assert housekeeping.rotate_published(tmp_path, cfg) > 0                      # compiled: now it goes
+    out = tmp_path / "out" / "subido"
     assert not (out / "video-final.mp4").exists() and not (out / "shorts" / "short-1.mp4").exists()
     assert (out / "diagnostico.md").is_file() and (out / housekeeping.REMOVED).is_file()
     assert not (tmp_path / "work" / "subido" / "render").exists()

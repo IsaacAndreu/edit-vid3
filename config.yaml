@@ -361,3 +361,10 @@ dubbing:                           # doblaje automático (pipeline/doblaje.py): 
   enabled: false                   # true aquí o, mejor, en canales/<canal>.yaml solo para los canales que quieras doblar
   languages: [en]                  # idiomas: en, pt, fr, it, de
   voices: {}                       # por idioma: {en: {voice_id: "…", model_id: eleven_multilingual_v2, name: "…"}}
+
+compilations:                      # compilaciones largas (python main.py --compilar CANAL · estudio → Para subir)
+  max_minutes: 180                 # como mucho ~3 h
+  max_videos: 12
+  min_videos: 3
+  keep_finals: true                # el vídeo final de los ya subidos se guarda para una compilación…
+  keep_days: 30                    # …hasta 30 días, hasta que entra en una o hasta que falta disco (cleanup.min_free_gb)

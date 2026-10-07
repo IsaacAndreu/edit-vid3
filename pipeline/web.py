@@ -724,9 +724,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     found = library.preview(root, match.group(1), (urllib.parse.parse_qs(url.query).get("id") or [""])[0])
                     return self._file(found) if found else self._fail(404, "No existe")
                 if path == "/api/upload":                  # «Para subir» (pipeline/organizar.py)
-                    from . import organizar
+                    from . import compilacion, organizar
 
-                    return self._ok({"videos": organizar.to_upload(root)})
+                    return self._ok({"videos": organizar.to_upload(root), "compilations": compilacion.status(root),
+                                     "compilationJob": job_state(root, "compilacion")})
                 if path == "/api/scripts":                 # «Guiones»: what each channel's calendar still needs
                     from . import organizar
 
@@ -866,6 +867,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     library.remove(root, match.group(1), body.get("id") or None)
                     return self._ok({"ok": True})
+                if path == "/api/compilations":            # {channel}: a long compilation, in the background
+                    channel = str(body.get("channel") or "")
+                    if not CHANNEL.match(channel):
+                        raise ValueError("Canal no válido")
+                    return self._ok(background(root, "compilacion", ["--compilar", channel]))
                 if path == "/api/scripts/draft":           # {channel, idea: {title, note…}} → a first draft
                     from . import organizar
 

@@ -989,6 +989,11 @@ async function uploadPage() {
     <div class="small muted" style="margin-bottom:12px">Vídeos terminados que aún no están en YouTube, por el día que les toca en el calendario.
       Copia cada parte en YouTube Studio, marca los pasos y al final pulsa «Ya está subido».</div>
     ${r.videos.length ? "" : '<div class="notice ok">No hay nada pendiente de subir. 🎉 Mira <a href="#/guiones">Guiones</a> para preparar los siguientes.</div>'}
+    ${r.compilations && r.compilations.length ? `<div class="card"><b>📼 Compilaciones largas</b>
+      <div class="small muted">Junta los mejores vídeos terminados de un canal en uno de 2-3 horas («3 HORAS de…»): mucho tiempo de visualización con trabajo ya hecho. Tarda ~30-60 min.</div>
+      ${jobLine(r.compilationJob, "Montando la compilación")}
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">${r.compilations.map((c) =>
+        `<button onclick="makeCompilation('${esc(c.channel)}', this)" ${r.compilationJob.running || c.videos < 3 ? "disabled" : ""} title="${esc(c.titles.join(" · "))}">📼 ${esc(c.channel)} (${c.videos} vídeos)</button>`).join("")}</div></div>` : ""}
     ${r.videos.map((v) => {
       const s = v.sections || {}, f = (p) => `/files/${encodeURIComponent(v.slug)}/${p.split("/").map(encodeURIComponent).join("/")}`;
       const when = v.date ? `${DAY(v.date)} · ${esc(v.time)}` : "sin día en el calendario";
@@ -1017,6 +1022,11 @@ async function uploadPage() {
         <div class="row" style="margin-top:12px"><button class="main" onclick="doneUpload('${esc(v.slug)}')">Ya está subido</button></div>
       </div>`;
     }).join("")}`;
+  window.makeCompilation = async (channel, button) => {
+    if (!confirm(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`)) return;
+    button.disabled = true; await post("/api/compilations", {channel}); uploadPage();
+  };
+  if (r.compilationJob && r.compilationJob.running) schedule(uploadPage, 10000);
   window.doneUpload = async (slug) => {
     const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas a las 48 h y 7 días; opcional):", "");
     if (url === null) return;

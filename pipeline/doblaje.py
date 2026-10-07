@@ -119,7 +119,7 @@ def prepare_all(root: Path, log: Any = print) -> int:
             ctx = RunContext.create(folder.name, root=root)
         except Exception:
             continue
-        if ctx.section("dub").get("of"):                       # a dubbed copy is never dubbed again
+        if ctx.section("dub").get("of") or ctx.config.get("compilation"):   # dubbed copies and compilations: no
             continue
         cfg = settings(ctx)
         if not cfg["enabled"]:
