@@ -85,6 +85,10 @@ of anonymous athletes, children or strangers is a last resort, and for HOOK shot
 video only the subject's standout moments are acceptable. Identity: the person on screen must be the one the narration is about. If the narration is about a
 man, reject footage or photos whose main subject is a woman (and vice versa), unless the narration
 names that other person; never show a different, identifiable athlete as if it were the subject.
+Another event is off-topic too: when the narration is about one specific incident, flight, accident, case or
+company, reject footage whose title or frames are clearly about a DIFFERENT specific one (another crash, another
+flight number, another company's scandal) — viewers take it as the event being told. Same for TV dramatizations
+and re-enactments (actors playing pilots or victims) presented as real footage.
 The source video titles listed under the sheet are hints
 (they can be clickbait or compilations): trust what the frames show first.
 When the shot is marked HOOK (the first seconds of the video), be strict: accept only striking,
@@ -187,6 +191,12 @@ def contact_sheet(options: list[Option], candidates: dict[str, Candidate], root:
 def ranked(options: list[Option], bonus: dict[str, float]) -> list[tuple[float, Option]]:
     usable = [o for o in options if o.discarded is None]
     return sorted(((o.total + float(bonus.get(o.source, 0.0)), o) for o in usable), key=lambda item: -item[0])
+
+
+def overused(candidate_id: str, selections: list[Selection], limit: int) -> bool:
+    """A source video already on screen `limit` times in this video: the next shot looks for another one."""
+
+    return limit > 0 and sum(1 for s in selections if s.candidateId == candidate_id) >= limit
 
 
 def is_doubtful(scores: list[float], margin: float, min_score: float) -> bool:
@@ -489,6 +499,7 @@ def run(ctx: RunContext) -> None:
 
     # 2. Assign in shot order, never repeating a fragment.
     max_hamming = int(cfg.get("max_phash_distance", 6))
+    per_source = int(cfg.get("max_per_source", 4))      # avion8: one factory tour in 11 shots, one news aerial in 8
     selections: list[Selection] = []
     for shot in shots:
         preference: list[Option] = plans[shot.id]
@@ -499,7 +510,8 @@ def run(ctx: RunContext) -> None:
             # Only what the judge accepted, in its order. If it rejected everything it saw, the shot
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
-        chosen = next((o for o in preference if not is_repeat(o, selections, max_hamming)), None)
+        chosen = next((o for o in preference if not is_repeat(o, selections, max_hamming)
+                       and not overused(o.candidateId, selections, per_source)), None)
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))

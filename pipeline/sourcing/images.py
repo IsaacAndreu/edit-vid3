@@ -51,7 +51,10 @@ WATERMARKED = ("alamy", "gettyimages", "shutterstock", "istockphoto", "dreamstim
                "adobestock", "stock.adobe", "agefotostock", "superstock", "bigstockphoto", "pond5", "photoshelter",
                "imago-images", "dpa-picture", "aflo", "zumapress", "sportsphoto", "pinterest", "pinimg", "asiatravel",
                "bridgemanimages", "bridgeman", "granger.com", "topfoto", "akg-images", "maryevans", "ullsteinbild",
-               "mediadrumimages", "rexfeatures", "artofit", "fity.club")
+               "mediadrumimages", "rexfeatures", "artofit", "fity.club",
+               # re-posting / SEO spam sites (avion8: an FBI raid «wallpaper», a logo vector, a LinkedIn scrape)
+               "wallpapers.com", "wallpaper", "glimpsetrio", "infoupdate.org", "freelogovectors", "logos-world",
+               "pngtree", "pngwing", "vecteezy", "storytelling.org", "ukobbq")
 
 
 def watermarked(text: str, extra: Any = None) -> bool:

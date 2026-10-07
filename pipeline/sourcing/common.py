@@ -175,6 +175,8 @@ DEFAULT_TITLE_BLOCKLIST = (
 # Always out, whatever the channel's own list says: footage that is never on topic in a documentary, or that brings
 # a Content ID claim (negocios1 on 05-10 had «The Office», JoBlo movie clips, a kids' music channel and EDM Nation).
 ALWAYS_BLOCKED_TERMS = ("asmr", "nursery rhymes", "kids music", "canciones infantiles", "movie clip", "full episode",
+                        # TV series (dramatized, Content ID) seen in avion8
+                        "mayday: air disaster", "air crash investigation", "seconds from disaster",
                         "official trailer", "tráiler oficial", "lyrics video", "lyric video")
 ALWAYS_BLOCKED_CHANNELS = ("the office", "joblo", "movieclips", "kiboomers", "cocomelon", "super simple songs",
                            "edm nation", "rancho humilde", "netflix", "hbo max", "disney plus", "warner bros")

@@ -223,3 +223,12 @@ class UsableTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_one_source_video_is_not_used_over_and_over():
+    from types import SimpleNamespace
+
+    from pipeline.judge import overused
+
+    used = [SimpleNamespace(candidateId="yt:tour")] * 4 + [SimpleNamespace(candidateId="yt:other")]
+    assert overused("yt:tour", used, 4) and not overused("yt:other", used, 4) and not overused("yt:tour", used, 0)

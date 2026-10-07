@@ -60,14 +60,18 @@ judge:
   trusted_channels: [Airbus, Boeing, Embraer, Bombardier, COMAC, Emirates, Qatar Airways, Lufthansa, British Airways,
                      Air France, Iberia, Singapore Airlines, Ryanair, Southwest Airlines, Delta, United Airlines,
                      American Airlines, Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider,
-                     DW, RTVE, Euronews, Sam Chui, Swiss001, Cargospotter, Mentour Pilot]
+                     DW, RTVE, Euronews, Sam Chui, Swiss001, Cargospotter]
 
 content:                           # nunca el material de la competencia (ya está editado; y reclaman)
   title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
                     videojuego, video game, speedrun, flight simulator, msfs, x-plane, infinite flight, roblox,
                     ptfs, excel, powerpoint, photoshop,
                     jet crumbs, beyond sky, airspeed, air core, aviation explained, gloww, plane curious,
-                    ingeniería del aire, ingenieria del aire, wendover, real engineering, minutos de aviación]
+                    ingeniería del aire, ingenieria del aire, wendover, real engineering, minutos de aviación,
+                    # avion8: explainers/documentaries of other creators (their voice and edit) and AI story channels
+                    mentour pilot, sense of scale, contributing factor, black box down, skybound chronicles,
+                    blancolirio, straight arrow, code of vengeance, aviation inside "ai", captain max,
+                    air crash investigation]
 
 planner:
   shots_note: |
