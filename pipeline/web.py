@@ -110,7 +110,8 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     retry_at = None
     queued_again = False
     held = (folder / HOLD).is_file()
-    if ready and not current and not held and (diag.get("error") or failed) and watcher_alive(root):   # running now: no old error
+    if (ready and not done and not current and not held and (diag.get("error") or failed)   # done: an old error is history
+            and watcher_alive(root)):
         queued_again = True
         if failed and failed.get("at"):
             retry_at = float(failed["at"]) + _retry_hours(root) * 3600
