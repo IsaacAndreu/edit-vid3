@@ -334,6 +334,9 @@ radar:                             # radar de competencia diario (estudio → Co
   new_niches: 1                    # nichos cercanos nuevos por canal, medidos en YouTube
   free_niches: 2                   # y nichos nuevos de cualquier tema
   niche_days: 120
+  gaps: true                       # «Huecos»: demanda frente a competencia en español y el hueco frente al inglés
+  gaps_new: 5                      # temas nuevos medidos al día (~400 unidades de API cada uno)
+  gaps_again: 1                    # y los mejores de días anteriores, otra vez (para ver si se llenan)
 
 mychannel:                         # análisis de tu canal (estudio → Mi canal; tu canal en Ajustes)
   timezone: Europe/Madrid

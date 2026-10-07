@@ -295,3 +295,10 @@ def test_script_chapters_still_get_the_protagonist(tmp_path, monkeypatch):
     assert "ya están en el guion" in seen["user"]
     subject, events = planner.parse_story(outline, planner._sentences(words))
     assert subject.startswith("Alexandra Trusova") and events
+
+
+def test_a_chapter_too_close_to_the_start_is_not_a_forced_cut():
+    words = _words(40)                       # 0.4 s a word: word 3 starts at 1.2 s
+    shots = cut_shots(words, 16.0, target=2.6, forced_starts={3})
+    starts = [words[a].start for a, _ in shots]
+    assert all(b - a >= 1.5 - 1e-6 for a, b in zip(starts, starts[1:] + [16.0]))

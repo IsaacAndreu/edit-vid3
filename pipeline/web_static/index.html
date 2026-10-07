@@ -674,7 +674,7 @@ async function nicheChannel(n) {
     data = null;
   } catch (e) { alert(e.message); }
 }
-let newsTab = null, nicheFilter = "todos";
+let newsTab = null, nicheFilter = "todos", gapFilter = "todos";
 async function radarPage() {
   const r = await api("/api/radar");
   ideaSeeds = [];
@@ -729,6 +729,40 @@ async function radarPage() {
       ${c.query ? `<div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: c.query, name: c.niche || c.format, near: "revelación"}, "💡 Ideas con este formato")}</div>` : ""}
     </div>`).join("")}</div>` : '<div class="notice">Sale con el radar de cada día (a las 13:00) o con «Buscar todo ahora».</div>'}
 
+    <h2>🎯 Huecos: público y poca competencia</h2>
+    <div class="small muted">Cada tema se mide en YouTube: <b>demanda</b> (mediana de visitas de los vídeos más vistos del último año),
+      <b>competencia</b> (vídeos largos en español subidos en 30 días), <b>canales pequeños que ganan</b>, cuánto se llevan los canales grandes
+      y el <b>hueco frente al inglés</b> (×N = el mismo tema tiene N veces más público en inglés). Verde = hueco: entra antes que nadie.</div>
+    <div class="row" style="gap:6px;margin:10px 0"><input id="gapTopic" placeholder="Mide un tema que tengas en mente: p. ej. «desastres de ingeniería»" style="flex:1;min-width:220px">
+      <button class="main" onclick="measureGap(this)">📏 Medir (~20 s)</button></div>
+    ${r.gaps && r.gaps.length ? `<div class="chips" style="margin-bottom:8px">${["todos", "hueco", "hueco en inglés", "a vigilar", "saturado", "sin demanda"].map((f) =>
+      `<a href="javascript:gapFilter='${f}';route()" style="${f === gapFilter ? "font-weight:700;text-decoration:underline" : ""}">${f === "todos" ? "Todos" : f}</a>`).join("")}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">${r.gaps.filter((g) => gapFilter === "todos" || g.verdict === gapFilter).map((g) => {
+        const color = {"hueco": "var(--ok)", "hueco en inglés": "var(--ok)", "a vigilar": "var(--accent)"}[g.verdict] || "var(--muted,#888)";
+        const trend = g.trend == null ? "" : g.trend > 0 ? ` <span class="small" style="color:var(--ok)">▲${fmt(g.trend)}</span>` : g.trend < 0 ? ` <span class="small" style="color:var(--err,#c33)">▼${fmt(-g.trend)}</span>` : "";
+        return `<div class="card" style="margin:0">
+        <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:nowrap;gap:8px"><div>
+          <div style="font-size:1.15em;font-weight:700">${esc(g.name)}${g.new ? ' <span class="pill hecho">nuevo</span>' : ""}</div>
+          <div class="small muted">«${esc(g.query_es)}»${g.query_en ? ` · 🇬🇧 «${esc(g.query_en)}»` : ""} · ${esc(g.date)}${g.origin === "manual" ? " · medido por ti" : ""}</div></div>
+          <div style="text-align:center;min-width:60px"><div style="font-size:1.6em;font-weight:800;color:${color}">${fmt(g.score)}${trend}</div>
+            <div class="small" style="color:${color};font-weight:700">${esc(g.verdict)}</div></div></div>
+        <div class="hbar" style="margin:8px 0"><i style="width:${10 * g.score}%;background:${color}"></i></div>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <span class="pill" title="mediana de visitas de los vídeos más vistos del último año en español">👁 ${kfmt(g.demand)} · ${kfmt(g.perDay)}/día</span>
+          <span class="pill ${g.recent <= 10 ? "hecho" : g.recent >= 30 ? "error" : ""}" title="vídeos largos en español sobre esto en los últimos 30 días (${g.recentChannels} canales)">📅 ${g.recent} vídeos/mes</span>
+          <span class="pill ${g.smallWins ? "hecho" : ""}" title="vídeos del top de canales de menos de 50 mil subs con muchas más visitas que suscriptores">🌱 ${g.smallWins} pequeños ganan</span>
+          <span class="pill ${g.bigShare >= 0.6 ? "error" : ""}" title="parte de las visitas del top que se llevan canales de más de 500 mil subs">🏢 ${Math.round(100 * g.bigShare)} % grandes</span>
+          ${g.englishGap ? `<span class="pill ${g.englishGap >= 3 ? "hecho" : ""}" title="mediana en inglés: ${kfmt(g.englishDemand)}">🇬🇧 ×${fmt(g.englishGap)}</span>` : ""}
+          ${g.searched != null ? `<span class="pill" title="sugerencias del buscador de YouTube en español (0-10): la gente lo escribe">🔎 ${g.searched}/10</span>` : ""}
+          ${g.fit != null ? `<span class="pill" title="si esta herramienta lo puede hacer">🤖 encaje ${g.fit}/10</span>` : ""}</div>
+        ${g.why ? `<div class="small" style="margin-top:6px">${esc(g.why)}</div>` : ""}
+        ${g.examples && g.examples.length ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px">${g.examples.map((v) =>
+          `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${kfmt(v.views)} visitas · ${esc(v.channel || "")}${v.subscribers != null ? " (" + kfmt(v.subscribers) + " subs)" : ""}"><img loading="lazy" src="${esc(v.thumbnail)}" style="width:100%;border-radius:6px"></a>`).join("")}</div>` : ""}
+        ${g.ideas && g.ideas.length ? `<div class="small" style="margin-top:6px">${g.ideas.map((t) => `<div>💡 ${esc(t)}</div>`).join("")}</div>` : ""}
+        <div class="row" style="margin-top:8px;gap:6px">${seedButton({kind: "niche", query: g.query_es, name: g.name, near: "hueco"}, "💡 Más ideas")}
+          <a class="small" href="https://www.youtube.com/results?search_query=${encodeURIComponent(g.query_es)}" target="_blank" rel="noopener">Ver en YouTube ↗</a></div>
+      </div>`; }).join("")}</div>` : '<div class="notice">Salen con el radar de cada día (a las 13:00), o mide tú un tema arriba.</div>'}
+
     <h2>📰 Noticias del día</h2>
     <div class="small muted">Historias de tus nichos que están subiendo ahora (vídeos de las últimas 48 h). Un vídeo en 24 h sobre ellas llega cuando la gente lo busca.
       ${news ? `Actualizado: ${esc(news.at.replace("T", " "))}.` : ""}</div>
@@ -770,6 +804,13 @@ async function radarPage() {
       <div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: n.query, name: n.name, near: n.near}, n.ideas ? `💡 Ver ideas (${n.ideas})` : "💡 Ideas para este nicho")}</div>
     </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos en este filtro.</div>'}`;
   window.runRadar = async () => { await post("/api/radar"); route(); };
+  window.measureGap = async (button) => {
+    const topic = ($("#gapTopic").value || "").trim();
+    if (!topic) return;
+    button.disabled = true; button.textContent = "Midiendo…";
+    try { await post("/api/radar/gap", {topic}); gapFilter = "todos"; route(); }
+    catch (e) { alert(e.message); button.disabled = false; button.textContent = "📏 Medir (~20 s)"; }
+  };
   window.runNews = async () => { await post("/api/news"); route(); };
   window.newsDraft = async (i, button) => {
     const idea = window.newsIdeas[i], channel = newsTab === "general" ? (data && data.channels ? data.channels[0] : "") : newsTab;

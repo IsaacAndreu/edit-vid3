@@ -533,7 +533,9 @@ def radar_state(root: Path) -> dict[str, Any]:
     for stories in (news or {}).get("channels", {}).values():
         for story in stories:
             story["idea"] = noticias.idea_for(story)
-    return {"latest": radar.latest(root), "niches": niches, "job": job_state(root, "radar"),
+    from . import huecos
+
+    return {"latest": radar.latest(root), "niches": niches, "job": job_state(root, "radar"), "gaps": huecos.ranked(root),
             "saved": niche_ideas.saved(root), "channels": channels(root), "news": news,
             "newsJob": job_state(root, "noticias")}
 
@@ -939,6 +941,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":
                     return self._ok(background(root, "radar", ["--radar"]))
+                if path == "/api/radar/gap":               # {topic}: measure a topic you have in mind (~400 units)
+                    from . import huecos
+
+                    return self._ok(huecos.evaluate(root, str(body.get("topic") or "")))
                 if path == "/api/news":                    # «Noticias del día» now, not tomorrow morning
                     return self._ok(background(root, "noticias", ["--noticias"]))
                 if path == "/api/ideas":                   # {seed: {kind: niche|video, …}, more: bool}

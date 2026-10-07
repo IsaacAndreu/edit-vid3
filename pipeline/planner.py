@@ -321,7 +321,13 @@ def cut_shots(
 
     n = len(words)
     times = _boundary_times(words, duration)
-    forced = sorted(b for b in forced_starts if 0 < b < n)
+    forced = []
+    for b in sorted(b for b in forced_starts if 0 < b < n):
+        # a chapter that starts too close to the start, the end or the previous one cannot be a cut of its own
+        # (avion5/avion9: a «## » 1.2 s into the voice made s001 1.2 s long and the whole planner fail)
+        previous = words[forced[-1]].start if forced else 0.0
+        if words[b].start - previous >= min_seconds and duration - words[b].start >= min_seconds:
+            forced.append(b)
     inf = math.inf
     best = [[inf] * len(times[b]) for b in range(n + 1)]
     back: list[list[tuple[int, int]]] = [[(-1, -1)] * len(times[b]) for b in range(n + 1)]

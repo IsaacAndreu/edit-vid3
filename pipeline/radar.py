@@ -244,6 +244,18 @@ def run(root: Path, *, force: bool = False) -> Path:
             out_of_quota = True
         except Exception as error:
             print(f"   descubrir nichos: {str(error)[:160]}")
+    if not out_of_quota and cfg.get("gaps", True):             # «Huecos»: demand against competition (huecos.py)
+        try:
+            from . import huecos
+
+            signals = [f"canal pequeño que crece: {c.get('format') or c.get('title')} ({c.get('niche') or ''})"
+                       for c in report.get("rising") or [] if (c.get("fit") or 0) >= 5]
+            signals += [f"nicho descubierto: {n['name']} — {n.get('why', '')}" for n in fresh]
+            report["gaps"] = huecos.scan(root, api, signals, known, today)
+        except NoKeysLeft:
+            out_of_quota = True
+        except Exception as error:
+            print(f"   huecos: {str(error)[:160]}")
     for near, about, count in asks:
         if out_of_quota or count <= 0:
             break
@@ -304,6 +316,12 @@ def _notify(ctx: RunContext, report: dict[str, Any]) -> None:
         news = telegram_lines(report["news"])
         if news:
             lines += ["📰 Noticias que suben ahora (vídeo en 24 h):", *news]
+    if report.get("gaps"):
+        from .huecos import telegram_lines as gap_lines
+
+        gaps = gap_lines(report["gaps"])
+        if gaps:
+            lines += ["🎯 Huecos: público y poca competencia en español:", *gaps, ""]
     best = sorted(report.get("niches", []), key=lambda n: -n["score"])[:3]
     if best:
         lines.append("Nichos nuevos:")
