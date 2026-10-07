@@ -107,7 +107,11 @@ def latest(root: Path) -> dict[str, Any] | None:
 
 
 def niches(root: Path) -> list[dict[str, Any]]:
-    return _read(root / FOLDER / "nichos.json") or []
+    found = _read(root / FOLDER / "nichos.json") or []
+    for n in found:                                   # niches measured before the new score get it too
+        if "medianViews" in n:
+            n["score"] = niche_score(n)
+    return sorted(found, key=lambda n: -n.get("score", 0))
 
 
 def _seen_before(root: Path, today: str) -> set[str]:
@@ -166,13 +170,25 @@ def measure(ctx: RunContext, api: Any, query: str, days: int = 120) -> dict[str,
     hits = [v for v in videos if (v["ratio"] or 0) >= 3]
     small = [v for v in hits if v["subscribers"] is not None and v["subscribers"] < 100_000]
     median_ratio = round(statistics.median(ratios), 2) if ratios else 0.0
-    score = round(min(10.0, len(hits) * 0.4 + len(small) * 0.8 + max(0.0, median_ratio - 1) * 2), 1)
-    return {"videos": len(videos), "hits": len(hits), "smallHits": len(small), "medianRatio": median_ratio,
-            "medianViews": int(statistics.median([v["views"] for v in videos])) if videos else 0, "score": score,
+    stats = {"videos": len(videos), "hits": len(hits), "smallHits": len(small), "medianRatio": median_ratio,
+             "medianViews": int(statistics.median([v["views"] for v in videos])) if videos else 0}
+    return {**stats, "score": niche_score(stats),
             "examples": [_slim(v, "") for v in sorted(hits, key=lambda v: -(v["ratio"] or 0))[:4]],
             # what works there, for «Ideas para este nicho» and for its competitors if it becomes a channel
             "titles": [{k: v.get(k) for k in ("title", "channel", "channelHandle", "views", "ratio")}
                        for v in sorted(videos, key=lambda v: -(v["ratio"] or 0))[:15]]}
+
+
+def niche_score(n: dict[str, Any]) -> float:
+    """0-10: demand (median views) weighs half, small channels' outliers 30 %, how far above normal 20 %. The old sum
+    of hits filled up to 10 for almost every niche (a median of 39 views scored 10/10)."""
+
+    import math
+
+    demand = max(0.0, min(10.0, (math.log10(max(1, int(n.get("medianViews") or 0))) - 3) * 3.3))
+    small = min(10.0, int(n.get("smallHits") or 0) * 0.7)
+    lift = max(0.0, min(10.0, (float(n.get("medianRatio") or 0) - 1) * 2))
+    return round(0.5 * demand + 0.3 * small + 0.2 * lift, 1)
 
 
 def propose_niches(ctx: RunContext, about: str, known: list[str], count: int) -> list[dict[str, Any]]:

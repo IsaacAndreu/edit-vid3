@@ -68,3 +68,11 @@ def test_a_topic_you_type_is_measured_and_kept_with_history(tmp_path: Path, monk
     assert ranked[0]["name"] == "Desastres de ingeniería"
     lines = huecos.telegram_lines([{**first, "new": True}])
     assert "Desastres de ingeniería" in lines[0] and "El puente que bailaba" in lines[0]
+
+
+def test_a_niche_with_no_audience_no_longer_scores_ten():
+    from pipeline.radar import niche_score
+
+    empty = niche_score({"medianViews": 39, "smallHits": 12, "medianRatio": 1.8})
+    strong = niche_score({"medianViews": 635_800, "smallHits": 10, "medianRatio": 3.2})
+    assert empty < 4 and strong > 7 and strong > niche_score({"medianViews": 3_400, "smallHits": 18, "medianRatio": 4.7})
