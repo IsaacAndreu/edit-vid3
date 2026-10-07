@@ -299,3 +299,22 @@ class BroaderSearchTests(unittest.TestCase):
         self.assertNotIn("casino building spain", wide.queries)        # already searched
         self.assertEqual(wide.queriesLocal, ["Gran Casino"])
         self.assertEqual(wide.visualIntent, BROLL.visualIntent)
+
+
+class SharedPacerTests(unittest.TestCase):
+    def test_two_pacers_on_one_file_keep_one_pace(self) -> None:
+        import threading
+        import time
+
+        from pipeline.sourcing.common import SharedPacer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".ritmo"
+            a, b = SharedPacer(0.2, path), SharedPacer(0.2, path)       # as if two processes
+            began = time.time()
+            threads = [threading.Thread(target=p.wait) for p in (a, b, a, b)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            self.assertGreaterEqual(time.time() - began, 0.55)            # 4 requests, 3 gaps of 0.2 s

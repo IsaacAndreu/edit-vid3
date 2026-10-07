@@ -37,6 +37,41 @@ class Pacer:
             self._last = time.monotonic()
 
 
+class SharedPacer(Pacer):
+    """The same minimum interval, shared by every process on the machine (two videos at once in the queue, the
+    radar…): YouTube sees one steady pace from this IP, not one per process. A file holds the last request time,
+    under an exclusive lock. Where file locks do not exist (Windows), it is a plain Pacer."""
+
+    def __init__(self, min_interval: float, path: Path) -> None:
+        super().__init__(min_interval)
+        self._path = path
+
+    def wait(self) -> None:
+        try:
+            import fcntl
+        except ImportError:
+            return super().wait()
+        with self._lock:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._path, "a+") as handle:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                try:
+                    handle.seek(0)
+                    try:
+                        last = float(handle.read().strip() or 0)
+                    except ValueError:
+                        last = 0.0
+                    delay = last + self._min_interval - time.time()
+                    if delay > 0:
+                        time.sleep(min(delay, self._min_interval))
+                    handle.seek(0)
+                    handle.truncate()
+                    handle.write(f"{time.time():.3f}")
+                    handle.flush()
+                finally:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def http_get_json(
     session: requests.Session,
     url: str,

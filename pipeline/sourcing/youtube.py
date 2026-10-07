@@ -25,7 +25,7 @@ import requests
 
 from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
-from .common import USER_AGENT, Pacer, SourceUnavailable, blocked_by_title, cached_json, fuse_ranks, key, tokens
+from .common import USER_AGENT, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json, fuse_ranks, key, tokens
 
 
 _BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
@@ -141,7 +141,7 @@ class YouTubeSource:
         self.root = root
         self.cache_dir = cache_dir
         self.cfg = config
-        self.pacer = Pacer(float(config.get("min_interval", 1.0)))
+        self.pacer = SharedPacer(float(config.get("min_interval", 1.0)), cache_dir / "videos" / ".ritmo")   # all processes
         self.blocked: str | None = None
         # One or more accounts (cookies.txt contents, file they came from). Requests take turns
         # between them; one that YouTube blocks is set aside and the rest carry on.
