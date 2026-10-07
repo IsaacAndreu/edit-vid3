@@ -195,7 +195,7 @@ def _words_per_video(root: Path, channel: str) -> int:
 
     counts = [len((f / "guion.txt").read_text("utf-8").split()) for f in video_folders(root)
               if (f / "guion.txt").is_file() and _channel_of(root, f) == channel]
-    return int(sum(counts) / len(counts)) if counts else 2000
+    return int(sum(counts) / len(counts)) if counts else 0
 
 
 def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, Any]:
@@ -208,7 +208,7 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     if not title:
         raise ValueError("La idea necesita un título")
     ctx = RunContext.create("_guiones", root=root, channel=channel or None)
-    words = _words_per_video(root, channel)
+    words = _words_per_video(root, channel) or int(ctx.section("ideas").get("words") or 2000)   # a new channel: its profile
     format_name = str(idea.get("format") or "")
     if format_name:
         from .formats import spec
@@ -230,7 +230,7 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     if reference:
         brief.append(f"GUION DE REFERENCIA DEL CANAL (solo el estilo):\n{reference}")
     result = complete_json(ctx, stage="guiones", section="planner", system=DRAFT_SYSTEM, user="\n\n".join(brief),
-                           max_tokens=9000, use_cache=False)
+                           max_tokens=max(9000, int(words * 2.4)), use_cache=False)       # long documentaries too
     script = str(result.get("script") or "").strip()
     if len(script.split()) < 200:
         raise RuntimeError("El borrador ha salido demasiado corto; vuelve a probar")

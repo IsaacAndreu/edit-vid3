@@ -1,0 +1,111 @@
+# Perfil del canal de viajes a lugares remotos: documentales contemplativos de 25-30 min sobre selvas, desiertos,
+# islas, montañas y pueblos extremos (referencia: Sin Coordenadas, 22,9 mil subs y 2,6 M en «CONGO» con 15 vídeos;
+# Exploradores Épicos, Mundo Inexplorado). Gancho de peligro en el título, calma en la narración: se deja puesto de
+# compañía, por eso retiene. Sin caras ni idioma en pantalla: el mejor candidato para doblar (dubbing, al final).
+# Úsalo con `canal: lugares` en materiales/<vídeo>/config.yaml.
+
+format: viaje-lugar
+
+brand:                             # tierra y selva: ámbar cálido sobre verde muy oscuro
+  accent: "#e8b04a"
+  accent2: "#4fb3a5"
+  canvas: "#070b09"
+  glow: "rgba(232,176,74,0.22)"
+  label: "#1d3b2f"
+  wipe: "#e8b04a"
+  panel: "#0d1612"
+  panelRaised: "#14211b"
+  muted: "#9fb2a6"
+  ocean: "#16455a"
+  land: "#3d6b4f"
+  mapStyle: flat
+  mapHighlight: "#c8892b"
+  border: "#21362b"
+  chapterStyle: numbered
+  statStyle: bare
+  motion: editorial
+  dataStyle: dark
+
+pacing:                            # documental de sobremesa: planos largos que respiran
+  base_seconds: 4.6
+  slow_seconds: 5.5
+  fast_seconds: 3.2
+  hook_seconds: 20                 # la apertura «Imagina…» con cortes algo más vivos, pero sin vértigo
+  hook_shot_seconds: 3.0
+  chapter_pause: 0.8
+
+apertura:
+  enabled: false                   # el vídeo ya empieza con imágenes: «Imagina…» sobre paisaje, sin avance
+
+graphics:
+  seconds_per_graphic: 150
+  cover_weak: true
+  types: [map, satellite, scale, compare, timeline]
+
+people:
+  max: 1                           # casi nunca hay personas con nombre
+
+timeline:
+  assets: assets/lugares           # assets/lugares/music (calma, asombro, aventura…) y /sfx; si vacías, assets/
+  emphasis_zoom: false             # imagen de cine, sin golpes de zoom
+  labels: true                     # rótulo de lugar al cambiar de región
+  moments: 0
+  sound_bites: 0
+  music_default: calma
+  moods:
+    calma: "contemplación, paisaje, naturaleza en paz, cierre emocional"
+    asombro: "récords, superlativos, un espectáculo natural"
+    aventura: "exploración, ríos, rutas, expediciones"
+    tension: "peligros naturales, tragedias históricas contadas con respeto"
+  questions: false                 # las preguntas del guion no como texto flotante: rompen la calma
+
+fallback:
+  pexels: true                     # paisajes 4K genéricos son b-roll válido (no hay protagonista)
+
+judge:
+  trusted_bonus: 0.04
+  trusted_channels: [National Geographic, BBC Earth, Nat Geo WILD, DW Documentary, Free Documentary, Our Planet,
+                     WWF, Smithsonian Channel, Lonely Planet]
+
+content:                           # nunca el material de la competencia (ya montado, con su voz; y reclaman)
+  title_blocklist: [sin coordenadas, exploradores épicos, exploradores epicos, mundo inexplorado, virella,
+                    instintoria, gameplay, minecraft, roblox, video game, videojuego, ai generated, ia generada]
+
+planner:
+  shots_note: |
+    - METRAJE: paisajes y vida REALES de ese lugar en la mejor calidad: tomas de dron 4K, documentales de
+      naturaleza, vlogs de viaje y reportajes. Búsquedas con lugar + lo que se ve + '4K' o 'drone':
+      'Congo river aerial drone 4K', 'Virunga mountain gorilla close up', 'Faroe Islands cliffs drone 4K',
+      'Yakutsk winter street -50'. Nunca vídeos de otros canales de documentales en español (ya montados).
+    - FAUNA: el animal concreto en su hábitat ('okapi Ituri forest', 'bonobo sanctuary Kinshasa'), nunca de zoo si
+      se puede evitar.
+    - HISTORIA DURA (guerras, epidemias): mapas, fotos de archivo, lugares hoy; nunca imágenes explícitas.
+    - Pocas cifras en pantalla: solo los superlativos que dan escala, en un plano "stat".
+
+package:
+  thumbnail_style: concept         # un paisaje imponente + 0-3 palabras
+  hint: "título con el LUGAR en mayúsculas + superlativo de peligro o aislamiento + 'Documental 4K'
+    ('CONGO | La Selva Más Salvaje y Peligrosa que África Mantiene Oculta | Documental en 4K'). Los que más
+    funcionan venden peligro y supervivencia; los 'bonitos' (Bután, Noruega) se quedan en miles."
+
+ideas:
+  about: "un canal de YouTube en español de documentales contemplativos de 25-30 min sobre lugares remotos,
+    salvajes o extremos del planeta (selvas, desiertos, islas, frío extremo) y la gente que vive allí, narrados en
+    calma, con metraje 4K de dron y naturaleza"
+  pattern: "LUGAR remoto + superlativo de peligro, aislamiento o clima extremo + cómo sobrevive la gente"
+  words: 5000                      # 25-30 min de narración
+  my_channel: ""
+  competitors: ["@SinCoordenadas-i5v"]
+  niches: [selvas, desiertos, islas remotas, frío extremo, ríos legendarios, pueblos aislados]
+
+lab:
+  queries: [documental 4K selva, cómo sobrevive la gente, el lugar más aislado del mundo, documental de viajes,
+            el lugar más peligroso del mundo]
+
+grade:
+  look: calido
+
+dubbing:                           # el formato ideal para doblar: sin caras ni texto hablado en pantalla
+  enabled: false                   # true cuando tengas los canales en esos idiomas (y sus voces)
+  languages: [en, pt, fr, de]
+  voices: {}                       # {en: {voice_id: "…", model_id: eleven_multilingual_v2, name: "…"}, pt: {…}}
