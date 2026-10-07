@@ -386,20 +386,67 @@ async function videoPage(slug) {
   if (v.status === "haciendo") schedule(route, 10000);
 }
 
-async function stats() {
-  const [o, spend] = [await api("/api/overview"), await api("/api/spending")];
+let statsSort = "views", statsChannel = "";
+async function stats(refresh = false) {
+  const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
-  $("#app").innerHTML = `<h1>Estadísticas</h1>
-    <h2>YouTube (últimos 7 días)</h2>
-    ${y ? `<div class="grid">
-      <div class="card"><div class="muted small">Peticiones</div><div class="stat">${y.requests}</div><div class="small muted">${y.ok} bien · ${y.failed} fallidas</div></div>
+  const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
+  const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
+  const vs = (r) => r == null ? "" : `<span class="pill ${r >= 1.5 ? "hecho" : r < 0.7 ? "error" : ""}">${times(r)}</span>`;
+  const mixBar = (mix) => { const total = Object.values(mix).reduce((a, b) => a + b, 0) || 1;
+    const colors = {youtube: "#e5534b", fotos: "#3b82f6", stock: "#a371f7", generadas: "#f2cc60", "gráficos": "#3fb950", otros: "#8b949e"};
+    return `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;min-width:120px">${Object.entries(mix).map(([k, n]) =>
+      `<i title="${esc(k)}: ${n} planos" style="width:${100 * n / total}%;background:${colors[k] || "#8b949e"}"></i>`).join("")}</div>`; };
+  const head = (key, label) => `<th style="cursor:pointer;text-align:right;white-space:nowrap" onclick="statsSort='${key}';stats()">${label}${statsSort === key ? " ▾" : ""}</th>`;
+  $("#app").innerHTML = `<div class="row" style="justify-content:space-between"><h1>Estadísticas</h1>
+      <div class="row" style="gap:6px"><select style="width:auto" onchange="statsChannel=this.value;stats()"><option value="">Todos los canales</option>
+        ${st.channels.map((c) => `<option ${c.channel === statsChannel ? "selected" : ""}>${esc(c.channel)}</option>`).join("")}</select>
+      <button onclick="stats(true)">↻ Actualizar de YouTube</button></div></div>
+    <div class="small muted">${st.fetched ? "Datos de YouTube de " + new Date(st.fetched * 1000).toLocaleString("es-ES") : "Sin datos de YouTube aún (hace falta el enlace del vídeo: «Ya está subido» con su URL)."}</div>
+
+    <h2>Por canal</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px">${st.channels.filter((c) => !statsChannel || c.channel === statsChannel).map((c) => `<div class="card" style="margin:0">
+      <b>${esc(c.channel)}</b><div class="stat">${kfmt(c.views)}</div><div class="small muted">visitas en ${c.published} vídeo(s) subido(s) · ${c.made} hechos</div>
+      <div class="small" style="margin-top:6px">Mediana: <b>${kfmt(c.median)}</b> · coste medio <b>${Number(c.usdPerVideo).toFixed(2)} $</b>${c.usdPer1kViews != null ? ` · ${Number(c.usdPer1kViews).toFixed(3)} $ / 1.000 visitas` : ""}</div>
+      ${c.best ? `<div class="small muted" style="margin-top:4px">🏆 ${esc(c.best.title)} (${kfmt(c.best.views)})</div>` : ""}</div>`).join("")}</div>
+
+    <h2>En YouTube</h2>
+    ${out.length ? `<div class="card" style="overflow-x:auto;padding:0"><table style="width:100%;border-collapse:collapse;font-size:14px">
+      <tr style="text-align:left"><th style="padding:8px">Vídeo</th>${head("views", "Visitas")}${head("perDay", "Al día")}${head("at48h", "48 h")}${head("at7d", "7 días")}
+        ${head("vsChannel", "vs canal")}${head("likesPer1k", "👍/1.000")}${head("commentsPer1k", "💬/1.000")}${head("ageDays", "Días")}</tr>
+      ${out.map((v) => `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px;min-width:260px"><div class="row" style="gap:8px;flex-wrap:nowrap">${v.youtube.thumbnail ? `<a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.youtube.thumbnail)}" style="width:96px;border-radius:4px"></a>` : ""}
+          <div><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.youtube.title || v.title)}</a><div class="small muted">${esc(v.channel)} · ${esc(v.publishedDay || "")}</div></div></div></td>
+        <td style="text-align:right"><b>${kfmt(v.youtube.views)}</b></td><td style="text-align:right">${kfmt(v.youtube.perDay)}</td>
+        <td style="text-align:right">${v.youtube.at48h != null ? kfmt(v.youtube.at48h) : "—"}</td><td style="text-align:right">${v.youtube.at7d != null ? kfmt(v.youtube.at7d) : "—"}</td>
+        <td style="text-align:right">${vs(v.youtube.vsChannel)}</td><td style="text-align:right">${fmt(v.youtube.likesPer1k)}</td>
+        <td style="text-align:right">${fmt(v.youtube.commentsPer1k)}</td><td style="text-align:right;padding-right:8px">${fmt(v.youtube.ageDays)}</td></tr>`).join("")}
+    </table></div>
+    <div class="small muted" style="margin-top:6px">«vs canal»: visitas frente a la mediana de los vídeos del mismo canal. 👍 y 💬 por cada 1.000 visitas: cuánto engancha a quien lo ve.
+      La retención, el CTR y las impresiones no salen en la API pública: míralos en YouTube Studio (o pídeme conectar YouTube Analytics).</div>`
+      : '<div class="notice">Ningún vídeo subido con su enlace todavía. En «Para subir» o en el vídeo, «Ya está subido» y pega la URL.</div>'}
+
+    <h2>Cómo se hizo cada vídeo</h2>
+    <div class="card" style="overflow-x:auto;padding:0"><table style="width:100%;border-collapse:collapse;font-size:14px">
+      <tr style="text-align:left"><th style="padding:8px">Vídeo</th><th style="text-align:right">Coste</th><th style="text-align:right">Tiempo</th><th style="text-align:right">Duración</th>
+        <th style="text-align:right">Cortes/min</th><th>Qué sale en pantalla</th><th style="text-align:right;padding-right:8px;white-space:nowrap">Errores ✅/❌</th></tr>
+      ${vids.map((v) => { const p = v.production, l = p.labels; return `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title)}</a><div class="small muted">${esc(v.channel)} · ${v.status === "subido" ? "en YouTube" : "por subir"}</div></td>
+        <td style="text-align:right">${Number(p.usd).toFixed(2)} $</td><td style="text-align:right">${p.minutes} min</td>
+        <td style="text-align:right">${Math.floor(p.duration / 60)}:${String(p.duration % 60).padStart(2, "0")}</td><td style="text-align:right">${fmt(p.cutsPerMin)}</td>
+        <td style="min-width:150px">${mixBar(p.mix)}<div class="small muted">${Object.entries(p.mix).map(([k, n]) => `${esc(k)} ${n}`).join(" · ")}</div></td>
+        <td style="text-align:right;padding-right:8px">${l.correcta || l.incorrecta ? `${l.correcta} / ${l.incorrecta}` : "—"}</td></tr>`; }).join("")}
+    </table></div>
+
+    <details style="margin-top:24px"><summary class="small muted" style="cursor:pointer">Técnico: descargas de YouTube y gasto de API por día</summary>
+    ${y ? `<div class="grid" style="margin-top:10px">
+      <div class="card"><div class="muted small">Peticiones (7 días)</div><div class="stat">${y.requests}</div><div class="small muted">${y.ok} bien · ${y.failed} fallidas</div></div>
       <div class="card"><div class="muted small">Errores</div><div class="small" style="margin-top:6px">${Object.entries(y.errors).map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join(" · ") || "ninguno ✅"}</div></div>
       <div class="card"><div class="muted small">Descargas</div><div class="stat">${y.files_ok}/${y.files}</div><div class="small muted">${y.megabytes} MB · ${y.mbps} MB/s</div></div>
       <div class="card"><div class="muted small">Cómo</div><div class="small" style="margin-top:6px">Con cuenta: ${y.with_cookies} · PO Token: ${y.pot ? "sí" : "no"}<br>${esc(y.clients.join(", "))}</div></div>
     </div>` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
-    <h2>Gasto de API por día</h2>
     <div class="card"><div class="spend">${spend.map((d) => `<div style="height:${100 * d.usd / max}%" title="${d.usd} $"><span>${d.day.slice(5)}</span></div>`).join("")}</div>
-      <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div>`;
+      <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
 }
 
 async function settingsPage() {

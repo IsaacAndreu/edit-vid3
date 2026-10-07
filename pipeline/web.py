@@ -650,6 +650,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             try:
                 if path == "/api/overview":
                     return self._ok(overview(root))
+                if path == "/api/stats":                   # «Estadísticas» (pipeline/estadisticas.py)
+                    from . import estadisticas
+
+                    return self._ok(estadisticas.report(root, bool(urllib.parse.parse_qs(url.query).get("refresh"))))
                 if path == "/api/spending":
                     return self._ok(spending(root))
                 if path == "/api/settings":
