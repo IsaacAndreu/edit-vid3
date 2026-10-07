@@ -107,11 +107,81 @@ def after_video(ctx: RunContext) -> None:
             freed += _size(folder)
             shutil.rmtree(folder, ignore_errors=True)
     print(f"   Limpieza: {freed / 1e9:.1f} GB de temporales de {ctx.slug} borrados (quedan el vídeo, los planes y los logs)")
+    try:
+        trim_videos(ctx)
+    except Exception:
+        pass
+
+
+MEDIA_SUFFIXES = (".mp4", ".mkv", ".webm", ".m4a", ".part")
+
+
+def _in_use(ctx: RunContext) -> set[Path]:
+    """The analysis windows of unfinished videos (their judge/fallback still read them)."""
+
+    import json
+
+    keep: set[Path] = set()
+    work = ctx.root / "work"
+    for scores in work.glob("*/scores") if work.is_dir() else []:
+        if (ctx.root / "out" / scores.parent.name / "video-final.mp4").is_file():
+            continue
+        for path in scores.glob("*.json"):
+            try:
+                for option in json.loads(path.read_text("utf-8")).get("options", []):
+                    if option.get("analysisPath"):
+                        keep.add((ctx.root / option["analysisPath"]).resolve())
+            except (OSError, ValueError):
+                continue
+    return keep
+
+
+def trim_videos(ctx: RunContext, now: float | None = None) -> float:
+    """cache/videos/ kept small, always (not only with cleanup.cache_days): the WHOLE YouTube sources fetched to cut
+    clips from (full_*, up to 600 MB each: 193 GB on the server after two weeks) go once untouched for
+    `cleanup.whole_hours` (12) — they only help while that video's clips are being cut; then, while the folder is
+    above `cleanup.videos_max_gb` (50), the oldest downloaded media go first. Storyboards and metadata stay. GB freed."""
+
+    cfg = ctx.section("cleanup")
+    folder = ctx.cache_dir / "videos"
+    if not folder.is_dir():
+        return 0.0
+    now = now or time.time()
+    hours = float(cfg.get("whole_hours", 12))
+    freed = 0
+    media = []
+    for path in folder.rglob("*"):
+        if not path.is_file() or path.suffix not in MEDIA_SUFFIXES or path.parent.name == "sb":
+            continue
+        stat = path.stat()
+        if path.name.startswith(("full_", "wip_")) and now - stat.st_mtime > hours * 3600:
+            freed += stat.st_size
+            path.unlink(missing_ok=True)
+            continue
+        media.append((stat.st_mtime, stat.st_size, path))
+    cap = float(cfg.get("videos_max_gb", 50)) * 1e9
+    total = sum(size for _, size, _ in media)
+    keep = _in_use(ctx) if total > cap else set()
+    for mtime, size, path in sorted(media):
+        if total <= cap:
+            break
+        if now - mtime < 2 * 3600 or path.resolve() in keep:     # the video being made / an unfinished one's analysis
+            continue
+        path.unlink(missing_ok=True)
+        total -= size
+        freed += size
+    if freed:
+        print(f"Limpieza de cache/videos: {freed / 1e9:.1f} GB (vídeos de YouTube enteros y descargas antiguas)")
+    return freed / 1e9
 
 
 def old_cache(ctx: RunContext) -> None:
     """Downloads in cache/ (YouTube clips, Pexels) not touched for cleanup.cache_days days."""
 
+    try:
+        trim_videos(ctx)
+    except Exception as error:                        # a cleanup never stops the queue
+        print(f"(Limpieza de cache/videos no hecha: {str(error)[:100]})")
     days = float(ctx.section("cleanup").get("cache_days", 0) or 0)
     if days <= 0:
         return

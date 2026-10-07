@@ -781,6 +781,7 @@ def main() -> None:
         ctx = RunContext.create("_limpiar", root=PROJECT_ROOT)
         cleanup = {**ctx.section("cleanup"), "published_days": 0}
         cleanup["cache_days"] = cleanup.get("cache_days") or 14
+        cleanup["whole_hours"] = min(float(cleanup.get("whole_hours", 12)), 2)   # whole sources: only the current video's stay
         gb = housekeeping.rotate_published(PROJECT_ROOT, {**ctx.config, "cleanup": cleanup})
         housekeeping.old_cache(RunContext.create("_limpiar", root=PROJECT_ROOT, config={**ctx.config, "cleanup": cleanup}))
         after = shutil.disk_usage(PROJECT_ROOT).free / 1e9
