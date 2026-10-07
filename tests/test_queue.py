@@ -156,3 +156,11 @@ def test_stale_queue_lock_is_removed(tmp_path):
     lock.write_text(f"{os.getpid()} 2026-10-04T20:00:00\n")
     main._clear_stale_lock(lock)
     assert lock.exists()
+
+
+def test_a_finished_video_marked_to_redo_goes_back_to_the_queue(tmp_path):
+    _materials(tmp_path, "B", done=True)
+    assert main.pending_slugs(tmp_path) == []
+    (tmp_path / "materiales" / "B" / main.REDO).write_text("planner\nbogus\n")
+    assert main.pending_slugs(tmp_path) == ["B"]
+    assert main.redo_stages(tmp_path / "materiales" / "B") == {"planner"}

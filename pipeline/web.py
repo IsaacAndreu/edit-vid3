@@ -110,6 +110,7 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     retry_at = None
     queued_again = False
     held = (folder / HOLD).is_file()
+    redo = (folder / REDO).is_file() and not held      # «Rehacer»: back in the queue although it has a final video
     if (ready and not done and not current and not held and (diag.get("error") or failed)   # done: an old error is history
             and watcher_alive(root)):
         queued_again = True
@@ -123,7 +124,7 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
             voice = "generando"
         elif (folder / tts.FAILED).is_file():
             voice = "error: " + str((_json(folder / tts.FAILED) or {}).get("error") or "falló")[:200]
-    status = ("haciendo" if current else "hecho" if done else "en pausa" if held else "en cola" if queued_again
+    status = ("haciendo" if current else "en cola" if redo else "hecho" if done else "en pausa" if held else "en cola" if queued_again
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
         "slug": slug, "channel": _channel_of(root, folder), "status": status,
@@ -401,6 +402,20 @@ def retry_all(root: Path) -> dict[str, Any]:
 
 
 HOLD = ".en-espera"        # = main.HOLD: the queue skips the video while this file is in its folder
+REDO = ".rehacer"          # = main.REDO: a finished video made again from these stages
+
+
+def redo(root: Path, slug: str, stages: list[str]) -> dict[str, Any]:
+    """«Rehacer»: a finished video goes back to the queue and is made again from `stages` (planner by default); the
+    final video it had stays until the new one replaces it."""
+
+    from .runner import STAGE_NAMES
+
+    chosen = [s for s in stages if s in STAGE_NAMES] or ["planner"]
+    (find_video(root, slug) / REDO).write_text("\n".join(chosen) + "\n", encoding="utf-8")
+    if watcher_alive(root):
+        (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+    return {"ok": True, "message": f"En la cola para rehacerse desde «{chosen[0]}». El vídeo actual sigue hasta que salga el nuevo."}
 
 
 def hold(root: Path, slug: str, on: bool = True) -> dict[str, Any]:
@@ -829,10 +844,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if path == "/api/videos":
                     return self._ok(create_video(root, body))
-                if match := re.fullmatch(r"/api/video/([^/]+)/(retry|archive|hold|unhold|stop)", path):
+                if match := re.fullmatch(r"/api/video/([^/]+)/(retry|archive|hold|unhold|stop|redo)", path):
                     slug, verb = urllib.parse.unquote(match.group(1)), match.group(2)
                     if verb in ("hold", "unhold"):
                         return self._ok(hold(root, slug, verb == "hold"))
+                    if verb == "redo":
+                        return self._ok(redo(root, slug, [str(x) for x in body.get("stages") or ["planner"]]))
                     action = {"retry": retry, "archive": archive, "stop": stop}[verb]
                     return self._ok(action(root, slug))
                 if path == "/api/settings":

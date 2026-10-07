@@ -117,7 +117,10 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
 
         if formats.ensure_auto(ctx):                      # a new video: the format that suits its script
             ctx = RunContext.create(slug, root=root)
-        _run_one(ctx, force=force, until=until, review=review)
+        redo = redo_stages(ctx.materials_dir)             # «Rehacer»: from those stages, whoever runs it
+        _run_one(ctx, force=set(force) | redo, until=until, review=review)
+        if redo and until is None and not review:
+            (ctx.materials_dir / REDO).unlink(missing_ok=True)
 
 
 class _one_process:
@@ -212,7 +215,7 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
         names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
         from pipeline.housekeeping import is_done
 
-        if not is_done(root, d.name):                       # final video, or uploaded and cleaned up
+        if not is_done(root, d.name) or (d / REDO).is_file():   # not made yet, or «Rehacer» in the studio
             ready.append(d)
     from pipeline import agenda
 
@@ -221,6 +224,14 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
 
 
 HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»
+REDO = ".rehacer"                      # in a video's folder: made again from these stages (one per line), then removed
+
+
+def redo_stages(folder: Path) -> set[str]:
+    try:
+        return {s for s in (folder / REDO).read_text("utf-8").split() if s in STAGE_NAMES}
+    except OSError:
+        return set()
 
 
 def on_hold(root: Path, slug: str) -> bool:

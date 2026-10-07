@@ -358,6 +358,7 @@ async function videoPage(slug) {
         ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
         ${v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : ""}
         ${v.status === "hecho" && !v.published ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
+        ${v.status === "hecho" ? '<button onclick="if(confirm(\'¿Rehacerlo desde la planificación con las mejoras de ahora? Vuelve a la cola; el vídeo actual sigue hasta que salga el nuevo.\'))act(\'redo\')" title="Vuelve a planificar, buscar y montar (reaprovecha descargas y voz)">🔁 Rehacer</button>' : ""}
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
       ${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">🤖 elegido por el guion</span>` : ""}` : ""}</div>
