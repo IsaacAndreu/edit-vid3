@@ -1,0 +1,44 @@
+# Formato «Cuánto cuesta vivir/viajar en un país». Úsalo con `format: precios-pais` en la config.yaml del vídeo, del
+# canal o de la serie. Cuenta atrás de 10 datos de precios (del más curioso al más duro) con tarjeta «Dato 7/10».
+nombre: "Precios de un país (10 datos)"
+descripcion: "Cuánto cuesta dormir, comer, moverse y vivir en un país: 10 precios en moneda local y en dólares,
+  cada uno frente al sueldo de allí, en cuenta atrás hasta el dato más duro."
+ejemplos: "Nicaragua: 10 precios que te van a sorprender; Cuánto cuesta vivir en Bolivia; Lo que compras con 100 $ en Cuba."
+escritura: |
+  FORMATO PRECIOS DE UN PAÍS (cuenta atrás de 10 datos, del más curioso al más duro):
+  1. 0:00-0:40 GANCHO con la cifra más dura dicha en voz alta en moneda local y en dólares («6.188 córdobas. Eso es lo
+     que gana al mes…»), el contraste («pero esa misma plata compra cosas que en tu país costarían el triple») y la
+     promesa del recorrido. Anuncia que el dato número uno es tan duro que se deja para el final.
+  2. Una sola llamada a suscribirse corta tras el gancho; otra a mitad del vídeo, nunca más de tres en total.
+  3. DATO 10 → DATO 1, cada uno abre con «Dato número <N>, <titular de 3-6 palabras>.» y sigue SIEMPRE este orden:
+     el precio en moneda local Y en dólares (con el tipo de cambio dicho una vez al principio del vídeo); qué incluye;
+     POR QUÉ cuesta eso (subsidios, producción local, impuestos, competencia, inflación con su % y periodo); el precio
+     frente al sueldo de allí («es lo que gana un jornalero en dos días») y frente al bolsillo del espectador; un
+     consejo práctico para el viajero; y una frase puente que anticipa el siguiente dato.
+  4. Mezcla datos baratos y caros: a mitad del vídeo, uno que rompa la idea de «todo es barato» (gasolina, huevos…).
+  5. Cada dato con un lugar concreto cuando lo haya (ciudad, barrio, volcán, mercado), para el mapa y el metraje.
+  6. DATO 1: vuelta a la cifra del gancho con la cuenta completa (sueldo mínimo frente a la canasta básica oficial,
+     en % que cubre) y cómo sobrevive la gente (varios sueldos, remesas, economía informal).
+  7. CIERRE: las «dos caras» del país (barato para el viajero, duro para quien vive allí), una pregunta para los
+     comentarios («¿cuánto pagas tú por…?») y el próximo país.
+  Todas las cifras con su fuente o su fecha («según el Banco Central», «desde marzo de 2026»); nada sin comprobar.
+guion: |
+  ESTE VÍDEO ES UNA CUENTA ATRÁS DE PRECIOS DE UN PAÍS (10 datos), sin protagonista:
+  - "subject": "" y "peak": búsqueda EN INGLÉS del país en su imagen más reconocible (p. ej. 'Nicaragua drone
+    footage volcano lake Granada').
+  - "events": uno por dato, desde la frase «Dato número N». "label" = búsqueda EN INGLÉS de METRAJE REAL DE ESE PAÍS
+    que enseñe esa cosa allí: 'Managua city bus interior Nicaragua', 'Cerro Negro volcano boarding Leon Nicaragua',
+    'fritanga street food Managua Nicaragua', 'Toña beer Nicaragua bar'. Vlogs de viaje, reportajes y tomas de
+    dron del país valen. Si la cosa es universal y el país no importa (un surtidor de gasolina, huevos en una
+    estantería, un móvil con datos), la búsqueda puede ser general ('gas station pump close up'). "tag" =
+    'DATO 7 · MANAGUA' (máx. 30 caracteres).
+  - La intro y el cierre son eventos generales del país (calles, mercados, gente, paisajes de ese país).
+  - Capítulos: agrupan datos ('DEL 10 AL 7', 'LO QUE SORPRENDE', 'EL DATO MÁS DURO').
+graficos: |
+  Este vídeo es de precios: cada precio en grande ("stat") en moneda local con su equivalente en dólares en la
+  etiqueta; "compare" o "datacard" para precio frente a sueldo o frente a otros países; "receipt" para la cuenta
+  final del sueldo frente a la canasta básica; "scale" para «con 1 $ te subes 14 veces al bus»; "map" para cada
+  ciudad o lugar. Las tarjetas «Dato N» salen solas.
+segundos_por_grafico: 45
+tipos: [receipt, compare, scale, chart]
+titulos: "patrón de título de precios de un país: '<PAÍS>: <precio sorprendente> y otros 9 precios que no te crees' o 'Cuánto cuesta de VERDAD vivir en <PAÍS> (el dato 1 duele)', con una cifra concreta en MAYÚSCULAS si cabe."

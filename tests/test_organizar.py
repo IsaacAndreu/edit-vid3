@@ -57,7 +57,14 @@ def test_done_videos_come_with_titles_texts_and_files(tmp_path: Path):
     assert v["date"]                                                      # its day in the calendar
 
 
-def test_the_scripts_each_channel_still_needs(tmp_path: Path):
+def test_the_scripts_each_channel_still_needs(tmp_path: Path, monkeypatch):
+    from datetime import date, datetime, time
+
+    from pipeline import agenda
+
+    real_plan = agenda.plan                                  # in the morning: today's slot is still to come
+    monkeypatch.setattr(agenda, "plan", lambda root, start=None, days=14, now=None, listed=None: real_plan(
+        root, start, days, now or datetime.combine(date.today(), time(6, 0)), listed))
     root = _site(tmp_path)
     _video(root, "gimnasia", "g1", done=True)
     from pipeline import agenda

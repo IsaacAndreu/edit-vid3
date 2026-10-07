@@ -136,7 +136,7 @@ Textos en el idioma del guion, cortos. Devuelve SOLO JSON:
 
 RANK_SYSTEM = """
 Este vídeo es un ranking / cuenta atrás. Te paso la narración en frases numeradas. Encuentra la frase
-donde se PRESENTA cada puesto ("en el número 7…", "puesto 3:", "number one is…") y devuelve SOLO JSON:
+donde se PRESENTA cada puesto ("en el número 7…", "puesto 3:", "dato número 7,", "number one is…") y devuelve SOLO JSON:
 {"total": 10 o null, "items": [{"rank": 7, "sentence": 12, "name": "nombre corto del elemento",
  "subtitle": "país, marca o categoría dicho en el guion, o null",
  "place": "si el elemento es un lugar: 'ciudad, país' EN INGLÉS para geolocalizarlo; si no, null",
@@ -768,7 +768,8 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
     cfg = ctx.section("graphics")
     if not cfg.get("enabled", True) or not sents:
         return []
-    passes = {"ranking": ranking, "prohibidos": banned, "tier-list": tier, "iceberg": iceberg, "datos": data_race}
+    passes = {"ranking": ranking, "precios-pais": ranking, "prohibidos": banned, "tier-list": tier, "iceberg": iceberg,
+              "datos": data_race}
     ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
     fmt = str(ctx.config.get("format") or "")
     every = float((cfg.get("seconds_per_format") or {}).get(fmt)
