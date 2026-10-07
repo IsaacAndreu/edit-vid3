@@ -188,17 +188,26 @@ def propose_niches(ctx: RunContext, about: str, known: list[str], count: int) ->
 def run(root: Path, *, force: bool = False) -> Path:
     from .ytapi import NoKeysLeft, YouTubeAPI
 
-    today = date.today().isoformat()
+    base = RunContext.create("_radar", root=root)
+    today = _local_now(base.config).date().isoformat()
     target = root / FOLDER / f"{today}.json"
     if target.is_file() and not force:
         return target
-    base = RunContext.create("_radar", root=root)
     cfg = base.section("radar")
     api = YouTubeAPI(base)
     if not api.keys:
         raise SystemExit("El radar necesita YOUTUBE_API_KEYS en .env")
     seen = _seen_before(root, today)
     report: dict[str, Any] = {"date": today, "started": datetime.now().isoformat(timespec="seconds"), "channels": {}}
+    if cfg.get("rising", True):                    # small channels with far more views than subscribers, first
+        try:
+            from . import revelacion
+
+            report["rising"] = revelacion.scan(root, api)
+        except NoKeysLeft:
+            report["rising"] = []
+        except Exception as error:
+            print(f"   canales revelación: {str(error)[:160]}")
     measured = niches(root)
     known = [n["name"] for n in measured] + [n["query"] for n in measured]
     out_of_quota = False
@@ -278,6 +287,12 @@ def _notify(ctx: RunContext, report: dict[str, Any]) -> None:
     from . import notify
 
     lines = []
+    if report.get("rising"):
+        from .revelacion import telegram_lines as rising_lines
+
+        rising = rising_lines(report["rising"])
+        if rising:
+            lines += ["🚀 Canales pequeños que revientan (formatos para copiar):", *rising, ""]
     for name, info in report["channels"].items():
         new = [v for v in info["top"] if v.get("new")][:3]
         if new:
@@ -295,7 +310,7 @@ def _notify(ctx: RunContext, report: dict[str, Any]) -> None:
         lines += [f"  {n['name']} · nota {n['score']} · {n['smallHits']} éxitos de canales pequeños" for n in best]
     if lines:
         try:
-            notify.send(ctx, f"Radar de competencia · {report['date']}", "\n".join(lines))
+            notify.send(ctx, f"📡 Radar del día · {report['date']}", "\n".join(lines))
         except Exception:
             pass
 
@@ -304,12 +319,24 @@ def due(root: Path, config: dict[str, Any]) -> bool:
     """For the watcher: on, not done today, and past `radar.hour`."""
 
     cfg = config.get("radar") or {}
-    if not cfg.get("enabled", True) or (root / FOLDER / f"{date.today().isoformat()}.json").is_file():
+    if not cfg.get("enabled", True) or (root / FOLDER / f"{_local_now(config).date().isoformat()}.json").is_file():
         return False
     marker = root / FOLDER / ".intento"
     if marker.is_file() and time.time() - marker.stat().st_mtime < 3 * 3600:    # failed earlier today: not in a loop
         return False
-    return datetime.now().hour >= int(cfg.get("hour", 7))
+    return _local_now(config).hour >= int(cfg.get("hour", 13))
+
+
+def _local_now(config: dict[str, Any]) -> datetime:
+    """Your clock, not the server's (a VPS runs in UTC): radar.timezone, else mychannel.timezone, else Madrid."""
+
+    from zoneinfo import ZoneInfo
+
+    zone = (config.get("radar") or {}).get("timezone") or (config.get("mychannel") or {}).get("timezone") or "Europe/Madrid"
+    try:
+        return datetime.now(ZoneInfo(str(zone)))
+    except Exception:
+        return datetime.now()
 
 
 def run_if_due(root: Path) -> None:

@@ -322,7 +322,9 @@ budget:
 
 radar:                             # radar de competencia diario (estudio → Competencia; con --vigilar, cada día)
   enabled: true
-  hour: 7                          # a partir de esta hora, en el primer rato sin vídeos pendientes
+  hour: 13                         # cada día a esta hora (de tu zona, radar.timezone o Europe/Madrid) llega el resumen
+  rising_max_subs: 50000           # «canales revelación»: como mucho estos suscriptores…
+  rising_min_multiple: 5           # …y un vídeo reciente con al menos 5 veces sus suscriptores en visitas
   days: 30                         # vídeos de los últimos N días
   min_ratio: 2.0                   # al menos 2x las visitas normales de su canal
   min_views: 5000

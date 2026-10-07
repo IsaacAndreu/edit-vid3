@@ -701,9 +701,31 @@ async function radarPage() {
   $("#app").innerHTML = `<div class="row" style="justify-content:space-between"><h1>Radar</h1>
       <div class="row" style="gap:6px"><button onclick="runNews()" ${r.newsJob.running ? "disabled" : ""}>📰 Noticias ahora</button>
       <button class="main" onclick="runRadar()" ${r.job.running ? "disabled" : ""}>Buscar todo ahora</button></div></div>
-    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada mañana con el servidor vigilando` : "Todavía no hay radar: pulsa «Buscar todo ahora» (necesita YOUTUBE_API_KEYS)."}
+    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada día a las 13:00 y te llega el resumen por Telegram` : "Todavía no hay radar: pulsa «Buscar todo ahora» (necesita YOUTUBE_API_KEYS)."}
       ${latest && latest.outOfQuota ? " · ⚠ se acabó la cuota de la API a mitad" : ""}</div>
     ${jobLine(r.job, "Buscando en YouTube")}${jobLine(r.newsJob, "Buscando noticias")}
+
+    <h2>🚀 Canales revelación</h2>
+    <div class="small muted">Canales pequeños (menos de 50 mil subs) con vídeos recientes que multiplican sus suscriptores en visitas:
+      YouTube está empujando ese formato a gente que no los sigue. «Encaje» = si esta herramienta lo puede hacer (voz + archivo + gráficos).</div>
+    ${latest && latest.rising && latest.rising.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-top:10px">${latest.rising.map((c) => `<div class="card" style="margin:0">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:nowrap;gap:8px">
+        <div class="row" style="gap:8px;flex-wrap:nowrap">${c.thumbnail ? `<img src="${esc(c.thumbnail)}" style="width:40px;height:40px;border-radius:50%">` : ""}
+          <div><a href="${esc(c.url)}" target="_blank" rel="noopener" style="font-weight:700">${esc(c.title)}</a>${c.new ? ' <span class="pill hecho">nuevo</span>' : ""}
+          <div class="small muted">${kfmt(c.subscribers)} subs · ${c.videos} vídeos · canal de hace ${c.ageDays} días</div></div></div>
+        ${c.fit != null ? `<div style="text-align:center;min-width:52px"><div style="font-size:1.5em;font-weight:800;color:${c.fit >= 7 ? "var(--ok)" : c.fit >= 4 ? "var(--accent)" : "var(--muted,#888)"}">${c.fit}</div><div class="small muted">encaje</div></div>` : ""}</div>
+      <a href="${esc(c.best.url)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-decoration:none;color:inherit">
+        <img loading="lazy" src="${esc(c.best.thumbnail)}" style="width:100%;border-radius:6px">
+        <div class="small" style="margin-top:4px">${esc(c.best.title)}</div></a>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill error">🔥 ${kfmt(c.best.views)} visitas = ${fmt(c.multiple)}× sus subs</span>
+        ${c.medianViews ? `<span class="pill">mediana ${kfmt(c.medianViews)}</span>` : ""}</div>
+      ${c.format ? `<div style="margin-top:8px"><b>${esc(c.format)}</b></div>` : ""}
+      ${c.why ? `<div class="small muted">${esc(c.why)}</div>` : ""}
+      ${c.how ? `<div class="small" style="margin-top:4px">👉 ${esc(c.how)}</div>` : ""}
+      ${c.latest && c.latest.length ? `<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">Sus últimos vídeos</summary>
+        <div class="small">${c.latest.map((v) => `<div>· <a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a> — ${kfmt(v.views)}</div>`).join("")}</div></details>` : ""}
+      ${c.query ? `<div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: c.query, name: c.niche || c.format, near: "revelación"}, "💡 Ideas con este formato")}</div>` : ""}
+    </div>`).join("")}</div>` : '<div class="notice">Sale con el radar de cada día (a las 13:00) o con «Buscar todo ahora».</div>'}
 
     <h2>📰 Noticias del día</h2>
     <div class="small muted">Historias de tus nichos que están subiendo ahora (vídeos de las últimas 48 h). Un vídeo en 24 h sobre ellas llega cuando la gente lo busca.
