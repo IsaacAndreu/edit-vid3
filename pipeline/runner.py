@@ -83,7 +83,8 @@ def _hash_path(digest: "hashlib._Hash", path: Path) -> None:
 # downloads at once on 05-10 re-ran every video's searches — and that load got the connection blocked).
 SPEED_KEYS = frozenset({
     "parallel", "concurrency", "concurrency_with_accounts", "min_interval", "rate_backoff", "sleep_requests",
-    "account_switch_pause", "rate_limit", "proxy", "player_client", "force_ipv4", "cookies", "cookies_on_bot",
+    "account_switch_pause", "rate_limit", "proxy", "proxies", "proxy_rest_minutes", "proxy_bot_rest_minutes",
+    "player_client", "force_ipv4", "cookies", "cookies_on_bot",
     "cookies_file", "cookies_dir", "cookies_from_browser", "browser_accounts", "po_token", "pot_provider_url",
     "pot_keep_clients", "batch_size", "precompute_during_sourcing", "browser_executable", "timeout_seconds",
 })

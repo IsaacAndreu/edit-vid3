@@ -259,3 +259,44 @@ def test_home_proxy_lets_only_youtube_through_and_the_server_uses_it(tmp_path, m
     assert yt.base_options["proxy"] == "http://100.64.0.2:8899" and yt.http.proxies["https"] == "http://100.64.0.2:8899"
     assert yt.pot is False                       # home IP: no PO Token made for the server's IP
     assert "source_address" not in yt.base_options
+
+
+def test_several_proxies_share_the_work_and_one_that_fails_rests(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    home, laptop = "http://100.64.0.2:8899", "http://100.64.0.3:8899"
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
+                       config={"proxies": [home, laptop], "min_interval": 0, "cookies": "never"})
+    assert yt.proxies == [home, laptop] and yt._slots._value == 6           # 3 at a time through each
+    assert yt._pacers[0]._path != yt._pacers[1]._path                     # each IP keeps its own pace
+    used = [yt._call("search", lambda: yt._ydl().params["proxy"]) for _ in range(4)]
+    assert set(used) == {home, laptop}                                    # both ways out get work
+
+    def laptop_off():
+        if yt._ydl().params["proxy"] == laptop:
+            raise RuntimeError("Unable to download: ('Unable to connect to proxy', ConnectionRefusedError(111))")
+        return "ok"
+
+    assert all(yt._call("metadata", laptop_off) == "ok" for _ in range(4))
+    assert yt._resting[1] > 0 and yt._pick_way() == 0                    # the laptop rests, home carries on
+
+    bot = "Sign in to confirm you're not a bot"
+    yt._resting = [0.0, 0.0]
+    seen = []
+
+    def wary_home():
+        seen.append(yt._ydl().params["proxy"])
+        if seen[-1] == home:
+            raise RuntimeError(bot)
+        return "ok"
+
+    yt._busy = [0, 1]                                                     # home is the least busy: tried first
+    assert yt._call("metadata", wary_home) == "ok" and seen == [home, laptop]
+
+
+def test_proxy_list_from_env_or_config():
+    from pipeline.sourcing.youtube import pacer_name, proxy_list
+
+    assert proxy_list("http://a:1, http://b:2", ["http://c:3"], None) == ["http://a:1", "http://b:2"]
+    assert proxy_list(None, ["http://c:3"], "http://c:3") == ["http://c:3"]
+    assert proxy_list("", None, "http://d:4") == ["http://d:4"] and proxy_list(None, None, "") == []
+    assert pacer_name("") == ".ritmo" and pacer_name("http://a:1") != pacer_name("http://b:2")

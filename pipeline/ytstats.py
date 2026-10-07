@@ -90,6 +90,14 @@ def report(root: Path, days: float = 7.0) -> Path:
         e = s["errors"]
         text.append(f"| {slug} | {s['requests']} | {s['failed']} | {e.get('403', 0)} | {e.get('bot', 0)} | {e.get('429', 0)} | "
                      f"{s['files_ok']}/{s['files']} | {s['mbps']} | {s['with_cookies']} |")
+    ways = sorted({str(r["proxy"]) for r in everything if r.get("proxy")})
+    if ways:                                       # several proxies: how each way out is doing
+        text += ["", "## Por proxy", "", "| Proxy | Peticiones | Fallidas | Bot | Archivos | MB/s | s por archivo |",
+                 "|---|---|---|---|---|---|---|"]
+        for way in ways:
+            s = summary([r for r in everything if r.get("proxy") == way])
+            text.append(f"| {way} | {s['requests']} | {s['failed']} | {s['errors'].get('bot', 0)} | {s['files_ok']}/{s['files']} | "
+                        f"{s['mbps']} | {s['seconds_per_file']} |")
     target = root / "out" / "_youtube_stats.md"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(text) + "\n", encoding="utf-8")

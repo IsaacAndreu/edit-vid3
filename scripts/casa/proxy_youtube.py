@@ -127,7 +127,7 @@ def main() -> None:
     server.bind((host, PORT))
     server.listen(64)
     print(f"Proxy de YouTube para el servidor en http://{host}:{PORT} (solo YouTube, solo por Tailscale).")
-    print(f"En el servidor, en config.local.yaml:  sourcing: {{youtube: {{proxy: http://{host}:{PORT}}}}}")
+    print(f"En el servidor, en config.local.yaml, añade esta línea a sourcing → youtube → proxies:  - http://{host}:{PORT}")
     print("Deja esta ventana abierta (puedes minimizarla). Ctrl+C para cerrar.", flush=True)
     threading.Thread(target=report, daemon=True).start()
     while True:

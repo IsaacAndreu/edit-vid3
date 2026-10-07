@@ -133,6 +133,28 @@ equipos): el proxy no queda abierto a internet y solo deja pasar direcciones de 
 4. Que arranque solo: `Win+R` → `shell:startup` → crea ahí un acceso directo a `proxy-youtube.bat`, y que el PC no
    se suspenda (LOCAL.md, «Que el PC no se duerma»).
 
+**Varios proxies (más rápido):** cada equipo con **otra conexión a internet** (un portátil con datos móviles, en casa
+de un familiar…) es otra IP: el servidor reparte las peticiones entre todos, cada uno con su ritmo (`min_interval`) y
+sus `concurrency` descargas a la vez, y el que no responde (apagado, sin Tailscale) o al que YouTube empieza a pedir
+«no eres un bot» descansa unos minutos (`proxy_rest_minutes: 10`, `proxy_bot_rest_minutes: 5`) mientras los otros
+siguen. Dos equipos en el mismo router son la misma IP: solo sirven de recambio, no van más rápido.
+
+1. En el portátil: Python (python.org, «Add python.exe to PATH») y Tailscale con la misma cuenta; copia la carpeta
+   `scripts\casa` (o el repo entero) y abre `instalar-proxy.bat` con botón derecho → *Ejecutar como administrador*:
+   arranca solo al iniciar sesión (y se reinicia si se cae), enchufado no se suspende ni al cerrar la tapa, y el
+   firewall deja entrar al 8899 solo desde Tailscale. Que Windows inicie sesión solo (o no lo apagues) para 24/7.
+2. En el servidor, `config.local.yaml`:
+
+       sourcing:
+         youtube:
+           proxies:
+             - http://100.115.158.70:8899   # PC de casa
+             - http://100.x.y.z:8899        # portátil
+
+   (`proxy:` de antes también vale y se suma a la lista; `YOUTUBE_PROXY` en el entorno, separados por comas, manda
+   sobre los dos). Comprueba cada uno: `curl -x http://100.x.y.z:8899 -sI https://www.youtube.com | head -1`.
+   `python main.py --youtube-stats` añade la tabla «Por proxy».
+
 Con proxy no se usa PO Token (YouTube ve la IP de casa, que no lo necesita). Gasta de tu conexión ~1-2 GB por vídeo
 (baja de YouTube y sube al servidor). Si el PC está apagado, la cola no arranca y te avisa por Telegram.
 

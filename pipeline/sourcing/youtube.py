@@ -54,6 +54,30 @@ _RATE_MARKERS = ("http error 429", "too many requests")
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
+def proxy_list(env: str | None, many: Any, one: Any) -> list[str]:
+    """The ways out to YouTube: YOUTUBE_PROXY (comma separated) wins; else `proxies` (a list) plus `proxy`."""
+
+    if env and env.strip():
+        items: list[Any] = env.split(",")
+    else:
+        items = [*(many if isinstance(many, (list, tuple)) else [many] if many else []), one]
+    return list(dict.fromkeys(str(p).strip() for p in items if p and str(p).strip()))
+
+
+def pacer_name(proxy: str) -> str:
+    """The pace file of a way out: `.ritmo` for the direct one, one per proxy (shared by every process)."""
+
+    import hashlib
+
+    return f".ritmo-{hashlib.sha1(proxy.encode()).hexdigest()[:8]}" if proxy else ".ritmo"
+
+
+def _proxy_down(low: str) -> bool:
+    return any(m in low for m in ("unable to connect to proxy", "proxyerror", "tunnel connection failed",
+                                  "proxy connection", "cannot connect to proxy")) or ("proxy" in low and any(
+        m in low for m in ("connection refused", "timed out", "unreachable", "no route to host")))
+
+
 class RateLimited(RuntimeError):
     pass
 
@@ -141,7 +165,17 @@ class YouTubeSource:
         self.root = root
         self.cache_dir = cache_dir
         self.cfg = config
-        self.pacer = SharedPacer(float(config.get("min_interval", 1.0)), cache_dir / "videos" / ".ritmo")   # all processes
+        # Several ways out to YouTube (`proxies`: home, a laptop on mobile data…): each one is its own IP, so each
+        # gets its own pace and its own `concurrency`, requests go to the least busy one, and one that stops
+        # answering or that YouTube starts asking «are you a bot» rests a while while the others carry on.
+        self.proxies = proxy_list(os.environ.get("YOUTUBE_PROXY"), config.get("proxies"), config.get("proxy"))
+        interval = float(config.get("min_interval", 1.0))
+        self._pacers = [SharedPacer(interval, cache_dir / "videos" / pacer_name(p)) for p in (self.proxies or [""])]
+        self.pacer = self._pacers[0]                # all processes, per way out
+        self._busy = [0] * len(self._pacers)
+        self._resting = [0.0] * len(self._pacers)
+        self._proxy_turn = 0
+        self._proxy_lock = threading.Lock()
         self.blocked: str | None = None
         # One or more accounts (cookies.txt contents, file they came from). Requests take turns
         # between them; one that YouTube blocks is set aside and the rest carry on.
@@ -159,8 +193,9 @@ class YouTubeSource:
         boosted = (int(config.get("concurrency_with_accounts", 5))
                    if len(self._sets) >= 3 and self.cookies_mode == "rotate" else base)
         self.concurrency = max(base, boosted)
-        self._extra_slots = self.concurrency - base
-        self._slots = threading.Semaphore(self.concurrency)
+        ways = len(self._pacers)
+        self._extra_slots = (self.concurrency - base) * ways
+        self._slots = threading.Semaphore(self.concurrency * ways)
         self._cooldown_until = 0.0
         self._bad: set[int] = set()
         self._turn = 0
@@ -173,8 +208,14 @@ class YouTubeSource:
         self._stats_lock = threading.Lock()
         self._whole_locks: dict[str, threading.Lock] = {}
         self._whole_locks_guard = threading.Lock()
-        self.http = requests.Session()
-        self.http.headers["User-Agent"] = USER_AGENT
+        self._sessions = []
+        for way in (self.proxies or [""]):
+            session = requests.Session()
+            session.headers["User-Agent"] = USER_AGENT
+            if way:
+                session.proxies = {"http": way, "https": way}
+            self._sessions.append(session)
+        self.http = self._sessions[0]
         options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": False,     # warnings go to _QuietLogger: the ones that explain slowness are shown once
@@ -186,10 +227,9 @@ class YouTubeSource:
         }
         if shutil.which("deno") is None and shutil.which("node") is not None:
             options["js_runtimes"] = {"node": {}}
-        proxy = str(os.environ.get("YOUTUBE_PROXY") or config.get("proxy") or "").strip()
+        proxy = self.proxies[0] if self.proxies else ""
         if proxy:                                   # a server whose IP YouTube blocks: out through home (docs/VPS.md 3e)
             options["proxy"] = proxy                # yt-dlp, and ffmpeg via -http_proxy (so an http:// proxy)
-            self.http.proxies = {"http": proxy, "https": proxy}
         self.proxy = proxy
         if config.get("force_ipv4") and not proxy:
             options["source_address"] = "0.0.0.0"   # YouTube over IPv6 crawls with some providers
@@ -260,6 +300,8 @@ class YouTubeSource:
                                "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
                                "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
                                "seconds": round(seconds, 2)}
+        if len(self.proxies) > 1:
+            row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
         if size is not None:
             row["bytes"] = size
             row["mbps"] = round(size / 1e6 / max(seconds, 0.01), 2)
@@ -337,6 +379,8 @@ class YouTubeSource:
         import yt_dlp
 
         options = {**self.base_options, **(extra or {})}
+        if len(self.proxies) > 1:
+            options["proxy"] = self.proxies[getattr(self._local, "way", 0) or 0]
         cookie_file = self._cookie_file()
         if cookie_file:
             options["cookiefile"] = cookie_file
@@ -348,7 +392,7 @@ class YouTubeSource:
         with self._turn_lock:
             extra, self._extra_slots = self._extra_slots, 0
         if extra:
-            print(f"   YouTube pide calma: vuelvo a {self.concurrency - extra} descargas a la vez")
+            print(f"   YouTube pide calma: vuelvo a {self.concurrency * len(self._pacers) - extra} descargas a la vez")
             threading.Thread(target=lambda: [self._slots.acquire() for _ in range(extra)], daemon=True).start()
 
     def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
@@ -357,6 +401,7 @@ class YouTubeSource:
         attempt = 0
         tries = 0
         with_account = self.cookies_mode == "rotate"
+        tried_ways: set[int] = set()
         while True:
             self._local.account = self._next_account() if with_account else None
             if with_account and self._sets and self._local.account is None:
@@ -365,16 +410,23 @@ class YouTubeSource:
             began = time.monotonic()
             try:
                 with self._slots:
-                    delay = self._cooldown_until - time.monotonic()
-                    if delay > 0:
-                        time.sleep(delay)
-                        self._count("espera por límite", delay)
-                    self.pacer.wait()
-                    began = time.monotonic()
+                    way = self._local.way = self._pick_way(tried_ways)
+                    with self._proxy_lock:
+                        self._busy[way] += 1
                     try:
-                        result = fn()
+                        delay = self._cooldown_until - time.monotonic()
+                        if delay > 0:
+                            time.sleep(delay)
+                            self._count("espera por límite", delay)
+                        self._pacers[way].wait()
+                        began = time.monotonic()
+                        try:
+                            result = fn()
+                        finally:
+                            self._count(action, time.monotonic() - began)
                     finally:
-                        self._count(action, time.monotonic() - began)
+                        with self._proxy_lock:
+                            self._busy[way] -= 1
                 self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
                              cookies=self._local.account is not None)
                 return result
@@ -384,6 +436,16 @@ class YouTubeSource:
                 kind = error_kind(message)
                 self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
                              cookies=self._local.account is not None)
+                way = getattr(self._local, "way", 0) or 0
+                if len(self.proxies) > 1 and len(tried_ways) < len(self.proxies) - 1:
+                    if _proxy_down(lowered):         # that way out is off (laptop asleep…): the others, and it rests
+                        self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
+                        tried_ways.add(way)
+                        continue
+                    if kind == "bot":                # YouTube is wary of that IP: same request through another one
+                        self._rest(way, float(self.cfg.get("proxy_bot_rest_minutes", 5)) * 60, "YouTube pide «no eres un bot»")
+                        tried_ways.add(way)
+                        continue
                 if kind == "auth" and self.cookies_mode == "fallback" and self._sets and not with_account:
                     with_account = True          # this video needs an account: try it once with one
                     continue
@@ -417,6 +479,44 @@ class YouTubeSource:
                         continue
                     raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429)") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
+
+    def way_name(self, way: int) -> str:
+        from urllib.parse import urlsplit
+
+        return (urlsplit(self.proxies[way]).hostname or self.proxies[way]) if self.proxies else "directo"
+
+    def _pick_way(self, avoid: set[int] = frozenset()) -> int:
+        """The way out for the next request: the least busy one that is not resting (by turns on a tie)."""
+
+        if len(self._pacers) == 1:
+            return 0
+        now = time.monotonic()
+        with self._proxy_lock:
+            ways = [w for w in range(len(self._pacers)) if w not in avoid] or list(range(len(self._pacers)))
+            awake = [w for w in ways if self._resting[w] <= now]
+            if not awake:                            # all resting: the one that wakes first
+                return min(ways, key=lambda w: self._resting[w])
+            self._proxy_turn += 1
+            return min(awake, key=lambda w: (self._busy[w], (w - self._proxy_turn) % len(self._pacers)))
+
+    def _rest(self, way: int, seconds: float, why: str) -> None:
+        with self._proxy_lock:
+            fresh = self._resting[way] <= time.monotonic()
+            self._resting[way] = max(self._resting[way], time.monotonic() + seconds)
+        if fresh:
+            print(f"   Proxy {self.way_name(way)}: {why}; descansa {seconds / 60:.0f} min y sigo por los otros")
+
+    def _get(self, url: str, timeout: float = 30) -> requests.Response:
+        """A plain HTTP GET (storyboards, captions) through the least busy way out."""
+
+        way = self._pick_way()
+        try:
+            return self._sessions[way].get(url, timeout=timeout)
+        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
+            if len(self._sessions) == 1:
+                raise
+            self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
+            return self._sessions[self._pick_way({way})].get(url, timeout=timeout)
 
     def _blocked_everywhere(self) -> None:
         self.blocked = (
@@ -583,7 +683,7 @@ class YouTubeSource:
 
         def fetch(item: tuple[str, Path]) -> None:
             url, path = item
-            response = self.http.get(url, timeout=30)
+            response = self._get(url, timeout=30)
             response.raise_for_status()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(response.content)
@@ -625,7 +725,7 @@ class YouTubeSource:
             url = info.get("captions", {}).get("en") or info.get("captions", {}).get("es")
             if not url:
                 return []
-            response = self.http.get(url, timeout=30)
+            response = self._get(url, timeout=30)
             if response.status_code == 429:
                 raise RateLimited("subtítulos: 429")
             response.raise_for_status()
