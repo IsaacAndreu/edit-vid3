@@ -529,7 +529,10 @@ def prepare_all(root: Path, log: Any = print) -> int:
             continue
         try:
             ctx = RunContext.create(folder.name, root=root)
-            from . import capitulos
+            from . import capitulos, formats
+
+            if formats.ensure_auto(ctx):             # the format first: you see it in the studio before the video
+                ctx = RunContext.create(folder.name, root=root)
 
             capitulos.ensure(ctx)                # the chapters first: you see them in the studio before the video
             if ensure(ctx, wait=False):

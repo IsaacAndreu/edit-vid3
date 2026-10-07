@@ -111,6 +111,10 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
 
     budget.check(root, ctx.config)                       # budget.daily_usd: today's spending at the limit → wait
     with _one_process(ctx):                               # never two runs of one video at once
+        from pipeline import formats
+
+        if formats.ensure_auto(ctx):                      # a new video: the format that suits its script
+            ctx = RunContext.create(slug, root=root)
         _run_one(ctx, force=force, until=until, review=review)
 
 

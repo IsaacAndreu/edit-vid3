@@ -208,7 +208,26 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],
         "files": files,
         "script": (folder / "guion.txt").read_text("utf-8", errors="replace")[:20000] if (folder / "guion.txt").is_file() else "",
+        "format": _format_of(root, folder),
     }
+
+
+def _format_of(root: Path, folder: Path) -> dict[str, Any] | None:
+    """The video's format: its own config.yaml, else the channel's; with the reason when it was chosen from the script."""
+
+    from .formats import AUTO
+
+    auto = _json(folder / AUTO) or {}
+    own = _json_yaml(folder / "config.yaml").get("format")
+    name = own or auto.get("channel") or _json_yaml(folder.parent / "config.yaml").get("format") or ""
+    if not name:
+        try:
+            from .context import RunContext
+
+            name = str(RunContext.create(folder.name, root=root).config.get("format") or "")
+        except Exception:
+            name = ""
+    return {"name": name, "auto": bool(auto) and auto.get("format") == name, "why": auto.get("why") or ""} if name else None
 
 
 CHANNEL = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}$")
