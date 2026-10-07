@@ -302,3 +302,13 @@ def test_a_chapter_too_close_to_the_start_is_not_a_forced_cut():
     shots = cut_shots(words, 16.0, target=2.6, forced_starts={3})
     starts = [words[a].start for a, _ in shots]
     assert all(b - a >= 1.5 - 1e-6 for a, b in zip(starts, starts[1:] + [16.0]))
+
+
+def test_the_hook_prefers_a_long_valid_shot_to_a_short_invalid_one():
+    words = [Word(index=0, text="Seis", start=0.0, end=1.2, matched=True),
+             Word(index=1, text="minutos.", start=1.2, end=4.0, matched=True, sentenceEnd=True),
+             Word(index=2, text="Después", start=4.0, end=6.0, matched=True),
+             Word(index=3, text="cayó.", start=6.0, end=8.0, matched=True, sentenceEnd=True)]
+    shots = cut_shots(words, 8.0, target=1.6, forced_starts=set(), targets=[1.6] * 4, maxes=[2.4] * 4)
+    starts = [words[a].start for a, _ in shots] + [8.0]
+    assert all(b - a >= 1.5 for a, b in zip(starts, starts[1:]))

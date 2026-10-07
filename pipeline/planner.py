@@ -349,10 +349,15 @@ def cut_shots(
                     if d <= 0:
                         continue
                     penalty = ((d - aim) / 0.8) ** 2
+                    # Outside 1.5-5 s the plan is invalid: only when nothing else fits. Longer than the pace wants
+                    # (the hook's 2.4 s) is a preference, never worth an invalid shot (avion5/avion9: a 1.2 s s001
+                    # beat a valid 2.8 s one because both cost the same 1000 per second).
                     if d < min_seconds:
-                        penalty += 1000 * (min_seconds - d + 0.1)
+                        penalty += 100_000 * (min_seconds - d + 0.1)
+                    elif d > max_seconds:
+                        penalty += 100_000 * (d - max_seconds + 0.1)
                     elif d > most:
-                        penalty += 1000 * (d - most + 0.1)
+                        penalty += 300 * (d - most + 0.1)
                     total = best[a][i] + penalty + cut_cost
                     if total < best[b][j]:
                         best[b][j], back[b][j] = total, (a, i)
