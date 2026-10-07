@@ -100,13 +100,30 @@ def after_video(ctx: RunContext) -> None:
     cfg = ctx.section("cleanup")
     if not cfg.get("after_video") or not (ctx.out_dir / "video-final.mp4").is_file():
         return
+    from .dub import LINKED
+
+    dubbing = ctx.section("dubbing")
+    keep = set(LINKED) if dubbing.get("enabled") and not ctx.section("dub").get("of") else set()
     freed = 0
     for name in HEAVY:
         folder = ctx.work_dir / name
-        if folder.is_dir():
+        if folder.is_dir() and name not in keep:
             freed += _size(folder)
             shutil.rmtree(folder, ignore_errors=True)
-    print(f"   Limpieza: {freed / 1e9:.1f} GB de temporales de {ctx.slug} borrados (quedan el vídeo, los planes y los logs)")
+    print(f"   Limpieza: {freed / 1e9:.1f} GB de temporales de {ctx.slug} borrados (quedan el vídeo, los planes y los logs)"
+          + (" · los clips se guardan para el doblaje" if keep else ""))
+    original = str(ctx.section("dub").get("of") or "")
+    if original:                                     # a dub finished: the original's clips go once every language is done
+        try:
+            from .context import RunContext
+
+            source = RunContext.create(original, root=ctx.root)
+            languages = [str(l) for l in source.section("dubbing").get("languages", ["en"])]
+            if all(is_done(ctx.root, f"{original}-{lang}") for lang in languages):
+                for name in LINKED:
+                    shutil.rmtree(source.work_dir / name, ignore_errors=True)
+        except Exception:
+            pass
     try:
         trim_videos(ctx)
     except Exception:

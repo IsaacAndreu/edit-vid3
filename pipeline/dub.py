@@ -99,6 +99,9 @@ def prepare(root: Path, slug: str, lang: str) -> str:
     target.mkdir(parents=True, exist_ok=True)
     if not (target / "voz.mp3").is_file() or (target / "voz.mp3").stat().st_size != voice.stat().st_size:
         shutil.copy2(voice, target / "voz.mp3")
+    timings = source / f"voz-{lang}.palabras.json"           # GenAIPro's word times (pipeline/doblaje.py): no Whisper
+    if timings.is_file():
+        shutil.copy2(timings, target / "voz.palabras.json")
     if (source / f"guion-{lang}.txt").is_file():
         shutil.copy2(source / f"guion-{lang}.txt", target / "guion.txt")
     if (source / f"titulo-{lang}.txt").is_file():

@@ -243,7 +243,7 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
     parts = pieces(text, int(voice.get("max_chars", MAX_CHARS)))
     if not parts:
         raise TTSError("El guion está vacío")
-    work = target.parent / ".voz-trozos"
+    work = target.parent / (".voz-trozos" if target.stem == "voz" else f".{target.stem}-trozos")
     work.mkdir(parents=True, exist_ok=True)
     state_file = work / "tareas.json"
     try:
@@ -304,7 +304,7 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         if done.returncode != 0:
             raise TTSError(f"No se pudieron unir los trozos de voz: {done.stderr[-200:]}")
     partial.replace(target)
-    (target.parent / TIMINGS).unlink(missing_ok=True)
+    timings_path(target).unlink(missing_ok=True)
     if cues:
         try:
             write_timings(target, files, cues)
@@ -358,6 +358,12 @@ def _audio_id(path: Path) -> str:
     return digest.hexdigest()
 
 
+def timings_path(audio: Path) -> Path:
+    """voz.mp3 → voz.palabras.json; voz-en.mp3 (a dub's voice next to the original) → voz-en.palabras.json."""
+
+    return audio.parent / (TIMINGS if audio.stem == "voz" else f"{audio.stem}.palabras.json")
+
+
 def write_timings(target: Path, files: list[Path], cues: list[list[tuple[float, float, str]]]) -> None:
     """voz.palabras.json: every spoken word with its time in voz.mp3 (each piece shifted by those before it); the
     words of a cue share its span by length. Tied to this voz.mp3 by its hash: another voice → Whisper."""
@@ -376,14 +382,14 @@ def write_timings(target: Path, files: list[Path], cues: list[list[tuple[float, 
     if not words:
         raise TTSError("subtítulos vacíos")
     data = {"source": "genaipro", "audio": _audio_id(target), "duration": round(_duration(target), 3), "words": words}
-    (target.parent / TIMINGS).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    timings_path(target).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
 def timings(audio: Path) -> dict[str, Any] | None:
     """The GenAIPro word timings of this voz.mp3 (as Whisper's {"words", "duration"}), if it has them."""
 
     try:
-        data = json.loads((audio.parent / TIMINGS).read_text("utf-8"))
+        data = json.loads(timings_path(audio).read_text("utf-8"))
         if data.get("audio") == _audio_id(audio) and data.get("words"):
             return {"words": data["words"], "duration": float(data["duration"]), "language": "es"}
     except (OSError, ValueError, TypeError, KeyError):

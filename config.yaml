@@ -356,3 +356,8 @@ bot:                               # bot de Telegram (python main.py --bot; en l
   quiet_hours: []                  # horas sin parte, p. ej. [1, 2, 3, 4, 5, 6, 7] (los errores llegan igual)
   watcher_alert_minutes: 20        # avisa si el vigilante deja de dar señales de vida
   stuck_hours: 3                   # avisa si un vídeo lleva más de esto en la misma etapa
+
+dubbing:                           # doblaje automático (pipeline/doblaje.py): APAGADO hasta que tengas el canal en otro idioma
+  enabled: false                   # true aquí o, mejor, en canales/<canal>.yaml solo para los canales que quieras doblar
+  languages: [en]                  # idiomas: en, pt, fr, it, de
+  voices: {}                       # por idioma: {en: {voice_id: "…", model_id: eleven_multilingual_v2, name: "…"}}

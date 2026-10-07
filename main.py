@@ -326,6 +326,9 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 try:
                     if not (root / "out" / "_pausa").is_file():
                         tts.prepare_all(root)
+                        from pipeline import doblaje
+
+                        doblaje.prepare_all(root)            # dubbing.enabled (off by default)
                 except Exception as error:       # never stops the watcher
                     print(f"Voces en segundo plano: {type(error).__name__}: {error}")
                 time.sleep(20)
