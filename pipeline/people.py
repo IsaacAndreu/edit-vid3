@@ -11,6 +11,8 @@ Optional: without the `rembg` package (or without a usable photo) there are simp
 
 from __future__ import annotations
 
+import re
+
 import math
 import shutil
 from pathlib import Path
@@ -33,13 +35,36 @@ OUTPUT = "people.json"
 CARD_DIR = "people"
 
 
+ORG_WORDS = ("asociación", "asociacion", "ministerio", "gobierno", "comisión", "comision", "federación", "federacion",
+             "organización", "organizacion", "agencia", "consejo", "instituto", "universidad", "empresa", "grupo",
+             "banco", "club", "airlines", "association", "agency", "council", "federation", "inc", "s.a.")
+
+
+ACRONYMS = {"OCU", "FACUA", "CNMC", "CNMV", "NTSB", "FAA", "EASA", "AENA", "ISU", "FIFA", "UEFA", "COI", "IOC", "NASA",
+            "ONU", "UE", "OMS", "FMI", "BCE", "FED", "OPEP", "OTAN", "NATO", "DGT", "INE", "BBVA", "IBM", "FBI", "CIA",
+            "WADA", "AMA", "RFEF", "LALIGA", "NBA", "NFL", "UFC", "FIG", "FIS", "ATP", "WTA"}
+
+
+def looks_like_person(name: str) -> bool:
+    """A person's name, not an organisation the planner labelled as one (negocio7: «OCU» got a face check and every
+    clip with a man was «not the OCU»): no acronyms (OCU, NTSB, FAA) and no institution words."""
+
+    words = name.split()
+    if not words or name.strip().upper() in ACRONYMS:
+        return False
+    if len(words) == 1 and name.isupper() and not re.search(r"[AEIOUÁÉÍÓÚ]", name):   # NTSB, CNMC, DGT…
+        return False
+    return not any(w in ORG_WORDS for w in name.casefold().split())
+
+
 def people_to_introduce(story: ShotsFile, limit: int) -> list[str]:
     names: list[str] = []
     person = story.subject.split("·")[0].strip()
     if person:
         names.append(person)
     for shot in story.shots:
-        if shot.label and shot.label.kind == "name" and shot.label.text not in names:
+        if (shot.label and shot.label.kind == "name" and shot.label.text not in names
+                and looks_like_person(shot.label.text)):
             names.append(shot.label.text)
     return names[:limit]
 

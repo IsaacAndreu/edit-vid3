@@ -54,7 +54,8 @@ WATERMARKED = ("alamy", "gettyimages", "shutterstock", "istockphoto", "dreamstim
                "mediadrumimages", "rexfeatures", "artofit", "fity.club",
                # re-posting / SEO spam sites (avion8: an FBI raid «wallpaper», a logo vector, a LinkedIn scrape)
                "wallpapers.com", "wallpaper", "glimpsetrio", "infoupdate.org", "freelogovectors", "logos-world",
-               "pngtree", "pngwing", "vecteezy", "storytelling.org", "ukobbq")
+               "pngtree", "pngwing", "vecteezy", "storytelling.org", "ukobbq", "freepik", "animalia-life", "luxlux.net",
+               "inspiredpencil")
 
 
 def watermarked(text: str, extra: Any = None) -> bool:

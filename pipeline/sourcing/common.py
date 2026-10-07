@@ -177,9 +177,24 @@ DEFAULT_TITLE_BLOCKLIST = (
 ALWAYS_BLOCKED_TERMS = ("asmr", "nursery rhymes", "kids music", "canciones infantiles", "movie clip", "full episode",
                         # TV series (dramatized, Content ID) seen in avion8
                         "mayday: air disaster", "air crash investigation", "seconds from disaster",
+                        # dates illustrated with calendar videos (negocio7, pati4: a Telugu calendar, «National Felt Hat Day»)
+                        "telugu calendar", "panchangam", "national day calendar",
                         "official trailer", "tráiler oficial", "lyrics video", "lyric video")
 ALWAYS_BLOCKED_CHANNELS = ("the office", "joblo", "movieclips", "kiboomers", "cocomelon", "super simple songs",
-                           "edm nation", "rancho humilde", "netflix", "hbo max", "disney plus", "warner bros")
+                           "edm nation", "rancho humilde", "netflix", "hbo max", "disney plus", "warner bros",
+                           # TV shows, films and celebrities: Content ID and off-topic (pati4, negocio7)
+                           "saturday night live", "mrbeast", "official rocky balboa", "cine concentrado", "banijay",
+                           "panchangamu",
+                           # other creators' narrated faceless videos (their voice and edit = reused content), seen in
+                           # negocio7 / pati4 / atlet2: never as footage, in any channel
+                           "meat exposed", "hidden britian", "hidden britain", "aussie food truths", "shelf shock uk",
+                           "the hidden menu", "unexpected america", "in plain bite", "in plain life", "cart busters",
+                           "the consumer crisis report", "australia food exposed", "flavor forge", "food fraud exposed",
+                           "oz grocery alert", "the profit files", "glitched history", "ai finance studio", "the buy lab",
+                           "the ready home", "shelf economics", "real economy", "detras de las leyendas",
+                           "detrás de las leyendas", "entrenamiento mental", "the golden glide", "jhellai kho channel",
+                           "jumpers junction", "athelte insight", "athlete insight", "celebworldinsight",
+                           "finessin sports", "sprint icons", "american sports legends", "viral news")
 
 
 LEARNED_BLOCKED_CHANNELS: set[str] = set()     # from your «Errores» labels (feedback.load_learned), casefolded

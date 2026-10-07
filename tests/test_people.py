@@ -60,3 +60,10 @@ def test_portrait_score_rejects_flipping_figures_and_prefers_big_upright_faces()
     assert people.portrait_score(image, Det(upright_face), (0, 100, 0, 400)) is None    # lying / mid-flip
     upside = {**upright_face, "landmarks": [(45, 29), (55, 29), (50, 24), (46, 18), (54, 18)]}
     assert people.portrait_score(image, Det(upside), None) is None                      # eyes below the mouth
+
+
+def test_organisations_are_not_people():
+    from pipeline.people import looks_like_person
+
+    assert not looks_like_person("OCU") and not looks_like_person("NTSB") and not looks_like_person("Ministerio de Consumo")
+    assert looks_like_person("Surya Bonaly") and looks_like_person("SATO") and looks_like_person("MALININ")

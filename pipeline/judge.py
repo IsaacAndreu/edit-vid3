@@ -89,6 +89,9 @@ Another event is off-topic too: when the narration is about one specific inciden
 company, reject footage whose title or frames are clearly about a DIFFERENT specific one (another crash, another
 flight number, another company's scandal) — viewers take it as the event being told. Same for TV dramatizations
 and re-enactments (actors playing pilots or victims) presented as real footage.
+Other creators' videos about the SAME subject as this one (another channel's «top 6 humanoids you can buy», «the
+strange history of the backflip», «8 deli meat brands to avoid») are re-edits with their own voice: prefer the
+original source (the manufacturer, the federation, the broadcaster, the news) whenever it is among the candidates.
 The source video titles listed under the sheet are hints
 (they can be clickbait or compilations): trust what the frames show first.
 When the shot is marked HOOK (the first seconds of the video), be strict: accept only striking,

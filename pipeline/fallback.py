@@ -33,7 +33,7 @@ from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
 from . import feedback
-from .judge import LETTERS, call_judge, contact_sheet, is_repeat, ranked, seen_elsewhere, source_lines, used_elsewhere
+from .judge import LETTERS, call_judge, contact_sheet, is_repeat, overused, ranked, seen_elsewhere, source_lines, used_elsewhere
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
     Candidate,
@@ -251,6 +251,12 @@ def run(ctx: RunContext) -> None:
             """Nobody has looked at these yet: the vision judge vets them (unless `vet` is off), then the first
             that downloads (and passes the identity check) wins."""
 
+            # whatever pool they come from: never a blocked source, never a source already on screen too often
+            per_source = int(judge_cfg.get("max_per_source", 4))
+            blocklist = ctx.section("content").get("title_blocklist")
+            options = [o for o in options
+                       if not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
+                       and not overused(o.candidateId, used, per_source)]
             if not options:
                 return None
             if vet:
@@ -549,7 +555,9 @@ def person_for(story: ShotsFile, shot: Any) -> str:
     if story.subject:
         return story.subject.split("·")[0].strip()
     event = tokens(getattr(shot.broll, "event", None) or "") if shot.broll else set()
-    names = [s.label.text for s in story.shots if s.label and s.label.kind == "name"]
+    from .people import looks_like_person
+
+    names = [s.label.text for s in story.shots if s.label and s.label.kind == "name" and looks_like_person(s.label.text)]
     found = next((n for n in names if tokens(n) and tokens(n) <= event), "")
     if found:
         return found.title() if found.isupper() else found

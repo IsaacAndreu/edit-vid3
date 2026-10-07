@@ -40,7 +40,14 @@ timeline:
 
 judge:
   trusted_channels: [Boston Dynamics, Unitree, Figure, Tesla, Agility Robotics, UBTECH, Xpeng, 1X, Apptronik,
+                     Noetix, Booster Robotics, Dobot, EngineAI, Fourier, AgiBot, Galbot, Kepler,
                      Reuters, Bloomberg, CNBC, South China Morning Post, CGTN]
+
+content:                           # robots2: lo había montado otro creador («6 Humanoids You Can Actually Buy»): fuera
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
+                    red dead, videojuego, video game, sims 4, simulator, speedrun,
+                    evolving ai, tecnonauta, zoom vantage, xrobohub, robofrontier, robot planet ia, ai revolution,
+                    ai news, futurepedia]
 
 ideas:
   about: "un canal de YouTube en español sobre robots humanoides y tecnología, con vídeos de ranking
