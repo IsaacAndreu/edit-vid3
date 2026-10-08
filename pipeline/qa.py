@@ -125,9 +125,14 @@ def run(ctx: RunContext) -> None:
             entry["clipSeconds"] = round(seconds, 3)
             # seconds of THEIR footage on screen: a chapter shot held for the chapter pause plays its clip slowed
             # down (rate < 1), so it shows no more of it than the file has (pati: 4.8 s + 0.5 s pause blocked the render)
+            # The render plays the file from its start for exactly this long, so this is what counts; the file's
+            # own length can run a little over (audio track or container padding: avion9 s202 «5.27 s» showed 5 s)
             shown = shot.durationInFrames / fps * float(shot.media.rate or 1.0)
-            if shot.media.source in THIRD_PARTY and max(seconds, shown) > MAX_THIRD_PARTY_SECONDS + 1 / fps:
-                blockers.append(f"{shot.id}: clip de terceros de {max(seconds, shown):.2f} s (máximo 5 s)")
+            limit = 15.0 if shot.coldOpen else MAX_THIRD_PARTY_SECONDS
+            if shot.media.source in THIRD_PARTY and shown > limit + 1 / fps:
+                blockers.append(f"{shot.id}: clip de terceros de {shown:.2f} s (máximo {limit:.0f} s)")
+            elif shot.media.source in THIRD_PARTY and seconds > limit + 1:
+                warnings.append(f"{shot.id}: el fichero dura {seconds:.2f} s (en pantalla solo {shown:.2f} s)")
         if shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
             blockers.append(f"{shot.id}: material de terceros sin crédito")
         # provenance
