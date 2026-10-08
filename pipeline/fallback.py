@@ -295,6 +295,9 @@ def run(ctx: RunContext) -> None:
             return options, by_id
     models_lock = threading.Lock()
     committed: set[str] = set()
+    # options that already failed in another shot (download error, picture already on screen): never sent to the
+    # judge again — avion9 spent its three slots on the same broken photo in ten shots and lost the good ones
+    dead: set[str] = set()
 
     def resolve(shot_id: str, reason: str) -> tuple[FallbackItem | None, list[str]]:
         nonlocal clip
@@ -314,7 +317,8 @@ def run(ctx: RunContext) -> None:
             blocklist = ctx.section("content").get("title_blocklist")
             options = [o for o in options
                        if not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
-                       and not overused(o.candidateId, used, per_source)]
+                       and not overused(o.candidateId, used, per_source)
+                       and f"{o.candidateId}@{o.start}" not in dead]
             if not options:
                 return None
             if vet:
@@ -339,9 +343,11 @@ def run(ctx: RunContext) -> None:
                     media = materialiser.materialise(selection, shot, out_dir, digest)
                 except Exception as error:
                     tried.append(f"{c.id}: {str(error)[-80:]}")
+                    dead.add(f"{c.id}@{option.start}")
                     continue
                 if looks_used(ctx.root / media.path, media.kind):
                     tried.append(f"{c.id}: ya está en pantalla")
+                    dead.add(f"{c.id}@{option.start}")
                     continue
                 with identity_lock:
                     why = wrong_person(shot_id, ctx.root / media.path, media.kind)

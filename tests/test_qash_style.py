@@ -130,3 +130,17 @@ def test_punch_words_never_join_two_sentences():
 
     assert punch_words("con el mismo objetivo. Veamos cómo") != "objetivo Veamos"
     assert "Imagina" not in punch_words("Nadie quiere mejorar nada. Imagina a un cliente cualquiera.")
+
+
+def test_borrowed_footage_never_plays_past_its_clip():
+    from pipeline.timeline import fill_empty_shots
+
+    # a 2 s donor cannot cover a 5 s gap (it would need 0.4×: past the end of its file, avion9 s202 5.27 s)
+    shots = [_shot(0), _shot(1, media=False)]
+    shots[1] = shots[1].model_copy(update={"durationInFrames": 150})
+    fill_empty_shots(shots, [], 30)
+    assert shots[1].media is None
+    # a 2.5 s gap at 0.8×: never more of the clip than the donor shows
+    shots[1] = shots[1].model_copy(update={"durationInFrames": 75})
+    fill_empty_shots(shots, [], 30)
+    assert shots[1].media is not None and shots[1].durationInFrames * shots[1].media.rate <= 60

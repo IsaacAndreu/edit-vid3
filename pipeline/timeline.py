@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import math
 import shutil
 from pathlib import Path
 from typing import Any
@@ -793,6 +794,12 @@ def punch_words(text: str, most: int = 3) -> str:
 
 
 PUNCH_GAP = 40               # s between two flashes of key words over borrowed footage
+MIN_RATE = 0.6               # borrowed footage is never slowed down more than this
+
+
+def footage(shot: TimelineShot) -> float:
+    """Frames of the source clip a shot shows (slowed shots show fewer than they last)."""
+    return shot.durationInFrames * float(shot.media.rate or 1.0) if shot.media else 0.0
 
 
 def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
@@ -831,14 +838,17 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
         start, end = shot.from_, shot.from_ + shot.durationInFrames
         if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
             continue
-        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses]
+        # only a donor with footage for the whole shot at ≥0.6× speed: a slower floor would play past the end of
+        # its file and show more than 5 s of someone else's clip (avion9 s202: 5.27 s blocked the render)
+        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses
+                   and footage(d) >= MIN_RATE * shot.durationInFrames]
         if not fitting:
             continue
         donor = max(fitting, key=lambda d: abs(d.from_ - start) - 600 * uses.get(d.id, 0))
         uses[donor.id] = uses.get(donor.id, 0) + 1
-        rate = min(1.0, (donor.durationInFrames * (donor.media.rate or 1.0)) / shot.durationInFrames)
+        rate = min(1.0, footage(donor) / shot.durationInFrames)
         shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
-            "zoom": [0, shot.durationInFrames, 1.18], "rate": round(max(0.6, rate), 3) if rate < 0.999 else None})})
+            "zoom": [0, shot.durationInFrames, 1.18], "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
         if start != previous_end:
             flush()
             run_start, run_text = start, []
