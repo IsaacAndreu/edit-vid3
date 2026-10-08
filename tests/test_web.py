@@ -556,3 +556,27 @@ def test_update_now_says_when_the_code_was_already_current(tmp_path, monkeypatch
     subprocess.run(["git", "push", "-q", "origin", "HEAD"], cwd=repo, check=True, capture_output=True)
     result = web.update_code(repo)
     assert result["changed"] is False and "uno" in result["message"]
+
+
+def test_search_finds_a_video_by_title_words_or_by_a_pasted_script(tmp_path):
+    import shutil
+
+    from pipeline import web
+
+    shutil.copy(Path(__file__).resolve().parents[1] / "config.yaml", tmp_path / "config.yaml")
+    done = tmp_path / "materiales" / "_hechos" / "atlet5"
+    done.mkdir(parents=True)
+    (done / "titulo.txt").write_text("Los récords más antiguos del atletismo\n")
+    (done / "guion.txt").write_text("Veintiséis de julio. Jarmila Kratochvílová corre en Múnich.\n"
+                                    "Marita Koch corre los cuatrocientos en Canberra. Florence Griffith-Joyner en Seúl.\n")
+    other = tmp_path / "materiales" / "avion1"
+    other.mkdir(parents=True)
+    (other / "guion.txt").write_text("El Concorde despegó en 1976 desde Londres y París.\n")
+    found = web.search_videos(tmp_path, "récords atletismo")
+    assert [r["slug"] for r in found["results"]] == ["atlet5"] and found["results"][0]["archived"]
+    assert "Kratochvílová" in web.search_videos(tmp_path, "kratochvilova")["results"][0]["snippet"]   # without accents
+    assert web.search_videos(tmp_path, "valla de dingos")["results"] == []
+    pasted = " ".join(["Jarmila Kratochvílová Múnich Marita Koch Canberra Florence Griffith-Joyner Seúl récord"] * 6)
+    pasted += " " + " ".join(f"palabra{i}" for i in range(30))
+    whole = web.search_videos(tmp_path, pasted)
+    assert whole["whole"] and whole["results"][0]["slug"] == "atlet5"

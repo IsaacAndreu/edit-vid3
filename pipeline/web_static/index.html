@@ -17,10 +17,10 @@
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
   a { color: var(--work); text-decoration: none; }
   header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
-           display: flex; gap: 18px; align-items: center; padding: 10px 20px; flex-wrap: wrap; }
+           display: flex; gap: 12px; align-items: center; padding: 10px 20px; flex-wrap: wrap; }
   header b { font-size: 17px; margin-right: 8px; }
   header nav { display: flex; gap: 4px; flex-wrap: wrap; }
-  header nav a { color: var(--muted); padding: 6px 12px; border-radius: 8px; }
+  header nav a { color: var(--muted); padding: 6px 9px; border-radius: 8px; font-size: 14px; }
   header nav a.on, header nav a:hover { color: var(--text); background: var(--panel2); }
   main { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; }
   h1 { font-size: 22px; margin: 0 0 16px; } h2 { font-size: 17px; margin: 26px 0 10px; }
@@ -111,6 +111,43 @@
   .elf { background: #12301f; color: #d6f5e0; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
   @media (prefers-color-scheme: light) { .elf { background: #e5f6ea; color: #13361f; } }
   .hide { display: none !important; }
+  /* --- inicio y buscador --- */
+  .hero { display: flex; gap: 10px; align-items: stretch; margin-bottom: 18px; }
+  .hero textarea { min-height: 48px; height: 48px; font-size: 16px; padding: 12px 14px; border-radius: 12px; resize: none; }
+  .hero textarea:focus { height: 140px; outline: 2px solid var(--accent); }
+  .hero button { white-space: nowrap; padding: 0 20px; border-radius: 12px; }
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 820px) { .kpis { grid-template-columns: 1fr 1fr; } .hero { flex-direction: column; } .hero button { padding: 12px; } }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: block; color: var(--text); }
+  a.kpi:hover { border-color: var(--muted); }
+  .kpi .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+  .kpi .v { font-size: 26px; font-weight: 800; margin-top: 2px; } .kpi .d { font-size: 13px; color: var(--muted); }
+  .chiprow { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 4px; }
+  .chiprow button { padding: 5px 12px; border-radius: 99px; font-size: 13.5px; font-weight: 600; }
+  .chiprow button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+  .block { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 16px; overflow: hidden; }
+  .block > .bh { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .block > .bh b { font-size: 15.5px; } .block > .bh .count { color: var(--muted); font-weight: 600; margin-left: 6px; }
+  .block.warn { border-color: var(--bad); } .block.now { border-color: var(--work); }
+  .vrow { display: grid; grid-template-columns: 12px 1fr auto; gap: 12px; align-items: center; padding: 10px 16px;
+          border-bottom: 1px solid var(--line); cursor: pointer; color: var(--text); }
+  .vrow:last-child { border-bottom: 0; } .vrow:hover { background: var(--panel2); }
+  .vrow .t { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vrow .s { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vrow .r { text-align: right; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .vrow .bar { margin-top: 6px; }
+  details.block > summary { list-style: none; cursor: pointer; padding: 12px 16px; display: flex; justify-content: space-between; }
+  details.block > summary::-webkit-details-marker { display: none; }
+  details.block[open] > summary { border-bottom: 1px solid var(--line); }
+  details.block > summary::after { content: "▾"; color: var(--muted); } details.block[open] > summary::after { content: "▴"; }
+  .hit mark { background: rgba(245,179,1,.3); color: inherit; border-radius: 3px; padding: 0 2px; }
+  .upl { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin: 10px 0; }
+  .upl > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 12px 1fr auto; gap: 12px; align-items: center; padding: 12px 16px; }
+  .upl > summary::-webkit-details-marker { display: none; }
+  .upl[open] > summary { border-bottom: 1px solid var(--line); } .upl > .in { padding: 4px 16px 16px; }
+  .daylabel { margin: 22px 0 4px; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .daylabel.late { color: var(--bad); } .daylabel.today { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -119,6 +156,8 @@
   <nav>
     <a href="#/">Inicio</a><a href="#/subir">Para subir</a><a href="#/guiones">Guiones</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/biblioteca">Biblioteca</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Radar</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
   </nav>
+  <form onsubmit="event.preventDefault();const q=this.q.value.trim();if(q)location.hash='#/buscar/'+encodeURIComponent(q)" style="margin-left:auto">
+    <input name="q" placeholder="🔎 ¿Ya lo hice?" style="width:150px;padding:6px 10px"></form>
   <span id="service" class="small muted"></span>
 </header>
 <main id="app"></main>
@@ -186,48 +225,122 @@ function md(text, base) {
 
 function pill(status) { return `<span class="pill ${status === "en cola" ? "cola" : status === "en pausa" ? "pausa" : status}">${esc(status)}</span>`; }
 
-function videoCard(v) {
+
+const hue = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const chColor = (name) => name ? `hsl(${hue(name)} 70% 58%)` : "var(--muted)";
+let homeChannel = (() => { try { return localStorage.getItem("inicio:canal") || ""; } catch (e) { return ""; } })();
+
+function vrow(v, right = "") {
   const st = v.stage;
-  const progress = st ? `<div class="small" style="margin-top:8px">${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · ${ago(st.started)}</div>
-     <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div>` : "";
-  return `<div class="card click" onclick="location.hash='#/video/${encodeURIComponent(v.slug)}'">
-    <div class="row" style="justify-content:space-between"><b>${esc(v.slug)}</b><span>${v.published ? '<span class="pill hecho">en YouTube</span> ' : ""}${pill(v.status)}</span></div>
-    <div class="small muted">${esc(v.channel || "—")}${v.minutes ? " · " + v.minutes + " min" : ""}${v.costUsd ? " · " + v.costUsd + " $" : ""}</div>
-    ${progress}${v.error ? `<div class="small" style="color:var(--bad);margin-top:6px">${esc(String(v.error).slice(0, 140))}</div>` : ""}
-    ${v.voice ? `<div class="small muted" style="margin-top:6px">🎙️ ${v.voice === "generando" ? "generando la voz con GenAIPro…" : "voz: " + esc(v.voice)}</div>` : ""}
-    ${v.lastError ? `<div class="small muted" style="margin-top:6px">↻ ${v.retryAt ? "reintento a las " + esc(v.retryAt) : "se reintenta en su turno"} · falló la última vez</div>` : ""}</div>`;
+  const sub = [v.title && v.title !== v.slug ? v.slug : "", v.channel, v.minutes ? v.minutes + " min" : "", v.costUsd ? v.costUsd + " $" : ""]
+    .filter(Boolean).join(" · ");
+  const extra = st ? `<div class="small" style="margin-top:4px;color:var(--work)">${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · desde hace ${ago(st.started)}</div>
+      <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div>`
+    : v.error ? `<div class="small" style="color:var(--bad);margin-top:3px">${esc(String(v.error).slice(0, 160))}</div>`
+    : v.voice ? `<div class="small muted" style="margin-top:3px">🎙️ ${v.voice === "generando" ? "generando la voz…" : "voz: " + esc(v.voice)}</div>`
+    : v.lastError ? `<div class="small muted" style="margin-top:3px">↻ ${v.retryAt ? "reintento a las " + esc(v.retryAt) : "se reintenta en su turno"} · falló la última vez</div>` : "";
+  return `<a class="vrow" href="#/video/${encodeURIComponent(v.slug)}"><span class="dot" style="background:${chColor(v.channel)}"></span>
+    <div style="min-width:0"><div class="t">${esc(v.title || v.slug)}</div><div class="s">${esc(sub)}</div>${extra}</div>
+    <div class="r">${right || pill(v.status)}</div></a>`;
+}
+
+function block(title, list, {cls = "", right = null, more = "", open = true, collapsible = false, limit = 0} = {}) {
+  if (!list.length) return "";
+  const shown = limit ? list.slice(0, limit) : list;
+  const rows = shown.map((v) => vrow(v, right ? right(v) : "")).join("")
+    + (limit && list.length > limit ? `<div class="vrow" style="cursor:default"><span></span><span class="small muted">y ${list.length - limit} más…</span><span></span></div>` : "");
+  const head = `<b>${title}<span class="count">${list.length}</span></b>${more ? `<span class="small">${more}</span>` : ""}`;
+  return collapsible ? `<details class="block ${cls}" ${open ? "open" : ""}><summary>${head}</summary>${rows}</details>`
+    : `<div class="block ${cls}"><div class="bh">${head}</div>${rows}</div>`;
 }
 
 async function home() {
-  data = await api("/api/overview");
-  const s = data.service, b = data.budget, vids = data.videos.filter((v) => !v.archived);
-  const groups = {haciendo: [], "en cola": [], error: [], "en pausa": [], hecho: [], incompleto: []};
-  vids.forEach((v) => (groups[v.status] || groups.incompleto).push(v));
-  const state = s.youtubeBlocked ? `<span class="pill error">YouTube bloqueado desde las ${esc(s.youtubeBlocked)}</span><div class="small muted" style="margin-top:6px">Cola en pausa automática: prueba YouTube cada hora y sigue sola.</div>`
-    : s.paused ? '<span class="pill">En pausa</span>' : s.watching ? '<span class="pill hecho">Vigilando: hace los vídeos solo</span>'
-    : s.queueRunning ? '<span class="pill haciendo">Cola en marcha</span>' : '<span class="pill">Sin vigilante</span>';
-  const failed = vids.filter((v) => v.status === "error" || v.lastError).length;
-  const startBtn = (!s.watching && !s.queueRunning && groups["en cola"].length ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "")
-    + (failed ? `<button class="main" style="margin-left:6px" onclick="retryAll()">Reintentar todos ahora (${failed})</button><div id="retrymsg" class="small muted" style="margin-top:6px"></div>` : "");
+  const [overview, upload] = await Promise.all([api("/api/overview"), api("/api/upload").catch(() => ({videos: []}))]);
+  data = overview;
+  const s = data.service, b = data.budget;
+  const all = data.videos.filter((v) => !v.archived);
+  const channels = [...new Set(all.map((v) => v.channel).filter(Boolean))].sort();
+  if (homeChannel && !channels.includes(homeChannel)) homeChannel = "";
+  const vids = all.filter((v) => !homeChannel || v.channel === homeChannel);
+  const by = (st) => vids.filter((v) => v.status === st);
+  const toUpload = by("hecho").filter((v) => !v.published);
+  const slot = Object.fromEntries((upload.videos || []).map((u) => [u.slug, u]));
+  const today = new Date().toISOString().slice(0, 10);
+  toUpload.sort((a, c) => ((slot[a.slug] || {}).date || "9999").localeCompare((slot[c.slug] || {}).date || "9999") || a.updated - c.updated);
+  const uploaded = by("hecho").filter((v) => v.published)
+    .sort((a, c) => String((c.published || {}).at || "").localeCompare(String((a.published || {}).at || "")));
+  const queue = by("en cola").sort((a, c) => a.updated - c.updated);
+  const attention = [...by("error"), ...by("incompleto"), ...by("en pausa")];
+  const failed = all.filter((v) => v.status === "error" || v.lastError).length;
+  const state = s.youtubeBlocked ? ["⛔ YouTube bloqueado", `desde las ${esc(s.youtubeBlocked)} · prueba cada hora`]
+    : s.paused ? ["⏸ En pausa", "no empieza vídeos nuevos"] : s.watching ? ["● Trabajando", s.queueRunning ? "haciendo la cola" : "vigilando: hace los vídeos solo"]
+    : s.queueRunning ? ["▶ Cola en marcha", ""] : ["○ Parado", "sin vigilante"];
+  const late = toUpload.filter((v) => (slot[v.slug] || {}).date && slot[v.slug].date < today).length;
+  const when = (v) => { const d = (slot[v.slug] || {}).date; if (!d) return '<span class="muted">sin día</span>';
+    return d < today ? `<span style="color:var(--bad)">⚠️ tocaba ${DAY(d)}</span>` : d === today ? `<b style="color:var(--accent)">hoy · ${esc(slot[v.slug].time || "")}</b>` : `📅 ${DAY(d)}`; };
   $("#app").innerHTML = `
-    <div class="grid">
-      <div class="card"><div class="muted small">Servidor</div><div style="margin:8px 0">${state}</div>${startBtn}</div>
-      <div class="card"><div class="muted small">Gasto de hoy</div><div class="stat">${b.today.toFixed(2)} $</div>
-        <div class="small muted">${b.limit ? "límite " + b.limit.toFixed(2) + " $" : "sin límite"}</div>
+    <form class="hero" onsubmit="event.preventDefault();searchFrom(this.q.value)">
+      <textarea name="q" placeholder="🔎 ¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}"></textarea>
+      <button class="main">Buscar</button></form>
+    <div class="kpis">
+      <a class="kpi" href="#/ajustes"><div class="k">Servidor</div><div class="v" style="font-size:19px;margin:6px 0 2px">${state[0]}</div><div class="d">${state[1]}</div></a>
+      <a class="kpi" href="#/subir"><div class="k">Para subir</div><div class="v">${all.filter((v) => v.status === "hecho" && !v.published).length}</div>
+        <div class="d">${late ? `<span style="color:var(--bad)">${late} atrasado(s)</span>` : "al día"} →</div></a>
+      <div class="kpi"><div class="k">En cola</div><div class="v">${all.filter((v) => v.status === "en cola").length + all.filter((v) => v.status === "haciendo").length}</div>
+        <div class="d">${all.filter((v) => v.status === "haciendo").length} haciéndose ahora</div></div>
+      <div class="kpi"><div class="k">Gasto de hoy</div><div class="v">${b.today.toFixed(2)} $</div>
+        <div class="d">${b.limit ? "de " + b.limit.toFixed(2) + " $" : "sin límite"}</div>
         ${b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</div>
-      <div class="card"><div class="muted small">Vídeos</div><div class="stat">${groups.hecho.length} hechos</div><div class="small muted">${groups.hecho.filter((v) => !v.published).length} por subir · ${groups.hecho.filter((v) => v.published).length} en YouTube</div>
-        <div class="small muted">${groups["en cola"].length} en cola · ${groups.haciendo.length} en marcha · ${groups.error.length} con error</div></div>
-      <div class="card"><div class="muted small">YouTube (7 días)</div>${data.youtube ? `<div class="stat">${data.youtube.ok}/${data.youtube.requests}</div>
-        <div class="small muted">${data.youtube.failed} fallidas · ${data.youtube.mbps} MB/s</div>` : '<div class="muted" style="margin-top:8px">Sin datos aún</div>'}</div>
     </div>
-    ${section("En marcha", groups.haciendo)}${section("Con error", groups.error)}${section("En cola", groups["en cola"])}
-    ${section("Fuera de la cola (en pausa)", groups["en pausa"])}
-    ${section("Sin terminar de subir (falta guion o voz)", groups.incompleto)}${section(`Pendientes de subir (${groups.hecho.filter((v) => !v.published).length}) <a class="small" href="#/subir" style="font-weight:400">→ Para subir</a>`, groups.hecho.filter((v) => !v.published))}
-    ${section("Subidos a YouTube", groups.hecho.filter((v) => v.published))}
-    ${vids.length ? "" : '<div class="notice">Aún no hay vídeos. <a href="#/nuevo">Crea el primero</a>.</div>'}`;
-  schedule(home, groups.haciendo.length ? 10000 : 30000);
+    ${channels.length > 1 ? `<div class="chiprow">${["", ...channels].map((c) => `<button class="${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">
+      ${c ? `<span class="dot" style="background:${chColor(c)};margin-right:6px"></span>${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : ""}
+    ${block("▶ Haciéndose ahora", by("haciendo"), {cls: "now"})}
+    ${block("⚠️ Necesitan tu atención", attention, {cls: "warn", more: failed ? `<button onclick="retryAll()">Reintentar todos (${failed})</button><span id="retrymsg" class="muted"></span>` : "",
+      right: (v) => v.status === "incompleto" ? '<span class="pill">falta guion o voz</span>' : pill(v.status)})}
+    ${block("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
+    ${block("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
+      right: (v) => v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
+    ${block("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30,
+      right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}
+    ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;
+  schedule(home, by("haciendo").length ? 10000 : 30000);
 }
-const section = (title, list) => list.length ? `<h2>${title}</h2><div class="grid">${list.map(videoCard).join("")}</div>` : "";
+window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} home(); };
+window.searchFrom = (q) => { q = String(q || "").trim(); if (!q) return;
+  if (q.length > 1500) { window.pendingSearch = q; location.hash = "#/buscar/" + encodeURIComponent("(guion pegado)"); }
+  else location.hash = "#/buscar/" + encodeURIComponent(q); };
+
+function marked(text, words) {
+  let out = esc(text);
+  for (const w of words.filter((x) => x.length > 2).slice(0, 12)) {
+    const plain = w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(${plain.split("").map((c) => c + "[\\u0300-\\u036f]?").join("")})`, "gi"), "<mark>$1</mark>");
+  }
+  return out;
+}
+
+async function searchPage(q) {
+  const pasted = q === "(guion pegado)" && window.pendingSearch;
+  const query = pasted ? window.pendingSearch : q;
+  $("#app").innerHTML = `<h1>¿Ya lo hice?</h1><div class="muted">Buscando…</div>`;
+  const r = await post("/api/search", {q: query});
+  const words = query.split(/\s+/);
+  $("#app").innerHTML = `<h1>¿Ya lo hice?</h1>
+    <form class="hero" onsubmit="event.preventDefault();searchFrom(this.q.value)">
+      <textarea name="q" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}">${pasted ? "" : esc(q)}</textarea>
+      <button class="main">Buscar</button></form>
+    <div class="small muted" style="margin-bottom:8px">${r.whole ? "Has pegado un guion: comparo sus nombres, lugares y cifras con todos tus guiones." : `Busco «${esc(q)}» en títulos y guiones de todos los vídeos (también los archivados y subidos).`}</div>
+    ${r.results.length ? `<div class="block">${r.results.map((v) => `<a class="vrow hit" href="#/video/${encodeURIComponent(v.slug)}">
+        <span class="dot" style="background:${chColor(v.channel)}"></span>
+        <div style="min-width:0"><div class="t">${esc(v.title || v.slug)}</div>
+          <div class="s">${esc([v.title ? v.slug : "", v.channel, v.archived ? "archivado" : ""].filter(Boolean).join(" · "))}</div>
+          ${v.snippet ? `<div class="small" style="margin-top:4px;white-space:normal">${r.whole ? esc(v.snippet) : marked(v.snippet, words)}</div>` : ""}</div>
+        <div class="r">${r.whole ? `<b style="font-size:15px;color:${v.score >= 0.5 ? "var(--bad)" : "var(--accent)"}">${Math.round(v.score * 100)}% parecido</b><br>` : ""}
+          ${v.published ? '<span class="pill hecho">en YouTube</span>' : pill(v.status)}</div></a>`).join("")}</div>`
+      : `<div class="notice ok">✅ No hay ningún vídeo con eso. ${r.whole ? "Este guion es nuevo." : "No lo has hecho todavía."} <a href="#/nuevo">Crear vídeo →</a></div>`}`;
+}
+
 
 async function startQueue() { await post("/api/queue"); setTimeout(route, 1500); }
 async function retryAll() {
@@ -308,6 +421,10 @@ async function createVideo() {
     try { auto = !!(await api("/api/voices")).voices[$("#channel").value]; } catch (e) {}
     if (!auto) { msg.textContent = "Falta el archivo de voz (o pon una voz a este canal en Ajustes → Voces por canal)"; return; }
   }
+  try {                                     // «¿ya lo hice?»: the same story twice is easy to miss with many channels
+    const twin = ((await post("/api/search", {q: $("#script").value})).results || []).find((r) => r.score >= 0.5);
+    if (twin && !confirm(`⚠️ Este guion se parece un ${Math.round(twin.score * 100)} % a «${twin.title || twin.slug}» (${twin.slug}, ${twin.published ? "ya en YouTube" : twin.status}).\n\n¿Crearlo igualmente?`)) return;
+  } catch (e) {}
   $("#create").disabled = true; msg.textContent = "Creando…";
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
@@ -1051,6 +1168,8 @@ window.check = (slug, step, on) => { try { localStorage.setItem(`subir:${slug}:$
 const UPLOAD_STEPS = [["video", "Vídeo subido"], ["title", "Título"], ["description", "Descripción"], ["thumb", "Miniatura"],
   ["subs", "Subtítulos"], ["tags", "Etiquetas"], ["schedule", "Programado a su hora"], ["comment", "Comentario fijado"],
   ["community", "Post de comunidad"], ["shorts", "Shorts"]];
+let uploadChannel = (() => { try { return localStorage.getItem("subir:canal") || ""; } catch (e) { return ""; } })();
+window.pickUploadChannel = (c) => { uploadChannel = c; try { localStorage.setItem("subir:canal", c); } catch (e) {} uploadPage(); };
 async function uploadPage() {
   const r = await api("/api/upload");
   copyTexts.length = 0;
@@ -1064,14 +1183,23 @@ async function uploadPage() {
       ${jobLine(r.compilationJob, "Montando la compilación")}
       <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">${r.compilations.map((c) =>
         `<button onclick="makeCompilation('${esc(c.channel)}', this)" ${r.compilationJob.running || c.videos < 3 ? "disabled" : ""} title="${esc(c.titles.join(" · "))}">📼 ${esc(c.channel)} (${c.videos} vídeos)</button>`).join("")}</div></div>` : ""}
-    ${r.videos.map((v) => {
+    ${(() => { const chans = [...new Set(r.videos.map((v) => v.channel))].sort();
+      return chans.length > 1 ? `<div class="chiprow">${["", ...chans].map((c) => `<button class="${c === uploadChannel ? "on" : ""}" onclick="pickUploadChannel('${esc(c)}')">
+        ${c ? `<span class="dot" style="background:${chColor(c)};margin-right:6px"></span>${esc(c)} <span class="muted">${r.videos.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : ""; })()}
+    ${r.videos.filter((v) => !uploadChannel || v.channel === uploadChannel).map((v, i, list) => {
       const s = v.sections || {}, f = (p) => `/files/${encodeURIComponent(v.slug)}/${p.split("/").map(encodeURIComponent).join("/")}`;
       const when = v.date ? `${DAY(v.date)} · ${esc(v.time)}` : "sin día en el calendario";
       const late = v.date && v.date < today;
-      return `<div class="card">
-        <div class="row" style="justify-content:space-between"><div><b style="font-size:1.1em">${esc(v.title || v.slug)}</b>
-          <div class="small muted">${esc(v.channel)} · <a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></div></div>
-          <span class="pill ${late ? "error" : "hecho"}">${late ? "⚠️ tocaba " : "📅 "}${when}</span></div>
+      const group = !v.date ? "Sin día en el calendario" : late ? "Atrasados" : v.date === today ? "Hoy" : DAY(v.date);
+      const prev = i ? list[i - 1] : null;
+      const prevGroup = !prev ? null : !prev.date ? "Sin día en el calendario" : prev.date < today ? "Atrasados" : prev.date === today ? "Hoy" : DAY(prev.date);
+      const done = UPLOAD_STEPS.filter(([k]) => checked(v.slug, k)).length;
+      return `${group !== prevGroup ? `<div class="daylabel ${late ? "late" : v.date === today ? "today" : ""}">${esc(group)}</div>` : ""}
+      <details class="upl" ${i === 0 ? "open" : ""}><summary><span class="dot" style="background:${chColor(v.channel)}"></span>
+        <div style="min-width:0"><b style="font-size:1.05em">${esc(v.title || v.slug)}</b>
+          <div class="small muted">${esc(v.channel)} · ${esc(v.slug)} · ${done}/${UPLOAD_STEPS.length} pasos</div></div>
+        <span class="pill ${late ? "error" : "hecho"}">${late ? "⚠️ tocaba " : "📅 "}${when}</span></summary><div class="in">
+        <div class="small"><a href="#/video/${encodeURIComponent(v.slug)}">Abrir la ficha del vídeo →</a></div>
         <div class="row" style="flex-wrap:wrap;gap:6px;margin:12px 0">${UPLOAD_STEPS.map(([k, name]) =>
           `<label class="small" style="display:flex;gap:4px;align-items:center;font-weight:400"><input type="checkbox" style="width:auto"
             ${checked(v.slug, k) ? "checked" : ""} onchange="check('${esc(v.slug)}','${k}',this.checked)">${name}</label>`).join("")}</div>
@@ -1090,7 +1218,7 @@ async function uploadPage() {
         ${s["POST DE COMUNIDAD"] ? copyBox("Post de comunidad (el día de la publicación)", s["POST DE COMUNIDAD"], 3) : ""}
         ${v.shortsText ? copyBox("Shorts (títulos y textos)", v.shortsText, 4) : ""}
         <div class="row" style="margin-top:12px"><button class="main" onclick="doneUpload('${esc(v.slug)}')">Ya está subido</button></div>
-      </div>`;
+      </div></details>`;
     }).join("")}`;
   window.makeCompilation = async (channel, button) => {
     if (!confirm(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`)) return;
@@ -1311,6 +1439,7 @@ async function route() {
     else if (hash === "#/tablero") await boardPage();
     else if (hash === "#/estadisticas") await stats();
     else if (hash === "#/ajustes") await settingsPage();
+    else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
     const s = data && data.service;
     $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";

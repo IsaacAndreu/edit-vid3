@@ -137,8 +137,71 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
         "retryAt": time.strftime("%H:%M", time.localtime(retry_at)) if retry_at else None,
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
         "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,
+        "title": _first_line(folder / "titulo.txt"),
         "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),
     }
+
+
+def _first_line(path: Path) -> str:
+    try:
+        return path.read_text("utf-8", errors="replace").strip().splitlines()[0][:200] if path.is_file() else ""
+    except (OSError, IndexError):
+        return ""
+
+
+SEARCH_STOP = set("""de la el en y a los las del que se por un una con no es su al lo como más pero sus le ya o este
+sí porque esta entre cuando muy sin sobre también me hasta hay donde quien desde todo nos durante todos uno les ni
+contra otros ese eso ante ellos e esto mí antes algunos qué unos yo otro otras otra él tanto esa estos mucho quienes
+nada muchos cual poco ella estar estas algunas algo nosotros mi mis tú te ti tu tus ellas nosotras vosotros fue era
+han ha sido son está están ser hace hizo años año vez veces después aquí allí así solo cada este esta""".split())
+
+
+def _words(text: str) -> list[str]:
+    import unicodedata
+
+    plain = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    return [w for w in re.findall(r"[a-z0-9]+", plain) if len(w) > 2 and w not in SEARCH_STOP]
+
+
+def search_videos(root: Path, query: str, limit: int = 20) -> dict[str, Any]:
+    """«¿Ya lo hice?»: every video (also archived and uploaded) whose title, folder name or script matches. A few
+    words look for those words; a pasted script (40+ words) is compared whole and gives a «parecido» percentage."""
+
+    wanted = _words(query)
+    if not wanted:
+        return {"query": query, "results": []}
+    whole = len(wanted) >= 40
+    wanted_set = set(wanted)
+    watch_state = _json(root / "out" / "_vigilar.json") or {}
+    results = []
+    for folder in video_folders(root):
+        script_path = folder / "guion.txt"
+        script = script_path.read_text("utf-8", errors="replace") if script_path.is_file() else ""
+        title = _first_line(folder / "titulo.txt") or _first_line(root / "out" / folder.name / "youtube.txt")
+        head = set(_words(f"{folder.name.replace('-', ' ')} {title}"))
+        body = _words(script)
+        if not body and not head:
+            continue
+        body_set = set(body)
+        if whole:
+            # distinctive words of both scripts in common (names, places, figures repeat across a topic)
+            score = len(wanted_set & body_set) / max(1, min(len(wanted_set), len(body_set)))
+            if score < 0.25:
+                continue
+        else:
+            hits = [w for w in wanted_set if w in head or w in body_set]
+            if len(hits) < max(1, round(len(wanted_set) * 0.6)):
+                continue
+            score = (len(hits) + sum(w in head for w in wanted_set)) / (2 * len(wanted_set))
+        # the snippet: the first script line with most of the words
+        lines = [ln.strip() for ln in script.splitlines() if ln.strip()]
+        best = max(lines, key=lambda ln: len(wanted_set & set(_words(ln))), default="")
+        summary = video_summary(root, folder, watch_state)
+        results.append({"slug": folder.name, "title": title, "channel": summary["channel"], "status": summary["status"],
+                        "archived": summary["archived"], "published": summary["published"],
+                        "score": round(score, 3), "snippet": best[:260]})
+    results.sort(key=lambda r: -r["score"])
+    return {"query": query, "whole": whole, "results": results[:limit]}
 
 
 def _youtube_blocked(root: Path) -> str | None:
@@ -847,6 +910,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if image is None:
                         return self._fail(404, "Sin imagen")
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
+                if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
+                    return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
                 if path == "/api/errors":
                     from . import feedback
 
@@ -906,6 +971,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(action(root, slug))
                 if path == "/api/settings":
                     return self._ok(settings(root, body))
+                if path == "/api/search":                  # {q}: a whole pasted script does not fit in a URL
+                    return self._ok(search_videos(root, str(body.get("q") or "")[:30000]))
                 if path == "/api/update":
                     return self._ok(update_code(root))
                 if path == "/api/queue":
