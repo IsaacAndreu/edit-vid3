@@ -582,6 +582,11 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             except BaseException as error:  # SystemExit too: one bad video must not end the queue
                 from pipeline.budget import BudgetReached
 
+                if (dry := out_of_credit(error)):               # an API with no balance: every video would fail
+                    results.append((slug, "en espera", time.monotonic() - started, dry))
+                    print(f"⏸ {dry}")
+                    notify(root, f"⏸ {dry}")
+                    break
                 if isinstance(error, BudgetReached):            # not this video's fault: the rest wait too
                     results.append((slug, "en espera", time.monotonic() - started, str(error)))
                     print(f"⏸ {error}")
@@ -602,6 +607,23 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             f"{'✅' if status == 'OK' else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
             for slug, status, seconds, detail in results))
     return failures
+
+
+def out_of_credit(error: BaseException) -> str | None:
+    """«Insufficient Balance» (DeepSeek) / «insufficient_quota» (OpenAI): not the video's fault. The queue waits
+    (and tries again every 30 min) instead of marking every video as failed; the message says what to top up."""
+
+    text = f"{type(error).__name__}: {error}"
+    if "Insufficient Balance" in text:
+        who, where = "DeepSeek", "platform.deepseek.com → Top up"
+    elif "insufficient_quota" in text or "exceeded your current quota" in text:
+        who, where = "OpenAI", "platform.openai.com → Billing"
+    elif "Error code: 402" in text:
+        who, where = "una API", "su panel de pago"
+    else:
+        return None
+    return (f"{who} se ha quedado sin saldo: la cola espera y lo reintenta cada 30 min. Recarga en {where}; "
+            "los vídeos siguen donde se quedaron.")
 
 
 def parallel_videos(root: Path) -> int:

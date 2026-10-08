@@ -180,3 +180,12 @@ def test_new_code_is_seen_even_when_someone_else_pulled_it(tmp_path):
     assert not main._git_update(tmp_path, running)          # no remote: the pull fails, nothing new
     git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "b")   # the studio pulled
     assert main._git_update(tmp_path, running)
+
+
+def test_an_api_without_balance_says_which_one_and_is_not_a_video_failure():
+    import main
+
+    deepseek = RuntimeError("Error code: 402 - {'error': {'message': 'Insufficient Balance (request_id: x)'}}")
+    assert "DeepSeek" in main.out_of_credit(deepseek)
+    assert "OpenAI" in main.out_of_credit(RuntimeError("Error code: 429 - insufficient_quota"))
+    assert main.out_of_credit(RuntimeError("Error code: 500 - boom")) is None
