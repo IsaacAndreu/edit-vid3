@@ -260,7 +260,8 @@ def run(ctx: RunContext) -> None:
                     ctx, stage=STAGE, section="planner", max_tokens=400, system=RESEARCH_SYSTEM,
                     user=f"VÍDEO: {story.title} · {story.context}\nPROTAGONISTA: {story.subject or '—'}\n"
                          f"TRAMO: {shot.broll.event or '—'}\nFRASE: {shot.text}\nQUÉ DEBE VERSE: {shot.broll.visualIntent}\n"
-                         f"BÚSQUEDAS YA HECHAS: {'; '.join(asked)}\nPOR QUÉ NO SIRVIÓ: {reason[:300]}")
+                         + (f"MOMENTO EXACTO (tiene que verse esa acción): {shot.broll.moment}\n" if shot.broll.moment else "")
+                         + f"BÚSQUEDAS YA HECHAS: {'; '.join(asked)}\nPOR QUÉ NO SIRVIÓ: {reason[:300]}")
             except Exception as error:
                 tried.append(f"segunda búsqueda: {str(error)[:80]}")
                 return [], {}
@@ -518,7 +519,8 @@ def run(ctx: RunContext) -> None:
                               and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
                                           and abs(u.start - o.start) < 6 for u in used)),
                              key=lambda o: -o.total)[: limit * 2]
-            item = vet_and_materialise(options, pool_candidates, "protagonist-filler", vet=False)
+            # a narrated moment (a fall, tears on the podium) is never filled with any other moment of the person
+            item = vet_and_materialise(options, pool_candidates, "protagonist-filler", vet=bool(shot.broll.moment))
 
         # 3. Generated image — the last resort, never for a video about a real person.
         if item is None and cfg.get("generate", True) and not story.subject:

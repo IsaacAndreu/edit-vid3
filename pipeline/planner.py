@@ -406,7 +406,11 @@ Objeto "broll" (metraje a buscar en YouTube/bancos de imágenes):
  "entities": ["personas, lugares, empresas o marcas concretas que aparecen; [] si no hay"],
  "mustContain": ["1-3 elementos que DEBEN verse"],
  "avoid": ["presentador hablando a cámara", "texto en pantalla", ...],
- "preferredShot": "wide | medium | close-up | aerial | detail | action | archive"}
+ "preferredShot": "wide | medium | close-up | aerial | detail | action | archive",
+ "moment": "SOLO si el texto narra una acción o un momento concreto que se tiene que VER (una caída, un salto, una
+   celebración, lágrimas en el podio, una lesión, un gol, un abrazo, la llegada a meta): esa acción EN INGLÉS,
+   observable y corta ('falls on the quad lutz landing', 'cries on the podium', 'crosses the finish line first');
+   si no, null"}
 
 Tipos:
 - "broll" (la mayoría, ~70-80 %): metraje que ilustra lo que se dice. Si el texto
@@ -417,6 +421,9 @@ Tipos:
   trozo. Fechas, horas, cifras, unidades y conectores no son cosas que se vean: nada de calendarios, relojes,
   contadores ni altímetros por una fecha, una hora o una cifra; se busca el hecho del que se habla (el avión, la
   fábrica, el atleta, la noticia de ese día).
+- MOMENTOS EXACTOS: si el plano lleva "moment", las búsquedas nombran persona + competición + año + ESA acción
+  ('Ilia Malinin fall quad axel Milan 2026 free skate', 'Surya Bonaly backflip Nagano 1998', 'Simone Biles
+  twisties Tokyo 2020 vault') y "mustContain" lleva la acción. Nunca un momento cualquiera de la persona.
 
 El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISUAL):
 - Comparaciones y metáforas NO se ilustran al pie de la letra: "no es como abrir un
@@ -682,6 +689,8 @@ def _trim_broll(broll: dict[str, Any]) -> dict[str, Any]:
                     seen.add(text.casefold())
                     items.append(text)
             trimmed[key] = items[:limit]
+    moment = " ".join(str(trimmed.get("moment") or "").split())
+    trimmed["moment"] = moment[:150] if moment and moment.casefold() not in ("null", "none", "-") else None
     return trimmed
 
 

@@ -16,6 +16,8 @@ Writes work/<slug>/scores/<shot_id>.json (+ _summary.json). De-duplication acros
 
 from __future__ import annotations
 
+import re
+
 import json
 import math
 import time
@@ -282,7 +284,8 @@ def total_score(scores: dict[str, float], weights: dict[str, float]) -> float:
         float(weights.get("clip", 1.0)) * scores.get("clip", 0.0)
         + float(weights.get("entity", 0.10)) * scores.get("entity", 0.0)
         + float(weights.get("sharpness", 0.02)) * scores.get("sharpness", 0.0)
-        + float(weights.get("motion", 0.01)) * scores.get("motion", 0.0),
+        + float(weights.get("motion", 0.01)) * scores.get("motion", 0.0)
+        + float(weights.get("moment", 0.12)) * scores.get("moment", 0.0),
         4,
     )
 
@@ -303,7 +306,29 @@ def make_models(ctx: RunContext) -> tuple[ClipScorer, det.Detectors]:
 
 def prompts_for(shot: Shot) -> list[str]:
     assert shot.broll is not None
-    return list(dict.fromkeys([shot.broll.visualIntent, *shot.broll.queries]))
+    moment = [f"{shot.broll.entities[0]} {shot.broll.moment}" if shot.broll.entities else shot.broll.moment] \
+        if shot.broll.moment else []
+    return list(dict.fromkeys([*moment, shot.broll.visualIntent, *shot.broll.queries]))
+
+
+MOMENT_STOP = set("the a an on in of at to and with his her their from first after before into over".split())
+
+
+def moment_score(captions: list[tuple[float, float, str]], moment: str | None, start: float, end: float) -> float:
+    """The commentators say what happens a second or two after it («and she falls!», «backflip!»): the share of the
+    moment's words heard around the fragment. CLIP alone cannot tell a fall from a landing."""
+
+    if not moment or not captions:
+        return 0.0
+    words = [w for w in re.findall(r"[a-z]+", moment.lower()) if len(w) >= 4 and w not in MOMENT_STOP]
+    stems = list(dict.fromkeys(w[:4] for w in words))     # fall/falls/falling, land/lands/landing…
+    if not stems:
+        return 0.0
+    near = " ".join(text for a, b, text in captions if b >= start - 3 and a <= end + 6).lower()
+    heard = {w[:4] for w in re.findall(r"[a-z]+", near)}
+    # the action (its first word: «falls», «cries», «crosses») counts most; the rest («quad lutz», «podium») less
+    rest = stems[1:]
+    return round(0.6 * (stems[0] in heard) + 0.4 * (sum(s in heard for s in rest) / len(rest) if rest else stems[0] in heard), 3)
 
 
 def inputs(ctx: RunContext) -> list:
@@ -499,9 +524,10 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             window = option.get("window")
             refined = fine.get((shot.id, c.id, *window)) if window else None
             if refined:
-                captions = youtube.captions(c.id.removeprefix("yt:")) if entities else []
+                captions = youtube.captions(c.id.removeprefix("yt:")) if entities or shot.broll.moment else []
                 for item in refined:
-                    scores = {**item["scores"], "entity": entity_score(captions, c.title, entities, item["start"], item["end"])}
+                    scores = {**item["scores"], "entity": entity_score(captions, c.title, entities, item["start"], item["end"]),
+                              "moment": moment_score(captions, shot.broll.moment, item["start"], item["end"])}
                     options.append(Option.model_validate({
                         "candidateId": c.id, "source": c.source, "kind": "video", "pass": "fine",
                         "start": round(item["start"], 3), "end": round(item["end"], 3),

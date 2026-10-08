@@ -243,3 +243,19 @@ def test_the_judge_reads_the_whole_phrase_around_a_fragment():
              enumerate(["El tapón lo fabricó Spirit,", "en Malasia, el 24 de marzo", "de 2023.", "Llegó a Wichita."])]
     around = surrounding(shots, "s2")
     assert "Spirit" in around and "Malasia" in around and "Wichita" in around and surrounding(shots, "x") == ""
+
+
+def test_a_narrated_moment_reaches_clip_the_commentary_and_the_judge():
+    from pipeline.analysis import moment_score, prompts_for
+    from pipeline.judge import shot_brief
+    from pipeline.schemas import Shot
+
+    shot = Shot.model_validate({"id": "s010", "type": "broll", "startWord": 0, "endWord": 3, "start": 0, "end": 3,
+                                "text": "Cae en un cuádruple Lutz.", "chapter": 0,
+                                "broll": {"visualIntent": "figure skater on ice", "queries": ["a", "b", "c"],
+                                          "queriesLocal": ["x"], "entities": ["Ilia Malinin"],
+                                          "moment": "falls on the quad lutz landing"}})
+    assert prompts_for(shot)[0] == "Ilia Malinin falls on the quad lutz landing"
+    said = [(10.0, 12.0, "oh and he falls on the lutz"), (40.0, 41.0, "beautiful landing")]
+    assert moment_score(said, shot.broll.moment, 9.0, 11.0) >= 0.7 and moment_score(said, shot.broll.moment, 38.0, 40.0) < 0.2
+    assert "EXACT MOMENT narrated: falls on the quad lutz landing" in shot_brief(shot)

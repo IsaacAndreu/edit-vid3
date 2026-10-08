@@ -91,6 +91,7 @@ class BrollSpec(_Strict):
     avoid: list[str] = Field(default_factory=list, max_length=5)
     preferredShot: PreferredShot = "medium"
     event: str | None = Field(default=None, max_length=160)   # story event this shot belongs to (search phrase)
+    moment: str | None = Field(default=None, max_length=160)  # the exact action narrated (EN): «falls on the quad lutz»
 
     @model_validator(mode="before")
     @classmethod
@@ -300,6 +301,7 @@ MAX_THIRD_PARTY_SECONDS = 5.0
 class OptionScores(_Strict):
     clip: float                                              # CLIP similarity shot text ↔ frames (raw cosine)
     entity: float = 0.0                                      # 1 = source transcript names an entity of the shot
+    moment: float = 0.0                                      # 1 = the commentary around the fragment says the action
     sharpness: float = 0.0                                   # 0-1
     motion: float = 0.0                                      # 0-1
     textArea: float = 0.0                                    # fraction of the frame covered by text

@@ -301,6 +301,10 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
     ]
     if around and around.strip() != shot.text.strip():
         lines.insert(len(lines) - 2, f"What is being said around it (Spanish, judge the footage by THIS meaning): {around}")
+    if broll.moment:
+        lines.append(f"EXACT MOMENT narrated: {broll.moment}. Accept only footage where THIS action can be seen; the "
+                     "right person doing something else (another jump, a clean landing for a fall, a calm moment for "
+                     "tears) does not fit this shot — reject it.")
     if broll.entities:
         lines.append(f"Named entities: {', '.join(broll.entities)}")
     if broll.mustContain:
