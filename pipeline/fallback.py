@@ -33,7 +33,8 @@ from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
 from . import feedback
-from .judge import LETTERS, call_judge, contact_sheet, is_repeat, overused, ranked, seen_elsewhere, source_lines, used_elsewhere
+from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, ranked, seen_elsewhere, source_lines,
+                    surrounding, used_elsewhere)
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
     Candidate,
@@ -316,7 +317,8 @@ def run(ctx: RunContext) -> None:
                 return None
             if vet:
                 verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
-                                     story.context or story.title, False, story.subject, source_lines(options, candidates))
+                                     story.context or story.title, False, story.subject, source_lines(options, candidates),
+                                     around=surrounding(story.shots, shot.id))
                 by_letter = dict(zip(LETTERS, options))
                 accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
             else:

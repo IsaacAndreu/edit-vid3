@@ -97,7 +97,7 @@ class RunTests(unittest.TestCase):
             ctx = self._write(Path(tmp), shots, {s: [video, photo] for s in scores}, scores)
             calls = []
 
-            def fake_judge(ctx, shot, sheet, letters, *args):
+            def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
                 calls.append(shot.id)
                 return {"ranking": ["A", "B", "C"], "score": 0.8, "reason": "ok", "confidence": 0.9}  # C: not on the sheet
 
@@ -126,7 +126,7 @@ class RunTests(unittest.TestCase):
             ctx = self._write(Path(tmp), shots, {"s000": [video]}, {"s000": options})
             sheets = []
 
-            def reject_all(ctx, shot, sheet, letters, *args):
+            def reject_all(ctx, shot, sheet, letters, *args, **kwargs):
                 sheets.append(letters)
                 return {"ranking": [], "score": 0, "reason": "nothing fits", "confidence": 0.9}
 
@@ -150,7 +150,7 @@ class RunTests(unittest.TestCase):
             ctx = self._write(Path(tmp), shots, {s: [video] for s in scores}, scores, hook=1.0)
             calls = []
 
-            def fake_judge(ctx, shot, sheet, letters, topic, hook, *rest):
+            def fake_judge(ctx, shot, sheet, letters, topic, hook, *rest, **kwargs):
                 calls.append((shot.id, topic, hook))
                 return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
 
@@ -232,3 +232,14 @@ def test_one_source_video_is_not_used_over_and_over():
 
     used = [SimpleNamespace(candidateId="yt:tour")] * 4 + [SimpleNamespace(candidateId="yt:other")]
     assert overused("yt:tour", used, 4) and not overused("yt:other", used, 4) and not overused("yt:tour", used, 0)
+
+
+def test_the_judge_reads_the_whole_phrase_around_a_fragment():
+    from types import SimpleNamespace
+
+    from pipeline.judge import surrounding
+
+    shots = [SimpleNamespace(id=f"s{i}", text=t) for i, t in
+             enumerate(["El tapón lo fabricó Spirit,", "en Malasia, el 24 de marzo", "de 2023.", "Llegó a Wichita."])]
+    around = surrounding(shots, "s2")
+    assert "Spirit" in around and "Malasia" in around and "Wichita" in around and surrounding(shots, "x") == ""

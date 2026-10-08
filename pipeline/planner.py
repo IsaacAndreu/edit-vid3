@@ -412,6 +412,11 @@ Tipos:
 - "broll" (la mayoría, ~70-80 %): metraje que ilustra lo que se dice. Si el texto
   es abstracto, elige una imagen documental concreta y reconocible del tema (personas, lugares,
   objetos, momentos reconocibles). Varía el encuadre entre planos seguidos; no repitas queries.
+- Un plano suele ser un TROZO de frase («de 2023.», «a las cinco y siete», «unos 4.500 metros»): las búsquedas
+  ilustran el SENTIDO de la frase entera y del tramo (TEXTO ANTERIOR/POSTERIOR), nunca las palabras sueltas del
+  trozo. Fechas, horas, cifras, unidades y conectores no son cosas que se vean: nada de calendarios, relojes,
+  contadores ni altímetros por una fecha, una hora o una cifra; se busca el hecho del que se habla (el avión, la
+  fábrica, el atleta, la noticia de ese día).
 
 El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISUAL):
 - Comparaciones y metáforas NO se ilustran al pie de la letra: "no es como abrir un

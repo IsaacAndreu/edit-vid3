@@ -274,7 +274,18 @@ def is_repeat(option: Option, used: list[Selection], max_hamming: int) -> bool:
 # --- judge call ------------------------------------------------------------------------
 
 
-def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "") -> str:
+def surrounding(shots: list[Any], shot_id: str, n: int = 2) -> str:
+    """The narration around a shot (n shots before and after): a shot alone is often half a phrase («de 2023.»,
+    «Cuatro tornillos de gran tamaño que,») and the judge cannot tell what it is about."""
+
+    ids = [s.id for s in shots]
+    if shot_id not in ids:
+        return ""
+    i = ids.index(shot_id)
+    return " ".join(s.text for s in shots[max(0, i - n): i + n + 1])[:500]
+
+
+def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "", around: str = "") -> str:
     broll = shot.broll
     assert broll is not None
     lines = [f"Video topic: {topic}"] if topic else []
@@ -288,6 +299,8 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
         f"Narration (Spanish): {shot.text}",
         f"The shot should show: {broll.visualIntent}",
     ]
+    if around and around.strip() != shot.text.strip():
+        lines.insert(len(lines) - 2, f"What is being said around it (Spanish, judge the footage by THIS meaning): {around}")
     if broll.entities:
         lines.append(f"Named entities: {', '.join(broll.entities)}")
     if broll.mustContain:
@@ -298,7 +311,7 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
 
 
 def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, topic: str = "",
-               hook: bool = False, subject: str = "", sources: str = "") -> dict[str, Any]:
+               hook: bool = False, subject: str = "", sources: str = "", around: str = "") -> dict[str, Any]:
     cfg = ctx.section("judge")
     model = str(cfg.get("model", "gpt-5-mini"))
     if str(cfg.get("provider", "openai")) != "openai":
@@ -307,7 +320,7 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     if not ok:
         raise RuntimeError("No se pudo codificar la hoja de contactos.")
     image_bytes = encoded.tobytes()
-    prompt = f"{shot_brief(shot, topic, hook, subject)}\nCandidates on the sheet: {', '.join(letters)}."
+    prompt = f"{shot_brief(shot, topic, hook, subject, around)}\nCandidates on the sheet: {', '.join(letters)}."
     if cfg.get("note"):                      # the channel's own rule (canales/<canal>.yaml → judge.note)
         prompt += f"\nChannel rule: {' '.join(str(cfg['note']).split())}"
     if sources:
@@ -484,7 +497,7 @@ def run(ctx: RunContext) -> None:
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
             cv2.imwrite(str(sheets_dir / f"{shot.id}{suffix}.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 80])
             verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds,
-                                 subject, source_lines(options, candidates))
+                                 subject, source_lines(options, candidates), around=surrounding(shots_file.shots, shot.id))
             by_letter = dict(zip(LETTERS, options))
             seen += options
             accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
