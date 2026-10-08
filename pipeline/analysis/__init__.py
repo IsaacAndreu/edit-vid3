@@ -314,21 +314,24 @@ def run(ctx: RunContext) -> None:
     analyse(ctx)
 
 
-def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
-    """Score every footage shot (or just `only`, for quick experiments)."""
+def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] | None = None,
+            candidates_folder: str = "candidates", folder: str = OUTPUT) -> None:
+    """Score every footage shot (or just `only`, for quick experiments). `shots`/`candidates_folder`/`folder`: score
+    other candidates of some shots elsewhere (the fallback's second search) without touching this stage's files."""
 
     cfg = ctx.section("analysis")
     weights = cfg.get("weights", {})
     started = time.monotonic()
-    shots = [
+    own = shots is None and folder == OUTPUT                 # this stage's own run (summary, its files)
+    shots = shots if shots is not None else [
         s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots
         if needs_footage(s) and (only is None or s.id in only)
     ]
     candidates = {
-        s.id: ShotCandidates.model_validate_json((ctx.work_dir / "candidates" / f"{s.id}.json").read_text(encoding="utf-8"))
+        s.id: ShotCandidates.model_validate_json((ctx.work_dir / candidates_folder / f"{s.id}.json").read_text(encoding="utf-8"))
         for s in shots
     }
-    out_dir = ctx.work_dir / OUTPUT
+    out_dir = ctx.work_dir / folder
     out_dir.mkdir(parents=True, exist_ok=True)
 
     config_key = key(cfg, VERSION)
@@ -346,7 +349,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
         todo.append(shot)
     print(f"   {len(shots) - len(todo)} planos ya analizados; {len(todo)} pendientes")
     if not todo:
-        _write_summary(ctx, shots)
+        if own:
+            _write_summary(ctx, shots)
         return
 
     clip, detectors = make_models(ctx)
@@ -526,9 +530,10 @@ def analyse(ctx: RunContext, only: set[str] | None = None) -> None:
             shotId=shot.id, inputsHash=shot_hash[shot.id], needed=round(needed, 3),
             prompts=prompts_for(shot), options=options, notes=notes[shot.id],
         )
-        ctx.write_json(f"{OUTPUT}/{shot.id}.json", result.model_dump(by_alias=True, exclude_none=True))
+        ctx.write_json(f"{folder}/{shot.id}.json", result.model_dump(by_alias=True, exclude_none=True))
     youtube.close()
-    _write_summary(ctx, shots)
+    if own:
+        _write_summary(ctx, shots)
     print(f"   Análisis completo en {time.monotonic() - started:.0f} s")
 
 

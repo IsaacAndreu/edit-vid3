@@ -235,6 +235,61 @@ def run(ctx: RunContext) -> None:
     # check (face/CLIP models and identity.json, one at a time).
     claim = threading.Lock()
     identity_lock = threading.Lock()
+    research_lock = threading.Lock()              # one second search at a time: it loads CLIP and downloads
+    research_left = [int(cfg.get("research_max", 12))]
+
+    def research(shot: Any, reason: str, tried: list[str]) -> tuple[list[Option], dict[str, Candidate]]:
+        """New queries for a shot nothing fitted, searched, analysed in work/<slug>/research/ (never the stage
+        files of sourcing/analysis) and ranked; the judge vets them in vet_and_materialise."""
+
+        from .analysis import analyse
+        from .llm import complete_json
+
+        with research_lock:
+            if research_left[0] <= 0:
+                return [], {}
+            research_left[0] -= 1
+            try:
+                old = ShotCandidates.model_validate_json((ctx.work_dir / "candidates" / f"{shot.id}.json").read_text("utf-8"))
+                asked = sorted({q for qs in old.queries.values() for q in qs})
+            except (OSError, ValueError):
+                old, asked = None, list(shot.broll.queries)
+            try:
+                result = complete_json(
+                    ctx, stage=STAGE, section="planner", max_tokens=400, system=RESEARCH_SYSTEM,
+                    user=f"VÍDEO: {story.title} · {story.context}\nPROTAGONISTA: {story.subject or '—'}\n"
+                         f"TRAMO: {shot.broll.event or '—'}\nFRASE: {shot.text}\nQUÉ DEBE VERSE: {shot.broll.visualIntent}\n"
+                         f"BÚSQUEDAS YA HECHAS: {'; '.join(asked)}\nPOR QUÉ NO SIRVIÓ: {reason[:300]}")
+            except Exception as error:
+                tried.append(f"segunda búsqueda: {str(error)[:80]}")
+                return [], {}
+            queries = [str(q).strip() for q in result.get("queries", []) if str(q).strip() and str(q).strip() not in asked][:3]
+            if not queries:
+                return [], {}
+            spec = shot.broll.model_copy(update={"queries": [*queries, *shot.broll.queries][:5], "queriesLocal": shot.broll.queriesLocal[:1]})
+            notes: list[str] = []
+            try:
+                seen = {o.id for o in old.candidates} if old else set()
+                found = [c for c in youtube.candidates(shot.broll.model_copy(update={"queries": queries, "queriesLocal": []}), notes)
+                         if c.id not in seen]
+            except Exception as error:
+                tried.append(f"segunda búsqueda: {str(error)[:80]}")
+                return [], {}
+            if not found:
+                tried.append(f"segunda búsqueda ({'; '.join(queries)}): nada nuevo")
+                return [], {}
+            folder = f"research/{shot.id}"
+            ctx.write_json(f"{folder}/candidates/{shot.id}.json", ShotCandidates(
+                shotId=shot.id, specHash=key(queries), queries={"youtube": queries}, candidates=found,
+                notes=notes).model_dump(exclude_none=True))
+            analyse(ctx, shots=[shot.model_copy(update={"broll": spec})], candidates_folder=f"{folder}/candidates",
+                    folder=f"{folder}/scores")
+            scores = ShotScores.model_validate_json((ctx.work_dir / folder / "scores" / f"{shot.id}.json").read_text("utf-8"))
+            print(f"   {shot.id}: segunda búsqueda ({'; '.join(queries)}): {len(found)} vídeos nuevos")
+            by_id = {c.id: c for c in found}
+            options = [o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
+                       if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId in by_id]
+            return options, by_id
     models_lock = threading.Lock()
     committed: set[str] = set()
 
@@ -353,6 +408,14 @@ def run(ctx: RunContext) -> None:
                        and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
                                    and abs(u.start - o.start) < 4 for u in used)][:limit]
             item = vet_and_materialise(options, pool_candidates, "event-footage")
+
+        # 1b''. A second search: new YouTube queries written from why the judge said no (another accident, another
+        # athlete, a re-edit…), scored like the first ones and vetted by the judge — real footage before photos/stock.
+        if item is None and shot.broll and cfg.get("research", True):
+            options, research_candidates = research(shot, reason, tried)
+            options = [o for o in options if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+                       and not seen_elsewhere(o, elsewhere)][:limit]
+            item = vet_and_materialise(options, research_candidates, "re-search")
 
         # 1c. A web photo of whoever/whatever the shot names (then of the protagonist), in a card —
         # what sports channels do when there is no footage. Vetted by the judge like the rest.
@@ -546,6 +609,16 @@ def photo_option(candidate: Candidate) -> Option:
 
 
 _POOL: dict[str, tuple[list[Option], dict[str, Candidate]]] = {}
+
+
+RESEARCH_SYSTEM = """
+Eres documentalista de vídeo. Un plano de un documental no encontró metraje válido con las búsquedas que se hicieron
+(te digo por qué no sirvió lo que salió). Propón 3 búsquedas NUEVAS de YouTube EN INGLÉS, distintas de las ya hechas,
+que traigan metraje REAL de lo que dice la frase en su contexto exacto (persona, lugar, fecha, empresa, evento):
+nombres propios + qué se ve + año/lugar; evita lo que causó el rechazo (otro accidente, otra persona, recreaciones,
+vídeos de otros creadores). Si la frase es abstracta, busca la imagen concreta del tema que mejor la representa.
+Devuelve SOLO JSON: {"queries": ["…", "…", "…"]}
+""".strip()
 
 
 def person_for(story: ShotsFile, shot: Any) -> str:
