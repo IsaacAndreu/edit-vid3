@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -179,11 +180,38 @@ def overview(root: Path) -> dict[str, Any]:
     return {
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,
                     "youtubeBlocked": _youtube_blocked(root),
-                    "lastBeat": beat.read_text().strip() if beat.is_file() else None},
+                    "lastBeat": beat.read_text().strip() if beat.is_file() else None, "code": code_version(root)},
         "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config)},
         "videos": videos, "channels": channels(root), "formats": formats(root),
         "youtube": ytstats.summary(rows) if rows else None,
     }
+
+
+def code_version(root: Path) -> dict[str, str] | None:
+    """The code the server has: last change and when (the studio shows it, so nobody needs SSH to check)."""
+
+    import subprocess
+
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%h%x09%cI%x09%s"], cwd=root, capture_output=True,
+                             text=True, timeout=10).stdout.strip().split("\t")
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return {"id": out[0], "at": out[1], "what": out[2][:120]} if len(out) == 3 else None
+
+
+def audit_text(root: Path, slug: str) -> str | None:
+    """scripts/auditoria.py's report (minute · narration · source · who chose it), to copy from the studio."""
+
+    if not (root / "work" / slug / "timeline.json").is_file():
+        return None
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("auditoria", PROJECT_ROOT / "scripts" / "auditoria.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)                    # type: ignore[union-attr]
+    module.ROOT = root
+    return module.report(slug)
 
 
 def video_detail(root: Path, slug: str) -> dict[str, Any]:
@@ -205,7 +233,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "stages": stages,
         "log": log.read_text("utf-8", errors="replace")[-12000:] if log.is_file() else "",
         "diagnosis": read("diagnostico.md"), "factcheck": read("verificacion.md"), "youtubeTxt": read("youtube.txt"),
-        "graphics": read("graficos.md"), "hook": read("gancho.md"),
+        "graphics": read("graficos.md"), "hook": read("gancho.md"), "audit": audit_text(root, slug),
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],
         "files": files,
@@ -412,7 +440,13 @@ def redo(root: Path, slug: str, stages: list[str]) -> dict[str, Any]:
     from .runner import STAGE_NAMES
 
     chosen = [s for s in stages if s in STAGE_NAMES] or ["planner"]
+    if running(_json(root / "work" / slug / "current.json")):
+        raise ValueError("Este vídeo se está haciendo ahora: espera a que termine o páralo")
     (find_video(root, slug) / REDO).write_text("\n".join(chosen) + "\n", encoding="utf-8")
+    state_path = root / "out" / "_vigilar.json"                 # a failed one goes now, not in 6 hours
+    if (state := _json(state_path)) and slug in state:
+        state.pop(slug)
+        state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
     if watcher_alive(root):
         (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
     return {"ok": True, "message": f"En la cola para rehacerse desde «{chosen[0]}». El vídeo actual sigue hasta que salga el nuevo."}
@@ -998,12 +1032,36 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def _reload_on_new_code(root: Path, every: float = 120.0) -> None:
+    """On the server the studio keeps itself up to date: it pulls the code every 2 minutes and, when it changed,
+    restarts with it (the queue does the same between videos). No more `git pull && systemctl restart`."""
+
+    import subprocess
+
+    def head() -> str:
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True).stdout.strip()
+
+    running_code = head()
+    while running_code:
+        time.sleep(every)
+        try:
+            subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if head() not in ("", running_code):
+            print("Código nuevo (git pull): el estudio se reinicia con él", flush=True)
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
 def serve(port: int = 8080, host: str = "127.0.0.1", root: Path = PROJECT_ROOT, open_browser: bool = True) -> None:
     ctx = RunContext.create("_web", root=root)
     password = ctx.env("WEB_PASSWORD", required=False) or ""
     if host not in ("127.0.0.1", "localhost", "::1") and not password:
         raise SystemExit("Para abrir el estudio fuera de este equipo pon WEB_PASSWORD=… en .env")
     server = ThreadingHTTPServer((host, port), make_handler(root, password))
+    if host in ("127.0.0.1", "localhost") and not sys.platform.startswith(("win", "darwin")) and not os.environ.get("DISPLAY") \
+            and ctx.section("watch").get("git_pull", True):
+        threading.Thread(target=_reload_on_new_code, args=(root,), daemon=True).start()
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}"
     print(f"Estudio en {url}" + (" (con contraseña)" if password else "") + " · Ctrl+C para cerrar")
     desktop = sys.platform in ("win32", "darwin") or bool(os.environ.get("DISPLAY"))     # not on a server

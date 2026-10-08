@@ -341,8 +341,11 @@ async function videoPage(slug) {
       `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics],
-                log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
+                audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
   const body = tab === "log" ? `<pre id="log">${esc(v.log || "Todavía no hay registro.")}</pre>`
+    : tab === "audit" ? (v.audit ? `<div class="small muted">Minuto · lo que se dice → de dónde sale la imagen · quién la eligió. Cópialo y pégalo en el chat para revisarlo.</div>
+        <button style="margin:8px 0" onclick="navigator.clipboard.writeText(document.getElementById('audit').innerText);this.textContent='Copiado ✓'">Copiar todo</button><pre id="audit">${esc(v.audit)}</pre>`
+        : "Todavía no hay montaje (sale después de la etapa «timeline»).")
     : tab === "script" ? `<div class="row" style="margin:8px 0"><audio controls preload="none" src="/api/video/${encodeURIComponent(v.slug)}/voz.mp3"></audio>
         <a class="btn" href="/api/video/${encodeURIComponent(v.slug)}/voz.mp3?download">Descargar voz</a></div><pre>${esc(v.script)}</pre>`
     : tab === "stages" ? `<table><tr><th>Etapa</th><th>Tiempo</th><th>RAM máx.</th><th>CPU máx.</th></tr>${v.stages.map((s) =>
@@ -358,7 +361,7 @@ async function videoPage(slug) {
         ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
         ${v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : ""}
         ${v.status === "hecho" && !v.published ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
-        ${v.status === "hecho" ? '<button onclick="if(confirm(\'¿Rehacerlo desde la planificación con las mejoras de ahora? Vuelve a la cola; el vídeo actual sigue hasta que salga el nuevo.\'))act(\'redo\')" title="Vuelve a planificar, buscar y montar (reaprovecha descargas y voz)">🔁 Rehacer</button>' : ""}
+        ${v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom()" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">🔁 Rehacer</button>' : ""}
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
       ${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">🤖 elegido por el guion</span>` : ""}` : ""}</div>
@@ -377,6 +380,16 @@ async function videoPage(slug) {
     const url = value ? prompt("Enlace del vídeo en YouTube (opcional):", "") : "";
     if (url === null) return;
     await post(`/api/video/${encodeURIComponent(slug)}/published`, {value, url}); route();
+  };
+  window.redoFrom = async () => {
+    const pick = prompt("¿Desde dónde lo rehago?\n\n1 = Todo (planificación, búsqueda y montaje)\n2 = Elegir imágenes otra vez (juez y relleno)\n3 = Solo el montaje (rápido)", "2");
+    const stages = {"1": ["planner"], "2": ["judge"], "3": ["timeline"]}[String(pick || "").trim()];
+    if (!stages) return;
+    try {
+      const r = await post(`/api/video/${encodeURIComponent(slug)}/redo`, {stages});
+      if (r.message) alert(r.message);
+      setTimeout(route, 1500);
+    } catch (e) { alert(e.message); }
   };
   window.act = async (what) => {
     try {
@@ -455,7 +468,11 @@ async function stats(refresh = false) {
 async function settingsPage() {
   const [s, n] = [await api("/api/settings"), await api("/api/notify")];
   const guessUrl = n.studioUrl || (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "" : location.origin);
+  if (!data) data = await api("/api/overview");
+  const code = data && data.service && data.service.code;
   $("#app").innerHTML = `<h1>Ajustes</h1>
+    ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
+      <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div></div>` : ""}
     <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
     <div class="card">
       <label>Hacer vídeos</label>
@@ -1286,6 +1303,7 @@ async function route() {
     else await home();
     const s = data && data.service;
     $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
+    $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
 }
 

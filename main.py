@@ -10,6 +10,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 # Harmless library chatter that buries the progress lines: OpenCV 5's "Targets are not supported by
 # the new graph engine" and Hugging Face's "unauthenticated requests" (only a rate limit, never reached).
@@ -281,21 +282,24 @@ def _materials_signature(root: Path, slug: str) -> float:
     return max([p.stat().st_mtime for p in files + ([parent] if parent.is_file() else [])] or [0.0])
 
 
-def _git_update(root: Path) -> bool:
-    """git pull; True when it brought new code (the watcher then restarts with it)."""
+def git_head(root: Path) -> str:
+    import subprocess
+
+    out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+def _git_update(root: Path, running: str) -> bool:
+    """git pull; True when the code on disk is newer than the code this process runs (`running`, its HEAD at
+    start) — pulled now or by the studio, which pulls too."""
 
     import subprocess
 
-    def head() -> str:
-        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True)
-        return out.stdout.strip()
-
-    before = head()
     pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
     if pulled.returncode != 0:
         print(f"(git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-200:]})")
-        return False
-    return bool(before) and head() != before
+    now = git_head(root)
+    return bool(running) and bool(now) and now != running
 
 
 def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
@@ -307,6 +311,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
 
     state_path = root / WATCH_STATE
     cfg = RunContext.create("_vigilar", root=root).section("watch") if (root / "config.yaml").is_file() else {}
+    running_code = git_head(root) if cfg.get("git_pull", True) else ""
     retry = float(cfg.get("retry_hours", 6)) * 3600
     print(f"Vigilando {root / 'materiales'} cada {every_minutes:g} min (Ctrl+C para parar)")
     idle_since = None
@@ -399,7 +404,8 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             idle_since = None
             LAST_RESULTS.clear()
             try:
-                run_queue(force=set(), until=None, review=False, root=root, skip=skip)
+                run_queue(force=set(), until=None, review=False, root=root, skip=skip,
+                          new_code=(lambda: _git_update(root, running_code)) if running_code else None)
             except Stopped:                          # systemctl stop / «Parar» in the studio: end now
                 raise
             except SystemExit as stop:               # preflight said no (keys, disk…): look again later
@@ -432,8 +438,9 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
         from pipeline.context import video_folders
 
         voicing = any(tts.generating(d) for d in video_folders(root))       # never cut a narration being made
-        if cfg.get("git_pull", True) and not voicing and _git_update(root):
-            print("Código nuevo (git pull): reinicio con él")
+        if running_code and not voicing and _git_update(root, running_code):
+            print("Código nuevo (git pull): reinicio con él; los vídeos que fallaron se reintentan ya")
+            state_path.unlink(missing_ok=True)          # the new code is usually the fix for them
             os.execv(sys.executable, [sys.executable, *sys.argv])
         if not waiting:
             wake = root / WAKE
@@ -505,7 +512,7 @@ LAST_RESULTS: list[tuple[str, str, float, str]] = []      # the last queue's (sl
 
 
 def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT,
-              check: bool = True, skip: set[str] | None = None) -> int:
+              check: bool = True, skip: set[str] | None = None, new_code: Callable[[], bool] | None = None) -> int:
     """Process every pending video; never stop the night because one video failed. Returns failures."""
 
     lock = root / QUEUE_LOCK
@@ -558,6 +565,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             if on_hold(root, slug):
                 print(f"{slug}: quitado de la cola, se salta")
                 continue
+            if number > 1 and new_code is not None and new_code():     # --vigilar: each video on the latest code
+                print("Código nuevo (git pull): la cola se reinicia con él antes del siguiente vídeo")
+                break
             print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
             started = time.monotonic()
             try:

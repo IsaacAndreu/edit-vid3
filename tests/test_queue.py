@@ -164,3 +164,19 @@ def test_a_finished_video_marked_to_redo_goes_back_to_the_queue(tmp_path):
     (tmp_path / "materiales" / "B" / main.REDO).write_text("planner\nbogus\n")
     assert main.pending_slugs(tmp_path) == ["B"]
     assert main.redo_stages(tmp_path / "materiales" / "B") == {"planner"}
+
+
+def test_new_code_is_seen_even_when_someone_else_pulled_it(tmp_path):
+    import subprocess
+
+    import main
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "a")
+    running = main.git_head(tmp_path)
+    assert not main._git_update(tmp_path, running)          # no remote: the pull fails, nothing new
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "b")   # the studio pulled
+    assert main._git_update(tmp_path, running)

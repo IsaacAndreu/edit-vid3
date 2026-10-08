@@ -522,3 +522,19 @@ def test_stop_without_a_running_video_only_holds_it(tmp_path):
     folder.mkdir(parents=True)
     assert web.stop(tmp_path, "negocio3")["ok"]
     assert (folder / web.HOLD).is_file()
+
+
+def test_redo_from_the_judge_puts_a_failed_video_back_now(tmp_path):
+    import json
+
+    from pipeline import web
+
+    folder = tmp_path / "materiales" / "aviacion" / "avion9"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text("x")
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "_vigilar.json").write_text(json.dumps({"avion9": {"status": "ERROR"}, "otro": {}}))
+    web.redo(tmp_path, "avion9", ["judge"])
+    assert (folder / ".rehacer").read_text().split() == ["judge"]
+    assert json.loads((tmp_path / "out" / "_vigilar.json").read_text()) == {"otro": {}}
+    assert web.audit_text(tmp_path, "avion9") is None                 # nothing edited yet
