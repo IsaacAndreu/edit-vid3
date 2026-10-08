@@ -1,0 +1,163 @@
+# Perfil del canal de megaproyectos y obras ocultas: infraestructuras que casi nadie ve y que mueven más dinero del
+# que parece (la valla de dingos, túneles eternos, presas, puertos, obras de ciudades hispanas): para qué se hizo,
+# qué rompió, quién la paga hoy. Documentales de 12-18 min. Mismo molde que aviacion.yaml.
+# Úsalo con `canal: megaproyectos` (materiales/megaproyectos/config.yaml ya lo pone) y `serie: <serie>` en el
+# config.yaml de un vídeo (las series están al final).
+
+format: explicativo                # la obra es la protagonista: qué es, por qué existe, qué cuesta, quién gana
+
+brand:                             # obra y señalización: naranja de seguridad y azul acero sobre hormigón oscuro
+  accent: "#ff8a00"                # naranja de obra: cifras, capítulos, títulos
+  accent2: "#4cc9f0"               # azul acero: lado B de comparativas (antes/después, un lado de la valla y el otro)
+  canvas: "#0c0d10"
+  glow: "rgba(255,138,0,0.22)"
+  label: "#5a3300"
+  wipe: "#ff8a00"
+  panel: "#14161b"
+  panelRaised: "#1c1f26"
+  muted: "#a3aab8"
+  ocean: "#1d4e63"                 # mapas planos: el trazado de la obra encima, en naranja
+  land: "#c2a878"                  # tierra arena (desiertos, llanuras): la obra se lee mejor que sobre gris
+  mapStyle: flat
+  mapHighlight: "#ff8a00"
+  border: "#2a2e37"
+  chapterStyle: numbered           # «CAPÍTULO I:» como un documental
+  statStyle: bare                  # la cifra gigante directamente sobre la obra
+  motion: editorial
+  articleStyle: paper              # recortes de prensa con frases en fosforito (presupuestos, retrasos)
+  dataStyle: light
+
+graphics:
+  seconds_per_graphic: 60          # este nicho vive de mapas (el trazado), escalas (5.600 km = Madrid-Nueva York) y dinero
+  cover_weak: true
+  types: [map, satellite, scale, compare, chart, timeline, specs, receipt, article, press, kinetic, split, race]
+
+people:
+  max: 3                           # ingenieros, científicos, ministros: solo los que el guion nombra
+
+timeline:
+  narrow_layout: archive           # archivo antiguo (la obra en 1900, en 1950) a pantalla completa con aspecto de película
+  card_share: 0.1
+  pizarra: true
+  moments: 0                       # sin «momentos con sonido original» (no hay competición)
+  sound_bites: 2                   # 2 golpes de sonido real: una máquina trabajando, el viento en el desierto
+  music_default: intriga
+  opening_question: auto
+  moods:
+    obra: "construcción, ambición, la escala de la obra, máquinas trabajando"
+    coste: "presupuesto que se dispara, retrasos, la factura, quién paga"
+
+quotes:
+  count: 2                         # declaraciones originales (ministros, ingenieros, científicos en noticias)
+
+fallback:
+  pexels: true                     # un desierto, una autopista o una obra genérica son b-roll válido (no hay protagonista)
+  image_style: illustration        # lo que no existe en vídeo (la obra en 1880) se dibuja, nunca pasa por foto real
+
+judge:
+  trusted_bonus: 0.05              # prioridad a noticias, gobiernos, constructoras y agencias espaciales
+  trusted_channels: [ABC News (Australia), ABC Australia, ABC Science, 7NEWS Australia, 9 News Australia, SBS News,
+                     BBC News, Reuters, Associated Press, AP Archive, British Pathé, Bloomberg, CNBC, DW News,
+                     DW Documentary, Euronews, France 24, RTVE, Noticias Caracol, NTN24, CNN en Español, NASA,
+                     NASA Goddard, ESA, Ferrovial, Acciona, Sacyr, Bechtel, Vinci, Skanska]
+
+content:                           # nunca la competencia (ya está editado, con su voz; y reclaman) ni videojuegos
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
+                    cities skylines, "cities: skylines", satisfactory, videojuego, video game, simulator, speedrun,
+                    excel, powerpoint, photoshop,
+                    the b1m, b1m, megaprojects, practical engineering, real engineering, wendover, half as interesting,
+                    tom scott, reallifelore, real life lore, geography now, atlas pro, insane engineering,
+                    megastructures, megaconstrucciones, mega construcciones, extreme engineering,
+                    ingeniería extrema, ingenieria extrema, build it bigger, construcciones imposibles,
+                    "ai generated", "ai documentary"]
+
+planner:
+  shots_note: |
+    - METRAJE: la obra REAL y concreta, con su nombre, su lugar y su época: 'dingo fence Australia aerial drone',
+      'dingo fence Cameron Corner', 'dingo fence rebuild South Australia 2021', 'Darien Gap aerial', 'La Línea tunnel
+      Colombia construction'. Noticias del país (ABC Australia, 7NEWS, RTVE, Caracol), drones, timelapses de obra,
+      archivo antiguo de la época, máquinas y obreros trabajando en ESA obra. Nunca videojuegos (Cities: Skylines),
+      ni renders o documentales de otros canales con su voz, ni imágenes de IA.
+    - ANIMALES Y PAISAJE: si el guion habla de un animal o un paisaje concreto, ese animal en ese lugar ('dingo
+      Australian outback', 'merino sheep flock Australia', 'kangaroos mob outback', 'wombat burrow', 'Strzelecki
+      desert dunes aerial'), nunca uno de otro continente.
+    - DINERO Y TIEMPO: presupuestos, sobrecostes, retrasos, kilómetros, postes: cada cifra fuerte en un plano "stat"
+      con su unidad ('5.600 km', '25 M A$', '70.000 postes'); quién paga, en un "receipt".
+    - EL TRAZADO va en un mapa; un efecto que se ve desde el espacio, en "satellite".
+
+package:
+  thumbnail_style: concept         # la obra reconocible + 0-4 palabras ('5.600 KM', 'NADIE LA VE', '¿POR QUÉ?')
+  hint: "la protagonista es una obra concreta y extraña (una valla de 5.600 km, un túnel que no se acaba, una presa
+    que nadie usa). Título con la obra + el giro que sorprende: 'Australia gasta millones en una valla para un solo
+    perro', 'El túnel que Colombia tardó 100 años en abrir', 'La obra más larga del mundo no es una muralla'."
+
+ideas:
+  about: "un canal de YouTube en español sobre megaproyectos y obras ocultas: infraestructuras que casi nadie ve y
+    mueven más dinero del que parece (vallas, túneles, presas, puertos, obras de ciudades hispanas), para qué se
+    hicieron, qué rompieron y quién las paga, documentales de 12-18 min"
+  pattern: "obra concreta y extraña + cifra enorme + el giro (para qué sirve de verdad, qué rompió, quién paga)"
+  my_channel: ""
+  competitors:                     # referencias en inglés (en español casi no hay nadie con este formato)
+    - "@TheB1M"
+    - "@PracticalEngineeringChannel"
+    - "@RealEngineering"
+    - "@Wendoverproductions"
+  niches: [megaproyectos, obras ocultas, infraestructuras extrañas, obras que salieron mal, megaproyectos de
+           ciudades hispanas, cuánto cuesta una obra]
+
+lab:
+  queries:
+    - megaproyectos
+    - obras de ingeniería increíbles
+    - la obra más larga del mundo
+    - el túnel más largo
+    - megaproject explained
+    - why this infrastructure exists
+    - obras que salieron mal
+
+grade:
+  look: calido                     # sol, polvo y hormigón
+
+# --- series: un formato por semana para ver cuál funciona (en materiales/<vídeo>/config.yaml: `serie: ocultas`) ---
+series:
+  ocultas:                         # «La valla de dingos», «El búnker bajo…»: la obra que nadie ve
+    format: explicativo
+    planner:
+      outline: "ESTE VÍDEO CUENTA UNA OBRA QUE CASI NADIE VE: qué es y su escala, por qué se hizo, cómo funciona,
+        qué rompió por el camino, quién la paga hoy y quién gana o pierde. Cada evento con su lugar y su año en 'tag'
+        ('QUEENSLAND · 1948'); los 'label' buscan ESA obra en ese lugar y esa época."
+    package:
+      hint: "patrón de título: '<País> gasta millones en <obra extraña>' o 'La obra más <larga/cara/rara> que nadie
+        ve'. Miniatura con la obra en medio de la nada y la cifra."
+
+  ciudad:                          # megaproyectos de ciudades hispanas (metro de Quito, Gran Canal, Madrid Río…)
+    format: historia
+    planner:
+      outline: "ESTE VÍDEO CUENTA UN MEGAPROYECTO DE UNA CIUDAD HISPANA: el problema de la ciudad, la promesa, la
+        obra, los sobrecostes y retrasos, y cómo quedó. Cada evento con la ciudad y el año ('QUITO · 2016'); los
+        'label' buscan esa obra en esa ciudad ('metro de Quito construcción 2017')."
+    package:
+      hint: "patrón de título: 'La obra que <ciudad> tardó <años> en terminar' o 'Por qué <ciudad> construyó <obra>'.
+        Miniatura con la obra y la ciudad reconocible."
+
+  salieron-mal:                    # obras que fallaron (ponts, presas, túneles abandonados): los «desastres» sin canal propio
+    format: cronologia
+    planner:
+      outline: "ESTE VÍDEO CUENTA UNA OBRA QUE SALIÓ MAL: la promesa, las señales de alarma, el fallo y lo que costó.
+        Cada evento con lugar y año en 'tag'; los 'label' buscan imágenes de noticias de ESA obra y ESE fallo, nunca
+        víctimas ni el momento de una muerte."
+    graphics:
+      types: [map, satellite, timeline, chart, press, article, receipt, kinetic, specs, scale]
+      hint: "Es un fallo: \"timeline\" para las señales de alarma, \"press\" para los titulares de la época, \"receipt\"
+        para lo que costó y \"kinetic\" para la cifra final."
+    package:
+      hint: "patrón de título: 'La obra de <cifra> que <falló/nadie usa>'. Miniatura con la obra rota o vacía."
+
+  cuanto-cuesta:                   # «Cuánto cuesta un kilómetro de metro», «Lo que cuesta mantener…»
+    format: cuanto-cuesta
+    planner:
+      outline: "ESTE VÍDEO DESGLOSA EL DINERO DE UNA OBRA: cuánto cuesta construirla y mantenerla, partida por
+        partida, y quién lo paga. Cada partida con su cifra; los 'label' enseñan esa partida (máquinas, materiales,
+        obreros, mantenimiento)."
+    graphics:
+      types: [receipt, chart, compare, scale, kinetic, specs, map]
