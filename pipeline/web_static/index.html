@@ -22,6 +22,20 @@
   header nav { display: flex; gap: 4px; flex-wrap: wrap; }
   header nav a { color: var(--muted); padding: 6px 9px; border-radius: 8px; font-size: 14px; }
   header nav a.on, header nav a:hover { color: var(--text); background: var(--panel2); }
+  header nav { align-items: center; }
+  header nav a.newv { background: var(--accent); color: #1b1300; font-weight: 700; margin-left: 4px; }
+  .dd { position: relative; }
+  .dd > button { background: none; border: 0; color: var(--muted); font-weight: 400; font-size: 14px; padding: 6px 9px; }
+  .dd > button:hover, .dd.open > button, .dd.on > button { color: var(--text); background: var(--panel2); }
+  .dd .menu { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 250px; background: var(--panel);
+              border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .dd .menu.right { left: auto; right: 0; }
+  .dd.open .menu { display: block; }
+  @media (max-width: 700px) {                    /* on a phone the menu spans the header, under it */
+    .dd { position: static; } .dd .menu, .dd .menu.right { left: 12px; right: 12px; top: 100%; min-width: 0; }
+  }
+  .dd .menu a { display: block; color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+  .dd .menu a span { display: block; font-size: 12px; color: var(--muted); }
   main { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; }
   h1 { font-size: 22px; margin: 0 0 16px; } h2 { font-size: 17px; margin: 26px 0 10px; }
   .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -154,7 +168,21 @@
 <header id="top" class="hide">
   <b>🎬 Estudio</b>
   <nav>
-    <a href="#/">Inicio</a><a href="#/subir">Para subir</a><a href="#/guiones">Guiones</a><a href="#/calendario">Calendario</a><a href="#/tablero">Tablero</a><a href="#/biblioteca">Biblioteca</a><a href="#/nuevo">Nuevo vídeo</a><a href="#/errores">Errores</a><a href="#/competencia">Radar</a><a href="#/canal">Mi canal</a><a href="#/estadisticas">Estadísticas</a><a href="#/ajustes">Ajustes</a>
+    <a href="#/">Inicio</a>
+    <a href="#/subir">Para subir</a>
+    <div class="dd"><button type="button">Planificar ▾</button><div class="menu">
+      <a href="#/guiones">📝 Guiones <span>qué falta por escribir</span></a>
+      <a href="#/calendario">📅 Calendario <span>qué sale cada día</span></a>
+      <a href="#/tablero">🗂 Tablero <span>ideas en marcha</span></a></div></div>
+    <div class="dd"><button type="button">Crecer ▾</button><div class="menu">
+      <a href="#/competencia">📡 Radar <span>competencia, nichos y huecos</span></a>
+      <a href="#/canal">📈 Mi canal <span>qué funciona en tus vídeos</span></a>
+      <a href="#/estadisticas">📊 Estadísticas <span>tiempos, gasto y YouTube</span></a></div></div>
+    <div class="dd"><button type="button">⚙️ ▾</button><div class="menu right">
+      <a href="#/biblioteca">📚 Biblioteca <span>clips guardados por persona</span></a>
+      <a href="#/errores">🧐 Errores <span>clips marcados como malos</span></a>
+      <a href="#/ajustes">⚙️ Ajustes <span>pausa, límites, voces, actualizar</span></a></div></div>
+    <a href="#/nuevo" class="newv">＋ Nuevo vídeo</a>
   </nav>
   <form onsubmit="event.preventDefault();const q=this.q.value.trim();if(q)location.hash='#/buscar/'+encodeURIComponent(q)" style="margin-left:auto">
     <input name="q" placeholder="🔎 ¿Ya lo hice?" style="width:150px;padding:6px 10px"></form>
@@ -1421,6 +1449,7 @@ async function route() {
   clearTimeout(timer);
   const hash = location.hash || "#/";
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
+  document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
   try {
     if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
@@ -1446,6 +1475,12 @@ async function route() {
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
 }
+
+document.addEventListener("click", (e) => {     // menus of the header: open on click, close anywhere else
+  const dd = e.target.closest(".dd");
+  document.querySelectorAll("header .dd").forEach((d) => { if (d !== dd) d.classList.remove("open"); });
+  if (dd && e.target.closest(".dd > button")) dd.classList.toggle("open");
+});
 
 async function start() {
   const session = await fetch("/api/session").then((r) => r.json());
