@@ -125,6 +125,7 @@
   .elf { background: #12301f; color: #d6f5e0; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
   @media (prefers-color-scheme: light) { .elf { background: #e5f6ea; color: #13361f; } }
   .hide { display: none !important; }
+  #app.loading { opacity: .45; pointer-events: none; transition: opacity .2s; }
   /* --- inicio y buscador --- */
   .hero { display: flex; gap: 10px; align-items: stretch; margin-bottom: 18px; }
   .hero textarea { min-height: 48px; height: 48px; font-size: 16px; padding: 12px 14px; border-radius: 12px; resize: none; }
@@ -282,8 +283,15 @@ function block(title, list, {cls = "", right = null, more = "", open = true, col
     : `<div class="block ${cls}"><div class="bh">${head}</div>${rows}</div>`;
 }
 
+let homeData = null;
 async function home() {
-  const [overview, upload] = await Promise.all([api("/api/overview"), api("/api/upload").catch(() => ({videos: []}))]);
+  const [overview, dates] = await Promise.all([api("/api/overview"), api("/api/upload/dates").catch(() => ({}))]);
+  homeData = {overview, dates};
+  drawHome();
+}
+function drawHome() {               // the channel buttons redraw from what is already loaded: instant
+  if (!homeData || !location.hash.match(/^(#\/?)?$/)) return;
+  const {overview, dates} = homeData;
   data = overview;
   const s = data.service, b = data.budget;
   const all = data.videos.filter((v) => !v.archived);
@@ -292,7 +300,7 @@ async function home() {
   const vids = all.filter((v) => !homeChannel || v.channel === homeChannel);
   const by = (st) => vids.filter((v) => v.status === st);
   const toUpload = by("hecho").filter((v) => !v.published);
-  const slot = Object.fromEntries((upload.videos || []).map((u) => [u.slug, u]));
+  const slot = dates || {};
   const today = new Date().toISOString().slice(0, 10);
   toUpload.sort((a, c) => ((slot[a.slug] || {}).date || "9999").localeCompare((slot[c.slug] || {}).date || "9999") || a.updated - c.updated);
   const uploaded = by("hecho").filter((v) => v.published)
@@ -334,7 +342,7 @@ async function home() {
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;
   schedule(home, by("haciendo").length ? 10000 : 30000);
 }
-window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} home(); };
+window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} drawHome(); };
 window.searchFrom = (q) => { q = String(q || "").trim(); if (!q) return;
   if (q.length > 1500) { window.pendingSearch = q; location.hash = "#/buscar/" + encodeURIComponent("(guion pegado)"); }
   else location.hash = "#/buscar/" + encodeURIComponent(q); };
@@ -1450,6 +1458,7 @@ async function route() {
   const hash = location.hash || "#/";
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
+  const slow = setTimeout(() => $("#app").classList.add("loading"), 250);     // a slow answer shows it is working
   try {
     if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
@@ -1474,12 +1483,15 @@ async function route() {
     $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+  clearTimeout(slow); $("#app").classList.remove("loading");
 }
 
 document.addEventListener("click", (e) => {     // menus of the header: open on click, close anywhere else
   const dd = e.target.closest(".dd");
   document.querySelectorAll("header .dd").forEach((d) => { if (d !== dd) d.classList.remove("open"); });
   if (dd && e.target.closest(".dd > button")) dd.classList.toggle("open");
+  const link = e.target.closest("header a[href^='#/']");
+  if (link && link.getAttribute("href") === (location.hash || "#/")) { e.preventDefault(); route(); }   // same page: reload it
 });
 
 async function start() {

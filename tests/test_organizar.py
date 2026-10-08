@@ -103,6 +103,12 @@ def test_finished_videos_get_stills_for_your_thumbnail(tmp_path: Path):
     final = root / "out" / "n1" / "video-final.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10:duration=4",
                     str(final)], check=True)
+    import time
+
+    organizar.to_upload(root)                      # the page never waits for ffmpeg: the stills come in the background
+    deadline = time.time() + 30
+    while organizar._STILLS_RUNNING and time.time() < deadline:
+        time.sleep(0.1)
     v = organizar.to_upload(root)[0]
     stills = [f for f in v["files"] if f.get("still")]
     assert len(stills) == 8 and stills[0]["path"] == "fotogramas/fotograma-1.jpg"

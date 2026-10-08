@@ -41,6 +41,38 @@ def youtube_sections(text: str) -> dict[str, str]:
     return out
 
 
+_STILLS_RUNNING: set[str] = set()
+
+
+def _stills_later(folder: Path) -> None:
+    """The stills of an old video, in the background: ffmpeg over a 15-min video took the page down for minutes
+    (they appear on the next visit)."""
+
+    import threading
+
+    if str(folder) in _STILLS_RUNNING:
+        return
+    _STILLS_RUNNING.add(str(folder))
+
+    def work() -> None:
+        try:
+            stills_from_final(folder)
+        finally:
+            _STILLS_RUNNING.discard(str(folder))
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def upload_dates(root: Path) -> dict[str, dict[str, Any]]:
+    """{slug: {date, time}}: the calendar day of each finished video, without reading its files (Inicio)."""
+
+    from . import agenda
+
+    listed = agenda.videos(root)
+    return {s["video"]["slug"]: {"date": s.get("date"), "time": s.get("time")}
+            for s in agenda.plan(root, days=60, listed=listed) if s["video"]}
+
+
 def to_upload(root: Path) -> list[dict[str, Any]]:
     from . import agenda
 
@@ -63,7 +95,7 @@ def to_upload(root: Path) -> list[dict[str, Any]]:
         files += [{"label": f"Miniatura {n}", "path": f"miniaturas/{p.name}", "image": True}
                   for n, p in enumerate(sorted((folder / "miniaturas").glob("*.jpg")), start=1)]
         if not (folder / "fotogramas").is_dir() and (folder / "video-final.mp4").is_file():
-            stills_from_final(folder)                          # videos made before the stills existed
+            _stills_later(folder)                              # videos made before the stills existed
         files += [{"label": f"Fotograma {n}", "path": f"fotogramas/{p.name}", "still": True}
                   for n, p in enumerate(sorted((folder / "fotogramas").glob("fotograma-*.jpg"),
                                                key=lambda p: int(re.findall(r"\d+", p.stem)[-1])), start=1)]

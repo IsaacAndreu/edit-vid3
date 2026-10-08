@@ -142,6 +142,24 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     }
 
 
+_CACHE: dict[str, tuple[float, Any]] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def cached(key: str, seconds: float, make: Any) -> Any:
+    """`make()` at most once every `seconds` (the studio polls every 10-30 s from every open tab)."""
+
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        hit = _CACHE.get(key)
+        if hit and now - hit[0] < seconds:
+            return hit[1]
+    value = make()
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.monotonic(), value)
+    return value
+
+
 def _first_line(path: Path) -> str:
     try:
         return path.read_text("utf-8", errors="replace").strip().splitlines()[0][:200] if path.is_file() else ""
@@ -238,7 +256,9 @@ def overview(root: Path) -> dict[str, Any]:
     videos.sort(key=lambda v: -v["updated"])
     config = RunContext.create("_web", root=root).config
     since = time.time() - 7 * 86400
-    rows = [r for p in (root / "work").glob("*/youtube_downloads.jsonl") for r in ytstats.read(p, since)]
+    # every download of the week, line by line: minutes of reading on a busy server, so once every 5 minutes
+    youtube = cached(f"yt:{root}", 300, lambda: (lambda rows: ytstats.summary(rows) if rows else None)(
+        [r for p in (root / "work").glob("*/youtube_downloads.jsonl") for r in ytstats.read(p, since)]))
     queue_running = _lock_alive(root / "work" / ".cola.lock")
     return {
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,
@@ -246,7 +266,7 @@ def overview(root: Path) -> dict[str, Any]:
                     "lastBeat": beat.read_text().strip() if beat.is_file() else None, "code": code_version(root)},
         "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config)},
         "videos": videos, "channels": channels(root), "formats": formats(root),
-        "youtube": ytstats.summary(rows) if rows else None,
+        "youtube": youtube,
     }
 
 
@@ -856,6 +876,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     found = library.preview(root, match.group(1), (urllib.parse.parse_qs(url.query).get("id") or [""])[0])
                     return self._file(found) if found else self._fail(404, "No existe")
+                if path == "/api/upload/dates":            # Inicio: only the calendar day of each finished video
+                    from . import organizar
+
+                    return self._ok(cached(f"dates:{root}", 60, lambda: organizar.upload_dates(root)))
                 if path == "/api/upload":                  # «Para subir» (pipeline/organizar.py)
                     from . import compilacion, organizar
 

@@ -12,14 +12,30 @@ from dotenv import load_dotenv
 from .config import PROJECT_ROOT, ConfigError
 
 
+_PARSED: dict[str, tuple[int, int, dict[str, Any]]] = {}     # path → (mtime_ns, size, data)
+
+
 def load_config(path: Path | None = None) -> dict[str, Any]:
+    """A YAML map, parsed once per change of the file (the studio read config.yaml once per video and per refresh:
+    seconds of parsing for each page). Each caller gets its own copy."""
+
+    import copy
+
     config_path = path or PROJECT_ROOT / "config.yaml"
+    try:
+        stat = config_path.stat()
+    except OSError:
+        raise ConfigError(f"No existe {config_path}.") from None
     if not config_path.is_file():
         raise ConfigError(f"No existe {config_path}.")
+    hit = _PARSED.get(str(config_path))
+    if hit and hit[0] == stat.st_mtime_ns and hit[1] == stat.st_size:
+        return copy.deepcopy(hit[2])
     data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise ConfigError(f"{config_path} debe contener un mapa YAML.")
-    return data
+    _PARSED[str(config_path)] = (stat.st_mtime_ns, stat.st_size, data)
+    return copy.deepcopy(data)
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
