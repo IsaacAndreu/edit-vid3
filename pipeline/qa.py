@@ -123,8 +123,11 @@ def run(ctx: RunContext) -> None:
         if shot.media.kind == "video":
             seconds = clip_seconds(path)
             entry["clipSeconds"] = round(seconds, 3)
-            if shot.media.source in THIRD_PARTY and max(seconds, shot.durationInFrames / fps) > MAX_THIRD_PARTY_SECONDS + 1 / fps:
-                blockers.append(f"{shot.id}: clip de terceros de {max(seconds, shot.durationInFrames / fps):.2f} s (máximo 5 s)")
+            # seconds of THEIR footage on screen: a chapter shot held for the chapter pause plays its clip slowed
+            # down (rate < 1), so it shows no more of it than the file has (pati: 4.8 s + 0.5 s pause blocked the render)
+            shown = shot.durationInFrames / fps * float(shot.media.rate or 1.0)
+            if shot.media.source in THIRD_PARTY and max(seconds, shown) > MAX_THIRD_PARTY_SECONDS + 1 / fps:
+                blockers.append(f"{shot.id}: clip de terceros de {max(seconds, shown):.2f} s (máximo 5 s)")
         if shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
             blockers.append(f"{shot.id}: material de terceros sin crédito")
         # provenance
