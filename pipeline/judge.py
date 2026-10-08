@@ -196,6 +196,13 @@ def ranked(options: list[Option], bonus: dict[str, float]) -> list[tuple[float, 
     return sorted(((o.total + float(bonus.get(o.source, 0.0)), o) for o in usable), key=lambda item: -item[0])
 
 
+def source_cap(cfg: dict[str, Any], shots: int) -> int:
+    """How many shots one source video may fill: `judge.max_per_source`, else 5 and one more per 40 shots — a long
+    video about one subject (avion9, Concorde, 283 shots) has few archive sources and 4 left half of it empty."""
+
+    return int(cfg.get("max_per_source") or max(5, round(shots / 40)))
+
+
 def overused(candidate_id: str, selections: list[Selection], limit: int) -> bool:
     """A source video already on screen `limit` times in this video: the next shot looks for another one."""
 
@@ -519,7 +526,7 @@ def run(ctx: RunContext) -> None:
 
     # 2. Assign in shot order, never repeating a fragment.
     max_hamming = int(cfg.get("max_phash_distance", 6))
-    per_source = int(cfg.get("max_per_source", 4))      # avion8: one factory tour in 11 shots, one news aerial in 8
+    per_source = source_cap(cfg, len(shots))           # avion8: one factory tour in 11 shots, one news aerial in 8
     selections: list[Selection] = []
     for shot in shots:
         preference: list[Option] = plans[shot.id]

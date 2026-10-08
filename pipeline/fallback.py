@@ -33,7 +33,8 @@ from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
 from . import feedback
-from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, ranked, seen_elsewhere, source_lines,
+from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, ranked, seen_elsewhere, source_cap,
+                    source_lines,
                     surrounding, used_elsewhere)
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
@@ -309,7 +310,7 @@ def run(ctx: RunContext) -> None:
             that downloads (and passes the identity check) wins."""
 
             # whatever pool they come from: never a blocked source, never a source already on screen too often
-            per_source = int(judge_cfg.get("max_per_source", 4))
+            per_source = source_cap(judge_cfg, len(story.shots) * 2 // 3)   # about the footage shots
             blocklist = ctx.section("content").get("title_blocklist")
             options = [o for o in options
                        if not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
