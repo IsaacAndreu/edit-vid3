@@ -65,7 +65,10 @@ def test_ranking_cards_and_maps(tmp_path, monkeypatch):
     monkeypatch.setattr(graphics, "country_names", lambda root: {"China"})
     ctx = RunContext.create("x", root=tmp_path, config={"format": "ranking"})
     out = graphics.ranking(ctx, SENTS)
-    assert [(o["graphic"]["type"], o["graphic"].get("rank")) for o in out] == [("rank", 3), ("map", None), ("rank", 1)]
+    # «Número dos: Pekín» opens a position in the script itself: it gets its card although the LLM called it 5
+    assert [(o["graphic"]["type"], o["graphic"].get("rank")) for o in out] == [("rank", 3), ("map", None), ("rank", 2),
+                                                                              ("rank", 1)]
+    assert out[2]["graphic"]["name"] == "Pekín, la capital"
     assert out[0]["graphic"]["stats"] == [{"label": "Robots", "value": "900"}] and out[0]["graphic"]["total"] == 3
     assert out[1]["start"] == out[0]["end"] and out[1]["graphic"]["countries"] == ["China"]
     assert out[1]["graphic"]["zoom"] == 0
@@ -74,3 +77,21 @@ def test_ranking_cards_and_maps(tmp_path, monkeypatch):
 def test_report_without_protagonist():
     text = report.text({"person": "", "protagonist": 0.0, "stock": 0.02, "weak": [], "wrong": [], "problems": []})
     assert "en pantalla" not in text and text.startswith("✅")
+
+
+def test_every_countdown_position_of_the_script_gets_its_card(tmp_path, monkeypatch):
+    texts = ["Esta es la cuenta atrás de los récords.", "Número diez.", "El relevo de Seúl.", "Corrieron cuatro.",
+             "Número nueve.", "La reina del heptatlón.", "Siete pruebas.", "Antes del número uno, hablemos de otros.",
+             "Número uno.", "El más antiguo de todos.", "Múnich."]
+    sents = [{"n": i, "start": i * 10.0, "end": i * 10.0 + 9, "text": t} for i, t in enumerate(texts)]
+    assert [(n, r, name) for n, r, name in graphics.countdown_marks(sents)] == [
+        (1, 10, "El relevo de Seúl"), (4, 9, "La reina del heptatlón"), (8, 1, "El más antiguo de todos")]
+    # the LLM only found one: the script's marks still give every card, numbered out of 10
+    monkeypatch.setattr(graphics, "complete_json", lambda *a, **k: {"total": None, "items": [
+        {"rank": 9, "sentence": 5, "name": "Joyner-Kersee", "stats": [{"label": "Puntos", "value": "7"}]}]})
+    monkeypatch.setattr(graphics, "country_names", lambda root: set())
+    ctx = RunContext.create("x", root=tmp_path, config={"format": "records"})
+    out = graphics.ranking(ctx, sents)
+    assert [(o["graphic"]["rank"], o["graphic"]["total"], o["graphic"]["name"]) for o in out] == [
+        (10, 10, "El relevo de Seúl"), (9, 10, "Joyner-Kersee"), (1, 10, "El más antiguo de todos")]
+    assert out[0]["start"] == 10.0 and out[2]["start"] == 80.0

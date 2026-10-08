@@ -458,25 +458,59 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
 
 # --- planning -----------------------------------------------------------------------------------
 
+COUNTDOWN = re.compile(r"^\W*(?:y\s+)?(?:(?:en\s+)?el\s+)?(?:n[úu]mero|puesto|posici[óo]n)\s+(\d+|[a-záéíóúü]+)\b(.*)$",
+                       re.IGNORECASE)
+
+
+def countdown_marks(sents: list[dict[str, Any]]) -> list[tuple[int, int, str]]:
+    """(sentence, rank, name) where the script itself opens each position: a sentence that STARTS with «Número
+    diez.», «Puesto 3:», «En el número siete,» («Antes del número uno, hablemos…» is not one). The name is the rest
+    of that sentence or the short sentence after it («Número diez. El relevo de Seúl.»)."""
+
+    out: list[tuple[int, int, str]] = []
+    for i, s in enumerate(sents):
+        match = COUNTDOWN.match(s["text"].strip())
+        if not match:
+            continue
+        word, rest = match.group(1), match.group(2).strip(" .,:;-—")
+        values = {float(word)} if word.isdigit() else _spelled_numbers(word)
+        if len(values) != 1 or not 1 <= (rank := int(next(iter(values)))) <= 100 or any(r == rank for _, r, _ in out):
+            continue
+        following = sents[i + 1]["text"].strip() if i + 1 < len(sents) else ""
+        name = rest or (following.rstrip(".") if len(following.split()) <= 8 else "")
+        out.append((i, rank, " ".join(name.split()[:8])))
+    return out
+
+
 def ranking(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Ranking videos: a "#N" card where each position is introduced and, when it is a place, a map
-    that flies to it right after. Every position gets its card (no spacing rule between them)."""
+    """Ranking videos: a "#N/total" card where each position is introduced and, when it is a place, a map that
+    flies to it right after. Every position gets its card (no spacing rule between them). When the script opens
+    its positions with «Número diez.» those sentences decide (every one gets its card, even if the LLM missed it);
+    the LLM only adds names, subtitles, stats and places."""
 
     cfg = ctx.section("graphics")
     listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
     try:
         result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000, user=listing[:80000],
                                system=RANK_SYSTEM)
-    except Exception as error:  # the video is complete without them
-        print(f"   Tarjetas del ranking no disponibles: {str(error)[:120]}")
-        return []
+    except Exception as error:  # the marks of the script are enough for the cards
+        print(f"   Datos del ranking no disponibles: {str(error)[:120]}")
+        result = {}
+    items = [i for i in result.get("items", []) if isinstance(i, dict) and isinstance(i.get("rank"), int)]
+    marks = countdown_marks(sents)
     total = result.get("total") if isinstance(result.get("total"), int) else None
+    if len(marks) >= 3:
+        by_rank = {i["rank"]: i for i in items}
+        total = total or max(r for _, r, _ in marks)
+        items = [{**by_rank.get(rank, {}), "rank": rank, "sentence": n,
+                  "name": by_rank.get(rank, {}).get("name") or name or f"Número {rank}"} for n, rank, name in marks]
     seconds, map_seconds = float(cfg.get("rank_seconds", 5)), float(cfg.get("rank_map_seconds", 4.5))
     countries = country_names(ctx.root) if cfg.get("rank_map", True) else set()
+    starts = sorted(sents[_as_int(i.get("sentence"))]["start"] for i in items if 0 <= _as_int(i.get("sentence")) < len(sents))
     out: list[dict[str, Any]] = []
-    for item in sorted((i for i in result.get("items", []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
+    for item in sorted(items, key=lambda i: _as_int(i.get("sentence"))):
         n, rank = _as_int(item.get("sentence")), item.get("rank")
-        if not 0 <= n < len(sents) or not isinstance(rank, int) or not item.get("name") or any(o["graphic"].get("rank") == rank for o in out):
+        if not 0 <= n < len(sents) or not item.get("name") or any(o["graphic"].get("rank") == rank for o in out):
             continue
         intro = " ".join(s["text"] for s in sents[n: n + 2])
         if not said(rank, intro):
@@ -490,13 +524,17 @@ def ranking(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
         card = {"type": "rank", "rank": rank, "total": total, "name": str(item["name"]), "subtitle": subtitle,
                 "stats": [{"label": str(x.get("label", "")), "value": str(x["value"])} for x in stats[:3]]}
         out.append({"start": start, "end": start + seconds, "graphic": card, "ranked": True})
+        following = next((t for t in starts if t > start), float("inf"))
         where = geocode(ctx, str(item["place"])) if countries and item.get("place") else None
-        if where:
+        if where and start + seconds + map_seconds + 1 <= following:      # never pushes the next position's card out
             country = {c.lower(): c for c in countries}.get(str(item.get("country") or "").lower())
             out.append({"start": start + seconds, "end": start + seconds + map_seconds, "ranked": True,
                         "graphic": {"type": "map", "title": None, "countries": [country] if country else [],
                                     "points": [{"name": str(item["name"]), "lon": where[0], "lat": where[1], "note": None}],
                                     "route": False, "zoom": 0, "globe": False}})
+    if marks:
+        print(f"   Ranking: {len([o for o in out if o['graphic']['type'] == 'rank'])} tarjetas para "
+              f"{len(marks)} puestos del guion")
     return out
 
 
@@ -770,7 +808,10 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
         return []
     passes = {"ranking": ranking, "precios-pais": ranking, "prohibidos": banned, "tier-list": tier, "iceberg": iceberg,
               "datos": data_race}
-    ranked = passes[ctx.config.get("format")](ctx, sents) if ctx.config.get("format") in passes else []
+    fmt_pass = passes.get(ctx.config.get("format"))
+    if fmt_pass is None and len(countdown_marks(sents)) >= 3:   # «Número diez.»: a countdown whatever the format
+        fmt_pass = ranking
+    ranked = fmt_pass(ctx, sents) if fmt_pass else []
     fmt = str(ctx.config.get("format") or "")
     every = float((cfg.get("seconds_per_format") or {}).get(fmt)
                   or ctx.format.get("segundos_por_grafico") or cfg.get("seconds_per_graphic", 100))
