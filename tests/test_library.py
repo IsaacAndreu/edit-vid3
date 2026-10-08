@@ -64,6 +64,10 @@ def test_topics_learn_used_and_approved_sources_and_keep_their_thumbnails(tmp_pa
                                                   entities=["Booking.com"]), set(), 3)
     assert [c.id for c in found] == ["yt:a", "yt:b"]                     # used ranks above approved
     assert found[0].query == "biblioteca: Booking.com"
+    # a narrated moment never takes a saved clip of another event of the same person
+    moment = BrollSpec(visualIntent="caída", queries=["a", "b", "c"], queriesLocal=["d"], entities=["Booking.com"],
+                       event="Booking.com Grand Prix Final Turin 2019", moment="falls on the quad flip")
+    assert library.candidates_for(ctx, moment, set(), 3) == []
 
 
 def test_the_studio_lists_marks_and_removes(tmp_path):

@@ -33,7 +33,7 @@ from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
 from . import feedback
-from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, ranked, seen_elsewhere, source_cap,
+from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, own_event, ranked, seen_elsewhere, source_cap,
                     source_lines,
                     surrounding, used_elsewhere)
 from .schemas import (
@@ -317,7 +317,8 @@ def run(ctx: RunContext) -> None:
             blocklist = ctx.section("content").get("title_blocklist")
             options = [o for o in options
                        if not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
-                       and not overused(o.candidateId, used, per_source)
+                       and not overused(o.candidateId, used,
+                                        per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
                        and f"{o.candidateId}@{o.start}" not in dead]
             if not options:
                 return None

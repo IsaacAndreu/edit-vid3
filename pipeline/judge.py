@@ -209,6 +209,18 @@ def overused(candidate_id: str, selections: list[Selection], limit: int) -> bool
     return limit > 0 and sum(1 for s in selections if s.candidateId == candidate_id) >= limit
 
 
+def own_event(title: str | None, shot: Any) -> bool:
+    """The source is footage of the shot's own event: its title names at least two words of the event besides the
+    people (competition, place, year: «Beijing 2022 free skate»). The original broadcast of the night a story turns
+    on can fill more shots than the usual cap (Valieva's free skate: the fall, the tears, the coach)."""
+
+    broll = getattr(shot, "broll", None)
+    if not broll or not broll.event:
+        return False
+    need = tokens(broll.event) - tokens(" ".join(broll.entities))
+    return len(need) >= 2 and len(need & tokens(title or "")) >= 2
+
+
 def is_doubtful(scores: list[float], margin: float, min_score: float) -> bool:
     if not scores:
         return False
@@ -538,7 +550,8 @@ def run(ctx: RunContext) -> None:
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
         chosen = next((o for o in preference if not is_repeat(o, selections, max_hamming)
-                       and not overused(o.candidateId, selections, per_source)), None)
+                       and not overused(o.candidateId, selections,
+                                        per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))), None)
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))

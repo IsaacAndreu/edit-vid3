@@ -424,6 +424,13 @@ Tipos:
 - MOMENTOS EXACTOS: si el plano lleva "moment", las búsquedas nombran persona + competición + año + ESA acción
   ('Ilia Malinin fall quad axel Milan 2026 free skate', 'Surya Bonaly backflip Nagano 1998', 'Simone Biles
   twisties Tokyo 2020 vault') y "mustContain" lleva la acción. Nunca un momento cualquiera de la persona.
+  Las frases que SIGUEN contando la misma escena sin nombrarla («Al salir del hielo lloraba», «Terminó cuarta»,
+  «Y la cámara captó lo que ocurrió junto a la pista») heredan persona, competición y año del TEXTO ANTERIOR: su
+  "moment" es la acción de esa escena, empezando por el verbo ('cries leaving the ice', 'coach talks to her at
+  the boards'), y sus búsquedas la dicen entera ('Kamila Valieva crying leaving ice Beijing 2022 free skate',
+  'Tutberidze Valieva kiss and cry Beijing 2022').
+  Un récord, una nota o una medalla de una competición concreta es un momento: esa actuación o ese podio
+  ('Kostornaya short program world record Grand Prix Final Turin 2019'), nunca otra actuación de la persona.
 
 El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISUAL):
 - Comparaciones y metáforas NO se ilustran al pie de la letra: "no es como abrir un

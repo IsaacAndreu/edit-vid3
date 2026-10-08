@@ -259,3 +259,15 @@ def test_a_narrated_moment_reaches_clip_the_commentary_and_the_judge():
     said = [(10.0, 12.0, "oh and he falls on the lutz"), (40.0, 41.0, "beautiful landing")]
     assert moment_score(said, shot.broll.moment, 9.0, 11.0) >= 0.7 and moment_score(said, shot.broll.moment, 38.0, 40.0) < 0.2
     assert "EXACT MOMENT narrated: falls on the quad lutz landing" in shot_brief(shot)
+
+
+def test_the_footage_of_the_shots_own_event_may_fill_more_shots():
+    from types import SimpleNamespace
+
+    from pipeline.judge import own_event
+
+    shot = SimpleNamespace(broll=SimpleNamespace(event="Kamila Valieva Beijing 2022 free skate",
+                                                 entities=["Kamila Valieva"]))
+    assert own_event("Kamila VALIEVA Free Skate | Beijing 2022 Figure Skating", shot)
+    assert not own_event("Kamila Valieva - Bolero (Russian Nationals 2022)", shot)       # only one word: 2022
+    assert not own_event("Beijing 2022 free skate", SimpleNamespace(broll=None))

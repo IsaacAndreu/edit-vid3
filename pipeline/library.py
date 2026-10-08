@@ -303,7 +303,12 @@ def candidates_for(ctx: RunContext, broll: BrollSpec, present: set[str], limit: 
                 continue
             if c.storyboard is None or not all((ctx.root / s).is_file() for s in c.storyboard.sheets):
                 continue
-            pool.append((len(event & tokens(c.title or "")), _value(data["stats"].get(cid, {})), c))
+            overlap = len((event - tokens(person)) & tokens(c.title or ""))
+            # a narrated moment (a fall, tears on the podium) only takes a saved clip OF THAT EVENT: any other
+            # clip of the person is exactly the «algo de esa persona» that replaced the moment (pati)
+            if broll.moment and overlap < 2:
+                continue
+            pool.append((overlap, _value(data["stats"].get(cid, {})), c))
         pool.sort(key=lambda item: (-item[0], -item[1]))
         for _, _, c in pool[: limit - len(out)]:             # `limit` in all: more would only slow the analysis
             out.append(c.model_copy(update={"query": f"biblioteca: {person}"}))

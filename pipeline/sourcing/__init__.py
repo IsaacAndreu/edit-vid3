@@ -324,7 +324,8 @@ def run(ctx: RunContext) -> None:
         per_shot = int(cfg.get("library_per_shot", 3))
         from_library = library.candidates_for(ctx, shot.broll, set(), per_shot)
         if youtube is not None:
-            fewer = 1 if per_shot and len(from_library) >= per_shot else None
+            # a narrated moment always gets every search: the library has the person, rarely that moment
+            fewer = 1 if per_shot and len(from_library) >= per_shot and not shot.broll.moment else None
             queries["youtube"] = youtube.queries_for(shot.broll)[:fewer] if fewer else youtube.queries_for(shot.broll)
             try:
                 candidates += youtube.candidates(shot.broll, notes, max_queries=fewer)
