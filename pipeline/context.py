@@ -55,7 +55,24 @@ def channel_profile(root: Path, name: str) -> dict[str, Any]:
     if not path.is_file():
         known = sorted(p.stem for p in (root / CHANNELS_DIR).glob("*.yaml")) if (root / CHANNELS_DIR).is_dir() else []
         raise ConfigError(f"No existe el perfil de canal {path.relative_to(root)} (hay: {', '.join(known) or 'ninguno'}).")
-    return load_config(path)
+    profile = load_config(path)
+    # `base: gimnasia`: a channel that works like another one (atletismo makes athlete stories exactly like
+    # gimnasia) and only changes what is its own; the studio shows it as a channel of its own
+    parent = profile.pop("base", None)
+    if parent and str(parent) != name:
+        profile = deep_merge(channel_profile(root, str(parent)), profile)
+    return profile
+
+
+def base_channel(root: Path, name: str) -> str | None:
+    """The channel this one is built on (`base:` in canales/<name>.yaml), if any."""
+
+    path = root / CHANNELS_DIR / f"{name}.yaml"
+    try:
+        parent = load_config(path).get("base") if path.is_file() else None
+    except ConfigError:
+        return None
+    return str(parent) if parent and str(parent) != name else None
 
 
 VIDEO_FILES = ("guion.txt", "voz.mp3", "titulo.txt")

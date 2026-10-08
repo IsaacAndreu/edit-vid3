@@ -60,7 +60,15 @@ def voices(root: Path) -> dict[str, dict[str, Any]]:
 
 
 def voice_for(root: Path, channel: str) -> dict[str, Any] | None:
-    return voices(root).get(channel)
+    """The channel's voice; a channel built on another (`base: gimnasia`) speaks with that one until it has its own."""
+
+    from .context import base_channel
+
+    configured = voices(root)
+    if channel in configured:
+        return configured[channel]
+    parent = base_channel(root, channel) if channel else None
+    return configured.get(parent) if parent else None
 
 
 def set_voice(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -617,6 +625,6 @@ def has_auto_voice(root: Path, folder: Path) -> bool:
     from .web import _channel_of
 
     try:
-        return _channel_of(root, folder) in configured
+        return voice_for(root, _channel_of(root, folder)) is not None
     except Exception:            # an unreadable config: the video simply waits for its voz.mp3
         return False

@@ -95,3 +95,27 @@ def test_every_countdown_position_of_the_script_gets_its_card(tmp_path, monkeypa
     assert [(o["graphic"]["rank"], o["graphic"]["total"], o["graphic"]["name"]) for o in out] == [
         (10, 10, "El relevo de Seúl"), (9, 10, "Joyner-Kersee"), (1, 10, "El más antiguo de todos")]
     assert out[0]["start"] == 10.0 and out[2]["start"] == 80.0
+
+
+def test_a_channel_built_on_another_takes_its_profile_and_voice(tmp_path):
+    import shutil
+    from pathlib import Path
+
+    from pipeline import tts
+    from pipeline.context import channel_profile
+
+    shutil.copy(Path(__file__).resolve().parents[1] / "config.yaml", tmp_path / "config.yaml")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("format: historia\nideas: {about: gim, my_channel: '@yo'}\n")
+    (tmp_path / "canales" / "atletismo.yaml").write_text("base: gimnasia\nideas: {about: atle}\n")
+    profile = channel_profile(tmp_path, "atletismo")
+    assert profile["format"] == "historia" and profile["ideas"] == {"about": "atle", "my_channel": "@yo"}
+    assert "base" not in profile
+    (tmp_path / "out").mkdir()
+    real = tts.voices
+    tts.voices = lambda root: {"gimnasia": {"voice_id": "v1"}}
+    try:
+        assert tts.voice_for(tmp_path, "atletismo") == {"voice_id": "v1"}
+        assert tts.voice_for(tmp_path, "negocios") is None
+    finally:
+        tts.voices = real
