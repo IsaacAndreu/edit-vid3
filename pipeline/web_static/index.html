@@ -465,6 +465,16 @@ async function stats(refresh = false) {
       <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
 }
 
+async function updateNow(button) {
+  button.disabled = true; button.textContent = "Actualizando…";
+  try {
+    const r = await post("/api/update");
+    alert(r.message);
+    if (r.changed) { data = null; setTimeout(() => location.reload(), 4000); }
+  } catch (e) { alert(e.message); }
+  button.disabled = false; button.textContent = "🔄 Actualizar ahora";
+}
+
 async function settingsPage() {
   const [s, n] = [await api("/api/settings"), await api("/api/notify")];
   const guessUrl = n.studioUrl || (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "" : location.origin);
@@ -472,7 +482,8 @@ async function settingsPage() {
   const code = data && data.service && data.service.code;
   $("#app").innerHTML = `<h1>Ajustes</h1>
     ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
-      <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div></div>` : ""}
+      <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
+      <button style="margin-top:8px" onclick="updateNow(this)">🔄 Actualizar ahora</button></div>` : ""}
     <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
     <div class="card">
       <label>Hacer vídeos</label>

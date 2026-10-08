@@ -538,3 +538,21 @@ def test_redo_from_the_judge_puts_a_failed_video_back_now(tmp_path):
     assert (folder / ".rehacer").read_text().split() == ["judge"]
     assert json.loads((tmp_path / "out" / "_vigilar.json").read_text()) == {"otro": {}}
     assert web.audit_text(tmp_path, "avion9") is None                 # nothing edited yet
+
+
+def test_update_now_says_when_the_code_was_already_current(tmp_path, monkeypatch):
+    import subprocess
+
+    from pipeline import web
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q", "--bare", "origin.git")
+    git("clone", "-q", "origin.git", "repo")
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "uno"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "HEAD"], cwd=repo, check=True, capture_output=True)
+    result = web.update_code(repo)
+    assert result["changed"] is False and "uno" in result["message"]

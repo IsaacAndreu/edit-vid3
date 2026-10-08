@@ -200,6 +200,24 @@ def code_version(root: Path) -> dict[str, str] | None:
     return {"id": out[0], "at": out[1], "what": out[2][:120]} if len(out) == 3 else None
 
 
+def update_code(root: Path) -> dict[str, Any]:
+    """«Actualizar ahora»: git pull without waiting the 2 minutes. With new code the studio restarts with it (the
+    page reloads itself) and the queue is woken to take it before its next video."""
+
+    before = (code_version(root) or {}).get("id")
+    pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
+    if pulled.returncode != 0:
+        raise ValueError(f"git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-300:]}")
+    now = code_version(root) or {}
+    if now.get("id") == before:
+        return {"ok": True, "changed": False, "message": f"Ya estaba al día: {now.get('what', '')}"}
+    if watcher_alive(root):
+        (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+    threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+    return {"ok": True, "changed": True, "message": f"Código nuevo: {now.get('what', '')}. El estudio se reinicia "
+            "(unos segundos) y la cola lo coge antes de su próximo vídeo."}
+
+
 def audit_text(root: Path, slug: str) -> str | None:
     """scripts/auditoria.py's report (minute · narration · source · who chose it), to copy from the studio."""
 
@@ -888,6 +906,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(action(root, slug))
                 if path == "/api/settings":
                     return self._ok(settings(root, body))
+                if path == "/api/update":
+                    return self._ok(update_code(root))
                 if path == "/api/queue":
                     return self._ok(start_queue(root))
                 if path == "/api/queue/retry-all":
