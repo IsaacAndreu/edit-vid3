@@ -239,6 +239,9 @@ def run(ctx: RunContext) -> None:
     identity_lock = threading.Lock()
     research_lock = threading.Lock()              # one second search at a time: it loads CLIP and downloads
     research_left = [int(cfg.get("research_max", 12))]
+    # with YouTube slow (5 s a query, 0.09 MB/s) a second search took minutes and the other workers queued behind
+    # it: mega2 spent 2.5 h here. Now a shot waits at most a minute for its turn, and none start after 20 min.
+    research_until = time.monotonic() + 60 * float(cfg.get("research_minutes", 20))
 
     def research(shot: Any, reason: str, tried: list[str]) -> tuple[list[Option], dict[str, Candidate]]:
         """New queries for a shot nothing fitted, searched, analysed in work/<slug>/research/ (never the stage
@@ -247,8 +250,11 @@ def run(ctx: RunContext) -> None:
         from .analysis import analyse
         from .llm import complete_json
 
-        with research_lock:
-            if research_left[0] <= 0:
+        if time.monotonic() > research_until or not research_lock.acquire(timeout=60):
+            tried.append("segunda búsqueda: sin tiempo")
+            return [], {}
+        try:
+            if research_left[0] <= 0 or time.monotonic() > research_until:
                 return [], {}
             research_left[0] -= 1
             try:
@@ -293,6 +299,8 @@ def run(ctx: RunContext) -> None:
             options = [o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
                        if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId in by_id]
             return options, by_id
+        finally:
+            research_lock.release()
     models_lock = threading.Lock()
     committed: set[str] = set()
     # options that already failed in another shot (download error, picture already on screen): never sent to the
