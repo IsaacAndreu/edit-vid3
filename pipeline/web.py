@@ -295,6 +295,18 @@ def update_code(root: Path) -> dict[str, Any]:
 
     before = (code_version(root) or {}).get("id")
     pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
+    kept: list[str] = []
+    if pulled.returncode != 0 and "untracked working tree files would be overwritten" in pulled.stderr:
+        # a file made here (a channel created in the studio) that the new code also brings: it is kept next to
+        # it as <file>.antes-de-actualizar and the pull goes on (atletismo.yaml blocked the update)
+        listing = pulled.stderr.split("overwritten by merge:", 1)[-1].split("Please move", 1)[0]
+        for rel in (line.strip() for line in listing.splitlines() if line.strip()):
+            target = (root / rel).resolve()
+            if root.resolve() in target.parents and target.is_file():
+                target.rename(target.with_name(target.name + ".antes-de-actualizar"))
+                kept.append(rel)
+        if kept:
+            pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
     if pulled.returncode != 0:
         raise ValueError(f"git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-300:]}")
     now = code_version(root) or {}
@@ -304,7 +316,8 @@ def update_code(root: Path) -> dict[str, Any]:
         (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
     threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
     return {"ok": True, "changed": True, "message": f"Código nuevo: {now.get('what', '')}. El estudio se reinicia "
-            "(unos segundos) y la cola lo coge antes de su próximo vídeo."}
+            "(unos segundos) y la cola lo coge antes de su próximo vídeo."
+            + (f" Tus versiones de {', '.join(kept)} se guardaron como «….antes-de-actualizar»." if kept else "")}
 
 
 def audit_text(root: Path, slug: str) -> str | None:

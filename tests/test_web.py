@@ -580,3 +580,32 @@ def test_search_finds_a_video_by_title_words_or_by_a_pasted_script(tmp_path):
     pasted += " " + " ".join(f"palabra{i}" for i in range(30))
     whole = web.search_videos(tmp_path, pasted)
     assert whole["whole"] and whole["results"][0]["slug"] == "atlet5"
+
+
+def test_update_now_keeps_a_local_file_the_new_code_also_brings(tmp_path, monkeypatch):
+    import subprocess
+
+    from pipeline import web
+
+    def git(cwd, *args):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=cwd, check=True, capture_output=True)
+
+    git(tmp_path, "init", "-q", "--bare", "origin.git")
+    git(tmp_path, "clone", "-q", "origin.git", "server")
+    git(tmp_path, "clone", "-q", "origin.git", "dev")
+    server, dev = tmp_path / "server", tmp_path / "dev"
+    git(dev, "commit", "-q", "--allow-empty", "-m", "uno")
+    git(dev, "push", "-q", "origin", "HEAD")
+    git(server, "pull", "-q")
+    (dev / "canales").mkdir()
+    (dev / "canales" / "atletismo.yaml").write_text("base: gimnasia\n")
+    git(dev, "add", ".")
+    git(dev, "commit", "-q", "-m", "atletismo")
+    git(dev, "push", "-q", "origin", "HEAD")
+    (server / "canales").mkdir()
+    (server / "canales" / "atletismo.yaml").write_text("mio: true\n")           # made in the studio
+    monkeypatch.setattr(web.threading, "Timer", lambda *a, **k: type("T", (), {"start": lambda self: None})())  # no restart
+    result = web.update_code(server)
+    assert result["changed"] and "antes-de-actualizar" in result["message"]
+    assert (server / "canales" / "atletismo.yaml").read_text() == "base: gimnasia\n"
+    assert (server / "canales" / "atletismo.yaml.antes-de-actualizar").read_text() == "mio: true\n"

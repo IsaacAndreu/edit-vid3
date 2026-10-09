@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 import time
@@ -116,7 +117,7 @@ def download_file(session: requests.Session, url: str, target: Path, *, pacer: P
     if pacer:
         pacer.wait()
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(target.name + ".part")
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.{threading.get_ident()}.part")   # two shots, same file
     with session.get(url, stream=True, timeout=60) as response:
         response.raise_for_status()
         with tmp.open("wb") as handle:
@@ -136,7 +137,9 @@ def cached_json(cache_file: Path, producer: Callable[[], Any]) -> Any:
             pass
     value = producer()
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cache_file.with_name(cache_file.name + ".tmp")
+    # one temporary file per writer: two shots running the same search at once (mega3/mega4) both wrote
+    # «<name>.json.tmp» and the second rename found it gone
+    tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(value, ensure_ascii=False) + "\n", encoding="utf-8")
     tmp.replace(cache_file)
     return value
