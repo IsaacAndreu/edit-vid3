@@ -473,7 +473,11 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         return out
 
     done = 0
-    with ThreadPoolExecutor(max_workers=max(int(yt_cfg.get("concurrency", 3)), getattr(youtube, "concurrency", 0))) as pool:
+    # as many downloads as YouTube slots there are: `concurrency` per way out (each proxy, or the server). With two
+    # proxies the analysis used 3 of 6 and waited on the 360p windows (mega5: 1.081 windows, 54 min)
+    ways = max(1, len(getattr(youtube, "_pacers", None) or [None]))
+    workers = max(int(yt_cfg.get("concurrency", 3)), getattr(youtube, "concurrency", 0)) * ways
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(download, video) for video in by_video]
         arrived = ((job, result) for future in as_completed(futures) for job, result in future.result())
         for job, result in arrived:
