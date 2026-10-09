@@ -81,7 +81,7 @@ def test_report_without_protagonist():
 
 def test_every_countdown_position_of_the_script_gets_its_card(tmp_path, monkeypatch):
     texts = ["Esta es la cuenta atrás de los récords.", "Número diez.", "El relevo de Seúl.", "Corrieron cuatro.",
-             "Número nueve.", "La reina del heptatlón.", "Siete pruebas.", "Antes del número uno, hablemos de otros.",
+             "Número nueve: la reina del heptatlón.", "Siete pruebas.", "Siete pruebas.", "Antes del número uno, hablemos de otros.",
              "Número uno.", "El más antiguo de todos.", "Múnich."]
     sents = [{"n": i, "start": i * 10.0, "end": i * 10.0 + 9, "text": t} for i, t in enumerate(texts)]
     assert [(n, r, name) for n, r, name in graphics.countdown_marks(sents)] == [

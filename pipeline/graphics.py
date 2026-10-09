@@ -478,7 +478,8 @@ def countdown_marks(sents: list[dict[str, Any]]) -> list[tuple[int, int, str]]:
             continue
         following = sents[i + 1]["text"].strip() if i + 1 < len(sents) else ""
         name = rest or (following.rstrip(".") if len(following.split()) <= 8 else "")
-        out.append((i, rank, " ".join(name.split()[:8])))
+        name = " ".join(name.split()[:8])
+        out.append((i, rank, name[:1].upper() + name[1:]))        # «Número diez: el puente…» → «El puente…»
     return out
 
 
