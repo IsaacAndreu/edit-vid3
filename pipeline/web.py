@@ -320,6 +320,41 @@ def update_code(root: Path) -> dict[str, Any]:
             + (f" Tus versiones de {', '.join(kept)} se guardaron como «….antes-de-actualizar»." if kept else "")}
 
 
+def restart_queue(root: Path) -> dict[str, Any]:
+    """«Reiniciar la cola» from the phone: the watcher service starts again (a video being made resumes from its
+    last finished stage). Only where the queue runs as the systemd service edit-vid3."""
+
+    import shutil
+
+    if not shutil.which("systemctl"):
+        raise ValueError("Aquí la cola no es un servicio (systemctl): reiníciala a mano")
+    done = subprocess.run(["systemctl", "restart", "edit-vid3"], capture_output=True, text=True, timeout=60)
+    if done.returncode != 0:
+        raise ValueError(f"No se pudo reiniciar: {(done.stderr or done.stdout).strip()[-200:]}")
+    return {"ok": True, "message": "Cola reiniciada. Si estaba haciendo un vídeo, sigue desde la última etapa terminada."}
+
+
+def for_claude(root: Path, slug: str) -> str:
+    """Everything Claude needs to look at a video, in one text to paste in the chat (from the phone)."""
+
+    detail = video_detail(root, slug)
+    out = root / "out" / slug
+    parts = [f"VÍDEO {slug} · {detail.get('channel')} · estado: {detail.get('status')} · {detail.get('costUsd')} $ · "
+             f"{detail.get('minutes')} min"]
+    if detail.get("error") or detail.get("lastError"):
+        parts.append(f"ERROR: {detail.get('error') or detail.get('lastError')}")
+    stages = " · ".join(f"{s['name']} {round((s.get('seconds') or 0) / 60, 1)} min" for s in detail.get("stages", []))
+    if stages:
+        parts.append(f"ETAPAS: {stages}")
+    diagnosis = (out / "diagnostico.md").read_text("utf-8", errors="replace") if (out / "diagnostico.md").is_file() else ""
+    if diagnosis:
+        parts.append("DIAGNÓSTICO:\n" + diagnosis[:5000])
+    log = detail.get("log") or ""
+    if log:
+        parts.append("ÚLTIMAS LÍNEAS DEL REGISTRO:\n" + "\n".join(log.splitlines()[-60:]))
+    return "\n\n".join(parts)[:14000]
+
+
 def audit_text(root: Path, slug: str) -> str | None:
     """scripts/auditoria.py's report (minute · narration · source · who chose it), to copy from the studio."""
 
@@ -1016,6 +1051,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(settings(root, body))
                 if path == "/api/search":                  # {q}: a whole pasted script does not fit in a URL
                     return self._ok(search_videos(root, str(body.get("q") or "")[:30000]))
+                if path == "/api/restart-queue":
+                    return self._ok(restart_queue(root))
+                if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
+                    return self._ok({"text": for_claude(root, urllib.parse.unquote(match.group(1)))})
                 if path == "/api/update":
                     return self._ok(update_code(root))
                 if path == "/api/queue":

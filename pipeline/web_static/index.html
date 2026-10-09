@@ -519,6 +519,7 @@ async function videoPage(slug) {
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
       ${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">🤖 elegido por el guion</span>` : ""}` : ""}</div>
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
+    <div class="row" style="margin:8px 0"><button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button></div>
     ${v.lastError ? `<div class="notice">En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b> (antes si cambias sus archivos o pulsas «Hacer ahora»)` : "el vigilante lo hará en su turno"}.
       <div class="small muted" style="margin-top:4px">El último intento falló: ${esc(String(v.lastError).slice(0, 220))}</div></div>` : ""}
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
@@ -625,6 +626,27 @@ async function stats(refresh = false) {
       <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
 }
 
+async function restartQueue(button) {
+  if (!confirm("¿Reiniciar la cola? El vídeo que se esté haciendo sigue luego desde su última etapa terminada.")) return;
+  button.disabled = true;
+  try { alert((await post("/api/restart-queue")).message); } catch (e) { alert(e.message); }
+  button.disabled = false;
+}
+async function copyForClaude(slug, button) {
+  let text = "";
+  try { text = (await post(`/api/video/${encodeURIComponent(slug)}/for-claude`)).text; }
+  catch (e) { alert(e.message); return; }
+  try { await navigator.clipboard.writeText(text); button.textContent = "Copiado ✓ pégalo en el chat"; return; }
+  catch (e) {}                                     // Safari refuses the clipboard after waiting for the server
+  const modal = document.createElement("div");
+  modal.className = "modal"; modal.id = "modal";
+  modal.innerHTML = `<div><div class="row" style="justify-content:space-between"><b>Para Claude</b>
+    <button onclick="document.getElementById('modal').remove()">Cerrar</button></div>
+    <div class="small muted" style="margin:6px 0">Mantén pulsado el texto → Seleccionar todo → Copiar, y pégalo en el chat.</div>
+    <textarea readonly style="min-height:50vh">${esc(text)}</textarea></div>`;
+  document.body.appendChild(modal);
+  const box = modal.querySelector("textarea"); box.focus(); box.select();
+}
 async function updateNow(button) {
   button.disabled = true; button.textContent = "Actualizando…";
   try {
@@ -643,7 +665,8 @@ async function settingsPage() {
   $("#app").innerHTML = `<h1>Ajustes</h1>
     ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
-      <button style="margin-top:8px" onclick="updateNow(this)">🔄 Actualizar ahora</button></div>` : ""}
+      <button style="margin-top:8px" onclick="updateNow(this)">🔄 Actualizar ahora</button>
+      <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button></div>` : ""}
     <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
     <div class="card">
       <label>Hacer vídeos</label>
