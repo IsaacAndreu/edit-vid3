@@ -50,7 +50,7 @@ factcheck:                   # verificación de datos del guion → out/<slug>/v
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 
 sourcing:
-  parallel: 4                  # planos procesados a la vez
+  parallel: 6                  # planos procesados a la vez (la CPU iba al 26 %: el tiempo es esperar a YouTube)
   youtube:
     enabled: true
     queries_en: 2              # búsquedas por plano (de las 3-5 en inglés del planner)
@@ -142,7 +142,7 @@ ingest:
   lut: assets/lut.cube             # LUT común; si no existe, se omite
   crf: 18                          # calidad x264 (menor = mejor)
   preset: veryfast
-  parallel: 3
+  parallel: 5                      # descargas HD a la vez: YouTube limita cada conexión, no el total
 
 grade:                             # color igualado entre clips (se aplica al preparar cada clip/foto; pipeline/grade.py)
   enabled: true

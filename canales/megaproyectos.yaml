@@ -27,6 +27,11 @@ brand:                             # obra y señalización: naranja de seguridad
   articleStyle: paper              # recortes de prensa con frases en fosforito (presupuestos, retrasos)
   dataStyle: light
 
+pacing:                            # documental de obras (estilo B1M): planos que dejan ver la escala, ~14 cortes/min
+  base_seconds: 4.2                # en vez de 3,0: mega5 tuvo 363 planos en 17 min; así ~27 % menos planos que buscar
+  slow_seconds: 5.0
+  fast_seconds: 2.8
+
 graphics:
   seconds_per_graphic: 60          # este nicho vive de mapas (el trazado), escalas (5.600 km = Madrid-Nueva York) y dinero
   cover_weak: true
