@@ -198,11 +198,39 @@ class GenAIPro:
 
 # --- the script → the narration ---------------------------------------------------------------------------------
 
+HEADINGS = {"guion", "guión", "script", "texto", "locución", "locucion", "narración", "narracion"}
+SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*:?\s*$")
+CHAPTER_TAG = re.compile(r"^\s*cap[ií]tulo\s*[\divxlc]*\s*[:.\-–—]?\s*", re.IGNORECASE)
+
+
+def clean_script(script: str) -> str:
+    """A script written for reading, made ready to narrate: «[CAPÍTULO 1 — QUIÉN ESTÁ DETRÁS — 1:00]» becomes the
+    chapter «## Quién está detrás»; «[GANCHO — 0:00]», «[CTA SUSCRIPCIÓN — 5:20]», «[TRIVIA]», «[CIERRE]» and a
+    «GUIÓN» heading go; notes inside the text («[VERIFICAR cifra de Ross]») go. GenAIPro read them aloud."""
+
+    out: list[str] = []
+    for line in script.splitlines():
+        if line.strip().strip(":").casefold() in HEADINGS:
+            continue
+        section = SECTION.match(line)
+        if section:
+            parts = [x.strip() for x in re.split(r"\s+[—–-]\s+|\s*[—–]\s*", section.group(1)) if x.strip()]
+            parts = [x for x in parts if not re.fullmatch(r"(aprox\.?\s*)?\d{1,2}:\d{2}(:\d{2})?", x, re.IGNORECASE)]
+            if parts and CHAPTER_TAG.match(parts[0]):
+                title = CHAPTER_TAG.sub("", parts[0]).strip() or (parts[1] if len(parts) > 1 else "")
+                if title:
+                    title = title if not title.isupper() else title[:1] + title[1:].lower()
+                    out += ["", f"## {title}", ""]
+            continue                                   # gancho, CTA, trivia, cierre: just marks for the writer
+        out.append(re.sub(r"\s*\[[^\]]*\]", "", line).rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip() + "\n"
+
+
 def narration_text(script: str) -> str:
     """What is said: no `## chapter` lines, no markdown marks, paragraphs kept."""
 
     lines = []
-    for line in script.splitlines():
+    for line in clean_script(script).splitlines():
         if re.match(r"^\s*#", line):
             continue
         line = re.sub(r"[*_`>]+", "", line).strip()

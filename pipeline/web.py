@@ -479,7 +479,9 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"No existe el canal {channel}")
     if any(f.name == name for f in video_folders(root)):
         raise ValueError(f"Ya hay un vídeo llamado {name}")
-    script = str(body.get("script") or "").strip()
+    from .tts import clean_script
+
+    script = clean_script(str(body.get("script") or "")).strip()     # «[CAPÍTULO 1 — …]» → «## …», notes out
     if len(script) < 200:
         raise ValueError("El guion es demasiado corto")
     folder = root / "materiales" / channel / name if channel else root / "materiales" / name

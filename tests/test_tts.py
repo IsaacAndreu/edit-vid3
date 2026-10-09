@@ -285,3 +285,15 @@ def test_a_dropped_connection_while_waiting_is_retried_but_a_create_is_not(tmp_p
     fake.request = lambda method, url, **kw: (_ for _ in ()).throw(requests.ConnectionError("reset"))
     with pytest.raises(tts.TTSError):
         api.create("hola", {**tts.DEFAULTS, "voice_id": "V1"})
+
+
+def test_a_script_written_for_reading_is_made_ready_to_narrate():
+    from pipeline.tts import clean_script, narration_text
+
+    script = ("GUIÓN\n\n[GANCHO — 0:00]\n\nEntras a una tienda.\n\n[CAPÍTULO 1 — QUIÉN ESTÁ DETRÁS — 1:00]\n\n"
+              "Factura más que Ross. [VERIFICAR cifra de Ross]\n\n[CTA SUSCRIPCIÓN — aprox. 5:20]\n\nSuscríbete.\n\n"
+              "[CAPÍTULO 2: De dónde sale]\n\nCompran barato.\n")
+    clean = clean_script(script)
+    assert "## Quién está detrás" in clean and "## De dónde sale" in clean
+    assert "[" not in clean and "GUIÓN" not in clean and "5:20" not in clean
+    assert narration_text(script) == "Entras a una tienda.\n\nFactura más que Ross.\n\nSuscríbete.\n\nCompran barato."
