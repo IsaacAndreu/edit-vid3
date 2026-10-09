@@ -257,8 +257,14 @@ def overview(root: Path) -> dict[str, Any]:
     config = RunContext.create("_web", root=root).config
     since = time.time() - 7 * 86400
     # every download of the week, line by line: minutes of reading on a busy server, so once every 5 minutes
-    youtube = cached(f"yt:{root}", 300, lambda: (lambda rows: ytstats.summary(rows) if rows else None)(
-        [r for p in (root / "work").glob("*/youtube_downloads.jsonl") for r in ytstats.read(p, since)]))
+    def youtube_stats() -> dict[str, Any] | None:
+        rows = [r for p in (root / "work").glob("*/youtube_downloads.jsonl") for r in ytstats.read(p, since)]
+        if not rows:
+            return None
+        day = time.time() - 86400                 # per proxy: the last 24 h (which PCs are on changes by day)
+        return {**ytstats.summary(rows), "byProxy": ytstats.by_proxy([r for r in rows if float(r.get("ts") or 0) >= day])}
+
+    youtube = cached(f"yt:{root}", 300, youtube_stats)
     queue_running = _lock_alive(root / "work" / ".cola.lock")
     return {
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,

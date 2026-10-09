@@ -59,6 +59,18 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def by_proxy(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """How each way out to YouTube is doing (the server itself, or each home PC/laptop proxy)."""
+
+    ways = sorted({str(r.get("proxy") or "") for r in rows})
+    if ways == [""]:
+        return []
+    import re
+
+    return [{"proxy": re.sub(r"//[^@/]*@", "//", way) or "servidor (directo)",          # never a password on screen
+             **summary([r for r in rows if str(r.get("proxy") or "") == way])} for way in ways]
+
+
 def lines(s: dict[str, Any]) -> list[str]:
     if not s["requests"] and not s["files"]:
         return []

@@ -613,7 +613,14 @@ async function stats(refresh = false) {
       <div class="card"><div class="muted small">Errores</div><div class="small" style="margin-top:6px">${Object.entries(y.errors).map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join(" · ") || "ninguno ✅"}</div></div>
       <div class="card"><div class="muted small">Descargas</div><div class="stat">${y.files_ok}/${y.files}</div><div class="small muted">${y.megabytes} MB · ${y.mbps} MB/s</div></div>
       <div class="card"><div class="muted small">Cómo</div><div class="small" style="margin-top:6px">Con cuenta: ${y.with_cookies} · PO Token: ${y.pot ? "sí" : "no"}<br>${esc(y.clients.join(", "))}</div></div>
-    </div>` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
+    </div>
+    ${(y.byProxy || []).length ? `<div class="card" style="margin-top:12px"><b>Por proxy (últimas 24 h)</b>
+      <div class="small muted">Por dónde sale cada petición a YouTube. Un proxy con muchas fallidas o «no responde» → reinicia su script; con pocos MB/s → mira su conexión (mejor por cable).</div>
+      <table style="margin-top:8px"><tr><th>Proxy</th><th>Peticiones</th><th>Fallidas</th><th>«No eres un bot»</th><th>Descargas</th><th>MB/s</th><th>s por archivo</th></tr>
+      ${y.byProxy.map((p) => `<tr><td>${esc(p.proxy)}</td><td>${p.requests}</td>
+        <td style="color:${p.requests && p.failed / p.requests > 0.15 ? "var(--bad)" : "inherit"}">${p.failed}${p.requests ? ` (${Math.round(100 * p.failed / p.requests)} %)` : ""}</td>
+        <td>${p.errors.bot || 0}</td><td>${p.files_ok}/${p.files}</td><td><b>${p.mbps}</b></td><td>${p.seconds_per_file}</td></tr>`).join("")}</table></div>` : ""}
+    ` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
     <div class="card"><div class="spend">${spend.map((d) => `<div style="height:${100 * d.usd / max}%" title="${d.usd} $"><span>${d.day.slice(5)}</span></div>`).join("")}</div>
       <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
 }
