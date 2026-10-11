@@ -38,18 +38,22 @@ def _options(way: str, client: str, pot_url: str | None) -> dict[str, Any]:
     return options
 
 
-def _piece(options: dict[str, Any], video: str, fmt: str, start: float, end: float, folder: Path) -> dict[str, Any]:
+def _piece(options: dict[str, Any], info: dict[str, Any], fmt: str, start: float, end: float,
+           folder: Path) -> dict[str, Any]:
+    """Download [start, end] from the details already fetched: only the download is timed (the first version of
+    this test fetched the details again inside it and showed 0.07 MB/s for what was 7 s of waiting)."""
+
     import yt_dlp
     from yt_dlp.utils import download_range_func
 
-    target = folder / f"{video}-{start:.0f}"
+    target = folder / f"{info['id']}-{start:.0f}"
     began = time.monotonic()
     with yt_dlp.YoutubeDL({**options, "format": fmt, "outtmpl": str(target) + ".%(ext)s",
                            "download_ranges": download_range_func(None, [(start, end)])}) as ydl:
-        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video}", download=True)
+        done = ydl.process_ie_result(dict(info), download=True)
     seconds = time.monotonic() - began
     size = sum(p.stat().st_size for p in folder.glob(f"{target.name}.*"))
-    chosen = info.get("requested_formats") or [info]
+    chosen = done.get("requested_formats") or [done]
     return {"seconds": round(seconds, 1), "mb": round(size / 1e6, 2), "mbps": round(size / 1e6 / max(seconds, 0.1), 2),
             "protocol": "+".join(sorted({str(f.get("protocol") or "?") for f in chosen})),
             "height": max(int(f.get("height") or 0) for f in chosen)}
@@ -66,9 +70,10 @@ def run(root: Path) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     folder = Path(tempfile.mkdtemp(prefix="ytprueba-"))
     try:
-        for way in ways:
-            name = way.split("@")[-1] if way else "servidor (directo)"
-            for client in CLIENTS:
+        # client by client, every proxy in turn: both proxies show up from the first minutes
+        for client in CLIENTS:
+            for way in ways:
+                name = way.split("@")[-1] if way else "servidor (directo)"
                 for video in VIDEOS:
                     row: dict[str, Any] = {"way": name, "client": client, "video": video}
                     options = _options(way, client, pot_url)
@@ -81,14 +86,15 @@ def run(root: Path) -> dict[str, Any]:
                                     "storyboard": any(str(f.get("format_id", "")).startswith("sb") for f in formats),
                                     "max_height": max([int(f.get("height") or 0) for f in formats
                                                        if f.get("vcodec") not in (None, "none")] or [0])})
-                        row["p360"] = _piece(options, video, "bv*[height<=360]/b[height<=360]", 30, 40, folder)
-                        row["p1080"] = _piece(options, video, "bv*[height<=1080][height>=720]/bv*[height<=1080]", 60, 65, folder)
+                        row["p360"] = _piece(options, info, "bv*[height<=360]/b[height<=360]", 30, 40, folder)
+                        row["p1080"] = _piece(options, info, "bv*[height<=1080][height>=720]/bv*[height<=1080]", 60, 65, folder)
                         row["ok"] = True
                     except Exception as error:             # one failing client is an answer too
                         row.update({"ok": False, "error": str(error).splitlines()[0][:200]})
                     print(f"{name} · {client} · {video}: " + (
-                        f"detalles {row['details_s']} s · 360p {row['p360']['mbps']} MB/s ({row['p360']['protocol']}) · "
-                        f"1080p {row['p1080']['mbps']} MB/s" if row.get("ok") else f"falló: {row.get('error')}"), flush=True)
+                        f"detalles {row['details_s']} s · 360p {row['p360']['mb']} MB en {row['p360']['seconds']} s "
+                        f"({row['p360']['protocol']}) · 1080p {row['p1080']['mb']} MB en {row['p1080']['seconds']} s"
+                        if row.get("ok") else f"falló: {row.get('error')}"), flush=True)
                     rows.append(row)
                     shutil.rmtree(folder, ignore_errors=True)
                     folder.mkdir(parents=True, exist_ok=True)
@@ -114,6 +120,8 @@ def summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "details_s": med([r["details_s"] for r in good]),
                     "mbps360": med([r["p360"]["mbps"] for r in good]),
                     "mbps1080": med([r["p1080"]["mbps"] for r in good]),
+                    "piece360_s": med([r["p360"]["seconds"] for r in good]),
+                    "piece1080_s": med([r["p1080"]["seconds"] for r in good]),
                     "protocol": (good[0]["p360"]["protocol"] if good else None),
                     "storyboard": all(r.get("storyboard") for r in good) if good else False,
                     "error": next((r.get("error") for r in group if not r.get("ok")), None)})

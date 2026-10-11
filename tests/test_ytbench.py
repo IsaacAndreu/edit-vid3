@@ -4,9 +4,9 @@ from pipeline import ytbench
 def test_the_summary_puts_the_fastest_working_client_first():
     rows = [
         {"way": "casa", "client": "mweb", "video": "a", "ok": True, "details_s": 5.0, "storyboard": True,
-         "p360": {"mbps": 0.1, "protocol": "https"}, "p1080": {"mbps": 0.2}},
+         "p360": {"mbps": 0.1, "protocol": "https", "seconds": 8}, "p1080": {"mbps": 0.2, "seconds": 9}},
         {"way": "casa", "client": "web_safari", "video": "a", "ok": True, "details_s": 3.0, "storyboard": True,
-         "p360": {"mbps": 2.5, "protocol": "m3u8_native"}, "p1080": {"mbps": 3.0}},
+         "p360": {"mbps": 2.5, "protocol": "m3u8_native", "seconds": 1}, "p1080": {"mbps": 3.0, "seconds": 2}},
         {"way": "casa", "client": "android_vr", "video": "a", "ok": False, "error": "Sign in to confirm"},
     ]
     summary = ytbench.summary(rows)

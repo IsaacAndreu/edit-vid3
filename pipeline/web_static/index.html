@@ -560,7 +560,7 @@ let statsSort = "views", statsChannel = "";
 function benchCard(bench) {
   const r = bench.result, job = bench.job || {};
   const rows = r ? r.summary.map((x, i) => `<tr${i === 0 && x.ok ? ' style="font-weight:700"' : ""}><td>${esc(x.way)}</td><td>${esc(x.client)}</td>
-      <td>${x.ok}/${x.of}</td><td>${x.details_s ?? "—"} s</td><td>${x.mbps360 ?? "—"}</td><td>${x.mbps1080 ?? "—"}</td>
+      <td>${x.ok}/${x.of}</td><td>${x.details_s ?? "—"} s</td><td>${x.mbps360 ?? "—"} <span class="muted">(${x.piece360_s ?? "—"} s)</span></td><td>${x.mbps1080 ?? "—"} <span class="muted">(${x.piece1080_s ?? "—"} s)</span></td>
       <td>${esc(x.protocol || "")}</td><td>${x.storyboard ? "✅" : "—"}</td>
       <td class="small muted">${x.ok < x.of ? esc(String(x.error || "").slice(0, 80)) : ""}</td></tr>`).join("") : "";
   return `<div class="card" style="margin-top:20px"><div class="row" style="justify-content:space-between">
@@ -569,7 +569,7 @@ function benchCard(bench) {
     <div class="small muted" style="margin-top:4px">Cada proxy × cada cliente de YouTube: cuánto tardan los detalles de un vídeo y a qué velocidad baja un trozo de 360p y de 1080p.
       El de arriba (en negrita) es el más rápido que funciona: dímelo y lo pongo por defecto.</div>
     ${r ? `<div class="small muted" style="margin-top:6px">Última prueba: ${esc(r.at.replace("T", " ").slice(0, 16))}</div>
-      <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th>Salida</th><th>Cliente</th><th>Vídeos OK</th><th>Detalles</th><th>360p MB/s</th><th>1080p MB/s</th><th>Protocolo</th><th>Storyboard</th><th></th></tr>${rows}</table></div>` : ""}
+      <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th>Salida</th><th>Cliente</th><th>Vídeos OK</th><th>Detalles</th><th>360p MB/s (s por trozo)</th><th>1080p MB/s (s por trozo)</th><th>Protocolo</th><th>Storyboard</th><th></th></tr>${rows}</table></div>` : ""}
     ${job.running && job.log ? `<pre style="max-height:160px">${esc(job.log.split("\n").slice(-8).join("\n"))}</pre>` : ""}</div>`;
 }
 window.runBench = async (button) => {
