@@ -676,7 +676,7 @@ async function updateNow(button) {
   try {
     const r = await post("/api/update");
     alert(r.message);
-    if (r.changed) { data = null; setTimeout(() => location.reload(), 4000); }
+    setTimeout(() => location.reload(), r.changed ? 4000 : 300);    // «ya al día» too: the tab may be older
   } catch (e) { alert(e.message); }
   button.disabled = false; button.textContent = "🔄 Actualizar ahora";
 }
@@ -1534,6 +1534,11 @@ async function route() {
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
     const s = data && data.service;
+    // a tab opened before an update keeps the old page (it is one page): reload it once the server has new code
+    if (s && s.code && s.code.id) {
+      if (!window.codeId) window.codeId = s.code.id;
+      else if (window.codeId !== s.code.id) { location.reload(); return; }
+    }
     $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
