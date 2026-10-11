@@ -90,6 +90,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="Con --web: dónde escucha (127.0.0.1 = solo este equipo; en la VPS lo publica Caddy).")
     target.add_argument("--bot", action="store_true",
                         help="Bot de Telegram: /estado, /gasto, /videos, /errores… y un parte cada hora (TELEGRAM_* en .env).")
+    target.add_argument("--velocidad-youtube", action="store_true",
+                        help="Prueba de velocidad: cada proxy × cada cliente de yt-dlp (detalles, 360p, 1080p) → out/_youtube_prueba.json.")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
     target.add_argument("--compilar", metavar="CANAL",
@@ -863,6 +865,12 @@ def main() -> None:
 
         report = noticias.scan(PROJECT_ROOT)
         print("\n".join(noticias.telegram_lines(report)) or "Nada que suba ahora mismo.")
+        return
+    if args.velocidad_youtube:
+        from pipeline import ytbench
+
+        best = (ytbench.run(PROJECT_ROOT)["summary"] or [{}])[0]
+        print(f"Más rápido: {best.get('way')} · {best.get('client')} · 360p {best.get('mbps360')} MB/s")
         return
     if args.radar:
         from pipeline import radar

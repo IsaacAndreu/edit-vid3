@@ -557,8 +557,29 @@ async function videoPage(slug) {
 }
 
 let statsSort = "views", statsChannel = "";
+function benchCard(bench) {
+  const r = bench.result, job = bench.job || {};
+  const rows = r ? r.summary.map((x, i) => `<tr${i === 0 && x.ok ? ' style="font-weight:700"' : ""}><td>${esc(x.way)}</td><td>${esc(x.client)}</td>
+      <td>${x.ok}/${x.of}</td><td>${x.details_s ?? "—"} s</td><td>${x.mbps360 ?? "—"}</td><td>${x.mbps1080 ?? "—"}</td>
+      <td>${esc(x.protocol || "")}</td><td>${x.storyboard ? "✅" : "—"}</td>
+      <td class="small muted">${x.ok < x.of ? esc(String(x.error || "").slice(0, 80)) : ""}</td></tr>`).join("") : "";
+  return `<div class="card" style="margin-top:20px"><div class="row" style="justify-content:space-between">
+      <b>🧪 Prueba de velocidad de YouTube</b>
+      <button onclick="runBench(this)" ${job.running ? "disabled" : ""}>${job.running ? "Probando… (5-15 min)" : "Probar ahora"}</button></div>
+    <div class="small muted" style="margin-top:4px">Cada proxy × cada cliente de YouTube: cuánto tardan los detalles de un vídeo y a qué velocidad baja un trozo de 360p y de 1080p.
+      El de arriba (en negrita) es el más rápido que funciona: dímelo y lo pongo por defecto.</div>
+    ${r ? `<div class="small muted" style="margin-top:6px">Última prueba: ${esc(r.at.replace("T", " ").slice(0, 16))}</div>
+      <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th>Salida</th><th>Cliente</th><th>Vídeos OK</th><th>Detalles</th><th>360p MB/s</th><th>1080p MB/s</th><th>Protocolo</th><th>Storyboard</th><th></th></tr>${rows}</table></div>` : ""}
+    ${job.running && job.log ? `<pre style="max-height:160px">${esc(job.log.split("\n").slice(-8).join("\n"))}</pre>` : ""}</div>`;
+}
+window.runBench = async (button) => {
+  if (!confirm("¿Probar ahora? Tarda 5-15 min y hace unas 50 peticiones a YouTube (mejor cuando la cola no esté a tope).")) return;
+  button.disabled = true; await post("/api/ytbench"); setTimeout(() => stats(), 3000);
+};
+
 async function stats(refresh = false) {
   const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
+  const bench = await api("/api/ytbench").catch(() => ({}));
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
   const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
   const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
@@ -608,12 +629,14 @@ async function stats(refresh = false) {
         <td style="text-align:right;padding-right:8px">${l.correcta || l.incorrecta ? `${l.correcta} / ${l.incorrecta}` : "—"}</td></tr>`; }).join("")}
     </table></div>
 
+    ${benchCard(bench)}
     <details style="margin-top:24px"><summary class="small muted" style="cursor:pointer">Técnico: descargas de YouTube y gasto de API por día</summary>
     ${y ? `<div class="grid" style="margin-top:10px">
       <div class="card"><div class="muted small">Peticiones (7 días)</div><div class="stat">${y.requests}</div><div class="small muted">${y.ok} bien · ${y.failed} fallidas</div></div>
       <div class="card"><div class="muted small">Errores</div><div class="small" style="margin-top:6px">${Object.entries(y.errors).map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join(" · ") || "ninguno ✅"}</div></div>
       <div class="card"><div class="muted small">Descargas</div><div class="stat">${y.files_ok}/${y.files}</div><div class="small muted">${y.megabytes} MB · ${y.mbps} MB/s</div></div>
-      <div class="card"><div class="muted small">Cómo</div><div class="small" style="margin-top:6px">Con cuenta: ${y.with_cookies} · PO Token: ${y.pot ? "sí" : "no"}<br>${esc(y.clients.join(", "))}</div></div>
+      <div class="card"><div class="muted small">Cómo</div><div class="small" style="margin-top:6px">Con cuenta: ${y.with_cookies} · PO Token: ${y.pot ? "sí" : "no"}<br>${esc(y.clients.join(", "))}
+        ${y.answer_avg ? `<br>Cada petición: <b>${y.answer_avg} s</b> YouTube + ${y.wait_avg} s en nuestra cola` : ""}</div></div>
     </div>
     ${(y.byProxy || []).length ? `<div class="card" style="margin-top:12px"><b>Por proxy (últimas 24 h)</b>
       <div class="small muted">Por dónde sale cada petición a YouTube. Un proxy con muchas fallidas o «no responde» → reinicia su script; con pocos MB/s → mira su conexión (mejor por cable).</div>
@@ -624,6 +647,7 @@ async function stats(refresh = false) {
     ` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
     <div class="card"><div class="spend">${spend.map((d) => `<div style="height:${100 * d.usd / max}%" title="${d.usd} $"><span>${d.day.slice(5)}</span></div>`).join("")}</div>
       <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
+  if (bench.job && bench.job.running) schedule(() => stats(), 15000);      // the speed test shows its progress
 }
 
 async function restartQueue(button) {

@@ -127,9 +127,21 @@ def download_file(session: requests.Session, url: str, target: Path, *, pacer: P
     return target
 
 
-def cached_json(cache_file: Path, producer: Callable[[], Any]) -> Any:
-    """Return cache_file's JSON, or produce, store and return it."""
+_FLIGHTS: dict[str, threading.Lock] = {}
+_FLIGHTS_LOCK = threading.Lock()
 
+
+def cached_json(cache_file: Path, producer: Callable[[], Any]) -> Any:
+    """Return cache_file's JSON, or produce, store and return it. Single-flight: when several shots ask for the same
+    thing at once (the same search, the same video's details), one asks YouTube and the rest wait for its answer."""
+
+    with _FLIGHTS_LOCK:
+        flight = _FLIGHTS.setdefault(str(cache_file), threading.Lock())
+    with flight:
+        return _cached_json(cache_file, producer)
+
+
+def _cached_json(cache_file: Path, producer: Callable[[], Any]) -> Any:
     if cache_file.is_file():
         try:
             return json.loads(cache_file.read_text(encoding="utf-8"))

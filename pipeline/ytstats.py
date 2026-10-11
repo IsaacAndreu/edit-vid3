@@ -56,6 +56,9 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "megabytes": round(megabytes, 1),
         "seconds_per_file": round(seconds / len(done), 1) if done else 0.0,
         "mbps": round(megabytes / seconds, 2) if seconds else 0.0,
+        # our own queue before asking (slots + 1 req/s per proxy) vs the time YouTube took to answer
+        "wait_avg": round(sum(float(r.get("wait") or 0) for r in calls) / len(calls), 2) if calls else 0.0,
+        "answer_avg": round(sum(float(r.get("seconds") or 0) for r in calls) / len(calls), 2) if calls else 0.0,
     }
 
 

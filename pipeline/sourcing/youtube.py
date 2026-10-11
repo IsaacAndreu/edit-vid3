@@ -299,7 +299,7 @@ class YouTubeSource:
         row: dict[str, Any] = {"ts": round(time.time(), 1), "stage": self.stage, "action": action,
                                "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
                                "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
-                               "seconds": round(seconds, 2)}
+                               "seconds": round(seconds, 2), "wait": round(getattr(self._local, "waited", 0.0), 2)}
         if len(self.proxies) > 1:
             row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
         if size is not None:
@@ -407,7 +407,8 @@ class YouTubeSource:
             if with_account and self._sets and self._local.account is None:
                 self._blocked_everywhere()
             tries += 1
-            began = time.monotonic()
+            began = queued = time.monotonic()
+            self._local.waited = 0.0
             try:
                 with self._slots:
                     way = self._local.way = self._pick_way(tried_ways)
@@ -420,6 +421,7 @@ class YouTubeSource:
                             self._count("espera por límite", delay)
                         self._pacers[way].wait()
                         began = time.monotonic()
+                        self._local.waited = began - queued     # our own queue (slots + 1 req/s), not YouTube
                         try:
                             result = fn()
                         finally:

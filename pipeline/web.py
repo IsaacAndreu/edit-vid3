@@ -992,6 +992,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if path == "/api/ytbench":                 # the last speed test of the ways to YouTube
+                    from . import ytbench
+
+                    found = _json(root / ytbench.OUTPUT)
+                    return self._ok({"result": found, "job": job_state(root, "velocidad-youtube")})
                 if path == "/api/errors":
                     from . import feedback
 
@@ -1053,6 +1058,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(settings(root, body))
                 if path == "/api/search":                  # {q}: a whole pasted script does not fit in a URL
                     return self._ok(search_videos(root, str(body.get("q") or "")[:30000]))
+                if path == "/api/ytbench":
+                    return self._ok(background(root, "velocidad-youtube", ["--velocidad-youtube"]))
                 if path == "/api/restart-queue":
                     return self._ok(restart_queue(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
