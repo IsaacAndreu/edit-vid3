@@ -122,7 +122,7 @@ class YouTubeCandidateTests(unittest.TestCase):
                 raise Exception("ERROR: Sign in to confirm you’re not a bot")
 
             with self.assertRaises(SourceUnavailable):
-                yt._call("metadata", boom)
+                yt._call("search", boom)                 # a search asking «not a bot» is the connection
             with self.assertRaises(SourceUnavailable):
                 yt._call("metadata", boom)
             self.assertEqual(len(calls), 1)

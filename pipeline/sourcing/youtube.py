@@ -444,7 +444,10 @@ class YouTubeSource:
                         self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
                         tried_ways.add(way)
                         continue
-                    if kind == "bot":                # YouTube is wary of that IP: same request through another one
+                    # YouTube is wary of that IP: same request through another one — only when the proxies leave
+                    # by different connections. Two PCs behind one home router are ONE IP for YouTube, and hopping
+                    # just doubled the requests that got it blocked (proxies_share_ip, default true)
+                    if kind == "bot" and not self.cfg.get("proxies_share_ip", True):
                         self._rest(way, float(self.cfg.get("proxy_bot_rest_minutes", 5)) * 60, "YouTube pide «no eres un bot»")
                         tried_ways.add(way)
                         continue
@@ -452,11 +455,28 @@ class YouTubeSource:
                     with_account = True          # this video needs an account: try it once with one
                     continue
                 if (kind == "bot" and self.cookies_mode == "fallback" and self._sets and not with_account
-                        and self.cfg.get("cookies_on_bot", True)):
+                        and self.cfg.get("cookies_on_bot", False)):       # an account is no fuse for the crawler
                     with_account = True          # this IP gets the bot check (a server's): the request again with an account
                     continue
                 if kind == "auth":
                     raise RuntimeError(f"yt-dlp {action}: el vídeo necesita una cuenta ({message[:160]})") from None
+                if kind == "bot" and self._local.account is None:
+                    # Circuit breaker: one video asking «not a bot» is that video (Big Buck Bunny failed with every
+                    # client while others passed): drop it, never retry it another way. The same answer for several
+                    # different videos in a few minutes is the whole connection: stop all YouTube now.
+                    # A search is no one video's: the bot check there is the connection, so it stops at once
+                    if action == "search":
+                        self._blocked_everywhere()
+                    video = getattr(self._local, "video_id", None) or f"{action}-{time.monotonic()}"
+                    now = time.monotonic()
+                    window = 60 * float(self.cfg.get("bot_breaker_minutes", 10))
+                    with self._turn_lock:
+                        self._bot_videos = [(t, v) for t, v in getattr(self, "_bot_videos", []) if now - t < window]
+                        self._bot_videos.append((now, video))
+                        distinct = len({v for _, v in self._bot_videos})
+                    if distinct >= int(self.cfg.get("bot_breaker_videos", 3)):
+                        self._blocked_everywhere()
+                    raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» para este vídeo; se descarta") from None
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
                     index = self._local.account
                     if index is not None:

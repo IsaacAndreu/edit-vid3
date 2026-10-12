@@ -234,7 +234,8 @@ def test_a_servers_bot_check_is_not_taken_for_a_video_that_needs_an_account(tmp_
     assert error_kind(bot) == "bot"
     assert error_kind("ERROR: Sign in to confirm your age. Use --cookies") == "auth"
     sets = [(f"# cookies {n}", None) for n in range(2)]
-    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "fallback"}, cookie_sets=sets)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "fallback", "cookies_on_bot": True},
+                       cookie_sets=sets)
     calls = []
 
     def flagged_ip():
@@ -290,7 +291,32 @@ def test_several_proxies_share_the_work_and_one_that_fails_rests(tmp_path, monke
         return "ok"
 
     yt._busy = [0, 1]                                                     # home is the least busy: tried first
+    yt.cfg["proxies_share_ip"] = False                                    # two real connections: hop on a bot check
     assert yt._call("metadata", wary_home) == "ok" and seen == [home, laptop]
+
+
+def test_a_bot_check_drops_that_video_and_several_stop_youtube(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    home, laptop = "http://100.64.0.2:8899", "http://100.64.0.3:8899"
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
+                       config={"proxies": [home, laptop], "min_interval": 0, "cookies": "never"})
+    seen = []
+
+    def bot():
+        seen.append(yt._ydl().params["proxy"])
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    for n, video in enumerate(["a1", "b2"]):                              # one video each: dropped, never hopped
+        yt._local.video_id = video
+        with pytest.raises(RuntimeError, match="se descarta"):
+            yt._call("metadata", bot)
+        assert len(seen) == n + 1 and yt.blocked is None
+    yt._local.video_id = "c3"                                             # the third different one: the connection
+    with pytest.raises(SourceUnavailable):
+        yt._call("metadata", bot)
+    with pytest.raises(SourceUnavailable):                                # and nothing else goes out
+        yt._call("metadata", bot)
+    assert len(seen) == 3
 
 
 def test_proxy_list_from_env_or_config():
