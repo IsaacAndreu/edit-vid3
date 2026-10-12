@@ -293,7 +293,7 @@ def _same_title(a: str, b: str) -> bool:
 
 def find_uploads(root: Path) -> list[str]:
     """Finished videos that are already on your channel (same title), marked as published. Needs your channel per
-    profile (studio → Ajustes) and YOUTUBE_API_KEYS; ~2 API units per channel."""
+    profile (studio → Ajustes) and YOUTUBE_API_KEY; ~2 API units per channel."""
 
     from .context import video_folders
     from .mychannel import handle_for

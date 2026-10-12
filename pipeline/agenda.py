@@ -360,7 +360,7 @@ def _video_id(url: str) -> str | None:
 def tracking(root: Path, now: float | None = None) -> list[str]:
     """Views of each published video at 48 h and at 7 days, against the median of the channel's earlier ones at the
     same moment. Returns the messages to send (each one once). Needs the video's link (found on your channel or
-    pasted with «Ya está subido») and YOUTUBE_API_KEYS."""
+    pasted with «Ya está subido») and YOUTUBE_API_KEY."""
 
     from .context import RunContext
     from .ytapi import YouTubeAPI

@@ -133,11 +133,16 @@ equipos): el proxy no queda abierto a internet y solo deja pasar direcciones de 
 4. Que arranque solo: `Win+R` → `shell:startup` → crea ahí un acceso directo a `proxy-youtube.bat`, y que el PC no
    se suspenda (LOCAL.md, «Que el PC no se duerma»).
 
-**Varios proxies (más rápido):** cada equipo con **otra conexión a internet** (un portátil con datos móviles, en casa
-de un familiar…) es otra IP: el servidor reparte las peticiones entre todos, cada uno con su ritmo (`min_interval`) y
-sus `concurrency` descargas a la vez, y el que no responde (apagado, sin Tailscale) o al que YouTube empieza a pedir
-«no eres un bot» descansa unos minutos (`proxy_rest_minutes: 10`, `proxy_bot_rest_minutes: 5`) mientras los otros
-siguen. Dos equipos en el mismo router son la misma IP: solo sirven de recambio, no van más rápido.
+**Varios proxies (más rápido):** cada equipo con **otra conexión a internet** propia y autorizada es otra IP: el
+servidor reparte las peticiones entre todos, cada uno con su ritmo (`min_interval`) y sus `concurrency` descargas a la
+vez, nunca más aunque otro esté parado. El que no responde (apagado, sin Tailscale) descansa unos minutos
+(`proxy_rest_minutes: 10`). Al que YouTube pide «no eres un bot» entra en **cuarentena** (`bot_quarantine_minutes:
+120`, guardada en disco para todos los procesos): no sale nada por él, y lo que se le negó **no** se pide por otro
+proxy ni con una cuenta. Con todos en cuarentena se para todo YouTube (la cola se pausa y la prueba horaria no sale
+hasta que acaba). Dos equipos en el mismo router son la misma IP: solo sirven de recambio, no van más rápido.
+
+**Regla:** una red que no es tuya (la del trabajo) solo con permiso explícito de quien la gestiona, y nunca para
+saltarse un bloqueo de otra conexión. Si no lo tienes, quita ese proxy de `proxies` en `config.local.yaml`.
 
 1. En el portátil: Python (python.org, «Add python.exe to PATH») y Tailscale con la misma cuenta; copia la carpeta
    `scripts\casa` (o el repo entero) y abre `instalar-proxy.bat` con botón derecho → *Ejecutar como administrador*:

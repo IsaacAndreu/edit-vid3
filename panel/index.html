@@ -163,7 +163,7 @@ async function quota() {
   try {
     const q = await api("/api/quota");
     const pct = q.total ? Math.round(100 * q.left / q.total) : 0;
-    $("#quota").firstChild.textContent = q.keys ? `${q.keys} claves · ${fmt(q.left)} u. libres hoy (~${q.searchesLeft} búsquedas)` : "Sin claves: añade YOUTUBE_API_KEYS a .env";
+    $("#quota").firstChild.textContent = q.keys ? `${fmt(q.left)} u. libres hoy (~${q.searchesLeft} búsquedas)` : "Sin clave: añade YOUTUBE_API_KEY a .env";
     $("#quota i").style.width = pct + "%";
     return q;
   } catch (e) { $("#quota").firstChild.textContent = e.message; }

@@ -68,9 +68,9 @@ leer las cookies de Firefox en cada ejecución, siempre frescas:
 Solo se leen las cookies de YouTube/Google, nada más del navegador. Con Chrome no funciona
 (desde 2024 cifra las cookies para que otros programas no puedan leerlas).
 
-**Búsquedas con tus claves de la API.** Con `YOUTUBE_API_KEYS` en `.env`, las búsquedas van por la
-API oficial (sin bloqueos). Cada vídeo gasta ~45.000 unidades; con ~100.000 al día cubre unos 2
-vídeos, y cuando se acaba la cuota sigue buscando con yt-dlp y tus cookies.
+**Búsquedas con la API.** Con `YOUTUBE_API_KEY` en `.env`, las búsquedas van por la API oficial (sin
+bloqueos). Con la cuota por defecto (100 búsquedas al día) no llega para un documental entero: lo que
+falta se busca con yt-dlp. La búsqueda por escenas (`sourcing.scene_search`) reduce mucho las búsquedas.
 
 Las cookies duran semanas o meses; cuando una caduca verás «YouTube bloqueó cuenta2.txt» y basta
 con volver a exportarla. Mantén yt-dlp al día: `pip install -U yt-dlp`.
@@ -135,7 +135,7 @@ Se abre `http://127.0.0.1:8080` en el navegador (solo desde este PC; no pide con
 - **Competencia**: el radar del día por canal (los vídeos que más superan a su canal en los últimos 30 días, de tus
   competidores y de las búsquedas del nicho, con «nuevo» en lo que no estaba ayer) y **nichos nuevos** medidos en
   YouTube (cuántos vídeos superan 3× a su canal y cuántos son de canales pequeños). «Buscar ahora» o, con el servidor
-  vigilando, solo cada mañana (`radar:` en config.yaml). Necesita `YOUTUBE_API_KEYS`. Por comando: `--radar`.
+  vigilando, solo cada mañana (`radar:` en config.yaml). Necesita `YOUTUBE_API_KEY`. Por comando: `--radar`.
   - **💡 Ideas para este nicho** (y **💡 Ideas como este** en cada vídeo de la competencia): 5 ideas de vídeo sacadas
     de lo que funciona ahí, cada una con título, formato, enfoque, gancho, esquema por capítulos, qué metraje hay y
     qué comprobar antes de escribir. «Más ideas» pide otras sin repetir. Cada idea: **Crear vídeo** (abre «Nuevo
@@ -383,12 +383,16 @@ inclinados en perspectiva, con relieve suave y un avión que recorre la ruta.
 
 ## 8. Panel de investigación (tipo TubeLab)
 
-Añade tus claves de la API de YouTube a `.env`, separadas por comas (si alguna tiene más cuota que
-la normal de 10 000 unidades, ponla como `clave:50000`):
+Añade la clave de **un solo proyecto** de Google Cloud a `.env` (repartir el trabajo entre varios
+proyectos para sumar cuota va contra la política de la API de YouTube). Si Google te aprueba más cuota
+por su formulario oficial, ponla como `clave:50000` y sube `lab.searches_per_day`:
 
 ```
-YOUTUBE_API_KEYS=clave1,clave2,clave3,clave4,clave5,clave6
+YOUTUBE_API_KEY=tu_clave
 ```
+
+Una segunda clave de desarrollo (`YOUTUBE_API_KEY_DEV`) solo se usa con `YOUTUBE_API_ENTORNO=desarrollo`,
+nunca a la vez que la de producción. De un `YOUTUBE_API_KEYS=…` antiguo solo se usa la primera.
 
 y abre el panel:
 
@@ -407,8 +411,9 @@ Se abre en el navegador (`http://127.0.0.1:8765`, solo en tu PC). Pestañas:
 - **Ideas**: las del día y un botón para generar 3 nuevas.
 
 Cuota: cada búsqueda cuesta ~100–160 unidades (100 la búsqueda + ~1–2 por canal nuevo; lo repetido sale
-de la caché). Con 100 000 unidades al día son unas 600 búsquedas. Arriba a la derecha ves lo que
-queda hoy; cuando una clave se agota pasa sola a la siguiente, y se renuevan a las 9:00 (hora de España).
+de la caché) y cuenta además en su propio límite diario de búsquedas (`lab.searches_per_day`, 100 por
+defecto). Comprueba la cuota real del proyecto en Google Cloud Console. Arriba a la derecha ves lo que
+queda hoy; se renueva a las 9:00 (hora de España).
 
 Con claves configuradas, `--ideas` busca además outliers en todo el nicho (las 6 primeras
 búsquedas de `lab.queries`, ~1 000 unidades al día), no solo en los canales de la competencia.
@@ -685,7 +690,7 @@ Con una NVIDIA (p. ej. GTX 1650) el programa la usa sola, y si algo falla vuelve
 canal y guardada en `cache/render/endscreen/`) los monta ffmpeg.
 
 **YouTube más rápido:**
-- Búsquedas por la API oficial (12 claves ≈ 1.200 búsquedas al día); si una respuesta falla, solo esa va por yt-dlp.
+- Búsquedas por la API oficial (un proyecto; 100 búsquedas al día por defecto); si una respuesta falla, solo esa va por yt-dlp.
 - Los vídeos que la API ya marca por debajo de 720p no se consultan con yt-dlp.
 - Análisis: un vídeo con 3 o más ventanas a mirar se baja una vez entero a 360p y las ventanas se cortan de ahí
   (`analysis.whole_video_windows`).

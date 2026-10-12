@@ -5,7 +5,7 @@ config.yaml (`ideas:`) with yt-dlp — no YouTube API key — and scores each vi
 channel: views / median views of that channel's recent videos. Outliers (≥ `min_ratio`) are what
 the audience is asking for right now. The LLM turns them, plus your channel's best videos, into
 3 ideas (title, protagonist, angle, hook, why) that are not already made or suggested before.
-With YouTube API keys (YOUTUBE_API_KEYS) it also searches the whole niche (`lab.queries`) for
+With YouTube API keys (YOUTUBE_API_KEY) it also searches the whole niche (`lab.queries`) for
 outliers of any channel, and reads the videos you saved in the panel.
 Result: out/_ideas/<date>.md, and the same by email/Telegram if configured.
 """

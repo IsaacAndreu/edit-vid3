@@ -95,19 +95,39 @@ def test_cache_and_quota_ledger(tmp_path):
     api.search("x")                      # cached: no second call
     assert [c[0] for c in fake.calls] == ["search"]
     quota = api.quota()
-    assert quota["used"] == 100 and quota["left"] == 19_900 and quota["keys"] == 2
+    assert quota["used"] == 100 and quota["left"] == 9_900 and quota["keys"] == 1 and quota["searchesLeft"] == 99
     assert "k1" not in (tmp_path / "cache" / "ytapi" / "quota.json").read_text()   # keys never written
 
 
-def test_rotates_to_next_key_when_quota_exceeded(tmp_path):
-    fake = FakeYouTube(quota_fail_keys={"k1"})
-    api = _api(tmp_path, fake)
-    assert api.search("y") == ["v1", "v2", "s1"]
-    assert [c[1] for c in fake.calls] == ["k1", "k2"]
-    api.search("z")                      # k1 parked for the day → straight to k2
-    assert fake.calls[-1][1] == "k2" and len(fake.calls) == 3
-    assert api.quota()["left"] == 10_000 - 200
+def test_one_project_only_and_its_own_search_limit(tmp_path, monkeypatch):
+    import pytest
+    from pipeline.ytapi import NoKeysLeft, chosen_key
 
+    fake = FakeYouTube(quota_fail_keys={"k1"})
+    api = _api(tmp_path, fake)                       # an old list of keys: only the first is used, never rotated
+    assert api.keys == ["k1"]
+    with pytest.raises(NoKeysLeft):
+        api.search("y")
+    assert [c[1] for c in fake.calls] == ["k1"]
+    with pytest.raises(NoKeysLeft):                  # parked for the day: nothing else goes out
+        api.search("z")
+    assert len(fake.calls) == 1
+
+    env = {"YOUTUBE_API_KEY": "prod", "YOUTUBE_API_KEYS": "a,b", "YOUTUBE_API_KEY_DEV": "dev"}
+    get = lambda name, required=False: env.get(name, "")     # noqa: E731
+    assert chosen_key(get) == ("prod", "producción")
+    env["YOUTUBE_API_ENTORNO"] = "desarrollo"
+    assert chosen_key(get) == ("dev", "desarrollo")
+
+    ctx = RunContext.create("_t", root=tmp_path / "b", config={"lab": {"searches_per_day": 2}})
+    monkeypatch.setenv("YOUTUBE_API_KEY", "k9")
+    ctx._env_loaded = True
+    limited = YouTubeAPI(ctx, session=FakeYouTube())
+    limited.search("uno")
+    limited.search("dos")
+    with pytest.raises(NoKeysLeft, match="búsquedas"):
+        limited.search("tres")
+    assert limited.quota()["searchesLeft"] == 0 and limited.quota()["searches"] == 2
 
 def test_no_keys_left(tmp_path):
     fake = FakeYouTube(quota_fail_keys={"k1"})
@@ -129,6 +149,6 @@ def test_saved_roundtrip(tmp_path):
     assert [v["id"] for v in lab.unsave(ctx, "v1")] == ["v2"]
 
 
-def test_per_key_limits(tmp_path):
-    api = _api(tmp_path, FakeYouTube(), keys="k1:50000,k2")
-    assert api.keys == ["k1", "k2"] and api.quota()["total"] == 60_000
+def test_raised_quota_of_the_one_key(tmp_path):
+    api = _api(tmp_path, FakeYouTube(), keys="k1:50000")
+    assert api.keys == ["k1"] and api.quota()["total"] == 50_000

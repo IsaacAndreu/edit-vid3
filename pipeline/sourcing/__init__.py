@@ -204,7 +204,7 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
             quota = api.quota()
             if quota["searchesLeft"] > 0:
                 source.api = api
-                print(f"   YouTube: búsquedas con la API ({len(api.keys)} claves, ~{quota['searchesLeft']} búsquedas libres hoy)")
+                print(f"   YouTube: búsquedas con la API (proyecto de {api.environment}, ~{quota['searchesLeft']} búsquedas libres hoy)")
     return source
 
 

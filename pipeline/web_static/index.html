@@ -939,7 +939,7 @@ async function radarPage() {
   $("#app").innerHTML = `<div class="row" style="justify-content:space-between"><h1>Radar</h1>
       <div class="row" style="gap:6px"><button onclick="runNews()" ${r.newsJob.running ? "disabled" : ""}>📰 Noticias ahora</button>
       <button class="main" onclick="runRadar()" ${r.job.running ? "disabled" : ""}>Buscar todo ahora</button></div></div>
-    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada día a las 13:00 y te llega el resumen por Telegram` : "Todavía no hay radar: pulsa «Buscar todo ahora» (necesita YOUTUBE_API_KEYS)."}
+    <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada día a las 13:00 y te llega el resumen por Telegram` : "Todavía no hay radar: pulsa «Buscar todo ahora» (necesita YOUTUBE_API_KEY)."}
       ${latest && latest.outOfQuota ? " · ⚠ se acabó la cuota de la API a mitad" : ""}</div>
     ${jobLine(r.job, "Buscando en YouTube")}${jobLine(r.newsJob, "Buscando noticias")}
 
@@ -1088,7 +1088,7 @@ async function channelPage() {
     ${jobLine(c.job, "Analizando el canal")}`;
   window.analyse = async () => { await post("/api/mychannel/" + encodeURIComponent(myChannel)); route(); };
   if (c.job.running) schedule(route, 6000);
-  if (!r) { $("#app").innerHTML = head + (c.handle ? '<div class="notice">Pulsa «Analizar ahora» (necesita YOUTUBE_API_KEYS).</div>' : ""); return; }
+  if (!r) { $("#app").innerHTML = head + (c.handle ? '<div class="notice">Pulsa «Analizar ahora» (necesita YOUTUBE_API_KEY).</div>' : ""); return; }
   const n = r.numbers, maxMonth = Math.max(1, ...r.months.map((m) => m.long + m.shorts));
   const maxDay = Math.max(2, ...r.perDay.map((d) => d.ratio || 0));
   const card = (label, value, sub) => `<div class="card"><div class="muted small">${label}</div><div class="stat">${value}</div><div class="small muted">${sub || ""}</div></div>`;

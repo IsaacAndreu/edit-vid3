@@ -280,43 +280,57 @@ def test_several_proxies_share_the_work_and_one_that_fails_rests(tmp_path, monke
     assert all(yt._call("metadata", laptop_off) == "ok" for _ in range(4))
     assert yt._resting[1] > 0 and yt._pick_way() == 0                    # the laptop rests, home carries on
 
-    bot = "Sign in to confirm you're not a bot"
-    yt._resting = [0.0, 0.0]
+
+
+def test_a_bot_check_quarantines_that_way_and_never_hops(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    home, work = "http://100.64.0.2:8899", "http://100.64.0.3:8899"
+    config = {"proxies": [home, work], "min_interval": 0, "cookies": "never"}
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config=config)
     seen = []
 
     def wary_home():
         seen.append(yt._ydl().params["proxy"])
         if seen[-1] == home:
-            raise RuntimeError(bot)
+            raise RuntimeError("Sign in to confirm you're not a bot")
         return "ok"
 
     yt._busy = [0, 1]                                                     # home is the least busy: tried first
-    assert yt._call("metadata", wary_home) == "ok" and seen == [home, laptop]
+    with pytest.raises(RuntimeError, match="cuarentena"):                # dropped, not sent again through work
+        yt._call("metadata", wary_home)
+    assert seen == [home] and yt.blocked is None
+    assert [yt._call("metadata", wary_home) for _ in range(3)] == ["ok"] * 3 and set(seen[1:]) == {work}
+    again = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config=config)   # the next video remembers it
+    assert again._in_quarantine(0) and not again._in_quarantine(1) and again._pick_way() == 1
 
 
-def test_a_bot_check_drops_that_video_and_several_stop_youtube(tmp_path, monkeypatch):
+def test_every_way_in_quarantine_stops_youtube(tmp_path, monkeypatch):
+    from pipeline.sourcing.youtube import all_quarantined
+
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    home, laptop = "http://100.64.0.2:8899", "http://100.64.0.3:8899"
+    ways = ["http://100.64.0.2:8899", "http://100.64.0.3:8899"]
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
-                       config={"proxies": [home, laptop], "min_interval": 0, "cookies": "never",
-                               "proxies_share_ip": True})                # one router: no hop
-    seen = []
+                       config={"proxies": ways, "min_interval": 0, "cookies": "never"})
+    calls = []
 
     def bot():
-        seen.append(yt._ydl().params["proxy"])
+        calls.append(1)
         raise RuntimeError("Sign in to confirm you're not a bot")
 
-    for n, video in enumerate(["a1", "b2"]):                              # one video each: dropped, never hopped
-        yt._local.video_id = video
-        with pytest.raises(RuntimeError, match="se descarta"):
-            yt._call("metadata", bot)
-        assert len(seen) == n + 1 and yt.blocked is None
-    yt._local.video_id = "c3"                                             # the third different one: the connection
-    with pytest.raises(SourceUnavailable):
-        yt._call("metadata", bot)
+    with pytest.raises(RuntimeError, match="cuarentena"):
+        yt._call("search", bot)
+    with pytest.raises(SourceUnavailable):                                # the second way too: the fuse
+        yt._call("search", bot)
     with pytest.raises(SourceUnavailable):                                # and nothing else goes out
-        yt._call("metadata", bot)
-    assert len(seen) == 3
+        yt._call("search", bot)
+    assert len(calls) == 2 and all_quarantined(tmp_path, ways)
+
+
+def test_one_way_shares_no_load_of_one_in_quarantine(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
+                       config={"proxies": ["http://a:1", "http://b:2"], "min_interval": 0, "concurrency": 3})
+    assert yt._slots._value == 6 and [s._value for s in yt._way_slots] == [3, 3]
 
 
 def test_proxy_list_from_env_or_config():

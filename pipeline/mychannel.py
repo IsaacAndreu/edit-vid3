@@ -262,7 +262,7 @@ def run(root: Path, channel: str) -> dict[str, Any]:
     cfg = ctx.section("mychannel")
     api = YouTubeAPI(ctx)
     if not api.keys:
-        raise ValueError("El análisis del canal necesita YOUTUBE_API_KEYS en .env")
+        raise ValueError("El análisis del canal necesita YOUTUBE_API_KEY en .env")
     info = api.channel(handle)
     videos = api.uploads(info["uploads"], int(cfg.get("max_videos", 400))) if info.get("uploads") else []
     videos = [v for v in videos if v.get("live", "none") == "none"]

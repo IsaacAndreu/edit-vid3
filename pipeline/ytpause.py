@@ -10,6 +10,7 @@ removes the pause, says so on Telegram and goes on with the queue.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -62,14 +63,21 @@ def probe(root: Path) -> bool:
 
     ctx = RunContext.create("_ytcheck", root=root)
     yt_cfg = ctx.section("sourcing").get("youtube", {})
-    try:                         # with the account's cookies when the queue uses them, as it would download
-        cookies = str(yt_cfg.get("cookies", "")).lower() != "never" and bool(cookie_sets(ctx, yt_cfg))
+    # with an account only when the queue downloads every video with one (cookies: rotate): an account must not
+    # be what makes a flagged connection look healthy again
+    try:
+        cookies = str(yt_cfg.get("cookies", "rotate")).lower() in ("rotate", "true") and bool(cookie_sets(ctx, yt_cfg))
     except Exception:
         cookies = False
     state = paused(root) or {}
     path = root / FLAG
     if path.is_file():
         path.write_text(json.dumps({**state, "checked": time.time()}), encoding="utf-8")
+    from .sourcing.youtube import all_quarantined, proxy_list
+
+    ways = proxy_list(os.environ.get("YOUTUBE_PROXY"), yt_cfg.get("proxies"), yt_cfg.get("proxy"))
+    if all_quarantined(ctx.cache_dir, ways):
+        return False             # still in quarantine: not even a test request goes out
     result = _try(ctx, "prueba de YouTube (cola en pausa)", cookies=cookies, ipv4=True)
     return not result.get("error") and not result.get("timeout") and float(result.get("mb") or 0) > 0
 

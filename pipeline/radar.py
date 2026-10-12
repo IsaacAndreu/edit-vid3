@@ -8,7 +8,7 @@ Then new niches: the LLM proposes `radar.new_niches` searches next to each chann
 `radar.free_niches`), and each one is measured on YouTube: how many videos beat their channel by 3x, how many of those
 are from small channels (the sign that a new channel can get in), median views. The best go up the list.
 
-Needs YOUTUBE_API_KEYS. Runs from the watcher (`--vigilar`, after `radar.hour`), from the studio («Buscar ahora») or
+Needs YOUTUBE_API_KEY. Runs from the watcher (`--vigilar`, after `radar.hour`), from the studio («Buscar ahora») or
 with `python main.py --radar`. Result: out/_radar/<fecha>.json and out/_radar/nichos.json (all niches measured).
 """
 
@@ -212,7 +212,7 @@ def run(root: Path, *, force: bool = False) -> Path:
     cfg = base.section("radar")
     api = YouTubeAPI(base)
     if not api.keys:
-        raise SystemExit("El radar necesita YOUTUBE_API_KEYS en .env")
+        raise SystemExit("El radar necesita YOUTUBE_API_KEY en .env")
     seen = _seen_before(root, today)
     report: dict[str, Any] = {"date": today, "started": datetime.now().isoformat(timespec="seconds"), "channels": {}}
     if cfg.get("rising", True):                    # small channels with far more views than subscribers, first

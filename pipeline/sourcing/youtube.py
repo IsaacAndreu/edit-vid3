@@ -72,6 +72,28 @@ def pacer_name(proxy: str) -> str:
     return f".ritmo-{hashlib.sha1(proxy.encode()).hexdigest()[:8]}" if proxy else ".ritmo"
 
 
+QUARANTINE_SUFFIX = ".cuarentena"
+
+
+def quarantine_file(cache_dir: Path, proxy: str) -> Path:
+    """When a way out may talk to YouTube again (epoch seconds), shared by every process: the next video and the
+    hourly probe of a paused queue respect it too."""
+
+    return cache_dir / "videos" / (pacer_name(proxy) + QUARANTINE_SUFFIX)
+
+
+def quarantined_until(cache_dir: Path, proxy: str) -> float:
+    try:
+        return float(quarantine_file(cache_dir, proxy).read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return 0.0
+
+
+def all_quarantined(cache_dir: Path, proxies: list[str]) -> bool:
+    now = time.time()
+    return all(quarantined_until(cache_dir, p) > now for p in (proxies or [""]))
+
+
 def _proxy_down(low: str) -> bool:
     return any(m in low for m in ("unable to connect to proxy", "proxyerror", "tunnel connection failed",
                                   "proxy connection", "cannot connect to proxy")) or ("proxy" in low and any(
@@ -167,13 +189,16 @@ class YouTubeSource:
         self.cfg = config
         # Several ways out to YouTube (`proxies`: home, a laptop on mobile data…): each one is its own IP, so each
         # gets its own pace and its own `concurrency`, requests go to the least busy one, and one that stops
-        # answering or that YouTube starts asking «are you a bot» rests a while while the others carry on.
+        # answering rests a while while the others carry on. One that YouTube asks «are you a bot» goes into
+        # quarantine (bot_quarantine_minutes): nothing goes out through it, and what it was refused is never sent
+        # through another way. With every way in quarantine, all YouTube stops (the fuse).
         self.proxies = proxy_list(os.environ.get("YOUTUBE_PROXY"), config.get("proxies"), config.get("proxy"))
         interval = float(config.get("min_interval", 1.0))
         self._pacers = [SharedPacer(interval, cache_dir / "videos" / pacer_name(p)) for p in (self.proxies or [""])]
         self.pacer = self._pacers[0]                # all processes, per way out
         self._busy = [0] * len(self._pacers)
         self._resting = [0.0] * len(self._pacers)
+        self._quarantine_until = [0.0] * len(self._pacers)    # also in a file per way (quarantine_file)
         self._proxy_turn = 0
         self._proxy_lock = threading.Lock()
         self.blocked: str | None = None
@@ -196,6 +221,9 @@ class YouTubeSource:
         ways = len(self._pacers)
         self._extra_slots = (self.concurrency - base) * ways
         self._slots = threading.Semaphore(self.concurrency * ways)
+        # each way never carries more than its own share, also when another one is in quarantine: its load is
+        # not moved onto the others
+        self._way_slots = [threading.Semaphore(self.concurrency) for _ in range(ways)]
         self._cooldown_until = 0.0
         self._bad: set[int] = set()
         self._turn = 0
@@ -403,6 +431,8 @@ class YouTubeSource:
         with_account = self.cookies_mode == "rotate"
         tried_ways: set[int] = set()
         while True:
+            if self._all_in_quarantine():
+                self._blocked_everywhere()
             self._local.account = self._next_account() if with_account else None
             if with_account and self._sets and self._local.account is None:
                 self._blocked_everywhere()
@@ -414,6 +444,7 @@ class YouTubeSource:
                     way = self._local.way = self._pick_way(tried_ways)
                     with self._proxy_lock:
                         self._busy[way] += 1
+                    self._way_slots[way].acquire()
                     try:
                         delay = self._cooldown_until - time.monotonic()
                         if delay > 0:
@@ -427,6 +458,7 @@ class YouTubeSource:
                         finally:
                             self._count(action, time.monotonic() - began)
                     finally:
+                        self._way_slots[way].release()
                         with self._proxy_lock:
                             self._busy[way] -= 1
                 self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
@@ -444,39 +476,23 @@ class YouTubeSource:
                         self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
                         tried_ways.add(way)
                         continue
-                    # YouTube is wary of that IP: same request through another one — only when the proxies leave
-                    # by different connections (one at home, one at work: default). Two PCs behind one router are ONE
-                    # IP for YouTube and hopping only doubles the requests: set proxies_share_ip: true then
-                    if kind == "bot" and not self.cfg.get("proxies_share_ip", False):
-                        self._rest(way, float(self.cfg.get("proxy_bot_rest_minutes", 5)) * 60, "YouTube pide «no eres un bot»")
-                        tried_ways.add(way)
-                        continue
                 if kind == "auth" and self.cookies_mode == "fallback" and self._sets and not with_account:
                     with_account = True          # this video needs an account: try it once with one
                     continue
                 if (kind == "bot" and self.cookies_mode == "fallback" and self._sets and not with_account
-                        and self.cfg.get("cookies_on_bot", False)):       # an account is no fuse for the crawler
+                        and self.cfg.get("cookies_on_bot", False)):       # off by default: an account is no way round it
                     with_account = True          # this IP gets the bot check (a server's): the request again with an account
                     continue
                 if kind == "auth":
                     raise RuntimeError(f"yt-dlp {action}: el vídeo necesita una cuenta ({message[:160]})") from None
                 if kind == "bot" and self._local.account is None:
-                    # Circuit breaker: one video asking «not a bot» is that video (Big Buck Bunny failed with every
-                    # client while others passed): drop it, never retry it another way. The same answer for several
-                    # different videos in a few minutes is the whole connection: stop all YouTube now.
-                    # A search is no one video's: the bot check there is the connection, so it stops at once
-                    if action == "search":
+                    # YouTube distrusts this connection: it goes into quarantine and the request is dropped, never
+                    # sent again through another way or with an account. Every way in quarantine: stop all YouTube.
+                    self._quarantine(way)
+                    if self._all_in_quarantine():
                         self._blocked_everywhere()
-                    video = getattr(self._local, "video_id", None) or f"{action}-{time.monotonic()}"
-                    now = time.monotonic()
-                    window = 60 * float(self.cfg.get("bot_breaker_minutes", 10))
-                    with self._turn_lock:
-                        self._bot_videos = [(t, v) for t, v in getattr(self, "_bot_videos", []) if now - t < window]
-                        self._bot_videos.append((now, video))
-                        distinct = len({v for _, v in self._bot_videos})
-                    if distinct >= int(self.cfg.get("bot_breaker_videos", 3)):
-                        self._blocked_everywhere()
-                    raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» para este vídeo; se descarta") from None
+                    raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot»; esa conexión queda en "
+                                       "cuarentena y esta petición se descarta") from None
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
                     index = self._local.account
                     if index is not None:
@@ -507,14 +523,40 @@ class YouTubeSource:
 
         return (urlsplit(self.proxies[way]).hostname or self.proxies[way]) if self.proxies else "directo"
 
+    def _quarantine(self, way: int) -> None:
+        minutes = float(self.cfg.get("bot_quarantine_minutes", 120))
+        proxy = (self.proxies or [""])[way]
+        fresh = not self._in_quarantine(way)
+        until = time.time() + minutes * 60
+        with self._proxy_lock:
+            self._quarantine_until[way] = max(self._quarantine_until[way], until)
+        try:
+            path = quarantine_file(self.cache_dir, proxy)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{until:.0f}", encoding="utf-8")
+        except OSError:
+            pass
+        if fresh:
+            print(f"   YouTube pide «no eres un bot» a {self.way_name(way)}: cuarentena de {minutes:.0f} min; "
+                  "lo que se le negó no se pide por otra conexión")
+
+    def _in_quarantine(self, way: int) -> bool:
+        until = max(self._quarantine_until[way], quarantined_until(self.cache_dir, (self.proxies or [""])[way]))
+        return until > time.time()
+
+    def _all_in_quarantine(self) -> bool:
+        return all(self._in_quarantine(w) for w in range(len(self._pacers)))
+
     def _pick_way(self, avoid: set[int] = frozenset()) -> int:
-        """The way out for the next request: the least busy one that is not resting (by turns on a tie)."""
+        """The way out for the next request: the least busy one that is not resting (by turns on a tie); one in
+        quarantine never."""
 
         if len(self._pacers) == 1:
             return 0
         now = time.monotonic()
+        healthy = [w for w in range(len(self._pacers)) if not self._in_quarantine(w)] or list(range(len(self._pacers)))
         with self._proxy_lock:
-            ways = [w for w in range(len(self._pacers)) if w not in avoid] or list(range(len(self._pacers)))
+            ways = [w for w in healthy if w not in avoid] or healthy
             awake = [w for w in ways if self._resting[w] <= now]
             if not awake:                            # all resting: the one that wakes first
                 return min(ways, key=lambda w: self._resting[w])
@@ -531,6 +573,8 @@ class YouTubeSource:
     def _get(self, url: str, timeout: float = 30) -> requests.Response:
         """A plain HTTP GET (storyboards, captions) through the least busy way out."""
 
+        if self.blocked or self._all_in_quarantine():
+            raise SourceUnavailable(self.blocked or "YouTube: todas las conexiones en cuarentena")
         way = self._pick_way()
         try:
             return self._sessions[way].get(url, timeout=timeout)

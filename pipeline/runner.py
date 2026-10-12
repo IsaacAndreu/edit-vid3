@@ -87,7 +87,7 @@ SPEED_KEYS = frozenset({
     "player_client", "force_ipv4", "cookies", "cookies_on_bot",
     "cookies_file", "cookies_dir", "cookies_from_browser", "browser_accounts", "po_token", "pot_provider_url",
     "pot_keep_clients", "batch_size", "precompute_during_sourcing", "browser_executable", "timeout_seconds",
-    "proxies_share_ip", "bot_breaker_minutes", "bot_breaker_videos",
+    "bot_quarantine_minutes",
 })
 
 
