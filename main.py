@@ -95,6 +95,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--comparar-escenas", action="store_true",
                         help="Búsqueda por plano vs por escenas en un conjunto fijo de escenas, sin pedir nada a YouTube "
                              "→ out/_comparar_escenas.json.")
+    target.add_argument("--comprobar-proteccion", action="store_true",
+                        help="Cuarentenas, recuperación tras «no eres un bot», cookies, claves (solo nombres) y cuota de la API.")
     target.add_argument("--piloto-escenas", metavar="VIDEO",
                         help="Activa la búsqueda por escenas solo en ese vídeo (piloto), con --referencia <vídeo hecho>.")
     target.add_argument("--informe-piloto", metavar="VIDEO",
@@ -914,6 +916,11 @@ def main() -> None:
 
         best = (ytbench.run(PROJECT_ROOT)["summary"] or [{}])[0]
         print(f"Más rápido: {best.get('way')} · {best.get('client')} · 360p {best.get('mbps360')} MB/s")
+        return
+    if args.comprobar_proteccion:
+        from pipeline import proteccion
+
+        print("\n".join(proteccion.report(PROJECT_ROOT)))
         return
     if args.piloto_escenas or args.informe_piloto or args.quitar_piloto:
         from pipeline import piloto

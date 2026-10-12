@@ -73,6 +73,7 @@ def pacer_name(proxy: str) -> str:
 
 
 QUARANTINE_SUFFIX = ".cuarentena"
+LAST_BLOCK = ".ultimo-bloqueo"           # cache/videos/: when YouTube last asked «are you a bot» (recovering())
 
 
 def quarantine_file(cache_dir: Path, proxy: str) -> Path:
@@ -536,6 +537,7 @@ class YouTubeSource:
             path.write_text(f"{until:.0f}", encoding="utf-8")
         except OSError:
             pass
+        self._remember_block()
         if fresh:
             print(f"   YouTube pide «no eres un bot» a {self.way_name(way)}: cuarentena de {minutes:.0f} min; "
                   "lo que se le negó no se pide por otra conexión")
@@ -585,12 +587,41 @@ class YouTubeSource:
             return self._sessions[self._pick_way({way})].get(url, timeout=timeout)
 
     def _blocked_everywhere(self) -> None:
-        self.blocked = (
-            "YouTube bloquea este equipo (\"Sign in to confirm you're not a bot\")"
-            + (f" y las {len(self._sets)} cuentas de cookies" if self._sets else "")
-            + ". Añade o renueva cookies en ~/.config/edit-vid3/cookies/ (un .txt por cuenta)."
-        )
+        self._remember_block()
+        if self.cookies_mode == "rotate" and self._sets:     # every request had an account: they are what failed
+            self.blocked = (f"YouTube bloquea este equipo y las {len(self._sets)} cuentas de cookies (\"Sign in to confirm "
+                            "you're not a bot\"). Renueva las cookies en ~/.config/edit-vid3/cookies/.")
+        else:                 # the connections: no account was tried, and renewing cookies is no answer to this
+            self.blocked = ("YouTube bloquea este equipo (\"Sign in to confirm you're not a bot\"): todas las conexiones en "
+                            "cuarentena. No se usan cuentas para saltarlo: la cola se pausa y espera.")
         raise SourceUnavailable(self.blocked) from None
+
+    def _remember_block(self) -> None:
+        try:
+            path = self.cache_dir / "videos" / LAST_BLOCK
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{time.time():.0f}", encoding="utf-8")
+        except OSError:
+            pass
+
+    def recovering(self) -> bool:
+        """Within `bot_recovery_hours` (72) of the last «are you a bot»: searches go only through the API. With no
+        API search left, the video waits for the quota instead of searching with yt-dlp on a connection that YouTube
+        has just flagged (details and downloads still need yt-dlp once the queue is running again)."""
+
+        hours = float(self.cfg.get("bot_recovery_hours", 72) or 0)
+        try:
+            last = float((self.cache_dir / "videos" / LAST_BLOCK).read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return False
+        return hours > 0 and time.time() - last < hours * 3600
+
+    def _no_search_now(self, why: str) -> None:
+        from ..budget import ApiSearchesShort
+        from ..ytapi import next_reset, reset_text
+
+        raise ApiSearchesShort(f"{why}; este vídeo espera a la cuota nueva de la API, {reset_text()}, en vez de buscar "
+                               "con yt-dlp", next_reset().timestamp())
 
     def _count(self, action: str, seconds: float) -> None:
         with self._stats_lock:
@@ -611,6 +642,9 @@ class YouTubeSource:
             found = self._api_search(query, limit, days)
             if found is not None:
                 return found
+            if self.recovering():         # YouTube flagged this connection lately: no yt-dlp searches on it
+                self._no_search_now("YouTube pidió «no eres un bot» hace menos de "
+                                    f"{float(self.cfg.get('bot_recovery_hours', 72)):.0f} h y la API no tiene búsquedas")
             if days:
                 from urllib.parse import quote_plus
 
@@ -649,7 +683,8 @@ class YouTubeSource:
         except Exception as error:  # no quota left or the API keeps failing: yt-dlp for the rest of the run
             from ..ytapi import NoKeysLeft, next_reset, reset_text
 
-            if isinstance(error, NoKeysLeft) and str(self.cfg.get("api_overflow", "ytdlp")).lower() == "esperar":
+            if isinstance(error, NoKeysLeft) and (str(self.cfg.get("api_overflow", "ytdlp")).lower() == "esperar"
+                                                  or self.recovering()):
                 from ..budget import ApiSearchesShort
 
                 raise ApiSearchesShort(f"La API de YouTube no tiene más búsquedas hoy ({error}); este vídeo espera "

@@ -187,7 +187,9 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     if mode == "never":
         print("   YouTube: sin cuenta (cookies: never)")
     elif sets and mode == "fallback":
-        print(f"   YouTube: sin cuenta; {len(sets)} cuenta(s) de reserva si YouTube pide cuenta o «no eres un bot»")
+        print(f"   YouTube: sin cuenta; {len(sets)} cuenta(s) de reserva solo para un vídeo que pida cuenta (edad, "
+              "miembros), " + ("también ante «no eres un bot» (cookies_on_bot)" if yt_cfg.get("cookies_on_bot")
+                                else "nunca ante «no eres un bot»"))
     elif sets:
         print(f"   YouTube: {len(sets)} cuenta(s) de cookies, por turnos: "
               + ", ".join(path.name if path else "navegador/entorno" for _, path in sets))

@@ -340,3 +340,50 @@ def test_proxy_list_from_env_or_config():
     assert proxy_list(None, ["http://c:3"], "http://c:3") == ["http://c:3"]
     assert proxy_list("", None, "http://d:4") == ["http://d:4"] and proxy_list(None, None, "") == []
     assert pacer_name("") == ".ritmo" and pacer_name("http://a:1") != pacer_name("http://b:2")
+
+
+def test_after_a_bot_check_searches_wait_for_the_api_instead_of_yt_dlp(tmp_path, monkeypatch):
+    import time
+
+    from pipeline.budget import ApiSearchesShort
+    from pipeline.sourcing.youtube import LAST_BLOCK
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "fallback"},
+                       cookie_sets=[("# cookies", None)])
+    with pytest.raises(SourceUnavailable) as blocked:                     # the only connection: quarantine, stop
+        yt._call("metadata", lambda: (_ for _ in ()).throw(RuntimeError("Sign in to confirm you're not a bot")))
+    assert "cuentas de cookies" not in str(blocked.value) and "No se usan cuentas" in str(blocked.value)
+    asked = []
+    fresh = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0})   # the next video, no API left
+    fresh._call = lambda action, fn, **k: asked.append(action) or {"entries": []}
+    assert fresh.recovering()
+    with pytest.raises(ApiSearchesShort):
+        fresh.search("a query")
+    assert asked == []                                                    # not one yt-dlp search
+    (tmp_path / "videos" / LAST_BLOCK).write_text(f"{time.time() - 73 * 3600:.0f}")
+    assert not fresh.recovering() and fresh.search("a query") == [] and asked == ["search"]
+
+
+def test_startup_says_the_reserve_account_is_never_for_a_bot_check(tmp_path, capsys):
+    from pipeline.context import RunContext
+    from pipeline.sourcing import youtube_source
+
+    (tmp_path / "cookies").mkdir()
+    (tmp_path / "cookies" / "cuenta.txt").write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n")
+    ctx = RunContext.create("v", root=tmp_path, config={"sourcing": {"youtube": {"cookies": "fallback", "api_search": False}}})
+    youtube_source(ctx).close()
+    out = capsys.readouterr().out
+    assert "nunca ante «no eres un bot»" in out
+
+
+def test_protection_report_names_keys_but_never_shows_them(tmp_path, monkeypatch):
+    from pipeline import proteccion
+
+    (tmp_path / "config.yaml").write_text("sourcing:\n  youtube: {cookies: fallback}\n")
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    monkeypatch.setenv("YOUTUBE_API_KEYS", "secretA,secretB")
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    text = "\n".join(proteccion.report(tmp_path))
+    assert "secretA" not in text and "YOUTUBE_API_KEYS tiene 2 claves" in text
+    assert "ante «no eres un bot»: nunca" in text and "libre" in text
