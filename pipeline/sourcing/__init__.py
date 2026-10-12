@@ -23,6 +23,8 @@ from ..context import RunContext
 from ..schemas import Shot, ShotCandidates, ShotsFile
 from .common import SourceUnavailable, key
 from .images import ImageSources
+from .scenes import (finalists, group_scenes, options_per_shot, rank_pool, scene_queries, scene_settings,
+                     share_out)
 from .youtube import YouTubeSource
 
 
@@ -67,7 +69,9 @@ def broader(broll: Any) -> Any:
 
 
 def _spec_hash(shot: Shot, cfg: dict[str, Any]) -> str:
-    return key(shot.broll.model_dump() if shot.broll else None, cfg)
+    # the scene search's knobs are not part of a shot's own search: writing them never re-searches a video
+    youtube = {k: v for k, v in (cfg.get("youtube") or {}).items() if not str(k).startswith(("scene_", "api_scene_"))}
+    return key(shot.broll.model_dump() if shot.broll else None, {**cfg, "youtube": youtube} if "youtube" in cfg else cfg)
 
 
 def _cookies_file(yt_cfg: dict[str, Any]) -> Path | None:
@@ -299,16 +303,66 @@ def run(ctx: RunContext) -> None:
             precompute.submit(result.candidates)
         return result
 
-    def _process(shot: Shot) -> ShotCandidates:
-        spec_hash = _spec_hash(shot, cfg)
+    def existing(shot: Shot, spec_hash: str) -> ShotCandidates | None:
         path = out_dir / f"{shot.id}.json"
         if path.is_file():
             try:
-                existing = ShotCandidates.model_validate_json(path.read_text(encoding="utf-8"))
-                if existing.specHash == spec_hash and not any("bloquea" in n for n in existing.notes):
-                    return existing
+                found = ShotCandidates.model_validate_json(path.read_text(encoding="utf-8"))
+                if found.specHash == spec_hash and not any("bloquea" in n for n in found.notes):
+                    return found
             except (ValidationError, ValueError):
                 pass
+        return None
+
+    def process_scene(scene: list[Shot]) -> list[ShotCandidates]:
+        """One search for the whole scene (scenes.py); library and images stay per shot."""
+
+        api = youtube is not None and youtube.api is not None
+        queries = scene_queries(scene, yt_cfg, api=api)
+        signature = [[s.id for s in scene], queries, scene_settings(yt_cfg, len(scene)), options_per_shot(yt_cfg)]
+        hashes = {s.id: key(_spec_hash(s, cfg), signature) for s in scene}
+        done = [existing(s, hashes[s.id]) for s in scene]
+        if all(done):
+            for result in done:
+                if precompute is not None:
+                    precompute.submit(result.candidates)
+            return done
+        notes: list[str] = [f"escena {scene[0].id}-{scene[-1].id}"]
+        per_shot: dict[str, list] = {s.id: [] for s in scene}
+        if youtube is not None:
+            try:
+                per_query, entries = youtube.search_pool(queries, notes)
+                scores = rank_pool(per_query, entries, scene)
+                _, wanted, tries = scene_settings(yt_cfg, len(scene))
+                found: dict[str, Any] = {}
+
+                def accept(video_id: str) -> bool:
+                    made = youtube.candidate(video_id, entries[video_id], scores.get(video_id, 0.0), notes)
+                    if made is not None:
+                        found[video_id] = made
+                    return made is not None
+
+                chosen = finalists(per_query, scores, accept, wanted, tries)
+                titles = {v: found[v].title for v in chosen}
+                shared = share_out(scene, chosen, titles, scores, options_per_shot(yt_cfg))
+                for shot in scene:
+                    per_shot[shot.id] = [found[v].model_copy(update={"rankScore": score}) for v, score in shared[shot.id]]
+            except SourceUnavailable as error:
+                notes.append(str(error))
+        print(f"   escena {scene[0].id}-{scene[-1].id} ({len(scene)} planos): {len(queries)} búsquedas, "
+              f"{len(next(iter(per_shot.values()), []))} vídeos")
+        results = []
+        for shot in scene:
+            results.append(_finish(shot, hashes[shot.id], {"youtube": queries}, per_shot[shot.id], list(notes)))
+            if precompute is not None:
+                precompute.submit(results[-1].candidates)
+        return results
+
+    def _process(shot: Shot) -> ShotCandidates:
+        spec_hash = _spec_hash(shot, cfg)
+        found = existing(shot, spec_hash)
+        if found is not None:
+            return found
         notes: list[str] = []
         queries: dict[str, list[str]] = {}
         candidates = []
@@ -331,6 +385,15 @@ def run(ctx: RunContext) -> None:
                 candidates += youtube.candidates(shot.broll, notes, max_queries=fewer)
             except SourceUnavailable as error:
                 notes.append(str(error))
+        return _finish(shot, spec_hash, queries, candidates, notes, from_library)
+
+    def _finish(shot: Shot, spec_hash: str, queries: dict[str, list[str]], candidates: list, notes: list[str],
+                from_library: list | None = None) -> ShotCandidates:
+        """Library and images (always per shot) on top of the YouTube candidates, written to the shot's file."""
+
+        if from_library is None:
+            from_library = library.candidates_for(ctx, shot.broll, set(), int(cfg.get("library_per_shot", 3)))
+        candidates = list(candidates)
         present = {c.id for c in candidates}
         candidates += [c for c in from_library if c.id not in present]
         image_queries, image_candidates = images.search(shot.broll, notes)
@@ -371,7 +434,14 @@ def run(ctx: RunContext) -> None:
         return widened
 
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 3))) as pool:
-        results = list(pool.map(process, shots))
+        if youtube is not None and yt_cfg.get("scene_search", False):
+            scenes = group_scenes([s for s in shots if not hypothetical(s)], scene_settings(yt_cfg)[0])
+            print(f"   Búsqueda por escenas: {len(shots)} planos en {len(scenes)} escenas")
+            by_id = {r.shotId: r for done in pool.map(process_scene, scenes) for r in done}
+            by_id.update({r.shotId: r for r in pool.map(process, [s for s in shots if hypothetical(s)])})
+            results = [by_id[s.id] for s in shots]
+        else:
+            results = list(pool.map(process, shots))
         blocked = any("bloquea" in n for r in results for n in r.notes)
         retry = [i for i, r in enumerate(results) if not r.candidates and WIDENED not in r.notes
                  and shots[i].broll is not None and not hypothetical(shots[i])]
@@ -396,6 +466,9 @@ def run(ctx: RunContext) -> None:
     notes = sorted({n for r in results for n in r.notes if "bloquea" in n or "desactivado" in n})
     summary = {
         "shots": len(results),
+        "sceneSearch": bool(youtube is not None and yt_cfg.get("scene_search", False)),
+        # requests that really went to YouTube (the cache answers the rest): what the scene search should lower
+        "youtubeRequests": {a: int(n) for a, (n, _) in sorted((youtube.stats if youtube else {}).items())},
         "candidatesBySource": by_source,
         "shotsWithYouTube": sum(any(c.source == "youtube" for c in r.candidates) for r in results),
         "shotsWithoutCandidates": empty,

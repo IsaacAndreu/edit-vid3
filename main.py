@@ -92,6 +92,9 @@ def _parser() -> argparse.ArgumentParser:
                         help="Bot de Telegram: /estado, /gasto, /videos, /errores… y un parte cada hora (TELEGRAM_* en .env).")
     target.add_argument("--velocidad-youtube", action="store_true",
                         help="Prueba de velocidad: cada proxy × cada cliente de yt-dlp (detalles, 360p, 1080p) → out/_youtube_prueba.json.")
+    target.add_argument("--comparar-escenas", action="store_true",
+                        help="Búsqueda por plano vs por escenas en un conjunto fijo de escenas, sin pedir nada a YouTube "
+                             "→ out/_comparar_escenas.json.")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
     target.add_argument("--compilar", metavar="CANAL",
@@ -871,6 +874,11 @@ def main() -> None:
 
         best = (ytbench.run(PROJECT_ROOT)["summary"] or [{}])[0]
         print(f"Más rápido: {best.get('way')} · {best.get('client')} · 360p {best.get('mbps360')} MB/s")
+        return
+    if args.comparar_escenas:
+        from pipeline import scenebench
+
+        print(scenebench.report(scenebench.run(PROJECT_ROOT)))
         return
     if args.radar:
         from pipeline import radar

@@ -1093,8 +1093,9 @@ class YouTubeSource:
             queries = queries[: int(self.cfg.get("api_queries_per_shot", 2))]
         return queries
 
-    def candidates(self, broll: BrollSpec, notes: list[str], max_queries: int | None = None) -> list[Candidate]:
-        queries = self.queries_for(broll)[:max_queries] if max_queries else self.queries_for(broll)
+    def search_pool(self, queries: list[str], notes: list[str]) -> tuple[list[list[str]], dict[str, dict[str, Any]]]:
+        """Every query's results that pass the search filters: (ids per query, entry per id)."""
+
         per_query: list[list[str]] = []
         entries: dict[str, dict[str, Any]] = {}
         for query in queries:
@@ -1111,6 +1112,45 @@ class YouTubeSource:
                     entries.setdefault(entry["id"], {**entry, "query": query})
                     ids.append(entry["id"])
             per_query.append(ids)
+        return per_query, entries
+
+    def candidate(self, video_id: str, entry: dict[str, Any], score: float, notes: list[str]) -> Candidate | None:
+        """The video's details (one extraction, cached) → a Candidate, or None when it fails the filters."""
+
+        try:
+            info = self.info(video_id)
+            if not self.passes_metadata_filters(info):
+                return None
+            board = self.storyboard(info)
+        except SourceUnavailable:
+            raise
+        except Exception as error:
+            notes.append(f"yt:{video_id}: {str(error)[:160]}")
+            return None
+        channel = info["channel"]
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        return Candidate(
+            id=f"yt:{video_id}",
+            source="youtube",
+            kind="video",
+            url=url,
+            title=info["title"],
+            channel=channel,
+            uploader=info.get("uploader"),
+            license=info["license"],
+            credit=f"Fuente: {channel}",
+            attribution=f"{channel} — \"{info['title']}\": {url}",
+            durationSeconds=float(info["duration"]),
+            width=info.get("width"),
+            height=info.get("height"),
+            query=entry["query"],
+            rankScore=round(score, 4),
+            storyboard=board,
+        )
+
+    def candidates(self, broll: BrollSpec, notes: list[str], max_queries: int | None = None) -> list[Candidate]:
+        queries = self.queries_for(broll)[:max_queries] if max_queries else self.queries_for(broll)
+        per_query, entries = self.search_pool(queries, notes)
         scores = fuse_ranks(per_query)
         entity_terms = tokens(" ".join(broll.entities))
         for video_id, entry in entries.items():
@@ -1122,38 +1162,9 @@ class YouTubeSource:
         for video_id in sorted(entries, key=lambda v: -scores.get(v, 0.0)):
             if len(result) >= wanted:
                 break
-            try:
-                info = self.info(video_id)
-                if not self.passes_metadata_filters(info):
-                    continue
-                board = self.storyboard(info)
-            except SourceUnavailable:
-                raise
-            except Exception as error:
-                notes.append(f"yt:{video_id}: {str(error)[:160]}")
-                continue
-            channel = info["channel"]
-            url = f"https://www.youtube.com/watch?v={video_id}"
-            result.append(
-                Candidate(
-                    id=f"yt:{video_id}",
-                    source="youtube",
-                    kind="video",
-                    url=url,
-                    title=info["title"],
-                    channel=channel,
-                    uploader=info.get("uploader"),
-                    license=info["license"],
-                    credit=f"Fuente: {channel}",
-                    attribution=f"{channel} — \"{info['title']}\": {url}",
-                    durationSeconds=float(info["duration"]),
-                    width=info.get("width"),
-                    height=info.get("height"),
-                    query=entries[video_id]["query"],
-                    rankScore=round(scores.get(video_id, 0.0), 4),
-                    storyboard=board,
-                )
-            )
+            found = self.candidate(video_id, entries[video_id], scores.get(video_id, 0.0), notes)
+            if found is not None:
+                result.append(found)
         return result
 
 

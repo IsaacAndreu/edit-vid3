@@ -572,6 +572,31 @@ function benchCard(bench) {
       <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th>Salida</th><th>Cliente</th><th>Vídeos OK</th><th>Detalles</th><th>360p MB/s (s por trozo)</th><th>1080p MB/s (s por trozo)</th><th>Protocolo</th><th>Storyboard</th><th></th></tr>${rows}</table></div>` : ""}
     ${job.running && job.log ? `<pre style="max-height:160px">${esc(job.log.split("\n").slice(-8).join("\n"))}</pre>` : ""}</div>`;
 }
+const SCENE_ROWS = [["searches", "Búsquedas"], ["extracts", "Extracciones (detalles)"], ["shotsWithoutYouTube", "Planos sin YouTube"],
+  ["optionsPerShot", "Opciones por plano"], ["differentSources", "Fuentes distintas"], ["judgeChoiceKept", "Clip que eligió el juez, aún entre las opciones"],
+  ["titleMatch", "Título ↔ plano"], ["searchesWithoutData", "Búsquedas sin datos (caché)"], ["extractsWithoutData", "Vídeos sin datos (caché)"],
+  ["visualBest", "CLIP: mejor opción de cada plano"], ["visualAboveFloor", "CLIP: planos sobre el mínimo del juez"],
+  ["simulatedSources", "Simulado: fuentes distintas en pantalla"], ["simulatedRepeats", "Simulado: fuentes repetidas"],
+  ["simulatedScore", "Simulado: CLIP de lo elegido"], ["simulatedMargin", "Simulado con judge.variety_margin"]];
+function sceneCard(bench) {
+  const r = bench.result, job = bench.job || {};
+  const pct = (k, x) => x == null ? "—" : ["judgeChoiceKept", "titleMatch", "visualAboveFloor", "simulatedRepeats"].includes(k) ? Math.round(x * 100) + " %" : x;
+  return `<div class="card" style="margin-top:20px"><div class="row" style="justify-content:space-between">
+      <b>🎬 Búsqueda por plano vs por escenas</b>
+      <button onclick="runScenes(this)" ${job.running ? "disabled" : ""}>${job.running ? "Comparando…" : "Comparar ahora"}</button></div>
+    <div class="small muted" style="margin-top:4px">Sin pedir nada a YouTube: repite las dos formas de buscar con lo guardado de vídeos ya hechos, siempre sobre el mismo conjunto de ~30 escenas.
+      Menos búsquedas y extracciones = menos «no eres un bot»; las opciones, las fuentes distintas y el clip que eligió el juez dicen si se pierde calidad.</div>
+    ${r ? `<div class="small muted" style="margin-top:6px">${esc(r.at.replace("T", " ").slice(0, 16))} · ${r.scenes} escenas, ${r.set.old.shots} planos${r.api ? " · con la API" : ""}</div>
+      <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th></th><th>Por plano</th><th>Por escenas</th></tr>
+      ${SCENE_ROWS.filter(([k]) => k in r.set.old).map(([k, label]) => `<tr><td>${label}</td><td>${pct(k, r.set.old[k])}</td><td><b>${pct(k, r.set.new[k])}</b></td></tr>`).join("")}</table></div>
+      <div class="small" style="margin-top:8px"><b>Documentales enteros</b> (búsquedas / extracciones):
+      ${r.videos.map((v) => `<div>${esc(v.video)}: ${v.old.searches} / ${v.old.extracts} → <b>${v.new.searches} / ${v.new.extracts}</b>
+        <span class="muted">(${v.old.shots} planos, ${v.scenes} escenas)</span></div>`).join("")}</div>` : ""}
+    ${job.running && job.log ? `<pre style="max-height:160px">${esc(job.log.split("\n").slice(-8).join("\n"))}</pre>` : ""}</div>`;
+}
+window.runScenes = async (button) => {
+  button.disabled = true; await post("/api/scenebench"); setTimeout(() => stats(), 4000);
+};
 window.runBench = async (button) => {
   if (!confirm("¿Probar ahora? Tarda 5-15 min y hace unas 50 peticiones a YouTube (mejor cuando la cola no esté a tope).")) return;
   button.disabled = true; await post("/api/ytbench"); setTimeout(() => stats(), 3000);
@@ -580,6 +605,7 @@ window.runBench = async (button) => {
 async function stats(refresh = false) {
   const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
   const bench = await api("/api/ytbench").catch(() => ({}));
+  const scenesBench = await api("/api/scenebench").catch(() => ({}));
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
   const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
   const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
@@ -630,6 +656,7 @@ async function stats(refresh = false) {
     </table></div>
 
     ${benchCard(bench)}
+    ${sceneCard(scenesBench)}
     <details style="margin-top:24px"><summary class="small muted" style="cursor:pointer">Técnico: descargas de YouTube y gasto de API por día</summary>
     ${y ? `<div class="grid" style="margin-top:10px">
       <div class="card"><div class="muted small">Peticiones (7 días)</div><div class="stat">${y.requests}</div><div class="small muted">${y.ok} bien · ${y.failed} fallidas</div></div>

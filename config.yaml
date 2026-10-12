@@ -57,6 +57,13 @@ sourcing:
     queries_local: 1           # + búsquedas en el idioma del guion
     results_per_query: 8
     videos_per_shot: 3         # vídeos por plano de los que se baja el storyboard (miniaturas)
+    # Búsqueda por escenas (fase 1, apagada: la búsqueda por plano sigue siendo la referencia). Una escena son los planos
+    # seguidos del mismo suceso: una búsqueda conjunta y detalles solo de unos pocos finalistas. Compara antes de
+    # activarla: python main.py --comparar-escenas (Estadísticas → «Comparar búsqueda por escenas»). Para probarla,
+    # en config.local.yaml o en el config.yaml de un vídeo: scene_search: true. Valores por defecto (no se escriben
+    # aquí para no rehacer las búsquedas de los vídeos a medias): scene_max_shots 4, scene_extra_queries 3
+    # (api_scene_extra_queries 2), scene_videos 3 + scene_videos_per_shot 0.5 por plano, scene_videos_max 8.
+    # Actívala junto con judge.variety_margin: 0.02 (si no, las mismas fuentes se repiten más en pantalla).
     concurrency: 3             # peticiones simultáneas a YouTube
     rate_backoff: 20           # s de pausa (x3 en cada reintento) cuando YouTube responde 429
     min_duration: 30           # s — descarta clips sueltos

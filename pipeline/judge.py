@@ -209,6 +209,19 @@ def overused(candidate_id: str, selections: list[Selection], limit: int) -> bool
     return limit > 0 and sum(1 for s in selections if s.candidateId == candidate_id) >= limit
 
 
+def prefer_variety(usable: list[Option], selections: list[Selection], margin: float) -> Option | None:
+    """The first usable option; with `judge.variety_margin`, a source not on screen yet when it scores at most that
+    much less (replayed on two videos: 0.02 keeps the same quality and brings repeated sources down by a quarter)."""
+
+    if not usable:
+        return None
+    first = usable[0]
+    if margin <= 0 or not any(s.candidateId == first.candidateId for s in selections):
+        return first
+    shown = {s.candidateId for s in selections}
+    return next((o for o in usable if o.candidateId not in shown and o.total >= first.total - margin), first)
+
+
 def own_event(title: str | None, shot: Any) -> bool:
     """The source is footage of the shot's own event: its title names at least two words of the event besides the
     people (competition, place, year: «Beijing 2022 free skate»). The original broadcast of the night a story turns
@@ -549,9 +562,10 @@ def run(ctx: RunContext) -> None:
             # Only what the judge accepted, in its order. If it rejected everything it saw, the shot
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
-        chosen = next((o for o in preference if not is_repeat(o, selections, max_hamming)
-                       and not overused(o.candidateId, selections,
-                                        per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))), None)
+        usable = [o for o in preference if not is_repeat(o, selections, max_hamming)
+                  and not overused(o.candidateId, selections,
+                                   per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))]
+        chosen = prefer_variety(usable, selections, float(cfg.get("variety_margin", 0) or 0))
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))

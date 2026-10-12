@@ -242,6 +242,15 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.call("/api/errors")[0], 401)
 
 
+    def test_scene_comparison_card_reads_the_last_result(self) -> None:
+        code, _, headers = self.call("/api/login", {"password": "clave"})
+        self.cookie = headers["Set-Cookie"].split(";")[0]
+        code, body, _ = self.call("/api/scenebench")
+        self.assertEqual((code, json.loads(body)["result"]), (200, None))
+        (self.root / "out" / "_comparar_escenas.json").write_text(json.dumps({"scenes": 30}))
+        self.assertEqual(json.loads(self.call("/api/scenebench")[1])["result"], {"scenes": 30})
+
+
 if __name__ == "__main__":
     unittest.main()
 

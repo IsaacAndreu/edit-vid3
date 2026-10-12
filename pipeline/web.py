@@ -992,6 +992,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if path == "/api/scenebench":              # the last per-shot vs scene search comparison
+                    from . import scenebench
+
+                    return self._ok({"result": _json(root / scenebench.OUTPUT),
+                                     "job": job_state(root, "comparar-escenas")})
                 if path == "/api/ytbench":                 # the last speed test of the ways to YouTube
                     from . import ytbench
 
@@ -1060,6 +1065,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(search_videos(root, str(body.get("q") or "")[:30000]))
                 if path == "/api/ytbench":
                     return self._ok(background(root, "velocidad-youtube", ["--velocidad-youtube"]))
+                if path == "/api/scenebench":             # offline: not one request to YouTube
+                    return self._ok(background(root, "comparar-escenas", ["--comparar-escenas"]))
                 if path == "/api/restart-queue":
                     return self._ok(restart_queue(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
