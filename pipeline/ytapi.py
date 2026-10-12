@@ -61,6 +61,35 @@ def quota_day(now: datetime | None = None) -> str:
         return (now - timedelta(hours=8)).date().isoformat()
 
 
+def next_reset(now: datetime | None = None) -> datetime:
+    """When the daily quota comes back: the next midnight in America/Los_Angeles (Google's rule), as UTC. Usually
+    9:00 in Spain, 8:00 in the weeks when only one side has changed the clocks."""
+
+    now = now or datetime.now(timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+
+        pacific = now.astimezone(ZoneInfo("America/Los_Angeles"))
+        midnight = datetime.combine(pacific.date() + timedelta(days=1), datetime.min.time(), ZoneInfo("America/Los_Angeles"))
+        return midnight.astimezone(timezone.utc)
+    except Exception:  # no tz database: PST
+        shifted = now - timedelta(hours=8)
+        return datetime.combine(shifted.date() + timedelta(days=1), datetime.min.time(), timezone.utc) + timedelta(hours=8)
+
+
+def reset_text(now: datetime | None = None, zone: str = "Europe/Madrid") -> str:
+    """«a las 09:00 del 13/10 (hora de España)»: the next reset in the user's own time."""
+
+    moment = next_reset(now)
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = moment.astimezone(ZoneInfo(zone))
+        return f"a las {local:%H:%M} del {local:%d/%m} (hora de España)"
+    except Exception:
+        return f"a las {moment:%H:%M} UTC del {moment:%d/%m}"
+
+
 def parse_duration(value: str | None) -> int:
     """ISO 8601 (PT1H2M3S, P1DT2H) → seconds."""
 
@@ -141,6 +170,16 @@ class YouTubeAPI:
     def _save_ledger(self, data: dict[str, Any]) -> None:
         _write(self.dir / "quota.json", json.dumps(data))
 
+    def _journal(self, row: dict[str, Any]) -> None:
+        """Every call is written down before it goes out (cache/ytapi/registro-<quota day>.jsonl, never the key):
+        what was spent, by whom, against which count."""
+
+        try:
+            with open(self.dir / f"registro-{quota_day()}.jsonl", "a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "slug": self.ctx.slug, **row}) + "\n")
+        except OSError:
+            pass
+
     @staticmethod
     def _key_id(key: str) -> str:   # never store the keys themselves
         return hashlib.sha256(key.encode()).hexdigest()[:10]
@@ -176,10 +215,12 @@ class YouTubeAPI:
                 if endpoint == "search":
                     if ledger["searches"] >= self.searches_per_day:
                         raise NoKeysLeft(f"Límite diario de búsquedas de la API ({self.searches_per_day}) "
-                                         "alcanzado (se renueva a las 9:00 en España)")
+                                         f"alcanzado (se renueva {reset_text()})")
                     ledger["searches"] += 1
                 ledger["used"][kid] = ledger["used"].get(kid, 0) + cost
                 self._save_ledger(ledger)
+                self._journal({"endpoint": endpoint, "units": cost, "unitsUsed": ledger["used"][kid],
+                               "searches": ledger["searches"], "searchesPerDay": self.searches_per_day})
             response = self.session.get(f"{API}/{endpoint}", params={**params, "key": key}, timeout=30)
             if response.status_code == 403:
                 reasons = {e.get("reason") for e in _error(response).get("errors", [])}
@@ -188,6 +229,14 @@ class YouTubeAPI:
                         ledger = self._ledger()
                         ledger["exhausted"].append(kid)
                         self._save_ledger(ledger)
+                    # Google says no while our count still had room: the project's real quota is lower than
+                    # lab.units_per_key / searches_per_day (or someone else uses the key). Never raise them to fit.
+                    self._journal({"endpoint": endpoint, "quotaExceeded": sorted(r for r in reasons if r),
+                                   "localSearches": ledger["searches"], "localUnits": ledger["used"].get(kid, 0),
+                                   "mismatch": True})
+                    print(f"   API de YouTube: Google dice que no queda cuota ({', '.join(sorted(r for r in reasons if r))}) "
+                          f"con {ledger['searches']} búsquedas y {ledger['used'].get(kid, 0)} unidades contadas aquí: "
+                          "revisa la cuota real en Google Cloud Console")
                     continue
             if response.status_code != 200:
                 message = _error(response).get("message") or response.text[:200]
@@ -195,7 +244,7 @@ class YouTubeAPI:
             data = response.json()
             _write(cache, json.dumps(data))
             return data
-        raise NoKeysLeft("Cuota diaria de la API agotada (se renueva a las 9:00 en España)")
+        raise NoKeysLeft(f"Cuota diaria de la API agotada (se renueva {reset_text()})")
 
     # ---- building blocks -----------------------------------------------------------------------
     def search(self, query: str, *, days: int = 0, duration: str = "any", order: str = "viewCount",

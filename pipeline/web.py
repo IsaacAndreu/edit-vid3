@@ -28,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -111,6 +112,15 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     retry_at = None
     queued_again = False
     held = (folder / HOLD).is_file()
+    quota_wait = None                          # main.QUOTA_WAIT: the pilot waits for the API quota reset
+    try:
+        until = float((folder / ".espera-cuota").read_text("utf-8").strip())
+        if until > time.time():
+            from .ytapi import reset_text
+
+            quota_wait = reset_text(datetime.fromtimestamp(until - 60, timezone.utc))
+    except (OSError, ValueError):
+        pass
     redo = (folder / REDO).is_file() and not held      # «Rehacer»: back in the queue although it has a final video
     if (ready and not done and not current and not held and (diag.get("error") or failed)   # done: an old error is history
             and watcher_alive(root)):
@@ -128,7 +138,7 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     status = ("haciendo" if current else "en cola" if redo else "hecho" if done else "en pausa" if held else "en cola" if queued_again
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
-        "slug": slug, "channel": _channel_of(root, folder), "status": status,
+        "slug": slug, "channel": _channel_of(root, folder), "status": status, "quotaWait": quota_wait,
         "archived": any(part.startswith("_") for part in folder.relative_to(root / "materiales").parts),
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
         "error": None if done or current or queued_again else diag.get("error") or ((failed or {}).get("status") and "falló"),

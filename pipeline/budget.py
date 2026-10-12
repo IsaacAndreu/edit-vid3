@@ -21,7 +21,12 @@ class BudgetReached(RuntimeError):
 
 class ApiSearchesShort(BudgetReached):
     """The YouTube API's searches left today do not cover this video's (api_overflow: esperar, the scene pilot):
-    the queue waits for tomorrow's quota instead of searching the rest through yt-dlp."""
+    THIS video waits for the next quota reset (`until`, epoch seconds) instead of searching the rest through yt-dlp;
+    the queue goes on with the others (main.QUOTA_WAIT)."""
+
+    def __init__(self, message: str, until: float) -> None:
+        super().__init__(message)
+        self.until = until
 
 
 def spent_today(root: Path) -> float:

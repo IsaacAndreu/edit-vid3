@@ -152,3 +152,30 @@ def test_saved_roundtrip(tmp_path):
 def test_raised_quota_of_the_one_key(tmp_path):
     api = _api(tmp_path, FakeYouTube(), keys="k1:50000")
     assert api.keys == ["k1"] and api.quota()["total"] == 50_000
+
+
+def test_quota_resets_at_midnight_in_los_angeles_shown_in_spanish_time():
+    from datetime import datetime, timezone
+
+    from pipeline.ytapi import next_reset, reset_text
+
+    october = datetime(2026, 10, 12, 10, 0, tzinfo=timezone.utc)
+    assert next_reset(october) == datetime(2026, 10, 13, 7, 0, tzinfo=timezone.utc)
+    assert reset_text(october) == "a las 09:00 del 13/10 (hora de España)"
+    gap = datetime(2026, 10, 27, 10, 0, tzinfo=timezone.utc)          # Spain already in winter time, California not
+    assert reset_text(gap) == "a las 08:00 del 28/10 (hora de España)"
+    assert reset_text(datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc)).startswith("a las 08:00")
+
+
+def test_every_call_is_written_down_and_a_lower_real_quota_is_reported(tmp_path, capsys):
+    fake = FakeYouTube(quota_fail_keys={"k1"})
+    api = _api(tmp_path, fake, keys="k1")
+    import pytest
+    from pipeline.ytapi import NoKeysLeft, quota_day
+
+    with pytest.raises(NoKeysLeft):
+        api.search("y")
+    rows = [json.loads(line) for line in (tmp_path / "cache" / "ytapi" / f"registro-{quota_day()}.jsonl").read_text().splitlines()]
+    assert rows[0]["endpoint"] == "search" and rows[0]["searches"] == 1 and rows[1]["mismatch"] is True
+    assert "k1" not in json.dumps(rows)                                # the key is never written
+    assert "Google Cloud Console" in capsys.readouterr().out

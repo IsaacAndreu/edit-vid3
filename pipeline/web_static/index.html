@@ -521,6 +521,7 @@ async function videoPage(slug) {
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
     <div class="row" style="margin:8px 0"><button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>
       <span id="pilotBox"></span></div><div id="pilotReport"></div>
+    ${v.quotaWait ? `<div class="notice">⏸ Espera la cuota nueva de la API de YouTube (${esc(v.quotaWait)}); la cola sigue con los demás vídeos.</div>` : ""}
     ${v.lastError ? `<div class="notice">En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b> (antes si cambias sus archivos o pulsas «Hacer ahora»)` : "el vigilante lo hará en su turno"}.
       <div class="small muted" style="margin-top:4px">El último intento falló: ${esc(String(v.lastError).slice(0, 220))}</div></div>` : ""}
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
@@ -610,8 +611,8 @@ async function pilotBox(slug, v) {
   }
 }
 window.startPilot = async (slug, refs) => {
-  const ref = prompt("Vídeo ya hecho que sirve de referencia (deja vacío para el último del mismo canal):\n" + refs.slice(-12).join("\n"), "");
-  if (ref === null) return;
+  const ref = prompt("Vídeo ya hecho de referencia, de tema y complejidad parecidos (escribe su nombre):\n" + refs.slice(-15).join("\n"), "");
+  if (ref === null || !ref.trim()) return;
   try { const r = await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {reference: ref.trim()}); alert("Piloto activado. Referencia: " + (r.reference || "ninguna")); route(); }
   catch (e) { alert(e.message); }
 };

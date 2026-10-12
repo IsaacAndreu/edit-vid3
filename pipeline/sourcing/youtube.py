@@ -647,8 +647,14 @@ class YouTubeSource:
             details = {v["id"]: v for v in api.videos(ids)} if ids else {}
             self._count("search-api", time.monotonic() - began)
         except Exception as error:  # no quota left or the API keeps failing: yt-dlp for the rest of the run
-            from ..ytapi import NoKeysLeft
+            from ..ytapi import NoKeysLeft, next_reset, reset_text
 
+            if isinstance(error, NoKeysLeft) and str(self.cfg.get("api_overflow", "ytdlp")).lower() == "esperar":
+                from ..budget import ApiSearchesShort
+
+                raise ApiSearchesShort(f"La API de YouTube no tiene más búsquedas hoy ({error}); este vídeo espera "
+                                       f"a la cuota nueva, {reset_text()}, en vez de seguir con yt-dlp",
+                                       next_reset().timestamp()) from None
             with self._api_lock:
                 self._api_failures = getattr(self, "_api_failures", 0) + 1
                 if self.api is not None and (isinstance(error, NoKeysLeft) or self._api_failures >= 3):
@@ -1106,10 +1112,12 @@ class YouTubeSource:
 
         per_query: list[list[str]] = []
         entries: dict[str, dict[str, Any]] = {}
+        from ..budget import BudgetReached
+
         for query in queries:
             try:
                 results = self.search(query)
-            except SourceUnavailable:
+            except (SourceUnavailable, BudgetReached):
                 raise
             except RuntimeError as error:
                 notes.append(f"youtube búsqueda {query!r}: {error}")

@@ -1,18 +1,21 @@
 """The scene-search pilot: ONE new documentary with the scene search, against an existing one as the reference.
 
-    python main.py --piloto-escenas <vídeo> [--referencia <vídeo hecho>]   (or the video page → «🧪 Piloto»)
+    python main.py --piloto-escenas <vídeo> --referencia <vídeo hecho>   (or the video page → «🧪 Piloto»)
     python main.py --informe-piloto <vídeo>
     python main.py --quitar-piloto <vídeo>
 
 Turning it on writes, in that video's materiales/<vídeo>/config.yaml only, sourcing.youtube.scene_search: true,
-judge.variety_margin: 0.02 and sourcing.youtube.api_overflow: esperar (when the API's daily searches would not cover
-the scene searches, the video waits for tomorrow's quota instead of searching the rest by yt-dlp). Everything else
-keeps the per-shot search; turning it off removes those keys.
+judge.variety_margin: 0.02 and sourcing.youtube.api_overflow: esperar (when the API's searches left would not cover
+the scene searches — checked before starting and again before every call — THIS video waits for the next quota
+reset, midnight in Los Angeles, instead of searching the rest by yt-dlp; the queue goes on with the others).
+Everything else keeps the per-shot search; turning it off removes those keys. The reference is chosen by hand: a
+finished documentary of similar subject and complexity.
 
 The report compares the real runs, per 100 shots where sizes differ: requests that went to YouTube (searches,
 extractions, downloads, «are you a bot» answers), different sources on screen and repeats (also back-to-back),
 shots without usable footage (fallback, weak shots), stage times and the human review of the clips (Revisar clips:
-correcta / incorrecta / dudosa). The simulator's CLIP is no proof: the review is what decides.
+correcta / incorrecta / dudosa: 30 or more, at least 5 in each quarter of the documentary). The simulator's CLIP is
+no proof: the review is what decides.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ import yaml
 
 from .context import RunContext
 
+MIN_PER_QUARTER = 5
 PILOT = {"sourcing": {"youtube": {"scene_search": True, "api_overflow": "esperar"}}, "judge": {"variety_margin": 0.02}}
 REGISTRY = "out/_pilotos.json"
 
@@ -76,13 +80,10 @@ def enable(root: Path, slug: str, reference: str | None = None) -> dict[str, Any
     others = [v for v in _registry(root) if v != slug]
     if others:            # one new documentary only: a second pilot would double the traffic being measured
         raise ValueError(f"Ya hay un piloto: {others[0]}. Quítalo antes («--quitar-piloto {others[0]}»).")
-    if reference and reference not in finished(root):
+    if not reference:     # chosen by hand: a finished documentary of similar subject and complexity
+        raise ValueError("Elige a mano el vídeo de referencia: uno terminado, de tema y complejidad parecidos")
+    if reference not in finished(root):
         raise ValueError(f"{reference} no es un vídeo terminado (hace falta su diagnóstico y su selección)")
-    if not reference:
-        options = [v for v in finished(root) if v != slug and v not in _registry(root)]
-        same = [v for v in options
-                if RunContext.create(v, root=root).config.get("canal") == RunContext.create(slug, root=root).config.get("canal")]
-        reference = (same or options or [None])[-1]
     path = _config_path(root, slug)
     path.parent.mkdir(parents=True, exist_ok=True)
     current = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else {}
@@ -141,6 +142,11 @@ def measure(root: Path, slug: str) -> dict[str, Any]:
                        if a.get("candidateId") and a.get("candidateId") == b.get("candidateId"))
     labels = {k.split("/", 1)[1]: v["verdict"] for k, v in feedback.labels(root).items() if k.startswith(slug + "/")}
     shots = len(selections) or int(diag.get("juez", {}).get("shots") or 0)
+    order = [s.get("shotId") for s in selections]
+    quarters = [0, 0, 0, 0]                 # where in the documentary the reviewed clips are
+    for shot_id in labels:
+        if shot_id in order:
+            quarters[min(3, 4 * order.index(shot_id) // max(1, len(order)))] += 1
     stages = diag.get("etapas", {})
     return {
         "video": slug,
@@ -160,6 +166,7 @@ def measure(root: Path, slug: str) -> dict[str, Any]:
         "totalMinutes": round(sum(float(s.get("segundos") or 0) for s in stages.values()) / 60, 1),
         "review": {v: list(labels.values()).count(v) for v in ("correcta", "incorrecta", "dudosa")},
         "reviewed": len(labels),
+        "reviewedByQuarter": quarters,
     }
 
 
@@ -199,6 +206,12 @@ def report(root: Path, slug: str, reference: str | None = None) -> dict[str, Any
     result = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "pilot": pilot, "reference": ref, "rows": rows,
               "pending": [] if pilot["reviewed"] >= 30 else
               [f"Revisa al menos 30 clips del piloto en «Revisar clips» (ahora {pilot['reviewed']}): decide la calidad, no el simulador."]}
+    # 30 reviewed clips spread over the whole documentary: at least 5 in each quarter, not all from the opening
+    thin = [i + 1 for i, n in enumerate(pilot["reviewedByQuarter"]) if n < MIN_PER_QUARTER]
+    if thin:
+        result["pending"].append(
+            f"Reparte la revisión por todo el documental: al menos {MIN_PER_QUARTER} clips en cada cuarto "
+            f"(ahora {' / '.join(map(str, pilot['reviewedByQuarter']))}; faltan en el cuarto {', '.join(map(str, thin))}).")
     if not pilot["sceneSearch"]:
         result["pending"].append("Este vídeo no se buscó por escenas (¿se activó el piloto antes de la búsqueda?).")
     target = root / "out" / slug / "piloto.json"

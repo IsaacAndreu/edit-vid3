@@ -224,6 +224,8 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
                 continue
         if (d / HOLD).is_file():           # «Quitar de la cola» in the studio
             continue
+        if quota_wait(d):                  # waiting for the API quota reset: the others go on
+            continue
         names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
         from pipeline.housekeeping import is_done
 
@@ -236,6 +238,30 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
 
 
 HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»
+QUOTA_WAIT = ".espera-cuota"           # in a video's folder: epoch of the API quota reset it waits for (the pilot)
+
+
+QUOTA_EXIT = 75                        # `--slug` exit code (EX_TEMPFAIL): the video waits for the API quota
+
+
+def wait_for_quota(root: Path, slug: str, error: BaseException) -> None:
+    from pipeline.context import find_video
+
+    (find_video(root, slug) / QUOTA_WAIT).write_text(f"{float(getattr(error, 'until', 0)):.0f}", encoding="utf-8")
+
+
+def quota_wait(folder: Path) -> float | None:
+    """The quota reset this video waits for, or None (gone or already passed: the file is removed)."""
+
+    path = folder / QUOTA_WAIT
+    try:
+        until = float(path.read_text("utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    if until <= time.time():
+        path.unlink(missing_ok=True)
+        return None
+    return until
 REDO = ".rehacer"                      # in a video's folder: made again from these stages (one per line), then removed
 
 
@@ -424,7 +450,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 time.sleep(30 * 60)
             waited = any(status == "en espera" for _, status, _, _ in LAST_RESULTS)
             for slug, status, _, _ in LAST_RESULTS:
-                if status == "en espera":                            # budget: not a failure, it goes tomorrow
+                if status in ("en espera", "espera cuota"):          # budget / API quota: not a failure
                     continue
                 if status == "OK":
                     state.pop(slug, None)
@@ -591,8 +617,15 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 results.append((slug, "interrumpido", time.monotonic() - started, str(stop)))
                 raise
             except BaseException as error:  # SystemExit too: one bad video must not end the queue
-                from pipeline.budget import BudgetReached
+                from pipeline.budget import ApiSearchesShort, BudgetReached
 
+                if isinstance(error, ApiSearchesShort):       # only this video waits for the quota; the rest go on
+                    wait_for_quota(root, slug, error)
+                    results.append((slug, "espera cuota", time.monotonic() - started, str(error)))
+                    print(f"⏸ {slug}: {error}")
+                    notify(root, f"⏸ {slug}: {error}")
+                    _write_report(root, results)
+                    continue
                 if (dry := out_of_credit(error)):               # an API with no balance: every video would fail
                     results.append((slug, "en espera", time.monotonic() - started, dry))
                     print(f"⏸ {dry}")
@@ -611,11 +644,11 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         lock.unlink(missing_ok=True)
         _write_report(root, results)
     LAST_RESULTS[:] = results
-    failures = sum(1 for _, status, _, _ in results if status != "OK")
+    failures = sum(1 for _, status, _, _ in results if status not in ("OK", "espera cuota", "en espera"))
     print(f"\nCola terminada: {len(results) - failures} OK · {failures} con error · resumen en {QUEUE_REPORT}")
     if results:
         notify(root, f"Cola terminada: {len(results) - failures} OK · {failures} con error\n" + "\n".join(
-            f"{'✅' if status == 'OK' else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
+            f"{'✅' if status == 'OK' else '⏸' if status in ('espera cuota', 'en espera') else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
             for slug, status, seconds, detail in results))
     return failures
 
@@ -683,8 +716,9 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                     print(f"[{slug}] {line}", flush=True)
             code = process.wait()
         detail = "" if code == 0 else _error_line(list(tail), code)
+        status = "OK" if code == 0 else "espera cuota" if code == QUOTA_EXIT else "ERROR"
         with lock:
-            results.append((slug, "OK" if code == 0 else "ERROR", time.monotonic() - started, detail))
+            results.append((slug, status, time.monotonic() - started, detail))
             _write_report(root, results)
 
     def worker() -> None:
@@ -947,8 +981,14 @@ def main() -> None:
     if args.all:
         failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)
         sys.exit(1 if failures else 0)
+    from pipeline.budget import ApiSearchesShort
+
     try:
         run_one(args.slug, force=set(args.force), until=args.until, review=args.review)
+    except ApiSearchesShort as error:          # the queue (also the parallel one) goes on without this video
+        wait_for_quota(PROJECT_ROOT, args.slug, error)
+        print(f"⏸ {error}")
+        sys.exit(QUOTA_EXIT)
     except StageNotImplemented as error:
         raise SystemExit(f"Parada: {error}") from error
     except QABlocked as error:

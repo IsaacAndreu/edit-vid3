@@ -74,10 +74,15 @@ falta se busca con yt-dlp. La búsqueda por escenas (`sourcing.youtube.scene_sea
 
 **Piloto de la búsqueda por escenas.** Está apagada para todos. Para probarla en UN vídeo nuevo (nunca dos a la vez):
 en su página, «🧪 Hacer de piloto por escenas» (o `python main.py --piloto-escenas <vídeo> --referencia <vídeo hecho>`).
+La referencia se elige a mano: un vídeo terminado de tema y complejidad parecidos.
 Solo ese vídeo lleva `scene_search: true`, `judge.variety_margin: 0.02` y `api_overflow: esperar` en su config.yaml:
-si las búsquedas de la API que quedan hoy no bastan, la cola espera a la cuota de mañana en vez de buscar el resto con
-yt-dlp (el límite local de 100 no se sube hasta que Google conceda más). No lo empieces con YouTube en cuarentena.
-Al terminar: «Revisar clips» (30 o más) y «Informe del piloto» (o `--informe-piloto <vídeo>`): peticiones reales,
+si las búsquedas de la API que quedan hoy no bastan (se mira antes de empezar y antes de cada llamada, contando cada
+página de `search.list`), **solo ese vídeo** espera a la cuota nueva — medianoche de Los Ángeles: las 9:00 en España,
+las 8:00 en las semanas del cambio de hora — y la cola sigue con los demás; nunca busca el resto con yt-dlp ni se sube
+el límite local de 100 hasta que Google conceda más. Cada llamada a la API queda apuntada en
+`cache/ytapi/registro-<día>.jsonl`, y si Google dice «sin cuota» antes que nuestra cuenta, sale un aviso para revisar la
+cuota real en Google Cloud Console. No lo empieces con YouTube en cuarentena.
+Al terminar: «Revisar clips» (30 o más, al menos 5 en cada cuarto del documental) y «Informe del piloto» (o `--informe-piloto <vídeo>`): peticiones reales,
 fuentes distintas y repetidas, planos sin metraje, tiempos y tu revisión, frente a la referencia. «Quitar piloto» (o
 `--quitar-piloto`) lo devuelve a la búsqueda por plano.
 

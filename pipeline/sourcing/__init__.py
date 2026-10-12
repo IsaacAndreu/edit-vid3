@@ -276,14 +276,21 @@ def check_api_searches(youtube: YouTubeSource, scenes: list[list[Shot]], yt_cfg:
 
     if youtube.api is None:
         return
-    needed = len({q for scene in scenes for q in scene_queries(scene, yt_cfg, api=True) if not youtube.search_cached(q)})
+    import math
+
+    # every search.list call counts, the extra result pages too (one page = up to 50 results; 8 asked: one call)
+    pages = max(1, math.ceil(int(yt_cfg.get("results_per_query", 8)) / 50))
+    queries = {q for scene in scenes for q in scene_queries(scene, yt_cfg, api=True) if not youtube.search_cached(q)}
+    needed = len(queries) * pages
     left = int(youtube.api.quota().get("searchesLeft", 0))
-    print(f"   API de YouTube: este vídeo necesita {needed} búsquedas nuevas · quedan {left} hoy")
+    print(f"   API de YouTube: este vídeo necesita {needed} llamadas a search.list nuevas · quedan {left} hoy")
     if needed > left and str(yt_cfg.get("api_overflow", "ytdlp")).lower() == "esperar":
         from ..budget import ApiSearchesShort
+        from ..ytapi import next_reset, reset_text
 
         raise ApiSearchesShort(f"Faltan búsquedas de la API: este vídeo necesita {needed} y hoy quedan {left}. "
-                               "Espera a la cuota de mañana (9:00 en España) en vez de buscar el resto con yt-dlp.")
+                               f"Espera a la cuota nueva, {reset_text()}, en vez de buscar el resto con yt-dlp; "
+                               "la cola sigue con los demás vídeos.", next_reset().timestamp())
 
 
 def inputs(ctx: RunContext) -> list:

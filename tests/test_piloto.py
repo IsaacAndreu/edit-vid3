@@ -49,8 +49,10 @@ def test_only_that_video_gets_the_scene_search_and_it_comes_off_cleanly(tmp_path
     _finished(tmp_path, "otro", ["yt:a"])
     config = tmp_path / "materiales" / "piloto1" / "config.yaml"
     config.write_text("timeline: {moments: 0}\n")
-    done = piloto.enable(tmp_path, "piloto1")
-    assert done["reference"] == "otro"                          # the last finished one of the same channel
+    with pytest.raises(ValueError, match="a mano"):              # the reference is chosen by hand
+        piloto.enable(tmp_path, "piloto1")
+    done = piloto.enable(tmp_path, "piloto1", reference="otro")
+    assert done["reference"] == "otro"
     written = yaml.safe_load(config.read_text())
     assert written["sourcing"]["youtube"] == {"scene_search": True, "api_overflow": "esperar"}
     assert written["judge"] == {"variety_margin": 0.02} and written["timeline"] == {"moments": 0}
@@ -112,3 +114,40 @@ def test_scene_search_waits_for_api_quota_instead_of_scraping(tmp_path):
     assert isinstance(raised.value, BudgetReached) and "necesita 2" in str(raised.value)
     YouTube.api = Api(2)
     check_api_searches(YouTube(), [plan.shots], {**cfg, "api_overflow": "esperar"})       # enough: goes on
+
+
+def test_the_review_must_cover_the_whole_documentary(tmp_path):
+    _project(tmp_path)
+    _finished(tmp_path, "otro", ["yt:a"] * 4)
+    early = {f"s{i:03d}": "correcta" for i in range(1, 31)}            # 30 clips, all from the opening
+    _finished(tmp_path, "piloto1", [f"yt:{i}" for i in range(120)], scene=True, labels=early)
+    result = piloto.report(tmp_path, "piloto1", reference="otro")
+    assert result["pilot"]["reviewedByQuarter"] == [30, 0, 0, 0]
+    assert any("cada cuarto" in p for p in result["pending"]) and not any("30 clips" in p for p in result["pending"])
+    spread = {f"s{i:03d}": "correcta" for i in range(1, 121, 4)}       # 30 spread over the four quarters
+    (tmp_path / "out" / "_errores" / "etiquetas.json").unlink()
+    _finished_labels = {f"piloto1/{k}": {"verdict": v} for k, v in spread.items()}
+    (tmp_path / "out" / "_errores" / "etiquetas.json").write_text(json.dumps(_finished_labels))
+    assert piloto.report(tmp_path, "piloto1", reference="otro")["pending"] == []
+
+
+def test_mid_run_the_last_api_search_stops_the_pilot_instead_of_scraping(tmp_path):
+    from pipeline.budget import ApiSearchesShort
+    from pipeline.sourcing.youtube import YouTubeSource
+    from pipeline.ytapi import NoKeysLeft
+
+    class EmptyApi:
+        def search(self, *a, **k):
+            raise NoKeysLeft("Límite diario de búsquedas de la API (100) alcanzado")
+
+    scraped = []
+    for overflow, expected in (("esperar", ApiSearchesShort), ("ytdlp", None)):
+        yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path / overflow, config={"min_interval": 0, "api_overflow": overflow})
+        yt.api = EmptyApi()
+        yt._call = lambda action, fn, **k: scraped.append(action) or {"entries": []}
+        if expected:
+            with pytest.raises(expected):
+                yt.search_pool(["a query"], [])
+            assert scraped == []                             # checked before the call: nothing went to yt-dlp
+        else:
+            assert yt.search_pool(["a query"], []) == ([[]], {}) and scraped == ["search"]

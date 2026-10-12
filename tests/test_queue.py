@@ -189,3 +189,27 @@ def test_an_api_without_balance_says_which_one_and_is_not_a_video_failure():
     assert "DeepSeek" in main.out_of_credit(deepseek)
     assert "OpenAI" in main.out_of_credit(RuntimeError("Error code: 429 - insufficient_quota"))
     assert main.out_of_credit(RuntimeError("Error code: 500 - boom")) is None
+
+
+def test_the_pilot_waits_for_api_quota_alone_and_the_queue_goes_on(tmp_path):
+    import time as clock
+
+    from pipeline.budget import ApiSearchesShort
+
+    for slug in ("A", "PILOT", "C"):
+        _materials(tmp_path, slug)
+    done = []
+
+    def fake_run(slug, **kwargs):
+        if slug == "PILOT":
+            raise ApiSearchesShort("faltan búsquedas de la API", clock.time() + 3600)
+        done.append(slug)
+
+    with patch.object(main, "run_one", side_effect=fake_run), patch.object(main, "notify", lambda *a, **k: None):
+        failures = main.run_queue(force=set(), until=None, review=False, root=tmp_path, check=False)
+    assert done == ["A", "C"] and failures == 0                       # not a failure, and not the end of the queue
+    assert "| PILOT | espera cuota |" in (tmp_path / main.QUEUE_REPORT).read_text()
+    assert "PILOT" not in main.pending_slugs(tmp_path)                # until the reset
+    (tmp_path / "materiales" / "PILOT" / main.QUOTA_WAIT).write_text(f"{clock.time() - 1:.0f}")
+    assert "PILOT" in main.pending_slugs(tmp_path)                    # reset passed: back in the queue
+    assert not (tmp_path / "materiales" / "PILOT" / main.QUOTA_WAIT).exists()
