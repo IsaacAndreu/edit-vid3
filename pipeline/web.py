@@ -992,6 +992,14 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):
+                    from . import piloto
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    registry = piloto._registry(root)
+                    return self._ok({"pilot": registry.get(slug), "others": sorted(set(registry) - {slug}),
+                                     "references": [v for v in piloto.finished(root) if v != slug],
+                                     "report": _json(root / "out" / slug / "piloto.json")})
                 if path == "/api/scenebench":              # the last per-shot vs scene search comparison
                     from . import scenebench
 
@@ -1071,6 +1079,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(restart_queue(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
                     return self._ok({"text": for_claude(root, urllib.parse.unquote(match.group(1)))})
+                if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):     # {on, reference}: the scene pilot
+                    from . import piloto
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    if body.get("on") is False:
+                        return self._ok(piloto.disable(root, slug))
+                    if body.get("report"):
+                        return self._ok(piloto.report(root, slug, body.get("reference") or None))
+                    return self._ok(piloto.enable(root, slug, body.get("reference") or None))
                 if path == "/api/update":
                     return self._ok(update_code(root))
                 if path == "/api/queue":

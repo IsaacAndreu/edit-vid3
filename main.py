@@ -95,6 +95,12 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--comparar-escenas", action="store_true",
                         help="Búsqueda por plano vs por escenas en un conjunto fijo de escenas, sin pedir nada a YouTube "
                              "→ out/_comparar_escenas.json.")
+    target.add_argument("--piloto-escenas", metavar="VIDEO",
+                        help="Activa la búsqueda por escenas solo en ese vídeo (piloto), con --referencia <vídeo hecho>.")
+    target.add_argument("--informe-piloto", metavar="VIDEO",
+                        help="Piloto frente a su referencia con lo que pasó de verdad → out/<vídeo>/piloto.md.")
+    target.add_argument("--quitar-piloto", metavar="VIDEO", help="Vuelve ese vídeo a la búsqueda por plano.")
+    parser.add_argument("--referencia", metavar="VIDEO", help="Con --piloto-escenas / --informe-piloto: el vídeo hecho de referencia.")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
     target.add_argument("--compilar", metavar="CANAL",
@@ -874,6 +880,19 @@ def main() -> None:
 
         best = (ytbench.run(PROJECT_ROOT)["summary"] or [{}])[0]
         print(f"Más rápido: {best.get('way')} · {best.get('client')} · 360p {best.get('mbps360')} MB/s")
+        return
+    if args.piloto_escenas or args.informe_piloto or args.quitar_piloto:
+        from pipeline import piloto
+
+        if args.piloto_escenas:
+            done = piloto.enable(PROJECT_ROOT, args.piloto_escenas, args.referencia)
+            print(f"Piloto activado en {done['video']} (referencia: {done['reference'] or 'ninguna: usa --referencia'}). "
+                  "Solo ese vídeo busca por escenas.")
+        elif args.quitar_piloto:
+            piloto.disable(PROJECT_ROOT, args.quitar_piloto)
+            print(f"{args.quitar_piloto}: vuelve a la búsqueda por plano.")
+        else:
+            print(piloto.markdown(piloto.report(PROJECT_ROOT, args.informe_piloto, args.referencia)))
         return
     if args.comparar_escenas:
         from pipeline import scenebench

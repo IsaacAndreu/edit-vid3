@@ -626,6 +626,14 @@ class YouTubeSource:
         name = key(query, limit) if not days else f"{key(query, limit, days)}-{time.strftime('%Y%m%d')}"   # recent: one per day
         return cached_json(self.cache_dir / "search" / "youtube" / f"{name}.json", produce)
 
+    def search_cached(self, query: str) -> bool:
+        """This search's answer is already on disk (search() would not ask anyone)."""
+
+        limit = int(self.cfg.get("results_per_query", 8))
+        days = int(self.cfg.get("recent_days", 0) or 0)
+        name = key(query, limit) if not days else f"{key(query, limit, days)}-{time.strftime('%Y%m%d')}"
+        return (self.cache_dir / "search" / "youtube" / f"{name}.json").is_file()
+
     def _api_search(self, query: str, limit: int, days: int = 0) -> list[dict[str, Any]] | None:
         """The same entries as a yt-dlp search, from the official API (never bot-checked). None when
         there are no keys or the day's quota ran out: then yt-dlp searches as before."""

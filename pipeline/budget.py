@@ -19,6 +19,11 @@ class BudgetReached(RuntimeError):
     pass
 
 
+class ApiSearchesShort(BudgetReached):
+    """The YouTube API's searches left today do not cover this video's (api_overflow: esperar, the scene pilot):
+    the queue waits for tomorrow's quota instead of searching the rest through yt-dlp."""
+
+
 def spent_today(root: Path) -> float:
     today = datetime.now(timezone.utc).date().isoformat()
     total = 0.0

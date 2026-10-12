@@ -519,7 +519,8 @@ async function videoPage(slug) {
     <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
       ${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">🤖 elegido por el guion</span>` : ""}` : ""}</div>
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
-    <div class="row" style="margin:8px 0"><button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button></div>
+    <div class="row" style="margin:8px 0"><button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>
+      <span id="pilotBox"></span></div><div id="pilotReport"></div>
     ${v.lastError ? `<div class="notice">En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b> (antes si cambias sus archivos o pulsas «Hacer ahora»)` : "el vigilante lo hará en su turno"}.
       <div class="small muted" style="margin-top:4px">El último intento falló: ${esc(String(v.lastError).slice(0, 220))}</div></div>` : ""}
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
@@ -553,6 +554,7 @@ async function videoPage(slug) {
     } catch (e) { alert(e.message); }
   };
   const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;
+  pilotBox(v.slug, v);
   if (v.status === "haciendo") schedule(route, 10000);
 }
 
@@ -593,6 +595,35 @@ function sceneCard(bench) {
       ${r.videos.map((v) => `<div>${esc(v.video)}: ${v.old.searches} / ${v.old.extracts} → <b>${v.new.searches} / ${v.new.extracts}</b>
         <span class="muted">(${v.old.shots} planos, ${v.scenes} escenas)</span></div>`).join("")}</div>` : ""}
     ${job.running && job.log ? `<pre style="max-height:160px">${esc(job.log.split("\n").slice(-8).join("\n"))}</pre>` : ""}</div>`;
+}
+async function pilotBox(slug, v) {
+  const box = $("#pilotBox"); if (!box) return;
+  const p = await api(`/api/video/${encodeURIComponent(slug)}/pilot`).catch(() => null); if (!p) return;
+  const url = `/api/video/${encodeURIComponent(slug)}/pilot`;
+  if (p.pilot) {
+    box.innerHTML = `<span class="pill">🧪 Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
+      ${v.status === "hecho" ? `<button onclick="pilotReport('${esc(slug)}')">Informe del piloto</button>` : ""}
+      <button onclick="if(confirm('¿Volver este vídeo a la búsqueda por plano?'))post('${url}', {on: false}).then(() => route())">Quitar piloto</button>`;
+    if (p.report) showPilot(p.report);
+  } else if (!p.others.length && !v.stagesDone) {
+    box.innerHTML = `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">🧪 Hacer de piloto por escenas</button>`;
+  }
+}
+window.startPilot = async (slug, refs) => {
+  const ref = prompt("Vídeo ya hecho que sirve de referencia (deja vacío para el último del mismo canal):\n" + refs.slice(-12).join("\n"), "");
+  if (ref === null) return;
+  try { const r = await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {reference: ref.trim()}); alert("Piloto activado. Referencia: " + (r.reference || "ninguna")); route(); }
+  catch (e) { alert(e.message); }
+};
+window.pilotReport = async (slug) => {
+  try { showPilot(await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {report: true})); } catch (e) { alert(e.message); }
+};
+function showPilot(r) {
+  const show = (x) => x == null ? "—" : (typeof x === "number" && x > 0 && x < 1 && !Number.isInteger(x)) ? Math.round(x * 100) + " %" : x;
+  $("#pilotReport").innerHTML = `<div class="card"><b>🧪 Piloto: ${esc(r.pilot.video)} frente a ${esc(r.reference.video)}</b>
+    <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th></th><th>Referencia</th><th>Piloto</th><th></th></tr>
+    ${r.rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${show(x.reference)}</td><td><b>${show(x.pilot)}</b></td><td>${x.better == null ? "" : x.better ? "✅" : "⚠️"}</td></tr>`).join("")}</table></div>
+    ${r.pending.map((p) => `<div class="notice">${esc(p)}</div>`).join("")}</div>`;
 }
 window.runScenes = async (button) => {
   button.disabled = true; await post("/api/scenebench"); setTimeout(() => stats(), 4000);

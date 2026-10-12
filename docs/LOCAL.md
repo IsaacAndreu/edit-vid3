@@ -70,7 +70,16 @@ Solo se leen las cookies de YouTube/Google, nada más del navegador. Con Chrome 
 
 **Búsquedas con la API.** Con `YOUTUBE_API_KEY` en `.env`, las búsquedas van por la API oficial (sin
 bloqueos). Con la cuota por defecto (100 búsquedas al día) no llega para un documental entero: lo que
-falta se busca con yt-dlp. La búsqueda por escenas (`sourcing.scene_search`) reduce mucho las búsquedas.
+falta se busca con yt-dlp. La búsqueda por escenas (`sourcing.youtube.scene_search`) reduce mucho las búsquedas.
+
+**Piloto de la búsqueda por escenas.** Está apagada para todos. Para probarla en UN vídeo nuevo (nunca dos a la vez):
+en su página, «🧪 Hacer de piloto por escenas» (o `python main.py --piloto-escenas <vídeo> --referencia <vídeo hecho>`).
+Solo ese vídeo lleva `scene_search: true`, `judge.variety_margin: 0.02` y `api_overflow: esperar` en su config.yaml:
+si las búsquedas de la API que quedan hoy no bastan, la cola espera a la cuota de mañana en vez de buscar el resto con
+yt-dlp (el límite local de 100 no se sube hasta que Google conceda más). No lo empieces con YouTube en cuarentena.
+Al terminar: «Revisar clips» (30 o más) y «Informe del piloto» (o `--informe-piloto <vídeo>`): peticiones reales,
+fuentes distintas y repetidas, planos sin metraje, tiempos y tu revisión, frente a la referencia. «Quitar piloto» (o
+`--quitar-piloto`) lo devuelve a la búsqueda por plano.
 
 Las cookies duran semanas o meses; cuando una caduca verás «YouTube bloqueó cuenta2.txt» y basta
 con volver a exportarla. Mantén yt-dlp al día: `pip install -U yt-dlp`.

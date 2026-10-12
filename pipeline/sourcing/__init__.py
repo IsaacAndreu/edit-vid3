@@ -269,6 +269,23 @@ class Precomputer:
             print(f"   Aviso precálculo: {self.error}")
 
 
+def check_api_searches(youtube: YouTubeSource, scenes: list[list[Shot]], yt_cfg: dict[str, Any]) -> None:
+    """Before any search: how many new ones the scenes need against the API's searches left today. With
+    api_overflow: esperar (the pilot) a shortfall stops here and the queue waits, instead of sending the rest
+    through yt-dlp; the local limit is never raised to make it fit."""
+
+    if youtube.api is None:
+        return
+    needed = len({q for scene in scenes for q in scene_queries(scene, yt_cfg, api=True) if not youtube.search_cached(q)})
+    left = int(youtube.api.quota().get("searchesLeft", 0))
+    print(f"   API de YouTube: este vídeo necesita {needed} búsquedas nuevas · quedan {left} hoy")
+    if needed > left and str(yt_cfg.get("api_overflow", "ytdlp")).lower() == "esperar":
+        from ..budget import ApiSearchesShort
+
+        raise ApiSearchesShort(f"Faltan búsquedas de la API: este vídeo necesita {needed} y hoy quedan {left}. "
+                               "Espera a la cuota de mañana (9:00 en España) en vez de buscar el resto con yt-dlp.")
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "shots.json"]
 
@@ -437,6 +454,7 @@ def run(ctx: RunContext) -> None:
         if youtube is not None and yt_cfg.get("scene_search", False):
             scenes = group_scenes([s for s in shots if not hypothetical(s)], scene_settings(yt_cfg)[0])
             print(f"   Búsqueda por escenas: {len(shots)} planos en {len(scenes)} escenas")
+            check_api_searches(youtube, scenes, yt_cfg)
             by_id = {r.shotId: r for done in pool.map(process_scene, scenes) for r in done}
             by_id.update({r.shotId: r for r in pool.map(process, [s for s in shots if hypothetical(s)])})
             results = [by_id[s.id] for s in shots]
