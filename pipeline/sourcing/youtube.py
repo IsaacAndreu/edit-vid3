@@ -445,9 +445,9 @@ class YouTubeSource:
                         tried_ways.add(way)
                         continue
                     # YouTube is wary of that IP: same request through another one — only when the proxies leave
-                    # by different connections. Two PCs behind one home router are ONE IP for YouTube, and hopping
-                    # just doubled the requests that got it blocked (proxies_share_ip, default true)
-                    if kind == "bot" and not self.cfg.get("proxies_share_ip", True):
+                    # by different connections (one at home, one at work: default). Two PCs behind one router are ONE
+                    # IP for YouTube and hopping only doubles the requests: set proxies_share_ip: true then
+                    if kind == "bot" and not self.cfg.get("proxies_share_ip", False):
                         self._rest(way, float(self.cfg.get("proxy_bot_rest_minutes", 5)) * 60, "YouTube pide «no eres un bot»")
                         tried_ways.add(way)
                         continue

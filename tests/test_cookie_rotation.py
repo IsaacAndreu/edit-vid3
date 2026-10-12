@@ -291,7 +291,6 @@ def test_several_proxies_share_the_work_and_one_that_fails_rests(tmp_path, monke
         return "ok"
 
     yt._busy = [0, 1]                                                     # home is the least busy: tried first
-    yt.cfg["proxies_share_ip"] = False                                    # two real connections: hop on a bot check
     assert yt._call("metadata", wary_home) == "ok" and seen == [home, laptop]
 
 
@@ -299,7 +298,8 @@ def test_a_bot_check_drops_that_video_and_several_stop_youtube(tmp_path, monkeyp
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
     home, laptop = "http://100.64.0.2:8899", "http://100.64.0.3:8899"
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
-                       config={"proxies": [home, laptop], "min_interval": 0, "cookies": "never"})
+                       config={"proxies": [home, laptop], "min_interval": 0, "cookies": "never",
+                               "proxies_share_ip": True})                # one router: no hop
     seen = []
 
     def bot():
