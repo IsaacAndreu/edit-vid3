@@ -209,6 +209,13 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
             if quota["searchesLeft"] > 0:
                 source.api = api
                 print(f"   YouTube: búsquedas con la API (proyecto de {api.environment}, ~{quota['searchesLeft']} búsquedas libres hoy)")
+            else:            # say it: otherwise every search silently goes by yt-dlp, the way YouTube blocks
+                from ..ytapi import reset_text
+
+                print(f"   YouTube: la API no tiene búsquedas hoy ({quota['searches']}/{quota['searchesPerDay']} búsquedas, "
+                      f"{quota['used']}/{quota['total']} unidades); busco con yt-dlp hasta la cuota nueva, {reset_text()}")
+        else:
+            print("   YouTube: sin clave de la API (YOUTUBE_API_KEY en .env): todas las búsquedas van por yt-dlp")
     return source
 
 
