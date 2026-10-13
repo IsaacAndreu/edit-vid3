@@ -88,14 +88,37 @@ def test_search_goes_through_the_api_when_there_are_keys(tmp_path):
     assert yt.api.calls == 1
 
 
-def test_api_failure_falls_back_to_ytdlp_for_the_rest_of_the_run(tmp_path, monkeypatch):
+def test_an_api_error_never_turns_into_yt_dlp_searches(tmp_path, monkeypatch):
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0})
     yt.api = _FakeAPI(fail=True)
-    monkeypatch.setattr(yt, "_call", lambda action, fn, **k: {"entries": [{"id": "ccccccccccc", "title": "x"}]})
-    assert [e["id"] for e in yt.search("q")] == ["ccccccccccc"] and yt.api is not None   # one hiccup: keep the API
-    yt.search("q2")
-    yt.search("q3")
-    assert yt.api is None                                       # it keeps failing: yt-dlp for the rest
+    scraped = []
+    monkeypatch.setattr(yt, "_call", lambda action, fn, **k: scraped.append(action))
+    for query in ("q", "q2", "q3"):
+        with pytest.raises(RuntimeError, match="API de YouTube"):
+            yt.search(query)
+    assert scraped == [] and yt.api is not None                 # the default (api_overflow: esperar): no scraping
+    old = YouTubeSource(root=tmp_path, cache_dir=tmp_path / "b", config={"min_interval": 0, "api_overflow": "ytdlp"})
+    old.api = _FakeAPI(fail=True)
+    monkeypatch.setattr(old, "_call", lambda action, fn, **k: {"entries": [{"id": "ccccccccccc", "title": "x"}]})
+    assert [e["id"] for e in old.search("q")] == ["ccccccccccc"]   # only when asked for: api_overflow: ytdlp
+
+
+def test_two_processes_share_one_hourly_budget_that_survives_a_restart(tmp_path):
+    import json
+
+    from pipeline.sourcing.common import HourlyBudget
+
+    path = tmp_path / ".ritmo-x.presupuesto"
+    first, second = HourlyBudget(path, 10), HourlyBudget(path, 10)          # two processes, one file
+    assert first.take(6) == 0 and second.take(4) == 0 and first.used() == 10
+    rows = json.loads(path.read_text())
+    rows[0][0] -= 3599.5                                                   # the first 6 units leave the hour soon
+    path.write_text(json.dumps(rows))
+    import time
+
+    began = time.monotonic()
+    assert HourlyBudget(path, 10).take(3) >= 1                            # a restarted one: it waits, no burst
+    assert time.monotonic() - began >= 0.9 and HourlyBudget(path, 10).used() == 7
 
 
 def test_parallel_searches_never_read_a_half_written_quota_ledger(tmp_path):
@@ -385,5 +408,5 @@ def test_protection_report_names_keys_but_never_shows_them(tmp_path, monkeypatch
     monkeypatch.setenv("YOUTUBE_API_KEYS", "secretA,secretB")
     monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
     text = "\n".join(proteccion.report(tmp_path))
-    assert "secretA" not in text and "YOUTUBE_API_KEYS tiene 2 claves" in text
+    assert "secretA" not in text and "YOUTUBE_API_KEYS: 2 claves" in text
     assert "ante «no eres un bot»: nunca" in text and "libre" in text

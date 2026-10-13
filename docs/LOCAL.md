@@ -70,7 +70,8 @@ Solo se leen las cookies de YouTube/Google, nada más del navegador. Con Chrome 
 
 **Búsquedas con la API.** Con `YOUTUBE_API_KEY` en `.env`, las búsquedas van por la API oficial (sin
 bloqueos). Con la cuota por defecto (100 búsquedas al día) no llega para un documental entero: lo que
-falta se busca con yt-dlp. La búsqueda por escenas (`sourcing.youtube.scene_search`) reduce mucho las búsquedas.
+falta NO se busca con yt-dlp: el vídeo espera a la cuota nueva (`api_overflow: esperar`, por defecto).
+La búsqueda por escenas (`sourcing.youtube.scene_search`) reduce mucho las búsquedas.
 
 **Piloto de la búsqueda por escenas.** Está apagada para todos. Para probarla en UN vídeo nuevo (nunca dos a la vez):
 en su página, «🧪 Hacer de piloto por escenas» (o `python main.py --piloto-escenas <vídeo> --referencia <vídeo hecho>`).
@@ -397,16 +398,16 @@ inclinados en perspectiva, con relieve suave y un avión que recorre la ruta.
 
 ## 8. Panel de investigación (tipo TubeLab)
 
-Añade la clave de **un solo proyecto** de Google Cloud a `.env` (repartir el trabajo entre varios
-proyectos para sumar cuota va contra la política de la API de YouTube). Si Google te aprueba más cuota
-por su formulario oficial, ponla como `clave:50000` y sube `lab.searches_per_day`:
+Añade tus claves de la API de YouTube a `.env`, separadas por comas (si alguna tiene más cuota que
+la normal de 10 000 unidades, ponla como `clave:50000`):
 
 ```
-YOUTUBE_API_KEY=tu_clave
+YOUTUBE_API_KEYS=clave1,clave2,clave3
 ```
 
-Una segunda clave de desarrollo (`YOUTUBE_API_KEY_DEV`) solo se usa con `YOUTUBE_API_ENTORNO=desarrollo`,
-nunca a la vez que la de producción. De un `YOUTUBE_API_KEYS=…` antiguo solo se usa la primera.
+Se usan una tras otra: cuando una se queda sin cuota (o sin sus 100 búsquedas del día) pasa a la siguiente.
+Ojo: las condiciones de la API de YouTube no permiten varios proyectos para sumar cuota de la misma
+herramienta; Google puede cerrarlos. La vía oficial es pedir más cuota en Google Cloud Console.
 
 y abre el panel:
 

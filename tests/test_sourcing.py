@@ -130,24 +130,21 @@ class YouTubeCandidateTests(unittest.TestCase):
                 with self.assertRaises(SourceUnavailable):
                     yt.candidates(BROLL, [])
 
-    def test_429_is_retried_not_a_block(self) -> None:
-        from pipeline.sourcing.youtube import RateLimited
-
+    def test_429_quarantines_the_connection_and_is_never_retried(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             yt = _youtube(tmp, rate_backoff=0)
             calls = []
 
-            def flaky():
+            def limited():
                 calls.append(1)
-                if len(calls) < 3:
-                    raise Exception("HTTP Error 429: Too Many Requests")
-                return "ok"
+                raise Exception("HTTP Error 429: Too Many Requests")
 
-            self.assertEqual(yt._call("search", flaky), "ok")
-            self.assertIsNone(yt.blocked)
-            with self.assertRaises(RateLimited):
-                yt._call("subtitles", lambda: (_ for _ in ()).throw(Exception("HTTP Error 429")), rate_retries=0)
-            self.assertIsNone(yt.blocked)
+            with self.assertRaises(SourceUnavailable):          # the only connection: quarantine and stop
+                yt._call("search", limited)
+            with self.assertRaises(SourceUnavailable):
+                yt._call("search", limited)
+            self.assertEqual(len(calls), 1)                     # zero retries
+            self.assertTrue(yt.recovering())
 
     def test_range_download_never_nests_connection_slots(self) -> None:
         """Re-extracting metadata inside a download used to deadlock when every slot was busy."""

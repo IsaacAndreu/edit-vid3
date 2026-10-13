@@ -108,7 +108,7 @@ def test_scene_search_waits_for_api_quota_instead_of_scraping(tmp_path):
             return query == YULO                            # already on disk: costs nothing
 
     cfg = {"scene_extra_queries": 3, "api_scene_extra_queries": 2, "queries_en": 2}
-    check_api_searches(YouTube(), [plan.shots], cfg)                       # default: the rest goes by yt-dlp
+    check_api_searches(YouTube(), [plan.shots], {**cfg, "api_overflow": "ytdlp"})   # only if asked: rest by yt-dlp
     with pytest.raises(ApiSearchesShort) as raised:
         check_api_searches(YouTube(), [plan.shots], {**cfg, "api_overflow": "esperar"})
     assert isinstance(raised.value, BudgetReached) and "necesita 2" in str(raised.value)

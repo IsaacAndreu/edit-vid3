@@ -25,7 +25,8 @@ import requests
 
 from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
-from .common import USER_AGENT, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json, fuse_ranks, key, tokens
+from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
+                     fuse_ranks, key, tokens)
 
 
 _BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
@@ -73,6 +74,11 @@ def pacer_name(proxy: str) -> str:
 
 
 QUARANTINE_SUFFIX = ".cuarentena"
+BUDGET_SUFFIX = ".presupuesto"
+# What one action costs out of the hourly budget, in HTTP requests to YouTube (estimated: yt-dlp does several per
+# operation — the page, the player API, the PO token, the format manifests; a range download fetches many fragments)
+REQUEST_UNITS = {"search": 2, "metadata": 4, "captions": 1, "download": 6, "download (HLS)": 6,
+                 "download (completo)": 10, "get": 1}
 LAST_BLOCK = ".ultimo-bloqueo"           # cache/videos/: when YouTube last asked «are you a bot» (recovering())
 
 
@@ -200,6 +206,10 @@ class YouTubeSource:
         self._busy = [0] * len(self._pacers)
         self._resting = [0.0] * len(self._pacers)
         self._quarantine_until = [0.0] * len(self._pacers)    # also in a file per way (quarantine_file)
+        # One traffic budget per way out for the whole machine (every process, kept across restarts)
+        per_hour = float(config.get("requests_per_hour", 600) or 0)
+        self._budgets = [HourlyBudget(cache_dir / "videos" / (pacer_name(p) + BUDGET_SUFFIX), per_hour)
+                         for p in (self.proxies or [""])]
         self._proxy_turn = 0
         self._proxy_lock = threading.Lock()
         self.blocked: str | None = None
@@ -452,6 +462,9 @@ class YouTubeSource:
                             time.sleep(delay)
                             self._count("espera por límite", delay)
                         self._pacers[way].wait()
+                        held = self._budgets[way].take(REQUEST_UNITS.get(action, 2))
+                        if held:
+                            self._count("espera por presupuesto/hora", held)
                         began = time.monotonic()
                         self._local.waited = began - queued     # our own queue (slots + 1 req/s), not YouTube
                         try:
@@ -510,13 +523,12 @@ class YouTubeSource:
                             continue
                     self._blocked_everywhere()
                 if any(marker in lowered for marker in _RATE_MARKERS):
-                    self._calm_down()
-                    if attempt < rate_retries:
-                        pause = float(self.cfg.get("rate_backoff", 20)) * 3**attempt
-                        self._cooldown_until = max(self._cooldown_until, time.monotonic() + pause)
-                        attempt += 1
-                        continue
-                    raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429)") from None
+                    # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry
+                    self._quarantine(way, "YouTube responde 429 (demasiadas peticiones)")
+                    if self._all_in_quarantine():
+                        self._blocked_everywhere()
+                    raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429); esa conexión queda en "
+                                      "cuarentena") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
 
     def way_name(self, way: int) -> str:
@@ -524,7 +536,7 @@ class YouTubeSource:
 
         return (urlsplit(self.proxies[way]).hostname or self.proxies[way]) if self.proxies else "directo"
 
-    def _quarantine(self, way: int) -> None:
+    def _quarantine(self, way: int, why: str = "YouTube pide «no eres un bot»") -> None:
         minutes = float(self.cfg.get("bot_quarantine_minutes", 120))
         proxy = (self.proxies or [""])[way]
         fresh = not self._in_quarantine(way)
@@ -539,7 +551,7 @@ class YouTubeSource:
             pass
         self._remember_block()
         if fresh:
-            print(f"   YouTube pide «no eres un bot» a {self.way_name(way)}: cuarentena de {minutes:.0f} min; "
+            print(f"   {why} a {self.way_name(way)}: cuarentena de {minutes:.0f} min; "
                   "lo que se le negó no se pide por otra conexión")
 
     def _in_quarantine(self, way: int) -> bool:
@@ -578,6 +590,7 @@ class YouTubeSource:
         if self.blocked or self._all_in_quarantine():
             raise SourceUnavailable(self.blocked or "YouTube: todas las conexiones en cuarentena")
         way = self._pick_way()
+        self._budgets[way].take(REQUEST_UNITS["get"])
         try:
             return self._sessions[way].get(url, timeout=timeout)
         except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
@@ -642,6 +655,9 @@ class YouTubeSource:
             found = self._api_search(query, limit, days)
             if found is not None:
                 return found
+            if getattr(self, "api_exhausted", False) and \
+                    str(self.cfg.get("api_overflow", "esperar")).lower() == "esperar":   # keys, but no quota left
+                self._no_search_now("La API de YouTube no tiene búsquedas hoy en ninguna clave")
             if self.recovering():         # YouTube flagged this connection lately: no yt-dlp searches on it
                 self._no_search_now("YouTube pidió «no eres un bot» hace menos de "
                                     f"{float(self.cfg.get('bot_recovery_hours', 72)):.0f} h y la API no tiene búsquedas")
@@ -683,13 +699,15 @@ class YouTubeSource:
         except Exception as error:  # no quota left or the API keeps failing: yt-dlp for the rest of the run
             from ..ytapi import NoKeysLeft, next_reset, reset_text
 
-            if isinstance(error, NoKeysLeft) and (str(self.cfg.get("api_overflow", "ytdlp")).lower() == "esperar"
-                                                  or self.recovering()):
+            strict = str(self.cfg.get("api_overflow", "esperar")).lower() == "esperar"
+            if isinstance(error, NoKeysLeft) and (strict or self.recovering()):
                 from ..budget import ApiSearchesShort
 
                 raise ApiSearchesShort(f"La API de YouTube no tiene más búsquedas hoy ({error}); este vídeo espera "
                                        f"a la cuota nueva, {reset_text()}, en vez de seguir con yt-dlp",
                                        next_reset().timestamp()) from None
+            if strict:                    # an API error is that search's error, never a reason to scrape instead
+                raise RuntimeError(f"API de YouTube: {str(error)[:160]}") from None
             with self._api_lock:
                 self._api_failures = getattr(self, "_api_failures", 0) + 1
                 if self.api is not None and (isinstance(error, NoKeysLeft) or self._api_failures >= 3):

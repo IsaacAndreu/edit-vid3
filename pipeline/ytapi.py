@@ -1,15 +1,11 @@
-"""YouTube Data API v3 with ONE production project: its daily quota, a search counter and a disk cache.
+"""YouTube Data API v3 with several keys: one after another, per-key daily quota, a search counter and a disk cache.
 
-.env: YOUTUBE_API_KEY=key (the production project). Several projects to add up quota for the same tool is
-against YouTube's API policy, so only one key is used: of an old YOUTUBE_API_KEYS=k1,k2,… list only the first,
-with a warning. A separate development key (YOUTUBE_API_KEY_DEV) is used instead only when
-YOUTUBE_API_ENTORNO=desarrollo — never both. More quota is asked for through Google's official quota form; when
-granted, write "key:units" (YOUTUBE_API_KEY=abc:50000) and raise `lab.searches_per_day`.
-
-The quota (10 000 units by default, `lab.units_per_key`) resets at midnight Pacific time. A search costs 100
-units and also counts against its own daily limit (`lab.searches_per_day`, 100 by default); video, channel and
-playlist lookups cost 1 per 50 items. Both counts are kept in cache/ytapi/quota.json. Answers are cached on disk
-(search 12 h, stats 6 h, channel baselines 24 h) so repeating a search in the panel costs nothing.
+.env: YOUTUBE_API_KEYS=key1,key2,… (or a single YOUTUBE_API_KEY). Each key has its own daily quota (10 000 units,
+`lab.units_per_key`; "key:50000" for a raised one) and its own search counter (`lab.searches_per_day`, 100); when
+one runs out (or Google answers quotaExceeded) the next one is used. YOUTUBE_API_KEY_DEV is used alone with
+YOUTUBE_API_ENTORNO=desarrollo. Quotas reset at midnight in Los Angeles. A search costs 100 units; video, channel and
+playlist lookups cost 1 per 50 items. Counts are kept in cache/ytapi/quota.json (never the keys) and every call is
+written down in cache/ytapi/registro-<day>.jsonl. Answers are cached on disk (search 12 h, stats 6 h, baselines 24 h).
 """
 
 from __future__ import annotations
@@ -121,33 +117,26 @@ def _error(response: Any) -> dict[str, Any]:
 _WARNED: set[str] = set()
 
 
-def chosen_key(env: Any) -> tuple[str, str]:
-    """(the one key to use, "producción" | "desarrollo"), from the environment: see the module's docstring."""
+def chosen_keys(env: Any) -> tuple[list[str], str]:
+    """(the keys to use, in order, "producción" | "desarrollo"): YOUTUBE_API_KEYS (one after another: when one runs
+    out of quota the next one is used), else YOUTUBE_API_KEY; YOUTUBE_API_KEY_DEV alone with YOUTUBE_API_ENTORNO=desarrollo."""
 
     if str(env("YOUTUBE_API_ENTORNO", required=False) or "").strip().lower() in ("desarrollo", "dev", "development"):
-        return str(env("YOUTUBE_API_KEY_DEV", required=False) or "").strip(), "desarrollo"
-    single = str(env("YOUTUBE_API_KEY", required=False) or "").strip()
+        dev = str(env("YOUTUBE_API_KEY_DEV", required=False) or "").strip()
+        return ([dev] if dev else []), "desarrollo"
     many = [k.strip() for k in str(env("YOUTUBE_API_KEYS", required=False) or "").split(",") if k.strip()]
-    if single:
-        if many and "both" not in _WARNED:
-            _WARNED.add("both")
-            print("   API de YouTube: uso YOUTUBE_API_KEY; YOUTUBE_API_KEYS se ignora (un solo proyecto)")
-        return single, "producción"
-    if len(many) > 1 and "many" not in _WARNED:
-        _WARNED.add("many")
-        print(f"   API de YouTube: solo uso la primera de las {len(many)} claves de YOUTUBE_API_KEYS. Varios proyectos "
-              "para sumar cuota van contra la política de la API: deja una en YOUTUBE_API_KEY y pide más cuota a Google")
-    return (many[0] if many else ""), "producción"
+    single = str(env("YOUTUBE_API_KEY", required=False) or "").strip()
+    return list(dict.fromkeys([*many, *([single] if single else [])])), "producción"
 
 
 class YouTubeAPI:
     def __init__(self, ctx: RunContext, session: Any = None) -> None:
         self.ctx = ctx
-        entry, self.environment = chosen_key(ctx.env)
+        entries, self.environment = chosen_keys(ctx.env)
         default = int(ctx.section("lab").get("units_per_key", 10000))
-        self.searches_per_day = int(ctx.section("lab").get("searches_per_day", 100))
+        self.searches_per_day = int(ctx.section("lab").get("searches_per_day", 100))     # per key
         self.keys, self.limits = [], {}
-        if entry:                                    # "key" or "key:units" (a raised quota)
+        for entry in entries:                        # "key" or "key:units" (a raised quota)
             key, _, units = entry.partition(":")
             self.keys.append(key)
             self.limits[key] = int(units) if units.isdigit() else default
@@ -164,7 +153,8 @@ class YouTubeAPI:
             data = {}
         if data.get("day") != quota_day():
             data = {"day": quota_day(), "used": {}, "exhausted": []}
-        data.setdefault("searches", 0)
+        if not isinstance(data.get("searches"), dict):        # per key (an older ledger had one number)
+            data["searches"] = {}
         return data
 
     def _save_ledger(self, data: dict[str, Any]) -> None:
@@ -190,10 +180,18 @@ class YouTubeAPI:
         total = sum(self.limits.values())
         left = sum(0 if self._key_id(k) in ledger["exhausted"] else max(0, self.limits[k] - ledger["used"].get(self._key_id(k), 0))
                    for k in self.keys)
-        searches_left = max(0, self.searches_per_day - int(ledger.get("searches", 0)))
+        searches_left = 0
+        for k in self.keys:
+            kid = self._key_id(k)
+            if kid in ledger["exhausted"]:
+                continue
+            units_left = max(0, self.limits[k] - ledger["used"].get(kid, 0))
+            searches_left += min(units_left // COST["search"],
+                                 max(0, self.searches_per_day - int(ledger["searches"].get(kid, 0))))
         return {"day": ledger["day"], "keys": len(self.keys), "used": used, "total": total, "left": left,
-                "searches": int(ledger.get("searches", 0)), "searchesPerDay": self.searches_per_day,
-                "searchesLeft": min(left // COST["search"], searches_left), "environment": self.environment}
+                "searches": sum(int(n) for n in ledger["searches"].values()),
+                "searchesPerDay": self.searches_per_day * len(self.keys),
+                "searchesLeft": searches_left, "environment": self.environment}
 
     # ---- requests ------------------------------------------------------------------------------
     def get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -213,14 +211,13 @@ class YouTubeAPI:
                 if kid in ledger["exhausted"] or ledger["used"].get(kid, 0) + cost > self.limits[key]:
                     continue
                 if endpoint == "search":
-                    if ledger["searches"] >= self.searches_per_day:
-                        raise NoKeysLeft(f"Límite diario de búsquedas de la API ({self.searches_per_day}) "
-                                         f"alcanzado (se renueva {reset_text()})")
-                    ledger["searches"] += 1
+                    if int(ledger["searches"].get(kid, 0)) >= self.searches_per_day:
+                        continue                         # this key's searches are spent: the next key
+                    ledger["searches"][kid] = int(ledger["searches"].get(kid, 0)) + 1
                 ledger["used"][kid] = ledger["used"].get(kid, 0) + cost
                 self._save_ledger(ledger)
                 self._journal({"endpoint": endpoint, "units": cost, "unitsUsed": ledger["used"][kid],
-                               "searches": ledger["searches"], "searchesPerDay": self.searches_per_day})
+                               "searches": ledger["searches"].get(kid, 0), "searchesPerDay": self.searches_per_day})
             response = self.session.get(f"{API}/{endpoint}", params={**params, "key": key}, timeout=30)
             if response.status_code == 403:
                 reasons = {e.get("reason") for e in _error(response).get("errors", [])}
@@ -232,11 +229,11 @@ class YouTubeAPI:
                     # Google says no while our count still had room: the project's real quota is lower than
                     # lab.units_per_key / searches_per_day (or someone else uses the key). Never raise them to fit.
                     self._journal({"endpoint": endpoint, "quotaExceeded": sorted(r for r in reasons if r),
-                                   "localSearches": ledger["searches"], "localUnits": ledger["used"].get(kid, 0),
+                                   "localSearches": ledger["searches"].get(kid, 0), "localUnits": ledger["used"].get(kid, 0),
                                    "mismatch": True})
                     print(f"   API de YouTube: Google dice que no queda cuota ({', '.join(sorted(r for r in reasons if r))}) "
-                          f"con {ledger['searches']} búsquedas y {ledger['used'].get(kid, 0)} unidades contadas aquí: "
-                          "revisa la cuota real en Google Cloud Console")
+                          f"con {ledger['searches'].get(kid, 0)} búsquedas y {ledger['used'].get(kid, 0)} unidades contadas "
+                          "aquí en esa clave: paso a la siguiente")
                     continue
             if response.status_code != 200:
                 message = _error(response).get("message") or response.text[:200]
@@ -244,7 +241,7 @@ class YouTubeAPI:
             data = response.json()
             _write(cache, json.dumps(data))
             return data
-        raise NoKeysLeft(f"Cuota diaria de la API agotada (se renueva {reset_text()})")
+        raise NoKeysLeft(f"Cuota diaria de la API agotada en las {len(self.keys)} claves (se renueva {reset_text()})")
 
     # ---- building blocks -----------------------------------------------------------------------
     def search(self, query: str, *, days: int = 0, duration: str = "any", order: str = "viewCount",

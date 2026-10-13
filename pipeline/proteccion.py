@@ -27,10 +27,18 @@ def report(root: Path) -> list[str]:
 
     ways = proxy_list(os.environ.get("YOUTUBE_PROXY"), yt.get("proxies"), yt.get("proxy")) or [""]
     now = time.time()
+    from .sourcing.common import HourlyBudget
+    from .sourcing.youtube import BUDGET_SUFFIX, pacer_name
+
+    per_hour = float(yt.get("requests_per_hour", 600) or 0)
     for way in ways:
         until = quarantined_until(ctx.cache_dir, way)
         name = way.split("@")[-1] if way else "servidor (directo)"
-        lines.append(f"Conexión {name}: " + (f"EN CUARENTENA {int((until - now) / 60)} min más" if until > now else "libre"))
+        used = HourlyBudget(ctx.cache_dir / "videos" / (pacer_name(way) + BUDGET_SUFFIX), per_hour).used()
+        lines.append(f"Conexión {name}: " + (f"EN CUARENTENA {int((until - now) / 60)} min más" if until > now else "libre")
+                     + (f" · última hora {used:.0f}/{per_hour:.0f} peticiones" if per_hour else " · sin límite por hora"))
+    lines.append("Si la API no tiene búsquedas: " + ("busca con yt-dlp (api_overflow: ytdlp)"
+                 if str(yt.get("api_overflow", "esperar")).lower() == "ytdlp" else "el vídeo espera, nada por yt-dlp"))
     try:
         last = float((ctx.cache_dir / "videos" / LAST_BLOCK).read_text().strip())
         hours = float(yt.get("bot_recovery_hours", 72))
@@ -48,8 +56,7 @@ def report(root: Path) -> list[str]:
     names = [n for n in ("YOUTUBE_API_KEY", "YOUTUBE_API_KEYS", "YOUTUBE_API_KEY_DEV") if ctx.env(n, required=False)]
     many = len([k for k in ctx.env("YOUTUBE_API_KEYS", required=False).split(",") if k.strip()])
     lines.append("Claves de la API en .env: " + (", ".join(names) or "ninguna")
-                 + (f" · AVISO: YOUTUBE_API_KEYS tiene {many} claves (solo se usa la primera): deja una en YOUTUBE_API_KEY"
-                    if many > 1 else ""))
+                 + (f" · YOUTUBE_API_KEYS: {many} claves, una tras otra" if many else ""))
     api = YouTubeAPI(ctx)
     if api.keys:
         q = api.quota()

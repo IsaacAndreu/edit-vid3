@@ -38,6 +38,74 @@ class Pacer:
             self._last = time.monotonic()
 
 
+class HourlyBudget:
+    """At most `per_hour` request units through one way out in any rolling hour, counted across every process on the
+    machine (two videos at once, the radar, a restart): a file holds the last hour's [time, units] under an exclusive
+    lock, so the count survives restarts. When the hour is full, take() waits until enough of it has passed — no
+    burst ever goes out. per_hour 0 = no limit. Where file locks do not exist (Windows) it counts in this process."""
+
+    def __init__(self, path: Path, per_hour: float) -> None:
+        self._path = path
+        self._per_hour = float(per_hour)
+        self._lock = threading.Lock()
+        self._local: list[list[float]] = []
+
+    def _settle(self, rows: list[list[float]], units: float, now: float) -> tuple[list[list[float]], float]:
+        rows = [r for r in rows if now - r[0] < 3600]
+        used = sum(r[1] for r in rows)
+        if used + units <= self._per_hour or not rows:
+            return rows + [[now, units]], 0.0
+        freed, wait = used + units - self._per_hour, 0.0
+        for t, n in rows:                       # the oldest leave the window first
+            freed -= n
+            wait = t + 3600 - now
+            if freed <= 0:
+                break
+        return rows, max(wait, 1.0)
+
+    def take(self, units: float = 1.0) -> float:
+        """Count `units`, waiting first if the hour is full; returns the seconds waited."""
+
+        if self._per_hour <= 0:
+            return 0.0
+        waited = 0.0
+        while True:
+            now = time.time()
+            with self._lock:
+                try:
+                    import fcntl
+                except ImportError:
+                    self._local, wait = self._settle(self._local, units, now)
+                else:
+                    self._path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(self._path, "a+") as handle:
+                        fcntl.flock(handle, fcntl.LOCK_EX)
+                        try:
+                            handle.seek(0)
+                            try:
+                                rows = json.loads(handle.read() or "[]")
+                            except ValueError:
+                                rows = []
+                            rows, wait = self._settle(rows, units, now)
+                            handle.seek(0)
+                            handle.truncate()
+                            handle.write(json.dumps(rows))
+                            handle.flush()
+                        finally:
+                            fcntl.flock(handle, fcntl.LOCK_UN)
+            if wait <= 0:
+                return waited
+            time.sleep(min(wait, 60.0))
+            waited += min(wait, 60.0)
+
+    def used(self) -> float:
+        try:
+            rows = json.loads(self._path.read_text(encoding="utf-8") or "[]")
+        except (OSError, ValueError):
+            rows = self._local
+        return sum(r[1] for r in rows if time.time() - r[0] < 3600)
+
+
 class SharedPacer(Pacer):
     """The same minimum interval, shared by every process on the machine (two videos at once in the queue, the
     radar…): YouTube sees one steady pace from this IP, not one per process. A file holds the last request time,

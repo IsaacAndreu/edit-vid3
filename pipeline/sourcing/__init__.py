@@ -210,11 +210,12 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
             quota = api.quota()
             if quota["searchesLeft"] > 0:
                 source.api = api
-                print(f"   YouTube: búsquedas con la API (proyecto de {api.environment}, ~{quota['searchesLeft']} búsquedas libres hoy)")
+                print(f"   YouTube: búsquedas con la API ({len(api.keys)} claves, ~{quota['searchesLeft']} búsquedas libres hoy)")
             else:            # say it: otherwise every search silently goes by yt-dlp, the way YouTube blocks
                 from ..ytapi import reset_text
 
-                waits = source.recovering() or str(yt_cfg.get("api_overflow", "ytdlp")).lower() == "esperar"
+                source.api_exhausted = True       # search() waits for the quota instead of scraping (api_overflow)
+                waits = source.recovering() or str(yt_cfg.get("api_overflow", "esperar")).lower() == "esperar"
                 print(f"   YouTube: la API no tiene búsquedas hoy ({quota['searches']}/{quota['searchesPerDay']} búsquedas, "
                       f"{quota['used']}/{quota['total']} unidades); "
                       + ("el vídeo espera" if waits else "busco con yt-dlp")
@@ -297,7 +298,7 @@ def check_api_searches(youtube: YouTubeSource, scenes: list[list[Shot]], yt_cfg:
     needed = len(queries) * pages
     left = int(youtube.api.quota().get("searchesLeft", 0))
     print(f"   API de YouTube: este vídeo necesita {needed} llamadas a search.list nuevas · quedan {left} hoy")
-    if needed > left and str(yt_cfg.get("api_overflow", "ytdlp")).lower() == "esperar":
+    if needed > left and str(yt_cfg.get("api_overflow", "esperar")).lower() == "esperar":
         from ..budget import ApiSearchesShort
         from ..ytapi import next_reset, reset_text
 

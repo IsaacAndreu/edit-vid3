@@ -78,7 +78,10 @@ sourcing:
     account_switch_pause: 15       # s de pausa al pasar a otra cuenta porque YouTube bloqueó una
     browser_accounts: []           # cuentas leídas de Firefox en cada ejecución (no caducan): ["firefox::Cuenta1", "firefox::Cuenta2"]
     api_queries_per_shot: 2        # con la API: búsqueda del evento + 1 más por plano (≈30.000 unidades/vídeo → ~3 vídeos/día)
-    api_search: true               # buscar con YOUTUBE_API_KEY (sin bloqueos); si se acaba la cuota, sigue con yt-dlp
+    api_search: true               # buscar con las claves de la API (sin bloqueos); sin cuota, el vídeo ESPERA (api_overflow)
+    # Límite global por conexión, para todos los vídeos y procesos a la vez (se conserva al reiniciar):
+    # requests_per_hour 600 (peticiones HTTP estimadas: búsqueda 2, detalles 4, tramo descargado 6, miniatura 1).
+    # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
     force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
@@ -208,7 +211,7 @@ ideas:
 
 lab:                               # panel (python main.py --panel) e ideas con la API de YouTube (YOUTUBE_API_KEY en .env)
   units_per_key: 10000             # cuota diaria del proyecto (la de Google por defecto; «clave:50000» si te aprueban más)
-  searches_per_day: 100            # límite diario propio de search.list (compruébalo en Google Cloud Console)
+  searches_per_day: 100            # búsquedas (search.list) al día por clave; con varias claves, una tras otra
   queries:                         # búsquedas del nicho: botones rápidos del panel y fuente de las ideas diarias
     - historia gimnasta
     - gymnast story
