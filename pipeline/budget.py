@@ -24,9 +24,20 @@ class ApiSearchesShort(BudgetReached):
     THIS video waits for the next quota reset (`until`, epoch seconds) instead of searching the rest through yt-dlp;
     the queue goes on with the others (main.QUOTA_WAIT)."""
 
-    def __init__(self, message: str, until: float) -> None:
+    def __init__(self, message: str, until: float, why: str = "cuota de la API de YouTube") -> None:
         super().__init__(message)
         self.until = until
+        self.why = why
+
+
+class ProxyDown(ApiSearchesShort):
+    """The way out to YouTube (the home proxy) does not answer: THIS video waits a few minutes and is tried again;
+    the queue goes on. Not a YouTube block, nothing is quarantined."""
+
+    def __init__(self, message: str, minutes: float = 15) -> None:
+        import time
+
+        super().__init__(message, time.time() + minutes * 60, why="el proxy no responde")
 
 
 def spent_today(root: Path) -> float:

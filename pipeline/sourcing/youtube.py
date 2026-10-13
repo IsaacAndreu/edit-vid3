@@ -103,6 +103,22 @@ def all_quarantined(cache_dir: Path, proxies: list[str]) -> bool:
     return all(quarantined_until(cache_dir, p) > now for p in (proxies or [""]))
 
 
+def proxy_reachable(proxy: str, timeout: float = 5.0) -> bool:
+    """The proxy program answers on its port (a TCP connection; nothing goes to YouTube). A direct way is always up."""
+
+    import socket
+    from urllib.parse import urlsplit
+
+    if not proxy:
+        return True
+    parts = urlsplit(proxy)
+    try:
+        with socket.create_connection((parts.hostname or "", parts.port or 80), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def _proxy_down(low: str) -> bool:
     return any(m in low for m in ("unable to connect to proxy", "proxyerror", "tunnel connection failed",
                                   "proxy connection", "cannot connect to proxy")) or ("proxy" in low and any(
@@ -487,6 +503,16 @@ class YouTubeSource:
                 self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
                              cookies=self._local.account is not None)
                 way = getattr(self._local, "way", 0) or 0
+                # A request that hangs until it times out: is it YouTube being slow, or the proxy program stopped
+                # (home PC asleep, proxy window closed)? One look at its port says which.
+                if self.proxies and kind == "other" and ("timed out" in lowered or "timeout" in lowered) \
+                        and not proxy_reachable(self.proxies[way]):
+                    lowered += " proxy connection refused"
+                if self.proxies and _proxy_down(lowered) and len(tried_ways) >= len(self.proxies) - 1:
+                    from ..budget import ProxyDown
+
+                    raise ProxyDown(f"El proxy {self.way_name(way)} no responde: ¿está abierto proxy-youtube en ese PC "
+                                    "y conectado Tailscale? El vídeo se reintenta solo en 15 min") from None
                 if len(self.proxies) > 1 and len(tried_ways) < len(self.proxies) - 1:
                     if _proxy_down(lowered):         # that way out is off (laptop asleep…): the others, and it rests
                         self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
@@ -502,13 +528,19 @@ class YouTubeSource:
                 if kind == "auth":
                     raise RuntimeError(f"yt-dlp {action}: el vídeo necesita una cuenta ({message[:160]})") from None
                 if kind == "bot" and self._local.account is None:
-                    # YouTube distrusts this connection: it goes into quarantine and the request is dropped, never
-                    # sent again through another way or with an account. Every way in quarantine: stop all YouTube.
-                    self._quarantine(way)
-                    if self._all_in_quarantine():
-                        self._blocked_everywhere()
-                    raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot»; esa conexión queda en "
-                                       "cuarentena y esta petición se descarta") from None
+                    # Some videos ask «are you a bot» to everyone (XKOukqWTbKs, Big Buck Bunny: refused by hand too
+                    # while other videos passed on the same connection): that video is dropped, never retried another
+                    # way or with an account. The same answer for `bot_breaker_videos` (3) different videos within
+                    # `bot_breaker_minutes` (10), or for a search, is the connection: quarantine; all of them: stop.
+                    video = getattr(self._local, "video_id", None) if action != "search" else None
+                    if video is None or self._bot_strikes(way, video) >= int(self.cfg.get("bot_breaker_videos", 3)):
+                        self._quarantine(way)
+                        if self._all_in_quarantine():
+                            self._blocked_everywhere()
+                        raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot»; esa conexión queda en "
+                                           "cuarentena y esta petición se descarta") from None
+                    print(f"   YouTube pide «no eres un bot» para el vídeo {video}: se descarta ese vídeo y sigo")
+                    raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» para este vídeo; se descarta") from None
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
                     index = self._local.account
                     if index is not None:
@@ -537,6 +569,28 @@ class YouTubeSource:
         from urllib.parse import urlsplit
 
         return (urlsplit(self.proxies[way]).hostname or self.proxies[way]) if self.proxies else "directo"
+
+    def _bot_strikes(self, way: int, video: str) -> int:
+        """Different videos refused with «are you a bot» on that way within bot_breaker_minutes, this one included;
+        kept in a file per way (every process, across restarts)."""
+
+        import json
+
+        window = 60 * float(self.cfg.get("bot_breaker_minutes", 10))
+        path = self.cache_dir / "videos" / (pacer_name((self.proxies or [""])[way]) + ".bots")
+        now = time.time()
+        with self._turn_lock:
+            try:
+                rows = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                rows = []
+            rows = [r for r in rows if now - float(r[0]) < window] + [[now, video]]
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(rows), encoding="utf-8")
+            except OSError:
+                pass
+        return len({r[1] for r in rows})
 
     def _budget_take(self, way: int, units: float) -> float:
         """The hourly budget of that way out; says so (once a while) when the hour is full and requests wait."""

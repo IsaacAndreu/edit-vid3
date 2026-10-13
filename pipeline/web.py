@@ -114,11 +114,11 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     held = (folder / HOLD).is_file()
     quota_wait = None                          # main.QUOTA_WAIT: the pilot waits for the API quota reset
     try:
-        until = float((folder / ".espera-cuota").read_text("utf-8").strip())
+        first, _, why = (folder / ".espera-cuota").read_text("utf-8").strip().partition("\n")
+        until = float(first)
         if until > time.time():
-            from .ytapi import reset_text
-
-            quota_wait = reset_text(datetime.fromtimestamp(until - 60, timezone.utc))
+            local = datetime.fromtimestamp(until, timezone.utc).astimezone()
+            quota_wait = f"{why or 'cuota de la API de YouTube'} · hasta las {local:%H:%M}"
     except (OSError, ValueError):
         pass
     redo = (folder / REDO).is_file() and not held      # «Rehacer»: back in the queue although it has a final video

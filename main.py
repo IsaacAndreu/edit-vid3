@@ -249,7 +249,8 @@ QUOTA_EXIT = 75                        # `--slug` exit code (EX_TEMPFAIL): the v
 def wait_for_quota(root: Path, slug: str, error: BaseException) -> None:
     from pipeline.context import find_video
 
-    (find_video(root, slug) / QUOTA_WAIT).write_text(f"{float(getattr(error, 'until', 0)):.0f}", encoding="utf-8")
+    (find_video(root, slug) / QUOTA_WAIT).write_text(
+        f"{float(getattr(error, 'until', 0)):.0f}\n{getattr(error, 'why', 'cuota de la API de YouTube')}", encoding="utf-8")
 
 
 def quota_wait(folder: Path) -> float | None:
@@ -257,8 +258,8 @@ def quota_wait(folder: Path) -> float | None:
 
     path = folder / QUOTA_WAIT
     try:
-        until = float(path.read_text("utf-8").strip())
-    except (OSError, ValueError):
+        until = float(path.read_text("utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
         return None
     if until <= time.time():
         path.unlink(missing_ok=True)

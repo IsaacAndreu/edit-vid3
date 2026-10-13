@@ -213,3 +213,20 @@ def test_the_pilot_waits_for_api_quota_alone_and_the_queue_goes_on(tmp_path):
     (tmp_path / "materiales" / "PILOT" / main.QUOTA_WAIT).write_text(f"{clock.time() - 1:.0f}")
     assert "PILOT" in main.pending_slugs(tmp_path)                    # reset passed: back in the queue
     assert not (tmp_path / "materiales" / "PILOT" / main.QUOTA_WAIT).exists()
+
+
+def test_a_video_waiting_for_the_proxy_says_why_in_the_studio(tmp_path):
+    import time as clock
+
+    from pipeline import web
+    from pipeline.budget import ProxyDown
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    _materials(tmp_path, "A")
+    main.wait_for_quota(tmp_path, "A", ProxyDown("El proxy no responde"))
+    folder = tmp_path / "materiales" / "A"
+    assert main.quota_wait(folder) and "A" not in main.pending_slugs(tmp_path)
+    summary = web.video_summary(tmp_path, folder, {})
+    assert summary["quotaWait"].startswith("el proxy no responde · hasta las")
+    (folder / main.QUOTA_WAIT).write_text(f"{clock.time() - 1:.0f}\nel proxy no responde")
+    assert "A" in main.pending_slugs(tmp_path)

@@ -410,3 +410,50 @@ def test_protection_report_names_keys_but_never_shows_them(tmp_path, monkeypatch
     text = "\n".join(proteccion.report(tmp_path))
     assert "secretA" not in text and "YOUTUBE_API_KEYS: 2 claves" in text
     assert "ante «no eres un bot»: nunca" in text and "libre" in text
+
+
+def test_one_video_asking_bot_is_dropped_three_different_ones_quarantine(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    config = {"min_interval": 0, "cookies": "never"}
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config=config)
+    asked = []
+
+    def bot():
+        asked.append(yt._local.video_id)
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    for video in ("XKOukqWTbKs", "XKOukqWTbKs", "BBBBBBBBBBB"):    # the same one twice + another: 2 different
+        yt._local.video_id = video
+        with pytest.raises(RuntimeError, match="se descarta"):
+            yt._call("metadata", bot)
+    assert yt.blocked is None and not yt._in_quarantine(0) and not yt.recovering()
+    again = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config=config)   # a restart remembers the strikes
+    again._local.video_id = "CCCCCCCCCCC"
+    with pytest.raises(SourceUnavailable):                              # the third different video: the connection
+        again._call("metadata", bot)
+    assert again._in_quarantine(0) and again.recovering()
+    strict = YouTubeSource(root=tmp_path / "s", cache_dir=tmp_path / "s", config={**config, "bot_breaker_videos": 1})
+    strict._local.video_id = "XKOukqWTbKs"
+    with pytest.raises(SourceUnavailable):                              # bot_breaker_videos: 1 = the old rule
+        strict._call("metadata", bot)
+
+
+def test_a_stopped_proxy_is_said_and_the_video_waits_a_few_minutes(tmp_path, monkeypatch):
+    import socket
+
+    from pipeline.budget import ProxyDown
+    from pipeline.context import RunContext
+    from pipeline.sourcing import youtube_source
+    from pipeline.sourcing.youtube import proxy_reachable
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    closed = socket.socket()
+    closed.bind(("127.0.0.1", 0))
+    port = closed.getsockname()[1]
+    closed.close()                                                      # nothing listens there
+    assert not proxy_reachable(f"http://127.0.0.1:{port}", timeout=1) and proxy_reachable("")
+    ctx = RunContext.create("v", root=tmp_path, config={"sourcing": {"youtube": {
+        "proxies": [f"http://127.0.0.1:{port}"], "cookies": "never", "api_search": False}}})
+    with pytest.raises(ProxyDown) as down:
+        youtube_source(ctx)
+    assert "no responde" in str(down.value) and down.value.until > 0 and down.value.why == "el proxy no responde"

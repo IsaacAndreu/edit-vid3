@@ -197,6 +197,18 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
         print("   YouTube: sin cookies (busco archivos .txt/.json en "
               + " y ".join(str(f) for f in cookie_folders(ctx, yt_cfg)) + ")")
     source = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
+    from .youtube import proxy_reachable
+
+    down = [p for p in source.proxies if not proxy_reachable(p)]
+    if source.proxies and len(down) == len(source.proxies):     # before any search: say it, wait, retry soon
+        from ..budget import ProxyDown
+
+        names = ", ".join(source.way_name(source.proxies.index(p)) for p in down)
+        raise ProxyDown(f"El proxy de YouTube ({names}) no responde: abre proxy-youtube en ese PC y comprueba "
+                        "Tailscale. El vídeo se reintenta solo en 15 min; la cola sigue con los demás")
+    for p in down:
+        print(f"   Aviso: el proxy {source.way_name(source.proxies.index(p))} no responde; sigo por los otros")
+        source._rest(source.proxies.index(p), float(yt_cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
     source.metrics_path = ctx.work_dir / "youtube_downloads.jsonl"
     caller = inspect.stack()[1].filename
     source.stage = Path(caller).parent.name if Path(caller).stem == "__init__" else Path(caller).stem
