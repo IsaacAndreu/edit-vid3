@@ -214,8 +214,12 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
             else:            # say it: otherwise every search silently goes by yt-dlp, the way YouTube blocks
                 from ..ytapi import reset_text
 
+                waits = source.recovering() or str(yt_cfg.get("api_overflow", "ytdlp")).lower() == "esperar"
                 print(f"   YouTube: la API no tiene búsquedas hoy ({quota['searches']}/{quota['searchesPerDay']} búsquedas, "
-                      f"{quota['used']}/{quota['total']} unidades); busco con yt-dlp hasta la cuota nueva, {reset_text()}")
+                      f"{quota['used']}/{quota['total']} unidades); "
+                      + ("el vídeo espera" if waits else "busco con yt-dlp")
+                      + f" hasta la cuota nueva, {reset_text()}"
+                      + (" (hace menos de 72 h de un «no eres un bot»: nada por yt-dlp)" if source.recovering() else ""))
         else:
             print("   YouTube: sin clave de la API (YOUTUBE_API_KEY en .env): todas las búsquedas van por yt-dlp")
     return source

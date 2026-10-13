@@ -330,6 +330,28 @@ def update_code(root: Path) -> dict[str, Any]:
             + (f" Tus versiones de {', '.join(kept)} se guardaron como «….antes-de-actualizar»." if kept else "")}
 
 
+def youtube_retry_now(root: Path) -> dict[str, Any]:
+    """«Reintentar YouTube ahora»: you checked YouTube works again (private window at home): the pause for the block,
+    the quarantine of every connection, the 72 h «only by the API» window and the videos waiting for the API quota
+    are cleared, and the watcher looks at the queue at once. If YouTube still says «are you a bot», the first
+    request puts it all back by itself."""
+
+    from .context import RunContext, video_folders
+
+    cache = RunContext.create("_youtube", root=root).cache_dir / "videos"
+    removed = []
+    for path in [root / "out" / "_pausa_youtube", root / "out" / "_vigilar.json",
+                 *sorted(cache.glob(".ritmo*.cuarentena")), cache / ".ultimo-bloqueo",
+                 *[d / ".espera-cuota" for d in video_folders(root)]]:
+        if path.is_file():
+            path.unlink()
+            removed.append(path.name)
+    (root / "out").mkdir(parents=True, exist_ok=True)
+    (root / "out" / "_despertar").write_text("youtube", encoding="utf-8")
+    return {"ok": True, "removed": removed,
+            "message": "Listo: YouTube se vuelve a intentar ya. Si sale «no eres un bot», la cola se para sola otra vez."}
+
+
 def restart_queue(root: Path) -> dict[str, Any]:
     """«Reiniciar la cola» from the phone: the watcher service starts again (a video being made resumes from its
     last finished stage). Only where the queue runs as the systemd service edit-vid3."""
@@ -1087,6 +1109,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(background(root, "comparar-escenas", ["--comparar-escenas"]))
                 if path == "/api/restart-queue":
                     return self._ok(restart_queue(root))
+                if path == "/api/youtube/retry":
+                    return self._ok(youtube_retry_now(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
                     return self._ok({"text": for_claude(root, urllib.parse.unquote(match.group(1)))})
                 if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):     # {on, reference}: the scene pilot

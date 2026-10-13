@@ -715,6 +715,12 @@ async function restartQueue(button) {
   try { alert((await post("/api/restart-queue")).message); } catch (e) { alert(e.message); }
   button.disabled = false;
 }
+async function youtubeRetry(button) {
+  if (!confirm("¿YouTube ya funciona? Ábrelo en una ventana privada desde el wifi de casa: si NO pide «no eres un bot», sigue.\n\nSe quitan la pausa por bloqueo, las cuarentenas y la espera de 72 h, y la cola vuelve a buscar ya.")) return;
+  button.disabled = true;
+  try { alert((await post("/api/youtube/retry")).message); } catch (e) { alert(e.message); }
+  button.disabled = false;
+}
 async function copyForClaude(slug, button) {
   let text = "";
   try { text = (await post(`/api/video/${encodeURIComponent(slug)}/for-claude`)).text; }
@@ -749,7 +755,8 @@ async function settingsPage() {
     ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
       <button style="margin-top:8px" onclick="updateNow(this)">🔄 Actualizar ahora</button>
-      <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button></div>` : ""}
+      <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button>
+      <button style="margin-top:8px" onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">▶️ Reintentar YouTube ahora</button></div>` : ""}
     <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
     <div class="card">
       <label>Hacer vídeos</label>

@@ -251,6 +251,22 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(json.loads(self.call("/api/scenebench")[1])["result"], {"scenes": 30})
 
 
+    def test_retry_youtube_now_clears_the_block_state(self) -> None:
+        code, _, headers = self.call("/api/login", {"password": "clave"})
+        self.cookie = headers["Set-Cookie"].split(";")[0]
+        videos = self.root / "cache" / "videos"
+        videos.mkdir(parents=True, exist_ok=True)
+        for name in (".ritmo-abc.cuarentena", ".ultimo-bloqueo"):
+            (videos / name).write_text("9999999999")
+        (self.root / "out" / "_pausa_youtube").write_text("{}")
+        (self.root / "materiales" / "V1" / ".espera-cuota").write_text("9999999999")
+        code, body, _ = self.call("/api/youtube/retry", {})
+        self.assertEqual(code, 200)
+        self.assertFalse(list(videos.glob(".*")) or (self.root / "out" / "_pausa_youtube").exists())
+        self.assertFalse((self.root / "materiales" / "V1" / ".espera-cuota").exists())
+        self.assertTrue((self.root / "out" / "_despertar").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
 
