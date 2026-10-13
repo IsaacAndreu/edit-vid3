@@ -544,6 +544,17 @@ class YouTubeSource:
                     raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» para este vídeo; se descarta") from None
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
                     index = self._local.account
+                    video = getattr(self._local, "video_id", None) if action != "search" else None
+                    if index is not None and kind == "bot" and video is not None and \
+                            self._bot_strikes(way, video) < int(self.cfg.get("bot_breaker_videos", 3)):
+                        # the same as without an account: some videos ask everyone, even a signed-in one (pati12:
+                        # 56 of 59 passed with the account, 3 videos did not). That video is dropped; the account is
+                        # only taken as blocked when several different videos are refused within a few minutes.
+                        self._refuse(video)
+                        print(f"   YouTube pide «no eres un bot» para el vídeo {video} también con cuenta: "
+                              "se descarta ese vídeo y sigo")
+                        raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» para este vídeo; "
+                                           "se descarta") from None
                     if index is not None:
                         with self._turn_lock:
                             fresh = index not in self._bad

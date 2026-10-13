@@ -471,3 +471,22 @@ def test_a_refused_video_is_never_asked_for_again(tmp_path, monkeypatch):
     assert len(asked) == 1                                      # asked once
     other = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
     assert other.refused("XKOukqWTbKs") and not other.refused("dQw4w9WgXcQ")   # another process knows it too
+
+
+def test_with_an_account_one_refused_video_does_not_burn_the_account(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, 1)                                   # rotate: every request with the account
+    yt.cfg["min_interval"] = 0
+
+    def bot():
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    for video in ("XKOukqWTbKs", "BBBBBBBBBBB"):
+        yt._local.video_id = video
+        with pytest.raises(RuntimeError, match="se descarta"):
+            yt._call("metadata", bot)
+    assert yt._bad == set() and yt.blocked is None              # two videos: dropped, the account is fine
+    yt._local.video_id = "CCCCCCCCCCC"
+    with pytest.raises(SourceUnavailable):                      # a third different one: the account is blocked
+        yt._call("metadata", bot)
+    assert yt._bad == {0}
