@@ -77,8 +77,10 @@ QUARANTINE_SUFFIX = ".cuarentena"
 BUDGET_SUFFIX = ".presupuesto"
 # What one action costs out of the hourly budget, in HTTP requests to YouTube (estimated: yt-dlp does several per
 # operation — the page, the player API, the PO token, the format manifests; a range download fetches many fragments)
-REQUEST_UNITS = {"search": 2, "metadata": 4, "captions": 1, "download": 6, "download (HLS)": 6,
-                 "download (completo)": 10, "get": 1}
+REQUEST_UNITS = {"search": 2, "metadata": 4, "captions": 1, "download": 3, "download (HLS)": 3,
+                 "download (completo)": 8, "get": 1}
+# storyboard thumbnails come from the image CDN (i.ytimg.com), not from YouTube's pages or player: not counted
+_FREE_HOSTS = ("ytimg.com",)
 LAST_BLOCK = ".ultimo-bloqueo"           # cache/videos/: when YouTube last asked «are you a bot» (recovering())
 
 
@@ -207,7 +209,7 @@ class YouTubeSource:
         self._resting = [0.0] * len(self._pacers)
         self._quarantine_until = [0.0] * len(self._pacers)    # also in a file per way (quarantine_file)
         # One traffic budget per way out for the whole machine (every process, kept across restarts)
-        per_hour = float(config.get("requests_per_hour", 600) or 0)
+        per_hour = float(config.get("requests_per_hour", 1500) or 0)
         self._budgets = [HourlyBudget(cache_dir / "videos" / (pacer_name(p) + BUDGET_SUFFIX), per_hour)
                          for p in (self.proxies or [""])]
         self._proxy_turn = 0
@@ -462,7 +464,7 @@ class YouTubeSource:
                             time.sleep(delay)
                             self._count("espera por límite", delay)
                         self._pacers[way].wait()
-                        held = self._budgets[way].take(REQUEST_UNITS.get(action, 2))
+                        held = self._budget_take(way, REQUEST_UNITS.get(action, 2))
                         if held:
                             self._count("espera por presupuesto/hora", held)
                         began = time.monotonic()
@@ -536,6 +538,18 @@ class YouTubeSource:
 
         return (urlsplit(self.proxies[way]).hostname or self.proxies[way]) if self.proxies else "directo"
 
+    def _budget_take(self, way: int, units: float) -> float:
+        """The hourly budget of that way out; says so (once a while) when the hour is full and requests wait."""
+
+        budget = self._budgets[way]
+        if budget._per_hour and budget.used() + units > budget._per_hour:
+            now = time.monotonic()
+            if now - getattr(self, "_budget_said", 0.0) > 300:
+                self._budget_said = now
+                print(f"   Límite de {budget._per_hour:.0f} peticiones/hora a YouTube alcanzado en {self.way_name(way)}: "
+                      "espero a que pase la hora (requests_per_hour en config.local.yaml)")
+        return budget.take(units)
+
     def _quarantine(self, way: int, why: str = "YouTube pide «no eres un bot»") -> None:
         minutes = float(self.cfg.get("bot_quarantine_minutes", 120))
         proxy = (self.proxies or [""])[way]
@@ -590,7 +604,8 @@ class YouTubeSource:
         if self.blocked or self._all_in_quarantine():
             raise SourceUnavailable(self.blocked or "YouTube: todas las conexiones en cuarentena")
         way = self._pick_way()
-        self._budgets[way].take(REQUEST_UNITS["get"])
+        if not any(host in url for host in _FREE_HOSTS):
+            self._budget_take(way, REQUEST_UNITS["get"])
         try:
             return self._sessions[way].get(url, timeout=timeout)
         except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):

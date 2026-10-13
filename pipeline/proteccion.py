@@ -30,7 +30,7 @@ def report(root: Path) -> list[str]:
     from .sourcing.common import HourlyBudget
     from .sourcing.youtube import BUDGET_SUFFIX, pacer_name
 
-    per_hour = float(yt.get("requests_per_hour", 600) or 0)
+    per_hour = float(yt.get("requests_per_hour", 1500) or 0)
     for way in ways:
         until = quarantined_until(ctx.cache_dir, way)
         name = way.split("@")[-1] if way else "servidor (directo)"

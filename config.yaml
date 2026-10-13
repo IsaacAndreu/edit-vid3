@@ -80,7 +80,8 @@ sourcing:
     api_queries_per_shot: 2        # con la API: búsqueda del evento + 1 más por plano (≈30.000 unidades/vídeo → ~3 vídeos/día)
     api_search: true               # buscar con las claves de la API (sin bloqueos); sin cuota, el vídeo ESPERA (api_overflow)
     # Límite global por conexión, para todos los vídeos y procesos a la vez (se conserva al reiniciar):
-    # requests_per_hour 600 (peticiones HTTP estimadas: búsqueda 2, detalles 4, tramo descargado 6, miniatura 1).
+    # requests_per_hour 1500 (peticiones HTTP estimadas: búsqueda 2, detalles 4, tramo descargado 3; las miniaturas
+    # del storyboard, de i.ytimg.com, no cuentan). Al llegar al límite lo dice en el registro y espera.
     # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
