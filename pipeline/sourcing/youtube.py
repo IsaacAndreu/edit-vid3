@@ -539,6 +539,7 @@ class YouTubeSource:
                             self._blocked_everywhere()
                         raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot»; esa conexión queda en "
                                            "cuarentena y esta petición se descarta") from None
+                    self._refuse(video)
                     print(f"   YouTube pide «no eres un bot» para el vídeo {video}: se descarta ese vídeo y sigo")
                     raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» para este vídeo; se descarta") from None
                 if any(marker in lowered for marker in _BLOCK_MARKERS):
@@ -569,6 +570,40 @@ class YouTubeSource:
         from urllib.parse import urlsplit
 
         return (urlsplit(self.proxies[way]).hostname or self.proxies[way]) if self.proxies else "directo"
+
+    def _refused_path(self) -> Path:
+        return self.cache_dir / "videos" / ".rechazados.json"
+
+    def _refuse(self, video: str) -> None:
+        """A video that asked «are you a bot»: never asked for again for refused_days (7), by any shot or process."""
+
+        import json
+
+        with self._turn_lock:
+            try:
+                data = json.loads(self._refused_path().read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            data[video] = time.time()
+            try:
+                self._refused_path().parent.mkdir(parents=True, exist_ok=True)
+                self._refused_path().write_text(json.dumps(data), encoding="utf-8")
+            except OSError:
+                pass
+            self._refused_cache = data
+
+    def refused(self, video: str) -> bool:
+        import json
+
+        data = getattr(self, "_refused_cache", None)
+        if data is None:
+            try:
+                data = json.loads(self._refused_path().read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            self._refused_cache = data
+        when = data.get(video)
+        return when is not None and time.time() - float(when) < 86400 * float(self.cfg.get("refused_days", 7))
 
     def _bot_strikes(self, way: int, video: str) -> int:
         """Different videos refused with «are you a bot» on that way within bot_breaker_minutes, this one included;
@@ -812,6 +847,8 @@ class YouTubeSource:
 
     def info(self, video_id: str) -> dict[str, Any]:
         self._local.video_id = video_id
+        if self.refused(video_id) and not self._info_path(video_id).is_file():
+            raise RuntimeError(f"{video_id}: descartado (pidió «no eres un bot»); no se vuelve a pedir")
         path = self._info_path(video_id)
         if path.is_file():
             try:

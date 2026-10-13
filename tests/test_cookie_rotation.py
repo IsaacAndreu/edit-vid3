@@ -457,3 +457,17 @@ def test_a_stopped_proxy_is_said_and_the_video_waits_a_few_minutes(tmp_path, mon
     with pytest.raises(ProxyDown) as down:
         youtube_source(ctx)
     assert "no responde" in str(down.value) and down.value.until > 0 and down.value.why == "el proxy no responde"
+
+
+def test_a_refused_video_is_never_asked_for_again(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
+    asked = []
+    monkeypatch.setattr(yt, "_extract", lambda url, extra: asked.append(url) or
+                        (_ for _ in ()).throw(RuntimeError("Sign in to confirm you're not a bot")))
+    for _ in range(3):                                          # three shots with the same candidate
+        with pytest.raises(RuntimeError):
+            yt.info("XKOukqWTbKs")
+    assert len(asked) == 1                                      # asked once
+    other = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
+    assert other.refused("XKOukqWTbKs") and not other.refused("dQw4w9WgXcQ")   # another process knows it too
