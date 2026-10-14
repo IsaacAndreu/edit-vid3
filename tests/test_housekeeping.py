@@ -79,3 +79,14 @@ def test_upload_found_on_the_channel_by_title():
     assert housekeeping._same_title("Los Fallos De Gimnasia Que SORPRENDIERON Al Mundo",
                                     "Los fallos de gimnasia que sorprendieron al mundo 😱")
     assert not housekeeping._same_title("Los fallos de gimnasia", "La historia de Carlos Yulo")
+
+
+def test_a_video_whose_out_folder_is_gone_can_still_be_marked_uploaded(tmp_path):
+    import pytest
+
+    (tmp_path / "materiales" / "pati9").mkdir(parents=True)
+    (tmp_path / "materiales" / "pati9" / "guion.txt").write_text("x")
+    assert housekeeping.mark_published(tmp_path, "pati9")["url"] == ""
+    assert housekeeping.published(tmp_path, "pati9")
+    with pytest.raises(FileNotFoundError):
+        housekeeping.mark_published(tmp_path, "no-existe")

@@ -250,9 +250,13 @@ def published(root: Path, slug: str) -> dict[str, Any]:
 def mark_published(root: Path, slug: str, url: str = "", value: bool = True) -> dict[str, Any]:
     import json
 
+    from .context import find_video
+
     out = root / "out" / slug
-    if not out.is_dir():
+    archived = root / "materiales" / "_hechos" / slug
+    if not (out.is_dir() or find_video(root, slug).is_dir() or archived.is_dir()):
         raise FileNotFoundError(slug)
+    out.mkdir(parents=True, exist_ok=True)      # out/<slug> may be gone (cleaned): the mark still goes
     path = out / PUBLISHED
     if not value:
         path.unlink(missing_ok=True)
