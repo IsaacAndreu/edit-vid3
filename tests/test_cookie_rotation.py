@@ -531,3 +531,20 @@ def test_a_few_refused_videos_among_many_answers_are_those_videos_most_refused_i
     with pytest.raises(SourceUnavailable):                      # 3 of 4 refused: the line is flagged
         bad._call("metadata", _raise_bot)
     assert bad._in_quarantine(0)
+
+
+def test_after_two_403_on_whole_downloads_only_the_piece_is_asked(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "hls_ranges": False})
+    wholes, pieces = [], []
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda video: tmp_path / "info.json")
+
+    def whole(video, *a):
+        wholes.append(video)
+        raise RuntimeError("ERROR: unable to download video data: HTTP Error 403: Forbidden")
+
+    monkeypatch.setattr(yt, "_fetch_whole", whole)
+    monkeypatch.setattr(yt, "_fetch_range", lambda video, *a, **k: pieces.append(video) or tmp_path / f"{video}.mp4")
+    for video in ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC", "DDDDDDDDDDD"):
+        yt.download_range(video, 10.0, 15.0, fmt="best", prefix="hd")
+    assert wholes == ["AAAAAAAAAAA", "BBBBBBBBBBB"] and len(pieces) == 4

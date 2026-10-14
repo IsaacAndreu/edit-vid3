@@ -1113,12 +1113,20 @@ class YouTubeSource:
             except (RuntimeError, SourceUnavailable) as error:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
                     raise
-        if not audio_only and self.cfg.get("whole_fallback", True):
+        # two 403s in a row on whole downloads: this client/connection does not get them today (pati12 14/10: 403 on
+        # every one, each a wasted request before the piece that works); straight to the piece for the rest of the run
+        whole_off = getattr(self, "_whole_403", 0) >= 2
+        if not audio_only and self.cfg.get("whole_fallback", True) and not whole_off:
             try:
                 whole = self._fetch_whole(video_id, fmt, prefix, info_path)
+                self._whole_403 = 0
             except SourceUnavailable:
                 raise
             except Exception as error:     # the old way still works, only slower
+                if "403" in str(error):
+                    self._whole_403 = getattr(self, "_whole_403", 0) + 1
+                    if self._whole_403 == 2:
+                        print("   YouTube niega las descargas completas (403): el resto, solo el tramo que hace falta")
                 print(f"   yt:{video_id}: descarga completa no disponible ({str(error)[:120]}); voy por tramo")
                 whole = None
             if whole is not None:
