@@ -495,6 +495,7 @@ class YouTubeSource:
                             self._busy[way] -= 1
                 self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
                              cookies=self._local.account is not None)
+                self._bot_clear(way)        # it answers: the refusals so far were those videos, not the connection
                 return result
             except Exception as error:
                 message = str(error)
@@ -616,14 +617,27 @@ class YouTubeSource:
         when = data.get(video)
         return when is not None and time.time() - float(when) < 86400 * float(self.cfg.get("refused_days", 7))
 
+    def _bots_path(self, way: int) -> Path:
+        return self.cache_dir / "videos" / (pacer_name((self.proxies or [""])[way]) + ".bots")
+
+    def _bot_clear(self, way: int) -> None:
+        """A request that went through: the count of refused videos starts again. Only refusals IN A ROW mean a
+        blocked connection or account; some videos ask everyone (pati12 14/10: 3 of 6 refused with and without the
+        account, from home and from work, while every other video passed), and 3 in 10 minutes came on a good line."""
+
+        path = self._bots_path(way)
+        if path.is_file():
+            with self._turn_lock:
+                path.unlink(missing_ok=True)
+
     def _bot_strikes(self, way: int, video: str) -> int:
-        """Different videos refused with «are you a bot» on that way within bot_breaker_minutes, this one included;
-        kept in a file per way (every process, across restarts)."""
+        """Different videos refused with «are you a bot» on that way in a row (no request answered in between)
+        within bot_breaker_minutes, this one included; kept in a file per way (every process, across restarts)."""
 
         import json
 
         window = 60 * float(self.cfg.get("bot_breaker_minutes", 10))
-        path = self.cache_dir / "videos" / (pacer_name((self.proxies or [""])[way]) + ".bots")
+        path = self._bots_path(way)
         now = time.time()
         with self._turn_lock:
             try:

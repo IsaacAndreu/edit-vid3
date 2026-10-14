@@ -502,3 +502,19 @@ def test_pause_probe_says_when_the_proxy_is_down_instead_of_testing(tmp_path, mo
     monkeypatch.setattr(ytcheck, "_try", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no test download")))
     assert ytpause.probe(tmp_path) is False
     assert "el proxy no responde" in capsys.readouterr().out
+
+
+def test_refusals_with_successes_in_between_are_those_videos_not_the_connection(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
+
+    def bot():
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    for video in ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC", "DDDDDDDDDDD"):
+        yt._local.video_id = video
+        with pytest.raises(RuntimeError, match="se descarta"):
+            yt._call("metadata", bot)
+        yt._local.video_id = "dQw4w9WgXcQ"
+        assert yt._call("metadata", lambda: {"id": "ok"}) == {"id": "ok"}   # another video answers
+    assert yt.blocked is None and not yt._in_quarantine(0)
