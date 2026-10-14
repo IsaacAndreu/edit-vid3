@@ -534,7 +534,8 @@ class YouTubeSource:
                     # way or with an account. The same answer for `bot_breaker_videos` (3) different videos within
                     # `bot_breaker_minutes` (10), or for a search, is the connection: quarantine; all of them: stop.
                     video = getattr(self._local, "video_id", None) if action != "search" else None
-                    if video is None or self._bot_strikes(way, video) >= int(self.cfg.get("bot_breaker_videos", 3)):
+                    if video is None or (self._bot_strikes(way, video) >= int(self.cfg.get("bot_breaker_videos", 3))
+                                         and not self._canary_ok(way)):
                         self._quarantine(way)
                         if self._all_in_quarantine():
                             self._blocked_everywhere()
@@ -547,7 +548,8 @@ class YouTubeSource:
                     index = self._local.account
                     video = getattr(self._local, "video_id", None) if action != "search" else None
                     if index is not None and kind == "bot" and video is not None and \
-                            self._bot_strikes(way, video) < int(self.cfg.get("bot_breaker_videos", 3)):
+                            (self._bot_strikes(way, video) < int(self.cfg.get("bot_breaker_videos", 3))
+                             or self._canary_ok(way)):
                         # the same as without an account: some videos ask everyone, even a signed-in one (pati12:
                         # 56 of 59 passed with the account, 3 videos did not). That video is dropped; the account is
                         # only taken as blocked when several different videos are refused within a few minutes.
@@ -629,6 +631,32 @@ class YouTubeSource:
         if path.is_file():
             with self._turn_lock:
                 path.unlink(missing_ok=True)
+
+    def _canary_ok(self, way: int) -> bool:
+        """Before taking a connection (or an account) as blocked: one request for a video that always passes
+        (`canary_video`). Late in a video only the refused ones are left to ask about — the rest are cached — so
+        they come in a row on a good line (pati12 14/10: 3 of 6, then the account was burned). If the canary passes
+        it was those videos: they are dropped and the count starts again. If it is refused too, it is the block."""
+
+        canary = str(self.cfg.get("canary_video", "dQw4w9WgXcQ") or "")
+        if not canary:
+            return False
+        cache = self.__dict__.setdefault("_canaries", {})
+        now = time.monotonic()
+        if way in cache and now - cache[way][0] < 120:      # one canary per connection every 2 min at most
+            return cache[way][1]
+        try:
+            self._pacers[way].wait()
+            self._budget_take(way, REQUEST_UNITS.get("metadata", 4))
+            ok = bool(self._extract(f"https://www.youtube.com/watch?v={canary}", {"skip_download": True}))
+        except Exception:
+            ok = False
+        cache[way] = (now, ok)
+        if ok:
+            self._bot_clear(way)
+        print(f"   Vídeo de control en {self.way_name(way)}: "
+              + ("pasa → eran esos vídeos, no un bloqueo; sigo" if ok else "también rechazado → bloqueo de verdad"))
+        return ok
 
     def _bot_strikes(self, way: int, video: str) -> int:
         """Different videos refused with «are you a bot» on that way in a row (no request answered in between)
