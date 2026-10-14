@@ -426,7 +426,9 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                     state_path.unlink(missing_ok=True)              # what failed on the block goes again now
                     print(f"{datetime.now():%H:%M} · YouTube vuelve a dejar pasar: sigo con la cola")
                 else:
-                    print(f"{datetime.now():%H:%M} · YouTube sigue bloqueando: cola en pausa, pruebo en una hora")
+                    every = float(cfg.get("youtube_probe_minutes", 60))
+                    print(f"{datetime.now():%H:%M} · YouTube sigue bloqueando: cola en pausa, vuelvo a probar en "
+                          f"{every:.0f} min (o «Reintentar YouTube ahora» en el estudio)")
             if ytpause.paused(root):
                 time.sleep(60)
                 continue

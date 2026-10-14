@@ -490,3 +490,15 @@ def test_with_an_account_one_refused_video_does_not_burn_the_account(tmp_path, m
     with pytest.raises(SourceUnavailable):                      # a third different one: the account is blocked
         yt._call("metadata", bot)
     assert yt._bad == {0}
+
+
+def test_pause_probe_says_when_the_proxy_is_down_instead_of_testing(tmp_path, monkeypatch, capsys):
+    from pipeline import ytpause
+    import pipeline.ytcheck as ytcheck
+
+    (tmp_path / "config.yaml").write_text("sourcing:\n  youtube: {min_interval: 0, proxy: 'http://127.0.0.1:9'}\n")
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    monkeypatch.setattr("pipeline.sourcing.youtube.proxy_reachable", lambda proxy, timeout=5.0: False)
+    monkeypatch.setattr(ytcheck, "_try", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no test download")))
+    assert ytpause.probe(tmp_path) is False
+    assert "el proxy no responde" in capsys.readouterr().out

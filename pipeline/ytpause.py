@@ -78,6 +78,12 @@ def probe(root: Path) -> bool:
     ways = proxy_list(os.environ.get("YOUTUBE_PROXY"), yt_cfg.get("proxies"), yt_cfg.get("proxy"))
     if all_quarantined(ctx.cache_dir, ways):
         return False             # still in quarantine: not even a test request goes out
+    from .sourcing.youtube import proxy_reachable
+
+    if ways and not any(proxy_reachable(w) for w in ways):
+        # a stopped proxy program looks like a slow YouTube (the test is cut off at 90 s): say which one it is
+        print(f"   prueba de YouTube (cola en pausa): el proxy no responde ({', '.join(ways)}); arranca el programa del proxy")
+        return False
     result = _try(ctx, "prueba de YouTube (cola en pausa)", cookies=cookies, ipv4=True)
     return not result.get("error") and not result.get("timeout") and float(result.get("mb") or 0) > 0
 
