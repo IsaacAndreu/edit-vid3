@@ -245,8 +245,11 @@ def test_po_token_needs_the_plugin_and_its_server(tmp_path, monkeypatch):
     monkeypatch.setattr("requests.Session.get", lambda self, url, timeout=3: Ok())
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"po_token": "auto", "player_client": ["default", "web_safari"]})
     args = yt.base_options["extractor_args"]
-    assert yt.pot and args["youtube"]["player_client"] == ["default", "web_safari", "mweb"]
+    assert yt.pot and args["youtube"]["player_client"] == ["default", "web_safari"]   # no mweb: it has no HLS
     assert args["youtubepot-bgutilhttp"] == {"base_url": ["http://127.0.0.1:4416"]}
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"po_token": "auto", "pot_keep_clients": False,
+                                                                  "player_client": ["default"]})
+    assert yt.base_options["extractor_args"]["youtube"]["player_client"] == ["default", "mweb"]   # only if asked
 
 
 def test_a_servers_bot_check_is_not_taken_for_a_video_that_needs_an_account(tmp_path):

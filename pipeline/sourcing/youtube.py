@@ -307,7 +307,7 @@ class YouTubeSource:
 
     def _po_tokens(self, options: dict[str, Any]) -> bool:
         """PO Token Provider (bgutil-ytdlp-pot-provider: the yt-dlp plugin + its small server, see docs/VPS.md)
-        with the mweb client, as yt-dlp's PO Token guide recommends for servers. `po_token: auto` (default) uses it
+        for the configured clients (mweb is added only with pot_keep_clients: false). `po_token: auto` (default) uses it
         when the plugin is installed and the server answers; `on` warns when it cannot; `off` never."""
 
         import importlib.util
@@ -338,7 +338,9 @@ class YouTubeSource:
         args = options.setdefault("extractor_args", {})
         youtube = args.setdefault("youtube", {})
         clients = list(youtube.get("player_client") or ["default"])
-        if "mweb" not in clients and not self.cfg.get("pot_keep_clients"):
+        # mweb only when asked (pot_keep_clients: false): it gives no HLS formats, so every HD piece went through
+        # ffmpeg and failed (pati12 14/10: 5 clips of 161); default + web_safari bring HLS and passed
+        if "mweb" not in clients and not self.cfg.get("pot_keep_clients", True):
             clients.append("mweb")
         youtube["player_client"] = clients
         args["youtubepot-bgutilhttp"] = {"base_url": [url]}
