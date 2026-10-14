@@ -495,7 +495,7 @@ class YouTubeSource:
                             self._busy[way] -= 1
                 self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
                              cookies=self._local.account is not None)
-                self._bot_clear(way)        # it answers: the refusals so far were those videos, not the connection
+                self._bot_answered(way)     # the breaker weighs refusals against answers
                 return result
             except Exception as error:
                 message = str(error)
@@ -534,8 +534,7 @@ class YouTubeSource:
                     # way or with an account. The same answer for `bot_breaker_videos` (3) different videos within
                     # `bot_breaker_minutes` (10), or for a search, is the connection: quarantine; all of them: stop.
                     video = getattr(self._local, "video_id", None) if action != "search" else None
-                    if video is None or (self._bot_strikes(way, video) >= int(self.cfg.get("bot_breaker_videos", 3))
-                                         and not self._canary_ok(way)):
+                    if video is None or self._bot_tripped(way, video):
                         self._quarantine(way)
                         if self._all_in_quarantine():
                             self._blocked_everywhere()
@@ -548,8 +547,7 @@ class YouTubeSource:
                     index = self._local.account
                     video = getattr(self._local, "video_id", None) if action != "search" else None
                     if index is not None and kind == "bot" and video is not None and \
-                            (self._bot_strikes(way, video) < int(self.cfg.get("bot_breaker_videos", 3))
-                             or self._canary_ok(way)):
+                            not self._bot_tripped(way, video):
                         # the same as without an account: some videos ask everyone, even a signed-in one (pati12:
                         # 56 of 59 passed with the account, 3 videos did not). That video is dropped; the account is
                         # only taken as blocked when several different videos are refused within a few minutes.
@@ -622,45 +620,9 @@ class YouTubeSource:
     def _bots_path(self, way: int) -> Path:
         return self.cache_dir / "videos" / (pacer_name((self.proxies or [""])[way]) + ".bots")
 
-    def _bot_clear(self, way: int) -> None:
-        """A request that went through: the count of refused videos starts again. Only refusals IN A ROW mean a
-        blocked connection or account; some videos ask everyone (pati12 14/10: 3 of 6 refused with and without the
-        account, from home and from work, while every other video passed), and 3 in 10 minutes came on a good line."""
-
-        path = self._bots_path(way)
-        if path.is_file():
-            with self._turn_lock:
-                path.unlink(missing_ok=True)
-
-    def _canary_ok(self, way: int) -> bool:
-        """Before taking a connection (or an account) as blocked: one request for a video that always passes
-        (`canary_video`). Late in a video only the refused ones are left to ask about — the rest are cached — so
-        they come in a row on a good line (pati12 14/10: 3 of 6, then the account was burned). If the canary passes
-        it was those videos: they are dropped and the count starts again. If it is refused too, it is the block."""
-
-        canary = str(self.cfg.get("canary_video", "dQw4w9WgXcQ") or "")
-        if not canary:
-            return False
-        cache = self.__dict__.setdefault("_canaries", {})
-        now = time.monotonic()
-        if way in cache and now - cache[way][0] < 120:      # one canary per connection every 2 min at most
-            return cache[way][1]
-        try:
-            self._pacers[way].wait()
-            self._budget_take(way, REQUEST_UNITS.get("metadata", 4))
-            ok = bool(self._extract(f"https://www.youtube.com/watch?v={canary}", {"skip_download": True}))
-        except Exception:
-            ok = False
-        cache[way] = (now, ok)
-        if ok:
-            self._bot_clear(way)
-        print(f"   Vídeo de control en {self.way_name(way)}: "
-              + ("pasa → eran esos vídeos, no un bloqueo; sigo" if ok else "también rechazado → bloqueo de verdad"))
-        return ok
-
-    def _bot_strikes(self, way: int, video: str) -> int:
-        """Different videos refused with «are you a bot» on that way in a row (no request answered in between)
-        within bot_breaker_minutes, this one included; kept in a file per way (every process, across restarts)."""
+    def _bots_rows(self, way: int, add: list[Any]) -> list[list[Any]]:
+        """[time, video, refused 1/0] of the last bot_breaker_minutes on that way, plus `add`; kept in a file per way
+        (every process, across restarts)."""
 
         import json
 
@@ -672,13 +634,31 @@ class YouTubeSource:
                 rows = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 rows = []
-            rows = [r for r in rows if now - float(r[0]) < window] + [[now, video]]
+            rows = [r for r in rows if isinstance(r, list) and len(r) == 3 and now - float(r[0]) < window]
+            rows = (rows + [[now, *add]])[-500:]
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(rows), encoding="utf-8")
             except OSError:
                 pass
-        return len({r[1] for r in rows})
+        return rows
+
+    def _bot_answered(self, way: int) -> None:
+        self._bots_rows(way, ["", 0])
+
+    def _bot_tripped(self, way: int, video: str) -> bool:
+        """Is this «are you a bot» the connection (or account) and not that video? Some videos ask everyone while
+        the rest pass (home 13/10: 3 of 59 refused, a good line). A flagged line refuses most: pati12 14/10 from
+        work, 3 of 6 and then ~100 in a row — while a famous video still passed, so no «control video» can tell.
+        Blocked when, within bot_breaker_minutes, `bot_breaker_videos` (3) different videos were refused AND they
+        are at least half of what was asked (`bot_breaker_share`, 0.5)."""
+
+        rows = self._bots_rows(way, [video, 1])
+        refused = {r[1] for r in rows if r[2]}
+        refusals = sum(1 for r in rows if r[2])
+        share = refusals / len(rows)
+        return len(refused) >= int(self.cfg.get("bot_breaker_videos", 3)) and \
+            share >= float(self.cfg.get("bot_breaker_share", 0.5))
 
     def _budget_take(self, way: int, units: float) -> float:
         """The hourly budget of that way out; says so (once a while) when the hour is full and requests wait."""
@@ -899,6 +879,13 @@ class YouTubeSource:
         return self.cache_dir / "videos" / video_id / "info.json"
 
     def info(self, video_id: str) -> dict[str, Any]:
+        # one request per video at a time: two shots asking for the same one at once both got refused (pati12 14/10)
+        with self._turn_lock:
+            lock = self.__dict__.setdefault("_video_locks", {}).setdefault(video_id, threading.Lock())
+        with lock:
+            return self._info(video_id)
+
+    def _info(self, video_id: str) -> dict[str, Any]:
         self._local.video_id = video_id
         if self.refused(video_id) and not self._info_path(video_id).is_file():
             raise RuntimeError(f"{video_id}: descartado (pidió «no eres un bot»); no se vuelve a pedir")

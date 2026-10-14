@@ -414,7 +414,6 @@ def test_protection_report_names_keys_but_never_shows_them(tmp_path, monkeypatch
 
 def test_one_video_asking_bot_is_dropped_three_different_ones_quarantine(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    monkeypatch.setattr(YouTubeSource, "_extract", lambda self, url, extra: _raise_bot())   # the canary too: a block
     config = {"min_interval": 0, "cookies": "never"}
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config=config)
     asked = []
@@ -476,7 +475,6 @@ def test_a_refused_video_is_never_asked_for_again(tmp_path, monkeypatch):
 
 def test_with_an_account_one_refused_video_does_not_burn_the_account(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    monkeypatch.setattr(YouTubeSource, "_extract", lambda self, url, extra: _raise_bot())   # the canary too: a block
     yt = _source(tmp_path, 1)                                   # rotate: every request with the account
     yt.cfg["min_interval"] = 0
 
@@ -506,42 +504,30 @@ def test_pause_probe_says_when_the_proxy_is_down_instead_of_testing(tmp_path, mo
     assert "el proxy no responde" in capsys.readouterr().out
 
 
-def test_refusals_with_successes_in_between_are_those_videos_not_the_connection(tmp_path, monkeypatch):
-    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
-
-    def bot():
-        raise RuntimeError("Sign in to confirm you're not a bot")
-
-    for video in ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC", "DDDDDDDDDDD"):
-        yt._local.video_id = video
-        with pytest.raises(RuntimeError, match="se descarta"):
-            yt._call("metadata", bot)
-        yt._local.video_id = "dQw4w9WgXcQ"
-        assert yt._call("metadata", lambda: {"id": "ok"}) == {"id": "ok"}   # another video answers
-    assert yt.blocked is None and not yt._in_quarantine(0)
-
-
 def _raise_bot():
     raise RuntimeError("Sign in to confirm you're not a bot")
 
 
-def test_refused_videos_in_a_row_with_a_canary_that_passes_burn_nothing(tmp_path, monkeypatch, capsys):
+def test_a_few_refused_videos_among_many_answers_are_those_videos_most_refused_is_the_line(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    canaries = []
-    monkeypatch.setattr(YouTubeSource, "_extract", lambda self, url, extra: canaries.append(url) or {"id": "ok"})
     yt = _source(tmp_path, 1)                                   # rotate: every request with the account
     yt.cfg["min_interval"] = 0
-    for video in ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC", "DDDDDDDDDDD"):   # only the refused ones are left
+    for n, video in enumerate(("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC", "DDDDDDDDDDD")):
+        for k in range(3):                                      # three other videos answer for each refused one
+            yt._local.video_id = f"ok{n}{k}"
+            yt._call("metadata", lambda: {"id": "ok"})
         yt._local.video_id = video
         with pytest.raises(RuntimeError, match="se descarta"):
             yt._call("metadata", _raise_bot)
-    assert yt._bad == set() and yt.blocked is None and not yt._in_quarantine(0)
-    assert len(canaries) == 1 and "dQw4w9WgXcQ" in canaries[0]       # one control request, not one per video
-    assert "eran esos vídeos" in capsys.readouterr().out
-    plain = YouTubeSource(root=tmp_path / "p", cache_dir=tmp_path / "p", config={"min_interval": 0, "cookies": "never"})
-    for video in ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC"):        # without an account: the same
-        plain._local.video_id = video
+    assert yt._bad == set() and yt.blocked is None              # 4 of 16 refused: those videos
+    bad = YouTubeSource(root=tmp_path / "b", cache_dir=tmp_path / "b", config={"min_interval": 0, "cookies": "never"})
+    bad._local.video_id = "dQw4w9WgXcQ"
+    bad._call("metadata", lambda: {"id": "ok"})                 # a famous one passes: it proves nothing
+    for video in ("AAAAAAAAAAA", "BBBBBBBBBBB"):
+        bad._local.video_id = video
         with pytest.raises(RuntimeError, match="se descarta"):
-            plain._call("metadata", _raise_bot)
-    assert not plain._in_quarantine(0)
+            bad._call("metadata", _raise_bot)
+    bad._local.video_id = "CCCCCCCCCCC"
+    with pytest.raises(SourceUnavailable):                      # 3 of 4 refused: the line is flagged
+        bad._call("metadata", _raise_bot)
+    assert bad._in_quarantine(0)
