@@ -230,3 +230,48 @@ def test_a_video_waiting_for_the_proxy_says_why_in_the_studio(tmp_path):
     assert summary["quotaWait"].startswith("el proxy no responde · hasta las")
     (folder / main.QUOTA_WAIT).write_text(f"{clock.time() - 1:.0f}\nel proxy no responde")
     assert "A" in main.pending_slugs(tmp_path)
+
+
+def test_a_video_waiting_for_the_api_quota_is_in_the_queue_not_an_error(tmp_path):
+    import json as _json
+
+    from pipeline import web
+    from pipeline.budget import ApiSearchesShort
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    _materials(tmp_path, "A")
+    (tmp_path / "materiales" / "A" / "voz.mp3").write_bytes(b"0")
+    (tmp_path / "work" / "A").mkdir(parents=True)
+    (tmp_path / "work" / "A" / "diag.json").write_text(_json.dumps({"error": "ApiSearchesShort: sin búsquedas"}))
+    main.wait_for_quota(tmp_path, "A", ApiSearchesShort("La API de YouTube no tiene más búsquedas hoy", 9e9))
+    summary = web.video_summary(tmp_path, tmp_path / "materiales" / "A", {})
+    assert summary["status"] == "en cola" and summary["quotaWait"] and not summary["lastError"]
+
+
+def test_with_no_api_searches_left_a_video_that_must_search_does_not_even_start(tmp_path, monkeypatch):
+    from unittest.mock import patch
+
+    import pipeline.ytapi as ytapi
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    for slug in ("NEW", "SEARCHED"):
+        _materials(tmp_path, slug)
+    (tmp_path / "work" / "SEARCHED" / "candidates").mkdir(parents=True)
+    (tmp_path / "work" / "SEARCHED" / "candidates" / "_summary.json").write_text("{}")
+
+    class Dry:
+        keys = ["k"]
+
+        def __init__(self, ctx):
+            pass
+
+        def quota(self):
+            return {"searchesLeft": 0}
+
+    monkeypatch.setattr(ytapi, "YouTubeAPI", Dry)
+    ran = []
+    with patch.object(main, "run_one", side_effect=lambda slug, **k: ran.append(slug)), \
+            patch.object(main, "notify", lambda *a, **k: None):
+        failures = main.run_queue(force=set(), until=None, review=False, root=tmp_path, check=False)
+    assert ran == ["SEARCHED"] and failures == 0                    # the one that searched already goes on
+    assert main.quota_wait(tmp_path / "materiales" / "NEW") and "NEW" not in main.pending_slugs(tmp_path)

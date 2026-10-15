@@ -311,7 +311,7 @@ function drawHome() {               // the channel buttons redraw from what is a
     .sort((a, c) => String((c.published || {}).at || "").localeCompare(String((a.published || {}).at || "")));
   const queue = by("en cola").sort((a, c) => a.updated - c.updated);
   const attention = [...by("error"), ...by("incompleto"), ...by("en pausa")];
-  const failed = all.filter((v) => v.status === "error" || v.lastError).length;
+  const failed = all.filter((v) => (v.status === "error" || v.lastError) && !v.quotaWait).length;
   const state = s.youtubeBlocked ? ["⛔ YouTube bloqueado", `desde las ${esc(s.youtubeBlocked)} · prueba cada hora`]
     : s.paused ? ["⏸ En pausa", "no empieza vídeos nuevos"] : s.watching ? ["● Trabajando", s.queueRunning ? "haciendo la cola" : "vigilando: hace los vídeos solo"]
     : s.queueRunning ? ["▶ Cola en marcha", ""] : ["○ Parado", "sin vigilante"];
@@ -342,7 +342,8 @@ function drawHome() {               // the channel buttons redraw from what is a
         : pill(v.status)})}
     ${block("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
     ${block("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
-      right: (v) => v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
+      right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ espera API ${esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
+        : v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
     ${block("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30,
       right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;

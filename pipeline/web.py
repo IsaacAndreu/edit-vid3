@@ -122,8 +122,9 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     except (OSError, ValueError):
         pass
     redo = (folder / REDO).is_file() and not held      # «Rehacer»: back in the queue although it has a final video
-    if (ready and not done and not current and not held and (diag.get("error") or failed)   # done: an old error is history
-            and watcher_alive(root)):
+    waiting_quota = quota_wait is not None and not current   # the API's searches ran out: it waits, it did not fail
+    if (ready and not done and not current and not held and not waiting_quota and (diag.get("error") or failed)
+            and watcher_alive(root)):                          # done: an old error is history
         queued_again = True
         if failed and failed.get("at"):
             retry_at = float(failed["at"]) + _retry_hours(root) * 3600
@@ -135,7 +136,8 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
             voice = "generando"
         elif (folder / tts.FAILED).is_file():
             voice = "error: " + str((_json(folder / tts.FAILED) or {}).get("error") or "falló")[:200]
-    status = ("haciendo" if current else "en cola" if redo else "hecho" if done else "en pausa" if held else "en cola" if queued_again
+    status = ("haciendo" if current else "en cola" if redo else "hecho" if done else "en pausa" if held
+              else "en cola" if queued_again or (waiting_quota and ready)
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
     return {
         "slug": slug, "channel": _channel_of(root, folder), "status": status, "quotaWait": quota_wait,

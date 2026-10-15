@@ -253,6 +253,32 @@ def wait_for_quota(root: Path, slug: str, error: BaseException) -> None:
         f"{float(getattr(error, 'until', 0)):.0f}\n{getattr(error, 'why', 'cuota de la API de YouTube')}", encoding="utf-8")
 
 
+def api_dry(root: Path, slug: str) -> BaseException | None:
+    """A video that still has to search YouTube, with keys whose searches are all spent today: it waits for the
+    quota reset before it starts (no voice, judge or LLM spent on a video that would stop at the search)."""
+
+    from pipeline.context import RunContext
+
+    try:
+        if (root / "work" / slug / "candidates" / "_summary.json").is_file():
+            return None                                  # searched already: it needs no API search
+        ctx = RunContext.create(slug, root=root)
+        yt_cfg = ctx.section("sourcing").get("youtube", {})
+        if not yt_cfg.get("api_search", True) or str(yt_cfg.get("api_overflow", "esperar")).lower() != "esperar":
+            return None
+        from pipeline.budget import ApiSearchesShort
+        from pipeline.ytapi import YouTubeAPI, next_reset, reset_text
+
+        api = YouTubeAPI(ctx)
+        if not api.keys or api.quota()["searchesLeft"] > 0:
+            return None
+        return ApiSearchesShort(f"La API de YouTube no tiene búsquedas hoy en ninguna clave: este vídeo espera a la "
+                                f"cuota nueva, {reset_text()}", next_reset().timestamp(),
+                                why="sin búsquedas en la API de YouTube")
+    except Exception:                                    # never a reason to stop the queue
+        return None
+
+
 def quota_wait(folder: Path) -> float | None:
     """The quota reset this video waits for, or None (gone or already passed: the file is removed)."""
 
@@ -610,6 +636,11 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             if number > 1 and new_code is not None and new_code():     # --vigilar: each video on the latest code
                 print("Código nuevo (git pull): la cola se reinicia con él antes del siguiente vídeo")
                 break
+            if (dry_api := api_dry(root, slug)) is not None:
+                wait_for_quota(root, slug, dry_api)
+                results.append((slug, "espera cuota", 0.0, str(dry_api)))
+                print(f"⏸ {slug}: {dry_api}")
+                continue
             print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
             started = time.monotonic()
             try:
