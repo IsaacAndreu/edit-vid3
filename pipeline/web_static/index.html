@@ -913,8 +913,16 @@ async function updateNow(button) {
   button.disabled = false; button.textContent = "🔄 Actualizar ahora";
 }
 
+function movePrio(i, step) {                       // ▲ ▼ ✕ in «Prioridad en la cola»
+  const list = [...(window.prioList || [])];
+  if (step === 0) list.splice(i, 1);
+  else [list[i], list[i + step]] = [list[i + step], list[i]];
+  save({channel_priority: list});
+}
+
 async function settingsPage() {
   const [s, n] = [await api("/api/settings"), await api("/api/notify")];
+  window.prioList = s.channel_priority || [];
   const guessUrl = n.studioUrl || (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "" : location.origin);
   if (!data) data = await api("/api/overview");
   const code = data && data.service && data.service.code;
@@ -952,7 +960,16 @@ async function settingsPage() {
     </div>
     <h2>Canales</h2>
     <div class="card"><div class="row">${s.channels.map((c) => `<span class="pill">${esc(c)}</span>`).join("")}
-      <a class="btn main" href="#/canal-nuevo">+ Añadir canal</a></div></div>
+      <a class="btn main" href="#/canal-nuevo">+ Añadir canal</a></div>
+      <label style="margin-top:16px">Prioridad en la cola <span class="muted">(se hacen primero los vídeos de estos canales, en este orden; los demás, después)</span></label>
+      <div id="prio">${(s.channel_priority || []).map((c, i, all) => `<div class="row" style="gap:6px;margin-top:6px">
+        <b style="width:22px">${i + 1}.</b><span class="pill" style="border-left:4px solid ${chColor(c)}">${esc(c)}</span>
+        <button ${i ? "" : "disabled"} onclick="movePrio(${i}, -1)" title="Subir">▲</button>
+        <button ${i < all.length - 1 ? "" : "disabled"} onclick="movePrio(${i}, 1)" title="Bajar">▼</button>
+        <button onclick="movePrio(${i}, 0)" title="Quitar de la lista">✕</button></div>`).join("") || '<div class="small muted" style="margin-top:6px">Sin prioridad: la cola va por fecha de publicación y antigüedad.</div>'}</div>
+      <div class="row" style="margin-top:8px"><select id="prio-add" style="width:auto"><option value="">Añadir canal…</option>
+        ${s.channels.filter((c) => !(s.channel_priority || []).includes(c)).map((c) => `<option>${esc(c)}</option>`).join("")}</select>
+        <button onclick="const c = document.getElementById('prio-add').value; if (c) save({channel_priority: [...(window.prioList || []), c]})">Añadir</button></div></div>
     <h2>Mi canal de YouTube en cada perfil</h2>
     <div class="card">
       <p class="small muted" style="margin-top:0">Tu @canal o su URL: lo usan «Mi canal» y las ideas.</p>

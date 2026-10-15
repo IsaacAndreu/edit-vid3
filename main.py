@@ -236,7 +236,24 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     from pipeline import agenda
 
     due = agenda.priority(root) if ready else {}          # the video that goes out first is made first
-    return [d.name for d in sorted(ready, key=lambda d: (due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
+    rank = channel_rank(root) if ready else {}             # «Prioridad de canales» (Ajustes): those channels first
+    if rank:
+        from pipeline.web import _channel_of
+
+        first = {d.name: rank.get(_channel_of(root, d), len(rank)) for d in ready}
+    else:
+        first = {}
+    return [d.name for d in sorted(ready, key=lambda d: (first.get(d.name, 0), due.get(d.name, "9999"),
+                                                         d.stat().st_mtime, d.name))]
+
+
+def channel_rank(root: Path) -> dict[str, int]:
+    """The channels chosen in Ajustes → «Prioridad de canales», in order; the rest go after them, as before."""
+
+    from pipeline.budget import settings
+
+    order = settings(root).get("channel_priority") or []
+    return {str(c): i for i, c in enumerate(order) if str(c).strip()}
 
 
 HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»

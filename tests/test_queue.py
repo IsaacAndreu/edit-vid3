@@ -275,3 +275,25 @@ def test_with_no_api_searches_left_a_video_that_must_search_does_not_even_start(
         failures = main.run_queue(force=set(), until=None, review=False, root=tmp_path, check=False)
     assert ran == ["SEARCHED"] and failures == 0                    # the one that searched already goes on
     assert main.quota_wait(tmp_path / "materiales" / "NEW") and "NEW" not in main.pending_slugs(tmp_path)
+
+
+def test_the_queue_makes_the_priority_channels_first_in_their_order(tmp_path):
+    import json as _json
+    import os
+
+    from pipeline import web
+
+    (tmp_path / "config.yaml").write_text("canal: aviacion\n")
+    (tmp_path / "canales").mkdir()
+    for c in ("aviacion", "patinaje", "atletismo", "robots"):
+        (tmp_path / "canales" / f"{c}.yaml").write_text("a: 1\n")
+    for n, (slug, canal) in enumerate([("avion1", None), ("atlet1", "atletismo"), ("pati1", "patinaje"),
+                                       ("robot1", "robots"), ("avion2", None)]):
+        _materials(tmp_path, slug)
+        if canal:
+            (tmp_path / "materiales" / slug / "config.yaml").write_text(f"canal: {canal}\n")
+        os.utime(tmp_path / "materiales" / slug, (1000 + n, 1000 + n))           # oldest first, as before
+    assert main.pending_slugs(tmp_path) == ["avion1", "atlet1", "pati1", "robot1", "avion2"]
+    web.settings(tmp_path, {"channel_priority": ["patinaje", "atletismo", "no-existe", "patinaje"]})
+    assert _json.loads((tmp_path / "out" / "_ajustes.json").read_text())["channel_priority"] == ["patinaje", "atletismo"]
+    assert main.pending_slugs(tmp_path) == ["pati1", "atlet1", "avion1", "robot1", "avion2"]

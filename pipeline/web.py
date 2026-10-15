@@ -742,6 +742,9 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
                     else:
                         mine.pop(str(k), None)
             current["my_channels"] = mine
+        if isinstance(body.get("channel_priority"), list):   # the queue makes these channels' videos first, in order
+            known = channels(root)
+            current["channel_priority"] = [str(c) for c in dict.fromkeys(body["channel_priority"]) if str(c) in known]
         if "paused" in body:
             flag = root / "out" / "_pausa"
             flag.parent.mkdir(parents=True, exist_ok=True)
