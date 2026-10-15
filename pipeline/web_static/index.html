@@ -131,6 +131,31 @@
   .hero textarea { min-height: 48px; height: 48px; font-size: 16px; padding: 12px 14px; border-radius: 12px; resize: none; }
   .hero textarea:focus { height: 140px; outline: 2px solid var(--accent); }
   .hero button { white-space: nowrap; padding: 0 20px; border-radius: 12px; }
+  .yt-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 10px; }
+  .yt-tools input[type=search] { flex: 1 1 200px; max-width: 320px; }
+  .yt-chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 99px; padding: 5px 12px;
+    font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .yt-chip.on { background: var(--panel2); border-color: var(--accent); font-weight: 700; }
+  .yt-chip .dot, .ytt .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .ytt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+  .ytt th { position: sticky; top: 0; background: var(--panel); z-index: 1; padding: 9px 8px; font-size: 12px; font-weight: 600;
+    color: var(--muted); text-align: right; white-space: nowrap; cursor: pointer; user-select: none; border-bottom: 1px solid var(--line); }
+  .ytt th:first-child, .ytt td:first-child { text-align: left; }
+  .ytt th.on { color: var(--text); }
+  .ytt td { padding: 8px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; white-space: nowrap; }
+  .ytt td:first-child { white-space: normal; min-width: 280px; }
+  .ytt tr.v:hover td { background: var(--panel2); }
+  .ytt tr.group td { background: var(--panel2); font-weight: 700; text-align: left; padding: 10px 8px; }
+  .ytt .thumb { width: 104px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; flex: none; background: var(--panel2); }
+  .ytt .vbar { height: 4px; border-radius: 0 2px 2px 0; background: var(--accent); margin-top: 4px; margin-left: auto; opacity: .75; }
+  .ytt .sub { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+  @media (max-width: 760px) {
+    .ytt thead { display: none; } .ytt, .ytt tbody, .ytt tr, .ytt td { display: block; width: 100%; }
+    .ytt tr.v { border-bottom: 1px solid var(--line); padding: 8px 0; display: grid; grid-template-columns: repeat(3, 1fr); }
+    .ytt tr.v td { border: 0; padding: 3px 8px; text-align: left; } .ytt tr.v td:first-child { grid-column: 1 / -1; }
+    .ytt td[data-k]::before { content: attr(data-k); display: block; font-size: 11px; color: var(--muted); }
+    .ytt td.wide { display: none; }
+  }
   .kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 820px) { .kpis { grid-template-columns: 1fr 1fr; } .hero { flex-direction: column; } .hero button { padding: 12px; } }
   .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: block; color: var(--text); }
@@ -678,19 +703,8 @@ async function stats(refresh = false) {
       ${c.best ? `<div class="small muted" style="margin-top:4px">🏆 ${esc(c.best.title)} (${kfmt(c.best.views)})</div>` : ""}</div>`).join("")}</div>
 
     <h2>En YouTube</h2>
-    ${out.length ? `<div class="card" style="overflow-x:auto;padding:0"><table style="width:100%;border-collapse:collapse;font-size:14px">
-      <tr style="text-align:left"><th style="padding:8px">Vídeo</th>${head("views", "Visitas")}${head("perDay", "Al día")}${head("at48h", "48 h")}${head("at7d", "7 días")}
-        ${head("watchHours", "Horas (est.)")}${head("vsChannel", "vs canal")}${head("likesPer1k", "👍/1.000")}${head("commentsPer1k", "💬/1.000")}${head("ageDays", "Días")}</tr>
-      ${out.map((v) => `<tr style="border-top:1px solid var(--line)">
-        <td style="padding:8px;min-width:260px"><div class="row" style="gap:8px;flex-wrap:nowrap">${v.youtube.thumbnail ? `<a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.youtube.thumbnail)}" style="width:96px;border-radius:4px"></a>` : ""}
-          <div><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.youtube.title || v.title)}</a><div class="small muted">${esc(v.channel)} · ${esc(v.publishedDay || "")}</div></div></div></td>
-        <td style="text-align:right"><b>${kfmt(v.youtube.views)}</b></td><td style="text-align:right">${kfmt(v.youtube.perDay)}</td>
-        <td style="text-align:right">${v.youtube.at48h != null ? kfmt(v.youtube.at48h) : "—"}</td><td style="text-align:right">${v.youtube.at7d != null ? kfmt(v.youtube.at7d) : "—"}</td>
-        <td style="text-align:right">${kfmt(v.youtube.watchHours)}</td>
-        <td style="text-align:right">${vs(v.youtube.vsChannel)}</td><td style="text-align:right">${fmt(v.youtube.likesPer1k)}</td>
-        <td style="text-align:right">${fmt(v.youtube.commentsPer1k)}</td><td style="text-align:right;padding-right:8px">${fmt(v.youtube.ageDays)}</td></tr>`).join("")}
-    </table></div>
-    <div class="small muted" style="margin-top:6px">«vs canal»: visitas frente a la mediana de los vídeos del mismo canal. 👍 y 💬 por cada 1.000 visitas: cuánto engancha a quien lo ve.
+    ${out.length ? `<div id="yttable"></div>
+    <div class="small muted" style="margin-top:6px">«vs canal»: visitas frente a la mediana del mismo canal (en verde 1,5× o más; en rojo, por debajo de 0,7×). 👍 y 💬 por cada 1.000 visitas: cuánto engancha a quien lo ve.
       Horas (est.): visitas × duración × ${Math.round(100 * st.retention)} % (la media de lo que se ve de cada vídeo; pon la tuya de YouTube Studio en
       config.local.yaml → <code>stats: {retention: 0.40}</code>). Las horas exactas, la retención, el CTR y las impresiones solo salen con YouTube Analytics (inicio de sesión del canal).</div>`
       : '<div class="notice">Ningún vídeo subido con su enlace todavía. En «Para subir» o en el vídeo, «Ya está subido» y pega la URL.</div>'}
@@ -726,7 +740,67 @@ async function stats(refresh = false) {
     ` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
     <div class="card"><div class="spend">${spend.map((d) => `<div style="height:${100 * d.usd / max}%" title="${d.usd} $"><span>${d.day.slice(5)}</span></div>`).join("")}</div>
       <div style="height:26px"></div><div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
+  statsRows = st.videos.filter((v) => v.youtube);
+  drawYtTable();
   if (bench.job && bench.job.running) schedule(() => stats(), 15000);      // the speed test shows its progress
+}
+
+// «En YouTube»: sorted, filtered and grouped in the page, without asking the server again
+let statsRows = [], statsDir = -1, statsQuery = "", statsGroup = false;
+const YT_COLS = [["views", "Visitas"], ["perDay", "Al día"], ["at48h", "48 h"], ["at7d", "7 días"], ["watchHours", "Horas (est.)"],
+  ["vsChannel", "vs canal"], ["likesPer1k", "👍/1.000"], ["commentsPer1k", "💬/1.000"], ["ageDays", "Días"]];
+function ytSort(key) { statsDir = statsSort === key ? -statsDir : (key === "title" || key === "channel" ? 1 : -1); statsSort = key; drawYtTable(); }
+function drawYtTable(typing = false) {
+  const box = $("#yttable");
+  if (!box) return;
+  const q = statsQuery.trim().toLowerCase();
+  const val = (v, key) => key === "title" ? (v.youtube.title || v.title || "").toLowerCase() : key === "channel" ? v.channel.toLowerCase() : v.youtube[key];
+  const rows = statsRows.filter((v) => (!statsChannel || v.channel === statsChannel)
+      && (!q || `${v.youtube.title || ""} ${v.title} ${v.slug} ${v.channel}`.toLowerCase().includes(q)))
+    .sort((a, b) => { const x = val(a, statsSort), y = val(b, statsSort);
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * statsDir; });
+  const counts = {}; statsRows.forEach((v) => counts[v.channel] = (counts[v.channel] || 0) + 1);
+  const maxViews = Math.max(1, ...rows.map((v) => v.youtube.views || 0));
+  const arrow = (key) => statsSort === key ? (statsDir > 0 ? " ▴" : " ▾") : "";
+  const vs = (r) => r == null ? "—" : `<span class="pill ${r >= 1.5 ? "hecho" : r < 0.7 ? "error" : ""}">${times(r)}</span>`;
+  const row = (v) => { const y = v.youtube; return `<tr class="v">
+    <td><div class="row" style="gap:10px;flex-wrap:nowrap">
+      <a href="${esc(v.url)}" target="_blank" rel="noopener">${y.thumbnail ? `<img class="thumb" src="${esc(y.thumbnail)}" loading="lazy" alt="">` : '<div class="thumb"></div>'}</a>
+      <div style="min-width:0"><a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600">${esc(y.title || v.title)}</a>
+        <div class="sub"><i class="dot" style="background:${chColor(v.channel)}"></i>${esc(v.channel)} · ${esc(v.slug)}${v.publishedDay ? " · " + esc(v.publishedDay) : ""}${y.minutes ? " · " + fmt(y.minutes) + " min" : ""}</div></div></div></td>
+    <td data-k="Visitas" title="${fmt(y.views)} visitas"><b>${kfmt(y.views)}</b><div class="vbar" style="width:${Math.max(3, 100 * (y.views || 0) / maxViews)}%"></div></td>
+    <td data-k="Al día">${kfmt(y.perDay)}</td><td data-k="48 h" class="wide">${y.at48h != null ? kfmt(y.at48h) : "—"}</td>
+    <td data-k="7 días" class="wide">${y.at7d != null ? kfmt(y.at7d) : "—"}</td><td data-k="Horas">${kfmt(y.watchHours)}</td>
+    <td data-k="vs canal">${vs(y.vsChannel)}</td><td data-k="👍/1.000">${fmt(y.likesPer1k)}</td>
+    <td data-k="💬/1.000" class="wide">${fmt(y.commentsPer1k)}</td><td data-k="Días">${fmt(y.ageDays)}</td></tr>`; };
+  let body = "";
+  if (statsGroup) {
+    const groups = {}; rows.forEach((v) => (groups[v.channel] = groups[v.channel] || []).push(v));
+    const order = Object.keys(groups).sort((a, b) => groups[b].reduce((s, v) => s + v.youtube.views, 0) - groups[a].reduce((s, v) => s + v.youtube.views, 0));
+    body = order.map((c) => { const g = groups[c], views = g.reduce((s, v) => s + (v.youtube.views || 0), 0), hours = g.reduce((s, v) => s + (v.youtube.watchHours || 0), 0);
+      return `<tr class="group"><td colspan="10"><span class="row" style="gap:8px"><i class="dot" style="background:${chColor(c)};width:11px;height:11px"></i>${esc(c)}
+        <span class="muted small" style="font-weight:400">${g.length} vídeo(s) · ${kfmt(views)} visitas · ${kfmt(hours)} h (est.)</span></span></td></tr>${g.map(row).join("")}`; }).join("");
+  } else body = rows.map(row).join("");
+  box.innerHTML = `<div class="yt-tools">
+      <input type="search" placeholder="Buscar título o carpeta…" value="${esc(statsQuery)}" oninput="statsQuery=this.value;drawYtTable(true)">
+      <button class="yt-chip ${statsChannel ? "" : "on"}" onclick="statsChannel='';drawYtTable()">Todos <span class="muted">${statsRows.length}</span></button>
+      ${Object.keys(counts).sort().map((c) => `<button class="yt-chip ${c === statsChannel ? "on" : ""}" onclick="statsChannel='${esc(c)}';drawYtTable()">
+        <i class="dot" style="background:${chColor(c)}"></i>${esc(c)} <span class="muted">${counts[c]}</span></button>`).join("")}
+      <span class="row small" style="gap:4px;margin-left:auto;flex-wrap:nowrap">Ordenar:
+        <select style="width:auto" onchange="statsSort=this.value;statsDir=['title','channel'].includes(this.value)?1:-1;drawYtTable()">
+          ${[["channel", "Canal"], ["title", "Título"], ...YT_COLS].map(([k, label]) => `<option value="${k}" ${statsSort === k ? "selected" : ""}>${label}</option>`).join("")}</select>
+        <button title="Al revés" onclick="statsDir=-statsDir;drawYtTable()">${statsDir > 0 ? "▴" : "▾"}</button></span>
+      <label class="small" style="display:flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" ${statsGroup ? "checked" : ""} onchange="statsGroup=this.checked;drawYtTable()"> Agrupar por canal</label></div>
+    <div class="card" style="overflow:auto;padding:0;max-height:75vh"><table class="ytt">
+      <thead><tr><th class="${statsSort === "title" ? "on" : ""}" onclick="ytSort('title')">Vídeo${arrow("title")}
+        <span style="margin-left:10px" class="${statsSort === "channel" ? "on" : ""}" onclick="event.stopPropagation();ytSort('channel')">· Canal${arrow("channel")}</span></th>
+        ${YT_COLS.map(([k, label]) => `<th class="${statsSort === k ? "on" : ""} ${["at48h", "at7d", "commentsPer1k"].includes(k) ? "wide" : ""}" onclick="ytSort('${k}')">${label}${arrow(k)}</th>`).join("")}</tr></thead>
+      <tbody>${body || '<tr><td colspan="10" class="muted" style="text-align:center;padding:20px">Ningún vídeo con ese filtro.</td></tr>'}</tbody>
+    </table></div>
+    <div class="small muted" style="margin-top:4px">${rows.length} de ${statsRows.length} vídeos · ${kfmt(rows.reduce((s, v) => s + (v.youtube.views || 0), 0))} visitas · ${kfmt(rows.reduce((s, v) => s + (v.youtube.watchHours || 0), 0))} h (est.) · toca una columna para ordenar (otra vez: al revés)</div>`;
+  if (typing) { const input = box.querySelector("input[type=search]"); input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
 }
 
 async function restartQueue(button) {
