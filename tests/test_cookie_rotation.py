@@ -551,3 +551,28 @@ def test_after_two_403_on_whole_downloads_only_the_piece_is_asked(tmp_path, monk
     for video in ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC", "DDDDDDDDDDD"):
         yt.download_range(video, 10.0, 15.0, fmt="best", prefix="hd")
     assert wholes == ["AAAAAAAAAAA", "BBBBBBBBBBB"] and len(pieces) == 4
+
+
+def test_a_range_download_gives_up_on_a_connection_that_stops_answering(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0})
+    seen = []
+
+    class Ydl:
+        def __init__(self, options):
+            seen.append(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def download_with_info_file(self, info):
+            pass
+
+    monkeypatch.setattr(yt, "_ydl", lambda options: Ydl(options))
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda video: tmp_path / "info.json")
+    with pytest.raises(RuntimeError, match="tramo vacío"):
+        yt._fetch_range("AAAAAAAAAAA", 1.0, 2.0, "best", "hd", False, False, tmp_path / "info.json", exact=True)
+    assert seen[0]["external_downloader_args"]["ffmpeg_i"] == ["-rw_timeout", "60000000"]   # 60 s without data

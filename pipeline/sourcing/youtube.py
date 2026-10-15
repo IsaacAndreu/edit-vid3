@@ -1213,8 +1213,12 @@ class YouTubeSource:
             "download_ranges": download_range_func(None, [(start, end)]),
             "force_keyframes_at_cuts": exact,             # exact: the file starts right at `start`
         }
+        # ffmpeg (which yt-dlp uses for ranges) waits forever on a connection that stops answering: a proxy PC that
+        # went to sleep mid-download hung instrum4 for 5 hours at 180/191. 60 s without data: that piece fails instead
+        args: dict[str, list[str]] = {"ffmpeg_i": ["-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
         if not exact:
-            options["external_downloader_args"] = {"ffmpeg_o": ["-copyts"]}
+            args["ffmpeg_o"] = ["-copyts"]
+        options["external_downloader_args"] = args
         info_file = str(info_path)
 
         def fetch() -> None:
