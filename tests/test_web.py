@@ -634,3 +634,15 @@ def test_update_now_keeps_a_local_file_the_new_code_also_brings(tmp_path, monkey
     assert result["changed"] and "antes-de-actualizar" in result["message"]
     assert (server / "canales" / "atletismo.yaml").read_text() == "base: gimnasia\n"
     assert (server / "canales" / "atletismo.yaml.antes-de-actualizar").read_text() == "mio: true\n"
+
+
+def test_downloads_are_named_after_the_video(tmp_path):
+    from pipeline import web
+
+    (tmp_path / "materiales" / "pati12").mkdir(parents=True)
+    (tmp_path / "materiales" / "pati12" / "titulo.txt").write_text("El caso Valieva: ¿dopaje?\n")
+    out = tmp_path / "out" / "pati12"
+    assert web.download_name(tmp_path, out / "video-final.mp4") == "pati12 - El caso Valieva ¿dopaje.mp4"
+    assert web.download_name(tmp_path, out / "shorts" / "short-1.mp4") == "pati12 - short-1.mp4"
+    assert web.download_name(tmp_path, tmp_path / "materiales" / "pati12" / "voz.mp3") == "pati12 - voz.mp3"
+    assert web.download_name(tmp_path, tmp_path / "out" / "atleti3" / "video-final.mp4") == "atleti3.mp4"

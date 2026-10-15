@@ -620,6 +620,28 @@ def retry_all(root: Path) -> dict[str, Any]:
     return {"ok": True, "count": count, "started": True, "message": "Cola en marcha desde el estudio."}
 
 
+def download_name(root: Path, path: Path) -> str:
+    """«pati12 - El caso Valieva.mp4» instead of «video-final.mp4»: many downloaded at once, each says which it is
+    (the folder name first, then its title; shorts and other files keep their name after the folder's)."""
+
+    parts = path.parts
+    top = next((i for i in range(len(parts) - 2, -1, -1) if parts[i] in ("out", "materiales")), None)
+    if top is None or top + 1 >= len(parts) - 1:
+        return path.name
+    slug = parts[top + 1]                      # out/<slug>/…, materiales/<slug>/… (also materiales/<canal>/<slug>)
+    if parts[top] == "materiales" and top + 2 < len(parts) - 1:
+        slug = parts[top + 2]
+    title = ""
+    try:
+        title = (find_video(root, slug) / "titulo.txt").read_text("utf-8").strip().splitlines()[0]
+    except (OSError, IndexError):
+        pass
+    clean = lambda text: " ".join(re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", text).split()).strip(" .")[:120]   # noqa: E731
+    if path.name == "video-final.mp4":
+        return f"{slug} - {clean(title)}.mp4" if title else f"{slug}.mp4"
+    return f"{slug} - {path.name}"
+
+
 HOLD = ".en-espera"        # = main.HOLD: the queue skips the video while this file is in its folder
 REDO = ".rehacer"          # = main.REDO: a finished video made again from these stages
 
@@ -882,7 +904,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             if ranged:
                 self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
             if "download" in (self.path.split("?", 1)[1] if "?" in self.path else ""):
-                self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+                name = download_name(root, path)
+                ascii_name = name.encode("ascii", "ignore").decode() or path.name
+                self.send_header("Content-Disposition", f'attachment; filename="{ascii_name}"; '
+                                                        f"filename*=UTF-8''{urllib.parse.quote(name)}")
             self.end_headers()
             with path.open("rb") as handle:
                 handle.seek(start)

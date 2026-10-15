@@ -8,6 +8,9 @@
 - Per channel: videos out, total and median views, the best one, average cost and cost per 1,000 views.
 
 Retention, CTR and impressions are not in the public API: they need YouTube Analytics with your channel's login.
+So the watch hours here are an ESTIMATE: views × video length × `stats.retention` (0.35: a third of the video watched
+on average, typical for 8-15 min documentaries; set yours from YouTube Studio's «average percentage viewed»). The
+partner programme counts public watch hours of the last 12 months on long videos (not Shorts): 4,000.
 """
 
 from __future__ import annotations
@@ -98,6 +101,12 @@ def report(root: Path, refresh: bool = False) -> dict[str, Any]:
     history = (agenda.load(root).get("views") or {})
     ids = {v["slug"]: agenda._video_id(v["url"]) for v in listed if v["status"] == "subido" and v["url"]}
     stats = _youtube(root, sorted({i for i in ids.values() if i}), refresh)
+    from .context import RunContext
+
+    try:
+        retention = float(RunContext.create("_estadisticas", root=root).section("stats").get("retention", 0.35))
+    except Exception:
+        retention = 0.35
     rows = []
     for video in listed:
         if video["status"] not in ("hecho", "subido"):
@@ -107,6 +116,7 @@ def report(root: Path, refresh: bool = False) -> dict[str, Any]:
                "production": production(root, video["slug"])}
         yt = stats.get(ids.get(video["slug"]) or "")
         if yt:
+            seconds = float(yt.get("duration") or row["production"]["duration"] or 0)
             age = _age_days(yt.get("published") or "")
             views = int(yt.get("views") or 0)
             row["youtube"] = {
@@ -115,18 +125,23 @@ def report(root: Path, refresh: bool = False) -> dict[str, Any]:
                 "likesPer1k": round(1000 * int(yt.get("likes") or 0) / views, 1) if views else 0,
                 "commentsPer1k": round(1000 * int(yt.get("comments") or 0) / views, 1) if views else 0,
                 "at48h": (history.get(video["slug"]) or {}).get("48h"), "at7d": (history.get(video["slug"]) or {}).get("7d"),
-                "thumbnail": yt.get("thumbnail") or "", "title": yt.get("title") or ""}
+                "thumbnail": yt.get("thumbnail") or "", "title": yt.get("title") or "",
+                "minutes": round(seconds / 60, 1), "short": seconds <= 180,
+                "watchHours": round(views * seconds * retention / 3600, 1)}
         rows.append(row)
     channels: dict[str, dict[str, Any]] = {}
     for row in rows:
         c = channels.setdefault(row["channel"], {"channel": row["channel"], "made": 0, "published": 0, "views": 0,
-                                                 "usd": 0.0, "_views": []})
+                                                 "usd": 0.0, "_views": [], "watchHours": 0.0, "watchHours12m": 0.0})
         c["made"] += 1
         c["usd"] += row["production"]["usd"]
         if row.get("youtube"):
             c["published"] += 1
             c["views"] += row["youtube"]["views"]
             c["_views"].append(row["youtube"]["views"])
+            c["watchHours"] += row["youtube"]["watchHours"]
+            if not row["youtube"]["short"] and row["youtube"]["ageDays"] <= 365:   # what the partner programme counts
+                c["watchHours12m"] += row["youtube"]["watchHours"]
     for c in channels.values():
         median = statistics.median(c["_views"]) if c["_views"] else 0
         c["median"] = int(median)
@@ -136,9 +151,15 @@ def report(root: Path, refresh: bool = False) -> dict[str, Any]:
                    key=lambda r: r["youtube"]["views"], default=None)
         c["best"] = {"title": best["title"], "views": best["youtube"]["views"]} if best else None
         c["usd"] = round(c["usd"], 2)
+        c["watchHours"], c["watchHours12m"] = round(c["watchHours"]), round(c["watchHours12m"])
         del c["_views"]
         for row in rows:
             if row["channel"] == c["channel"] and row.get("youtube") and median:
                 row["youtube"]["vsChannel"] = round(row["youtube"]["views"] / median, 2)
     return {"videos": rows, "channels": sorted(channels.values(), key=lambda c: -c["views"]),
-            "fetched": (_read(root / CACHE) or {}).get("at")}
+            "fetched": (_read(root / CACHE) or {}).get("at"), "retention": retention,
+            "totals": {"views": sum(c["views"] for c in channels.values()),
+                       "watchHours": sum(c["watchHours"] for c in channels.values()),
+                       "published": sum(c["published"] for c in channels.values()),
+                       "made": sum(c["made"] for c in channels.values()),
+                       "usd": round(sum(c["usd"] for c in channels.values()), 2)}}
