@@ -38,9 +38,26 @@ NAMES = {"en": "English", "pt": "Portuguese (Brazil)", "fr": "French", "it": "It
 
 
 def settings(ctx: RunContext) -> dict[str, Any]:
+    """`dubbing:` of the channel profile, or what the studio's «Voces por canal → Doblaje» set for this channel (that
+    wins). A language without its own voice is read by the channel's voice with the multilingual model."""
+
+    from . import tts
+
     cfg = ctx.section("dubbing")
-    return {"enabled": bool(cfg.get("enabled", False)), "languages": [str(l) for l in cfg.get("languages", ["en"])],
-            "voices": cfg.get("voices") or {}}
+    out = {"enabled": bool(cfg.get("enabled", False)), "languages": [str(l) for l in cfg.get("languages", ["en"])],
+           "voices": dict(cfg.get("voices") or {}), "existing": True, "since": 0.0}
+    channel = str(ctx.config.get("canal") or "")
+    studio = tts.dubbing_for(ctx.root, channel) if channel else {}
+    if studio:
+        out.update(enabled=True, languages=list(studio["languages"]), existing=bool(studio.get("existing", True)),
+                   since=float(studio.get("since") or 0))
+        out["voices"].update({l: v for l, v in (studio.get("voices") or {}).items() if v.get("voice_id")})
+    own = tts.voice_for(ctx.root, channel) if channel else None
+    for lang in out["languages"]:
+        if not (out["voices"].get(lang) or {}).get("voice_id") and own:
+            out["voices"][lang] = {**own, "model_id": "eleven_multilingual_v2" if own.get("model_id") in
+                                   ("eleven_turbo_v2_5", "eleven_flash_v2_5", None) else own["model_id"]}
+    return out
 
 
 def translate(ctx: RunContext, lang: str) -> bool:
@@ -124,6 +141,9 @@ def prepare_all(root: Path, log: Any = print) -> int:
         cfg = settings(ctx)
         if not cfg["enabled"]:
             continue
+        final = root / "out" / folder.name / "video-final.mp4"
+        if not cfg["existing"] and cfg["since"] and final.is_file() and final.stat().st_mtime < cfg["since"]:
+            continue                            # «solo los vídeos nuevos»: made before dubbing was turned on
         for lang in cfg["languages"]:
             if (folder / f"voz-{lang}.mp3").is_file() or is_done(root, f"{folder.name}-{lang}"):
                 continue

@@ -53,3 +53,33 @@ def test_on_translates_voices_and_hands_it_to_the_queue(tmp_path, monkeypatch):
     name = dub.prepare(tmp_path, "n1", "en")
     assert (folder.parent / name / "voz.palabras.json").is_file()             # its timings travel: no Whisper
     assert doblaje.prepare_all(tmp_path, log=lambda *_: None) == 0           # once
+
+
+def test_turned_on_in_the_studio_with_the_channel_voice_and_only_new_videos_if_asked(tmp_path, monkeypatch):
+    import os
+    import time
+
+    folder = _done_video(tmp_path, "format: historia\n")
+    tts.set_voice(tmp_path, "negocios", {"voice_id": "ES1", "model_id": "eleven_flash_v2_5"})
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **kw: {"title": "T", "script": "A multa da Booking aqui. " * 40})
+    spoken = []
+
+    def fake_generate(token, text, voice, target, session=None, log=print):
+        spoken.append((target.name, voice["voice_id"], voice["model_id"]))
+        target.write_bytes(b"mp3")
+        return {"chars": len(text), "pieces": 1, "tasks": ["t"]}
+
+    monkeypatch.setattr(tts, "generate", fake_generate)
+    final = tmp_path / "out" / "n1" / "video-final.mp4"
+    os.utime(final, (time.time() - 3600, time.time() - 3600))                  # made before dubbing was turned on
+    tts.set_dubbing(tmp_path, "negocios", {"languages": ["pt", "de", "xx"], "voices": {"de": {"voice_id": "DE1"}},
+                                           "existing": False})
+    assert doblaje.prepare_all(tmp_path, log=lambda *_: None) == 0             # only the new ones
+    tts.set_dubbing(tmp_path, "negocios", {"languages": ["pt", "de"], "voices": {"de": {"voice_id": "DE1"}}})
+    assert doblaje.prepare_all(tmp_path, log=lambda *_: None) == 2
+    assert sorted(spoken) == [("voz-de.mp3", "DE1", "eleven_multilingual_v2"),
+                              ("voz-pt.mp3", "ES1", "eleven_multilingual_v2")]   # no own voice: the channel's, multilingual
+    assert sorted(lang for _, lang in dub.pending(tmp_path)) == ["de", "pt"]
+    assert tts.voices(tmp_path).keys() == {"negocios"}                         # the dubbing entry is no voice
+    tts.set_dubbing(tmp_path, "negocios", {"languages": []})
+    assert tts.dubbing_for(tmp_path, "negocios") == {}

@@ -1460,7 +1460,25 @@ async function voicesPage() {
       </div>
       <div class="row" style="margin-top:10px"><button class="main" onclick="saveVoice('${esc(c)}')">Guardar</button>
         <button onclick="testVoice('${esc(c)}')">▶ Probar</button>${x.voice_id ? `<button onclick="clearVoice('${esc(c)}')">Quitar voz</button>` : ""}
-        <span id="vmsg-${esc(c)}" class="small muted"></span></div><div id="vplay-${esc(c)}"></div></div>`; };
+        <span id="vmsg-${esc(c)}" class="small muted"></span></div><div id="vplay-${esc(c)}"></div>
+      ${dubBox(c)}</div>`; };
+  const LANGS = {pt: "Portugués", de: "Alemán", fr: "Francés", en: "Inglés", it: "Italiano"};
+  const dubBox = (c) => { const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
+    return `<details style="margin-top:12px" ${on.length ? "open" : ""}><summary><b>🌍 Doblaje</b> ${on.length ? `<span class="pill hecho">${on.map((l) => LANGS[l] || l).join(", ")}</span>` : '<span class="muted small">apagado</span>'}</summary>
+      <div class="small muted" style="margin:6px 0">Cada vídeo terminado de este canal se traduce y se vuelve a leer en esos idiomas; la cola monta el vídeo doblado
+        (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</div>
+      ${(v.dubLanguages || []).map((l) => `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap">
+        <label style="margin:0;display:flex;gap:6px;align-items:center;min-width:120px;font-weight:400"><input type="checkbox" class="dub-${esc(c)}" value="${l}" ${on.includes(l) ? "checked" : ""}> ${LANGS[l] || l}</label>
+        <input id="dubv-${esc(c)}-${l}" placeholder="ID de voz nativa (vacío = la voz del canal, modelo multilingüe)" value="${esc(((d.voices || {})[l] || {}).voice_id || "")}"></div>`).join("")}
+      <label style="margin-top:10px;display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="dubex-${esc(c)}" ${d.existing === false ? "" : "checked"}>
+        Doblar también los vídeos ya hechos <span class="muted small">(si no, solo los que se terminen a partir de ahora)</span></label>
+      <div class="row" style="margin-top:8px"><button class="main" onclick="saveDub('${esc(c)}')">Guardar doblaje</button><span id="dubmsg-${esc(c)}" class="small muted"></span></div></details>`; };
+  window.saveDub = async (c) => {
+    const languages = [...document.querySelectorAll(".dub-" + CSS.escape(c))].filter((x) => x.checked).map((x) => x.value);
+    const voices = {}; languages.forEach((l) => { const id = $("#dubv-" + CSS.escape(c) + "-" + l).value.trim(); if (id) voices[l] = {voice_id: id}; });
+    try { await post("/api/dubbing", {channel: c, languages, voices, existing: $("#dubex-" + CSS.escape(c)).checked});
+      $("#dubmsg-" + CSS.escape(c)).textContent = languages.length ? "Guardado ✓ (empieza en unos minutos)" : "Doblaje apagado"; }
+    catch (e) { $("#dubmsg-" + CSS.escape(c)).textContent = e.message; } };
   $("#app").innerHTML = `<h1>Voces por canal</h1>
     ${v.hasKey ? "" : '<div class="notice bad">Falta <b>GENAIPRO_API_KEY</b> en el .env del servidor (genaipro.io → avatar → Manage Account → API Key). Ponla y reinicia el estudio.</div>'}
     <p class="muted small">Con una voz puesta, un vídeo de ese canal solo necesita el guion: la voz se genera al empezar el vídeo. Si subes tu voz.mp3, se usa la tuya.
@@ -1468,7 +1486,8 @@ async function voicesPage() {
     ${v.channels.map(row).join("")}
     <h2>Buscar voces</h2>
     <div class="card"><div class="row"><input id="vq" placeholder="nombre o estilo: narrator, documentary, deep…" style="flex:2;min-width:200px">
-      <select id="vlang" style="flex:1;min-width:120px"><option value="es">español</option><option value="en">inglés</option><option value="">todas</option></select>
+      <select id="vlang" style="flex:1;min-width:120px"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
+        <option value="fr">francés</option><option value="en">inglés</option><option value="it">italiano</option><option value="">todas</option></select>
       <select id="vgender" style="flex:1;min-width:120px"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select>
       <button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" style="margin-top:10px"></div></div>`;
   const read = (c) => ({channel: c, voice_id: $("#vid-" + c).value.trim(), name: $("#vname-" + c).value.trim(), model_id: $("#vmodel-" + c).value,

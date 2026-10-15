@@ -93,6 +93,45 @@ def set_voice(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:
     return voices(root)
 
 
+DUB_KEY = "_dubbing"                 # in out/_voces.json: {channel: {languages, voices, existing, since}}
+DUB_LANGUAGES = ("pt", "de", "fr", "en", "it")
+
+
+def dubbing_for(root: Path, channel: str) -> dict[str, Any]:
+    """The studio's «Doblaje» of a channel ({} when off): languages, a voice per language (optional) and whether the
+    videos made before it was turned on are dubbed too."""
+
+    entry = (_read(root).get(DUB_KEY) or {}).get(channel) or {}
+    return entry if entry.get("languages") else {}
+
+
+def set_dubbing(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:
+    """{languages: [pt, de…], voices: {pt: {voice_id, name}}, existing: bool}; no languages turns it off."""
+
+    import time as _time
+
+    data = _read(root)
+    every = data.setdefault(DUB_KEY, {})
+    languages = [str(l) for l in body.get("languages") or [] if str(l) in DUB_LANGUAGES]
+    if not languages:
+        every.pop(channel, None)
+    else:
+        before = every.get(channel) or {}
+        voices_in = body.get("voices") or {}
+        every[channel] = {
+            "languages": languages,
+            "voices": {l: {"voice_id": str((voices_in.get(l) or {}).get("voice_id") or "").strip(),
+                           "name": str((voices_in.get(l) or {}).get("name") or "").strip()}
+                       for l in languages if str((voices_in.get(l) or {}).get("voice_id") or "").strip()},
+            "existing": bool(body.get("existing", True)),
+            "since": before.get("since") or _time.time(),
+        }
+    path = root / FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return dubbing_for(root, channel)
+
+
 # --- the API ------------------------------------------------------------------------------------------------------
 
 class GenAIPro:

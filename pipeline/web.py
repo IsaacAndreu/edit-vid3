@@ -982,7 +982,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
                     return self._ok({"voices": tts.voices(root), "channels": channels(root), "models": list(tts.MODELS),
-                                     "defaults": tts.DEFAULTS, "hasKey": bool(key)})
+                                     "defaults": tts.DEFAULTS, "hasKey": bool(key),
+                                     "dubbing": {c: tts.dubbing_for(root, c) for c in channels(root)},
+                                     "dubLanguages": list(tts.DUB_LANGUAGES)})
                 if path == "/api/voices/search":
                     from . import tts
 
@@ -1190,6 +1192,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if str(body.get("channel") or "") not in channels(root):
                         raise ValueError("Canal desconocido")
                     return self._ok(tts.set_voice(root, str(body["channel"]), body))
+                if path == "/api/dubbing":                 # {channel, languages, voices: {lang: {voice_id}}, existing}
+                    from . import tts
+
+                    if str(body.get("channel") or "") not in channels(root):
+                        raise ValueError("Canal desconocido")
+                    return self._ok(tts.set_dubbing(root, str(body["channel"]), body))
                 if path == "/api/voices/test":             # {channel | voice_id, text}: a short sample to listen to
                     from . import tts
 
