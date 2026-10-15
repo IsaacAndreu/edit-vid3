@@ -55,6 +55,24 @@ def channels(root: Path) -> list[str]:
     return sorted(p.stem for p in (root / "canales").glob("*.yaml"))
 
 
+def set_channel(root: Path, slug: str, channel: str) -> dict[str, Any]:
+    """«Cambiar de canal»: canal: in materiales/<vídeo>/config.yaml (the rest of that file stays). A finished video
+    is not made again: it only changes where it is counted (statistics, spend, «Para subir»)."""
+
+    import yaml
+
+    if channel not in channels(root):
+        raise ValueError(f"No existe el canal {channel!r} (canales/{channel}.yaml)")
+    folder = find_video(root, slug)
+    if not folder.is_dir():
+        raise FileNotFoundError(slug)
+    path = folder / "config.yaml"
+    current = (yaml.safe_load(path.read_text("utf-8")) if path.is_file() else None) or {}
+    current["canal"] = channel
+    path.write_text(yaml.safe_dump(current, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return {"ok": True, "video": slug, "channel": channel}
+
+
 def formats(root: Path) -> list[str]:
     return sorted(p.stem for p in (root / "formatos").glob("*.yaml"))
 
@@ -943,6 +961,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(estadisticas.report(root, bool(urllib.parse.parse_qs(url.query).get("refresh"))))
                 if path == "/api/spending":
                     return self._ok(spending(root))
+                if path == "/api/gasto":                   # «Gasto de API» (pipeline/gasto.py)
+                    from . import gasto
+
+                    return self._ok({**gasto.report(root), "allChannels": channels(root)})
                 if path == "/api/settings":
                     return self._ok(settings(root))
                 if path == "/api/agenda":                  # the publishing calendar (pipeline/agenda.py)
@@ -1229,6 +1251,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     return self._ok(feedback.label(root, urllib.parse.unquote(match.group(1)), match.group(2),
                                                    body.get("verdict"), str(body.get("reason") or "")))
+                if match := re.fullmatch(r"/api/video/([^/]+)/channel", path):      # {channel}
+                    return self._ok(set_channel(root, urllib.parse.unquote(match.group(1)), str(body.get("channel") or "")))
                 if match := re.fullmatch(r"/api/video/([^/]+)/published", path):    # {value: bool, url}
                     from .housekeeping import mark_published
 

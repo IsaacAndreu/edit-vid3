@@ -646,3 +646,50 @@ def test_downloads_are_named_after_the_video(tmp_path):
     assert web.download_name(tmp_path, out / "shorts" / "short-1.mp4") == "pati12 - short-1.mp4"
     assert web.download_name(tmp_path, tmp_path / "materiales" / "pati12" / "voz.mp3") == "pati12 - voz.mp3"
     assert web.download_name(tmp_path, tmp_path / "out" / "atleti3" / "video-final.mp4") == "atleti3.mp4"
+
+
+def test_spend_page_averages_finished_videos_per_channel_and_a_video_can_change_channel(tmp_path):
+    import json as _json
+
+    import yaml
+
+    from pipeline import gasto, web
+
+    (tmp_path / "config.yaml").write_text("canal: patinaje\n")
+    (tmp_path / "canales").mkdir()
+    for c in ("patinaje", "atletismo"):
+        (tmp_path / "canales" / f"{c}.yaml").write_text("format: historia\n")
+
+    def video(slug, usd, done, canal=None):
+        folder = tmp_path / "materiales" / slug
+        folder.mkdir(parents=True)
+        if canal:
+            (folder / "config.yaml").write_text(f"canal: {canal}\nvoz: x\n")
+        work = tmp_path / "work" / slug
+        work.mkdir(parents=True)
+        (work / "costs.json").write_text(_json.dumps({"entries": [
+            {"at": "2026-10-14T10:00:00+00:00", "stage": "judge", "provider": "openai", "usd": usd}]}))
+        (work / "timeline.json").write_text(_json.dumps({"fps": 30, "durationInFrames": 30 * 600}))
+        if done:
+            (tmp_path / "out" / slug).mkdir(parents=True)
+            (tmp_path / "out" / slug / "video-final.mp4").write_bytes(b"0")
+
+    video("pati1", 0.40, True)
+    video("pati2", 0.20, True)
+    video("pati3", 0.90, False)                       # half made: «en curso», not in the average
+    video("atle1", 1.00, True, canal="atletismo")
+    (tmp_path / "work" / "_radar").mkdir(parents=True)
+    (tmp_path / "work" / "_radar" / "costs.json").write_text(_json.dumps({"entries": [{"at": "2026-10-14", "provider": "openai", "usd": 5}]}))
+    g = gasto.report(tmp_path)
+    by = {c["channel"]: c for c in g["channels"]}
+    assert by["patinaje"]["average"] == 0.3 and by["patinaje"]["inProgress"] == 0.9 and by["patinaje"]["done"] == 2
+    assert by["atletismo"]["average"] == 1.0 and g["overall"]["average"] == round((0.4 + 0.2 + 1.0) / 3, 3)
+    assert g["others"]["total"] == 5 and by["patinaje"]["perMinute"] == round(0.6 / 20, 3)
+    web.set_channel(tmp_path, "pati2", "atletismo")
+    assert yaml.safe_load((tmp_path / "materiales" / "pati2" / "config.yaml").read_text()) == {"canal": "atletismo"}
+    assert web.set_channel(tmp_path, "atle1", "patinaje") and \
+        yaml.safe_load((tmp_path / "materiales" / "atle1" / "config.yaml").read_text())["voz"] == "x"   # the rest stays
+    import pytest
+
+    with pytest.raises(ValueError):
+        web.set_channel(tmp_path, "pati1", "no-existe")

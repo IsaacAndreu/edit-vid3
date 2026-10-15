@@ -203,7 +203,8 @@
     <div class="dd"><button type="button">Crecer ▾</button><div class="menu">
       <a href="#/competencia">📡 Radar <span>competencia, nichos y huecos</span></a>
       <a href="#/canal">📈 Mi canal <span>qué funciona en tus vídeos</span></a>
-      <a href="#/estadisticas">📊 Estadísticas <span>tiempos, gasto y YouTube</span></a></div></div>
+      <a href="#/estadisticas">📊 Estadísticas <span>visitas, horas y cómo se hizo</span></a>
+      <a href="#/gasto">💸 Gasto de API <span>media por canal y por vídeo</span></a></div></div>
     <div class="dd"><button type="button">⚙️ ▾</button><div class="menu right">
       <a href="#/biblioteca">📚 Biblioteca <span>clips guardados por persona</span></a>
       <a href="#/errores">🧐 Errores <span>clips marcados como malos</span></a>
@@ -548,7 +549,7 @@ async function videoPage(slug) {
         ${!v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
         ${v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom()" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">🔁 Rehacer</button>' : ""}
         ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
-    <div class="muted small">${esc(v.channel)} · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
+    <div class="muted small">${esc(v.channel)} <a href="javascript:void 0" title="Cambiar de canal" onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">✏️</a> · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
       ${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">🤖 elegido por el guion</span>` : ""}` : ""}</div>
     ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
     <div class="row" style="margin:8px 0"><button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>
@@ -743,6 +744,78 @@ async function stats(refresh = false) {
   statsRows = st.videos.filter((v) => v.youtube);
   drawYtTable();
   if (bench.job && bench.job.running) schedule(() => stats(), 15000);      // the speed test shows its progress
+}
+
+// «Cambiar de canal»: a select in place of the ✏️; the video is not made again, it is only counted elsewhere
+async function changeChannel(slug, current, el) {
+  const list = (await api("/api/settings")).channels || [];
+  const select = document.createElement("select");
+  select.style.width = "auto";
+  select.innerHTML = list.map((c) => `<option ${c === current ? "selected" : ""}>${esc(c)}</option>`).join("");
+  select.onchange = async () => { await post(`/api/video/${encodeURIComponent(slug)}/channel`, {channel: select.value}); route(); };
+  el.replaceWith(select); select.focus();
+}
+
+// «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
+let spendSort = "last", spendChannel = "";
+async function spendPage() {
+  const g = await api("/api/gasto");
+  const usd = (n, d = 2) => n == null ? "—" : Number(n).toFixed(d) + " $";
+  const o = g.overall, max = Math.max(0.01, ...g.days.map((d) => d.usd));
+  const top = Math.max(0.01, ...g.channels.map((c) => c.average || 0));
+  const provTotal = Object.values(g.providers).reduce((a, b) => a + b, 0) || 1;
+  const rows = g.videos.filter((v) => !spendChannel || v.channel === spendChannel)
+    .sort((a, b) => spendSort === "usd" ? b.usd - a.usd : spendSort === "minutes" ? b.minutes - a.minutes : b.last.localeCompare(a.last));
+  $("#app").innerHTML = `<h1>Gasto de API</h1>
+    <div class="small muted">Lo que cuestan las APIs de pago (guion, planos, juez, voz…). Las medias cuentan solo vídeos terminados; lo de vídeos a medias va aparte («en curso»).</div>
+    <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="k">Media por vídeo</div><div class="v">${usd(o.average)}</div><div class="d">mediana ${usd(o.median)} · ${o.done} terminados</div></div>
+      <div class="kpi"><div class="k">Por minuto de vídeo</div><div class="v">${usd(o.perMinute, 3)}</div><div class="d">coste / minutos de vídeo final</div></div>
+      <div class="kpi"><div class="k">Últimos 7 días</div><div class="v">${usd(o.week)}</div><div class="d">este mes ${usd(o.month)}</div></div>
+      <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.total)}</div><div class="d">${usd(o.inProgress)} en curso${g.others ? ` · ${usd(g.others.total)} en radar e ideas` : ""}</div></div></div>
+
+    <h2>Media por canal</h2>
+    <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
+      <thead><tr><th>Canal</th><th>Media por vídeo</th><th>Mediana</th><th>Por minuto</th><th>Terminados</th><th>Total</th><th>En curso</th><th>Más caro</th></tr></thead>
+      <tbody>${g.channels.map((c) => `<tr class="v" style="cursor:pointer" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+        <td><span class="row" style="gap:8px"><i class="dot" style="background:${chColor(c.channel)};width:10px;height:10px;border-radius:50%;display:inline-block"></i><b>${esc(c.channel)}</b></span></td>
+        <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="width:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
+        <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
+        <td data-k="Total">${usd(c.total)}</td><td data-k="En curso" class="wide">${usd(c.inProgress)}</td>
+        <td data-k="Más caro" class="wide">${c.dearest ? `${esc(c.dearest.slug)} · ${usd(c.dearest.usd)}` : "—"}</td></tr>`).join("")}
+      <tr class="group"><td>Todos los canales</td><td style="text-align:right">${usd(o.average)}</td><td style="text-align:right">${usd(o.median)}</td>
+        <td style="text-align:right">${usd(o.perMinute, 3)}</td><td style="text-align:right">${o.done} de ${o.videos}</td><td style="text-align:right">${usd(o.total)}</td>
+        <td style="text-align:right" class="wide">${usd(o.inProgress)}</td><td class="wide"></td></tr></tbody></table></div>
+
+    <div class="grid" style="margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="card"><b>En qué se va</b><div class="small muted">Todo el gasto, por servicio</div>
+        ${Object.entries(g.providers).map(([k, v]) => `<div style="margin-top:8px"><div class="row small" style="justify-content:space-between"><span>${esc(k)}</span>
+          <span><b>${usd(v)}</b> <span class="muted">${Math.round(100 * v / provTotal)} %</span></span></div>
+          <div class="bar"><i style="width:${100 * v / provTotal}%;background:var(--accent)"></i></div></div>`).join("")}</div>
+      <div class="card"><b>Por día</b><div class="small muted">Últimos 30 días · máximo ${usd(max)}</div>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:140px;margin-top:10px">${g.days.map((d) => `<div title="${esc(d.day)}: ${usd(d.usd)}"
+          style="flex:1;height:${Math.max(d.usd ? 2 : 0, 100 * d.usd / max)}%;background:var(--accent);border-radius:3px 3px 0 0;opacity:.85"></div>`).join("")}</div>
+        <div class="row small muted" style="justify-content:space-between;margin-top:4px"><span>${esc(g.days[0].day.slice(5))}</span><span>hoy</span></div></div></div>
+
+    <h2>Por vídeo</h2>
+    <div class="yt-tools">
+      <button class="yt-chip ${spendChannel ? "" : "on"}" onclick="spendChannel='';spendPage()">Todos</button>
+      ${g.channels.map((c) => `<button class="yt-chip ${c.channel === spendChannel ? "on" : ""}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+        <i class="dot" style="background:${chColor(c.channel)}"></i>${esc(c.channel)}</button>`).join("")}
+      <span class="row small" style="gap:4px;margin-left:auto">Ordenar:<select style="width:auto" onchange="spendSort=this.value;spendPage()">
+        ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></span></div>
+    <div class="card" style="overflow:auto;padding:0;max-height:70vh"><table class="ytt">
+      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th style="text-align:left">Desglose</th></tr></thead>
+      <tbody>${rows.map((v) => `<tr class="v"><td><a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600">${esc(v.slug)}</a>
+          <div class="sub"><i class="dot" style="background:${chColor(v.channel)}"></i>
+            <select style="width:auto;padding:1px 4px;font-size:12px" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
+              ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
+            · ${esc(v.last)}</div></td>
+        <td data-k="Gasto"><b>${usd(v.usd)}</b></td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
+        <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
+        <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
+        <td class="wide small muted" style="text-align:left">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
+        || '<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
 }
 
 // «En YouTube»: sorted, filtered and grouped in the page, without asking the server again
@@ -1690,6 +1763,7 @@ async function route() {
     else if (hash === "#/voces") await voicesPage();
     else if (hash === "#/tablero") await boardPage();
     else if (hash === "#/estadisticas") await stats();
+    else if (hash === "#/gasto") await spendPage();
     else if (hash === "#/ajustes") await settingsPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
