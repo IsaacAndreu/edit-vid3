@@ -714,12 +714,13 @@ async function stats(refresh = false) {
       : '<div class="notice">Ningún vídeo subido con su enlace todavía. En «Para subir» o en el vídeo, «Ya está subido» y pega la URL.</div>'}
 
     <h2>Cómo se hizo cada vídeo</h2>
+    <div class="small muted" style="margin:-4px 0 8px">Coste en dinero y cuota de YouTube de cada vídeo; medias por canal en <a href="#/gasto">💸 Gasto de API</a>.</div>
     <div class="card" style="overflow-x:auto;padding:0"><table style="width:100%;border-collapse:collapse;font-size:14px">
-      <tr style="text-align:left"><th style="padding:8px">Vídeo</th><th style="text-align:right">Coste</th><th style="text-align:right">Tiempo</th><th style="text-align:right">Duración</th>
+      <tr style="text-align:left"><th style="padding:8px">Vídeo</th><th style="text-align:right">Coste</th><th style="text-align:right" title="Unidades de la API de YouTube">Cuota YT</th><th style="text-align:right">Tiempo</th><th style="text-align:right">Duración</th>
         <th style="text-align:right">Cortes/min</th><th>Qué sale en pantalla</th><th style="text-align:right;padding-right:8px;white-space:nowrap">Errores ✅/❌</th></tr>
       ${vids.map((v) => { const p = v.production, l = p.labels; return `<tr style="border-top:1px solid var(--line)">
         <td style="padding:8px"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title)}</a><div class="small muted">${esc(v.channel)} · ${v.status === "subido" ? "en YouTube" : "por subir"}</div></td>
-        <td style="text-align:right">${Number(p.usd).toFixed(2)} $</td><td style="text-align:right">${p.minutes} min</td>
+        <td style="text-align:right">${Number(p.usd).toFixed(2)} $</td><td style="text-align:right">${p.ytUnits ? (p.ytEstimated ? "≈ " : "") + kfmt(p.ytUnits) : "—"}</td><td style="text-align:right">${p.minutes} min</td>
         <td style="text-align:right">${Math.floor(p.duration / 60)}:${String(p.duration % 60).padStart(2, "0")}</td><td style="text-align:right">${fmt(p.cutsPerMin)}</td>
         <td style="min-width:150px">${mixBar(p.mix)}<div class="small muted">${Object.entries(p.mix).map(([k, n]) => `${esc(k)} ${n}`).join(" · ")}</div></td>
         <td style="text-align:right;padding-right:8px">${l.correcta || l.incorrecta ? `${l.correcta} / ${l.incorrecta}` : "—"}</td></tr>`; }).join("")}
@@ -777,17 +778,32 @@ async function spendPage() {
       <div class="kpi"><div class="k">Últimos 7 días</div><div class="v">${usd(o.week)}</div><div class="d">este mes ${usd(o.month)}</div></div>
       <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.total)}</div><div class="d">${usd(o.inProgress)} en curso${g.others ? ` · ${usd(g.others.total)} en radar e ideas` : ""}</div></div></div>
 
+    <h2>Cuota de la API de YouTube</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Por vídeo</div><div class="v">${o.ytUnits != null ? kfmt(o.ytUnits) : "—"}</div>
+        <div class="d">unidades · ${o.ytSearches ?? "—"} búsquedas · ≈ ${o.ytKeys ?? "—"} claves</div></div>
+      ${g.ytToday ? `<div class="kpi"><div class="k">Hoy</div><div class="v">${kfmt(g.ytToday.used)}</div>
+        <div class="d">de ${kfmt(g.ytToday.total)} unidades · ${g.ytToday.searches}/${g.ytToday.searchesPerDay} búsquedas</div>
+        <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, 100 * g.ytToday.used / Math.max(1, g.ytToday.total))}%;background:var(--accent)"></i></div></div>
+      <div class="kpi"><div class="k">Da para</div><div class="v">${o.ytUnits ? fmt(Math.floor(g.ytToday.total / o.ytUnits * 10) / 10) : "—"}</div>
+        <div class="d">vídeos al día con ${g.ytToday.keys} claves</div></div>
+      <div class="kpi"><div class="k">Se renueva</div><div class="v" style="font-size:20px">${esc(g.ytToday.reset)}</div><div class="d">hora de España</div></div>` : ""}</div>
+    <div class="small muted" style="margin-top:4px">Cada búsqueda (search.list) cuesta 100 unidades y cada clave da 10.000 al día (y 100 búsquedas). Gratis en dinero, pero limita cuántos vídeos salen al día.
+      Los vídeos de antes del registro se estiman por sus búsquedas (marcados con ≈).</div>
+
     <h2>Media por canal</h2>
     <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
-      <thead><tr><th>Canal</th><th>Media por vídeo</th><th>Mediana</th><th>Por minuto</th><th>Terminados</th><th>Total</th><th>En curso</th><th>Más caro</th></tr></thead>
+      <thead><tr><th>Canal</th><th>Media por vídeo</th><th>Mediana</th><th>Por minuto</th><th>Cuota YT / vídeo</th><th>Terminados</th><th>Total</th><th>En curso</th><th>Más caro</th></tr></thead>
       <tbody>${g.channels.map((c) => `<tr class="v" style="cursor:pointer" onclick="spendChannel='${esc(c.channel)}';spendPage()">
         <td><span class="row" style="gap:8px"><i class="dot" style="background:${chColor(c.channel)};width:10px;height:10px;border-radius:50%;display:inline-block"></i><b>${esc(c.channel)}</b></span></td>
         <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="width:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
-        <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
+        <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td>
+        <td data-k="Cuota YT" title="${c.ytSearches ?? "—"} búsquedas">${c.ytUnits != null ? kfmt(c.ytUnits) + " u · " + c.ytKeys + " claves" : "—"}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
         <td data-k="Total">${usd(c.total)}</td><td data-k="En curso" class="wide">${usd(c.inProgress)}</td>
         <td data-k="Más caro" class="wide">${c.dearest ? `${esc(c.dearest.slug)} · ${usd(c.dearest.usd)}` : "—"}</td></tr>`).join("")}
       <tr class="group"><td>Todos los canales</td><td style="text-align:right">${usd(o.average)}</td><td style="text-align:right">${usd(o.median)}</td>
-        <td style="text-align:right">${usd(o.perMinute, 3)}</td><td style="text-align:right">${o.done} de ${o.videos}</td><td style="text-align:right">${usd(o.total)}</td>
+        <td style="text-align:right">${usd(o.perMinute, 3)}</td><td style="text-align:right">${o.ytUnits != null ? kfmt(o.ytUnits) + " u · " + o.ytKeys + " claves" : "—"}</td>
+        <td style="text-align:right">${o.done} de ${o.videos}</td><td style="text-align:right">${usd(o.total)}</td>
         <td style="text-align:right" class="wide">${usd(o.inProgress)}</td><td class="wide"></td></tr></tbody></table></div>
 
     <div class="grid" style="margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
@@ -808,17 +824,18 @@ async function spendPage() {
       <span class="row small" style="gap:4px;margin-left:auto">Ordenar:<select style="width:auto" onchange="spendSort=this.value;spendPage()">
         ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></span></div>
     <div class="card" style="overflow:auto;padding:0;max-height:70vh"><table class="ytt">
-      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th style="text-align:left">Desglose</th></tr></thead>
+      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Cuota YT</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th style="text-align:left">Desglose</th></tr></thead>
       <tbody>${rows.map((v) => `<tr class="v"><td><a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600">${esc(v.slug)}</a>
           <div class="sub"><i class="dot" style="background:${chColor(v.channel)}"></i>
             <select style="width:auto;padding:1px 4px;font-size:12px" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
               ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
             · ${esc(v.last)}</div></td>
-        <td data-k="Gasto"><b>${usd(v.usd)}</b></td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
+        <td data-k="Gasto"><b>${usd(v.usd)}</b></td>
+        <td data-k="Cuota YT" title="${v.ytSearches ?? 0} búsquedas">${v.ytUnits ? (v.ytEstimated ? "≈ " : "") + kfmt(v.ytUnits) + " u" : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
         <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
         <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
         <td class="wide small muted" style="text-align:left">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
-        || '<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
+        || '<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
 }
 
 // «En YouTube»: sorted, filtered and grouped in the page, without asking the server again

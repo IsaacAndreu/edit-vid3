@@ -107,13 +107,17 @@ def report(root: Path, refresh: bool = False) -> dict[str, Any]:
         retention = float(RunContext.create("_estadisticas", root=root).section("stats").get("retention", 0.35))
     except Exception:
         retention = 0.35
+    from .gasto import youtube_quota
+
+    quota = youtube_quota(root)
     rows = []
     for video in listed:
         if video["status"] not in ("hecho", "subido"):
             continue
         row = {"slug": video["slug"], "channel": video["channel"], "title": video["title"] or video["slug"],
                "status": video["status"], "publishedDay": video["published"], "url": video["url"],
-               "production": production(root, video["slug"])}
+               "production": {**production(root, video["slug"]), "ytUnits": (quota.get(video["slug"]) or {}).get("units"),
+                              "ytEstimated": bool((quota.get(video["slug"]) or {}).get("estimated"))}}
         yt = stats.get(ids.get(video["slug"]) or "")
         if yt:
             seconds = float(yt.get("duration") or row["production"]["duration"] or 0)

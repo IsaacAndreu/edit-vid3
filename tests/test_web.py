@@ -715,3 +715,20 @@ def test_a_finished_video_gets_a_light_preview_to_watch(tmp_path):
                             "-of", "csv=p=0", str(out / web.PREVIEW)], capture_output=True, text=True)
     assert probe.stdout.strip() == "720"
     assert web.ensure_preview(tmp_path, "no-existe") is False
+
+
+def test_youtube_quota_per_video_from_the_journal_or_estimated_from_the_searches(tmp_path):
+    import json as _json
+
+    from pipeline import gasto
+
+    (tmp_path / "cache" / "ytapi").mkdir(parents=True)
+    rows = [{"slug": "pati1", "endpoint": "search", "units": 100}, {"slug": "pati1", "endpoint": "videos", "units": 1},
+            {"slug": "pati1", "endpoint": "search", "units": 100}, {"slug": "pati1", "quotaExceeded": ["x"]}]
+    (tmp_path / "cache" / "ytapi" / "registro-2026-10-15.jsonl").write_text("\n".join(_json.dumps(r) for r in rows) + "\nroto\n")
+    for slug, n in (("pati1", 9), ("viejo", 3)):
+        (tmp_path / "work" / slug / "candidates").mkdir(parents=True)
+        (tmp_path / "work" / slug / "candidates" / "_summary.json").write_text(_json.dumps({"youtubeRequests": {"search-api": n}}))
+    quota = gasto.youtube_quota(tmp_path)
+    assert quota["pati1"] == {"searches": 2, "units": 201, "estimated": False}          # the journal wins
+    assert quota["viejo"] == {"searches": 3, "units": 303, "estimated": True}
