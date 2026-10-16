@@ -693,3 +693,25 @@ def test_spend_page_averages_finished_videos_per_channel_and_a_video_can_change_
 
     with pytest.raises(ValueError):
         web.set_channel(tmp_path, "pati1", "no-existe")
+
+
+def test_a_finished_video_gets_a_light_preview_to_watch(tmp_path):
+    import subprocess
+    import time as _time
+
+    from pipeline import web
+
+    out = tmp_path / "out" / "v1"
+    out.mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30:duration=2",
+                    "-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-c:v", "libx264", "-preset", "ultrafast",
+                    str(out / "video-final.mp4")], check=True)
+    assert web.ensure_preview(tmp_path, "v1") is False                # made in the background the first time
+    deadline = _time.time() + 60
+    while not web.preview_ready(out) and _time.time() < deadline:
+        _time.sleep(0.5)
+    assert web.preview_ready(out) and web.ensure_preview(tmp_path, "v1") is True
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height",
+                            "-of", "csv=p=0", str(out / web.PREVIEW)], capture_output=True, text=True)
+    assert probe.stdout.strip() == "720"
+    assert web.ensure_preview(tmp_path, "no-existe") is False

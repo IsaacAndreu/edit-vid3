@@ -560,7 +560,10 @@ async function videoPage(slug) {
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
       <button style="margin-left:8px" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
-    ${v.hasVideo ? `<h2>Vídeo</h2><video controls preload="metadata" src="${base}video-final.mp4"></video>
+    ${v.hasVideo ? `<h2>Vídeo</h2><video controls playsinline preload="metadata" style="width:100%;background:#000;border-radius:8px"
+        ${v.thumbnails.length ? `poster="${base + v.thumbnails[0]}"` : ""} src="${base}${v.preview ? "preview.mp4" : "video-final.mp4"}"></video>
+      <div class="small muted" style="margin-top:4px">${v.preview ? `Copia ligera en 720p para verlo rápido (también en el móvil) · <a href="${base}video-final.mp4" target="_blank" rel="noopener">ver el original en 1080p</a>`
+        : "Preparando una copia ligera para verlo sin cortes en el móvil (unos minutos); mientras tanto, el original pesa mucho y puede ir a trompicones."}</div>
       <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a></div>` : ""}
     ${titles}${thumbs}${shorts}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>

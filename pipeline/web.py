@@ -24,6 +24,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -444,9 +445,53 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],
         "files": files,
+        "preview": ensure_preview(root, slug) if summary.get("hasVideo") else False,
         "script": (folder / "guion.txt").read_text("utf-8", errors="replace")[:20000] if (folder / "guion.txt").is_file() else "",
         "format": _format_of(root, folder),
     }
+
+
+PREVIEW = "preview.mp4"           # in out/<vídeo>/: a light copy to watch in the studio (the phone, a slow line)
+_PREVIEWS: set[str] = set()
+_PREVIEW_LOCK = threading.Lock()
+
+
+def preview_ready(out: Path) -> bool:
+    final, preview = out / "video-final.mp4", out / PREVIEW
+    return preview.is_file() and final.is_file() and preview.stat().st_mtime >= final.stat().st_mtime
+
+
+def ensure_preview(root: Path, slug: str) -> bool:
+    """The final video is 1080p at high quality (1-1.5 GB for 10 min): in the browser, above all on the phone, it
+    stalls or fails. A 720p copy (~2 Mbit/s, ~150 MB, starts at once) is made in the background the first time the
+    video is opened, at the lowest priority; the page plays it once it exists. True when it is ready."""
+
+    out = root / "out" / slug
+    final = out / "video-final.mp4"
+    if not final.is_file() or preview_ready(out):
+        return preview_ready(out)
+    with _PREVIEW_LOCK:
+        if slug in _PREVIEWS:
+            return False
+        _PREVIEWS.add(slug)
+
+    def make() -> None:
+        tmp = out / ".preview.tmp.mp4"
+        try:
+            low = ["nice", "-n", "19"] if shutil.which("nice") else []      # Windows (the home PC): no nice
+            subprocess.run([*low, "ffmpeg", "-y", "-v", "error", "-i", str(final), "-vf", "scale=-2:720",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-maxrate", "2500k", "-bufsize", "5000k",
+                            "-c:a", "aac", "-b:a", "96k", "-ac", "2", "-movflags", "+faststart", "-threads", "2", str(tmp)],
+                           check=True, timeout=3 * 3600, capture_output=True)
+            tmp.replace(out / PREVIEW)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+        finally:
+            with _PREVIEW_LOCK:
+                _PREVIEWS.discard(slug)
+
+    threading.Thread(target=make, name=f"preview-{slug}", daemon=True).start()
+    return False
 
 
 def _format_of(root: Path, folder: Path) -> dict[str, Any] | None:
