@@ -189,6 +189,9 @@ def test_an_api_without_balance_says_which_one_and_is_not_a_video_failure():
     assert "DeepSeek" in main.out_of_credit(deepseek)
     assert "OpenAI" in main.out_of_credit(RuntimeError("Error code: 429 - insufficient_quota"))
     assert main.out_of_credit(RuntimeError("Error code: 500 - boom")) is None
+    revoked = RuntimeError("Error code: 401 - {'error': {'message': 'Your API key has been invalidated.', "
+                           "'code': 'token_invalidated'}, 'status': 401}")
+    assert "OpenAI" in main.out_of_credit(revoked) and "401" in main.out_of_credit(revoked)
 
 
 def test_the_pilot_waits_for_api_quota_alone_and_the_queue_goes_on(tmp_path):
