@@ -627,7 +627,7 @@ def test_metadata_goes_through_the_metadata_proxy_and_the_download_extracts_agai
 def test_through_the_metadata_proxy_the_watch_page_is_skipped_unless_that_fails(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_METADATA_PROXY", raising=False)
     yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
-                       config={"min_interval": 0, "metadata_proxy": "http://u:p@gate.example:7000",
+                       config={"min_interval": 0, "metadata_proxy": "http://u:p@gate.example:7000", "metadata_proxy_light": True,
                                "player_client": ["default", "web_safari"]})
     seen = []
 
@@ -642,4 +642,23 @@ def test_through_the_metadata_proxy_the_watch_page_is_skipped_unless_that_fails(
     monkeypatch.setattr(yt, "_extract", extract)
     yt.info("abc")
     assert seen == [["webpage"], None]
+    yt.close()
+
+
+def test_the_metadata_proxy_keeps_the_watch_page_by_default_and_retries_twice(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_METADATA_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
+                       config={"min_interval": 0, "metadata_proxy": "http://u:p@gate.example:7000"})
+    seen = []
+
+    def extract(url, extra):
+        seen.append((yt._ydl(extra).params.get("extractor_args") or {}).get("youtube", {}).get("player_skip"))
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    monkeypatch.setattr(yt, "_extract", extract)
+    try:
+        yt.info("abc")
+    except RuntimeError:
+        pass
+    assert seen == [None, None, None] and yt.refused("abc")
     yt.close()
