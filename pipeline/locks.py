@@ -15,7 +15,9 @@ import time
 from pathlib import Path
 from typing import Iterator
 
-GROUPS = {"sourcing": "red", "ingest": "red", "fallback": "red", "align": "cpu", "analysis": "cpu", "render": "cpu"}
+# fallback runs the face and vision models (~5 GB over the base on the server): with the CPU turn it never overlaps a
+# render (~14 GB), which together would not fit in 23 GB of RAM
+GROUPS = {"sourcing": "red", "ingest": "red", "fallback": "cpu", "align": "cpu", "analysis": "cpu", "render": "cpu"}
 ENV = "EDITVID_TURNS"           # set by the queue for its videos; single runs never wait
 
 

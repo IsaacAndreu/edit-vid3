@@ -32,3 +32,9 @@ def test_a_dead_owner_does_not_block(tmp_path, monkeypatch):
     (tmp_path / "work" / ".turno-red").write_text("999999 viejo")
     with locks.turn(tmp_path, "ingest", "nuevo", poll=0.05):
         assert "nuevo" in (tmp_path / "work" / ".turno-red").read_text()
+
+
+def test_the_fill_in_never_overlaps_a_render():
+    from pipeline.locks import GROUPS
+
+    assert GROUPS["fallback"] == GROUPS["render"] == "cpu" and GROUPS["sourcing"] == "red"
