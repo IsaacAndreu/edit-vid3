@@ -593,3 +593,32 @@ def test_what_the_api_says_the_player_will_refuse_never_goes_to_yt_dlp(tmp_path)
     entry = {"id": "AAAAAAAAAAA", "duration": 300, "title": "Trusova quad", "channel": "ISU", "url": "https://www.youtube.com/watch?v=AAAAAAAAAAA"}
     assert yt.passes_search_filters(entry)
     assert not yt.passes_search_filters({**entry, "unplayable": "bloqueado en ES"})
+
+
+def test_metadata_goes_through_the_metadata_proxy_and_the_download_extracts_again_at_home(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.delenv("YOUTUBE_METADATA_PROXY", raising=False)
+    sets = [("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n", tmp_path / "a.txt")]
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, cookie_sets=sets,
+                       config={"min_interval": 0, "metadata_proxy": "http://u:p@gate.example:7000"})
+    seen = []
+    tries = {"n": 0}
+
+    def extract(url, extra):
+        options = yt._ydl(extra).params
+        seen.append((options.get("proxy"), options.get("cookiefile")))
+        tries["n"] += 1
+        if tries["n"] == 1:
+            raise RuntimeError("Sign in to confirm you're not a bot")     # that IP: the next request is another one
+        return {"title": "t", "channel": "c", "formats": [{"format_id": "18", "vcodec": "avc1", "height": 720,
+                                                           "url": "https://x/videoplayback?expire=9999999999"}]}
+
+    monkeypatch.setattr(yt, "_extract", extract)
+    yt.info("abc")
+    assert seen == [("http://u:p@gate.example:7000", None)] * 2 and not yt.refused("abc")
+    assert json.loads(yt._full_info_path("abc").read_text())["_edit_vid3_via"] == "metadata_proxy"
+    yt._fresh_full_info("abc")                          # its stream URLs are the proxy's: again, the usual way
+    assert seen[-1][0] != "http://u:p@gate.example:7000"
+    assert json.loads(yt._full_info_path("abc").read_text())["_edit_vid3_via"] == ""
+    yt.close()

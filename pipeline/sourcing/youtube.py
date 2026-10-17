@@ -238,6 +238,11 @@ class YouTubeSource:
         # quarantine (bot_quarantine_minutes): nothing goes out through it, and what it was refused is never sent
         # through another way. With every way in quarantine, all YouTube stops (the fuse).
         self.proxies = proxy_list(os.environ.get("YOUTUBE_PROXY"), config.get("proxies"), config.get("proxy"))
+        # A rotating residential proxy for the metadata request only (metadata_proxy, or YOUTUBE_METADATA_PROXY in
+        # the environment, so the password stays out of git): every request leaves from another IP, with no account.
+        # Downloads keep going out the usual way: stream URLs belong to the IP that asked for them, so a video to be
+        # downloaded is extracted again that way first (_fresh_full_info), and the proxy's paid GB are only JSON.
+        self.metadata_proxy = str(os.environ.get("YOUTUBE_METADATA_PROXY") or config.get("metadata_proxy") or "").strip()
         interval = float(config.get("min_interval", 1.0))
         self._pacers = [SharedPacer(interval, cache_dir / "videos" / pacer_name(p)) for p in (self.proxies or [""])]
         self.pacer = self._pacers[0]                # all processes, per way out
@@ -379,7 +384,9 @@ class YouTubeSource:
                                "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
                                "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
                                "seconds": round(seconds, 2), "wait": round(getattr(self._local, "waited", 0.0), 2)}
-        if len(self.proxies) > 1:
+        if getattr(self._local, "via_metadata_proxy", False):
+            row["proxy"] = "metadatos"
+        elif len(self.proxies) > 1:
             row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
         if size is not None:
             row["bytes"] = size
@@ -458,6 +465,11 @@ class YouTubeSource:
         import yt_dlp
 
         options = {**self.base_options, **(extra or {})}
+        if getattr(self._local, "via_metadata_proxy", False):
+            options["proxy"] = self.metadata_proxy          # a new residential IP per request: no account, ever
+            options.pop("cookiefile", None)
+            options.pop("cookiesfrombrowser", None)
+            return yt_dlp.YoutubeDL(options)
         if len(self.proxies) > 1:
             options["proxy"] = self.proxies[getattr(self._local, "way", 0) or 0]
         cookie_file = self._cookie_file()
@@ -479,7 +491,8 @@ class YouTubeSource:
             raise SourceUnavailable(self.blocked)
         attempt = 0
         tries = 0
-        with_account = self.cookies_mode == "rotate"
+        through = bool(getattr(self._local, "via_metadata_proxy", False))     # metadata via the residential proxy
+        with_account = self.cookies_mode == "rotate" and not through
         tried_ways: set[int] = set()
         while True:
             if self._all_in_quarantine():
@@ -502,7 +515,7 @@ class YouTubeSource:
                             time.sleep(delay)
                             self._count("espera por límite", delay)
                         self._pacers[way].wait()
-                        held = self._budget_take(way, REQUEST_UNITS.get(action, 2))
+                        held = 0.0 if through else self._budget_take(way, REQUEST_UNITS.get(action, 2))
                         if held:
                             self._count("espera por presupuesto/hora", held)
                         began = time.monotonic()
@@ -517,7 +530,8 @@ class YouTubeSource:
                             self._busy[way] -= 1
                 self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
                              cookies=self._local.account is not None)
-                self._bot_answered(way)     # the breaker weighs refusals against answers
+                if not through:
+                    self._bot_answered(way)     # the breaker weighs refusals against answers (of this connection)
                 return result
             except Exception as error:
                 message = str(error)
@@ -526,6 +540,14 @@ class YouTubeSource:
                 self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
                              cookies=self._local.account is not None)
                 way = getattr(self._local, "way", 0) or 0
+                if through:
+                    retry = self._metadata_proxy_failed(kind, lowered, tries)
+                    if retry == "again":
+                        continue
+                    if retry == "home":
+                        through = self._local.via_metadata_proxy = False
+                        with_account = self.cookies_mode == "rotate" or (kind == "auth" and bool(self._sets))
+                        continue
                 # A request that hangs until it times out: is it YouTube being slow, or the proxy program stopped
                 # (home PC asleep, proxy window closed)? One look at its port says which.
                 if self.proxies and kind == "other" and ("timed out" in lowered or "timeout" in lowered) \
@@ -599,6 +621,27 @@ class YouTubeSource:
                     raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429); esa conexión queda en "
                                       "cuarentena") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
+
+    def _metadata_proxy_failed(self, kind: str, lowered: str, tries: int) -> str:
+        """A metadata request through the residential proxy failed: «again» (the next request leaves from another IP),
+        «home» (the usual way, as before the proxy: it does not answer, or the video needs an account) or «drop»."""
+
+        video = getattr(self._local, "video_id", None)
+        retries = int(self.cfg.get("metadata_proxy_retries", 3))
+        refused = kind == "bot" or any(marker in lowered for marker in _RATE_MARKERS)
+        unreachable = _proxy_down(lowered) or "timed out" in lowered
+        if (refused or unreachable) and tries <= retries:
+            return "again"
+        if kind == "auth" or unreachable:
+            if unreachable and time.monotonic() - getattr(self, "_mp_said", 0.0) > 300:
+                self._mp_said = time.monotonic()
+                print("   El proxy de metadatos no responde: esas peticiones salen por la vía de siempre")
+            return "home"
+        if refused and video:
+            self._refuse(video)                 # refused from several residential IPs: that video, not a connection
+            print(f"   YouTube pide «no eres un bot» para el vídeo {video} desde {tries} IPs del proxy: se descarta")
+            raise RuntimeError("yt-dlp metadata: YouTube pide «no eres un bot» para este vídeo; se descarta") from None
+        return "drop"
 
     def way_name(self, way: int) -> str:
         from urllib.parse import urlsplit
@@ -926,11 +969,17 @@ class YouTubeSource:
                 path.unlink(missing_ok=True)
 
         def produce() -> dict[str, Any]:
-            data = self._call(
-                "metadata",
-                lambda: self._extract(f"https://www.youtube.com/watch?v={video_id}", {"skip_download": True}),
-            )
-            self._save_full_info(video_id, data)
+            # through the metadata proxy, unless this extraction is for a download (its stream URLs must be ours)
+            self._local.via_metadata_proxy = bool(self.metadata_proxy) and not getattr(self._local, "for_download", False)
+            try:
+                data = self._call(
+                    "metadata",
+                    lambda: self._extract(f"https://www.youtube.com/watch?v={video_id}", {"skip_download": True}),
+                )
+                via = "metadata_proxy" if self._local.via_metadata_proxy else ""
+            finally:
+                self._local.via_metadata_proxy = False
+            self._save_full_info(video_id, data, via)
             formats = data.get("formats") or []
             heights = [f.get("height") or 0 for f in formats if f.get("vcodec") not in (None, "none")]
             boards = [f for f in formats if str(f.get("format_id", "")).startswith("sb") and f.get("fragments")]
@@ -1050,13 +1099,14 @@ class YouTubeSource:
     def _full_info_path(self, video_id: str) -> Path:
         return self.cache_dir / "videos" / video_id / "ytdlp-info.json"
 
-    def _save_full_info(self, video_id: str, data: dict[str, Any]) -> None:
+    def _save_full_info(self, video_id: str, data: dict[str, Any], via: str = "") -> None:
         """yt-dlp's own info dict (minus bulky fields) so downloads can skip the ~4 s extraction."""
 
         import json
 
         slim = {k: v for k, v in data.items() if k not in ("automatic_captions", "subtitles", "thumbnails", "heatmap")}
         slim["_edit_vid3_clients"] = self._clients()     # re-extract when the player clients change
+        slim["_edit_vid3_via"] = via                     # metadata_proxy: its stream URLs are another IP's
         path = self._full_info_path(video_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
@@ -1079,12 +1129,17 @@ class YouTubeSource:
                     # stream URLs carry ?expire=…, HLS manifests /expire/…/
                     for found in [re.search(r"[/?&]expire[/=](\d+)", f["url"])] if found
                 ]
-                if expiries and min(expiries) - time.time() > 600 and data.get("_edit_vid3_clients") == self._clients():
+                if expiries and min(expiries) - time.time() > 600 and data.get("_edit_vid3_clients") == self._clients() \
+                        and not data.get("_edit_vid3_via"):
                     return path
             except (OSError, ValueError, KeyError):
                 pass
         self._info_path(video_id).unlink(missing_ok=True)
-        self.info(video_id)  # re-extracts and re-saves the full info
+        self._local.for_download = True     # extracted the way the download goes out (never the metadata proxy)
+        try:
+            self.info(video_id)  # re-extracts and re-saves the full info
+        finally:
+            self._local.for_download = False
         return path
 
     def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
