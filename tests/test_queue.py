@@ -192,6 +192,8 @@ def test_an_api_without_balance_says_which_one_and_is_not_a_video_failure():
     revoked = RuntimeError("Error code: 401 - {'error': {'message': 'Your API key has been invalidated.', "
                            "'code': 'token_invalidated'}, 'status': 401}")
     assert "OpenAI" in main.out_of_credit(revoked) and "401" in main.out_of_credit(revoked)
+    expired = RuntimeError("Error code: 401 - {'error': {'message': 'Your API key has expired.', 'code': 'expired_secret_key'}}")
+    assert "OpenAI" in main.out_of_credit(expired)
 
 
 def test_the_pilot_waits_for_api_quota_alone_and_the_queue_goes_on(tmp_path):

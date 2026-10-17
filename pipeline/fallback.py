@@ -565,6 +565,11 @@ def run(ctx: RunContext) -> None:
     workers = int(ctx.section("speed").get("fallback_parallel", cfg.get("parallel", 8)))
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         results = list(pool.map(safely, todo))
+    from .budget import dead_key
+
+    dead = next((t for _, tried in results for t in tried if dead_key(t)), None)
+    if dead:                                  # no key: nothing was really tried; the stage fails, the queue waits
+        raise RuntimeError(dead)
     for (shot_id, _), (item, tried) in zip(todo, results):
         if item is None:
             unresolved[shot_id] = "; ".join(tried)[:400] or "sin alternativas"

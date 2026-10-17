@@ -40,6 +40,16 @@ class ProxyDown(ApiSearchesShort):
         super().__init__(message, time.time() + minutes * 60, why="el proxy no responde")
 
 
+DEAD_KEY_MARKERS = ("token_invalidated", "invalid_api_key", "expired_secret", "Incorrect API key",
+                    "Authentication Fails", "Error code: 401")
+
+
+def dead_key(text: str) -> bool:
+    """An API key revoked, expired or wrong (401): every call fails the same way until a new key is in .env."""
+
+    return any(marker in text for marker in DEAD_KEY_MARKERS)
+
+
 def spent_today(root: Path) -> float:
     today = datetime.now(timezone.utc).date().isoformat()
     total = 0.0

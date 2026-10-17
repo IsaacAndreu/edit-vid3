@@ -734,11 +734,12 @@ def out_of_credit(error: BaseException) -> str | None:
     (and tries again every 30 min) instead of marking every video as failed; the message says what to top up."""
 
     text = f"{type(error).__name__}: {error}"
-    if "token_invalidated" in text or "invalid_api_key" in text or "Incorrect API key" in text \
-            or "Authentication Fails" in text or "Error code: 401" in text:
-        # a key revoked or wrong (OpenAI invalidates one it finds leaked): every video would fail the same way
-        who = ("OpenAI (platform.openai.com → API keys)" if "token_invalidated" in text or "invalid_api_key" in text
-               or "Incorrect API key" in text else "DeepSeek (platform.deepseek.com → API keys)"
+    from pipeline.budget import dead_key
+
+    if dead_key(text):
+        # a key revoked, expired or wrong (OpenAI invalidates one it finds leaked): every video would fail the same way
+        who = ("OpenAI (platform.openai.com → API keys)" if any(m in text for m in (
+            "token_invalidated", "invalid_api_key", "expired_secret", "Incorrect API key")) else "DeepSeek (platform.deepseek.com → API keys)"
                if "Authentication Fails" in text else "una API (la del error)")
         return (f"La clave de {who} ya no vale (401): la cola espera y lo reintenta cada 30 min. Crea una nueva, "
                 "ponla en .env y reinicia; los vídeos siguen donde se quedaron.")

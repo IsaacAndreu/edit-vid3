@@ -548,6 +548,10 @@ def run(ctx: RunContext) -> None:
                 future.result()
             except Exception as error:  # a failed call falls back to the local ranking for that shot
                 errors.append(f"{shot.id}: {str(error)[:160]}")
+    from .budget import dead_key
+
+    if any(dead_key(e) for e in errors):     # no key: the judge did nothing; the stage fails, the queue waits for a key
+        raise RuntimeError(next(e for e in errors if dead_key(e)))
 
     # 2. Assign in shot order, never repeating a fragment.
     max_hamming = int(cfg.get("max_phash_distance", 6))
