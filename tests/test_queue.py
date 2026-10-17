@@ -297,3 +297,21 @@ def test_the_queue_makes_the_priority_channels_first_in_their_order(tmp_path):
     web.settings(tmp_path, {"channel_priority": ["patinaje", "atletismo", "no-existe", "patinaje"]})
     assert _json.loads((tmp_path / "out" / "_ajustes.json").read_text())["channel_priority"] == ["patinaje", "atletismo"]
     assert main.pending_slugs(tmp_path) == ["pati1", "atlet1", "avion1", "robot1", "avion2"]
+
+
+def test_while_youtube_blocks_the_videos_that_no_longer_need_it_go_on(tmp_path):
+    (tmp_path / "config.yaml").write_text("{}\n")
+    for slug in ("NEW", "DOWNLOADED", "DUB"):
+        _materials(tmp_path, slug)
+    (tmp_path / "work" / "DOWNLOADED" / ".stages").mkdir(parents=True)
+    (tmp_path / "work" / "DOWNLOADED" / ".stages" / "ingest.json").write_text("{}")
+    (tmp_path / "materiales" / "DUB" / "config.yaml").write_text("dub:\n  of: NEW\n")
+    (tmp_path / "out").mkdir(exist_ok=True)
+    (tmp_path / "out" / "_pausa_youtube").write_text('{"reason": "bot"}')
+    assert main.needs_youtube(tmp_path, "NEW")
+    assert not main.needs_youtube(tmp_path, "DOWNLOADED") and not main.needs_youtube(tmp_path, "DUB")
+    ran = []
+    with patch.object(main, "run_one", side_effect=lambda slug, **k: ran.append(slug)), \
+            patch.object(main, "notify", lambda *a, **k: None):
+        failures = main.run_queue(force=set(), until=None, review=False, root=tmp_path, check=False)
+    assert sorted(ran) == ["DOWNLOADED", "DUB"] and failures == 0

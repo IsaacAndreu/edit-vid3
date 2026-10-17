@@ -247,6 +247,25 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
                                                          d.stat().st_mtime, d.name))]
 
 
+def needs_youtube(root: Path, slug: str) -> bool:
+    """Whether this video still has to ask YouTube anything. Searched, analysed and downloaded in HD already (the
+    ingest stage is done), a dub (same clips, retimed) or a channel without YouTube: no. While YouTube blocks this
+    connection those still go on (render, Shorts, titles), instead of the whole queue waiting behind the block."""
+
+    from pipeline.context import find_video, load_config
+
+    if (root / "work" / slug / ".stages" / "ingest.json").is_file():
+        return False
+    folder = find_video(root, slug)
+    try:
+        cfg = load_config(folder / "config.yaml") if (folder / "config.yaml").is_file() else {}
+    except Exception:
+        cfg = {}
+    if (cfg.get("dub") or {}).get("of"):
+        return False
+    return True
+
+
 def channel_rank(root: Path) -> dict[str, int]:
     """The channels chosen in Ajustes → «Prioridad de canales», in order; the rest go after them, as before."""
 
@@ -473,8 +492,12 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                     print(f"{datetime.now():%H:%M} · YouTube sigue bloqueando: cola en pausa, vuelvo a probar en "
                           f"{every:.0f} min (o «Reintentar YouTube ahora» en el estudio)")
             if ytpause.paused(root):
-                time.sleep(60)
-                continue
+                from pipeline import dub as _dub
+
+                offline = [s for s in pending_slugs(root) if not needs_youtube(root, s)] + list(_dub.pending(root))
+                if not offline:                                     # nothing that can go on without YouTube
+                    time.sleep(60)
+                    continue
         try:
             state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
         except ValueError:
@@ -644,9 +667,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         from pipeline import ytpause
 
         for number, slug in enumerate(slugs, start=1):
-            if ytpause.paused(root):
-                print("YouTube bloqueado: la cola se para aquí (sigue sola cuando YouTube deje pasar)")
-                break
+            if ytpause.paused(root) and needs_youtube(root, slug):
+                print(f"{slug}: necesita YouTube, que está bloqueado: espera (sigo con los que ya no lo necesitan)")
+                continue
             if on_hold(root, slug):
                 print(f"{slug}: quitado de la cola, se salta")
                 continue
@@ -782,8 +805,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 slug = pending.popleft()
             from pipeline import ytpause
 
-            if ytpause.paused(root):
-                return
+            if ytpause.paused(root) and needs_youtube(root, slug):
+                continue                         # waits for YouTube; the ones that no longer need it go on
             if on_hold(root, slug):
                 print(f"{slug}: quitado de la cola, se salta")
                 continue
