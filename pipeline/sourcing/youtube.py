@@ -164,6 +164,26 @@ def whole_format(fmt: str) -> str:
     return "/".join("+".join(f"{part}[protocol=https]" for part in alt.split("+")) for alt in fmt.split("/") if alt.strip())
 
 
+def unplayable(details: dict[str, Any], region: str = "ES") -> str:
+    """Why the player will refuse this video, from the Data API's videos.list (already asked, no extra unit): blocked
+    or not allowed in our country (the proxy's), age-restricted (it needs an account: an account is not spent on
+    footage), not public, not processed. "" when nothing says so (it may still refuse it, but far fewer go to yt-dlp)."""
+
+    region = (region or "").upper()
+    if region and region in [str(c).upper() for c in details.get("regionBlocked") or []]:
+        return f"bloqueado en {region}"
+    allowed = details.get("regionAllowed")
+    if region and isinstance(allowed, list) and region not in [str(c).upper() for c in allowed]:
+        return f"no disponible en {region}"
+    if details.get("ageRestricted"):
+        return "restringido por edad"
+    if details.get("privacy") and details["privacy"] != "public":
+        return f"no público ({details['privacy']})"
+    if details.get("uploadStatus") and details["uploadStatus"] not in ("processed", "uploaded"):
+        return f"no procesado ({details['uploadStatus']})"
+    return ""
+
+
 def _has_hls(info_path: Path) -> bool:
     import json
 
@@ -859,6 +879,7 @@ class YouTubeSource:
                  "live_status": "is_live" if details[i].get("live") == "live" else
                                 "is_upcoming" if details[i].get("live") == "upcoming" else None,
                  "definition": details[i].get("definition"),
+                 "unplayable": unplayable(details[i], str(self.cfg.get("region", "ES"))),
                  "view_count": details[i]["views"]} for i in ids if i in details]
 
     def passes_search_filters(self, entry: dict[str, Any]) -> bool:
@@ -873,6 +894,8 @@ class YouTubeSource:
             return False
         if blocked_by_title(str(entry.get("title") or ""), str(entry.get("channel") or ""), self.cfg.get("title_blocklist")):
             return False
+        if entry.get("unplayable"):
+            return False        # the API already says the player will refuse it: no yt-dlp request for it
         if entry.get("definition") == "sd" and int(self.cfg.get("min_height", 720)) >= 720:
             return False        # the API already says it is under 720p: no need to ask yt-dlp for its details
         return "/shorts/" not in str(entry.get("url") or "")

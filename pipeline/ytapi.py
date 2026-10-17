@@ -271,7 +271,7 @@ class YouTubeAPI:
     def videos(self, ids: list[str]) -> list[dict[str, Any]]:
         out = []
         for start in range(0, len(ids), 50):
-            data = self.get("videos", {"part": "snippet,statistics,contentDetails", "id": ",".join(ids[start:start + 50])})
+            data = self.get("videos", {"part": "snippet,statistics,contentDetails,status", "id": ",".join(ids[start:start + 50])})
             for item in data.get("items", []):
                 snippet, stats = item.get("snippet", {}), item.get("statistics", {})
                 thumbs = snippet.get("thumbnails", {})
@@ -286,6 +286,12 @@ class YouTubeAPI:
                     "thumbnail": (thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}).get("url", ""),
                     "url": f"https://www.youtube.com/watch?v={item['id']}",
                     "description": str(snippet.get("description") or "")[:700],
+                    # what tells, before asking yt-dlp anything, that the player will refuse it (same call, same unit)
+                    "regionBlocked": list((item.get("contentDetails", {}).get("regionRestriction") or {}).get("blocked") or []),
+                    "regionAllowed": (item.get("contentDetails", {}).get("regionRestriction") or {}).get("allowed"),
+                    "ageRestricted": (item.get("contentDetails", {}).get("contentRating") or {}).get("ytRating") == "ytAgeRestricted",
+                    "privacy": item.get("status", {}).get("privacyStatus", ""),
+                    "uploadStatus": item.get("status", {}).get("uploadStatus", ""),
                 })
         return out
 

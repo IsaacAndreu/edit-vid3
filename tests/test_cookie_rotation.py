@@ -576,3 +576,20 @@ def test_a_range_download_gives_up_on_a_connection_that_stops_answering(tmp_path
     with pytest.raises(RuntimeError, match="tramo vacío"):
         yt._fetch_range("AAAAAAAAAAA", 1.0, 2.0, "best", "hd", False, False, tmp_path / "info.json", exact=True)
     assert seen[0]["external_downloader_args"]["ffmpeg_i"] == ["-rw_timeout", "60000000"]   # 60 s without data
+
+
+def test_what_the_api_says_the_player_will_refuse_never_goes_to_yt_dlp(tmp_path):
+    from pipeline.sourcing.youtube import unplayable
+
+    ok = {"regionBlocked": [], "regionAllowed": None, "ageRestricted": False, "privacy": "public", "uploadStatus": "processed"}
+    assert unplayable(ok) == ""
+    assert unplayable({**ok, "regionBlocked": ["es", "FR"]}) == "bloqueado en ES"
+    assert unplayable({**ok, "regionAllowed": ["US", "CA"]}) == "no disponible en ES"
+    assert unplayable({**ok, "regionAllowed": ["ES"]}) == ""
+    assert unplayable({**ok, "ageRestricted": True}) == "restringido por edad"
+    assert unplayable({**ok, "privacy": "unlisted"}).startswith("no público")
+    assert unplayable({**ok, "regionBlocked": ["US"]}, region="US") == "bloqueado en US"
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0})
+    entry = {"id": "AAAAAAAAAAA", "duration": 300, "title": "Trusova quad", "channel": "ISU", "url": "https://www.youtube.com/watch?v=AAAAAAAAAAA"}
+    assert yt.passes_search_filters(entry)
+    assert not yt.passes_search_filters({**entry, "unplayable": "bloqueado en ES"})
