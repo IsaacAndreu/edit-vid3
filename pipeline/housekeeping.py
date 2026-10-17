@@ -102,8 +102,13 @@ def after_video(ctx: RunContext) -> None:
         return
     from .dub import LINKED
 
-    dubbing = ctx.section("dubbing")
-    keep = set(LINKED) if dubbing.get("enabled") and not ctx.section("dub").get("of") else set()
+    try:                           # the channel profile's dubbing: or the studio's (Voces por canal → Doblaje)
+        from .doblaje import settings as dubbing_settings
+
+        dubbing_on = bool(dubbing_settings(ctx)["enabled"])
+    except Exception:
+        dubbing_on = bool(ctx.section("dubbing").get("enabled"))
+    keep = set(LINKED) if dubbing_on and not ctx.section("dub").get("of") else set()
     freed = 0
     for name in HEAVY:
         folder = ctx.work_dir / name
@@ -118,7 +123,9 @@ def after_video(ctx: RunContext) -> None:
             from .context import RunContext
 
             source = RunContext.create(original, root=ctx.root)
-            languages = [str(l) for l in source.section("dubbing").get("languages", ["en"])]
+            from .doblaje import settings as dubbing_settings
+
+            languages = [str(l) for l in dubbing_settings(source)["languages"]]
             if all(is_done(ctx.root, f"{original}-{lang}") for lang in languages):
                 for name in LINKED:
                     shutil.rmtree(source.work_dir / name, ignore_errors=True)

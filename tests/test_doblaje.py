@@ -83,3 +83,16 @@ def test_turned_on_in_the_studio_with_the_channel_voice_and_only_new_videos_if_a
     assert tts.voices(tmp_path).keys() == {"negocios"}                         # the dubbing entry is no voice
     tts.set_dubbing(tmp_path, "negocios", {"languages": []})
     assert tts.dubbing_for(tmp_path, "negocios") == {}
+
+
+def test_a_channel_dubbed_from_the_studio_keeps_its_clips_after_the_video(tmp_path):
+    from pipeline import housekeeping
+    from pipeline.context import RunContext
+
+    folder = _done_video(tmp_path, "format: historia\ncleanup: {after_video: true}\n")
+    tts.set_dubbing(tmp_path, "negocios", {"languages": ["pt"]})
+    ctx = RunContext.create("n1", root=tmp_path)
+    (ctx.work_dir / "media").mkdir(parents=True)
+    (ctx.work_dir / "render").mkdir(parents=True)
+    housekeeping.after_video(ctx)
+    assert (ctx.work_dir / "media").is_dir() and not (ctx.work_dir / "render").exists()   # the dub needs the clips
