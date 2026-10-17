@@ -622,3 +622,24 @@ def test_metadata_goes_through_the_metadata_proxy_and_the_download_extracts_agai
     assert seen[-1][0] != "http://u:p@gate.example:7000"
     assert json.loads(yt._full_info_path("abc").read_text())["_edit_vid3_via"] == ""
     yt.close()
+
+
+def test_through_the_metadata_proxy_the_watch_page_is_skipped_unless_that_fails(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_METADATA_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
+                       config={"min_interval": 0, "metadata_proxy": "http://u:p@gate.example:7000",
+                               "player_client": ["default", "web_safari"]})
+    seen = []
+
+    def extract(url, extra):
+        youtube = yt._ydl(extra).params["extractor_args"]["youtube"]
+        seen.append(youtube.get("player_skip"))
+        assert youtube["player_client"] == ["default", "web_safari"]
+        if len(seen) == 1:
+            raise RuntimeError("Unable to extract yt initial data")
+        return {"title": "t", "channel": "c", "formats": []}
+
+    monkeypatch.setattr(yt, "_extract", extract)
+    yt.info("abc")
+    assert seen == [["webpage"], None]
+    yt.close()

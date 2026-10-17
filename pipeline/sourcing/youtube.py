@@ -469,6 +469,12 @@ class YouTubeSource:
             options["proxy"] = self.metadata_proxy          # a new residential IP per request: no account, ever
             options.pop("cookiefile", None)
             options.pop("cookiesfrombrowser", None)
+            if self.cfg.get("metadata_proxy_light", True) and not getattr(self._local, "mp_heavy", False):
+                # The proxy is paid per GB and the watch page is ~1 MB of HTML (113 of 114 MB on atleti12-1): the
+                # player JSON alone is enough here (the download extracts again at home, with everything)
+                args = dict(options.get("extractor_args") or {})
+                args["youtube"] = {**(args.get("youtube") or {}), "player_skip": ["webpage"]}
+                options["extractor_args"] = args
             return yt_dlp.YoutubeDL(options)
         if len(self.proxies) > 1:
             options["proxy"] = self.proxies[getattr(self._local, "way", 0) or 0]
@@ -631,6 +637,9 @@ class YouTubeSource:
         refused = kind == "bot" or any(marker in lowered for marker in _RATE_MARKERS)
         unreachable = _proxy_down(lowered) or "timed out" in lowered
         if (refused or unreachable) and tries <= retries:
+            return "again"
+        if kind != "auth" and not refused and not unreachable and not getattr(self._local, "mp_heavy", False):
+            self._local.mp_heavy = True         # without the watch page it did not work: once more, with it
             return "again"
         if kind == "auth" or unreachable:
             if unreachable and time.monotonic() - getattr(self, "_mp_said", 0.0) > 300:
@@ -978,7 +987,7 @@ class YouTubeSource:
                 )
                 via = "metadata_proxy" if self._local.via_metadata_proxy else ""
             finally:
-                self._local.via_metadata_proxy = False
+                self._local.via_metadata_proxy = self._local.mp_heavy = False
             self._save_full_info(video_id, data, via)
             formats = data.get("formats") or []
             heights = [f.get("height") or 0 for f in formats if f.get("vcodec") not in (None, "none")]
