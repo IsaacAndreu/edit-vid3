@@ -1013,6 +1013,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import gasto
 
                     return self._ok({**gasto.report(root), "allChannels": channels(root)})
+                if path == "/api/experimentos":            # «Experimentos» (pipeline/experimentos.py)
+                    from . import experimentos
+
+                    return self._ok(experimentos.report(root))
                 if path == "/api/settings":
                     return self._ok(settings(root))
                 if path == "/api/agenda":                  # the publishing calendar (pipeline/agenda.py)
@@ -1190,6 +1194,13 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if path == "/api/videos":
                     return self._ok(create_video(root, body))
+                if match := re.fullmatch(r"/api/experimentos/([^/]+)", path):     # {tags, retention30, retentionAvg, ctr}
+                    from . import experimentos
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    if not find_video(root, slug).is_dir():
+                        raise ValueError("Vídeo desconocido")
+                    return self._ok(experimentos.set_notes(root, slug, body))
                 if match := re.fullmatch(r"/api/video/([^/]+)/(retry|archive|hold|unhold|stop|redo)", path):
                     slug, verb = urllib.parse.unquote(match.group(1)), match.group(2)
                     if verb in ("hold", "unhold"):

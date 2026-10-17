@@ -204,7 +204,8 @@
       <a href="#/competencia">📡 Radar <span>competencia, nichos y huecos</span></a>
       <a href="#/canal">📈 Mi canal <span>qué funciona en tus vídeos</span></a>
       <a href="#/estadisticas">📊 Estadísticas <span>visitas, horas y cómo se hizo</span></a>
-      <a href="#/gasto">💸 Gasto de API <span>media por canal y por vídeo</span></a></div></div>
+      <a href="#/gasto">💸 Gasto de API <span>media por canal y por vídeo</span></a>
+      <a href="#/experimentos">🧪 Experimentos <span>qué cambio funciona y cuál no</span></a></div></div>
     <div class="dd"><button type="button">⚙️ ▾</button><div class="menu right">
       <a href="#/biblioteca">📚 Biblioteca <span>clips guardados por persona</span></a>
       <a href="#/errores">🧐 Errores <span>clips marcados como malos</span></a>
@@ -762,6 +763,59 @@ async function changeChannel(slug, current, el) {
 
 // «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
 let spendSort = "last", spendChannel = "";
+
+let expChannel = "";
+async function saveExperiment(slug, field, value) {
+  try {
+    await post(`/api/experimentos/${encodeURIComponent(slug)}`, {[field]: value});
+  } catch (e) {
+    alert(e.message || e);
+  }
+}
+
+async function experimentsPage() {
+  const g = await api("/api/experimentos");
+  const times = (x) => x == null ? "—" : String(x).replace(".", ",") + "×";
+  const pct = (x) => x == null ? "" : String(x).replace(".", ",") + " %";
+  const kind = {gana: "hecho", falta: "", empate: "error"};
+  const rows = g.videos.filter((v) => !expChannel || v.channel === expChannel);
+  const channelsList = [...new Set(g.videos.map((v) => v.channel))];
+  const top = Math.max(1, ...g.comparisons.flatMap((c) => c.options.map((o) => o.score || 0)));
+  $("#app").innerHTML = `
+    <h1>Experimentos</h1>
+    <div class="small muted" style="margin:-4px 0 12px">Qué ha probado cada vídeo y cómo le ha ido: sus visitas a los 7 días frente a la mediana de su canal
+      (1,4× = un 40 % más de lo habitual en ese canal). El formato, la búsqueda, la duración y el ritmo se anotan solos; añade tus etiquetas
+      («miniatura con cara», «gancho con pregunta») y, si quieres, la retención y el CTR de YouTube Studio. Cambia una cosa cada vez:
+      con ${g.minVideos} vídeos por opción y más de un 25 % de diferencia, hay veredicto.</div>
+    <h2>Lo aprendido</h2>
+    ${g.comparisons.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">${g.comparisons.map((c) => `
+      <div class="card"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(c.factor)}</b>
+        <span class="pill ${kind[c.verdict.kind]}">${c.verdict.kind === "gana" ? "veredicto" : c.verdict.kind === "empate" ? "sin diferencia" : "faltan datos"}</span></div>
+        <div class="small muted" style="margin:4px 0 8px">${esc(c.verdict.text)}</div>
+        ${c.options.map((o) => `<div style="margin-top:6px"><div class="row small" style="justify-content:space-between">
+          <span>${esc(o.option)} <span class="muted">· ${o.withResult} de ${o.videos} con 7 días</span></span>
+          <span><b>${times(o.score)}</b>${o.retentionAvg != null ? ` <span class="muted">· ret. ${pct(o.retentionAvg)}</span>` : ""}${o.ctr != null ? ` <span class="muted">· CTR ${pct(o.ctr)}</span>` : ""}</span></div>
+          <div class="bar"><i style="width:${100 * (o.score || 0) / top}%;background:var(--accent)"></i></div></div>`).join("")}</div>`).join("")}</div>`
+      : '<div class="card muted">Aún no hay nada que comparar: hace falta que los vídeos prueben cosas distintas (otro formato, la búsqueda por escenas, una etiqueta…).</div>'}
+    <h2>Por vídeo</h2>
+    <div class="yt-tools">
+      <button class="yt-chip ${expChannel ? "" : "on"}" onclick="expChannel='';experimentsPage()">Todos</button>
+      ${channelsList.map((c) => `<button class="yt-chip ${c === expChannel ? "on" : ""}" onclick="expChannel='${esc(c)}';experimentsPage()">
+        <i class="dot" style="background:${chColor(c)}"></i>${esc(c)}</button>`).join("")}</div>
+    <div class="card" style="overflow:auto;padding:0;max-height:75vh"><table class="ytt">
+      <thead><tr><th>Vídeo</th><th>7 días</th><th>Frente al canal</th><th style="text-align:left">Probó</th><th style="text-align:left">Etiquetas</th>
+        <th title="Retención a los 30 s (YouTube Studio)">Ret. 30 s %</th><th title="Porcentaje medio visto">Ret. media %</th><th>CTR %</th></tr></thead>
+      <tbody>${rows.map((v) => `<tr class="v"><td><a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600">${esc(v.slug)}</a>
+          <div class="sub"><i class="dot" style="background:${chColor(v.channel)}"></i> ${esc(v.channel)} · ${esc(v.published || v.status)}</div></td>
+        <td data-k="7 días">${v.views7d != null ? fmt(v.views7d) : '<span class="muted">—</span>'}</td>
+        <td data-k="Frente al canal"><b>${times(v.score)}</b></td>
+        <td class="wide small" style="text-align:left">${Object.entries(v.tried).map(([k, x]) => `<span class="pill" title="${esc(k)}">${esc(x)}</span>`).join(" ")}</td>
+        <td data-k="Etiquetas" style="text-align:left"><input style="min-width:160px" placeholder="p. ej. miniatura con cara" value="${esc((v.tags || []).join(", "))}"
+          onchange="saveExperiment('${esc(v.slug)}', 'tags', this.value).then(experimentsPage)"></td>
+        ${["retention30", "retentionAvg", "ctr"].map((k) => `<td data-k="${k}"><input style="width:64px" inputmode="decimal" value="${v[k] ?? ""}"
+          onchange="saveExperiment('${esc(v.slug)}', '${k}', this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
+        || '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`;
+}
 async function spendPage() {
   const g = await api("/api/gasto");
   const usd = (n, d = 2) => n == null ? "—" : Number(n).toFixed(d) + " $";
@@ -1833,6 +1887,7 @@ async function route() {
     else if (hash === "#/tablero") await boardPage();
     else if (hash === "#/estadisticas") await stats();
     else if (hash === "#/gasto") await spendPage();
+    else if (hash === "#/experimentos") await experimentsPage();
     else if (hash === "#/ajustes") await settingsPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
