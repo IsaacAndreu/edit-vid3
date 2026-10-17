@@ -79,6 +79,8 @@ def shot_filter(media: dict[str, Any], frames: int, fps: int) -> str:
     chain = "setpts=PTS-STARTPTS" + (f",setpts=PTS/{rate:.4f},fps={fps}" if rate < 0.999 else "")
     width, height = int(media.get("width") or 1920), int(media.get("height") or 1080)
     chain += zoom_filter(media.get("zoom"), width, height, fps)
+    if media.get("mono"):
+        chain += ",hue=s=0,eq=contrast=1.08"
     if media.get("layout") == "archive":
         chain += (f",eq=contrast=1.06:saturation=0.88:brightness=-0.02,{SEPIA},noise=alls=12:allf=t,"
                   f"vignette=angle=PI/5,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black")

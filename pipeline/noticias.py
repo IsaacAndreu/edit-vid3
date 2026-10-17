@@ -150,12 +150,22 @@ def latest(root: Path) -> dict[str, Any] | None:
         return None
 
 
-def idea_for(story: dict[str, Any]) -> dict[str, Any]:
-    """A story → an idea for the script draft (caso-real), with what the videos about it say."""
+COMEBACK = re.compile(r"\b(regres\w*|vuelv\w*|vuelta|volvi\w*|reaparec\w*|resurg\w*|redenci\w*|revancha|"
+                      r"comeback|returns?|returned|back after|redemption|retorn\w*)\b", re.IGNORECASE)
+
+
+def idea_for(story: dict[str, Any], channel: str = "") -> dict[str, Any]:
+    """A story → an idea for the script draft, with what the videos about it say: a sports channel's comeback news
+    («vuelve», «regresa», «comeback») is the second climax of a «caída y regreso» video; anything else, «caso real»."""
 
     lines = []
     for v in story["videos"][:4]:
         lines.append(f"- «{v['title']}» ({v['channel']}, hace {v['ageHours']:.0f} h): {' '.join(str(v.get('description') or '').split())[:400]}")
+    if channel and channel != "general" and any(COMEBACK.search(str(v.get("title") or "")) for v in story["videos"]):
+        return {"title": story["name"], "format": "caida-y-regreso",
+                "note": "EL REGRESO ES NOTICIA HOY: esta noticia es el CLÍMAX 2 (el regreso). Cuenta la historia entera: "
+                        "la caída de antes, el fondo y por qué vuelve ahora. Lo que cuentan los vídeos de estas horas "
+                        "(úsalo como fuente; lo que no esté aquí, márcalo [COMPROBAR]):\n" + "\n".join(lines)}
     return {"title": story["name"], "format": "caso-real",
             "note": "NOTICIA DE LAS ÚLTIMAS HORAS. Lo que cuentan los vídeos que ya hay (úsalo como fuente; lo que no "
                     "esté aquí, márcalo [COMPROBAR]):\n" + "\n".join(lines)}

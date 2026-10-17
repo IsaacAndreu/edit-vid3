@@ -13,6 +13,7 @@ import { Article } from './Article';
 import { SatelliteZoom } from './SatelliteZoom';
 import { QuoteOverlay } from './QuoteOverlay';
 import { RulePage } from './RulePage';
+import { Cita } from './Cita';
 import { Score } from './Score';
 import { Split } from './Split';
 import { Spotlight } from './Spotlight';
@@ -65,6 +66,8 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <Press graphic={graphic} durationInFrames={durationInFrames} />;
     case 'rule':
       return <RulePage graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'cita':
+      return <Cita graphic={graphic} durationInFrames={durationInFrames} />;
     case 'split':
       return <Split graphic={graphic} durationInFrames={durationInFrames} />;
     case 'banned':

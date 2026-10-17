@@ -28,7 +28,7 @@ from .sourcing.common import tokens
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
-         "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg")
+         "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg", "cita")
 
 # Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
 REFERENCES = {
@@ -123,6 +123,10 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
 - "scale": una medida física impresionante (altura de un salto, longitud, velocidad convertida a altura no). data:
   {{"title": "…", "axis": "height"|"length", "unit": "m", "items": [{{"name": "…", "value": 2.45}}],
   "references": [claves de {refs}, las que den escala, máx. 2]}}
+- "cita": el guion reproduce lo que DIJO una persona con nombre, entre comillas o con «dijo», «gritó», «confesó» (una
+  frase que marca la historia: «Odio este deporte»). Fondo negro, la persona a un lado y sus palabras en grande.
+  data: {{"speaker": "nombre como lo dice el guion", "text": "la cita LITERAL del guion, máx. 25 palabras",
+  "highlight": ["1-3 palabras clave de text, las que más pesan (p. ej. 'nunca más')"]}}
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
 - "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
   qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
@@ -359,6 +363,13 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         return {"type": "article", "headline": headline, "body": body, "circles": circles,
                 "outlet": data.get("outlet") if data.get("outlet") and said_words(data["outlet"], text) else None,
                 "author": data.get("author") if data.get("author") and said_words(data["author"], text) else None}
+    if kind == "cita":
+        body = " ".join(str(data.get("text") or "").split()).strip("«»\"“” ")
+        speaker = str(data.get("speaker") or "").strip()
+        if not body or len(body.split()) > 28 or not said_words(body, text, 0.8) or (speaker and not said_words(speaker, text)):
+            return None
+        highlight = [h for h in (data.get("highlight") or []) if isinstance(h, str) and h.strip() and h.lower() in body.lower()][:3]
+        return {"type": "cita", "speaker": speaker or None, "text": body, "highlight": highlight}
     if kind == "rule":
         body = " ".join(str(data.get("text") or "").split())
         if not body or len(body.split()) > 34 or not said_words(body, text, 0.7):

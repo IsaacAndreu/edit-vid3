@@ -154,6 +154,7 @@ class Shot(_Strict):
     chapterTitle: str | None = Field(default=None, max_length=48)
     label: OnScreenLabel | None = None                      # lower-left tag (first mention of a person/score)
     pace: Literal["slow", "fast"] | None = None             # emotional (long shot, slow zoom) / action (quick cuts)
+    mood: Literal["low"] | None = None                      # the story's lowest moments (pacing.low_moments): black and white
 
     @property
     def duration(self) -> float:
@@ -500,6 +501,7 @@ class TimelineMedia(_Strict):
     height: int | None = None
     zoom: list[float] | None = None                          # [start frame in the shot, frames, final scale] (pipeline/camera.py)
     rate: float | None = None                                # playback speed < 1 when the shot outlasts its clip
+    mono: bool | None = None                                 # black and white (a low moment of the story)
 
 
 class ColdOpenClip(_Strict):

@@ -126,7 +126,9 @@ def find_quotes(ctx: RunContext, sents: list[dict[str, Any]], count: int) -> lis
     listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents)
     try:
         found = complete_json(ctx, stage="coldopen", section="planner", max_tokens=1500, user=listing[:60000],
-                              system=QUOTES_SYSTEM.format(count=count)).get("quotes", [])
+                              system=QUOTES_SYSTEM.format(count=count)
+                              + (f"\n{ctx.section('quotes')['hint']}" if ctx.section("quotes").get("hint") else "")
+                              ).get("quotes", [])
     except Exception as error:  # quotes are a bonus
         print(f"   Sin declaraciones: {str(error)[:120]}")
         return []

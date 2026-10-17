@@ -45,7 +45,7 @@ export const BRoll: FC<{ media: Media; durationInFrames: number; seed: string; d
   const frame = useCurrentFrame();
   const scale = zoomAt(frame, media.zoom);
   return (
-    <AbsoluteFill style={{ backgroundColor: '#000' }}>
+    <AbsoluteFill style={{ backgroundColor: '#000', filter: media.mono ? 'grayscale(1) contrast(1.08)' : undefined }}>
       {media.kind === 'video' ? (
         <OffthreadVideo
           src={staticFile(media.src)}

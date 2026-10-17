@@ -603,6 +603,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                 place["media"] = graphics.portrait(ctx, place["name"], people)
         if graphic["type"] == "card":
             graphic["media"] = graphics.portrait(ctx, graphic["name"], people) or footage()
+        if graphic["type"] == "cita":
+            graphic["media"] = (graphics.portrait(ctx, graphic["speaker"], people) if graphic.get("speaker") else None) \
+                or footage()
         if graphic["type"] in ("rank", "specs"):
             face = graphics.portrait(ctx, graphic["name"], people)
             graphic["media"] = face or footage()
@@ -1246,6 +1249,8 @@ def run(ctx: RunContext) -> None:
         if m is not None:
             m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share, narrow,
                                                              old=shot.id in old and cfg.get("archive_auto", True))})
+            if shot.mood == "low":
+                m = m.model_copy(update={"mono": True})
         if shot.type == "chapter":
             chapter_number += 1
         shots.append(TimelineShot.model_validate({

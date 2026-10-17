@@ -1,0 +1,55 @@
+# Formato «Caída y regreso». Úsalo con `format: caida-y-regreso` en la config.yaml del vídeo (o elígelo en el estudio).
+# Es un formato más de los canales de deporte, para algunos vídeos; no cambia el formato habitual del canal.
+nombre: "Caída y regreso"
+descripcion: "Un deportista se hunde delante de todos y, contra todo pronóstico, vuelve: dos clímax, la caída y el regreso, con su propia voz."
+ejemplos: "La patinadora que colapsó en los Juegos y volvió siendo madre, el gimnasta que se rompió en directo y ganó el oro años después."
+# Para el «Borrador de guion» (Guiones): la estructura que debe tener el texto.
+escritura: |
+  FORMATO CAÍDA Y REGRESO (una persona, dos clímax: se hunde y vuelve):
+  1. 0:00-0:25 LA CAÍDA, en presente y en mitad de la acción: el momento exacto en que se rompe delante de todos,
+     con lo que había logrado justo antes («Hacía apenas unos minutos que había hecho algo que ninguna mujer había
+     logrado jamás. Y, sin embargo, no lo estaba celebrando.»). Incluye UNA frase suya, real y entre comillas, dicha
+     ese día («"Odio este deporte. No volveré a salir al hielo nunca más."»): se oirá con su voz.
+  2. ~0:25-0:45 LA PROMESA: el regreso en una frase, sin contar cómo («El mundo entero la vio romperse. Pero cuatro
+     años y un hijo después, resucitó para aterrizar lo imposible.»).
+  3. ~0:45-1:30 LO QUE ESTABA EN JUEGO y LA PREGUNTA del vídeo, dicha en voz alta como pregunta («¿Qué la llevó a ese
+     punto? ¿Y cómo logró volver cuando todos la daban por acabada?»).
+  4. QUIÉN ES DE VERDAD: la imagen pública frente a la persona, con alguna frase suya de una entrevista.
+  5. EL ORIGEN y SU SUPERPODER: infancia, lo que la hacía distinta; cada término técnico explicado en una frase para
+     quien no sabe nada del deporte («un cuádruple: cuatro giros en el aire en menos de un segundo…»).
+  6. EL ANTAGONISTA: la rival, el sistema, la lesión, la presión. El dolor y el sacrificio, con cifras concretas.
+  7. CLÍMAX 1 — LA CAÍDA: el día clave contado paso a paso, con hora, notas y marcas reales, y el derrumbe. Explica
+     por qué reaccionó así sin juzgarla. Otra frase suya.
+  8. EL FONDO: «Muchos pensaron que era el final.» Y todo empeora (sanción, lesión, embarazo, retirada): explica por
+     qué parecía imposible volver.
+  9. EL REGRESO: la decisión, la rehabilitación, qué cambió en ella. Otra frase suya.
+  10. CLÍMAX 2 — LA REVANCHA: la competición del regreso con fecha, lugar, notas y marcas. Si pasó hace poco (esta
+      semana o este mes), dilo: es la razón de hacer el vídeo ahora.
+  11. CIERRE: quién es hoy (un detalle humano o con humor, con su voz), la idea final en una frase y una pregunta
+      sobre su futuro que invite a seguir el canal («¿Llegará a los Juegos de 2030? Suscríbete y te lo contaré.»).
+  Reglas: una frase suya (real, entre comillas, con quién la dijo) cada 1,5-2 minutos, sobre todo en los giros; abre
+  cada capítulo con una pregunta o un «pero»; frases cortas en los dos clímax; nada inventado: si no sabes lo que dijo,
+  no lo pongas entre comillas. Nunca un presentador ni frases dirigidas a cámara como si alguien apareciera.
+guion: |
+  ESTE VÍDEO ES UNA HISTORIA DE CAÍDA Y REGRESO de una persona, con dos clímax:
+  - "subject": la persona ('Nombre Apellido · deporte en inglés').
+  - "peak": búsqueda EN INGLÉS del momento de LA CAÍDA (el colapso, la derrota), que abre el vídeo
+    (p. ej. 'Alexandra Trusova Beijing 2022 free skate crying'). El regreso se guarda para el final.
+  - "events": uno por tramo de la historia con la competición o el hecho y el año ('Trusova quad lutz 2018 junior
+    worlds', 'Trusova comeback 2026 Denis Ten Memorial'); "tag" = 'LUGAR · AÑO'. Para las frases suyas, busca la
+    entrevista o la rueda de prensa ('Trusova interview 2026').
+  - Capítulos cortos y con gancho, que suenen a historia ('LA NOCHE DE PEKÍN', 'EL COHETE RUSO', 'NUNCA ME FUI').
+graficos: |
+  Este vídeo es una historia de caída y regreso: usa "cita" para las frases que la persona DIJO en los momentos clave
+  (fondo negro, la frase en grande, la palabra clave en rojo; 2-4 en todo el vídeo), "standings" o "podium" para los
+  resultados de los dos clímax, "card" para presentarla con sus cifras, "press" para la reacción del mundo y
+  "timeline" para los años entre la caída y el regreso.
+tipos: [cita]
+segundos_por_grafico: 70
+ajustes:
+  quotes:
+    count: 6                       # su voz: hasta 6 declaraciones originales con subtítulos
+    hint: "Incluye SIEMPRE, si la hay, la cita de los primeros 30 segundos del guion (la frase del momento de la caída): es la más importante del vídeo."
+  pacing:
+    low_moments: true              # los momentos más bajos de la historia, en blanco y negro
+titulos: "patrón de título de caída y regreso: 'La <deportista> que <CAÍDA en mayúsculas> en <lugar> (Y su <regreso> Más Inesperado)' o '<Nombre>: de <la caída> a <el regreso>'; la palabra de la caída en MAYÚSCULAS, la promesa entre paréntesis, sin desvelar cómo vuelve."

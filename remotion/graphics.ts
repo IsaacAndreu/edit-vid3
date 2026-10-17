@@ -120,6 +120,14 @@ export interface ArticleGraphic {
   circles?: string[]; // figures/words of body circled in red one by one
 }
 
+export interface CitaGraphic {
+  type: 'cita';
+  speaker?: string | null; // who said it, as the script names them
+  text: string; // the quote, literal from the script
+  highlight?: string[] | null; // its key words, in red
+  media?: Media | null; // the speaker (cutout, photo or a clip of the passage), in black and white
+}
+
 export interface RuleGraphic {
   type: 'rule';
   source: string; // "CÓDIGO DE PUNTUACIÓN" or the generic "REGLAMENTO"
@@ -247,6 +255,7 @@ export type Graphic =
   | SatelliteGraphic
   | QuoteGraphic
   | RuleGraphic
+  | CitaGraphic
   | SplitGraphic
   | BannedGraphic
   | SpotlightGraphic

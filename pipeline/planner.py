@@ -166,6 +166,31 @@ def pacing(ctx: RunContext, words: list[Word]) -> dict[int, str]:
     return {**{n: "fast" for n in fast}, **{n: "slow" for n in slow}}
 
 
+LOW_SYSTEM = """
+Eres montador de documentales. Recibes las frases numeradas del guion de una historia de caída y regreso. Marca los
+MOMENTOS MÁS BAJOS de la historia, los que se verán en blanco y negro: la derrota, el colapso, la lesión, el llanto, la
+noticia que lo cambia todo, «todos la daban por acabada». Nunca el regreso ni la victoria. Máximo 1 de cada 10 frases,
+mejor en tramos de 1-3 frases seguidas. Devuelve SOLO JSON: {"low": [números]}
+""".strip()
+
+
+def low_moments(ctx: RunContext, words: list[Word]) -> set[int]:
+    """Sentence numbers of the story's lowest moments (pacing.low_moments, on in the «caída y regreso» format)."""
+
+    if not ctx.section("pacing").get("low_moments", False):
+        return set()
+    sentences = _sentences(words)
+    listing = "\n".join(f"[{n}] " + " ".join(w.text for w in words[a : b + 1]) for n, (a, b) in enumerate(sentences))
+    try:
+        result = complete_json(ctx, stage=STAGE, section="planner", system=LOW_SYSTEM, user=f"FRASES:\n{listing}",
+                               max_tokens=400)
+    except Exception as error:  # a look, never worth the plan
+        print(f"   Momentos bajos: sin marcar ({str(error)[:100]})")
+        return set()
+    low = sorted({n for n in result.get("low") or [] if isinstance(n, int) and 0 <= n < len(sentences)})
+    return set(low[: max(1, len(sentences) // 10)])
+
+
 def pace_targets(ctx: RunContext, words: list[Word], marks: dict[int, str], base: float) -> tuple[list[float], list[float], list[str | None]]:
     """Per word: the shot length to aim at, the longest allowed and the pace label."""
 
@@ -766,6 +791,8 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     shot = {k: structural[k] for k in ("id", "startWord", "endWord", "start", "end", "text", "chapter")}
     if structural.get("pace"):
         shot["pace"] = structural["pace"]
+    if structural.get("mood"):
+        shot["mood"] = structural["mood"]
     kind = str(label.get("type") or "broll")
     if structural.get("chapterTitle"):
         kind = "chapter"
@@ -870,6 +897,10 @@ def run(ctx: RunContext) -> None:
         else float(cfg.get("target_shot_seconds", 2.6))
     marks = pacing(ctx, words)
     targets, maxes, paces = pace_targets(ctx, words, marks, base)
+    lows = low_moments(ctx, words)
+    low_words = {i for n, (a, b) in enumerate(_sentences(words)) if n in lows for i in range(a, b + 1)}
+    if low_words:
+        print(f"   Momentos bajos en blanco y negro: {len(low_words)} palabras")
     if marks:
         print(f"   Ritmo: {sum(k == 'slow' for k in marks.values())} frases lentas · "
               f"{sum(k == 'fast' for k in marks.values())} rápidas · base {base:.1f} s por plano")
@@ -899,6 +930,8 @@ def run(ctx: RunContext) -> None:
         }
         if paces[first] and paces[first] == paces[last]:
             item["pace"] = paces[first]
+        if first in low_words and last in low_words:
+            item["mood"] = "low"
         if first == chapters[chapter].startWord and chapters[chapter].showTitle:
             item["chapterTitle"] = chapters[chapter].title
         if start < hook_seconds:  # first seconds: ask for the most striking footage
