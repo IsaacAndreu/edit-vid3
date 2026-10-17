@@ -57,3 +57,19 @@ def test_a_comeback_in_the_news_is_the_second_climax_of_a_caida_y_regreso():
     assert noticias.idea_for(story, "general")["format"] == "caso-real"
     assert noticias.idea_for({**story, "videos": [{**story["videos"][0], "title": "Trusova gana en Almaty"}]},
                              "patinaje")["format"] == "caso-real"
+
+
+def test_the_spend_page_estimates_what_the_metadata_proxy_cost_each_video(tmp_path):
+    import json
+
+    from pipeline import gasto
+
+    (tmp_path / "config.yaml").write_text("sourcing:\n  youtube:\n    metadata_proxy_mb_per_request: 0.5\n"
+                                          "    metadata_proxy_usd_per_gb: 4\n")
+    log = tmp_path / "work" / "pati1" / "youtube_downloads.jsonl"
+    log.parent.mkdir(parents=True)
+    rows = [{"ts": 100 + i, "action": "metadata", "proxy": "metadatos"} for i in range(1024)] + [{"ts": 50, "action": "metadata"}]
+    log.write_text("\n".join(json.dumps(r) for r in rows))
+    usage, rates = gasto.proxy_usage(tmp_path)
+    assert usage == {"pati1": {"requests": 1024, "mb": 512.0, "usd": 2.0, "since": 100}}
+    assert rates == {"mbPerRequest": 0.5, "usdPerGb": 4.0}
