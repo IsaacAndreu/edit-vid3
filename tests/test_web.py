@@ -732,3 +732,12 @@ def test_youtube_quota_per_video_from_the_journal_or_estimated_from_the_searches
     quota = gasto.youtube_quota(tmp_path)
     assert quota["pati1"] == {"searches": 2, "units": 201, "estimated": False}          # the journal wins
     assert quota["viejo"] == {"searches": 3, "units": 303, "estimated": True}
+
+
+def test_search_also_finds_ideas_not_made_yet(tmp_path):
+    from pipeline import agenda, web
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    agenda.add_idea(tmp_path, "Trusova: la caída y el regreso", "patinaje", "colapsó en Pekín y volvió siendo madre")
+    found = web.search_videos(tmp_path, "trusova regreso")
+    assert found["results"] == [] and found["ideas"][0]["title"].startswith("Trusova") and found["ideas"][0]["where"] == "tablero"

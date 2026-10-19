@@ -250,7 +250,31 @@ def search_videos(root: Path, query: str, limit: int = 20) -> dict[str, Any]:
                         "archived": summary["archived"], "published": summary["published"],
                         "score": round(score, 3), "snippet": best[:260]})
     results.sort(key=lambda r: -r["score"])
-    return {"query": query, "whole": whole, "results": results[:limit]}
+    return {"query": query, "whole": whole, "results": results[:limit], "ideas": [] if whole else search_ideas(root, wanted_set)}
+
+
+def search_ideas(root: Path, wanted: set[str], limit: int = 10) -> list[dict[str, Any]]:
+    """The ideas not made yet that match too: the board's, the saved ones (radar, niches) and today's news drafts."""
+
+    from . import agenda, niche_ideas
+
+    try:
+        ideas = [(i, "tablero") for i in agenda.settings(root).get("ideas") or []] + \
+                [(i, "idea guardada") for i in niche_ideas.saved(root)]
+    except Exception:
+        ideas = []
+    out = []
+    for idea, where in ideas:
+        text = " ".join(str(idea.get(k) or "") for k in ("title", "note", "angle", "protagonist", "hook", "outline"))
+        found = set(_words(text))
+        hits = [w for w in wanted if w in found]
+        if len(hits) < max(1, round(len(wanted) * 0.6)):
+            continue
+        out.append({"title": str(idea.get("title") or ""), "channel": str(idea.get("channel") or ""), "where": where,
+                    "note": " ".join(str(idea.get("note") or idea.get("angle") or "").split())[:200],
+                    "score": round(len(hits) / max(1, len(wanted)), 3)})
+    out.sort(key=lambda i: -i["score"])
+    return out[:limit]
 
 
 def _youtube_blocked(root: Path) -> str | None:

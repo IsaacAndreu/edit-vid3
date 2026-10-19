@@ -408,7 +408,13 @@ async function searchPage(q) {
           ${v.snippet ? `<div class="small" style="margin-top:4px;white-space:normal">${r.whole ? esc(v.snippet) : marked(v.snippet, words)}</div>` : ""}</div>
         <div class="r">${r.whole ? `<b style="font-size:15px;color:${v.score >= 0.5 ? "var(--bad)" : "var(--accent)"}">${Math.round(v.score * 100)}% parecido</b><br>` : ""}
           ${v.published ? '<span class="pill hecho">en YouTube</span>' : pill(v.status)}</div></a>`).join("")}</div>`
-      : `<div class="notice ok">✅ No hay ningún vídeo con eso. ${r.whole ? "Este guion es nuevo." : "No lo has hecho todavía."} <a href="#/nuevo">Crear vídeo →</a></div>`}`;
+      : `<div class="notice ok">✅ No hay ningún vídeo con eso. ${r.whole ? "Este guion es nuevo." : "No lo has hecho todavía."} <a href="#/nuevo">Crear vídeo →</a></div>`}
+    ${(r.ideas || []).length ? `<h2>En tus ideas (sin hacer todavía)</h2><div class="block">${r.ideas.map((i) => `<a class="vrow hit" href="#/tablero">
+        <span class="dot" style="background:${chColor(i.channel)}"></span>
+        <div style="min-width:0"><div class="t">${marked(i.title, words)}</div>
+          <div class="s">${esc([i.channel || "sin canal", i.where].join(" · "))}</div>
+          ${i.note ? `<div class="small" style="margin-top:4px;white-space:normal">${marked(i.note, words)}</div>` : ""}</div>
+        <div class="r"><span class="pill">💡 idea</span></div></a>`).join("")}</div>` : ""}`;
 }
 
 
