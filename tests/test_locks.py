@@ -38,3 +38,27 @@ def test_the_fill_in_never_overlaps_a_render():
     from pipeline.locks import GROUPS
 
     assert GROUPS["fallback"] == GROUPS["render"] == "cpu" and GROUPS["sourcing"] == "red"
+
+
+def test_a_bigger_machine_gives_a_group_more_places(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    monkeypatch.setenv(locks.ENV, "1")
+    (tmp_path / "config.yaml").write_text("queue:\n  slots:\n    red: 2\n")
+    assert locks.slots(tmp_path, "red") == 2 and locks.slots(tmp_path, "cpu") == 1
+    inside, most = [], [0]
+
+    def video(name):
+        with locks.turn(tmp_path, "sourcing", name, poll=0.02):
+            inside.append(name)
+            most[0] = max(most[0], len(inside))
+            time.sleep(0.15)
+            inside.remove(name)
+
+    workers = [threading.Thread(target=video, args=(f"v{i}",)) for i in range(3)]
+    for w in workers:
+        w.start()
+    for w in workers:
+        w.join(3)
+    assert most[0] == 2 and not list((tmp_path / "work").glob(".turno-*"))

@@ -31,8 +31,16 @@ def test_cleanup_keeps_the_video_and_plans_and_drops_heavy_files(tmp_path):
     os.utime(old, (time.time() - 3 * 86400,) * 2)
     fresh = ctx.cache_dir / "videos" / "abc" / "info.json"
     fresh.write_text("{}")
+    meta = ctx.cache_dir / "videos" / "def" / "info.json"          # 10 days old: past cache_days, kept as metadata
+    board = ctx.cache_dir / "videos" / "def" / "sb" / "000.jpg"
+    clip = ctx.cache_dir / "videos" / "def" / "hd_1_4.mp4"
+    board.parent.mkdir(parents=True)
+    for path in (meta, board, clip):
+        path.write_bytes(b"x")
+        os.utime(path, (time.time() - 10 * 86400,) * 2)
     housekeeping.old_cache(ctx)
     assert not old.exists() and fresh.exists()
+    assert meta.exists() and board.exists() and not clip.exists()
 
 
 def test_uploaded_videos_lose_their_heavy_files_but_stay_done(tmp_path):

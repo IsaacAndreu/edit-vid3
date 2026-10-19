@@ -483,8 +483,16 @@ class Renderer:
         return folder
 
     def concurrency(self) -> str:
+        """Chrome tabs for Remotion: render.concurrency, else the cores — shared among the CPU places of the queue
+        (queue.slots.cpu), so two renders at once do not each take every core and twice the memory."""
+
         value = int(self.cfg.get("concurrency", 0) or 0)
-        return str(value if value > 0 else (os.cpu_count() or 2))
+        if value > 0:
+            return str(value)
+        from .locks import ENV, slots
+
+        share = slots(self.ctx.root, "cpu") if os.environ.get(ENV) else 1
+        return str(max(2, (os.cpu_count() or 2) // share))
 
     def badges(self, credits: list[str]) -> dict[str, Path]:
         """One transparent 1920x1080 PNG per distinct credit text, cached by text."""

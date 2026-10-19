@@ -216,11 +216,19 @@ def old_cache(ctx: RunContext) -> None:
     except Exception:
         pass
     limit = time.time() - days * 86400
+    # A YouTube video's metadata (info.json) and storyboard (sb/) are a few hundred KB and cost a paid proxy request
+    # and its analysis to get again: they stay `cleanup.metadata_days` (90), the downloaded media only `cache_days`.
+    keep_meta = time.time() - max(days, float(ctx.section("cleanup").get("metadata_days", 90) or 0)) * 86400
+    videos = ctx.cache_dir / "videos"
     freed = 0
     for name in CACHED:
         folder = ctx.cache_dir / name
         for path in folder.rglob("*") if folder.is_dir() else []:
-            if path.is_file() and path.stat().st_mtime < limit:
+            if not path.is_file():
+                continue
+            mtime = path.stat().st_mtime
+            meta = folder == videos and (path.name == "info.json" or path.parent.name == "sb")
+            if mtime < (keep_meta if meta else limit):
                 freed += path.stat().st_size
                 path.unlink(missing_ok=True)
     if freed:
