@@ -113,6 +113,19 @@ def _read(path: Path) -> Any:
         return None
 
 
+def last_run(work: Path) -> float | None:
+    """When the last search of this video started (its sourcing marker: finished at, minus how long it took)."""
+
+    from datetime import datetime
+
+    marker = _read(work / ".stages" / "sourcing.json") or {}
+    try:
+        done = datetime.fromisoformat(str(marker["completedAt"]).replace("Z", "+00:00")).timestamp()
+    except (KeyError, ValueError):
+        return None
+    return done - float(marker.get("seconds") or 0) - 60
+
+
 def measure(root: Path, slug: str) -> dict[str, Any]:
     """What really happened in a finished run of `slug` (its work folder)."""
 
@@ -124,12 +137,15 @@ def measure(root: Path, slug: str) -> dict[str, Any]:
     summary = _read(work / "candidates" / "_summary.json") or {}
     requests: dict[str, int] = {}
     bot = 0
+    since = last_run(work)                  # only the last run: an earlier failed one must not count (pati7esc, 605 «bot»)
     path = work / "youtube_downloads.jsonl"
     if path.is_file():
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
                 row = json.loads(line)
             except ValueError:
+                continue
+            if since and float(row.get("ts") or 0) < since:
                 continue
             action = str(row.get("action") or "?")
             kind = "descargas" if action.startswith("download") else {"metadata": "extracciones",

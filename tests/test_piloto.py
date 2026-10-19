@@ -151,3 +151,18 @@ def test_mid_run_the_last_api_search_stops_the_pilot_instead_of_scraping(tmp_pat
             assert scraped == []                             # checked before the call: nothing went to yt-dlp
         else:
             assert yt.search_pool(["a query"], []) == ([[]], {}) and scraped == ["search"]
+
+
+def test_only_the_last_run_counts_in_the_report(tmp_path):
+    import json
+
+    from pipeline import piloto
+
+    work = tmp_path / "work" / "pati7esc"
+    (work / ".stages").mkdir(parents=True)
+    (work / ".stages" / "sourcing.json").write_text(json.dumps({"completedAt": "2026-10-17T18:00:00+00:00", "seconds": 600}))
+    start = 1792260000 - 600                                   # 2026-10-17T18:00Z minus the search
+    rows = [{"ts": start - 3600, "action": "metadata", "error": "bot"}] * 5 + [{"ts": start + 10, "action": "metadata"}]
+    (work / "youtube_downloads.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    measured = piloto.measure(tmp_path, "pati7esc")
+    assert measured["botAnswers"] == 0 and measured["requests"] == {"extracciones": 1}
