@@ -115,6 +115,80 @@ def voice(ctx: RunContext, lang: str) -> bool:
         lock.unlink(missing_ok=True)
 
 
+OWN = ".guion-{lang}.propio"          # in the video's folder: guion-<lang>.txt was pasted by you, not translated
+MANUAL = "doblado-a-mano.json"         # in out/<slug>-<lang>/: you dubbed it yourself, the queue never does it
+
+
+def status(root: Path, slug: str) -> list[dict[str, Any]]:
+    """Each dubbing language of this video's channel: its script (yours or translated), voice and dubbed video."""
+
+    from .housekeeping import is_done
+
+    ctx = RunContext.create(slug, root=root)
+    if ctx.section("dub").get("of"):
+        return []
+    cfg = settings(ctx)
+    if not cfg["enabled"]:
+        return []
+    folder = ctx.materials_dir
+    out = []
+    for lang in cfg["languages"]:
+        dubbed = f"{slug}-{lang}"
+        script = folder / f"guion-{lang}.txt"
+        out.append({"lang": lang, "name": NAMES.get(lang, lang), "slug": dubbed,
+                    "script": script.read_text("utf-8") if script.is_file() else "",
+                    "title": (folder / f"titulo-{lang}.txt").read_text("utf-8").strip() if (folder / f"titulo-{lang}.txt").is_file() else "",
+                    "own": (folder / OWN.format(lang=lang)).is_file(), "voice": (folder / f"voz-{lang}.mp3").is_file(),
+                    "voiceId": bool((cfg["voices"].get(lang) or {}).get("voice_id")),
+                    "manual": (root / "out" / dubbed / MANUAL).is_file(),
+                    "done": is_done(root, dubbed), "error": (folder / "doblaje.error").read_text("utf-8")
+                    if (folder / "doblaje.error").is_file() else ""})
+    return out
+
+
+def set_script(root: Path, slug: str, lang: str, script: str, title: str = "") -> dict[str, Any]:
+    """Your own translation: guion-<lang>.txt (+ titulo-<lang>.txt); the voice is read from it with that language's
+    voice and the dubbed video made by the queue, even for a video made before dubbing was turned on."""
+
+    from .context import find_video
+    from .housekeeping import is_done
+
+    text = script.strip()
+    if len(text.split()) < 50:
+        raise ValueError("Pega el guion entero (tiene menos de 50 palabras)")
+    if is_done(root, f"{slug}-{lang}"):
+        raise ValueError(f"{slug}-{lang} ya está hecho: bórralo o archívalo antes de doblarlo otra vez")
+    folder = find_video(root, slug)
+    (folder / f"guion-{lang}.txt").write_text(text + "\n", encoding="utf-8")
+    if title.strip():
+        (folder / f"titulo-{lang}.txt").write_text(title.strip() + "\n", encoding="utf-8")
+    (folder / OWN.format(lang=lang)).write_text("", encoding="utf-8")
+    for stale in (f"voz-{lang}.mp3", f"voz-{lang}.palabras.json", "doblaje.error"):   # read again from the new script
+        (folder / stale).unlink(missing_ok=True)
+    return {"ok": True}
+
+
+def mark_manual(root: Path, slug: str, lang: str, done: bool = True) -> dict[str, Any]:
+    """«Ya lo doblé yo»: that dubbed video counts as done and the queue never makes it (False undoes it)."""
+
+    import json
+
+    from .housekeeping import REMOVED
+
+    target = root / "out" / f"{slug}-{lang}"
+    if done:
+        target.mkdir(parents=True, exist_ok=True)
+        stamp = {"manual": True, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        (target / MANUAL).write_text(json.dumps(stamp), encoding="utf-8")
+        if not (target / "video-final.mp4").is_file():
+            (target / REMOVED).write_text(json.dumps(stamp), encoding="utf-8")    # counts as done
+    else:
+        if (target / MANUAL).is_file():
+            (target / MANUAL).unlink()
+            (target / REMOVED).unlink(missing_ok=True)
+    return {"ok": True}
+
+
 def prepare_all(root: Path, log: Any = print) -> int:
     """The voice thread's turn for dubs: finished videos of channels with dubbing on get their translated script and
     voice; the queue then makes the dubbed video. Returns how many voices it made."""
@@ -142,11 +216,12 @@ def prepare_all(root: Path, log: Any = print) -> int:
         if not cfg["enabled"]:
             continue
         final = root / "out" / folder.name / "video-final.mp4"
-        if not cfg["existing"] and cfg["since"] and final.is_file() and final.stat().st_mtime < cfg["since"]:
-            continue                            # «solo los vídeos nuevos»: made before dubbing was turned on
+        old = not cfg["existing"] and cfg["since"] and final.is_file() and final.stat().st_mtime < cfg["since"]
         for lang in cfg["languages"]:
             if (folder / f"voz-{lang}.mp3").is_file() or is_done(root, f"{folder.name}-{lang}"):
                 continue
+            if old and not (folder / OWN.format(lang=lang)).is_file():
+                continue                        # «solo los vídeos nuevos», unless you pasted its script yourself
             try:
                 translate(ctx, lang)
                 if voice(ctx, lang):

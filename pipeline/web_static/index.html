@@ -209,7 +209,8 @@
     <div class="dd"><button type="button">Planificar ▾</button><div class="menu">
       <a href="#/guiones">📝 Guiones <span>qué falta por escribir</span></a>
       <a href="#/calendario">📅 Calendario <span>qué sale cada día</span></a>
-      <a href="#/tablero">🗂 Tablero <span>ideas en marcha</span></a></div></div>
+      <a href="#/tablero">🗂 Tablero <span>ideas en marcha</span></a>
+      <a href="#/videos">🎞 Todos los vídeos <span>lista entera, canal de cada uno</span></a></div></div>
     <div class="dd"><button type="button">Crecer ▾</button><div class="menu">
       <a href="#/competencia">📡 Radar <span>competencia, nichos y huecos</span></a>
       <a href="#/canal">📈 Mi canal <span>qué funciona en tus vídeos</span></a>
@@ -389,7 +390,7 @@ function drawHome() {               // the channel buttons redraw from what is a
     ${block("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
       right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ espera API ${esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
         : v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
-    ${block("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30,
+    ${block("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
       right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;
   schedule(home, by("haciendo").length ? 10000 : 30000);
@@ -550,6 +551,23 @@ async function videoPage(slug) {
       <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">Copiar</button></div>` : "";
   const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
       `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
+  const dubState = (d) => d.manual ? "✅ doblado por ti (la cola no lo hace)" : d.done ? `✅ hecho · <a href="#/video/${encodeURIComponent(d.slug)}">ver ${esc(d.slug)}</a>`
+    : d.voice ? "🎙️ voz lista: la cola hará el vídeo doblado" : d.script ? (d.own ? "📝 tu guion: falta la voz (se hace sola en unos minutos)" : "📝 traducido: falta la voz")
+    : "sin guion todavía (se traducirá solo, o pega el tuyo)";
+  const dubs = (v.dubs || []).length ? `<h2>Doblaje</h2>${v.dubs.map((d) => `<details class="card" ${d.done || d.manual ? "" : "open"}>
+      <summary><b>${esc(d.name)}</b> · <span class="small">${dubState(d)}</span>${d.voiceId ? "" : ' <span class="pill error">sin voz elegida para este idioma</span>'}</summary>
+      ${d.error ? `<div class="notice bad small">${esc(d.error)}</div>` : ""}
+      ${d.done ? "" : `<div class="small muted" style="margin:6px 0">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
+        <input id="dubt-${d.lang}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" style="margin-bottom:6px">
+        <textarea id="dubs-${d.lang}" rows="8" placeholder="Guion en ${esc(d.name)}…">${esc(d.own ? d.script : "")}</textarea>
+        <div class="row" style="margin-top:8px;gap:6px"><button class="main" onclick="dubScript('${d.lang}', this)">Usar mi guion y doblar</button>`}
+        <button onclick="dubManual('${d.lang}', ${!d.manual})">${d.manual ? "Deshacer «lo doblé yo»" : "Ya lo doblé yo"}</button>${d.done ? "" : "</div>"}</details>`).join("")}` : "";
+  window.dubScript = async (lang, button) => {
+    button.disabled = true;
+    try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, script: $("#dubs-" + lang).value, title: $("#dubt-" + lang).value}); route(); }
+    catch (e) { alert(e.message); button.disabled = false; }
+  };
+  window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics],
                 audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
@@ -590,7 +608,7 @@ async function videoPage(slug) {
       <div class="small muted" style="margin-top:4px">${v.preview ? `Copia ligera en 720p para verlo rápido (también en el móvil) · <a href="${base}video-final.mp4" target="_blank" rel="noopener">ver el original en 1080p</a>`
         : "Preparando una copia ligera para verlo sin cortes en el móvil (unos minutos); mientras tanto, el original pesa mucho y puede ir a trompicones."}</div>
       <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a></div>` : ""}
-    ${titles}${thumbs}${shorts}
+    ${titles}${thumbs}${shorts}${dubs}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div>`;
   window.markUploaded = async (value = true) => {
@@ -787,6 +805,35 @@ async function changeChannel(slug, current, el) {
 
 // «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
 let spendSort = "last", spendChannel = "";
+
+let allFilter = {q: "", channel: "", state: "todos"};
+async function allVideosPage() {
+  data = await api("/api/overview");
+  const f = allFilter, words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const stateOf = (v) => v.published ? "subidos" : v.archived ? "archivados" : v.status === "hecho" ? "sin subir" : "en marcha";
+  const list = data.videos.filter((v) => (!f.channel || (f.channel === "(sin canal)" ? !v.channel : v.channel === f.channel))
+      && (f.state === "todos" || stateOf(v) === f.state)
+      && words.every((w) => `${v.slug} ${v.title || ""}`.toLowerCase().includes(w)))
+    .sort((a, b) => String((b.published || {}).at || "").localeCompare(String((a.published || {}).at || "")) || b.updated - a.updated);
+  const count = (fn) => data.videos.filter(fn).length;
+  const channels = [...new Set(data.videos.map((v) => v.channel).filter(Boolean))].sort();     // only those with videos
+  $("#app").innerHTML = `<h1>Todos los vídeos</h1>
+    <div class="small muted" style="margin:-4px 0 10px">Todos: también los subidos y los archivados. Cambia el canal de un vídeo con su desplegable (no se rehace: solo cambia dónde cuenta).</div>
+    <input placeholder="🔎 Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)" style="margin-bottom:8px">
+    <div class="yt-tools">${["todos", "subidos", "sin subir", "en marcha", "archivados"].map((s) => `<button class="yt-chip ${f.state === s ? "on" : ""}" onclick="allFilter.state='${s}';allVideosPage()">${s}
+      <span class="muted">${s === "todos" ? data.videos.length : count((v) => stateOf(v) === s)}</span></button>`).join("")}</div>
+    <div class="yt-tools">${["", ...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) => `<button class="yt-chip ${f.channel === c ? "on" : ""}" onclick="allFilter.channel='${esc(c)}';allVideosPage()">
+      ${c && c !== "(sin canal)" ? `<i class="dot" style="background:${chColor(c)}"></i>` : ""}${c || "Todos los canales"}
+      <span class="muted">${c === "" ? data.videos.length : count((v) => c === "(sin canal)" ? !v.channel : v.channel === c)}</span></button>`).join("")}</div>
+    <div class="small muted" style="margin:6px 0">${list.length} vídeo(s)</div>
+    <div class="card" style="padding:4px 14px">${list.map((v) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600;min-width:0">${esc(v.title || v.slug)}</a>
+          <select style="width:auto;padding:2px 6px" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch((e)=>alert(e.message))">
+            ${v.channel ? "" : "<option selected>(sin canal)</option>"}${data.channels.map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+        <div class="small muted">${esc(v.title ? v.slug : "")}${v.title ? " · " : ""}${v.published ? `📺 subido ${esc(String(v.published.at || "").slice(0, 10))}${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}`
+          : v.archived ? "archivado" : esc(v.status)}</div></div>`).join("") || '<div class="muted" style="padding:12px 0">Ninguno con estos filtros.</div>'}</div>`;
+}
 
 async function serverPage() {
   const s = await api("/api/servidor");
@@ -1976,6 +2023,7 @@ async function route() {
     else if (hash === "#/gasto") await spendPage();
     else if (hash === "#/experimentos") await experimentsPage();
     else if (hash === "#/servidor") await serverPage();
+    else if (hash === "#/videos") await allVideosPage();
     else if (hash === "#/ajustes") await settingsPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();

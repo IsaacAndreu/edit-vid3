@@ -472,7 +472,17 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "preview": ensure_preview(root, slug) if summary.get("hasVideo") else False,
         "script": (folder / "guion.txt").read_text("utf-8", errors="replace")[:20000] if (folder / "guion.txt").is_file() else "",
         "format": _format_of(root, folder),
+        "dubs": _dubs(root, slug),
     }
+
+
+def _dubs(root: Path, slug: str) -> list[dict[str, Any]]:
+    try:
+        from . import doblaje
+
+        return doblaje.status(root, slug)
+    except Exception:             # a video of a deleted channel, a broken config: no dubbing box
+        return []
 
 
 PREVIEW = "preview.mp4"           # in out/<vídeo>/: a light copy to watch in the studio (the phone, a slow line)
@@ -1241,6 +1251,16 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import copia
 
                     return self._ok({"made": copia.make(root).name, "backup": copia.info(root)})
+                if match := re.fullmatch(r"/api/video/([^/]+)/doblaje", path):   # {lang, script, title} | {lang, manual}
+                    from . import doblaje
+
+                    slug, lang = urllib.parse.unquote(match.group(1)), str(body.get("lang") or "")
+                    if lang not in doblaje.NAMES:
+                        raise ValueError("Idioma desconocido")
+                    if "manual" in body:
+                        return self._ok(doblaje.mark_manual(root, slug, lang, bool(body["manual"])))
+                    return self._ok(doblaje.set_script(root, slug, lang, str(body.get("script") or ""),
+                                                       str(body.get("title") or "")))
                 if match := re.fullmatch(r"/api/experimentos/([^/]+)", path):     # {tags, retention30, retentionAvg, ctr}
                     from . import experimentos
 

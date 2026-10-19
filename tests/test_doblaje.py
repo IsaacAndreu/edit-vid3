@@ -96,3 +96,30 @@ def test_a_channel_dubbed_from_the_studio_keeps_its_clips_after_the_video(tmp_pa
     (ctx.work_dir / "render").mkdir(parents=True)
     housekeeping.after_video(ctx)
     assert (ctx.work_dir / "media").is_dir() and not (ctx.work_dir / "render").exists()   # the dub needs the clips
+
+
+def test_your_own_translation_is_used_and_a_hand_made_dub_is_never_redone(tmp_path):
+    import json
+
+    from pipeline import doblaje, tts
+    from pipeline.housekeeping import is_done
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("format: historia\n")
+    video = tmp_path / "materiales" / "gimnasia" / "yulo"
+    video.mkdir(parents=True)
+    (video / "config.yaml").write_text("canal: gimnasia\n")
+    (video / "guion.txt").write_text("hola " * 80)
+    (video / "voz-pt.mp3").write_bytes(b"old")
+    tts.set_dubbing(tmp_path, "gimnasia", {"languages": ["pt"], "voices": {"pt": {"voice_id": "v1"}}, "existing": False})
+    with pytest.raises(ValueError):
+        doblaje.set_script(tmp_path, "yulo", "pt", "muito curto")
+    doblaje.set_script(tmp_path, "yulo", "pt", "olá " * 80, "Yulo: o ginasta")
+    assert (video / "guion-pt.txt").read_text().startswith("olá") and not (video / "voz-pt.mp3").exists()
+    [state] = doblaje.status(tmp_path, "yulo")
+    assert state["own"] and state["title"] == "Yulo: o ginasta" and state["voiceId"] and not state["done"]
+    doblaje.mark_manual(tmp_path, "yulo", "pt")
+    assert is_done(tmp_path, "yulo-pt") and doblaje.status(tmp_path, "yulo")[0]["manual"]
+    doblaje.mark_manual(tmp_path, "yulo", "pt", False)
+    assert not is_done(tmp_path, "yulo-pt")
