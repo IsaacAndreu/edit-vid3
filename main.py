@@ -95,6 +95,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--comparar-escenas", action="store_true",
                         help="Búsqueda por plano vs por escenas en un conjunto fijo de escenas, sin pedir nada a YouTube "
                              "→ out/_comparar_escenas.json.")
+    target.add_argument("--copia", action="store_true",
+                        help="Copia de seguridad ahora (config, guiones, voces, datos del estudio) → backup.dir.")
     target.add_argument("--comprobar-proteccion", action="store_true",
                         help="Cuarentenas, recuperación tras «no eres un bot», cookies, claves (solo nombres) y cuota de la API.")
     target.add_argument("--piloto-escenas", metavar="VIDEO",
@@ -461,11 +463,22 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
         def loop() -> None:
             from pipeline import radar
 
+            from pipeline import copia, servidor
+
             while True:
                 try:
                     radar.run_if_due(root)
                 except Exception as error:
                     print(f"Radar: {type(error).__name__}: {error}")
+                try:
+                    servidor.check_proxy(root)                    # the proxy balance, once an hour
+                except Exception as error:
+                    print(f"Saldo del proxy: {type(error).__name__}: {error}")
+                try:
+                    if (made := copia.make_if_due(root)):         # the weekly backup
+                        print(f"Copia de seguridad → {made}")
+                except Exception as error:
+                    print(f"Copia de seguridad: {type(error).__name__}: {error}")
                 time.sleep(600)
 
         threading.Thread(target=loop, name="radar", daemon=True).start()
@@ -999,6 +1012,12 @@ def main() -> None:
 
         best = (ytbench.run(PROJECT_ROOT)["summary"] or [{}])[0]
         print(f"Más rápido: {best.get('way')} · {best.get('client')} · 360p {best.get('mbps360')} MB/s")
+        return
+    if args.copia:
+        from pipeline import copia
+
+        made = copia.make(PROJECT_ROOT)
+        print(f"Copia de seguridad: {made} ({made.stat().st_size / 1e6:.1f} MB)")
         return
     if args.comprobar_proteccion:
         from pipeline import proteccion

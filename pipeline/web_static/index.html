@@ -209,6 +209,7 @@
     <div class="dd"><button type="button">⚙️ ▾</button><div class="menu right">
       <a href="#/biblioteca">📚 Biblioteca <span>clips guardados por persona</span></a>
       <a href="#/errores">🧐 Errores <span>clips marcados como malos</span></a>
+      <a href="#/servidor">🖥 Estado del servidor <span>RAM, cuota, proxy, cola, copias</span></a>
       <a href="#/ajustes">⚙️ Ajustes <span>pausa, límites, voces, actualizar</span></a></div></div>
     <a href="#/nuevo" class="newv">＋ Nuevo vídeo</a>
   </nav>
@@ -769,6 +770,62 @@ async function changeChannel(slug, current, el) {
 
 // «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
 let spendSort = "last", spendChannel = "";
+
+async function serverPage() {
+  const s = await api("/api/servidor");
+  const m = s.machine || {}, a = s.api, p = s.proxy, b = s.backup;
+  const bar = (x, of, warn) => `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, 100 * (x || 0) / Math.max(0.01, of || 0))}%;background:${(x || 0) / Math.max(0.01, of || 0) > warn ? "var(--bad)" : "var(--accent)"}"></i></div>`;
+  const kinds = {haciendo: "haciendo", turno: "", cuota: "", youtube: "error", cola: "", error: "error", falta: "", pausa: ""};
+  $("#app").innerHTML = `<h1>Estado del servidor</h1>
+    <div class="small muted" style="margin:-4px 0 12px">Se actualiza solo cada 15 s · ${esc(s.at)}</div>
+    <h2>Máquina</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="k">RAM</div><div class="v">${fmt(m.ramUsed)} / ${fmt(m.ramTotal)} GB</div>
+        <div class="d">${m.swapUsed != null ? `swap ${fmt(m.swapUsed)} GB` : ""}</div>${bar(m.ramUsed, m.ramTotal, 0.85)}</div>
+      <div class="kpi"><div class="k">CPU</div><div class="v">${m.cpu != null ? Math.round(m.cpu) + " %" : "—"}</div>
+        <div class="d">${m.cores} núcleos${m.load != null ? ` · carga ${fmt(m.load)}` : ""}</div>${bar(m.cpu, 100, 0.95)}</div>
+      <div class="kpi"><div class="k">Disco libre</div><div class="v">${fmt(m.diskFree)} GB</div>
+        <div class="d">de ${fmt(m.diskTotal)} GB</div>${bar((m.diskTotal || 0) - (m.diskFree || 0), m.diskTotal, 0.9)}</div></div>
+    <h2>API de YouTube</h2>
+    ${a ? `<div class="kpis">
+      <div class="kpi"><div class="k">Búsquedas hoy</div><div class="v">${fmt(a.searches)} / ${fmt(a.searchesPerDay)}</div>
+        <div class="d">quedan ${fmt(a.searchesLeft)} · ${fmt(a.perHour)}/hora · ${a.keys} claves</div>${bar(a.searches, a.searchesPerDay, 0.9)}</div>
+      <div class="kpi"><div class="k">Se acaba</div><div class="v" style="font-size:20px">${esc(a.runsOut || "—")}</div><div class="d">al ritmo de hoy</div></div>
+      <div class="kpi"><div class="k">Se renueva</div><div class="v" style="font-size:20px">${esc(a.reset)}</div><div class="d">hora de España</div></div></div>`
+      : '<div class="card muted">Sin claves de la API de YouTube.</div>'}
+    <h2>Proxy de metadatos</h2>
+    ${p ? `<div class="kpis">
+      <div class="kpi"><div class="k">Queda</div><div class="v">${p.leftGb != null ? fmt(p.leftGb) + " GB" : "—"}</div>
+        <div class="d">${p.videosLeft != null ? `≈ ${p.videosLeft} vídeos` : "apunta abajo los GB comprados"}</div>${p.bought ? bar(p.usedGb, p.bought, 0.85) : ""}</div>
+      <div class="kpi"><div class="k">Gastado${p.since ? " desde " + esc(p.since) : ""}</div><div class="v">${fmt(p.usedGb)} GB</div>
+        <div class="d">${fmt(p.requests)} peticiones · ${p.videos} vídeos · ${fmt(p.perVideoGb)} GB/vídeo</div></div></div>
+      <form class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap" onsubmit="event.preventDefault();post('/api/settings',{proxy_gb:this.gb.value,proxy_since:this.day.value}).then(serverPage)">
+        <span class="small">Recarga: GB comprados</span><input name="gb" inputmode="decimal" style="width:80px" value="${p.bought ?? ""}">
+        <span class="small">el día</span><input name="day" type="date" style="width:auto" value="${esc(p.since || new Date().toISOString().slice(0, 10))}">
+        <button>Guardar</button></form>
+      <div class="small muted" style="margin-top:4px">Estimado con las peticiones de cada vídeo (el proveedor no da el saldo por API): si no cuadra con su panel, apunta allí lo que queda como una recarga de hoy. Avisa por Telegram cuando queden menos de 10 vídeos.</div>`
+      : '<div class="card muted">Sin proxy de metadatos (sourcing.youtube.metadata_proxy).</div>'}
+    <h2>Conexiones a YouTube</h2>
+    <div class="card" style="padding:4px 14px">${(s.ways || []).map((w) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <div class="row" style="justify-content:space-between;gap:8px"><b style="word-break:break-all">${esc(w.name)}</b>
+        <span class="pill ${w.state === "libre" ? "hecho" : "error"}">${esc(w.state)}</span></div>
+        <div class="small muted">última hora ${fmt(w.hour)}${w.perHour ? " / " + fmt(w.perHour) : ""} peticiones</div></div>`).join("")}</div>
+    <h2>Cola</h2>
+    ${(s.queue || []).length ? `<div class="card" style="padding:4px 14px">${s.queue.map((v) => `<a href="#/video/${encodeURIComponent(v.slug)}"
+        style="display:block;padding:8px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none">
+        <div class="row" style="justify-content:space-between;gap:8px"><span class="row" style="gap:6px"><span class="dot" style="background:${chColor(v.channel)}"></span>
+          <b>${esc(v.slug)}</b> <span class="small muted">${esc(v.channel)}</span></span>
+          <span class="pill ${kinds[v.kind] || ""}">${esc(v.kind)}</span></div>
+        <div class="small" style="margin-top:2px;white-space:normal">${esc(v.why)}</div></a>`).join("")}</div>`
+      : '<div class="card muted">No hay vídeos pendientes.</div>'}
+    <h2>Copia de seguridad</h2>
+    <div class="card">${b ? `Última: <b>${esc(b.name)}</b> · ${fmt(b.mb)} MB · ${new Date(b.at * 1000).toLocaleString("es-ES")}
+        <div class="small muted">En ${esc(b.folder)} del servidor. Lleva tus claves (.env): guárdala en un sitio privado.</div>`
+        : '<span class="muted">Aún no hay ninguna (se hace sola cada semana).</span>'}
+      <div class="row" style="gap:8px;margin-top:8px">${b ? '<a class="btn" href="/api/copia">⬇️ Descargar</a>' : ""}
+        <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`;
+  schedule(serverPage, 15000);
+}
 
 let expChannel = "";
 async function saveExperiment(slug, field, value) {
@@ -1894,6 +1951,7 @@ async function route() {
     else if (hash === "#/estadisticas") await stats();
     else if (hash === "#/gasto") await spendPage();
     else if (hash === "#/experimentos") await experimentsPage();
+    else if (hash === "#/servidor") await serverPage();
     else if (hash === "#/ajustes") await settingsPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();

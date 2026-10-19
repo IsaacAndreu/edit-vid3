@@ -814,6 +814,10 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
         if isinstance(body.get("channel_priority"), list):   # the queue makes these channels' videos first, in order
             known = channels(root)
             current["channel_priority"] = [str(c) for c in dict.fromkeys(body["channel_priority"]) if str(c) in known]
+        if "proxy_gb" in body:                               # a proxy top-up: GB bought and the day (Estado del servidor)
+            current["proxy_gb"] = max(0.0, float(body["proxy_gb"] or 0))
+            current["proxy_since"] = str(body.get("proxy_since") or datetime.now().date().isoformat())[:10]
+            datetime.fromisoformat(current["proxy_since"])
         if "paused" in body:
             flag = root / "out" / "_pausa"
             flag.parent.mkdir(parents=True, exist_ok=True)
@@ -1037,6 +1041,18 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import gasto
 
                     return self._ok({**gasto.report(root), "allChannels": channels(root)})
+                if path == "/api/servidor":                # «Estado del servidor» (pipeline/servidor.py)
+                    from . import copia, servidor
+
+                    return self._ok({**servidor.status(root), "backup": copia.info(root)})
+                if path == "/api/copia":                   # the newest backup, to keep it on your PC / Drive
+                    from . import copia
+
+                    last = copia.latest(root)
+                    if last is None:
+                        return self._fail(404, "Aún no hay copia: espera a la semanal o pulsa «Hacer copia ahora»")
+                    return self._send(200, last.read_bytes(), "application/gzip",
+                                      {"Content-Disposition": f'attachment; filename="{last.name}"'})
                 if path == "/api/experimentos":            # «Experimentos» (pipeline/experimentos.py)
                     from . import experimentos
 
@@ -1218,6 +1234,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if path == "/api/videos":
                     return self._ok(create_video(root, body))
+                if path == "/api/copia":                   # «Hacer copia ahora»
+                    from . import copia
+
+                    return self._ok({"made": copia.make(root).name, "backup": copia.info(root)})
                 if match := re.fullmatch(r"/api/experimentos/([^/]+)", path):     # {tags, retention30, retentionAvg, ctr}
                     from . import experimentos
 
