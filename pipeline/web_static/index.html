@@ -1321,7 +1321,8 @@ async function radarPage() {
   newsTab = newsNames.includes(newsTab) ? newsTab : newsNames[0];
   window.newsIdeas = {};
   const ago = (h) => h < 1 ? "hace un momento" : h < 24 ? `hace ${Math.round(h)} h` : `hace ${Math.round(h / 24)} d`;
-  const storyCard = (st, i) => { window.newsIdeas[i] = st.idea;
+  const storyCard = (st, i, channel) => { window.newsIdeas[i] = {...st.idea, channel: channel || undefined};
+    const label = st.idea && st.idea.format === "caida-y-regreso" ? "✍️ Guion «caída y regreso»" : "✍️ Guion «caso real»";
     return `<div class="card" style="margin:0">
       <div class="row" style="justify-content:space-between;align-items:flex-start"><div><div style="font-size:1.25em;font-weight:700">${esc(st.name)}</div>
         <div class="small muted">${kfmt(st.views)} visitas · ${st.channels} canal(es) lo cuentan</div></div>
@@ -1330,8 +1331,8 @@ async function radarPage() {
         `<a href="${esc(v.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><img loading="lazy" src="${esc(v.thumbnail)}" style="width:100%;border-radius:6px">
           <div class="small" style="line-height:1.25;margin-top:2px">${esc(v.title.slice(0, 70))}</div>
           <div class="small muted">${esc(v.channel)} · ${kfmt(v.perHour)}/h · ${ago(v.ageHours)}</div></a>`).join("")}</div>
-      <div class="row" style="margin-top:10px;gap:6px"><button class="main" onclick="newsDraft(${i}, this)">✍️ Guion «caso real»</button>
-        <button onclick="newsSave(${i}, this)">Guardar idea</button></div></div>`; };
+      <div class="row" style="margin-top:10px;gap:6px"><button class="main" onclick="newsDraft('${i}', this)">${label}</button>
+        <button onclick="newsSave('${i}', this)">Guardar idea</button></div></div>`; };
   const originLabel = (n) => n.near === "descubierto" ? "🔎 descubierto en YouTube" : n.near === "libre" ? "✨ tema libre" : "🧭 cerca de " + n.near;
   const niches = r.niches.filter((n) => nicheFilter === "todos" || (nicheFilter === "descubiertos" ? n.near === "descubierto"
     : nicheFilter === "libres" ? n.near === "libre" : !["descubierto", "libre"].includes(n.near)));
@@ -1399,6 +1400,11 @@ async function radarPage() {
           <a class="small" href="https://www.youtube.com/results?search_query=${encodeURIComponent(g.query_es)}" target="_blank" rel="noopener">Ver en YouTube ↗</a></div>
       </div>`; }).join("")}</div>` : '<div class="notice">Salen con el radar de cada día (a las 13:00), o mide tú un tema arriba.</div>'}
 
+    ${news && news.comebacks && Object.keys(news.comebacks).length ? `<h2>🔁 Caída y regreso: candidatos de hoy</h2>
+      <div class="small muted">Deportistas que vuelven a ser noticia estos días: su historia entera (la caída, el fondo, el regreso) con el formato «caída y regreso».</div>
+      ${Object.entries(news.comebacks).map(([name, stories]) => `<div style="margin-top:10px"><b>${esc(name)}</b>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:6px">${stories.map((st, i) => storyCard(st, `c-${name}-${i}`, name)).join("")}</div></div>`).join("")}` : ""}
+
     <h2>📰 Noticias del día</h2>
     <div class="small muted">Historias de tus nichos que están subiendo ahora (vídeos de las últimas 48 h). Un vídeo en 24 h sobre ellas llega cuando la gente lo busca.
       ${news ? `Actualizado: ${esc(news.at.replace("T", " "))}.` : ""}</div>
@@ -1449,7 +1455,8 @@ async function radarPage() {
   };
   window.runNews = async () => { await post("/api/news"); route(); };
   window.newsDraft = async (i, button) => {
-    const idea = window.newsIdeas[i], channel = newsTab === "general" ? (data && data.channels ? data.channels[0] : "") : newsTab;
+    const idea = window.newsIdeas[i], channel = idea.channel || (newsTab === "general" ? (data && data.channels ? data.channels[0] : "") : newsTab);
+    const label = button.textContent;
     button.disabled = true; button.textContent = "Escribiendo… (~1 min)";
     try {
       const d = await post("/api/scripts/draft", {channel, idea});
@@ -1457,11 +1464,11 @@ async function radarPage() {
       const pre = {channel, idea: {...idea, title: d.title || idea.title, format: d.format || "caso-real"}, script: d.script};
       try { sessionStorage.setItem("prefill", JSON.stringify(pre)); } catch (e) {}
       window.prefill = pre; location.hash = "#/nuevo";
-    } catch (e) { alert(e.message); button.disabled = false; button.textContent = "✍️ Guion «caso real»"; }
+    } catch (e) { alert(e.message); button.disabled = false; button.textContent = label; }
   };
   window.newsSave = async (i, button) => {
     const idea = window.newsIdeas[i];
-    await post("/api/board/idea", {title: idea.title, channel: newsTab === "general" ? "" : newsTab, note: idea.note.slice(0, 600)});
+    await post("/api/board/idea", {title: idea.title, channel: idea.channel || (newsTab === "general" ? "" : newsTab), note: idea.note.slice(0, 600)});
     button.textContent = "Guardada en Tablero ✓"; button.disabled = true;
   };
   if (r.job.running || r.newsJob.running) schedule(route, 8000);

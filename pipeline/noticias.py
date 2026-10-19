@@ -129,7 +129,51 @@ def scan(root: Path, api: Any = None, now: datetime | None = None) -> dict[str, 
         report["channels"][name] = group(list(videos.values()))
         print(f"   Noticias · {name}: {len(videos)} vídeos de las últimas {hours:g} h → "
               + ", ".join(s["name"] for s in report["channels"][name][:3]))
+        if name in comeback_channels(root, cfg):
+            found = list(videos.values())
+            for query in comeback_queries(root, name):
+                try:
+                    found += search(api, query, float(cfg.get("comeback_hours", 168)), min_views, now)
+                except NoKeysLeft:
+                    break
+                except Exception as error:
+                    report["errors"].append(f"{name} «{query}»: {str(error)[:120]}")
+            picked = comebacks(found)
+            if picked:
+                report.setdefault("comebacks", {})[name] = picked
+                print(f"   Caída y regreso · {name}: " + ", ".join(s["name"] for s in picked))
     return _save(root, report)
+
+
+DEFAULT_COMEBACK_CHANNELS = ("gimnasia", "atletismo", "patinaje")
+
+
+def comeback_channels(root: Path, cfg: dict[str, Any]) -> list[str]:
+    """The sports channels whose «caída y regreso» candidates are looked for (radar.comeback_channels)."""
+
+    return [str(c) for c in cfg.get("comeback_channels", DEFAULT_COMEBACK_CHANNELS)]
+
+
+def comeback_queries(root: Path, channel: str) -> list[str]:
+    """canales/<canal>.yaml → radar.comeback_queries, else «<canal> regreso» and «<canal> vuelve a competir»."""
+
+    ctx = RunContext.create("_radar", root=root, channel=channel)
+    own = [str(q) for q in ctx.section("radar").get("comeback_queries") or []]
+    return own or [f"{channel} regreso", f"{channel} vuelve a competir"]
+
+
+def comebacks(videos: list[dict[str, Any]], keep: int = 3) -> list[dict[str, Any]]:
+    """The 2-3 comeback stories of the last days: grouped stories whose titles say «vuelve», «regresa», «comeback»…,
+    and single videos that say it too (a comeback is often told by one video only)."""
+
+    unique = {v["id"]: v for v in videos}.values()
+    stories = [s for s in group(list(unique), keep=30) if any(COMEBACK.search(str(v.get("title") or "")) for v in s["videos"])]
+    told = {v["id"] for s in stories for v in s["videos"]}
+    for v in unique:
+        if v["id"] not in told and COMEBACK.search(str(v.get("title") or "")):
+            stories.append({"name": str(v["title"])[:70], "speed": round(v["perHour"]), "views": v["views"], "channels": 1,
+                            "score": round(v["perHour"]), "videos": [v]})
+    return sorted(stories, key=lambda s: -s["score"])[:keep]
 
 
 def _save(root: Path, report: dict[str, Any]) -> dict[str, Any]:
@@ -173,6 +217,9 @@ def idea_for(story: dict[str, Any], channel: str = "") -> dict[str, Any]:
 
 def telegram_lines(report: dict[str, Any], per: int = 2) -> list[str]:
     lines = []
+    for name, stories in (report.get("comebacks") or {}).items():
+        for s in stories:
+            lines.append(f"  🔁 {name} · caída y regreso: {s['name']} · {s['speed']:,}/h".replace(",", "."))
     for name, stories in report.get("channels", {}).items():
         hot = [s for s in stories if s["channels"] >= 2][:per] or stories[:1]
         for s in hot:

@@ -890,6 +890,9 @@ def radar_state(root: Path) -> dict[str, Any]:
     for name, stories in (news or {}).get("channels", {}).items():
         for story in stories:
             story["idea"] = noticias.idea_for(story, name)
+    for name, stories in (news or {}).get("comebacks", {}).items():
+        for story in stories:
+            story["idea"] = {**noticias.idea_for(story, name), "format": "caida-y-regreso"}
     from . import huecos
 
     return {"latest": radar.latest(root), "niches": niches, "job": job_state(root, "radar"), "gaps": huecos.ranked(root),

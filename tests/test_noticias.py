@@ -78,3 +78,15 @@ def test_niches_are_discovered_from_small_channels_outliers(tmp_path, monkeypatc
     monkeypatch.setattr(lab, "outliers", lambda ctx, q, **kw: other.append(q) or [])
     radar.discover(ctx, None, {"discovery_per_day": 2}, [], date(2026, 10, 7))
     assert set(other).isdisjoint(asked)                                   # another day, other searches
+
+
+def test_comeback_candidates_are_the_stories_that_say_someone_is_back():
+    from pipeline import noticias
+
+    def v(i, title, per_hour):
+        return {"id": f"v{i}", "title": title, "channel": f"c{i}", "views": per_hour * 10, "perHour": per_hour}
+
+    videos = [v(1, "Trusova vuelve y gana en Almaty", 900), v(2, "Trusova vuelve a competir siendo madre", 500),
+              v(3, "Biles regresa al tapiz", 300), v(4, "Resultados del mundial de gimnasia", 2000)]
+    picked = noticias.comebacks(videos)
+    assert [s["name"] for s in picked][:2] == ["Trusova Vuelve", "Biles regresa al tapiz"] and len(picked) == 2
