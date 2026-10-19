@@ -467,6 +467,9 @@ async function newVideo() {
           ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select></div>
         <div><label>Serie <span class="muted">(opcional)</span></label><input id="serie" placeholder="p. ej. fracasos"></div>
       </div>
+      <label>Idioma del vídeo <span class="muted">(el guion ya en ese idioma: se lee con la voz de ese idioma del canal, la de «Doblaje»)</span></label>
+      <select id="language"><option value="es">Español</option><option value="pt">Português (Brasil)</option><option value="en">English</option>
+        <option value="fr">Français</option><option value="it">Italiano</option><option value="de">Deutsch</option></select>
       <label>Título de trabajo <span class="muted">(opcional: los títulos de YouTube se escriben solos)</span></label><input id="title">
       <label>Guion <span class="muted">— pégalo o</span> <input type="file" id="scriptfile" accept=".txt,.md" style="width:auto;display:inline;padding:4px"></label>
       <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
@@ -523,7 +526,7 @@ async function createVideo() {
   $("#create").disabled = true; msg.textContent = "Creando…";
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
-      serie: $("#serie").value, title: $("#title").value, script: $("#script").value, idea: window.prefill ? window.prefill.idea : null});
+      serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, idea: window.prefill ? window.prefill.idea : null});
     window.prefill = null; try { sessionStorage.removeItem("prefill"); } catch (e) {}
     if (auto) { location.hash = "#/video/" + encodeURIComponent(made.slug); return; }   // GenAIPro makes the voice
     msg.textContent = "Subiendo la voz…"; $("#upbar").classList.remove("hide");

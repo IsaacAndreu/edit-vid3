@@ -630,8 +630,14 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
 
         (folder / "idea.md").write_text(brief(body["idea"]), encoding="utf-8")
     extra = {k: str(body[k]).strip() for k in ("serie", "format") if str(body.get(k) or "").strip()}
-    if extra:
-        (folder / "config.yaml").write_text("".join(f"{k}: {v}\n" for k, v in extra.items()), encoding="utf-8")
+    lang = str(body.get("language") or "es").strip()
+    if lang not in ("es", "en", "pt", "fr", "it", "de"):
+        raise ValueError(f"Idioma desconocido: {lang}")
+    lines = "".join(f"{k}: {v}\n" for k, v in extra.items())
+    if lang != "es":                       # a video made directly in another language: its voice, texts and titles
+        lines += f"align:\n  language: {lang}\n"
+    if lines:
+        (folder / "config.yaml").write_text(lines, encoding="utf-8")
     return {"slug": name, "folder": str(folder.relative_to(root))}
 
 

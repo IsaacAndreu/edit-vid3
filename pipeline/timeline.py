@@ -72,6 +72,18 @@ OPEN_PUNCT = "«“\"'(¡"
 CLOSE_PUNCT = "»”\"')"
 
 
+def locale_for(lang: str) -> dict[str, str]:
+    """A video made directly in another language (align.language: pt…): «CAPÍTULO», «Fuente» and the end screen in it."""
+
+    from .dub import ENDSCREEN, LANGUAGES
+
+    if lang.startswith("es") or lang not in LANGUAGES:
+        return {}
+    _, chapter, source = LANGUAGES[lang]
+    next_word, subscribe = ENDSCREEN[lang]
+    return {"chapter": chapter, "source": source, "next": next_word, "subscribe": subscribe}
+
+
 def question_spans(words: WordsFile) -> list[tuple[int, int]]:
     """(first, last) word indexes of each question in the script."""
 
@@ -1354,6 +1366,7 @@ def run(ctx: RunContext) -> None:
             duckedVolume=float(cfg.get("music_volume", 0.25)) * 10 ** (-float(cfg.get("duck_db", 18)) / 20),
             speech=speech_segments(words, fps), sfx=sfx,
         ),
+        locale=locale_for(str(ctx.section("align").get("language", "es"))),
     )
     cold = ctx.work_dir / "coldopen.json"
     opening = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")) if cold.is_file() else None

@@ -71,6 +71,19 @@ def voice_for(root: Path, channel: str) -> dict[str, Any] | None:
     return configured.get(parent) if parent else None
 
 
+def voice_for_video(ctx: Any) -> dict[str, Any] | None:
+    """The voice of this video: the channel's, or for a video in another language (align.language), the channel's
+    voice for that language in «Doblaje» (else the channel's own with the multilingual model)."""
+
+    lang = str(ctx.section("align").get("language", "es"))
+    if lang.startswith("es"):
+        return voice_for(ctx.root, ctx.channel or "")
+    from .doblaje import settings
+
+    spec = (settings(ctx)["voices"] or {}).get(lang) or {}
+    return {**DEFAULTS, **spec} if spec.get("voice_id") else voice_for(ctx.root, ctx.channel or "")
+
+
 def set_voice(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:
     """From the studio: {voice_id, name?, model_id?, stability?, similarity?, style?, speed?}; voice_id "" removes it."""
 
@@ -529,7 +542,7 @@ def ensure(ctx: Any, wait: bool = True) -> bool:
     script = ctx.materials_dir / "guion.txt"
     if voice_file.is_file() or not script.is_file():
         return False
-    voice = voice_for(ctx.root, ctx.channel or "")
+    voice = voice_for_video(ctx)
     if not voice:
         return False
     lock = ctx.materials_dir / LOCK

@@ -123,3 +123,51 @@ def test_your_own_translation_is_used_and_a_hand_made_dub_is_never_redone(tmp_pa
     assert is_done(tmp_path, "yulo-pt") and doblaje.status(tmp_path, "yulo")[0]["manual"]
     doblaje.mark_manual(tmp_path, "yulo", "pt", False)
     assert not is_done(tmp_path, "yulo-pt")
+
+
+def test_a_new_video_in_portuguese_uses_the_portuguese_voice_and_words(tmp_path):
+    from pipeline import tts, web
+    from pipeline.context import RunContext
+    from pipeline.timeline import locale_for
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("format: historia\n")
+    tts.set_voice(tmp_path, "gimnasia", {"voice_id": "es-voice"})
+    tts.set_dubbing(tmp_path, "gimnasia", {"languages": ["pt"], "voices": {"pt": {"voice_id": "pt-voice"}}})
+    made = web.create_video(tmp_path, {"name": "biles-pt", "channel": "gimnasia", "script": "Olá. " * 60, "language": "pt"})
+    ctx = RunContext.create(made["slug"], root=tmp_path)
+    assert ctx.section("align")["language"] == "pt" and tts.voice_for_video(ctx)["voice_id"] == "pt-voice"
+    spanish = web.create_video(tmp_path, {"name": "biles", "channel": "gimnasia", "script": "Hola. " * 60})
+    assert tts.voice_for_video(RunContext.create(spanish["slug"], root=tmp_path))["voice_id"] == "es-voice"
+    assert locale_for("pt")["chapter"] == "CAPÍTULO" and locale_for("pt")["subscribe"] == "INSCREVA-SE" and locale_for("es") == {}
+    with pytest.raises(ValueError):
+        web.create_video(tmp_path, {"name": "x", "channel": "gimnasia", "script": "Hola. " * 60, "language": "xx"})
+
+
+def test_a_dub_of_a_cleaned_original_downloads_its_clips_again(tmp_path, monkeypatch):
+    import json
+
+    from pipeline import dub, runner
+    from pipeline.context import RunContext
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    video = tmp_path / "materiales" / "atleti10"
+    video.mkdir(parents=True)
+    ctx = RunContext.create("atleti10", root=tmp_path, config={})
+    ctx.work_dir.mkdir(parents=True)
+    (ctx.work_dir / "timeline.json").write_text(json.dumps({"shots": [{"media": {"src": "coldopen/c01.mp4"}},
+                                                                      {"media": {"src": "audio/voz.mp3"}}]}))
+    (ctx.work_dir / "audio").mkdir()
+    (ctx.work_dir / "audio" / "voz.mp3").write_bytes(b"x")
+    assert dub.missing_media(ctx) == ["coldopen/c01.mp4"]
+    calls = []
+
+    def fake(c, force, until):
+        calls.append((sorted(force), until))
+        (c.work_dir / "coldopen").mkdir()
+        (c.work_dir / "coldopen" / "c01.mp4").write_bytes(b"x")
+
+    monkeypatch.setattr(runner, "run_stages", fake)
+    dub.restore_original(ctx)
+    assert calls == [(["coldopen", "fallback", "ingest", "people", "timeline"], "timeline")] and not dub.missing_media(ctx)

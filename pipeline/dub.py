@@ -372,11 +372,51 @@ def _script_from_voice(ctx: RunContext) -> None:
     (ctx.materials_dir / "guion.txt").write_text(text + "\n", encoding="utf-8")
 
 
+def missing_media(original: RunContext) -> list[str]:
+    """Files of the original's timeline that are gone (its heavy folders cleaned after it was finished)."""
+
+    timeline = original.read_json("timeline.json")
+    found: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            src = value.get("src")
+            if isinstance(src, str) and src and not (original.work_dir / src).exists() \
+                    and src.split("/", 1)[0] in LINKED:
+                found.append(src)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(timeline)
+    return found
+
+
+def restore_original(original: RunContext) -> None:
+    """A video finished (and cleaned) before it was dubbed: its clips are gone. They are downloaded again from its own
+    selection (ingest, people, fill-in, cold open) and its timeline rebuilt, so the dub has something to reuse."""
+
+    gone = missing_media(original)
+    if not gone:
+        return
+    from .runner import run_stages
+
+    print(f"   El original {original.slug} ya no tiene {len(gone)} de sus archivos (se limpiaron al terminarlo): "
+          "los vuelvo a descargar de su propia selección")
+    run_stages(original, force={"ingest", "people", "fallback", "coldopen", "timeline"}, until="timeline")
+    still = missing_media(original)
+    if still:
+        raise RuntimeError(f"Faltan {len(still)} archivos del original {original.slug} (p. ej. {still[0]})")
+
+
 def run(ctx: RunContext) -> None:
     cfg = ctx.section("dub")
     original = RunContext.create(str(cfg["of"]), root=ctx.root)
     lang = str(cfg.get("lang") or ctx.section("align").get("language", "en"))
     language, chapter_word, source_word = LANGUAGES.get(lang, (lang, "CHAPTER", "Source"))
+    restore_original(original)
     old_timeline = original.read_json("timeline.json")
     old_words = original.read_json("words.json")
 
