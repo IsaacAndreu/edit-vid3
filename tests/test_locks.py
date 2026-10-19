@@ -47,14 +47,19 @@ def test_a_bigger_machine_gives_a_group_more_places(tmp_path, monkeypatch):
     monkeypatch.setenv(locks.ENV, "1")
     (tmp_path / "config.yaml").write_text("queue:\n  slots:\n    red: 2\n")
     assert locks.slots(tmp_path, "red") == 2 and locks.slots(tmp_path, "cpu") == 1
-    inside, most = [], [0]
+    inside, most, done = [], [0], []
 
     def video(name):
         with locks.turn(tmp_path, "sourcing", name, poll=0.02):
             inside.append(name)
             most[0] = max(most[0], len(inside))
-            time.sleep(0.15)
+            deadline = time.monotonic() + 2           # hold the place until a second video is in (never a race)
+            while len(inside) < 2 and time.monotonic() < deadline and len(inside) + len(done) < 3:
+                time.sleep(0.01)
+            most[0] = max(most[0], len(inside))
+            time.sleep(0.05)
             inside.remove(name)
+            done.append(name)
 
     workers = [threading.Thread(target=video, args=(f"v{i}",)) for i in range(3)]
     for w in workers:
