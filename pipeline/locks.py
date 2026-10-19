@@ -74,6 +74,11 @@ def _take(path: Path, label: str) -> bool:
                 owner = 0
             if _alive(owner):
                 return False
+            try:                                 # empty: just created, its owner is writing its PID right now
+                if owner == 0 and time.time() - path.stat().st_mtime < 10:
+                    return False
+            except OSError:
+                continue
             path.unlink(missing_ok=True)
     return False
 
