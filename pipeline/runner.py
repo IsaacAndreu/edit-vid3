@@ -193,12 +193,24 @@ def run_stages(
                                encoding="utf-8")
             from .housekeeping import Sampler
 
-            with turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
-                started = time.monotonic()
-                with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
-                    stage.run(ctx)
-            if stage.validate is not None:
-                stage.validate(ctx)
+            try:
+                with turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
+                    started = time.monotonic()
+                    with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
+                        stage.run(ctx)
+                if stage.validate is not None:
+                    stage.validate(ctx)
+            except BaseException:
+                # The stage stopped (an error, waiting for the API quota…): the file stays for the failure notice
+                # (which stage), marked as ended, or the studio would show it «haciendo» while the queue (the same
+                # process, still alive) goes on with other videos — mega11 showed «Buscar material desde hace 6 h».
+                try:
+                    current.write_text(json.dumps({**json.loads(current.read_text("utf-8")),
+                                                   "ended": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
+                                       encoding="utf-8")
+                except (OSError, ValueError):
+                    pass
+                raise
             marker = _marker(ctx, stage)
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.write_text(

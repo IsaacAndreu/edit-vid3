@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+
+import pytest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -320,3 +322,28 @@ def test_while_youtube_blocks_the_videos_that_no_longer_need_it_go_on(tmp_path):
             patch.object(main, "notify", lambda *a, **k: None):
         failures = main.run_queue(force=set(), until=None, review=False, root=tmp_path, check=False)
     assert sorted(ran) == ["DOWNLOADED", "DUB"] and failures == 0
+
+
+def test_a_stage_that_stops_is_not_shown_as_still_running(tmp_path, monkeypatch):
+    import json as _json
+
+    from pipeline import runner, web
+    from pipeline.context import RunContext
+
+    _materials(tmp_path, "mega11")
+    (tmp_path / "config.yaml").write_text("{}\n")
+    ctx = RunContext.create("mega11", root=tmp_path, config={})
+
+    class Stop(RuntimeError):
+        pass
+
+    def boom(ctx):
+        raise Stop("cuota")
+
+    stage = runner.STAGES[0]
+    monkeypatch.setattr(runner, "STAGES", [runner.Stage(**{**stage.__dict__, "run": boom, "validate": None})])
+    monkeypatch.setattr(runner, "is_up_to_date", lambda ctx, stage: False)
+    with pytest.raises(Stop):
+        runner.run_stages(ctx)
+    current = _json.loads((ctx.work_dir / "current.json").read_text())
+    assert current["stage"] == stage.name and current["ended"] and web.running(current) is None

@@ -96,7 +96,7 @@ def _json_yaml(path: Path) -> dict[str, Any]:
 def running(current: dict[str, Any] | None) -> dict[str, Any] | None:
     """current.json only while its process lives (a killed run leaves the file behind)."""
 
-    if not current:
+    if not current or current.get("ended"):          # a stage that stopped (error, waiting for quota)
         return None
     pid = current.get("pid")
     if not pid:
@@ -841,7 +841,7 @@ def fix_video(root: Path, slug: str) -> dict[str, Any]:
     find_video(root, slug)
     if not feedback.wrong_shots(root / "work" / slug):
         raise ValueError("No hay clips marcados como incorrectos en este vídeo")
-    if (root / "work" / slug / "current.json").is_file():
+    if running(_json(root / "work" / slug / "current.json")):
         raise ValueError("Este vídeo ya se está haciendo")
     return background(root, f"corregir-{slug}", ["--slug", slug, "--force", "fallback"])
 
