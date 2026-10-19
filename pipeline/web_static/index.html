@@ -158,6 +158,16 @@
   }
   .kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 820px) { .kpis { grid-template-columns: 1fr 1fr; } .hero { flex-direction: column; } .hero button { padding: 12px; } }
+  /* the home on a phone: one strip says it all (state, making, failing, to upload); the big search and the cards go */
+  .glance { display: none; }
+  @media (max-width: 600px) {
+    .home-search, .home-kpis { display: none; }
+    .glance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 12px; }
+    .glance a { display: block; text-align: center; padding: 10px 4px; border-radius: 12px; background: var(--panel);
+      border: 1px solid var(--line); color: inherit; text-decoration: none; }
+    .glance .n { font-size: 22px; font-weight: 800; line-height: 1.1; } .glance .l { font-size: 11px; color: var(--muted); }
+    .glance a.bad { border-color: var(--bad); } .glance a.bad .n { color: var(--bad); }
+  }
   .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: block; color: var(--text); }
   a.kpi:hover { border-color: var(--muted); }
   .kpi .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
@@ -301,14 +311,15 @@ function vrow(v, right = "") {
     <div class="r">${right || pill(v.status)}</div></a>`;
 }
 
-function block(title, list, {cls = "", right = null, more = "", open = true, collapsible = false, limit = 0} = {}) {
+function block(title, list, {cls = "", right = null, more = "", open = true, collapsible = false, limit = 0, id = ""} = {}) {
   if (!list.length) return "";
   const shown = limit ? list.slice(0, limit) : list;
   const rows = shown.map((v) => vrow(v, right ? right(v) : "")).join("")
     + (limit && list.length > limit ? `<div class="vrow" style="cursor:default"><span></span><span class="small muted">y ${list.length - limit} más…</span><span></span></div>` : "");
   const head = `<b>${title}<span class="count">${list.length}</span></b>${more ? `<span class="small">${more}</span>` : ""}`;
-  return collapsible ? `<details class="block ${cls}" ${open ? "open" : ""}><summary>${head}</summary>${rows}</details>`
-    : `<div class="block ${cls}"><div class="bh">${head}</div>${rows}</div>`;
+  const anchor = id ? ` id="${id}"` : "";
+  return collapsible ? `<details${anchor} class="block ${cls}" ${open ? "open" : ""}><summary>${head}</summary>${rows}</details>`
+    : `<div${anchor} class="block ${cls}"><div class="bh">${head}</div>${rows}</div>`;
 }
 
 let homeData = null;
@@ -347,12 +358,18 @@ function drawHome() {               // the channel buttons redraw from what is a
   const when = (v) => { const d = (slot[v.slug] || {}).date; if (!d) return '<span class="muted">sin día</span>';
     return d < today ? `<span style="color:var(--bad)">⚠️ tocaba ${DAY(d)}</span>` : d === today ? `<b style="color:var(--accent)">hoy · ${esc(slot[v.slug].time || "")}</b>` : `📅 ${DAY(d)}`; };
   $("#app").innerHTML = `
-    <form class="hero" onsubmit="event.preventDefault();searchFrom(this.q.value)">
+    <div class="glance">
+      <a href="#/servidor" class="${s.youtubeBlocked ? "bad" : ""}"><div class="n">${s.youtubeBlocked ? "⛔" : s.paused ? "⏸" : s.watching ? "●" : "○"}</div>
+        <div class="l">${s.youtubeBlocked ? "YouTube bloquea" : s.paused ? "en pausa" : s.watching ? "trabajando" : "parado"}</div></a>
+      <a href="javascript:void(0)" onclick="document.getElementById('h-now')?.scrollIntoView({behavior:'smooth'})"><div class="n">${all.filter((v) => v.status === "haciendo").length}</div><div class="l">haciéndose</div></a>
+      <a href="javascript:void(0)" class="${attention.length ? "bad" : ""}" onclick="document.getElementById('h-warn')?.scrollIntoView({behavior:'smooth'})"><div class="n">${attention.length}</div><div class="l">fallan</div></a>
+      <a href="#/subir"><div class="n">${all.filter((v) => v.status === "hecho" && !v.published).length}</div><div class="l">para subir${late ? ` · <span style="color:var(--bad)">${late} tarde</span>` : ""}</div></a></div>
+    <form class="hero home-search" onsubmit="event.preventDefault();searchFrom(this.q.value)">
       <textarea name="q" placeholder="🔎 ¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}"></textarea>
       <button class="main">Buscar</button></form>
-    <div class="kpis">
-      <a class="kpi" href="#/ajustes"><div class="k">Servidor</div><div class="v" style="font-size:19px;margin:6px 0 2px">${state[0]}</div><div class="d">${state[1]}</div></a>
+    <div class="kpis home-kpis">
+      <a class="kpi" href="#/servidor"><div class="k">Servidor</div><div class="v" style="font-size:19px;margin:6px 0 2px">${state[0]}</div><div class="d">${state[1]}</div></a>
       <a class="kpi" href="#/subir"><div class="k">Para subir</div><div class="v">${all.filter((v) => v.status === "hecho" && !v.published).length}</div>
         <div class="d">${late ? `<span style="color:var(--bad)">${late} atrasado(s)</span>` : "al día"} →</div></a>
       <div class="kpi"><div class="k">En cola</div><div class="v">${all.filter((v) => v.status === "en cola").length + all.filter((v) => v.status === "haciendo").length}</div>
@@ -363,11 +380,11 @@ function drawHome() {               // the channel buttons redraw from what is a
     </div>
     ${channels.length > 1 ? `<div class="chiprow">${["", ...channels].map((c) => `<button class="${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">
       ${c ? `<span class="dot" style="background:${chColor(c)};margin-right:6px"></span>${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : ""}
-    ${block("▶ Haciéndose ahora", by("haciendo"), {cls: "now"})}
-    ${block("⚠️ Necesitan tu atención", attention, {cls: "warn", more: failed ? `<button onclick="retryAll()">Reintentar todos (${failed})</button><span id="retrymsg" class="muted"></span>` : "",
+    ${block("⚠️ Necesitan tu atención", attention, {cls: "warn", id: "h-warn", more: failed ? `<button onclick="retryAll()">Reintentar todos (${failed})</button><span id="retrymsg" class="muted"></span>` : "",
       right: (v) => v.status === "incompleto" ? '<span class="pill">falta guion o voz</span>'
         : v.status === "en pausa" ? `${pill(v.status)} <button onclick="event.preventDefault();event.stopPropagation();unholdHome('${esc(v.slug)}')">Volver a la cola</button>`
         : pill(v.status)})}
+    ${block("▶ Haciéndose ahora", by("haciendo"), {cls: "now", id: "h-now"})}
     ${block("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
     ${block("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
       right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ espera API ${esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
