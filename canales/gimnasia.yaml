@@ -11,3 +11,6 @@ ideas:
   pattern: atleta + tensión + figura famosa
   competitors: ["@GymnastIcons"]
   niches: [gimnasia, atletismo, patinaje artístico]
+
+dubbing:
+  channels: {pt: gimnasia-br}      # el doblaje al portugués de cada vídeo va al canal brasileño, no a este

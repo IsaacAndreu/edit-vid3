@@ -80,8 +80,17 @@ def voice_for_video(ctx: Any) -> dict[str, Any] | None:
         return voice_for(ctx.root, ctx.channel or "")
     from .doblaje import settings
 
+    from .context import base_channel
+
     spec = (settings(ctx)["voices"] or {}).get(lang) or {}
-    return {**DEFAULTS, **spec} if spec.get("voice_id") else voice_for(ctx.root, ctx.channel or "")
+    if spec.get("voice_id"):
+        return {**DEFAULTS, **spec}
+    channel = ctx.channel or ""
+    if channel in voices(ctx.root):                      # the channel's own voice (gimnasia-br: its Brazilian voice)
+        return voice_for(ctx.root, channel)
+    parent = base_channel(ctx.root, channel) if channel else None
+    spec = ((dubbing_for(ctx.root, parent).get("voices") or {}).get(lang) or {}) if parent else {}
+    return {**DEFAULTS, **spec} if spec.get("voice_id") else voice_for(ctx.root, channel)   # its base's «pt» voice
 
 
 def set_voice(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:

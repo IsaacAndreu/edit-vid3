@@ -1,0 +1,19 @@
+# Canal brasileño de historias de atletas: el mismo molde que gimnasia (tarjetas de atleta, verificación de que
+# sale el atleta correcto, momentos exactos) pero en portugués de Brasil. `base: gimnasia` trae todo su perfil;
+# aquí solo va lo propio. Todo vídeo en materiales/gimnasia-br/ se hace en portugués (voz, textos y títulos), y los
+# doblajes al portugués de los vídeos de gimnasia vienen aquí (dubbing.channels en canales/gimnasia.yaml).
+# Su voz: estudio → Voces por canal → gimnasia-br (si no tiene, la voz «pt» del Doblaje de gimnasia).
+
+base: gimnasia
+
+align:
+  language: pt
+
+dubbing:
+  enabled: false                   # ya está en portugués: nunca se dobla a otro idioma desde aquí
+  channels: {}
+
+ideas:
+  about: 'un canal de YouTube en portugués de Brasil de documentales deportivos (historias de atletas: ginástica,
+    atletismo, patinação artística…) con el formato "historia de un atleta de ~10 min"'
+  niches: [ginástica artística, atletismo, patinação artística]

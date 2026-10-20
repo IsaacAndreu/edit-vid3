@@ -45,7 +45,8 @@ def settings(ctx: RunContext) -> dict[str, Any]:
 
     cfg = ctx.section("dubbing")
     out = {"enabled": bool(cfg.get("enabled", False)), "languages": [str(l) for l in cfg.get("languages", ["en"])],
-           "voices": dict(cfg.get("voices") or {}), "existing": True, "since": 0.0}
+           "voices": dict(cfg.get("voices") or {}), "existing": True, "since": 0.0,
+           "channels": {str(k): str(v) for k, v in (cfg.get("channels") or {}).items() if v}}
     channel = str(ctx.config.get("canal") or "")
     studio = tts.dubbing_for(ctx.root, channel) if channel else {}
     if studio:

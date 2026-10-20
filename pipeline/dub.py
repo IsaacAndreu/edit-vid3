@@ -88,6 +88,19 @@ def pending(root: Path) -> list[tuple[str, str]]:
     return out
 
 
+def dub_channel(root: Path, slug: str, lang: str) -> str | None:
+    """The channel this language's dub goes to (`dubbing.channels`, e.g. gimnasia's Portuguese → gimnasia-br), if any."""
+
+    from .context import CHANNELS_DIR
+    from .doblaje import settings
+
+    try:
+        channel = settings(RunContext.create(slug, root=root))["channels"].get(lang)
+    except Exception:
+        return None
+    return channel if channel and (root / CHANNELS_DIR / f"{channel}.yaml").is_file() else None
+
+
 def prepare(root: Path, slug: str, lang: str) -> str:
     """materiales/<slug>-<lang>/ with the new voice (+ translated script) and the dub config."""
 
@@ -97,7 +110,8 @@ def prepare(root: Path, slug: str, lang: str) -> str:
     voice = source / f"voz-{lang}.mp3"
     if not voice.is_file():
         raise FileNotFoundError(f"Falta {voice} (la narración traducida)")
-    target = source.parent / dub_slug(slug, lang)          # next to the original: same channel folder
+    channel = dub_channel(root, slug, lang)
+    target = (root / "materiales" / channel if channel else source.parent) / dub_slug(slug, lang)  # else next to it
     target.mkdir(parents=True, exist_ok=True)
     if not (target / "voz.mp3").is_file() or (target / "voz.mp3").stat().st_size != voice.stat().st_size:
         shutil.copy2(voice, target / "voz.mp3")
@@ -114,6 +128,8 @@ def prepare(root: Path, slug: str, lang: str) -> str:
     config.setdefault("align", {})["language"] = lang
     config["align"]["min_match_ratio"] = 0.6          # a translated script never matches word for word
     config["dub"] = {"of": slug, "lang": lang}
+    if channel:
+        config["canal"] = channel
     (target / "config.yaml").write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
     return target.name
 

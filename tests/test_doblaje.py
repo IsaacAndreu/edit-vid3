@@ -188,3 +188,29 @@ def test_a_video_made_in_portuguese_is_never_dubbed_to_portuguese(tmp_path, monk
     monkeypatch.setattr(doblaje, "voice", lambda ctx, lang: called.append(lang))
     assert doblaje.prepare_all(tmp_path, log=lambda *_: None) == 0 and called == []
     assert doblaje.status(tmp_path, made["slug"]) == []
+
+
+def test_brazilian_channel_gets_the_portuguese_dubs_and_speaks_with_their_voice(tmp_path):
+    from pipeline import web
+    from pipeline.context import RunContext
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("format: historia\ndubbing:\n  channels: {pt: gimnasia-br}\n")
+    (tmp_path / "canales" / "gimnasia-br.yaml").write_text("base: gimnasia\nalign:\n  language: pt\n")
+    tts.set_voice(tmp_path, "gimnasia", {"voice_id": "ES1"})
+    tts.set_dubbing(tmp_path, "gimnasia", {"languages": ["pt"], "voices": {"pt": {"voice_id": "PT1"}}})
+    made = web.create_video(tmp_path, {"name": "gimbr7", "channel": "gimnasia-br", "script": "Olá. " * 60})
+    ctx = RunContext.create(made["slug"], root=tmp_path)
+    assert ctx.channel == "gimnasia-br" and ctx.section("align")["language"] == "pt"
+    assert tts.voice_for_video(ctx)["voice_id"] == "PT1"                 # gimnasia's «pt» voice until it has its own
+    assert doblaje.status(tmp_path, made["slug"]) == []                  # never dubbed again
+    tts.set_voice(tmp_path, "gimnasia-br", {"voice_id": "BR1"})
+    assert tts.voice_for_video(ctx)["voice_id"] == "BR1"
+
+    original = web.create_video(tmp_path, {"name": "gim1", "channel": "gimnasia", "script": "Hola. " * 60})
+    (tmp_path / original["folder"] / "voz-pt.mp3").write_bytes(b"mp3")
+    name = dub.prepare(tmp_path, "gim1", "pt")
+    assert (tmp_path / "materiales" / "gimnasia-br" / name).is_dir()
+    dubbed = RunContext.create(name, root=tmp_path)
+    assert dubbed.channel == "gimnasia-br" and dubbed.section("dub")["of"] == "gim1"
