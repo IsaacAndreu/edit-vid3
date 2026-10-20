@@ -86,3 +86,18 @@ def test_graphic_texts_are_translated_but_not_paths_or_years():
     g = t["groups"][-1]["graphic"]
     assert g["title"] == "The road" and g["events"][0] == {"year": "2019", "text": "Gold in Stuttgart"}
     assert g["media"]["src"] == "people/x.png"
+
+
+def test_a_voice_still_being_written_is_not_a_language(tmp_path):
+    from pipeline import dub
+
+    folder = tmp_path / "materiales" / "gimnasia" / "gimbr6"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text("hola")
+    (folder / "voz.mp3").write_bytes(b"x")
+    (folder / "voz-pt.generando.mp3").write_bytes(b"x")       # GenAIPro writing it
+    (tmp_path / "out" / "gimbr6").mkdir(parents=True)
+    (tmp_path / "out" / "gimbr6" / "video-final.mp4").write_bytes(b"x")
+    assert dub.pending(tmp_path) == []
+    (folder / "voz-pt.mp3").write_bytes(b"x")
+    assert dub.pending(tmp_path) == [("gimbr6", "pt")]

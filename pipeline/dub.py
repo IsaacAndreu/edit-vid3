@@ -80,6 +80,8 @@ def pending(root: Path) -> list[tuple[str, str]]:
     out = []
     for voice in sorted(v for folder in video_folders(root) for v in folder.glob("voz-*.mp3")):
         slug, lang = voice.parent.name, voice.stem.split("-", 1)[1]
+        if lang not in LANGUAGES:            # voz-pt.generando.mp3: GenAIPro still writing it (gimbr6-pt.generando)
+            continue
         if (root / "out" / slug / "video-final.mp4").is_file() \
                 and not is_done(root, dub_slug(slug, lang)):
             out.append((slug, lang))
