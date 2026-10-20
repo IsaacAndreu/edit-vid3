@@ -115,6 +115,14 @@ def voice(ctx: RunContext, lang: str) -> bool:
         lock.unlink(missing_ok=True)
 
 
+def targets(ctx: RunContext, cfg: dict[str, Any]) -> list[str]:
+    """The languages this video is dubbed to: never its own (a video made in Portuguese is not dubbed to Portuguese:
+    the four gimbr videos got a second Portuguese voice from GenAIPro before this)."""
+
+    own = str(ctx.section("align").get("language", "es"))[:2]
+    return [lang for lang in cfg["languages"] if lang[:2] != own]
+
+
 OWN = ".guion-{lang}.propio"          # in the video's folder: guion-<lang>.txt was pasted by you, not translated
 MANUAL = "doblado-a-mano.json"         # in out/<slug>-<lang>/: you dubbed it yourself, the queue never does it
 
@@ -132,7 +140,7 @@ def status(root: Path, slug: str) -> list[dict[str, Any]]:
         return []
     folder = ctx.materials_dir
     out = []
-    for lang in cfg["languages"]:
+    for lang in targets(ctx, cfg):
         dubbed = f"{slug}-{lang}"
         script = folder / f"guion-{lang}.txt"
         out.append({"lang": lang, "name": NAMES.get(lang, lang), "slug": dubbed,
@@ -217,7 +225,7 @@ def prepare_all(root: Path, log: Any = print) -> int:
             continue
         final = root / "out" / folder.name / "video-final.mp4"
         old = not cfg["existing"] and cfg["since"] and final.is_file() and final.stat().st_mtime < cfg["since"]
-        for lang in cfg["languages"]:
+        for lang in targets(ctx, cfg):
             if (folder / f"voz-{lang}.mp3").is_file() or is_done(root, f"{folder.name}-{lang}"):
                 continue
             if old and not (folder / OWN.format(lang=lang)).is_file():

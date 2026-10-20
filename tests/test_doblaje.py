@@ -171,3 +171,20 @@ def test_a_dub_of_a_cleaned_original_downloads_its_clips_again(tmp_path, monkeyp
     monkeypatch.setattr(runner, "run_stages", fake)
     dub.restore_original(ctx)
     assert calls == [(["coldopen", "fallback", "ingest", "people", "timeline"], "timeline")] and not dub.missing_media(ctx)
+
+
+def test_a_video_made_in_portuguese_is_never_dubbed_to_portuguese(tmp_path, monkeypatch):
+    from pipeline import doblaje, tts, web
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("format: historia\n")
+    tts.set_dubbing(tmp_path, "gimnasia", {"languages": ["pt"], "voices": {"pt": {"voice_id": "pt-voice"}}})
+    made = web.create_video(tmp_path, {"name": "gimbr1", "channel": "gimnasia", "script": "Olá. " * 60, "language": "pt"})
+    (tmp_path / "out" / made["slug"]).mkdir(parents=True)
+    (tmp_path / "out" / made["slug"] / "video-final.mp4").write_bytes(b"x")
+    called = []
+    monkeypatch.setattr(doblaje, "translate", lambda ctx, lang: called.append(lang))
+    monkeypatch.setattr(doblaje, "voice", lambda ctx, lang: called.append(lang))
+    assert doblaje.prepare_all(tmp_path, log=lambda *_: None) == 0 and called == []
+    assert doblaje.status(tmp_path, made["slug"]) == []
