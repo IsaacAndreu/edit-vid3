@@ -12,4 +12,7 @@ graficos: |
   Este vídeo es un iceberg: el iceberg sale solo al empezar cada nivel. Aparte, usa "press" para las noticias de
   un caso, "timeline" para los casos con varias fechas y "kinetic" para el dato más oscuro.
 segundos_por_grafico: 110
+ajustes:
+  graphics:
+    max: 25                        # los icebergs son largos (40-60 min): ~1 gráfico cada 110 s hasta 25, más el iceberg de cada nivel
 titulos: "patrón de título de iceberg: 'El iceberg de <tema>' o 'El iceberg de <tema>: de lo que sabes a lo que nadie cuenta'."
