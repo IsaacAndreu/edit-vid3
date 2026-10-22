@@ -625,7 +625,7 @@ def iceberg(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
         print(f"   Iceberg no disponible: {str(error)[:120]}")
         return []
     levels = [lv for lv in sorted((x for x in result.get("levels", []) if isinstance(x, dict)), key=lambda x: _as_int(x.get("sentence")))
-              if 0 <= _as_int(lv.get("sentence")) < len(sents) and str(lv.get("title") or "").strip()][:8]
+              if 0 <= _as_int(lv.get("sentence")) < len(sents) and str(lv.get("title") or "").strip()][:12]
     if len(levels) < 2:
         return []
     titles = [str(lv["title"]).strip()[:40] for lv in levels]
@@ -641,7 +641,7 @@ def iceberg(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
             continue
         before = [{"name": i["name"], "level": i["level"]} for i in items if i["level"] < k and sents[i["sentence"]]["start"] < start]
         out.append({"start": start, "end": start + seconds, "ranked": True, "graphic": {
-            "type": "iceberg", "levels": titles, "current": k, "items": before[:24]}})
+            "type": "iceberg", "levels": titles, "current": k, "items": before[-40:]}})
     return out
 
 
