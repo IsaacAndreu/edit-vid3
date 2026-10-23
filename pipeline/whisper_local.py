@@ -111,10 +111,11 @@ def _transcribe_gpu(audio_path: Path, model: str, language: str) -> dict[str, An
         return None
 
 
-def _transcribe_openai(audio_path: Path, api_key: str) -> dict[str, Any]:
-    from openai import OpenAI
+OPENAI_MAX_BYTES = 24_000_000          # the API refuses files over 25 MB (a ~1 h voice at 64 kbps: «413»)
+OPENAI_CHUNK_SECONDS = 1800            # over the limit: mono 32 kbps pieces of 30 min (~7 MB each)
 
-    client = OpenAI(api_key=api_key)
+
+def _transcribe_openai_file(client: Any, audio_path: Path) -> dict[str, Any]:
     with audio_path.open("rb") as audio_file:
         response = client.audio.transcriptions.create(
             model="whisper-1",
@@ -128,6 +129,39 @@ def _transcribe_openai(audio_path: Path, api_key: str) -> dict[str, Any]:
         for item in payload.get("words") or []
     ]
     return {"duration": float(payload.get("duration") or 0.0), "language": payload.get("language"), "words": words}
+
+
+def _pieces(audio_path: Path, folder: Path) -> list[Path]:
+    """The voice in mono 32 kbps pieces: small enough for the API, the same timings once offset."""
+
+    import subprocess
+
+    pattern = folder / "trozo-%03d.mp3"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(audio_path), "-vn", "-ac", "1", "-ar", "16000",
+                    "-b:a", "32k", "-f", "segment", "-segment_time", str(OPENAI_CHUNK_SECONDS), "-reset_timestamps", "1",
+                    str(pattern)], check=True)
+    return sorted(folder.glob("trozo-*.mp3"))
+
+
+def _transcribe_openai(audio_path: Path, api_key: str) -> dict[str, Any]:
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key)
+    if audio_path.stat().st_size <= OPENAI_MAX_BYTES:
+        return _transcribe_openai_file(client, audio_path)
+    import tempfile
+
+    out: dict[str, Any] = {"duration": 0.0, "language": None, "words": []}
+    with tempfile.TemporaryDirectory() as tmp:
+        pieces = _pieces(audio_path, Path(tmp))
+        print(f"   Voz de {audio_path.stat().st_size / 1e6:.0f} MB: a Whisper en {len(pieces)} trozos")
+        for piece in pieces:
+            raw = _transcribe_openai_file(client, piece)
+            offset = out["duration"]
+            out["words"] += [{**w, "start": w["start"] + offset, "end": w["end"] + offset} for w in raw["words"]]
+            out["duration"] = offset + raw["duration"]
+            out["language"] = out["language"] or raw["language"]
+    return out
 
 
 def transcribe(
