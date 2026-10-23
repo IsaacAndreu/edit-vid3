@@ -312,3 +312,14 @@ def test_the_hook_prefers_a_long_valid_shot_to_a_short_invalid_one():
     shots = cut_shots(words, 8.0, target=1.6, forced_starts=set(), targets=[1.6] * 4, maxes=[2.4] * 4)
     starts = [words[a].start for a, _ in shots] + [8.0]
     assert all(b - a >= 1.5 for a, b in zip(starts, starts[1:]))
+
+
+def test_a_word_whisper_stretched_over_a_pause_can_still_be_cut():
+    # patiICE s957: Whisper gave «capa.» 7 s (the pause after it): no word boundary made a valid shot
+    items = [("a", 0.0, 0.4), ("b", 0.5, 0.9), ("c", 1.0, 1.4), ("esa", 1.5, 1.7), ("capa.", 1.8, 9.0),
+             ("Octava", 9.1, 9.6), ("capa.", 9.7, 10.2), ("La", 10.3, 10.5), ("campeona", 10.6, 11.2), ("fin.", 11.3, 11.8)]
+    words = [Word.model_validate({"index": i, "text": t, "start": a, "end": b, "matched": True,
+                                  "sentenceEnd": t.endswith(".")}) for i, (t, a, b) in enumerate(items)]
+    shots, starts = cut_shots(words, 12.0, target=2.6, forced_starts={5}, with_times=True)
+    ends = starts[1:] + [12.0]
+    assert all(1.5 - 1e-6 <= e - s <= 5.0 + 1e-6 for s, e in zip(starts, ends)), list(zip(starts, ends))

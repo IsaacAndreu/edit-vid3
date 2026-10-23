@@ -36,6 +36,7 @@ _FUNCTION_WORDS = frozenset(
     "donde como cada".split()
 )
 _SOFT_PUNCT = (",", ";", ":", ")", "»", "”", "—")
+WORD_SECONDS = 1.2                   # no spoken word lasts longer: the rest is a pause
 MAX_SHOT_SECONDS_DEFAULT = 4.0       # ordinary shots; only `slow` passages go up to MAX_SHOT_SECONDS
 
 
@@ -220,6 +221,9 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         f"[{n}] ({_fmt_time(words[a].start)}) " + " ".join(w.text for w in words[a : b + 1])
         for n, (a, b) in enumerate(sentences)
     )
+    # a long video has many more events to list (patiICE, 68 min: 2000 tokens cut the answer and left it without
+    # protagonist or events): 2000 for 10 min, up to 8000
+    room = int(min(8000, max(2000, words_file.durationSeconds / 600 * 2000)))
     if words_file.chapters:
         chapters = [
             PlanChapter(title=c.title.upper()[:48], startWord=c.wordIndex, fromScript=True) for c in words_file.chapters
@@ -229,7 +233,7 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         # left a story about Trusova without protagonist: no identity checks, no judge context, Pexels people.
         try:
             result = complete_json(
-                ctx, stage=STAGE, section="planner", system=outline_system(ctx), max_tokens=2000,
+                ctx, stage=STAGE, section="planner", system=outline_system(ctx), max_tokens=room,
                 user=f"TÍTULO: {words_file.title}\n\nLos capítulos ya están en el guion: devuelve \"chapters\": [].\n\n"
                      f"FRASES:\n{listing}")
         except LLMError as error:
@@ -247,7 +251,7 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
                 section="planner",
                 system=outline_system(ctx),
                 user=f"TÍTULO: {words_file.title}\n\nFRASES:\n{listing}{feedback}",
-                max_tokens=2000,
+                max_tokens=room,
             )
             try:
                 chapters = _validate_outline(result, sentences, words)
@@ -319,11 +323,16 @@ def _boundary_times(words: list[Word], duration: float) -> list[list[float]]:
     n = len(words)
     times: list[list[float]] = [[0.0]]
     for b in range(1, n):
-        start, previous_end = words[b].start, words[b - 1].end
+        # Whisper often stretches the word before a pause over the whole silence (patiICE: a 6.8 s «word» left
+        # s957 over the maximum with no cut possible): past WORD_SECONDS it counts as silence too
+        start = words[b].start
+        previous_end = min(words[b - 1].end, words[b - 1].start + WORD_SECONDS)
         options = [start]
         if start - previous_end > 0.6:
-            options += [(start + previous_end) / 2, previous_end + 0.15]
-        times.append(options)
+            gap = start - previous_end
+            steps = min(20, int(gap / 0.5))
+            options += [previous_end + 0.15, *(previous_end + gap * k / steps for k in range(1, steps))]
+        times.append(sorted(set(options), reverse=True))
     times.append([duration])
     return times
 
