@@ -476,7 +476,7 @@ async function newVideo() {
       <label>Voz <span class="muted">(mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
       <div class="row" style="margin-top:18px"><button id="hookbtn" onclick="checkHook()">Revisar el gancho (antes de grabar)</button><span id="hookmsg" class="small muted"></span></div>
       <div id="hookbox"></div>
-      <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><span id="msg" class="small muted"></span></div>
+      <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><b id="msg" style="color:var(--accent)"></b></div>
       <div class="bar hide" id="upbar"><i style="width:0"></i></div>
     </div>`;
   $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
@@ -516,7 +516,8 @@ async function createVideo() {
   const voice = $("#voice").files[0], msg = $("#msg");
   let auto = false;
   if (!voice) {
-    try { auto = !!(await api("/api/voices")).voices[$("#channel").value]; } catch (e) {}
+    msg.textContent = "Comprobando…";
+    try { auto = !!(await api("/api/voices")).speaks[$("#channel").value]; } catch (e) {}   // gimnasia-br: gimnasia's voice
     if (!auto) { msg.textContent = "Falta el archivo de voz (o pon una voz a este canal en Ajustes → Voces por canal)"; return; }
   }
   // «¿ya lo hice?»: the same story twice is easy to miss with many channels. Warned on the page, a second click

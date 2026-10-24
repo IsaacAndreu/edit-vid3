@@ -1092,7 +1092,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok({"voices": tts.voices(root), "channels": channels(root), "models": list(tts.MODELS),
                                      "defaults": tts.DEFAULTS, "hasKey": bool(key),
                                      "dubbing": {c: tts.dubbing_for(root, c) for c in channels(root)},
-                                     "dubLanguages": list(tts.DUB_LANGUAGES)})
+                                     "dubLanguages": list(tts.DUB_LANGUAGES),
+                                     # who speaks a new video with no mp3: its own voice or its base channel's
+                                     "speaks": {c: tts.voice_for(root, c) is not None for c in channels(root)}})
                 if path == "/api/voices/search":
                     from . import tts
 
