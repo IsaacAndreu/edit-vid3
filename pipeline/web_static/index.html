@@ -519,10 +519,21 @@ async function createVideo() {
     try { auto = !!(await api("/api/voices")).voices[$("#channel").value]; } catch (e) {}
     if (!auto) { msg.textContent = "Falta el archivo de voz (o pon una voz a este canal en Ajustes → Voces por canal)"; return; }
   }
-  try {                                     // «¿ya lo hice?»: the same story twice is easy to miss with many channels
-    const twin = ((await post("/api/search", {q: $("#script").value})).results || []).find((r) => r.score >= 0.5);
-    if (twin && !confirm(`⚠️ Este guion se parece un ${Math.round(twin.score * 100)} % a «${twin.title || twin.slug}» (${twin.slug}, ${twin.published ? "ya en YouTube" : twin.status}).\n\n¿Crearlo igualmente?`)) return;
-  } catch (e) {}
+  // «¿ya lo hice?»: the same story twice is easy to miss with many channels. Warned on the page, a second click
+  // creates it: confirm() is silenced by some browsers and apps, and then the button did nothing at all
+  const said = $("#script").value;
+  if (window.twinOk !== said) {
+    msg.textContent = "Comprobando…";
+    try {
+      const twin = ((await post("/api/search", {q: said})).results || []).find((r) => r.score >= 0.5);
+      if (twin) {
+        window.twinOk = said;
+        msg.textContent = `⚠️ Este guion se parece un ${Math.round(twin.score * 100)} % a «${twin.title || twin.slug}» (${twin.slug}, ` +
+          `${twin.published ? "ya en YouTube" : twin.status}). Pulsa «Crear y poner en cola» otra vez para crearlo igualmente.`;
+        return;
+      }
+    } catch (e) {}
+  }
   $("#create").disabled = true; msg.textContent = "Creando…";
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
