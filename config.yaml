@@ -64,7 +64,8 @@ sourcing:
     # en config.local.yaml o en el config.yaml de un vídeo: scene_search: true. Valores por defecto (no se escriben
     # aquí para no rehacer las búsquedas de los vídeos a medias): scene_max_shots 4, scene_extra_queries 3
     # (api_scene_extra_queries 2), scene_videos 3 + scene_videos_per_shot 0.5 por plano, scene_videos_max 8.
-    # Actívala junto con judge.variety_margin: 0.02 (si no, las mismas fuentes se repiten más en pantalla).
+    # Con ella, el juez reparte las fuentes solo (variety_margin 0.03 y back_to_back_margin 0.05: nunca la misma fuente
+    # en dos planos seguidos si otra es casi igual de buena; pati7esc tenía 6 seguidas).
     concurrency: 3             # peticiones simultáneas a YouTube
     rate_backoff: 20           # s de pausa (x3 en cada reintento) cuando YouTube responde 429
     min_duration: 30           # s — descarta clips sueltos

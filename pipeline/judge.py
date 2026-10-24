@@ -209,13 +209,23 @@ def overused(candidate_id: str, selections: list[Selection], limit: int) -> bool
     return limit > 0 and sum(1 for s in selections if s.candidateId == candidate_id) >= limit
 
 
-def prefer_variety(usable: list[Option], selections: list[Selection], margin: float) -> Option | None:
+def prefer_variety(usable: list[Option], selections: list[Selection], margin: float, back_to_back: float = 0.0,
+                   same_event: Any = None) -> Option | None:
     """The first usable option; with `judge.variety_margin`, a source not on screen yet when it scores at most that
-    much less (replayed on two videos: 0.02 keeps the same quality and brings repeated sources down by a quarter)."""
+    much less (replayed on two videos: 0.02 keeps the same quality and brings repeated sources down by a quarter).
+    With `back_to_back` (judge.back_to_back_margin), never the previous shot's source again when another source
+    scores at most that much less (pati7esc, scene search: 6 shots in a row from one video, 1.7 searching per shot),
+    unless it is the night the story turns on (`same_event(option)`: its own broadcast may run on)."""
 
     if not usable:
         return None
     first = usable[0]
+    previous = next((s.candidateId for s in reversed(selections) if getattr(s, "status", "selected") == "selected"), None)
+    if back_to_back > 0 and previous and first.candidateId == previous and not (same_event and same_event(first)):
+        other = next((o for o in usable if o.candidateId != previous and o.total >= first.total - back_to_back), None)
+        if other is not None:
+            first = other
+            usable = [o for o in usable if o.candidateId != previous]
     if margin <= 0 or not any(s.candidateId == first.candidateId for s in selections):
         return first
     shown = {s.candidateId for s in selections}
@@ -556,6 +566,10 @@ def run(ctx: RunContext) -> None:
     # 2. Assign in shot order, never repeating a fragment.
     max_hamming = int(cfg.get("max_phash_distance", 6))
     per_source = source_cap(cfg, len(shots))           # avion8: one factory tour in 11 shots, one news aerial in 8
+    # the scene search hands every shot of a scene the same few videos: spread them unless asked otherwise
+    scenes = bool((ctx.section("sourcing").get("youtube") or {}).get("scene_search"))
+    variety = float(cfg.get("variety_margin", 0.03 if scenes else 0) or 0)
+    back_to_back = float(cfg.get("back_to_back_margin", 0.05 if scenes else 0.02) or 0)
     selections: list[Selection] = []
     for shot in shots:
         preference: list[Option] = plans[shot.id]
@@ -569,7 +583,8 @@ def run(ctx: RunContext) -> None:
         usable = [o for o in preference if not is_repeat(o, selections, max_hamming)
                   and not overused(o.candidateId, selections,
                                    per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))]
-        chosen = prefer_variety(usable, selections, float(cfg.get("variety_margin", 0) or 0))
+        chosen = prefer_variety(usable, selections, variety, back_to_back,
+                                lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))

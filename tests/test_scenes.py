@@ -213,3 +213,18 @@ def test_simulated_pick_counts_repeats_and_the_variety_margin_lowers_them():
     assert plain["simulatedSources"] == 1 and plain["simulatedRepeats"] == 0.75 and plain["visualBest"] == 0.4
     assert varied["simulatedSources"] == 2 and varied["simulatedRepeats"] == 0.5
     assert _visual_measures(options, sims, 0.2, {"v": 2})["simulatedSources"] == 2      # the per-source cap
+
+
+def test_the_previous_shots_source_is_not_used_again_when_another_is_nearly_as_good():
+    from types import SimpleNamespace
+
+    from pipeline.judge import prefer_variety
+
+    options = [SimpleNamespace(candidateId="yt:a", total=0.50), SimpleNamespace(candidateId="yt:b", total=0.46),
+               SimpleNamespace(candidateId="yt:c", total=0.30)]
+    before = [SimpleNamespace(candidateId="yt:b", status="selected"), SimpleNamespace(candidateId="yt:a", status="selected")]
+    assert prefer_variety(options, before, 0, 0.05).candidateId == "yt:b"          # not «a» twice in a row
+    assert prefer_variety(options, before, 0, 0.02).candidateId == "yt:a"          # «b» is too much worse
+    assert prefer_variety(options, before, 0, 0.05, lambda o: o.candidateId == "yt:a").candidateId == "yt:a"  # its night
+    gap = [*before, SimpleNamespace(candidateId=None, status="fallback")]
+    assert prefer_variety(options, gap, 0, 0.05).candidateId == "yt:b"             # a fallback shot in between still counts
