@@ -196,7 +196,9 @@ def run(ctx: RunContext) -> None:
     if not ctx.section("miniaturas").get("enabled", False):    # you make the thumbnails yourself
         write_titles(ctx.out_dir / "youtube.txt", titles)
         stills = material_for_thumbnail(ctx, timeline, texts, cutout)
-        print(f"   Miniaturas: las haces tú · {stills} fotogramas en out/{ctx.slug}/{STILLS_DIR}/ y 3 textos en youtube.txt")
+        posters = poster_drafts(ctx, texts, cutout)
+        print(f"   Miniaturas: las haces tú · {stills} fotogramas en out/{ctx.slug}/{STILLS_DIR}/ y 3 textos en youtube.txt"
+              + (f" · {posters} borradores estilo póster" if posters else ""))
         _finish(ctx, timeline, titles, [], preview=_preview_frame(ctx))
         return
     backgrounds = background_frames(ctx, timeline)
@@ -204,6 +206,8 @@ def run(ctx: RunContext) -> None:
     accents = [str(brand.get("accent") or ACCENTS[0]), str(brand.get("accent2") or ACCENTS[1]), ACCENTS[2]] if brand else ACCENTS
     variants = [{"text": texts[i], "accent": accents[i], "flip": i == 1, "cutout": cutout,
                  "background": backgrounds[i % len(backgrounds)] if backgrounds else None} for i in range(3)]
+    if cutout and ctx.section("miniaturas").get("poster", True):    # the third one: the poster style
+        variants[2] = {"text": texts[2], "accent": accents[0], "cutout": cutout, "poster": True, "focus": _face(ctx, cutout)}
     if concept:
         ideas = [c for c in result.get("concepts", []) if isinstance(c, dict) and str(c.get("scene") or "").strip()][:3]
         for i, idea in enumerate(ideas):
@@ -260,6 +264,39 @@ def material_for_thumbnail(ctx: RunContext, timeline: Timeline, texts: list[str]
         text = re.sub(r"\nIDEAS PARA LA MINIATURA[^\n]*\n(?:- .*\n)*", "\n", text)
         youtube.write_text(text.rstrip("\n") + "\n\n" + block, encoding="utf-8")
     return len(stills)
+
+
+def _face(ctx: RunContext, cutout: str) -> list[float] | None:
+    from .graphics import face_focus
+
+    focus = face_focus(ctx, ctx.work_dir / cutout)
+    return list(focus) if focus else None
+
+
+def poster_drafts(ctx: RunContext, texts: list[str], cutout: str | None) -> int:
+    """For the thumbnail you make yourself: two ready poster-style drafts (the protagonist in black and white on a red
+    sun, a red bar over the eyes, the text huge) in out/<slug>/fotogramas/. How many (0 without a cutout)."""
+
+    if not cutout or not (ctx.work_dir / cutout).is_file() or not ctx.section("miniaturas").get("poster", True):
+        return 0
+    try:
+        focus = _face(ctx, cutout)
+        variants = [{"text": text, "accent": "#d4161c", "cutout": cutout, "poster": True, "focus": focus, "flip": i == 1}
+                    for i, text in enumerate(list(dict.fromkeys(texts))[:2])]
+        renderer = Renderer(ctx)
+        frames_dir = renderer.sequence_dir("posters")
+        shutil.rmtree(frames_dir, ignore_errors=True)
+        renderer.remotion("Thumbnails", {"variants": variants, "brand": ctx.section("brand")}, frames_dir,
+                          ["--sequence", "--image-format=jpeg", "--jpeg-quality=92"], {cutout})
+        out_dir = ctx.out_dir / STILLS_DIR
+        frames = sorted(frames_dir.iterdir(), key=lambda p: int(re.findall(r"\d+", p.stem)[-1]))
+        for n, frame in enumerate(frames, 1):
+            shutil.move(str(frame), out_dir / f"miniatura-poster-{n}.jpg")
+        shutil.rmtree(frames_dir, ignore_errors=True)
+        return len(frames)
+    except Exception as error:               # a help, never a reason to fail the video
+        print(f"   Borradores de miniatura póster no disponibles: {str(error)[:120]}")
+        return 0
 
 
 def _preview_frame(ctx: RunContext) -> Path | None:

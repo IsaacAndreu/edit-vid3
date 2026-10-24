@@ -211,6 +211,14 @@ def pace_targets(ctx: RunContext, words: list[Word], marks: dict[int, str], base
     for i, word in enumerate(words):
         if word.start < hook and quick < targets[i]:
             targets[i], maxes[i] = quick, min(maxes[i], max(quick + 0.8, 2.4))
+    # A long video (patiICE: 68 min, 1338 shots) pays every shot in YouTube requests, proxy and judge: after its first
+    # `long_after_minutes` the ordinary shots hold `long_base_seconds` (~25 % fewer shots, the opening as fast as ever)
+    total = words[-1].end if words else 0.0
+    if total >= float(cfg.get("long_video_minutes", 25)) * 60:
+        after, slow = float(cfg.get("long_after_minutes", 8)) * 60, float(cfg.get("long_base_seconds", 3.6))
+        for i, word in enumerate(words):
+            if word.start >= after and labels[i] is None and targets[i] < slow:
+                targets[i], maxes[i] = slow, max(maxes[i], min(MAX_SHOT_SECONDS, slow + 0.6))
     return targets, maxes, labels
 
 

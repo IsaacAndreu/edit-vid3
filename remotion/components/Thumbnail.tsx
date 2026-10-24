@@ -11,6 +11,8 @@ export interface ThumbnailVariant {
   flip?: boolean; // cutout on the left, text on the right
   image?: string | null; // concept style: one generated picture with a single idea
   side?: 'left' | 'right'; // concept style: where the picture left room for the label
+  poster?: boolean; // poster style: the cutout in black and white on a red sun, a red bar over the eyes
+  focus?: [number, number] | null; // poster style: centre of the face in the cutout (% of width, % of height)
 }
 
 /** Black or white, whichever reads better on `color`. */
@@ -52,7 +54,52 @@ const ConceptThumbnail: FC<{ variant: ThumbnailVariant }> = ({ variant }) => {
  * on one side and a short, huge line on the other with its last word in the accent colour.
  */
 export const Thumbnail: FC<{ variant: ThumbnailVariant }> = ({ variant }) =>
-  variant.image ? <ConceptThumbnail variant={variant} /> : <FrameThumbnail variant={variant} />;
+  variant.image ? (
+    <ConceptThumbnail variant={variant} />
+  ) : variant.poster && variant.cutout ? (
+    <PosterThumbnail variant={variant} />
+  ) : (
+    <FrameThumbnail variant={variant} />
+  );
+
+/** Poster thumbnail (like the poster graphic): black night, a big red sun, the protagonist cut out in black and
+ * white with a red bar over the eyes, and the words huge in white, the last one in red, beside them. */
+const PosterThumbnail: FC<{ variant: ThumbnailVariant }> = ({ variant }) => {
+  const words = variant.text.trim().toUpperCase().split(/\s+/);
+  const last = words.pop() ?? '';
+  const size = variant.text.length > 20 ? 92 : variant.text.length > 12 ? 112 : 136;
+  const focus = variant.focus;
+  const left = variant.flip;
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#050505', overflow: 'hidden' }}>
+      <svg width="1280" height="720" style={{ position: 'absolute', inset: 0 }}>
+        {Array.from({ length: 90 }, (_, i) => {
+          const r = (k: number) => { const x = Math.sin((i + k) * 12.9898) * 43758.5453; return x - Math.floor(x); };
+          return <circle key={i} cx={r(1) * 1280} cy={r(2) * 720} r={0.5 + r(3) * 1.2} fill="#fff" opacity={0.15 + r(4) * 0.45} />;
+        })}
+      </svg>
+      <div style={{ position: 'absolute', left: left ? 760 : 90, top: 70, width: 470, height: 470, borderRadius: '50%',
+        background: 'radial-gradient(circle at 45% 40%, #ea2a30 0%, #d4161c 55%, #a50f14 100%)', boxShadow: '0 0 70px rgba(212,22,28,0.6)' }} />
+      <div style={{ position: 'absolute', left: left ? 995 : 325, bottom: 0, height: 640, transform: 'translateX(-50%)' }}>
+        <div style={{ position: 'relative', height: '100%' }}>
+          <Img src={staticFile(variant.cutout as string)} style={{ height: '100%', width: 'auto', display: 'block', filter: 'grayscale(1) contrast(1.2)' }} />
+          {focus ? (
+            <div style={{ position: 'absolute', left: `${focus[0] - 15}%`, width: '30%', top: `${focus[1] - 4.5}%`, height: '5.5%',
+              background: '#d4161c', boxShadow: '0 0 10px rgba(212,22,28,0.7)' }} />
+          ) : null}
+        </div>
+      </div>
+      <div style={{ position: 'absolute', left: -100, right: -100, bottom: -170, height: 300, borderRadius: '50%',
+        background: 'radial-gradient(ellipse at 50% 40%, rgba(235,235,235,0.75) 0%, rgba(150,150,150,0.3) 45%, rgba(0,0,0,0) 70%)', filter: 'blur(14px)' }} />
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: left ? 'flex-start' : 'flex-end', padding: '0 60px' }}>
+        <div style={{ maxWidth: 640, fontFamily: "'Poppins', 'Inter'", fontWeight: 700, fontSize: size, lineHeight: 0.98, color: '#fff',
+          letterSpacing: '-0.02em', textAlign: left ? 'left' : 'right', textShadow: '0 6px 24px rgba(0,0,0,0.9)' }}>
+          {words.join(' ')} <span style={{ color: '#ff2a30' }}>{last}</span>
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
 
 const FrameThumbnail: FC<{ variant: ThumbnailVariant }> = ({ variant }) => {
   const words = variant.text.trim().toUpperCase().split(/\s+/);

@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import { condensedFamily, fontFamily, theme } from '../theme';
+import { Scroll } from './graphics/Scroll';
 
 export const roman = (n: number): string => {
   const table: [number, string][] = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
@@ -58,7 +59,23 @@ const NumberedChapter: FC<{ title: string; number?: number | null; word?: string
  * behind a yellow bar, over darkened footage. A colour wipe sweeps across as it comes in.
  */
 export const Chapter: FC<{ title: string; number?: number | null; word?: string }> = (props) =>
-  theme.chapterStyle === 'numbered' ? <NumberedChapter {...props} /> : <BlockChapter {...props} />;
+  theme.chapterStyle === 'numbered' ? (
+    <NumberedChapter {...props} />
+  ) : theme.chapterStyle === 'scroll' ? (
+    <ScrollChapter {...props} />
+  ) : (
+    <BlockChapter {...props} />
+  );
+
+/** chapterStyle 'scroll': the chapter written on an old parchment unrolled on a wooden table (history channels),
+ * «CAPÍTULO I» under the ornament. */
+const ScrollChapter: FC<{ title: string; number?: number | null; word?: string }> = ({ title, number, word }) => {
+  const words = title.split(/\s+/).length;
+  return (
+    <Scroll graphic={{ type: 'scroll', title, subtitle: number ? `${word || 'Capítulo'} ${roman(number)}` : null }}
+      durationInFrames={Math.max(60, 40 + words * 8)} quick />
+  );
+};
 
 const BlockChapter: FC<{ title: string; number?: number | null; word?: string }> = ({ title, number, word }) => {
   const frame = useCurrentFrame();

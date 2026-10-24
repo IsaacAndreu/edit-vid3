@@ -323,3 +323,15 @@ def test_a_word_whisper_stretched_over_a_pause_can_still_be_cut():
     shots, starts = cut_shots(words, 12.0, target=2.6, forced_starts={5}, with_times=True)
     ends = starts[1:] + [12.0]
     assert all(1.5 - 1e-6 <= e - s <= 5.0 + 1e-6 for s, e in zip(starts, ends)), list(zip(starts, ends))
+
+
+def test_a_long_video_holds_ordinary_shots_longer_after_its_opening(tmp_path):
+    # patiICE: 68 min and 1338 shots, each one paid in YouTube requests, proxy and judge
+    words = [Word(index=i, text=f"w{i}", start=i * 0.4, end=i * 0.4 + 0.3, matched=True, sentenceEnd=i % 20 == 19)
+             for i in range(int(30 * 60 / 0.4))]                                          # 30 minutes
+    ctx = RunContext.create("t", root=tmp_path, config={"pacing": {"hook_seconds": 0}})
+    targets, _, _ = pace_targets(ctx, words, {3: "fast"}, 2.6)
+    assert targets[100] == 2.6                                         # the first 8 minutes as usual
+    assert targets[-1] == 3.6 and targets[60] == 1.9                   # later longer; fast sentences stay fast
+    short = words[: int(10 * 60 / 0.4)]                                                     # a 10-minute video
+    assert set(pace_targets(ctx, short, {}, 2.6)[0]) == {2.6}

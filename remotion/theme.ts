@@ -109,7 +109,8 @@ const DEFAULTS = {
   negative: '#f87171',
   neutral: '#ffffff',
   shadow: '0 6px 30px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.75)',
-  // Styles (not colours): chapterStyle 'block' ("CAPÍTULO 01" + bar) | 'numbered' ("CAPÍTULO I:" in narrow type);
+  // Styles (not colours): chapterStyle 'block' ("CAPÍTULO 01" + bar) | 'numbered' ("CAPÍTULO I:" in narrow type) |
+  // 'scroll' (written on an old parchment on a wooden table);
   // statStyle 'panel' (dimmed frame + label) | 'bare' (only the giant figure over the footage);
   // graphicsStyle 'grid' (dark grid + glow) | 'pizarra' (textured dark-grey chalkboard, thin lines).
   chapterStyle: 'block',

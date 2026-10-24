@@ -19,14 +19,15 @@ const edge = (() => {
 
 /** A rolled parchment on a wooden table unrolls downwards; a title is written on it word by word, an ornament
  * draws itself under it and then the place and year. A chapter of someone's life, the old-fashioned way. */
-export const Scroll: FC<{ graphic: ScrollGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
+export const Scroll: FC<{ graphic: ScrollGraphic; durationInFrames: number; quick?: boolean }> = ({ graphic, durationInFrames, quick }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const roll = spring({ frame, fps, config: { damping: 200, stiffness: 120 } });
-  const open = interpolate(frame, [10, 34], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  const t0 = quick ? 18 : 36; // when the first word is written (a chapter card has less time)
+  const open = interpolate(frame, quick ? [4, 18] : [10, 34], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
   const words = graphic.title.split(/\s+/).filter(Boolean);
   const each = Math.max(3, Math.min(8, Math.floor((durationInFrames * 0.35) / Math.max(1, words.length))));
-  const titleEnd = 36 + words.length * each;
+  const titleEnd = t0 + words.length * each;
   const line = interpolate(frame, [titleEnd, titleEnd + 16], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const sub = interpolate(frame, [titleEnd + 12, titleEnd + 24], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const push = interpolate(frame, [0, durationInFrames], [1, 1.06]);
@@ -47,7 +48,7 @@ export const Scroll: FC<{ graphic: ScrollGraphic; durationInFrames: number }> = 
             <div style={{ position: 'absolute', left: 70, right: 70, top: 140, textAlign: 'center', fontFamily: "'Cinzel'", fontWeight: 600,
               fontSize: size, lineHeight: 1.18, color: '#4a3320', letterSpacing: 1 }}>
               {words.map((w, i) => (
-                <span key={i} style={{ opacity: interpolate(frame, [36 + i * each, 36 + i * each + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }), marginRight: '0.3em' }}>
+                <span key={i} style={{ opacity: interpolate(frame, [t0 + i * each, t0 + i * each + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }), marginRight: '0.3em' }}>
                   {w}
                 </span>
               ))}
