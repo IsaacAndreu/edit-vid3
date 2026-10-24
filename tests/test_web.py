@@ -741,3 +741,17 @@ def test_search_also_finds_ideas_not_made_yet(tmp_path):
     agenda.add_idea(tmp_path, "Trusova: la caída y el regreso", "patinaje", "colapsó en Pekín y volvió siendo madre")
     found = web.search_videos(tmp_path, "trusova regreso")
     assert found["results"] == [] and found["ideas"][0]["title"].startswith("Trusova") and found["ideas"][0]["where"] == "tablero"
+
+
+def test_a_very_long_script_does_not_look_like_every_new_one(tmp_path):
+    from pipeline import web
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    long = tmp_path / "materiales" / "patiICE"
+    long.mkdir(parents=True)
+    vocabulary = [f"tema{i}" for i in range(3000)]
+    (long / "guion.txt").write_text(" ".join(vocabulary))
+    new = " ".join(vocabulary[:300] + [f"atleta{i}" for i in range(500)])    # an athletics script: shared everyday words
+    assert all(r["score"] < 0.5 for r in web.search_videos(tmp_path, new)["results"])
+    half = " ".join(vocabulary[:1500])                                      # half of it: really the same video
+    assert web.search_videos(tmp_path, half)["results"][0]["score"] >= 0.5

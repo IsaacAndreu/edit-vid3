@@ -233,8 +233,9 @@ def search_videos(root: Path, query: str, limit: int = 20) -> dict[str, Any]:
             continue
         body_set = set(body)
         if whole:
-            # distinctive words of both scripts in common (names, places, figures repeat across a topic)
-            score = len(wanted_set & body_set) / max(1, min(len(wanted_set), len(body_set)))
+            # distinctive words of both scripts in common (names, places, figures repeat across a topic), against
+            # both sizes: over the smaller one alone, a 1-hour script (patiICE) «contained» any new script
+            score = len(wanted_set & body_set) / max(1.0, (len(wanted_set) * len(body_set)) ** 0.5)
             if score < 0.25:
                 continue
         else:
