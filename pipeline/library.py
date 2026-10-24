@@ -224,6 +224,8 @@ def remember(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
                 data["kind"] = "person"
         if candidate.id in data.get("removed", []):            # you took it out in the studio
             return
+        if candidate.kind == "video" and candidate.source != "youtube":   # archive footage lives in its own cache
+            return
         bucket = "videos" if candidate.source == "youtube" else "photos"
         if candidate.id not in data[bucket]:
             data[bucket][candidate.id] = _keep_media(ctx, candidate).model_dump(exclude_none=True)

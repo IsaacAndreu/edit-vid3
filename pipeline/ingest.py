@@ -210,11 +210,20 @@ class Materialiser:
             assert selection.start is not None
             start = selection.start
             video_id = selection.candidateId.removeprefix("yt:")
-            hd = self.youtube.download_range(
-                video_id, start, start + duration + 0.5,  # margin: a stream copy may stop a hair early
-                fmt=str(cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
-                prefix="hd",
-            )
+            if not selection.candidateId.startswith("yt:"):   # historical footage: cut from its original by URL
+                from .sourcing.archive import cut
+
+                if not selection.mediaUrl:
+                    raise ValueError("el vídeo de archivo no tiene URL original")
+                end = start + duration + 0.5
+                hd = cut(selection.mediaUrl, start, end, ctx.cache_dir / "archive" / "hd" / key(selection.candidateId)[:20]
+                         / f"hd_{start:.3f}_{end:.3f}.mp4")
+            else:
+                hd = self.youtube.download_range(
+                    video_id, start, start + duration + 0.5,  # margin: a stream copy may stop a hair early
+                    fmt=str(cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
+                    prefix="hd",
+                )
             file_start = float(hd.stem.split("_")[1])
             target = out_dir / f"{selection.shotId}.mp4"
             normalise_video(hd, target, offset=start - file_start, duration=duration, lut=lut, cfg=cfg,

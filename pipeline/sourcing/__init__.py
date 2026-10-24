@@ -22,6 +22,7 @@ from .. import library
 from ..context import RunContext
 from ..schemas import Shot, ShotCandidates, ShotsFile
 from .common import SourceUnavailable, key
+from .archive import ArchiveSource, historical
 from .images import ImageSources
 from .scenes import (finalists, group_scenes, options_per_shot, rank_pool, scene_queries, scene_settings,
                      share_out)
@@ -346,6 +347,10 @@ def run(ctx: RunContext) -> None:
     )
 
     precompute = Precomputer(ctx) if ctx.section("analysis").get("precompute_during_sourcing", True) else None
+    # public-domain historical footage for the old stretches (Commons, Internet Archive): no YouTube, no proxy
+    archive_cfg = cfg.get("archive", {})
+    archive = ArchiveSource(root=ctx.root, cache_dir=ctx.cache_dir, config=archive_cfg) \
+        if archive_cfg.get("enabled", True) else None
 
     def process(shot: Shot) -> ShotCandidates:
         result = _process(shot)
@@ -449,6 +454,10 @@ def run(ctx: RunContext) -> None:
         image_queries, image_candidates = images.search(shot.broll, notes)
         queries.update(image_queries)
         candidates += image_candidates
+        if archive is not None and historical(shot, int(archive.cfg.get("max_year", 1980))):
+            archive_queries, archive_candidates = archive.search(shot.broll, notes)
+            queries["archivo"] = archive_queries
+            candidates += [c for c in archive_candidates if c.id not in present]
         result = ShotCandidates(shotId=shot.id, specHash=spec_hash, queries=queries, candidates=candidates, notes=notes)
         ctx.write_json(f"{OUTPUT}/{shot.id}.json", result.model_dump(exclude_none=True))
         counts = {}

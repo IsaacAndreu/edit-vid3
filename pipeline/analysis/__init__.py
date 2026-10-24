@@ -459,6 +459,18 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
 
     def download(video: str) -> list[tuple[tuple[str, float, float], Path | Exception]]:
         its = by_video[video]
+        if not video.startswith("yt:"):          # historical footage (sourcing/archive.py): cut from its local preview
+            from ..sourcing.archive import cut
+
+            preview = ctx.root / str(videos[video].previewPath or "")
+            out = []
+            for job in its:
+                target = ctx.cache_dir / "archive" / "windows" / key(video)[:20] / f"a360_{job[1]:.2f}_{job[2]:.2f}.mp4"
+                try:
+                    out.append((job, cut(preview, job[1], job[2], target)))
+                except Exception as error:
+                    out.append((job, error))
+            return out
         if len(its) >= whole_from:
             try:
                 youtube.prefetch_sections(video.removeprefix("yt:"))
@@ -528,7 +540,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             window = option.get("window")
             refined = fine.get((shot.id, c.id, *window)) if window else None
             if refined:
-                captions = youtube.captions(c.id.removeprefix("yt:")) if entities or shot.broll.moment else []
+                captions = youtube.captions(c.id.removeprefix("yt:")) if c.id.startswith("yt:") and (entities or shot.broll.moment) else []
                 for item in refined:
                     scores = {**item["scores"], "entity": entity_score(captions, c.title, entities, item["start"], item["end"]),
                               "moment": moment_score(captions, shot.broll.moment, item["start"], item["end"])}

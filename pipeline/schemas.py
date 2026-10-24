@@ -224,7 +224,7 @@ class ShotsFile(_Strict):
 
 # --- Stage 3: candidates/<shot_id>.json ---------------------------------------------
 
-Source = Literal["youtube", "wikimedia", "openverse", "pixabay", "web"]
+Source = Literal["youtube", "wikimedia", "openverse", "pixabay", "web", "archive"]
 
 
 class AnalysisRange(_Strict):
@@ -273,7 +273,8 @@ class Candidate(_Strict):
     rankScore: float = Field(ge=0)                           # search-rank fusion, before any visual analysis
     storyboard: Storyboard | None = None                     # videos: thumbnails of the whole video
     imagePath: str | None = None                             # images: analysis-size local copy
-    mediaUrl: str | None = None                              # images: full-resolution original (for ingest)
+    mediaUrl: str | None = None                              # images and archive videos: full-quality original (ingest)
+    previewPath: str | None = None                           # archive videos: small local copy (windows are cut from it)
 
     @model_validator(mode="after")
     def _media_present(self) -> "Candidate":
