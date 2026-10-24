@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import type { FC, ReactNode } from 'react';
 import type { Graphic } from '../../graphics';
 import { Chart } from './Chart';
 import { Compare } from './Compare';
@@ -27,23 +27,63 @@ import { Scale } from './Scale';
 import { Iceberg } from './Iceberg';
 import { Receipt } from './Receipt';
 import { TierList } from './TierList';
+import { Search } from './Search';
+import { Marker } from './Marker';
+import { Lens } from './Lens';
+import { Scroll } from './Scroll';
+import { News } from './News';
+import { Poster } from './Poster';
+import { PinMap } from './PinMap';
 import { GraphicFrame } from './GraphicFrame';
+import { Grain } from './Paper';
+import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+
+// The paper graphics bring their own look (texture, light, camera): a plain fade instead of the channel's pack
+const PAPER = new Set(['search', 'marker', 'lens', 'scroll', 'news', 'poster']);
+
+const Fade: FC<{ durationInFrames: number; children: ReactNode }> = ({ durationInFrames, children }) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 6, durationInFrames - 6, durationInFrames], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
+};
 
 /** Full-screen animated graphic of any kind, brought in and out the channel's way (GraphicFrame). */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) =>
   graphic.type === 'quote' ? (
     // subtitles over a real statement: no entrance, the clip itself is the picture
     <QuoteOverlay graphic={graphic} durationInFrames={durationInFrames} />
+  ) : PAPER.has(graphic.type) || (graphic.type === 'map' && graphic.style === 'pins') ? (
+    <Fade durationInFrames={durationInFrames}>
+      <GraphicBody graphic={graphic} durationInFrames={durationInFrames} />
+    </Fade>
   ) : (
     <GraphicFrame durationInFrames={durationInFrames} seed={seed || graphic.type}>
       <GraphicBody graphic={graphic} durationInFrames={durationInFrames} />
+      {/* a little film grain on every graphic: flat vector screens read as cheap next to the footage */}
+      <Grain opacity={0.07} id={`grain-${seed || graphic.type}`} />
     </GraphicFrame>
   );
 
 const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   switch (graphic.type) {
     case 'map':
-      return <MapScene graphic={graphic} durationInFrames={durationInFrames} />;
+      return graphic.style === 'pins' && (graphic.points || []).length ? (
+        <PinMap graphic={graphic} durationInFrames={durationInFrames} />
+      ) : (
+        <MapScene graphic={graphic} durationInFrames={durationInFrames} />
+      );
+    case 'search':
+      return <Search graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'marker':
+      return <Marker graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'lens':
+      return <Lens graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'scroll':
+      return <Scroll graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'news':
+      return <News graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'poster':
+      return <Poster graphic={graphic} durationInFrames={durationInFrames} />;
     case 'rank':
       return <RankCard graphic={graphic} durationInFrames={durationInFrames} />;
     case 'compare':

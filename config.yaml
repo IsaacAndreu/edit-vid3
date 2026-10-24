@@ -253,6 +253,9 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   min_seconds: 4
   max_seconds: 12
   types: [map, compare, chart, timeline, specs, kinetic, score, press, rule, split, strobe, replay, standings, podium, race, card, scale, receipt]
+  # extra_types: además, en todos los canales, los gráficos «de papel»: search (buscador), marker (subrayado sobre
+  # periódico), lens (lupa), scroll (pergamino), news (noticia con la persona), poster (sol rojo); [] = ninguno.
+  # El mapa con «pins» (papel antiguo con polaroids) lo elige el grafista cuando el guion recorre la vida de alguien.
   # score: nota desglosada (D + E − penalización) · press: recortes de prensa · rule: página del reglamento
   # con sello · split: dos clips lado a lado · strobe: estroboscopia · replay: repetición a cámara lenta con
   # el atleta señalado · standings: marcador que se reordena. "rank"/"banned": formatos ranking y prohibidos.

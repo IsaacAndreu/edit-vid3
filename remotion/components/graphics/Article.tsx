@@ -2,6 +2,7 @@ import type { FC, ReactNode } from 'react';
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from 'remotion';
 import type { ArticleGraphic } from '../../graphics';
 import { alpha, fontFamily, theme, titleFamily } from '../../theme';
+import { Grain, GridPaper, Newsprint, Vignette } from './Paper';
 
 export const CIRCLE_AT = 34;     // pipeline/timeline.py ARTICLE_CIRCLE: the first red circle
 export const CIRCLE_STEP = 16;   // and one more every 16 frames
@@ -55,6 +56,8 @@ const PaperArticle: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = 
   parts.push(rest);
   return (
     <AbsoluteFill style={{ backgroundColor: '#e9e6df', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+      <GridPaper />
+      <Vignette strength={0.45} />
       <div style={{
         width: 1500, backgroundColor: '#ffffff', boxShadow: '0 30px 80px rgba(0,0,0,0.25)', padding: '70px 110px',
         transform: `scale(${push}) translateY(${(1 - enter) * 50}px)`, opacity: enter, color: '#151515',
@@ -77,6 +80,7 @@ const PaperArticle: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = 
           ))}
         </div>
       </div>
+      <Grain opacity={0.15} id="article-paper-grain" />
     </AbsoluteFill>
   );
 };
@@ -112,6 +116,11 @@ const DarkArticle: FC<{ graphic: ArticleGraphic; durationInFrames: number }> = (
       background: `radial-gradient(ellipse at 50% 30%, ${alpha(theme.panelRaised, 1)} 0%, ${theme.canvas} 80%)`,
       justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
     }}>
+      {/* the newspaper itself, dimmed and out of focus behind the story */}
+      <AbsoluteFill style={{ opacity: 0.16, transform: `scale(${1.08 + (push - 1) * 0.5})` }}>
+        <Newsprint blur={3.5} />
+      </AbsoluteFill>
+      <Vignette strength={0.75} />
       <div style={{ width: 1360, transform: `scale(${push}) translateY(${(1 - enter) * 40}px)`, opacity: enter, textAlign: 'center' }}>
         {graphic.outlet || graphic.author ? (
           <div style={{

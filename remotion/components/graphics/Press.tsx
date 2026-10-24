@@ -3,6 +3,7 @@ import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } fr
 import { theme } from '../../theme';
 import type { PressGraphic } from '../../graphics';
 import { Highlighted } from './Highlighted';
+import { Grain, Newsprint, Vignette } from './Paper';
 
 const PRESS_STEP = 16; // keep in sync with pipeline/timeline.py
 const SERIF = 'Georgia, "Times New Roman", "DejaVu Serif", serif';
@@ -12,20 +13,19 @@ const SPOTS = [
   { x: 330, y: 620, r: -1.5 },
 ];
 
-/** Newspaper clippings dropping one by one on a dark desk, the key words swept with a marker. */
+/** Newspaper clippings dropping one by one on a pile of out-of-focus papers, the key words swept with a marker. */
 export const Press: FC<{ graphic: PressGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const items = graphic.items.slice(0, 3);
   const push = interpolate(frame, [0, durationInFrames], [1, 1.06]);
   return (
-    <AbsoluteFill
-      style={{
-        backgroundColor: theme.canvas,
-        backgroundImage: `radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.6) 75%)`,
-        overflow: 'hidden',
-      }}
-    >
+    <AbsoluteFill style={{ backgroundColor: theme.canvas, overflow: 'hidden' }}>
+      {/* the rest of the papers, out of focus under the clippings */}
+      <AbsoluteFill style={{ transform: `scale(${1.1 + (push - 1) * 0.5})`, opacity: 0.55 }}>
+        <Newsprint blur={4} tone="#bdb5a3" />
+      </AbsoluteFill>
+      <Vignette strength={0.85} />
       <AbsoluteFill style={{ transform: `scale(${push})` }}>
         {items.map((item, i) => {
           const at = 4 + i * PRESS_STEP;
@@ -73,6 +73,7 @@ export const Press: FC<{ graphic: PressGraphic; durationInFrames: number }> = ({
           );
         })}
       </AbsoluteFill>
+      <Grain opacity={0.14} id="press-grain" />
     </AbsoluteFill>
   );
 };

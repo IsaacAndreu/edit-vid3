@@ -18,6 +18,13 @@ import mono500 from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-n
 import mono700 from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2';
 import grotesk500 from '@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2';
 import grotesk700 from '@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2';
+import elite400 from '@fontsource/special-elite/files/special-elite-latin-400-normal.woff2';
+import cinzel600 from '@fontsource/cinzel/files/cinzel-latin-600-normal.woff2';
+import cinzel700 from '@fontsource/cinzel/files/cinzel-latin-700-normal.woff2';
+import fraktur400 from '@fontsource/unifrakturmaguntia/files/unifrakturmaguntia-latin-400-normal.woff2';
+import caveat700 from '@fontsource/caveat/files/caveat-latin-700-normal.woff2';
+import poppins500 from '@fontsource/poppins/files/poppins-latin-500-normal.woff2';
+import poppins700 from '@fontsource/poppins/files/poppins-latin-700-normal.woff2';
 
 // Inter from local files (no network at render time): 400 labels, 600 values, 800-900 titles/numbers.
 for (const [url, weight] of [
@@ -50,6 +57,15 @@ for (const [family, url, weight, style] of [
   ['JetBrains Mono', mono700, '700', 'normal'],
   ['Space Grotesk', grotesk500, '500', 'normal'],
   ['Space Grotesk', grotesk700, '700', 'normal'],
+  // the paper graphics (search, marker, lens, scroll, news, poster, pinned map): typewriter, engraved serif,
+  // newspaper blackletter, handwriting and the search engine's round sans
+  ['Special Elite', elite400, '400', 'normal'],
+  ['Cinzel', cinzel600, '600', 'normal'],
+  ['Cinzel', cinzel700, '700', 'normal'],
+  ['UnifrakturMaguntia', fraktur400, '400', 'normal'],
+  ['Caveat', caveat700, '700', 'normal'],
+  ['Poppins', poppins500, '500', 'normal'],
+  ['Poppins', poppins700, '700', 'normal'],
 ] as const) {
   loadFont({ family, url, weight, style });
 }

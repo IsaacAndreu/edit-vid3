@@ -25,7 +25,7 @@ export const Cita: FC<{ graphic: CitaGraphic; durationInFrames: number }> = ({ g
   const red = new Set((graphic.highlight || []).flatMap((h) => h.toLowerCase().split(/\s+/)).map((w) => w.replace(/[^\p{L}\p{N}]/gu, '')));
   const words = graphic.text.split(/\s+/).filter(Boolean);
   const gap = Math.max(2, Math.min(6, Math.floor((durationInFrames * 0.45) / Math.max(1, words.length))));
-  const size = words.length > 22 ? 58 : words.length > 14 ? 68 : 80;
+  const size = words.length > 22 ? 64 : words.length > 14 ? 76 : 92;
   return (
     <AbsoluteFill style={{ backgroundColor: '#000', overflow: 'hidden' }}>
       {media ? (

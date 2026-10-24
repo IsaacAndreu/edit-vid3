@@ -28,7 +28,12 @@ from .sourcing.common import tokens
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
-         "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg", "cita")
+         "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg", "cita",
+         "search", "marker", "lens", "scroll", "news", "poster")
+# The paper graphics (a search engine, a highlighted phrase over a newspaper, a magnifying glass, a parchment, a
+# news item with the person, a red-sun poster): every channel may use them on top of its own list of types, unless
+# it sets graphics.extra_types itself ([] = none).
+PAPER = ("search", "marker", "lens", "scroll", "news", "poster")
 
 # Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
 REFERENCES = {
@@ -73,7 +78,9 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   "date": "fecha o año DICHO en esas frases, como se dice ('17 de noviembre de 2013', '2019'), si no null",
   "region_label": "nombre corto (máx. 3 palabras) para la zona resaltada, p. ej. 'SALÓN DE DUBÁI', o null",
   "rings": [{{"point": índice del punto, "km": radio en km DICHO en el guion (alcance, autonomía, ETOPS: '120 minutos
-  ≈ 1.500 km' solo si se dice la distancia), "label": "texto corto, p. ej. '1.500 km'"}}] o []}}
+  ≈ 1.500 km' solo si se dice la distancia), "label": "texto corto, p. ej. '1.500 km'"}}] o [],
+  "pins": true si es la VIDA de una persona que va de ciudad en ciudad (dónde nació, a qué club o país se fue): un mapa
+  antiguo de papel con una polaroid de cada ciudad clavada con una chincheta (2-5 ciudades, en el orden del guion)}}
 - "satellite": el guion nombra un LUGAR CONCRETO que se puede ver desde el cielo (una fábrica, un aeropuerto, una
   sede, un astillero): zoom de satélite hasta él. data: {{"place": "nombre en el idioma del guion",
   "query": "lugar EN INGLÉS para geolocalizarlo con precisión, p. ej. 'Boeing Everett Factory, Everett, Washington'",
@@ -127,6 +134,24 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   frase que marca la historia: «Odio este deporte»). Fondo negro, la persona a un lado y sus palabras en grande.
   data: {{"speaker": "nombre como lo dice el guion", "text": "la cita LITERAL del guion, máx. 25 palabras",
   "highlight": ["1-3 palabras clave de text, las que más pesan (p. ej. 'nunca más')"]}}
+- "search": el guion plantea la PREGUNTA que todo el mundo se hace o busca («¿es Messi el mejor de la historia?»,
+  «¿por qué se prohibió…?»): se teclea en un buscador. data: {{"question": "la pregunta con palabras del guion, máx. 10
+  palabras, con sus signos ¿?"}} (como máximo 1 por vídeo, mejor al principio)
+- "marker": una expresión que el guion repite o subraya («el mejor de todos los tiempos», «la niña prodigio»): se escribe
+  a máquina sobre un periódico antiguo y se subraya en amarillo. data: {{"text": "la expresión LITERAL, 3-8 palabras"}}
+- "lens": una cifra o un logro en pocas palabras que merece mirarse con lupa («8 Balones de Oro», «diez títulos
+  mundiales»). data: {{"text": "LITERAL del guion, máx. 5 palabras, con su cifra"}}
+- "scroll": empieza una etapa de la vida de alguien con LUGAR y AÑO dichos («nació en Rosario en 1987», «en 1902, en
+  Londres…»): un pergamino que se desenrolla. data: {{"title": "título corto de la etapa, máx. 6 palabras, con palabras
+  del guion (p. ej. 'La leyenda del 10')", "subtitle": "lugar y año como se dicen, p. ej. 'Rosario, 1987'"}}
+- "news": un hecho concreto con FECHA que fue noticia (una final ganada, una retirada, una sanción): la noticia con la
+  persona recortada al lado. data: {{"date": "fecha dicha, p. ej. '18 dic 2022', o null", "headline": "titular con
+  palabras del guion, máx. 12", "body": "1 frase LITERAL del guion que lo explica, máx. 25 palabras, o null",
+  "outlet": "medio SOLO si el guion lo nombra, si no null", "person": "la persona de la noticia como se nombra, o null"}}
+- "poster": un momento para definir a una persona en 2-4 palabras que el guion DICE («talento», «sacrificio», «gloria»)
+  o con una sola palabra enorme dicha («GOAT», «LEYENDA»): la persona en blanco y negro sobre un sol rojo. data:
+  {{"person": "nombre como se dice", "words": ["2-4 palabras sueltas del guion"] o [], "big": "una palabra dicha" o null}}
+  (como máximo 1 por vídeo)
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
 - "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
   qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
@@ -257,7 +282,8 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 note = p.get("note") if p.get("note") and said(p.get("note"), text) else None
                 brand = str(p.get("logo") or "").strip()
                 brand = brand if brand and tokens(brand) <= tokens(text) else None   # only a company the script names
-                points.append({"name": str(p["name"]), "lon": where[0], "lat": where[1], "note": note, "logo": brand})
+                points.append({"name": str(p["name"]), "lon": where[0], "lat": where[1], "note": note, "logo": brand,
+                               "query": str(p.get("query") or p["name"])})
         if not points and not names:
             return None
         zoom = data.get("zoom")
@@ -274,7 +300,8 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 rings.append({"point": moved[r["point"]], "km": km, "label": str(r.get("label") or f"{km:,.0f} km".replace(",", "."))[:20]})
         return {"type": "map", "title": data.get("title"), "countries": names, "points": points,
                 "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom, "globe": bool(data.get("globe")),
-                "date": date, "regionLabel": label if names else None, "rings": rings}
+                "date": date, "regionLabel": label if names else None, "rings": rings,
+                "style": "pins" if data.get("pins") and 2 <= len(points) <= 5 else None}
     if kind == "satellite":
         place = str(data.get("place") or "").strip()
         if not place or not said_words(place, text, 0.5):
@@ -457,6 +484,55 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             return None
         return {"type": "receipt", "title": str(data.get("title") or "")[:60] or None, "items": items[:8],
                 "total": {"label": str(total.get("label") or "TOTAL"), "value": str(total["value"])} if total else None}
+    if kind == "search":
+        question = " ".join(str(data.get("question") or "").split())
+        if not 3 <= len(question.split()) <= 12 or not said_words(question, text, 0.75):
+            return None
+        return {"type": "search", "question": question}
+    if kind == "marker":
+        phrase = " ".join(str(data.get("text") or "").split()).strip("«»\"“” ")
+        if not 2 <= len(phrase.split()) <= 9 or not said_words(phrase, text, 0.9):
+            return None
+        return {"type": "marker", "text": phrase}
+    if kind == "lens":
+        line = " ".join(str(data.get("text") or "").split())
+        if not 2 <= len(line.split()) <= 6 or not said_words(line, text, 0.8) or not _numbers_or_figure(line, text):
+            return None
+        return {"type": "lens", "text": line}
+    if kind == "scroll":
+        title = " ".join(str(data.get("title") or "").split())
+        subtitle = " ".join(str(data.get("subtitle") or "").split()) or None
+        if not 2 <= len(title.split()) <= 7 or not said_words(title, text, 0.5):
+            return None
+        if subtitle and not (said_words(subtitle, text, 0.8) and said(subtitle, text)):
+            subtitle = None
+        return {"type": "scroll", "title": title, "subtitle": subtitle}
+    if kind == "news":
+        headline = " ".join(str(data.get("headline") or "").split())
+        body = " ".join(str(data.get("body") or "").split()) or None
+        if not headline or len(headline.split()) > 14 or not said_words(headline, text, 0.7):
+            return None
+        if body and (len(body.split()) > 30 or not said_words(body, text, 0.85)):
+            body = None
+        date = str(data.get("date") or "").strip() or None
+        if date and not (_numbers(date) and said(date, text)):
+            date = None
+        person = str(data.get("person") or "").strip()
+        return {"type": "news", "date": date, "headline": headline, "body": body,
+                "outlet": data.get("outlet") if data.get("outlet") and said_words(data["outlet"], text) else None,
+                "person": person if person and said_words(person, text, 0.5) else None}
+    if kind == "poster":
+        person = str(data.get("person") or "").strip()
+        if not person or not said_words(person, text, 0.5):
+            return None
+        spoken = set(re.findall(r"\w+", text.lower()))
+        words = [str(w).strip() for w in data.get("words") or [] if str(w).strip()
+                 and set(re.findall(r"\w+", str(w).lower())) <= spoken and len(str(w).split()) <= 2][:4]
+        big = str(data.get("big") or "").strip()
+        big = big if big and len(big.split()) == 1 and len(big) <= 10 and big.lower() in spoken else None
+        if len(words) < 2 and not big:
+            return None
+        return {"type": "poster", "person": person, "words": words if len(words) >= 2 else [], "big": big}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
@@ -645,6 +721,15 @@ def iceberg(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
+def _numbers_or_figure(line: str, text: str) -> bool:
+    """A line worth the magnifying glass carries a figure, said in the script as a number or in words."""
+
+    if _numbers(line):
+        return said(line, text)
+    return bool(re.search(r"\b(un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinte|cien|mil|"
+                          r"millón|millones|primer|primera|único|única)\b", line.lower()))
+
+
 DATA_FILE = "datos.csv"
 
 
@@ -830,7 +915,9 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
     count = max(1, round(duration / every))
     count = min(count, int(cfg.get("max", 8)))
     own = [str(t) for t in ctx.format.get("tipos") or []]             # graphics the format needs, whatever the channel
-    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own]) if t in TYPES and not (ranked and t == "rank")]
+    extra = cfg.get("extra_types", PAPER)
+    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own, *(extra or [])])
+               if t in TYPES and not (ranked and t == "rank")]
     weak, strong = weak or set(), (strong or set()) - (weak or set())
     if weak:   # one more graphic per 3 weak sentences, within the channel's maximum
         count = min(int(cfg.get("max", 8)), count + len(weak) // 3)

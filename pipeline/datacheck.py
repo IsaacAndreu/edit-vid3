@@ -26,7 +26,7 @@ STAGE = "datacheck"
 OUTPUT = "datacheck.json"
 REPORT = "datos-graficos.md"
 DATA_TYPES = {"podium", "standings", "score", "card", "race", "scale", "chart", "compare", "specs", "timeline",
-              "rank", "receipt"}
+              "rank", "receipt", "lens", "news", "scroll"}
 
 JUDGE_SYSTEM = """
 Eres verificador de datos de gráficos de un documental. Cada gráfico muestra en pantalla unos datos (nombres,

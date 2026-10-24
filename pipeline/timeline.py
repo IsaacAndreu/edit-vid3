@@ -577,6 +577,16 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
 
             graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
                                  for p in graphic["points"]]
+        if graphic["type"] == "map" and graphic.get("style") == "pins":
+            from .places import photo
+
+            graphic["points"] = [{**p, "photo": photo(ctx, p.get("query") or p["name"])} for p in graphic["points"]]
+        if graphic["type"] == "news":
+            graphic["media"] = graphics.portrait(ctx, graphic["person"], people) if graphic.get("person") else None
+        if graphic["type"] == "poster":
+            graphic["media"] = graphics.portrait(ctx, graphic["person"], people)
+            if not graphic["media"]:
+                continue                                   # the poster is the person: without their cutout, nothing
         if graphic["type"] == "satellite":
             from .satellite import prepare
 

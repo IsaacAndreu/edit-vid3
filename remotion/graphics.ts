@@ -10,6 +10,7 @@ export interface GeoPoint {
   note?: string | null; // small line under the pin label ("1.º puesto", "2019")
   logo?: string | null; // company named there (Emirates in Dubai)
   logoMedia?: Media | null; // its logo (Wikimedia Commons), drawn in a round badge by the pin
+  photo?: Media | null; // style 'pins': a photo of the place, pinned on the map as a polaroid
 }
 
 export interface MapGraphic {
@@ -23,6 +24,7 @@ export interface MapGraphic {
   date?: string | null; // said in the script: shown big over the map first ("17 de noviembre de 2013")
   regionLabel?: string | null; // name written inside the highlighted area ("SALÓN DE DUBÁI")
   rings?: { point: number; km: number; label?: string | null }[]; // range circles around points (ETOPS, autonomy)
+  style?: 'pins' | null; // an old paper map that pans from place to place, a pinned polaroid at each
 }
 
 export interface RankGraphic {
@@ -238,7 +240,51 @@ export interface ReceiptGraphic {
   total?: { label: string; value: string } | null;
 }
 
+export interface SearchGraphic {
+  type: 'search';
+  question: string; // typed letter by letter in a search engine box («¿Messi es el mejor jugador de la historia?»)
+  engine?: string | null; // the wordmark over the box ('Google' by default)
+}
+
+export interface MarkerGraphic {
+  type: 'marker';
+  text: string; // a short phrase of the script, typed over a blurred newspaper and highlighted in yellow
+}
+
+export interface LensGraphic {
+  type: 'lens';
+  text: string; // a big short line («8 BALONES DE ORO») a magnifying glass sweeps across
+}
+
+export interface ScrollGraphic {
+  type: 'scroll';
+  title: string; // written on an old parchment unrolled on a wooden table («La leyenda del 10»)
+  subtitle?: string | null; // place and year under an ornament («Rosario, 1987»)
+}
+
+export interface NewsGraphic {
+  type: 'news';
+  date?: string | null; // red tag («18 DIC 2022»)
+  headline: string; // typed, then highlighted in yellow
+  body?: string | null; // the line under it
+  outlet?: string | null; // newspaper name in blackletter, only if the script names it
+  media?: Media | null; // the person, a black and white cutout on the right
+}
+
+export interface PosterGraphic {
+  type: 'poster';
+  words: string[]; // 2-4 words that appear one by one beside the person («TALENTO», «SACRIFICIO»)
+  big?: string | null; // one huge word behind their head («GOAT»)
+  media?: Media | null; // the person's cutout, in black and white, a red bar over the eyes
+}
+
 export type Graphic =
+  | SearchGraphic
+  | MarkerGraphic
+  | LensGraphic
+  | ScrollGraphic
+  | NewsGraphic
+  | PosterGraphic
   | TierGraphic
   | IcebergGraphic
   | ReceiptGraphic
