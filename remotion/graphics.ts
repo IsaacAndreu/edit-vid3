@@ -25,6 +25,8 @@ export interface MapGraphic {
   regionLabel?: string | null; // name written inside the highlighted area ("SALÓN DE DUBÁI")
   rings?: { point: number; km: number; label?: string | null }[]; // range circles around points (ETOPS, autonomy)
   style?: 'pins' | null; // an old paper map that pans from place to place, a pinned polaroid at each
+  ground?: { media: Media; west: number; north: number; east: number; south: number }[]; // satellite imagery under it
+  credit?: string | null; // the imagery's credit, always on screen when there is ground
 }
 
 export interface RankGraphic {

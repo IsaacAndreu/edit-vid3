@@ -257,6 +257,8 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   # extra_types: además, en todos los canales, los gráficos «de papel»: search (buscador), marker (subrayado sobre
   # periódico), lens (lupa), scroll (pergamino), news (noticia con la persona), poster (sol rojo); [] = ninguno.
   # El mapa con «pins» (papel antiguo con polaroids) lo elige el grafista cuando el guion recorre la vida de alguien.
+  # satellite_maps: false = mapas oscuros de siempre; por defecto los mapas planos llevan debajo imagen real de
+  # satélite (Sentinel-2 de EOX, CC BY 4.0, con su crédito en pantalla).
   # score: nota desglosada (D + E − penalización) · press: recortes de prensa · rule: página del reglamento
   # con sello · split: dos clips lado a lado · strobe: estroboscopia · replay: repetición a cámara lenta con
   # el atleta señalado · standings: marcador que se reordena. "rank"/"banned": formatos ranking y prohibidos.

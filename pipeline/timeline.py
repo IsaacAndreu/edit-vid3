@@ -577,6 +577,16 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
 
             graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
                                  for p in graphic["points"]]
+        if graphic["type"] == "map" and graphic.get("style") != "pins" and not graphic.get("globe"):
+            from .satellite import SOURCES, ground
+
+            try:
+                layers = ground(ctx, graphic)
+            except Exception as error:               # the map is complete without it (the dark vector map)
+                print(f"   Mapa sin satélite: {str(error)[:100]}")
+                layers = []
+            if layers:
+                graphic = {**graphic, "ground": layers, "credit": SOURCES["eox"]["credit"]}
         if graphic["type"] == "map" and graphic.get("style") == "pins":
             from .places import photo
 

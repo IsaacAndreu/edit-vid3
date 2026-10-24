@@ -8,6 +8,7 @@ import world from 'world-atlas/countries-50m.json';
 import { alpha, condensedFamily, fontFamily, theme } from '../../theme';
 import type { MapGraphic } from '../../graphics';
 import { GraphicTitle } from './GraphicTitle';
+import { Grain, Stars, Vignette } from './Paper';
 
 type Country = { type: 'Feature'; properties: { name: string }; geometry: GeoPermissibleObjects };
 
@@ -89,6 +90,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
   const flat = theme.mapStyle === 'flat' && !graphic.globe;   // top-down flat colours, solid highlight with its name
   const fill = theme.mapHighlight || theme.accent;
   const points = graphic.points ?? [];
+  const ground = graphic.globe ? [] : graphic.ground ?? [];
   const highlighted = useMemo(
     () => COUNTRIES.filter((c) => (graphic.countries ?? []).some((n) => n.toLowerCase() === c.properties.name.toLowerCase())),
     [graphic.countries],
@@ -241,11 +243,13 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
 
   return (
     <AbsoluteFill style={{ backgroundColor: theme.ocean }}>
+      {graphic.globe ? <Stars count={160} /> : null}
       <svg
         width={W}
         height={H}
         viewBox={`0 0 ${W} ${H}`}
-        style={tiltDeg ? { transform: `perspective(${P}px) rotateX(${tiltDeg}deg) scale(${S})`, transformOrigin: '50% 50%' } : undefined}
+        style={{ position: 'absolute', left: 0, top: 0,
+          ...(tiltDeg ? { transform: `perspective(${P}px) rotateX(${tiltDeg}deg) scale(${S})`, transformOrigin: '50% 50%' } : {}) }}
       >
         <defs>
           <linearGradient id="landShade" x1="0" y1="0" x2="0" y2="1">
@@ -269,20 +273,37 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
         </defs>
         {graphic.globe ? (
           <>
-            <path d={path({ type: 'Sphere' } as GeoPermissibleObjects) ?? ''} fill="url(#ocean)" stroke="#2b3140" strokeWidth={2} />
+            <circle cx={W / 2} cy={H / 2 + 20} r={(projection.scale?.() ?? 450) + 34} fill={alpha('#5ab4ff', 0.22)}
+              style={{ filter: 'blur(22px)' }} />
+            <circle cx={W / 2} cy={H / 2 + 20} r={(projection.scale?.() ?? 450) + 6} fill={alpha('#5ab4ff', 0.10)} />
+            <path d={path({ type: 'Sphere' } as GeoPermissibleObjects) ?? ''} fill="url(#ocean)" stroke={alpha('#8fd0ff', 0.55)} strokeWidth={3} />
             <path d={path(geoGraticule10()) ?? ''} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
           </>
         ) : (
           <rect width={W} height={H} fill={flat ? theme.ocean : 'url(#ocean)'} />
         )}
-        <g filter={flat ? undefined : 'url(#relief)'}>
+        {/* real ground: Sentinel-2 imagery laid exactly under the projection (Web Mercator tiles), the sharp
+            close-up fading in as the camera dives into the city */}
+        {ground.map((g, i) => {
+          const nw = projection([g.west, g.north]);
+          const se = projection([g.east, g.south]);
+          if (!nw || !se) return null;
+          return (
+            <image key={`g${i}`} href={staticFile(g.media.src)} x={nw[0]} y={nw[1]} width={se[0] - nw[0]} height={se[1] - nw[1]}
+              preserveAspectRatio="none" opacity={i === 0 ? 1 : interpolate(zoomed, [0.25, 0.6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })}
+              style={{ filter: 'saturate(1.15) contrast(1.08) brightness(0.92)' }} />
+          );
+        })}
+        {ground.length ? <rect width={W} height={H} fill={highlighted.length ? 'rgba(3,8,16,0.42)' : 'rgba(3,8,16,0.22)'} /> : null}
+        <g filter={flat || ground.length ? undefined : 'url(#relief)'}>
           {COUNTRIES.map((c, i) => (
-            <path key={i} d={path(c as never) ?? ''} fill={theme.land} stroke={flat ? alpha('#ffffff', 0.35) : theme.border}
-              strokeWidth={flat ? 1 : 0.8} />
+            <path key={i} d={path(c as never) ?? ''} fill={ground.length ? 'none' : theme.land}
+              stroke={ground.length ? 'rgba(255,255,255,0.42)' : flat ? alpha('#ffffff', 0.35) : theme.border}
+              strokeWidth={ground.length ? 1.1 : flat ? 1 : 0.8} />
           ))}
         </g>
         {/* soft relief: light from above over the land */}
-        {flat ? null : (
+        {flat || ground.length ? null : (
           <g opacity={0.9}>
             {COUNTRIES.map((c, i) => (
               <path key={`s${i}`} d={path(c as never) ?? ''} fill="url(#landShade)" stroke="none" />
@@ -292,7 +313,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
         {/* flat: the highlighted area filled solid, as the explainers do */}
         {flat
           ? highlighted.map((c, i) => (
-              <path key={`f${i}`} d={path(c as never) ?? ''} fill={fill} fillOpacity={0.95 * light}
+              <path key={`f${i}`} d={path(c as never) ?? ''} fill={fill} fillOpacity={(ground.length ? 0.5 : 0.95) * light}
                 stroke="#ffffff" strokeOpacity={light} strokeWidth={2} />
             ))
           : null}
@@ -303,7 +324,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
               key={`x${dy}-${i}`}
               d={path(c as never) ?? ''}
               transform={`translate(0,${dy * light})`}
-              fill={alpha(theme.accent, 0.08 * light * (1 - 0.75 * zoomed))}
+              fill={alpha(theme.accent, (ground.length ? 0.03 : 0.08) * light * (1 - 0.75 * zoomed))}
               stroke="none"
             />
           )),
@@ -313,7 +334,7 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             key={`h${i}`}
             d={path(c as never) ?? ''}
             fill={theme.accent}
-            fillOpacity={0.24 * light * (1 - 0.75 * zoomed)}
+            fillOpacity={(ground.length ? 0.1 : 0.24) * light * (1 - 0.75 * zoomed)}
             stroke={theme.accent}
             strokeOpacity={light}
             strokeWidth={2.5}
@@ -333,11 +354,15 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
           );
         })}
         {routePath ? (
+          <path d={routePath} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={13} strokeLinecap="round"
+            strokeDasharray="1" strokeDashoffset={1 - route} pathLength={1} />
+        ) : null}
+        {routePath ? (
           <path
             d={routePath}
             fill="none"
             stroke={flat ? '#ffffff' : theme.accent}
-            strokeWidth={5}
+            strokeWidth={7}
             strokeLinecap="round"
             strokeDasharray="1"
             strokeDashoffset={1 - route}
@@ -480,6 +505,12 @@ export const MapScene: FC<{ graphic: MapGraphic; durationInFrames: number }> = (
             );
           })()
         : null}
+      <Vignette strength={ground.length ? 0.5 : 0.35} />
+      <Grain opacity={0.08} id="map-grain" />
+      {ground.length && graphic.credit ? (
+        <div style={{ position: 'absolute', right: 26, bottom: 18, fontFamily, fontSize: 18, color: 'rgba(255,255,255,0.75)',
+          textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{graphic.credit}</div>
+      ) : null}
       {graphic.title ? <GraphicTitle text={graphic.title} /> : null}
     </AbsoluteFill>
   );
