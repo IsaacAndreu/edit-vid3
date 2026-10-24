@@ -205,8 +205,9 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
     {shots
       .filter((shot) => shot.type === 'chapter' && shot.chapterTitle)
       .map((shot) => (
-        <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
-          <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} word={locale?.chapter} />
+        <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.chapterFrames || shot.durationInFrames}>
+          <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} word={locale?.chapter}
+            frames={shot.chapterFrames || shot.durationInFrames} />
           <FilmBurn seed={shot.id} />
         </Sequence>
       ))}

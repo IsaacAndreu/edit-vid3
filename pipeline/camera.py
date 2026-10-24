@@ -115,12 +115,13 @@ def voice_frame_at(gaps: list[tuple[int, int]], at: int) -> int:
 
 def with_chapter_pauses(timeline: Timeline, seconds: float, fps: int) -> Timeline:
     """The narration pauses `seconds` as each chapter starts; the chapter shot holds that much longer
-    (its clip slowed down to fill it) and everything after it moves."""
+    (its clip slowed down to fill it) and everything after it moves. The chapter's card shows only during the
+    pause («CAPÍTULO 3» in silence, then the voice), unless the pause is too short to read it."""
 
     frames = round(seconds * fps)
     if frames <= 0:
         return timeline
-    for chapter in [s.id for s in timeline.shots if s.type == "chapter" and s.from_ > 0]:
+    for chapter in [s.id for s in timeline.shots if s.type == "chapter" and (s.from_ > 0 or s.chapterTitle)]:
         shot = next(s for s in timeline.shots if s.id == chapter)
         at = shot.from_
         voice_at = voice_frame_at(list(timeline.audio.voiceGaps), at)
@@ -133,8 +134,9 @@ def with_chapter_pauses(timeline: Timeline, seconds: float, fps: int) -> Timelin
         media = shot.media
         if media and media.kind == "video":
             media = media.model_copy(update={"rate": round(shot.durationInFrames / longer * (media.rate or 1.0), 4)})
-        shots = [s.model_copy(update={"durationInFrames": longer, "media": media}) if s.id == chapter else moved(s)
-                 for s in timeline.shots]
+        card = frames if shot.chapterTitle and seconds >= 1.5 else None
+        shots = [s.model_copy(update={"durationInFrames": longer, "media": media, "chapterFrames": card})
+                 if s.id == chapter else moved(s) for s in timeline.shots]
         speech = []
         for a, b in timeline.audio.speech:
             if b <= at:

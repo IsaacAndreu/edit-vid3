@@ -30,6 +30,7 @@ export interface Shot {
   media?: Media | null;
   chapterTitle?: string | null;
   chapterNumber?: number | null;
+  chapterFrames?: number | null; // the card shows only this long (the narration is silent meanwhile)
   groupId?: string | null;
   coldOpen?: boolean;
   offset?: number; // render: a piece of a longer shot that starts this many frames into it

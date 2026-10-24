@@ -41,7 +41,8 @@ pacing:                            # ritmo que respira (planner): planos más la
   base_seconds: 3.0                # plano normal (~19 cortes/min; antes 2,6 ≈ 23)
   slow_seconds: 4.3                # frases emotivas: plano largo con zoom lento (máx. 5 s)
   fast_seconds: 1.9                # frases de acción: cortes rápidos
-  chapter_pause: 0.5               # silencio de la voz al entrar en cada capítulo (segundos; 0 = sin pausa)
+  chapter_pause: 2.0               # al entrar en cada capítulo: el rótulo «CAPÍTULO 3» sale en silencio estos segundos y
+                                   # luego habla la voz (menos de 1,5 = solo una pausa, el rótulo sigue sobre la voz; 0 = nada)
 
 factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
   model: deepseek-flash

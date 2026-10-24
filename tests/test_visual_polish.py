@@ -88,3 +88,16 @@ def test_fast_path_draws_zoom_speed_and_archive(tmp_path):
     size = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(out)],
                           capture_output=True, text=True).stdout.strip()
     assert size == "1920,1080"
+
+
+def test_the_chapter_card_shows_in_silence_and_then_the_voice_speaks():
+    chapter = _shot(1, "chapter").model_copy(update={"chapterTitle": "La caída", "chapterNumber": 2})
+    timeline = Timeline.model_validate({
+        "slug": "t", "title": "T", "fps": 30, "width": 1920, "height": 1080, "durationInFrames": 90,
+        "shots": [s.model_dump(by_alias=True) for s in (_shot(0), chapter, _shot(2))],
+        "groups": [], "audio": {"voice": "audio/voz.mp3", "speech": [(0, 80)]}})
+    out = with_chapter_pauses(timeline, 2.0, 30)
+    card = out.shots[1]
+    assert card.chapterFrames == 60 and card.durationInFrames == 90           # 2 s of card, then its own 1 s
+    assert out.audio.voiceGaps == [(30, 60)] and out.audio.speech == [(0, 30), (90, 140)]   # silent while it shows
+    assert with_chapter_pauses(timeline, 0.5, 30).shots[1].chapterFrames is None              # too short to read

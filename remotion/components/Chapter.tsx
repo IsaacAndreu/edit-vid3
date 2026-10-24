@@ -58,7 +58,7 @@ const NumberedChapter: FC<{ title: string; number?: number | null; word?: string
  * Chapter card: "CAPÍTULO 01" in big heavy type with the chapter title under it, left-aligned
  * behind a yellow bar, over darkened footage. A colour wipe sweeps across as it comes in.
  */
-export const Chapter: FC<{ title: string; number?: number | null; word?: string }> = (props) =>
+export const Chapter: FC<{ title: string; number?: number | null; word?: string; frames?: number }> = (props) =>
   theme.chapterStyle === 'numbered' ? (
     <NumberedChapter {...props} />
   ) : theme.chapterStyle === 'scroll' ? (
@@ -69,13 +69,10 @@ export const Chapter: FC<{ title: string; number?: number | null; word?: string 
 
 /** chapterStyle 'scroll': the chapter written on an old parchment unrolled on a wooden table (history channels),
  * «CAPÍTULO I» under the ornament. */
-const ScrollChapter: FC<{ title: string; number?: number | null; word?: string }> = ({ title, number, word }) => {
-  const words = title.split(/\s+/).length;
-  return (
-    <Scroll graphic={{ type: 'scroll', title, subtitle: number ? `${word || 'Capítulo'} ${roman(number)}` : null }}
-      durationInFrames={Math.max(60, 40 + words * 8)} quick />
-  );
-};
+const ScrollChapter: FC<{ title: string; number?: number | null; word?: string; frames?: number }> = ({ title, number, word, frames }) => (
+  <Scroll graphic={{ type: 'scroll', title, subtitle: number ? `${word || 'Capítulo'} ${roman(number)}` : null }}
+    durationInFrames={Math.max(45, frames || 75)} quick />
+);
 
 const BlockChapter: FC<{ title: string; number?: number | null; word?: string }> = ({ title, number, word }) => {
   const frame = useCurrentFrame();

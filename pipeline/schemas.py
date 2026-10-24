@@ -611,6 +611,7 @@ class TimelineShot(_Strict):
     media: TimelineMedia | None = None
     chapterTitle: str | None = None
     chapterNumber: int | None = None                         # 1, 2, … for "CAPÍTULO 01"
+    chapterFrames: int | None = None                         # the card shows only this long: the voice's pause
     groupId: str | None = None                               # panel / stat group this shot belongs to
     coldOpen: bool = False                                   # plays with its original sound, before the narration
 
