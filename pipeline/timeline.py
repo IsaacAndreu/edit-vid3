@@ -577,6 +577,10 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
 
             graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
                                  for p in graphic["points"]]
+        if graphic["type"] == "map" and graphic.get("globe") and ctx.section("graphics").get("earth_3d", True):
+            earth = earth_textures(ctx)
+            if earth:
+                graphic = {**graphic, "earth": earth}
         if graphic["type"] == "map" and graphic.get("style") != "pins" and not graphic.get("globe"):
             from .satellite import SOURCES, ground
 
@@ -665,6 +669,28 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     if boards:
         print(f"   Pizarra (plano sin imagen): {len(boards)} · " + ", ".join(f"{g.from_ / fps:.0f}s" for g in boards))
     return sorted([*groups, *added, *boards], key=lambda g: g.from_), labels
+
+
+EARTH = {"day": "earth_day_4096.jpg", "night": "earth_night_4096.jpg", "surface": "earth_bump_roughness_clouds_4096.jpg"}
+
+
+def earth_textures(ctx: RunContext) -> dict[str, Any] | None:
+    """The photoreal globe's textures (assets/earth/: NASA Blue Marble and Black Marble, public domain, as packaged by
+    three.js) copied next to the timeline, or None when they are missing (the vector globe is drawn instead)."""
+
+    import shutil
+
+    out: dict[str, Any] = {"credit": "Imagen: NASA Blue Marble / Black Marble"}
+    for key_, name in EARTH.items():
+        source = ctx.root / "assets" / "earth" / name
+        if not source.is_file():
+            return None
+        target = ctx.work_dir / "graphics" / "earth" / name
+        if not target.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        out[key_] = {"src": f"graphics/earth/{name}", "kind": "image", "source": "nasa"}
+    return out
 
 
 def voice_frame(timeline: Timeline, seconds: float) -> int:

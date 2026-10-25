@@ -459,6 +459,8 @@ class Renderer:
                             f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
             cmd = [npx, "remotion", "render", str(bundle_dir), composition, str(output), f"--props={props_file}",
                    "--log=error", *extra]
+            if '"earth": {' in props_file.read_text("utf-8"):    # the photoreal globe is WebGL: a GL that works headless
+                cmd.append(f"--gl={self.cfg.get('gl', 'swangle')}")
             browser = _browser(self.cfg)
             if browser:
                 cmd.append(f"--browser-executable={browser}")

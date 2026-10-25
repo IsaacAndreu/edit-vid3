@@ -34,6 +34,7 @@ import { Scroll } from './Scroll';
 import { News } from './News';
 import { Poster } from './Poster';
 import { PinMap } from './PinMap';
+import { Earth3D } from './Earth3D';
 import { GraphicFrame } from './GraphicFrame';
 import { Grain } from './Paper';
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
@@ -67,7 +68,9 @@ export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed
 const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   switch (graphic.type) {
     case 'map':
-      return graphic.style === 'pins' && (graphic.points || []).length ? (
+      return graphic.globe && graphic.earth ? (
+        <Earth3D graphic={graphic} durationInFrames={durationInFrames} />
+      ) : graphic.style === 'pins' && (graphic.points || []).length ? (
         <PinMap graphic={graphic} durationInFrames={durationInFrames} />
       ) : (
         <MapScene graphic={graphic} durationInFrames={durationInFrames} />

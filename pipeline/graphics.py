@@ -299,7 +299,10 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             if km and 50 <= km <= 20000 and said(r["km"], text):
                 rings.append({"point": moved[r["point"]], "km": km, "label": str(r.get("label") or f"{km:,.0f} km".replace(",", "."))[:20]})
         return {"type": "map", "title": data.get("title"), "countries": names, "points": points,
-                "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom, "globe": bool(data.get("globe")),
+                "route": bool(data.get("route")) and len(points) > 1, "zoom": zoom,
+                # a route across oceans reads best on the (photoreal) globe than on a flat map
+                "globe": bool(data.get("globe")) or (bool(data.get("route")) and len(points) > 1
+                                                    and max(p["lon"] for p in points) - min(p["lon"] for p in points) > 60),
                 "date": date, "regionLabel": label if names else None, "rings": rings,
                 "style": "pins" if data.get("pins") and 2 <= len(points) <= 5 else None}
     if kind == "satellite":

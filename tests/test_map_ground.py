@@ -40,3 +40,24 @@ def test_a_map_gets_a_wide_layer_and_a_close_one_where_it_zooms(tmp_path, monkey
     image = Image.open(ctx.work_dir / wide["media"]["src"])
     assert image.width % 256 == 0 and image.height % 256 == 0 and len(asked) <= 150 + 120
     assert satellite.ground(ctx, {**graphic, "globe": True}) == [] and satellite.ground(ctx, {**graphic, "style": "pins"}) == []
+
+
+def test_a_globe_gets_the_earth_textures_and_a_long_route_becomes_a_globe(tmp_path, monkeypatch):
+    from pipeline import graphics
+    from pipeline.timeline import earth_textures
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "earth").symlink_to(ROOT / "assets" / "earth")
+    ctx = RunContext.create("m", root=tmp_path)
+    earth = earth_textures(ctx)
+    assert {"day", "night", "surface"} <= set(earth) and (ctx.work_dir / earth["day"]["src"]).is_file()
+    geo = {"rosario": (-60.64, -32.95), "barcelona": (2.17, 41.39), "madrid": (-3.7, 40.4)}
+    monkeypatch.setattr(graphics, "geocode", lambda c, q: geo.get(q.lower()))
+    far = graphics.clean("map", {"title": "x", "points": [{"name": "Rosario", "query": "rosario"},
+                                                          {"name": "Barcelona", "query": "barcelona"}], "route": True},
+                         "De Rosario a Barcelona.", ctx, set())
+    near = graphics.clean("map", {"title": "x", "points": [{"name": "Madrid", "query": "madrid"},
+                                                           {"name": "Barcelona", "query": "barcelona"}], "route": True},
+                          "De Madrid a Barcelona.", ctx, set())
+    assert far["globe"] is True and near["globe"] is False

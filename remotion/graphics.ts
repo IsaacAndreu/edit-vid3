@@ -27,6 +27,7 @@ export interface MapGraphic {
   style?: 'pins' | null; // an old paper map that pans from place to place, a pinned polaroid at each
   ground?: { media: Media; west: number; north: number; east: number; south: number }[]; // satellite imagery under it
   credit?: string | null; // the imagery's credit, always on screen when there is ground
+  earth?: { day: Media; night: Media; surface: Media; credit?: string | null } | null; // globe: photoreal Earth (Earth3D)
 }
 
 export interface RankGraphic {
