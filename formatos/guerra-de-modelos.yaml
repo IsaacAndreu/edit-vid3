@@ -1,0 +1,61 @@
+# Formato «Guerra de modelos»: cómo marcas chinas rompen el dominio de marcas históricas en un producto conocido.
+# Es el formato del canal china-marcas (canales/china-marcas.yaml). Un vídeo = una industria + un «monopolio» + cómo
+# se rompe, en 20-25 minutos.
+nombre: "Guerra de modelos"
+descripcion: "Una industria, el club exclusivo de marcas históricas que la dominaba y cómo las marcas chinas lo rompen: tres razones, casos con precios lado a lado, la objeción y la expansión."
+ejemplos: "Cómo Xiaomi rompió el club de los móviles de 1.000 €, por qué BYD vende más coches eléctricos que Tesla, los drones de DJI, las aspiradoras robot, las zapatillas de Anta."
+# Para el «Borrador de guion» (Guiones): la estructura y la voz del texto.
+escritura: |
+  FORMATO GUERRA DE MODELOS (una industria + un «monopolio» + cómo se rompe; 20-25 min, 20.000-25.000 caracteres):
+  1. 0:00-0:45 GANCHO: una injusticia o un problema de décadas que el espectador paga sin saberlo, la frase «lo que
+     la industria nunca quiso que supieras», una pregunta imposible de ignorar y la promesa «hoy vamos a entender por
+     qué…».
+  2. 0:45-3:00 EL CLUB EXCLUSIVO: cómo funcionaba el monopolio — el precio, la dependencia del cliente, cuánto vale
+     el logo. Cifras reales: cuota de mercado, margen, coste de fabricación contra precio de venta.
+  3. 3:00-4:30 LA LLEGADA DE CHINA: «Las alternativas no avisan, llegan.» Quién, cuándo y con qué.
+  4. 4:30-12:00 TRES RAZONES por las que las marcas históricas subestimaron el cambio (el precio, el hueco que
+     ignoraron, la simplicidad o la disponibilidad). Cada razón con un ejemplo humano (alguien que compra, un pequeño
+     emprendedor) y una cifra comparativa.
+  5. 12:00-19:00 CASOS: un caso central o 2-3 casos cortos de la misma industria. Cada uno con su origen, el año,
+     la estrategia, el producto estrella y una comparación de precios lado a lado (marca histórica contra china)
+     presentada con «compara esto».
+  6. A MITAD DEL VÍDEO (hacia el minuto 11-12): un pedido breve de like con humor propio, sin muletillas de otros
+     canales.
+  7. 19:00-21:00 LA OBJECIÓN: «Es barato porque es malo.» Qué dicen los usuarios y dónde SÍ pierden las marcas
+     chinas (garantía, servicio, durabilidad, privacidad…): lo que las marcas históricas hacen mejor, dicho claro.
+  8. 21:00-23:00 LA EXPANSIÓN: países, canales de venta, y cuántas marcas históricas ya fabrican en China.
+  9. 23:00-25:00 CIERRE: la tesis («no es una guerra de marcas, es una guerra de modelos»), qué significa para quien
+     ve el vídeo, y una pregunta final para los comentarios.
+  VOZ: español neutro latino, sin localismos; frases cortas y ritmo ágil; tono irónico y cercano, contra el
+  establishment pero con datos; en segunda persona («compara esto», «mira lo que pasa»). Voz propia: ningún saludo,
+  muletilla ni chiste de otro canal.
+  RECURSOS: una frase corta de impacto tras un párrafo largo («Eso molesta.»); tríadas y listas de tres; metáforas
+  de lujo, de comida y de fiestas privadas; la inversión del prejuicio; «Mientras X hacía A, Y hacía B.»; una
+  pregunta retórica antes de cada dato fuerte; cada bloque termina con un gancho al siguiente.
+  CIFRAS: siempre con su unidad y su fuente dicha en la frase («según Counterpoint, en 2024…»); «aproximadamente»
+  cuando lo sea; comparativas concretas (precio de la marca contra precio chino, coste de fabricación contra precio
+  de venta).
+  VERACIDAD (obligatorio): toda cifra, año y nombre propio verificable en una fuente pública; ninguna cita, empresa
+  ni dato inventado; separa el hecho de la opinión («los datos dicen…» / «mi lectura es…»); nunca «quebró»,
+  «copió» o «robó» sin una fuente que lo diga. Si no estás seguro de un dato, escríbelo con [COMPROBAR] detrás.
+  Un capítulo por bloque, con títulos cortos que suenen a historia (## EL CLUB EXCLUSIVO, ## LAS ALTERNATIVAS NO
+  AVISAN…). Sin acotaciones ni indicaciones de imagen en el texto.
+guion: |
+  ESTE VÍDEO ES UNA GUERRA DE MODELOS en una industria: marcas históricas contra marcas chinas.
+  - "subject": ""; "peak": búsqueda EN INGLÉS de la imagen más fuerte del gancho (el producto, una fábrica enorme,
+    un puerto lleno de contenedores).
+  - "events": uno por bloque y por caso (la marca y su producto estrella); "label" = búsqueda EN INGLÉS de imagen de
+    STOCK que se vea bien: fábricas y líneas de producción ('smartphone factory assembly line', 'electric car
+    factory robots'), puertos y contenedores ('container ship port cranes'), el producto en primer plano
+    ('smartphone close up rotating'), tiendas y gente comprando; "tag" = la marca y el año si se dicen.
+  - Capítulos: uno por bloque de la estructura (gancho sin título, EL CLUB EXCLUSIVO, LA LLEGADA, una por razón,
+    LOS CASOS, LA OBJECIÓN, LA EXPANSIÓN, EL CIERRE).
+graficos: |
+  Este vídeo es una guerra de modelos: los precios mandan. Usa "compare" para CADA «compara esto» (marca histórica
+  contra china, con el precio y 1-3 cifras más de cada una), "receipt" para coste de fabricación contra precio de
+  venta, "chart" (barras) para cuotas de mercado y ventas por año, "map" para la expansión por países, "lens" para la
+  cifra clave de un bloque, "search" para la pregunta del gancho y "kinetic" para las frases de impacto («Eso
+  molesta.»). Nada de citas inventadas: "cita" y "press" solo con lo que el guion atribuye a una fuente.
+tipos: [compare, receipt]
+segundos_por_grafico: 55
+titulos: "patrón de título: una marca histórica + una marca china + el conflicto o la cifra ('Xiaomi contra Apple: el móvil de 300 € que rompió el club de los 1.000 €', 'Por qué BYD ya vende más que Tesla'). Sin 'te sorprenderá' ni clickbait vacío; la cifra del título debe estar en el guion."

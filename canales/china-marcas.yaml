@@ -1,0 +1,103 @@
+# Perfil del canal «china-marcas»: documentales de negocio faceless, en español neutro latino, de 20-25 min. Cada
+# vídeo explica cómo marcas chinas rompen el dominio de marcas históricas en un producto que la gente conoce y compra:
+# una industria + un «monopolio» + cómo se rompe. Formato guerra-de-modelos (formatos/guerra-de-modelos.yaml: la
+# estructura del guion, la voz, los recursos y las reglas de veracidad). Audiencia: Latinoamérica y España, 25-55
+# años, consumidores y pequeños emprendedores interesados en qué se paga realmente por una marca.
+# Úsalo con `canal: china-marcas` (materiales/china-marcas/config.yaml ya lo pone).
+#
+# PLANTILLA POR VÍDEO (rellénala en la nota de la idea antes de pedir el borrador): título / industria / marca
+# histórica / marcas chinas (3-5) / tres razones / cinco comparativas de precio con fuente / caso central / objeción y
+# respuesta / dato final / pregunta final.
+#
+# Voz: en el estudio → Ajustes → Voces por canal → china-marcas: un narrador masculino grave en español neutro latino.
+
+format: guerra-de-modelos
+
+brand:                             # rojo de bandera y dorado de etiqueta de precio sobre gris carbón
+  accent: "#ff3b30"                # rojo: la marca china, las cifras, los capítulos
+  accent2: "#f5c542"               # dorado: la marca histórica (lado B de las comparativas)
+  canvas: "#151517"
+  glow: "rgba(255,59,48,0.22)"
+  label: "#5c1410"
+  wipe: "#ff3b30"
+  panel: "#1c1c1f"
+  panelRaised: "#26262a"
+  muted: "#b4b4bb"
+  ocean: "#101418"
+  land: "#2a2d33"
+  border: "rgba(255,255,255,0.3)"
+  chapterStyle: numbered           # «CAPÍTULO I:» en rojo + título en blanco
+  statStyle: bare                  # la cifra gigante directamente sobre la fábrica o el producto
+  articleStyle: paper
+  motion: editorial
+
+graphics:
+  seconds_per_graphic: 55          # vive de precios lado a lado, costes, cuotas de mercado y mapas
+  max: 25                          # 20-25 min: hasta ~25 gráficos
+  cover_weak: true                 # los gráficos van primero donde el stock es flojo
+  types: [compare, receipt, chart, map, kinetic, race, scale, timeline, specs]
+
+people:
+  max: 3                           # fundadores (Lei Jun, Wang Chuanfu…) con su tarjeta, si hay foto libre
+
+pacing:
+  base_seconds: 3.8                # cambio de plano cada 3-5 s
+
+timeline:
+  assets: assets/china-marcas      # assets/china-marcas/music (tensa e informativa) y /sfx; si están vacías, assets/
+  music_default: intriga           # tensa e informativa bajo la voz, sube en las transiciones de capítulo
+  moments: 0                       # sin clips con su sonido original: no hay vídeos de terceros
+  sound_bites: 0
+  pizarra: true                    # un plano sin imagen sale en pizarra con su palabra clave, nunca vacío
+
+# SIN FRAGMENTOS DE VÍDEOS DE TERCEROS: ni YouTube, ni archivo histórico, ni segunda búsqueda en YouTube. El metraje es
+# stock con licencia (Pexels: fábricas, líneas de producción, puertos, contenedores, producto, tiendas), fotos libres
+# de Commons/Openverse y los gráficos.
+sourcing:
+  youtube: {enabled: false}
+  archive: {enabled: false}
+
+fallback:
+  pexels: true                     # el metraje principal del canal
+  research: false                  # la segunda búsqueda es en YouTube
+  generate: false                  # imágenes generadas: ponlo en true si el stock se queda corto (~0,04 $ cada una)
+
+planner:
+  shots_note: |
+    - METRAJE DE STOCK que se vea bien y sin marcas de terceros: fábricas y líneas de producción ('smartphone
+      factory assembly line', 'car factory robots welding'), puertos y contenedores ('container ship port cranes
+      aerial'), producto en primer plano ('smartphone close up rotating dark background'), tiendas y gente
+      comprando ('people shopping electronics store'), dinero y etiquetas de precio. Nunca 'news report' ni
+      entrevistas: no se usan vídeos de terceros.
+    - CIFRAS: cada cifra fuerte en un plano "stat" con su unidad ('299 $', '42 %', '1.200 millones'), y su label de
+      1-2 palabras ('el Xiaomi', 'margen'). Cada «compara esto» es una comparativa lado a lado.
+
+judge:
+  note: "This is a business documentary made only with stock footage. Any clean shot of the industry being narrated
+    (factories, assembly lines, ports, containers, the kind of product, stores, people buying) is ACCEPTABLE for any
+    line about it, even if it does not show the exact brand. Reject what is off-topic, shows a presenter talking to
+    camera, burned-in subtitles or another brand's big logo when the line is about a different one."
+
+factcheck:
+  block_on_wrong: true             # veracidad obligatoria: un dato que la verificación da por falso para el vídeo
+
+package:
+  thumbnail_style: concept         # una sola idea: el producto histórico contra el chino, con la cifra
+  hint: "dos marcas reales (la histórica y la china) o el producto, y una cifra del guion con su unidad ('299 $ vs
+    1.199 $', '-75 %'). Nunca 'quebró', 'copió' o 'robó' si el guion no lo dice con su fuente. Textos de miniatura de
+    0-4 palabras: 'COMPARA ESTO', 'EL CLUB SE ROMPIÓ', el precio."
+
+ideas:
+  about: "un canal de YouTube faceless en español neutro latino de documentales de negocio: cómo marcas chinas
+    rompen el dominio de marcas históricas en productos que la gente conoce y compra (móviles, coches eléctricos,
+    drones, electrodomésticos, ropa deportiva…), con precios lado a lado y cifras con fuente, 20-25 min"
+  pattern: "marca histórica + marca china + el producto + una cifra de precio o de cuota (o 'cómo X rompió el club de Y')"
+  words: 3700                      # 20.000-25.000 caracteres de guion
+  my_channel: ""
+  competitors: []                  # los @ de los canales que tomes de referencia, para el radar
+  niches: [marcas chinas, Xiaomi contra Apple, coches eléctricos chinos, BYD, monopolios de marcas,
+           cuánto cuesta fabricar, made in China]
+
+lab:
+  queries: [marcas chinas, cómo china, por qué es tan barato, xiaomi vs apple, byd vs tesla, made in china,
+            cuánto cuesta fabricar]
