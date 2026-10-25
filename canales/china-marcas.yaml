@@ -9,6 +9,7 @@
 # histórica / marcas chinas (3-5) / tres razones / cinco comparativas de precio con fuente / caso central / objeción y
 # respuesta / dato final / pregunta final.
 #
+# Metraje: real de YouTube (presentaciones, anuncios, fábricas, reportajes, reviews), nunca stock.
 # Voz: en el estudio → Ajustes → Voces por canal → china-marcas: un narrador masculino grave en español neutro latino.
 
 format: guerra-de-modelos
@@ -34,7 +35,7 @@ brand:                             # rojo de bandera y dorado de etiqueta de pre
 graphics:
   seconds_per_graphic: 55          # vive de precios lado a lado, costes, cuotas de mercado y mapas
   max: 25                          # 20-25 min: hasta ~25 gráficos
-  cover_weak: true                 # los gráficos van primero donde el stock es flojo
+  cover_weak: true                 # los gráficos van primero donde el metraje es flojo
   types: [compare, receipt, chart, map, kinetic, race, scale, timeline, specs]
 
 people:
@@ -46,37 +47,37 @@ pacing:
 timeline:
   assets: assets/china-marcas      # assets/china-marcas/music (tensa e informativa) y /sfx; si están vacías, assets/
   music_default: intriga           # tensa e informativa bajo la voz, sube en las transiciones de capítulo
-  moments: 0                       # sin clips con su sonido original: no hay vídeos de terceros
-  sound_bites: 0
+  sound_bites: 0                   # sin golpes de sonido original: en reportajes y reviews habla un presentador
   pizarra: true                    # un plano sin imagen sale en pizarra con su palabra clave, nunca vacío
 
-# SIN FRAGMENTOS DE VÍDEOS DE TERCEROS: ni YouTube, ni archivo histórico, ni segunda búsqueda en YouTube. El metraje es
-# stock con licencia (Pexels: fábricas, líneas de producción, puertos, contenedores, producto, tiendas), fotos libres
-# de Commons/Openverse y los gráficos.
-sourcing:
-  youtube: {enabled: false}
-  archive: {enabled: false}
-
+# METRAJE REAL DE YOUTUBE, NUNCA STOCK: reportajes y telediarios, visitas a fábricas, presentaciones de producto,
+# anuncios de las marcas, reviews y unboxings, puertos y contenedores en reportajes. Si no hay vídeo, foto de prensa
+# del producto o de la marca; si tampoco, pizarra. Sin Pexels ni imágenes generadas.
 fallback:
-  pexels: true                     # el metraje principal del canal
-  research: false                  # la segunda búsqueda es en YouTube
-  generate: false                  # imágenes generadas: ponlo en true si el stock se queda corto (~0,04 $ cada una)
+  pexels: false
+  generate: false
 
 planner:
   shots_note: |
-    - METRAJE DE STOCK que se vea bien y sin marcas de terceros: fábricas y líneas de producción ('smartphone
-      factory assembly line', 'car factory robots welding'), puertos y contenedores ('container ship port cranes
-      aerial'), producto en primer plano ('smartphone close up rotating dark background'), tiendas y gente
-      comprando ('people shopping electronics store'), dinero y etiquetas de precio. Nunca 'news report' ni
-      entrevistas: no se usan vídeos de terceros.
+    - METRAJE REAL, NUNCA STOCK, con la marca y el producto en la búsqueda: presentaciones y anuncios de la marca
+      ('Xiaomi 14 launch event', 'BYD Seal official commercial'), visitas a sus fábricas ('BYD factory tour',
+      'Xiaomi smart factory'), reportajes y telediarios ('Chinese EV exports news report 2024', 'CNBC BYD'),
+      reviews y unboxings ('Xiaomi 14 review', 'iPhone vs Xiaomi camera comparison'), tiendas de la marca, puertos y
+      barcos de coches ('BYD car carrier ship port'). Con el año cuando se sepa. Nunca 'stock footage', 'business
+      people' ni 'money concept'.
     - CIFRAS: cada cifra fuerte en un plano "stat" con su unidad ('299 $', '42 %', '1.200 millones'), y su label de
       1-2 palabras ('el Xiaomi', 'margen'). Cada «compara esto» es una comparativa lado a lado.
 
 judge:
-  note: "This is a business documentary made only with stock footage. Any clean shot of the industry being narrated
-    (factories, assembly lines, ports, containers, the kind of product, stores, people buying) is ACCEPTABLE for any
-    line about it, even if it does not show the exact brand. Reject what is off-topic, shows a presenter talking to
-    camera, burned-in subtitles or another brand's big logo when the line is about a different one."
+  trusted_bonus: 0.05              # prioridad a medios económicos y canales oficiales de las marcas
+  note: "This is a business documentary about brands. Real footage of the brand or product being narrated (launch
+    events, commercials, its factories, stores, the product in use, reviews, news reports about it) is ACCEPTABLE
+    for any line about that brand or its industry, even if it does not show the exact action described. Rank the
+    closest one first. Reject what is off-topic, another brand when the line is about a different one, a presenter
+    or reviewer talking to camera, or burned-in subtitles."
+  trusted_channels: [Bloomberg, CNBC, Reuters, Wall Street Journal, Financial Times, Business Insider, The Economist,
+                     DW, South China Morning Post, CGTN, Xiaomi, BYD, Apple, Samsung, Tesla, Marques Brownlee,
+                     Euronews]
 
 factcheck:
   block_on_wrong: true             # veracidad obligatoria: un dato que la verificación da por falso para el vídeo
