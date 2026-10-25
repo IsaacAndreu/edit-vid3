@@ -242,6 +242,9 @@ def run(ctx: RunContext) -> None:
     # with YouTube slow (5 s a query, 0.09 MB/s) a second search took minutes and the other workers queued behind
     # it: mega2 spent 2.5 h here. Now a shot waits at most a minute for its turn, and none start after 20 min.
     research_until = time.monotonic() + 60 * float(cfg.get("research_minutes", 20))
+    # one second search per story event: its finds serve every shot of that event (event_pool reads them), so the
+    # twenty minutes reach more events instead of ten searches for ten shots of the same final
+    researched: set[str] = set()
 
     def research(shot: Any, reason: str, tried: list[str]) -> tuple[list[Option], dict[str, Candidate]]:
         """New queries for a shot nothing fitted, searched, analysed in work/<slug>/research/ (never the stage
@@ -250,10 +253,19 @@ def run(ctx: RunContext) -> None:
         from .analysis import analyse
         from .llm import complete_json
 
+        event = " ".join(sorted(tokens(shot.broll.event))) if shot.broll.event else ""
+        if event and event in researched:      # a sibling searched already: what it found, minus what was rejected
+            pool, pool_candidates = event_pool(ctx, story, shot, research=True)
+            tried.append("segunda búsqueda: ya hecha en este tramo")
+            return pool, pool_candidates
         if time.monotonic() > research_until or not research_lock.acquire(timeout=60):
             tried.append("segunda búsqueda: sin tiempo")
             return [], {}
         try:
+            if event and event in researched:  # done while this one waited for its turn
+                return event_pool(ctx, story, shot, research=True)
+            if event:
+                researched.add(event)
             if research_left[0] <= 0 or time.monotonic() > research_until:
                 return [], {}
             research_left[0] -= 1
@@ -306,10 +318,15 @@ def run(ctx: RunContext) -> None:
     # options that already failed in another shot (download error, picture already on screen): never sent to the
     # judge again — avion9 spent its three slots on the same broken photo in ten shots and lost the good ones
     dead: set[str] = set()
+    # what the judge already turned down for a shot of the same story event: not shown to it again for the next
+    # shot of that event (pati1.2 sent the same Midori Ito clips to the judge for fifteen Sochi shots)
+    turned_down: dict[str, set[str]] = {}
+    turned_lock = threading.Lock()
 
     def resolve(shot_id: str, reason: str) -> tuple[FallbackItem | None, list[str]]:
         nonlocal clip
         shot = shots[shot_id]
+        event_key = " ".join(sorted(tokens(shot.broll.event))) if shot.broll and shot.broll.event else ""
         needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
         digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
         item: FallbackItem | None = None
@@ -327,7 +344,8 @@ def run(ctx: RunContext) -> None:
                        if not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
                        and not overused(o.candidateId, used,
                                         per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
-                       and f"{o.candidateId}@{o.start}" not in dead]
+                       and f"{o.candidateId}@{o.start}" not in dead
+                       and not (vet and event_key and f"{o.candidateId}@{o.start}" in turned_down.get(event_key, ()))]
             if not options:
                 return None
             if vet:
@@ -336,6 +354,10 @@ def run(ctx: RunContext) -> None:
                                      around=surrounding(story.shots, shot.id))
                 by_letter = dict(zip(LETTERS, options))
                 accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
+                if event_key:
+                    with turned_lock:
+                        turned_down.setdefault(event_key, set()).update(
+                            f"{o.candidateId}@{o.start}" for o in options if o not in accepted)
             else:
                 accepted = list(options)
             if not accepted:
@@ -421,7 +443,7 @@ def run(ctx: RunContext) -> None:
         # 1b'. Footage already analysed for the neighbouring shots of the same story event (the same casino,
         # the same final, the same factory…): real footage of the topic before any stock. Vetted by the judge.
         if item is None and shot.broll:
-            pool, pool_candidates = event_pool(ctx, story, shot)
+            pool, pool_candidates = event_pool(ctx, story, shot, research=True)   # with the second searches so far
             options = [o for o in pool if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
                        and not seen_elsewhere(o, elsewhere)
                        and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
@@ -665,9 +687,11 @@ def person_for(story: ShotsFile, shot: Any) -> str:
     return " ".join(lead) if len(lead) == 2 else ""
 
 
-def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4) -> tuple[list[Option], dict[str, Candidate]]:
+def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4,
+               research: bool = False) -> tuple[list[Option], dict[str, Candidate]]:
     """Scored fragments of the other shots telling the same story event (or, without events, of the
-    shots next to it), best first: footage about the same place/company/fact the shot is part of."""
+    shots next to it), best first: footage about the same place/company/fact the shot is part of. With `research`,
+    also what their second searches found. Never a neighbour's footage of another person this shot does not name."""
 
     ordered = [s for s in story.shots if needs_footage(s)]
     index = next((i for i, s in enumerate(ordered) if s.id == shot.id), None)
@@ -682,9 +706,21 @@ def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4) -> 
     blocklist = ctx.section("content").get("title_blocklist")
     options: dict[tuple[str, float | None], Option] = {}
     candidates: dict[str, Candidate] = {}
-    for other in group:
-        cand_path = ctx.work_dir / "candidates" / f"{other.id}.json"
-        scores_path = ctx.work_dir / "scores" / f"{other.id}.json"
+    # a neighbour's footage of someone this shot does not name is not this shot's footage: the script mentions
+    # Midori Ito beside Mao Asada's Sochi skate, and Ito's Albertville videos are not Sochi
+    from .people import looks_like_person
+
+    own = tokens(" ".join([*(shot.broll.entities if shot.broll else []), person_for(story, shot)]))
+    mine = [tokens(n) for n in [*(shot.broll.entities if shot.broll else []), person_for(story, shot)]
+            if n and looks_like_person(n) and tokens(n)]                       # the people this shot is about
+    others = [tokens(e) for o in group for e in (o.broll.entities if o.broll else [])
+              if looks_like_person(e) and tokens(e) and not tokens(e) <= own] if mine else []
+    places = [(o, "candidates", "scores") for o in group]
+    if research:
+        places += [(o, f"research/{o.id}/candidates", f"research/{o.id}/scores") for o in group]
+    for other, cand_dir, score_dir in places:
+        cand_path = ctx.work_dir / cand_dir / f"{other.id}.json"
+        scores_path = ctx.work_dir / score_dir / f"{other.id}.json"
         if not cand_path.is_file() or not scores_path.is_file():
             continue
         found = {c.id: c for c in ShotCandidates.model_validate_json(cand_path.read_text("utf-8")).candidates}
@@ -693,6 +729,9 @@ def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4) -> 
             c = found.get(option.candidateId)
             if c is None or option.kind != "video" or total < float(judge_cfg.get("min_accept", 0.22)) \
                     or blocked_by_title(c.title, c.channel, blocklist):
+                continue
+            title = tokens(f"{c.title or ''} {c.channel or ''}")
+            if any(name <= title for name in others) and not any(name & title for name in mine):
                 continue
             candidates[c.id] = c
             options.setdefault((option.candidateId, option.start), option)
