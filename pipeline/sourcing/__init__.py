@@ -39,6 +39,9 @@ def needs_footage(shot: Shot) -> bool:
     return shot.broll is not None and shot.type in ("broll", "chapter", "split", "stat")
 
 
+# proxy → until when it counts as off (a TCP check that failed): shared by every YouTube source of the process
+_PROXY_DOWN: dict[str, float] = {}
+
 HYPOTHETICAL = "WHAT IF"
 
 
@@ -200,7 +203,13 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     source = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
     from .youtube import proxy_reachable
 
-    down = [p for p in source.proxies if not proxy_reachable(p)]
+    rest = float(yt_cfg.get("proxy_rest_minutes", 10)) * 60
+    now = time.monotonic()
+    # a proxy found off a moment ago is not knocked on again (5 s each): the fallback opens YouTube once per shot
+    down = [p for p in source.proxies if _PROXY_DOWN.get(p, 0.0) > now or not proxy_reachable(p)]
+    for p in down:
+        if _PROXY_DOWN.get(p, 0.0) <= now:
+            _PROXY_DOWN[p] = now + rest
     if source.proxies and len(down) == len(source.proxies):     # before any search: say it, wait, retry soon
         from ..budget import ProxyDown
 
@@ -208,8 +217,7 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
         raise ProxyDown(f"El proxy de YouTube ({names}) no responde: abre proxy-youtube en ese PC y comprueba "
                         "Tailscale. El vídeo se reintenta solo en 15 min; la cola sigue con los demás")
     for p in down:
-        print(f"   Aviso: el proxy {source.way_name(source.proxies.index(p))} no responde; sigo por los otros")
-        source._rest(source.proxies.index(p), float(yt_cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
+        source._rest(source.proxies.index(p), max(60.0, _PROXY_DOWN[p] - now), "no responde")
     source.metrics_path = ctx.work_dir / "youtube_downloads.jsonl"
     caller = inspect.stack()[1].filename
     source.stage = Path(caller).parent.name if Path(caller).stem == "__init__" else Path(caller).stem
