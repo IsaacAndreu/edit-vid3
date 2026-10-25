@@ -298,7 +298,7 @@ def screen_texts(timeline: dict[str, Any]) -> dict[str, str]:
     return texts
 
 
-SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", "query", "year", "id", "person", "style"}
+SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", "query", "year", "id", "person", "style", "author", "platform"}
 
 
 def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:

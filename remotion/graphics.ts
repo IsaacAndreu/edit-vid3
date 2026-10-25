@@ -43,6 +43,7 @@ export interface RankGraphic {
 export interface CompareSide {
   name: string;
   media?: Media | null;
+  logo?: Media | null; // a brand's logo when there is no photo
 }
 
 export interface CompareGraphic {
@@ -59,6 +60,7 @@ export interface ChartGraphic {
   title: string;
   unit?: string | null;
   data: { label: string; value: number }[];
+  three?: boolean; // solid lit 3D bars (WebGL), set by the pipeline when graphics.bars_3d is on
   highlight?: string | null; // label to paint in the accent colour
 }
 
@@ -274,6 +276,22 @@ export interface NewsGraphic {
   media?: Media | null; // the person, a black and white cutout on the right
 }
 
+export interface BoardGraphic {
+  type: 'board';
+  center: string; // the name everything leads to, pinned in the middle
+  photo?: Media | null;
+  items: { name: string; note?: string | null; photo?: Media | null }[]; // 3-5 pinned around it, red string to the centre
+}
+
+export interface PostGraphic {
+  type: 'post';
+  author: string;
+  text: string; // what they published, word for word as the script quotes it
+  platform?: 'x' | 'instagram' | 'facebook' | 'tiktok' | null; // only when the script says where
+  date?: string | null;
+  media?: Media | null; // the author's avatar
+}
+
 export interface PosterGraphic {
   type: 'poster';
   words: string[]; // 2-4 words that appear one by one beside the person («TALENTO», «SACRIFICIO»)
@@ -311,6 +329,8 @@ export type Graphic =
   | MapGraphic
   | RankGraphic
   | CompareGraphic
+  | BoardGraphic
+  | PostGraphic
   | ChartGraphic
   | TimelineGraphic
   | SpecsGraphic

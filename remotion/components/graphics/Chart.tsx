@@ -59,38 +59,92 @@ const Bars: FC<{ g: ChartGraphic }> = ({ g }) => {
   );
 };
 
+/** A line like a market ticker: it draws itself from left to right with a glow and a fading fill under it, a live
+ * value tag rides the tip, faint price levels sit behind, and a badge counts the change from the first point to the
+ * last (green up, red down). */
 const Line: FC<{ g: ChartGraphic }> = ({ g }) => {
   const frame = useCurrentFrame();
   const data = g.data.slice(0, 24);
   const values = data.map((d) => d.value);
-  const min = Math.min(...values, 0);
-  const max = Math.max(...values, 1);
-  const x = (i: number) => (data.length === 1 ? W / 2 : (i * W) / (data.length - 1));
-  const y = (v: number) => H - 120 - ((v - min) / (max - min || 1)) * (H - 200);
-  const draw = grow(frame, 6, 50);
-  const d = data.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.value)}`).join(' ');
-  const shown = Math.floor(draw * (data.length - 1) + 1e-6);
+  const lo = Math.min(...values);
+  const hi = Math.max(...values, lo + 1e-9);
+  const pad = (hi - lo) * 0.12;
+  const min = lo >= 0 && lo < (hi - lo) * 0.5 ? 0 : lo - pad; // start at zero unless the line lives far above it
+  const max = hi + pad;
+  const base = H - 120;
+  const x = (i: number) => (data.length === 1 ? W / 2 : (i * (W - 140)) / (data.length - 1));
+  const y = (v: number) => base - ((v - min) / (max - min || 1)) * (H - 200);
+  const draw = grow(frame, 6, 64);
+  const at = draw * Math.max(0, data.length - 1);
+  const i0 = Math.min(data.length - 1, Math.floor(at));
+  const f = at - i0;
+  const next = data[Math.min(data.length - 1, i0 + 1)].value;
+  const tipValue = data[i0].value + (next - data[i0].value) * f;
+  const tip = [x(i0) + (x(Math.min(data.length - 1, i0 + 1)) - x(i0)) * f, y(tipValue)];
+  const pts = [...data.slice(0, i0 + 1).map((p, i) => [x(i), y(p.value)]), tip];
+  const d = pts.map(([px, py], i) => `${i ? 'L' : 'M'}${px},${py}`).join(' ');
   const c = ink();
+  const light = theme.dataStyle === 'light';
+  const first = data[0].value;
+  const change = first ? ((tipValue - first) / Math.abs(first)) * 100 : 0;
+  const up = change >= 0;
+  const trend = up ? '#22c55e' : '#ef4444';
+  const levels = [0, 1, 2, 3, 4].map((k) => min + ((max - min) * k) / 4);
+  const decimals = Math.min(2, (String(hi).split('.')[1] ?? '').length);
+  const pulse = 1 + 0.35 * Math.abs(Math.sin(frame / 6));
+  const peak = values.indexOf(hi);
+  const tagW = Math.max(120, label(tipValue, hi, g.unit).length * 21 + 34);
   return (
     <svg style={{ position: 'absolute', left: LEFT, top: TOP, overflow: 'visible' }} width={W} height={H}>
-      <line x1={0} x2={W} y1={H - 120} y2={H - 120} stroke={c.axis} strokeWidth={2} />
-      <path d={`${d} L${x(data.length - 1)},${H - 120} L${x(0)},${H - 120} Z`} fill={alpha(theme.accent, 0.1)} opacity={draw} />
-      <path d={d} fill="none" stroke={theme.accent} strokeWidth={7} strokeLinejoin="round" pathLength={1} strokeDasharray="1" strokeDashoffset={1 - draw} />
-      {data.map((p, i) =>
-        i <= shown ? (
-          <g key={i}>
-            <circle cx={x(i)} cy={y(p.value)} r={10} fill={theme.accent} stroke={c.dot} strokeWidth={3} />
-            {i === shown || i === 0 || data.length <= 8 ? (
-              <text x={x(i)} y={y(p.value) - 26} fill={c.text} fontFamily={fontFamily} fontWeight={800} fontSize={32} textAnchor="middle">
-                {label(p.value, p.value, g.unit)}
-              </text>
-            ) : null}
-          </g>
-        ) : null,
-      )}
+      <defs>
+        <linearGradient id="line-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={theme.accent} stopOpacity={light ? 0.28 : 0.38} />
+          <stop offset="100%" stopColor={theme.accent} stopOpacity={0} />
+        </linearGradient>
+        <filter id="line-glow" x="-10%" y="-30%" width="120%" height="160%">
+          <feGaussianBlur stdDeviation="9" />
+        </filter>
+      </defs>
+      {levels.map((v, k) => (
+        <g key={`l${k}`}>
+          <line x1={0} x2={W - 140} y1={y(v)} y2={y(v)} stroke={c.axis} strokeWidth={k ? 1.5 : 2} strokeDasharray={k ? '6 10' : undefined} opacity={k ? 0.6 : 1} />
+          <text x={W - 120} y={y(v) + 9} fill={c.muted} fontFamily={fontFamily} fontWeight={700} fontSize={24}>
+            {v.toLocaleString('es-ES', { maximumFractionDigits: decimals })}
+          </text>
+        </g>
+      ))}
+      <path d={`${d} L${tip[0]},${base} L${x(0)},${base} Z`} fill="url(#line-fill)" />
+      {light ? null : <path d={d} fill="none" stroke={theme.accent} strokeWidth={14} strokeLinejoin="round" opacity={0.55} filter="url(#line-glow)" />}
+      <path d={d} fill="none" stroke={theme.accent} strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
+      {/* the peak stays marked once the line has passed it */}
+      {peak <= at && peak !== i0 && data.length > 2 ? (
+        <g>
+          <circle cx={x(peak)} cy={y(hi)} r={9} fill={theme.accent} stroke={c.dot} strokeWidth={3} />
+          <text x={x(peak)} y={y(hi) - 24} fill={c.text} fontFamily={fontFamily} fontWeight={800} fontSize={30} textAnchor="middle">
+            {label(hi, hi, g.unit)}
+          </text>
+        </g>
+      ) : null}
+      <line x1={tip[0]} x2={tip[0]} y1={tip[1]} y2={base} stroke={theme.accent} strokeWidth={2} strokeDasharray="4 8" opacity={0.6} />
+      <circle cx={tip[0]} cy={tip[1]} r={16 * pulse} fill={theme.accent} opacity={0.25} />
+      <circle cx={tip[0]} cy={tip[1]} r={10} fill={theme.accent} stroke={c.dot} strokeWidth={3} />
+      <g transform={`translate(${tip[0] > (W - 140) * 0.8 ? tip[0] - 22 - tagW : tip[0] + 22}, ${tip[1] - 64})`}>
+        <rect x={0} y={0} rx={10} width={tagW} height={52} fill={theme.accent} />
+        <text x={17} y={37} fill={light ? '#fff' : '#000'} fontFamily={fontFamily} fontWeight={900} fontSize={32}>
+          {label(tipValue, hi, g.unit)}
+        </text>
+      </g>
+      {data.length > 1 ? (
+        <g transform={`translate(${W - 140 - 250}, ${-70})`} opacity={grow(frame, 10, 22)}>
+          <rect x={0} y={0} rx={12} width={250} height={60} fill={alpha(trend, 0.16)} stroke={trend} strokeWidth={2} />
+          <text x={125} y={42} fill={trend} fontFamily={fontFamily} fontWeight={900} fontSize={34} textAnchor="middle">
+            {`${up ? '▲' : '▼'} ${up ? '+' : '−'}${Math.abs(change).toLocaleString('es-ES', { maximumFractionDigits: Math.abs(change) < 10 ? 1 : 0 })}%`}
+          </text>
+        </g>
+      ) : null}
       {data.map((p, i) =>
         data.length <= 12 || i % Math.ceil(data.length / 12) === 0 ? (
-          <text key={`x${i}`} x={x(i)} y={H - 70} fill={c.muted} fontFamily={fontFamily} fontWeight={700} fontSize={28} textAnchor="middle">
+          <text key={`x${i}`} x={x(i)} y={H - 70} fill={c.muted} opacity={i <= at ? 1 : 0.35} fontFamily={fontFamily} fontWeight={700} fontSize={28} textAnchor="middle">
             {p.label}
           </text>
         ) : null,

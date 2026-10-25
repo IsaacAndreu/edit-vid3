@@ -256,7 +256,9 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   max_seconds: 12
   types: [map, compare, chart, timeline, specs, kinetic, score, press, rule, split, strobe, replay, standings, podium, race, card, scale, receipt]
   # extra_types: además, en todos los canales, los gráficos «de papel»: search (buscador), marker (subrayado sobre
-  # periódico), lens (lupa), scroll (pergamino), news (noticia con la persona), poster (sol rojo); [] = ninguno.
+  # periódico), lens (lupa), scroll (pergamino), news (noticia con la persona), poster (sol rojo), board (tablón de
+  # corcho con fotos y hilo rojo), post (publicación en redes, solo si el guion dice que se publicó); [] = ninguno.
+  # bars_3d: false = barras planas de siempre; por defecto las barras (hasta 8) son bloques 3D iluminados (WebGL).
   # El mapa con «pins» (papel antiguo con polaroids) lo elige el grafista cuando el guion recorre la vida de alguien.
   # satellite_maps: false = mapas oscuros de siempre; por defecto los mapas planos llevan debajo imagen real de
   # satélite (Sentinel-2 de EOX, CC BY 4.0, con su crédito en pantalla).

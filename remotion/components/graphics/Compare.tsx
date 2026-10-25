@@ -1,9 +1,10 @@
 import type { FC } from 'react';
-import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { fontFamily, theme } from '../../theme';
 import type { CompareGraphic } from '../../graphics';
 import { GridBackground } from '../GridBackground';
 import { GraphicTitle } from './GraphicTitle';
+import type { CompareSide } from '../../graphics';
 import { MediaBox } from './MediaBox';
 
 
@@ -12,6 +13,24 @@ const format = (n: number, target: number) => {
   const decimals = Math.min(3, (String(target).split('.')[1] ?? '').length);
   return n.toLocaleString('es-ES', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
+
+/** The picture of a side: its photo in the avatar circle, else its logo on a white card, else its initials — never an
+ * empty circle. */
+const Badge: FC<{ side: CompareSide; color: string; durationInFrames: number }> = ({ side, color, durationInFrames }) =>
+  side.media ? (
+    <MediaBox media={side.media} width={200} height={200} durationInFrames={durationInFrames} style={{ borderRadius: '50%', borderColor: color }} face />
+  ) : side.logo ? (
+    <div style={{ width: 200, height: 200, borderRadius: 32, backgroundColor: '#f4f4f2', border: `4px solid ${color}`, display: 'flex',
+      alignItems: 'center', justifyContent: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+      <Img src={staticFile(side.logo.src)} style={{ width: 150, height: 150, objectFit: 'contain' }} />
+    </div>
+  ) : (
+    <div style={{ width: 200, height: 200, borderRadius: '50%', border: `4px solid ${color}`, display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: `radial-gradient(circle at 35% 30%, ${color}55, #111 75%)`, fontFamily, fontWeight: 900,
+      fontSize: 84, color: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+      {side.name.split(/\s+/).filter((w) => /^\p{L}/u.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+    </div>
+  );
 
 /** A vs B: the two sides with photo and name, and one row per figure with bars growing from the
  * centre (the better value of each row glows). */
@@ -40,20 +59,13 @@ export const Compare: FC<{ graphic: CompareGraphic; durationInFrames: number }> 
       {graphic.title ? <GraphicTitle text={graphic.title} /> : null}
       <div style={{ position: 'absolute', top: 190, left: 110, right: 110, display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ opacity: enter, transform: `translateX(${(1 - enter) * -60}px)`, display: 'flex', gap: 28, alignItems: 'center' }}>
-          <MediaBox media={graphic.left.media} width={200} height={200} durationInFrames={durationInFrames} style={{ borderRadius: '50%' }} face />
+          <Badge side={graphic.left} color={theme.accent} durationInFrames={durationInFrames} />
           {side(graphic.left.name, 'left')}
         </div>
         <div style={{ fontFamily, fontWeight: 900, fontSize: 70, color: theme.muted, alignSelf: 'center', opacity: enter }}>VS</div>
         <div style={{ opacity: enter, transform: `translateX(${(1 - enter) * 60}px)`, display: 'flex', gap: 28, alignItems: 'center' }}>
           {side(graphic.right.name, 'right')}
-          <MediaBox
-            media={graphic.right.media}
-            width={200}
-            height={200}
-            durationInFrames={durationInFrames}
-            style={{ borderRadius: '50%', borderColor: theme.accent2 }}
-            face
-          />
+          <Badge side={graphic.right} color={theme.accent2} durationInFrames={durationInFrames} />
         </div>
       </div>
       <div style={{ position: 'absolute', top: 470, left: 110, right: 110, display: 'flex', flexDirection: 'column', gap: 34 }}>

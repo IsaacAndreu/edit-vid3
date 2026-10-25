@@ -581,6 +581,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             earth = earth_textures(ctx)
             if earth:
                 graphic = {**graphic, "earth": earth}
+        if (graphic["type"] == "chart" and graphic.get("chart") == "bar" and 2 <= len(graphic.get("data", [])) <= 8
+                and ctx.section("graphics").get("bars_3d", True)):
+            graphic = {**graphic, "three": True}             # solid lit bars (WebGL) instead of the flat ones
         if graphic["type"] == "map" and graphic.get("style") != "pins" and not graphic.get("globe"):
             from .satellite import SOURCES, ground
 
@@ -597,6 +600,18 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             graphic["points"] = [{**p, "photo": photo(ctx, p.get("query") or p["name"])} for p in graphic["points"]]
         if graphic["type"] == "news":
             graphic["media"] = graphics.portrait(ctx, graphic["person"], people) if graphic.get("person") else None
+        if graphic["type"] in ("board", "post"):
+            from .logos import logo
+            from .places import photo
+
+            def picture(name: str) -> dict[str, Any] | None:   # the person's cutout, else a logo, else Wikipedia's photo
+                return graphics.portrait(ctx, name, people) or logo(ctx, name) or photo(ctx, name)
+
+            if graphic["type"] == "board":
+                graphic["photo"] = picture(graphic["center"])
+                graphic["items"] = [{**i, "photo": picture(i["name"])} for i in graphic["items"]]
+            else:
+                graphic["media"] = graphics.portrait(ctx, graphic["author"], people) or photo(ctx, graphic["author"])
         if graphic["type"] == "poster":
             graphic["media"] = graphics.portrait(ctx, graphic["person"], people)
             if not graphic["media"]:
@@ -648,8 +663,13 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             if graphic["type"] == "specs":
                 graphic["kicker"] = "EN CIFRAS" if face else "FICHA TÉCNICA"
         if graphic["type"] == "compare":
+            from .logos import logo
+
             for side in ("left", "right"):
-                graphic[side]["media"] = graphics.portrait(ctx, graphic[side]["name"], people)
+                name = graphic[side]["name"]
+                graphic[side]["media"] = graphics.portrait(ctx, name, people)
+                if not graphic[side]["media"]:   # a brand or a product: its logo (the brand of «Xiaomi 14» is Xiaomi)
+                    graphic[side]["logo"] = logo(ctx, name) or (logo(ctx, name.split()[0]) if " " in name else None)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
     borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
@@ -1167,10 +1187,18 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
     if kind == "chart":
         n = len(graphic.get("data") or [])
         if graphic.get("chart") == "line":
-            return [("pop", round(6 + 44 * i / max(1, n - 1))) for i in range(min(n, 24))]
+            return [("pop", round(6 + 58 * i / max(1, n - 1))) for i in range(min(n, 24))]
         if graphic.get("chart") == "pie":
             return [("pop", 10 + i * 6) for i in range(min(n, 8))]
+        if graphic.get("three"):
+            return [("pop", 8 + i * 7) for i in range(min(n, 8))]
         return [("pop", 8 + i * 5) for i in range(min(n, 12))]
+    if kind == "board":   # a pin for the centre, then one per card (Board.tsx)
+        n = len(graphic.get("items") or [])
+        step = max(12, min(26, int(frames * 0.6 / (n + 1))))
+        return [("pop", 4), *[("pop", 10 + (i + 1) * step) for i in range(min(n, 5))]]
+    if kind == "post":
+        return [("pop", 6)]
     if kind == "compare":
         return [("pop", 14 + i * 10) for i in range(min(len(graphic.get("rows") or []), 5))]
     if kind == "specs":

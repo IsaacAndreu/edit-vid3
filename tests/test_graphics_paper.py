@@ -62,7 +62,7 @@ def test_every_channel_may_use_the_paper_graphics_unless_it_says_no(tmp_path, mo
     ctx = RunContext.create("v", root=tmp_path)
     sents = [{"n": i, "start": i * 5.0, "end": i * 5.0 + 4.5, "text": "Frase."} for i in range(40)]
     graphics.plan(ctx, sents, 200.0)
-    assert "Tipos permitidos en este canal: map, chart, search, marker, lens, scroll, news, poster." in asked["system"]
+    assert "Tipos permitidos en este canal: map, chart, search, marker, lens, scroll, news, poster, board, post." in asked["system"]
     (tmp_path / "config.yaml").write_text("graphics:\n  types: [map, chart]\n  extra_types: []\n")
     graphics.plan(RunContext.create("v", root=tmp_path), sents, 200.0)
     assert "Tipos permitidos en este canal: map, chart." in asked["system"]
@@ -93,3 +93,40 @@ def test_a_place_photo_is_fetched_once_and_cached(tmp_path):
     media = places.photo(ctx, "Barcelona, Spain", Session())
     assert media["src"].startswith("graphics/places/") and (ctx.work_dir / media["src"]).read_bytes() == b"jpeg"
     assert places.photo(ctx, "Barcelona, Spain", Session()) == media and len(calls) == 2      # from the cache
+
+
+BOARD_TEXT = ("Detrás de todo estaba Carlos Yulo. Su ídolo de niño era Kohei Uchimura, el entrenador Munehiro Kugimiya lo "
+              "llevó a Japón, y con la federación filipina tuvo una pelea que duró años.")
+
+
+def test_the_board_links_names_the_script_says():
+    board = graphics.clean("board", {"center": "Carlos Yulo", "items": [
+        {"name": "Kohei Uchimura", "note": "su ídolo de niño"},
+        {"name": "Munehiro Kugimiya", "note": "lo llevó a Japón"},
+        {"name": "federación filipina", "note": "una relación perfecta y feliz"},
+        {"name": "Simone Biles", "note": "su rival"}]}, BOARD_TEXT, None, set())
+    assert board["center"] == "Carlos Yulo" and [i["name"] for i in board["items"]] == [
+        "Kohei Uchimura", "Munehiro Kugimiya", "federación filipina"]                  # Biles is not in the script
+    assert board["items"][2]["note"] is None                                            # an invented relation goes
+    assert graphics.clean("board", {"center": "Carlos Yulo", "items": [{"name": "Kohei Uchimura"}]}, BOARD_TEXT, None, set()) is None
+
+
+def test_a_post_only_when_the_script_says_it_was_published():
+    said = "Tras la final, Yulo escribió en Instagram: gracias Filipinas, esto es para todos los que creyeron en mí."
+    post = graphics.clean("post", {"author": "Yulo", "text": "gracias Filipinas, esto es para todos los que creyeron en mí",
+                                   "platform": "instagram", "date": "4 ago 2024"}, said, None, set())
+    assert post == {"type": "post", "author": "Yulo", "text": "gracias Filipinas, esto es para todos los que creyeron en mí",
+                    "platform": "instagram", "date": None}                              # no date in the script
+    assert graphics.clean("post", {"author": "Yulo", "text": "gracias Filipinas, esto es para todos los que creyeron en mí",
+                                   "platform": "x"}, said, None, set())["platform"] is None   # X was never said
+    quoted = "Yulo dijo: gracias Filipinas, esto es para todos los que creyeron en mí."
+    assert graphics.clean("post", {"author": "Yulo", "text": "gracias Filipinas, esto es para todos"}, quoted, None, set()) is None
+
+
+def test_bar_charts_get_the_3d_flag_and_their_cues():
+    from pipeline.timeline import graphic_cues
+
+    bars = {"type": "chart", "chart": "bar", "three": True, "data": [{"label": "a", "value": 1}] * 4}
+    assert graphic_cues(bars, 150) == [("pop", 8), ("pop", 15), ("pop", 22), ("pop", 29)]
+    board = {"type": "board", "items": [{"name": "a"}] * 3}
+    assert graphic_cues(board, 150) == [("pop", 4), ("pop", 32), ("pop", 54), ("pop", 76)]

@@ -35,12 +35,15 @@ import { News } from './News';
 import { Poster } from './Poster';
 import { PinMap } from './PinMap';
 import { Earth3D } from './Earth3D';
+import { Bars3D } from './Bars3D';
+import { Board } from './Board';
+import { Post } from './Post';
 import { GraphicFrame } from './GraphicFrame';
 import { Grain } from './Paper';
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
 
 // The paper graphics bring their own look (texture, light, camera): a plain fade instead of the channel's pack
-const PAPER = new Set(['search', 'marker', 'lens', 'scroll', 'news', 'poster']);
+const PAPER = new Set(['search', 'marker', 'lens', 'scroll', 'news', 'poster', 'board', 'post']);
 
 const Fade: FC<{ durationInFrames: number; children: ReactNode }> = ({ durationInFrames, children }) => {
   const frame = useCurrentFrame();
@@ -87,12 +90,18 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <News graphic={graphic} durationInFrames={durationInFrames} />;
     case 'poster':
       return <Poster graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'board':
+      return <Board graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'post':
+      return <Post graphic={graphic} durationInFrames={durationInFrames} />;
     case 'rank':
       return <RankCard graphic={graphic} durationInFrames={durationInFrames} />;
     case 'compare':
       return <Compare graphic={graphic} durationInFrames={durationInFrames} />;
     case 'chart':
-      return <Chart graphic={graphic} durationInFrames={durationInFrames} />;
+      return graphic.three && graphic.chart === 'bar' ? (
+        <Bars3D graphic={graphic} durationInFrames={durationInFrames} />
+      ) : <Chart graphic={graphic} durationInFrames={durationInFrames} />;
     case 'timeline':
       return <TimelineScene graphic={graphic} durationInFrames={durationInFrames} />;
     case 'specs':

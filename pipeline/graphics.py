@@ -29,11 +29,14 @@ STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
          "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg", "cita",
-         "search", "marker", "lens", "scroll", "news", "poster")
+         "search", "marker", "lens", "scroll", "news", "poster", "board", "post")
 # The paper graphics (a search engine, a highlighted phrase over a newspaper, a magnifying glass, a parchment, a
-# news item with the person, a red-sun poster): every channel may use them on top of its own list of types, unless
-# it sets graphics.extra_types itself ([] = none).
-PAPER = ("search", "marker", "lens", "scroll", "news", "poster")
+# news item with the person, a red-sun poster, an evidence board with red string, a social media post): every channel
+# may use them on top of its own list of types, unless it sets graphics.extra_types itself ([] = none).
+PAPER = ("search", "marker", "lens", "scroll", "news", "poster", "board", "post")
+# What the script must say for a "post": that someone wrote or published those words on social media.
+POSTED = re.compile(r"\b(?:tuite[óa]|twitte[óa]|public[óa]|poste[óa]|escribi[óo]|compart[ií][óo]?|en (?:twitter|x|instagram|"
+                    r"tiktok|facebook|threads|sus redes|redes sociales)|tweeted|posted|wrote)\b", re.IGNORECASE)
 
 # Everyday references for "scale" graphics (general knowledge, so the script does not have to say them).
 REFERENCES = {
@@ -152,6 +155,14 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   o con una sola palabra enorme dicha («GOAT», «LEYENDA»): la persona en blanco y negro sobre un sol rojo. data:
   {{"person": "nombre como se dice", "words": ["2-4 palabras sueltas del guion"] o [], "big": "una palabra dicha" o null}}
   (como máximo 1 por vídeo)
+- "board": el guion CONECTA a 3-5 personas, empresas o lugares con uno central («detrás de todo estaba X: su socio Y,
+  el banco Z y la fábrica W»): un tablón de corcho con fotos clavadas y un hilo rojo de cada una al centro. data:
+  {{"center": "nombre central como se dice", "items": [{{"name": "nombre dicho", "note": "su relación en 2-5 palabras
+  del guion"}}]}} (3-5 items; como máximo 1 por vídeo)
+- "post": el guion CITA lo que alguien publicó en redes («Musk tuiteó: …», «escribió en Instagram: …»): la publicación
+  recreada. data: {{"author": "quién lo publicó, como se dice", "text": "lo publicado, LITERAL del guion, máx. 35
+  palabras", "platform": "x" | "instagram" | "facebook" | "tiktok" | null (solo si se dice), "date": "fecha dicha" o
+  null}}. Nunca si el guion no dice que se publicó.
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
 - "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
   qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
@@ -536,6 +547,32 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         if len(words) < 2 and not big:
             return None
         return {"type": "poster", "person": person, "words": words if len(words) >= 2 else [], "big": big}
+    if kind == "board":
+        center = " ".join(str(data.get("center") or "").split())
+        items = [{"name": " ".join(str(i["name"]).split()), "note": " ".join(str(i.get("note") or "").split()) or None}
+                 for i in data.get("items") or [] if isinstance(i, dict) and i.get("name")
+                 and said_words(str(i["name"]), text, 0.5)][:5]
+        for item in items:
+            if item["note"] and (len(item["note"].split()) > 6 or not said_words(item["note"], text, 0.6)):
+                item["note"] = None
+        if not center or not said_words(center, text, 0.5) or len(items) < 3:
+            return None
+        return {"type": "board", "center": center, "items": items}
+    if kind == "post":
+        author = " ".join(str(data.get("author") or "").split())
+        line = " ".join(str(data.get("text") or "").split()).strip("«»\"“” ")
+        if not author or not said_words(author, text, 0.5) or not 3 <= len(line.split()) <= 40 \
+                or not said_words(line, text, 0.85) or not POSTED.search(text):
+            return None
+        platform = str(data.get("platform") or "").lower() or None
+        if platform not in ("x", "instagram", "facebook", "tiktok") or not re.search(
+                {"x": r"\b(?:twitter|x|tuite|tweet)", "instagram": r"instagram", "facebook": r"facebook",
+                 "tiktok": r"tiktok"}[platform], text, re.IGNORECASE):
+            platform = None
+        date = str(data.get("date") or "").strip() or None
+        if date and not (_numbers(date) and said(date, text)):
+            date = None
+        return {"type": "post", "author": author, "text": line, "platform": platform, "date": date}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
