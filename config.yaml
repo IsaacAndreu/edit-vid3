@@ -267,7 +267,9 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   banned_seconds: 5.5              # tarjeta de cada elemento en los vídeos de prohibidos
 
 shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
-  enabled: false                   # solo cuando tú lo pidas: python main.py --shorts <vídeo>
+  enabled: true                    # 3 Shorts de cada vídeo terminado, de sus momentos más fuertes (false = solo con
+                                   # python main.py --shorts <vídeo>). style: native (vertical con Remotion: metraje a
+                                   # pantalla completa, gráficos en ventana, subtítulos) | blur (16:9 sobre fondo desenfocado)
   count: 3
   min_seconds: 25
   max_seconds: 58

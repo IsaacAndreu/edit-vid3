@@ -1,9 +1,13 @@
 """Shorts from the finished video: out/<slug>/shorts/short-N.mp4 (1080x1920) + shorts.txt.
 
-The LLM picks the best self-contained moments of the narration (25–58 s, starting on a sentence
-that hooks). Each one is cut from video-final.mp4 and made vertical with ffmpeg: the shot centred
-over a blurred copy of itself, a hook line on top and big word-by-word captions (the current word
-in yellow), like the documentary Shorts that work. No re-planning, no Remotion: ~1 min each.
+The LLM picks the strongest self-contained moments of the narration (25–58 s, starting on a sentence that hooks;
+the sentences with a graphic or an original moment on screen are marked ★, the ones the video's opening chose too).
+
+`shorts.style: native` (default): that stretch of the video's own timeline is rendered again in vertical with
+Remotion — footage filling the 9:16 frame, every graphic (the paper ones, the maps…) in a 16:9 window in the upper
+middle, big captions following the voice — and the finished video's own sound (voice, music, effects) is laid
+under it. `blur` (and the fallback if Remotion fails): the 16:9 cut centred over a blurred copy of itself with
+ffmpeg, ~1 min each. Both carry the hook line on top.
 """
 
 from __future__ import annotations
@@ -27,7 +31,9 @@ documental en frases numeradas con sus tiempos. Elige los {count} mejores moment
 - cada uno es un rango CONTINUO de frases [from, to] de {min_s}-{max_s} segundos en total;
 - se entiende solo, sin haber visto el vídeo, y la PRIMERA frase engancha (un dato brutal, un
   giro, una pregunta); termina en un final con fuerza, no a medias;
-- no se solapan entre sí.
+- no se solapan entre sí;
+- las frases marcadas con ★ tienen en pantalla un gráfico o un momento original con su sonido: prefiere los
+  tramos que tengan alguna, son los más vistosos en vertical.
 Devuelve SOLO JSON: {{"shorts": [{{"from": 12, "to": 19,
   "hook": "texto de arriba en pantalla, 3-7 palabras, en el idioma de la narración, sin inventar datos",
   "title": "título del Short en el idioma de la narración, máx. 80 caracteres",
@@ -63,10 +69,12 @@ def fit(sents: list[dict[str, Any]], first: int, last: int, min_s: float, max_s:
     return (first, last) if min_s * 0.8 <= length <= max_s else None
 
 
-def pick(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def pick(ctx: RunContext, sents: list[dict[str, Any]], strong: set[int] | None = None) -> list[dict[str, Any]]:
     cfg = ctx.section("shorts")
     count, min_s, max_s = int(cfg.get("count", 3)), float(cfg.get("min_seconds", 25)), float(cfg.get("max_seconds", 58))
-    listing = "\n".join(f"[{s['n']}] ({s['start']:.1f}-{s['end']:.1f}s) {s['text']}" for s in sents)
+    strong = strong or set()
+    listing = "\n".join(f"[{s['n']}] ({s['start']:.1f}-{s['end']:.1f}s) {'★ ' if s['n'] in strong else ''}{s['text']}"
+                        for s in sents)
     result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=3000,
                            user=f"IDIOMA DE hook/title/description: {ctx.language}\n\n" + listing[:60000],
                            system=SYSTEM.format(count=count, min_s=int(min_s), max_s=int(max_s)))
@@ -161,6 +169,90 @@ def render_short(ctx: RunContext, video: Path, start: float, length: float, subt
         raise RuntimeError(f"ffmpeg (short): {result.stderr[-500:]}")
 
 
+def vertical_props(timeline: dict[str, Any], a: int, b: int, captions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Frames [a, b) of the video's timeline as a 1080x1920 timeline of their own (Documentary's vertical layout):
+    the shots cut at both ends, the graphics that start inside (a graphic already half way is left out), the
+    captions of those frames; silent (the finished video's sound goes under it)."""
+
+    def inside(items: list[dict[str, Any]], whole: bool = True) -> list[dict[str, Any]]:
+        out = []
+        for item in items:
+            start, end = item["from"], item["from"] + item["durationInFrames"]
+            if start < a or start >= b or (whole and end - start < 8):
+                continue
+            out.append({**item, "from": start - a, "durationInFrames": min(end, b) - start})
+        return out
+
+    shots = []
+    for shot in timeline["shots"]:
+        start, end = shot["from"], shot["from"] + shot["durationInFrames"]
+        if end <= a or start >= b or shot.get("type") == "endscreen":
+            continue
+        piece = {**shot, "from": max(start, a) - a, "durationInFrames": min(end, b) - max(start, a)}
+        if start < a or end > b:                    # a piece of a longer shot: same move, from where it was
+            piece.update(offset=(shot.get("offset") or 0) + max(0, a - start),
+                         fullDuration=shot.get("fullDuration") or shot["durationInFrames"])
+        shots.append(piece)
+    audio = {**timeline["audio"], "music": None, "musicParts": [], "speech": [], "sfx": [], "clips": [],
+             "voiceFrom": 0, "voiceGaps": []}
+    return {**timeline, "width": W, "height": H, "durationInFrames": b - a, "shots": shots,
+            "groups": inside(timeline["groups"]), "labels": [], "transitions": [], "shakes": [],
+            "captions": inside(captions, whole=False), "endscreenFrames": 0, "audio": audio}
+
+
+def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict[str, Any]], start: float,
+                  length: float, hook: str, out: Path) -> None:
+    """The stretch rendered vertical with Remotion, then the finished video's sound and the hook laid on top."""
+
+    from .render import Renderer, graphic_media
+
+    fps = timeline["fps"]
+    a = max(0, round(start * fps))
+    b = min(timeline["durationInFrames"], a + round(length * fps))
+    props = vertical_props(timeline, a, b, captions)
+    public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
+    public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
+    renderer = Renderer(ctx)
+    raw = out.with_name(out.stem + ".raw.mp4")
+    renderer.remotion("Documentary", props, raw, ["--muted", f"--concurrency={renderer.concurrency()}", "--codec=h264",
+                                                  "--crf=18"], public)
+    work = out.parent / "_tmp"
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "hook.ass").write_text(ass([], hook, 0.0, length), encoding="utf-8")
+    fonts = font_dir(ctx)
+    (work / "fonts").mkdir(exist_ok=True)
+    for f in fonts.glob("*.ttf"):
+        if not (work / "fonts" / f.name).is_file():
+            (work / "fonts" / f.name).write_bytes(f.read_bytes())
+    seconds = (b - a) / fps
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw.resolve()), "-ss", f"{a / fps:.3f}", "-t", f"{seconds:.3f}",
+           "-i", str((ctx.out_dir / "video-final.mp4").resolve()),
+           "-filter_complex", f"[0:v]ass=hook.ass:fontsdir=fonts,format=yuv420p[v];"
+                              f"[1:a]afade=t=in:d=0.15,afade=t=out:st={max(0.0, seconds - 0.4):.2f}:d=0.4[a]",
+           "-map", "[v]", "-map", "[a]", "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+           "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(out.resolve())]
+    result = subprocess.run(cmd, cwd=work, capture_output=True, text=True)
+    raw.unlink(missing_ok=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg (short vertical): {result.stderr[-500:]}")
+
+
+def strong_sentences(timeline: dict[str, Any], sents: list[dict[str, Any]], final: Any) -> set[int]:
+    """Sentences with a graphic or an original moment (a clip with its own sound) on screen: the showy ones."""
+
+    fps = timeline["fps"]
+    spans = [(g["from"] / fps, (g["from"] + g["durationInFrames"]) / fps) for g in timeline["groups"]
+             if g.get("kind") == "graphic"]
+    spans += [(c["from"] / fps, (c["from"] + c.get("durationInFrames", 0)) / fps) for c in timeline["audio"].get("clips", [])
+              if "from" in c]
+    out = set()
+    for s in sents:
+        a, b = final(s["start"]), final(s["end"])
+        if any(x < b and a < y for x, y in spans):
+            out.add(s["n"])
+    return out
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.out_dir / "video-final.mp4", ctx.work_dir / "words.json"]
 
@@ -187,7 +279,18 @@ def run(ctx: RunContext) -> None:
         return offset + t + sum(frames / fps for at, frames in gaps if at / fps <= t)
 
     sents = sentences(words)
-    chosen = pick(ctx, sents)
+    chosen = pick(ctx, sents, strong_sentences(timeline, sents, final))
+    native = str(ctx.section("shorts").get("style", "native")) == "native" and timeline.get("height", 1080) < timeline.get("width", 1920)
+    vertical_captions: list[dict[str, Any]] = []
+    if native:
+        from .schemas import Timeline, WordsFile
+        from .timeline import captions
+
+        try:
+            vertical_captions = [c.model_dump(by_alias=True) for c in captions(
+                WordsFile.model_validate(ctx.read_json("words.json")), Timeline.model_validate(timeline))]
+        except Exception as error:             # no captions: the short still works
+            print(f"   Shorts sin subtítulos: {str(error)[:100]}")
     out_dir = ctx.out_dir / DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     for old in out_dir.glob("short-*.mp4"):
@@ -201,7 +304,15 @@ def run(ctx: RunContext) -> None:
                   for s in sents[item["from"]: item["to"] + 1] for w in s["words"]]
         subtitles = ass(spoken, str(item.get("hook") or ""), start, length)
         target = out_dir / f"short-{n}.mp4"
-        render_short(ctx, ctx.out_dir / "video-final.mp4", start, length, subtitles, target)
+        made = False
+        if native:
+            try:
+                render_native(ctx, timeline, vertical_captions, start, length, str(item.get("hook") or ""), target)
+                made = True
+            except Exception as error:          # the blurred version is always possible
+                print(f"   short-{n}: vertical con Remotion no disponible ({str(error)[:120]}); va con fondo desenfocado")
+        if not made:
+            render_short(ctx, ctx.out_dir / "video-final.mp4", start, length, subtitles, target)
         print(f"   short-{n}.mp4 · {length:.0f} s · {item.get('hook', '')}")
         notes += [f"short-{n}.mp4 ({length:.0f} s)", f"TÍTULO: {item.get('title', '')}",
                   f"DESCRIPCIÓN: {item.get('description', '')}", ""]
