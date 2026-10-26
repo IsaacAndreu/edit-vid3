@@ -37,6 +37,7 @@ import { PinMap } from './PinMap';
 import { Earth3D } from './Earth3D';
 import { Bars3D } from './Bars3D';
 import { Board } from './Board';
+import { Stickman } from './Stickman';
 import { Post } from './Post';
 import { GraphicFrame } from './GraphicFrame';
 import { Grain } from './Paper';
@@ -53,7 +54,10 @@ const Fade: FC<{ durationInFrames: number; children: ReactNode }> = ({ durationI
 
 /** Full-screen animated graphic of any kind, brought in and out the channel's way (GraphicFrame). */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) =>
-  graphic.type === 'quote' ? (
+  graphic.type === 'stickman' ? (
+    // a drawn scene per shot: hard cuts from one to the next, like footage
+    <Stickman graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'quote' ? (
     // subtitles over a real statement: no entrance, the clip itself is the picture
     <QuoteOverlay graphic={graphic} durationInFrames={durationInFrames} />
   ) : PAPER.has(graphic.type) || (graphic.type === 'map' && graphic.style === 'pins') ? (

@@ -409,7 +409,8 @@ def _browser(cfg: dict[str, Any]) -> str | None:
     value = str(cfg.get("browser_executable", "auto") or "auto")
     if value != "auto":
         return value
-    found = sorted(glob.glob("/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/headless_shell"))
+    found = sorted([*glob.glob("/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/headless_shell"),
+                    *glob.glob("/opt/pw-browsers/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell")])
     return found[-1] if found else None
 
 

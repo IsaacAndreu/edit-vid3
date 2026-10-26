@@ -333,6 +333,9 @@ qa:
 # (un clip más corto que su plano se ralentiza para llenarlo en vez de quedarse en su último fotograma; otro tramo se
 # vuelve a cortar). Informe en out/<vídeo>/qa/doctor.json. doctor: {enabled: false} lo apaga; black_seconds 0.25,
 # freeze_seconds 1.0, max_stretch 1.6 por defecto.
+# visual: {style: stickman} (en canales/<canal>.yaml) = vídeo de monigotes dibujado en código, sin metraje: no se busca
+# ni se descarga nada y cada plano es una escena (poses, caras, objetos, lugares) elegida por el LLM. palette: color
+# (por defecto: lugares rellenos de color, camisetas de colores, rótulo en caja negra) o paper (líneas negras sobre papel).
 render:
   # Híbrido: los planos que son solo vídeo + crédito se montan con ffmpeg (rápido); el resto
   # (paneles, cifras, capítulos, fotos con Ken Burns) lo dibuja Remotion en una sola pasada.

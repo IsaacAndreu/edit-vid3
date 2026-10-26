@@ -197,7 +197,12 @@ def run_stages(
                 with turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
                     started = time.monotonic()
                     with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
-                        stage.run(ctx)
+                        from . import stickman
+
+                        if stage.name in stickman.SKIP and stickman.active(ctx):   # drawn in code: no footage
+                            stickman.skip(ctx, stage.name)
+                        else:
+                            stage.run(ctx)
                 if stage.validate is not None:
                     stage.validate(ctx)
             except BaseException:

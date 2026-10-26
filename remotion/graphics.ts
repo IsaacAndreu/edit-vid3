@@ -276,6 +276,28 @@ export interface NewsGraphic {
   media?: Media | null; // the person, a black and white cutout on the right
 }
 
+export interface StickmanActor {
+  pose: string; // stand | walk | run | point | think | cheer | sad | sit | talk | shrug | fall | hold | give | wave | facepalm | jump
+  face: string; // neutral | happy | sad | angry | surprised | worried
+  x: number; // 0-1 across the screen
+  facing: 'left' | 'right';
+  label: string;
+  size: number;
+}
+
+export interface StickmanProp { icon: string; x: number; y: number; label: string; held: boolean }
+
+export interface StickmanGraphic {
+  type: 'stickman';
+  place: string; // plain | room | street | office | stage | nature | night | city
+  actors: StickmanActor[];
+  prop?: StickmanProp | null;
+  bubble?: string;
+  caption?: string;
+  seed?: number;
+  palette?: 'color' | 'paper'; // visual.palette: colour (default) or black lines on paper
+}
+
 export interface BoardGraphic {
   type: 'board';
   center: string; // the name everything leads to, pinned in the middle
@@ -330,6 +352,7 @@ export type Graphic =
   | RankGraphic
   | CompareGraphic
   | BoardGraphic
+  | StickmanGraphic
   | PostGraphic
   | ChartGraphic
   | TimelineGraphic
