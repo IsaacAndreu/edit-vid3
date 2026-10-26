@@ -137,11 +137,18 @@ def run(ctx: RunContext) -> None:
 
     # Is the athlete on screen the one the script names? On-screen captions and, in clear cases, faces.
     people = ctx.read_json("people.json").get("people", []) if (ctx.work_dir / "people.json").is_file() else []
-    names = [p["name"] for p in people if p.get("name")] or ([story.subject.split("·")[0].strip()] if story.subject else [])
+    from .people import looks_like_person
+
+    def a_person(name: str) -> bool:   # «AIFA» (mega17) is an airport: «a woman, not AIFA» threw good clips away
+        return looks_like_person(name) and not (len(name.split()) == 1 and name.isupper())
+
+    names = [n for n in ([p["name"] for p in people if p.get("name")]
+                         or ([story.subject.split("·")[0].strip()] if story.subject else [])) if a_person(n)]
     checker = Checker(ctx, people) if names and (cfg.get("caption_check", True) or cfg.get("face_check", True)) else None
     identity_cache = IdentityCache(ctx)
 
     protagonist = story.subject.split("·")[0].strip() if story.subject else ""
+    protagonist = protagonist if a_person(protagonist) else ""
     scope = str(cfg.get("identity_scope", "protagonist"))
 
     content = ContentCheck(ctx)

@@ -62,16 +62,11 @@ class ContentCheck:
             return [image] if image is not None else []
         capture = cv2.VideoCapture(str(path))
         fps = capture.get(cv2.CAP_PROP_FPS) or 30.0
-        count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        step = max(1, int(round(fps / per_second)))
-        out = []
-        for index in range(0, count, step):
-            capture.set(cv2.CAP_PROP_POS_FRAMES, index)
-            ok, frame = capture.read()
-            if ok:
-                out.append(cv2.resize(frame, (320, int(320 * frame.shape[0] / max(1, frame.shape[1])))))
         capture.release()
-        return out
+        step = max(1, int(round(fps / per_second)))
+        return [cv2.resize(frame, (320, int(320 * frame.shape[0] / max(1, frame.shape[1]))))
+                for frame in frames_where(path, lambda index, count: index % step == 0)]
+
 
     def judge(self, frames: list[np.ndarray], allow_cartoon: bool = False) -> str | None:
         """Why these frames do not belong in a documentary (None when they do)."""
@@ -106,3 +101,23 @@ class ContentCheck:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=0), encoding="utf-8")
         return self.cache[key] or None
+
+
+def frames_where(path: Path, keep: Any) -> list[np.ndarray]:
+    """The frames of a clip for which keep(index, frame_count) is true, read in one pass. Jumping to each one
+    (CAP_PROP_POS_FRAMES) decodes again from the last keyframe every time: 2.3 s for a 5 s 1080p clip against
+    0.3 s like this — the fallback checked 167 clips one after another before starting (mega17: 25 min)."""
+
+    import cv2
+
+    capture = cv2.VideoCapture(str(path))
+    count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    out, index = [], 0
+    while capture.grab():
+        if keep(index, count):
+            ok, frame = capture.retrieve()
+            if ok:
+                out.append(frame)
+        index += 1
+    capture.release()
+    return out

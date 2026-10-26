@@ -31,3 +31,21 @@ def test_one_broken_frame_rejects_the_clip_and_cartoons_need_two(tmp_path):
     assert "dibujo" in checker(tmp_path, [[0.4, 0.3, 0, 0.3]] * 3).judge([frame] * 3)
     assert checker(tmp_path, [[0.4, 0.3, 0, 0.3]] * 3).judge([frame] * 3, allow_cartoon=True) is None
     assert ABOUT_ANIMATION.search("Disney estrenó su primera película de animación")
+
+
+def test_frames_are_read_in_one_pass_at_the_same_points(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg")
+    clip = tmp_path / "c.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=duration=3:size=640x360:rate=30", str(clip)], check=True)
+    from pipeline.content_check import ContentCheck, frames_where
+    from pipeline.identity import Checker
+
+    assert len(ContentCheck.frames(clip, "video")) == 12                 # 4 per second
+    assert len(Checker.frames(clip, "video")) == 5
+    assert len(frames_where(clip, lambda i, n: i in (0, n - 1))) == 2

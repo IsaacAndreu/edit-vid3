@@ -184,16 +184,9 @@ class Checker:
         if kind == "image":
             image = cv2.imread(str(path))
             return [image] if image is not None else []
-        capture = cv2.VideoCapture(str(path))
-        count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        out = []
-        for at in (0.1, 0.3, 0.5, 0.7, 0.9):
-            capture.set(cv2.CAP_PROP_POS_FRAMES, int(count * at))
-            ok, frame = capture.read()
-            if ok:
-                out.append(frame)
-        capture.release()
-        return out
+        from .content_check import frames_where
+
+        return frames_where(path, lambda index, count: index in {int(count * at) for at in (0.1, 0.3, 0.5, 0.7, 0.9)})
 
     # --- captions -------------------------------------------------------------------------------
     def texts(self, frame: np.ndarray) -> list[tuple[str, Box]]:
