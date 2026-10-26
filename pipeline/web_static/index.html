@@ -627,9 +627,21 @@ async function videoPage(slug) {
         <button onclick="exportPremiere(this)" title="Una carpeta con timeline.xml, los clips en pistas, la voz, la música, los efectos y los subtítulos">🎞️ Proyecto para Premiere / DaVinci</button>
         <span id="exportBox" class="small"></span></div>` : ""}
     ${titles}${thumbs}${shorts}${dubs}
+    ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
     ${v.published ? '<div id="whyBox"></div>' : ""}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div>`;
+  const repLoad = async () => {
+    const box = $("#repBox");
+    if (!box) return;
+    const r = await api(`/api/video/${encodeURIComponent(slug)}/repeticion`);
+    const icon = {ok: "✅", warn: "⚠️", skip: "➖"};
+    box.innerHTML = `<h2>Riesgo de repetición: ${{bajo: "bajo ✅", medio: "medio ⚠️", alto: "alto ⛔"}[r.risk]}</h2>
+      <div class="card small"><div class="muted" style="margin-bottom:6px">YouTube no castiga la voz de IA sino los vídeos que parecen copias unos de otros
+        (actualización del programa de socios de julio de 2025). Comparado con los ${r.compared} últimos vídeos del canal.</div>
+        ${r.checks.map((c) => `<div style="margin-top:4px">${icon[c.status]} <b>${esc(c.name)}:</b> ${esc(c.text)}</div>`).join("")}</div>`;
+  };
+  repLoad();
   const whyLoad = async () => {
     const box = $("#whyBox");
     if (!box) return;

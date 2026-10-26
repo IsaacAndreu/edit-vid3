@@ -132,14 +132,19 @@ def idea_from(root: Path, channel: str, video: dict[str, Any]) -> dict[str, Any]
     from .llm import complete_json
     from .porque import lessons
 
+    from .repeticion import recent_titles
+
     ctx = RunContext.create("_piloto", root=root, channel=channel)
+    recent = recent_titles(root, channel)
     about = str(ctx.section("ideas").get("about") or channel)
     result = complete_json(ctx, stage="piloto", section="planner", system=IDEA_SYSTEM.replace("{about}", about),
                            max_tokens=1500, use_cache=False,
                            user=(f"VÍDEO QUE FUNCIONA: «{video.get('title')}» ({video.get('channel')}), "
                                  f"{video.get('views')} visitas, x{video.get('ratio')} lo normal de su canal.\n"
                                  f"POR QUÉ: {'; '.join(evidence(video, {}))}"
-                                 + "".join(f"\nLECCIÓN DEL CANAL: {x}" for x in lessons(root, channel))))
+                                 + "".join(f"\nLECCIÓN DEL CANAL: {x}" for x in lessons(root, channel))
+                                 + ("\nÚLTIMOS TÍTULOS DEL CANAL (no repitas su estructura, solo cambiando los nombres: YouTube "
+                                    "castiga el contenido repetitivo):\n" + "\n".join(f"- {t}" for t in recent) if recent else "")))
     if not str(result.get("title") or "").strip():
         raise RuntimeError("La idea ha salido vacía")
     return {**result, "note": f"Inspirado en «{video.get('title')}» ({video.get('channel')}): vídeo propio, no una copia"}

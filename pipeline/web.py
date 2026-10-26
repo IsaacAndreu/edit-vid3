@@ -1189,6 +1189,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if match := re.fullmatch(r"/api/video/([^/]+)/repeticion", path):    # title, thumbnail and footage vs the channel
+                    from . import repeticion
+
+                    return self._ok(repeticion.check(root, urllib.parse.unquote(match.group(1))))
                 if match := re.fullmatch(r"/api/video/([^/]+)/porque", path):        # views against the channel's normal
                     from . import porque
 
