@@ -329,6 +329,10 @@ qa:
   max_phash_distance: 6            # imágenes más parecidas → posible repetición
   columns: 14                      # hoja de contactos
 
+# doctor: tras el render se mira el vídeo final una vez buscando negros y congelados, y se arreglan en su tramo
+# (un clip más corto que su plano se ralentiza para llenarlo en vez de quedarse en su último fotograma; otro tramo se
+# vuelve a cortar). Informe en out/<vídeo>/qa/doctor.json. doctor: {enabled: false} lo apaga; black_seconds 0.25,
+# freeze_seconds 1.0, max_stretch 1.6 por defecto.
 render:
   # Híbrido: los planos que son solo vídeo + crédito se montan con ffmpeg (rápido); el resto
   # (paneles, cifras, capítulos, fotos con Ken Burns) lo dibuja Remotion en una sola pasada.

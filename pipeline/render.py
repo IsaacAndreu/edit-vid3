@@ -608,10 +608,12 @@ class Renderer:
 
     # --- ffmpeg segments ------------------------------------------------------------------
 
-    def fast_segment(self, segment: Segment, badge: Path | None) -> Path:
+    def fast_segment(self, segment: Segment, badge: Path | None, stretch: float | None = None) -> Path:
         shot = segment.shots[0]
         clip = self.ctx.work_dir / shot["media"]["src"]
         pad = shot_filter(shot["media"], segment.offset + segment.frames, self.fps)
+        if stretch:            # render doctor: the clip slowed down to fill the shot, not held on its last frame
+            pad = pad.replace("setpts=PTS-STARTPTS", f"setpts=PTS-STARTPTS,setpts=PTS*{stretch:.4f},fps={self.fps}", 1)
         if segment.offset:     # a later piece of a split shot: the same chain (speed, zoom…), from that frame
             pad += f",trim=start_frame={segment.offset},setpts=PTS-STARTPTS"
         key = _hash(self.enc_key, _file_sig(clip), segment.frames, _file_sig(badge) if badge else None, pad)
@@ -817,7 +819,7 @@ def run(ctx: RunContext) -> None:
         r.backdrop()
     ends: dict[int, Path] = {}
 
-    def build(segment: Segment) -> Path:
+    def build(segment: Segment, stretch: float | None = None) -> Path:
         if segment.kind == "endscreen":
             return ends[segment.start]
         if segment.kind == "ffmpeg":
@@ -825,7 +827,7 @@ def run(ctx: RunContext) -> None:
             badge = badges.get(shown(credit)) if credit else None
             if segment.shots[0]["media"].get("layout") == "card":
                 return r.card_segment(segment, badge)
-            return r.fast_segment(segment, badge)
+            return r.fast_segment(segment, badge, stretch)
         return r.cut_segment(segment, condensed_path, _hash(condensed_path.stem, r.enc_key))
 
     def build_all() -> list[Path]:
@@ -849,14 +851,23 @@ def run(ctx: RunContext) -> None:
     audio = audio_job.result()
     audio_pool.shutdown()
     listing = r.dir / "segments.txt"
-    listing.write_text("".join(f"file '{f.resolve()}'\n" for f in files), encoding="utf-8")
     ctx.out_dir.mkdir(parents=True, exist_ok=True)
     final = ctx.out_dir / OUTPUT
-    tmp = final.with_suffix(".tmp.mp4")
-    _run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(audio),
-          "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", str(r.cfg.get("audio_bitrate", "192k")),
-          "-movflags", "+faststart", str(tmp)], "el montaje final")
-    tmp.replace(final)
+
+    def join(files: list[Path]) -> None:
+        listing.write_text("".join(f"file '{f.resolve()}'\n" for f in files), encoding="utf-8")
+        tmp = final.with_suffix(".tmp.mp4")
+        _run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(audio),
+              "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", str(r.cfg.get("audio_bitrate", "192k")),
+              "-movflags", "+faststart", str(tmp)], "el montaje final")
+        tmp.replace(final)
+
+    join(files)
+    if ctx.section("doctor").get("enabled", True):
+        try:
+            files = heal(ctx, timeline, segments, files, build, join, r.fps)
+        except Exception as error:      # a check: never costs the video
+            print(f"   Render doctor no disponible: {str(error)[:120]}")
     _prune(r.dir / "segments", {f.name for f in files})
     for old in r.dir.glob("remotion-*.mp4"):
         if old != condensed_path:
@@ -882,6 +893,46 @@ def run(ctx: RunContext) -> None:
     size = final.stat().st_size / 1e6
     print(f"   {final.relative_to(ctx.root)} · {timeline['durationInFrames'] / r.fps:.1f} s · {size:.0f} MB · "
           f"render total {time.monotonic() - started:.0f} s")
+
+
+def heal(ctx: RunContext, timeline: dict[str, Any], segments: list[Segment], files: list[Path], build: Any, join: Any,
+         fps: int) -> list[Path]:
+    """Render doctor (pipeline/doctor.py): black or frozen frames in the joined video, fixed at their segment."""
+
+    from . import doctor
+
+    cfg = ctx.section("doctor")
+    final = ctx.out_dir / OUTPUT
+    found = doctor.problems(timeline, doctor.detect(final, cfg), fps)
+    left, fixed = found, []
+    if found:
+        files = list(files)
+        touched: set[int] = set()
+        for problem in found:
+            for i in doctor.segments_hit(segments, problem):
+                if i in touched:
+                    continue
+                touched.add(i)
+                segment = segments[i]
+                if segment.kind == "endscreen":
+                    continue
+                stretch = None
+                media = segment.shots[0].get("media") or {}
+                if problem["kind"] == "frozen" and segment.kind == "ffmpeg" and media.get("kind") == "video":
+                    stretch = doctor.stretch_factor(media_seconds(ctx.work_dir / media["src"]), segment.frames,
+                                                    segment.offset, fps, float(media.get("rate") or 1.0))
+                    if stretch and stretch > float(cfg.get("max_stretch", 1.6)):
+                        continue                          # too short to slow down: left for the report
+                if not stretch:
+                    files[i].unlink(missing_ok=True)      # cut again from its source
+                files[i] = build(segment, stretch) if segment.kind == "ffmpeg" else build(segment)
+                fixed.append(f"{segment.shots[0]['id']}: {'cámara lenta x' + format(stretch, '.2f') if stretch else 'rehecho'}")
+        if fixed:
+            join(files)
+            left = doctor.problems(timeline, doctor.detect(final, cfg), fps)
+    doctor.report(ctx.out_dir / "qa" / "doctor.json", found, fixed, left)
+    print(f"   {doctor.summary(found, fixed, left, fps)}")
+    return files
 
 
 def _summary(graphic: dict[str, Any]) -> str:
