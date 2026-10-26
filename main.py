@@ -45,6 +45,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--check", metavar="SLUG",
                         help="Antes de grabar la voz: verifica los datos del guion de materiales/SLUG (→ out/SLUG/verificacion.md) "
                              "y si su arranque cumple lo que promete el título (→ out/SLUG/gancho.md).")
+    target.add_argument("--autopiloto", metavar="CANAL[:ID]",
+                        help="Piloto automático: hace ya el vídeo propio de la mejor idea del radar del canal (o de esa).")
     target.add_argument("--exportar", metavar="SLUG",
                         help="El vídeo terminado como proyecto de Premiere Pro / DaVinci Resolve → out/SLUG/premiere/ y .zip.")
     target.add_argument("--shorts", metavar="SLUG",
@@ -472,6 +474,12 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                     radar.run_if_due(root)
                 except Exception as error:
                     print(f"Radar: {type(error).__name__}: {error}")
+                try:
+                    from pipeline import autopilot
+
+                    autopilot.run_if_due(root)                    # channels on autopilot: today's video
+                except Exception as error:
+                    print(f"Piloto automático: {type(error).__name__}: {error}")
                 try:
                     servidor.check_proxy(root)                    # the proxy balance, once an hour
                 except Exception as error:
@@ -919,6 +927,16 @@ def main() -> None:
     args = _parser().parse_args()
     _stop_signals()
     _more_open_files()
+    if args.autopiloto:
+        from pipeline import autopilot
+
+        channel, _, video_id = args.autopiloto.partition(":")
+        try:
+            made = autopilot.make(PROJECT_ROOT, channel, video_id or None)
+        except (ValueError, RuntimeError) as error:
+            raise SystemExit(str(error))
+        print(f"Hecho: {made['slug']} · «{made['title']}» · la voz se genera sola y la cola lo hará")
+        return
     if args.exportar:
         from pipeline import export
 

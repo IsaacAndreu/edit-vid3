@@ -1189,6 +1189,13 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if path == "/api/piloto":                 # «Piloto automático»: switches, candidates, what it made
+                    from . import autopilot
+
+                    data = autopilot.overview(root)
+                    for c in data["channels"]:
+                        c["job"] = job_state(root, f"piloto-{c['channel']}")
+                    return self._ok(data)
                 if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):     # the Premiere / DaVinci project
                     slug = urllib.parse.unquote(match.group(1))
                     archive = root / "out" / slug / f"{slug}-premiere.zip"
@@ -1304,6 +1311,21 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(youtube_retry_now(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
                     return self._ok({"text": for_claude(root, urllib.parse.unquote(match.group(1)))})
+                if match := re.fullmatch(r"/api/piloto/([\w-]+)", path):          # {on, perDay}
+                    from . import autopilot
+
+                    if match.group(1) not in channels(root):
+                        raise ValueError("No existe ese canal")
+                    return self._ok(autopilot.configure(root, match.group(1), body.get("on"), body.get("perDay")))
+                if match := re.fullmatch(r"/api/piloto/([\w-]+)/(hacer|saltar)", path):   # {id}
+                    from . import autopilot
+
+                    channel, video_id = match.group(1), str(body.get("id") or "")
+                    if channel not in channels(root) or not re.fullmatch(r"[\w-]{0,20}", video_id):
+                        raise ValueError("Canal o vídeo no válido")
+                    if match.group(2) == "saltar":
+                        return self._ok(autopilot.skip(root, channel, video_id))
+                    return self._ok(background(root, f"piloto-{channel}", ["--autopiloto", f"{channel}:{video_id}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):
                     slug = urllib.parse.unquote(match.group(1))
                     if not (root / "out" / slug / "video-final.mp4").is_file():
