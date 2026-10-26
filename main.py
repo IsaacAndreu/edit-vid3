@@ -481,6 +481,12 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 except Exception as error:
                     print(f"Piloto automático: {type(error).__name__}: {error}")
                 try:
+                    from pipeline import porque
+
+                    porque.run(root)                              # view curves; why it worked at 48 h and 7 days
+                except Exception as error:
+                    print(f"Por qué funcionó: {type(error).__name__}: {error}")
+                try:
                     servidor.check_proxy(root)                    # the proxy balance, once an hour
                 except Exception as error:
                     print(f"Saldo del proxy: {type(error).__name__}: {error}")

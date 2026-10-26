@@ -1189,6 +1189,13 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if match := re.fullmatch(r"/api/video/([^/]+)/porque", path):        # views against the channel's normal
+                    from . import porque
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    curves = porque._read(root / porque.CURVES) or {}
+                    return self._ok({"curve": porque.compare(curves, slug) if slug in curves else None,
+                                     "report": porque.saved(root, slug)})
                 if path == "/api/piloto":                 # «Piloto automático»: switches, candidates, what it made
                     from . import autopilot
 
@@ -1311,6 +1318,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(youtube_retry_now(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
                     return self._ok({"text": for_claude(root, urllib.parse.unquote(match.group(1)))})
+                if match := re.fullmatch(r"/api/video/([^/]+)/porque", path):        # analyse it again now
+                    from . import porque
+
+                    return self._ok({"report": porque.analyse(root, urllib.parse.unquote(match.group(1)))})
                 if match := re.fullmatch(r"/api/piloto/([\w-]+)", path):          # {on, perDay}
                     from . import autopilot
 

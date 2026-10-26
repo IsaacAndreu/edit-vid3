@@ -258,6 +258,11 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     brief.append(f"LONGITUD: unas {words} palabras (como los vídeos del canal).")
     if writing:
         brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
+    from .porque import lessons
+
+    learned = lessons(root, channel)
+    if learned:                                  # what worked and what flopped in the channel's own videos
+        brief.append("LECCIONES DE LOS VÍDEOS ANTERIORES DEL CANAL (aplícalas):\n" + "\n".join(f"- {x}" for x in learned))
     reference = _reference_script(root, channel)
     if reference:
         brief.append(f"GUION DE REFERENCIA DEL CANAL (solo el estilo):\n{reference}")

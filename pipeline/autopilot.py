@@ -130,6 +130,7 @@ def candidates(root: Path, channel: str, limit: int = 8) -> list[dict[str, Any]]
 def idea_from(root: Path, channel: str, video: dict[str, Any]) -> dict[str, Any]:
     from .context import RunContext
     from .llm import complete_json
+    from .porque import lessons
 
     ctx = RunContext.create("_piloto", root=root, channel=channel)
     about = str(ctx.section("ideas").get("about") or channel)
@@ -137,7 +138,8 @@ def idea_from(root: Path, channel: str, video: dict[str, Any]) -> dict[str, Any]
                            max_tokens=1500, use_cache=False,
                            user=(f"VÍDEO QUE FUNCIONA: «{video.get('title')}» ({video.get('channel')}), "
                                  f"{video.get('views')} visitas, x{video.get('ratio')} lo normal de su canal.\n"
-                                 f"POR QUÉ: {'; '.join(evidence(video, {}))}"))
+                                 f"POR QUÉ: {'; '.join(evidence(video, {}))}"
+                                 + "".join(f"\nLECCIÓN DEL CANAL: {x}" for x in lessons(root, channel))))
     if not str(result.get("title") or "").strip():
         raise RuntimeError("La idea ha salido vacía")
     return {**result, "note": f"Inspirado en «{video.get('title')}» ({video.get('channel')}): vídeo propio, no una copia"}

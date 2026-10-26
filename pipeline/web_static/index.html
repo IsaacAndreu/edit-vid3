@@ -627,8 +627,43 @@ async function videoPage(slug) {
         <button onclick="exportPremiere(this)" title="Una carpeta con timeline.xml, los clips en pistas, la voz, la música, los efectos y los subtítulos">🎞️ Proyecto para Premiere / DaVinci</button>
         <span id="exportBox" class="small"></span></div>` : ""}
     ${titles}${thumbs}${shorts}${dubs}
+    ${v.published ? '<div id="whyBox"></div>' : ""}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div>`;
+  const whyLoad = async () => {
+    const box = $("#whyBox");
+    if (!box) return;
+    const w = await api(`/api/video/${encodeURIComponent(slug)}/porque`);
+    if (!w.curve || !w.curve.points.length) { box.innerHTML = '<h2>¿Por qué funcionó?</h2><div class="card small muted">Aún sin visitas registradas: el vigilante las apunta a la 1 h, 3 h, 6 h, 12 h, 1, 2, 4, 7, 14 y 30 días (hace falta el enlace de YouTube).</div>'; return; }
+    const c = w.curve, r = w.report, W = 640, H = 220, P = 34;
+    const hours = [1, ...c.points.map((p) => p[0]), ...c.normal.map((b) => b.hours)];
+    const maxH = Math.max(...hours), maxV = Math.max(1, ...c.points.map((p) => p[1]), ...c.normal.map((b) => b.high));
+    const x = (h) => P + (W - 2 * P) * Math.log(Math.max(h, 1)) / Math.log(Math.max(maxH, 2));
+    const y = (v) => H - P + (2 * P - H) * v / maxV;
+    const band = c.normal.length ? `<polygon points="${c.normal.map((b) => `${x(b.hours)},${y(b.high)}`).join(" ")} ${[...c.normal].reverse().map((b) => `${x(b.hours)},${y(b.low)}`).join(" ")}" fill="rgba(150,150,150,.22)"/>
+      <polyline points="${c.normal.map((b) => `${x(b.hours)},${y(b.median)}`).join(" ")}" fill="none" stroke="#d6a400" stroke-width="2" stroke-dasharray="6 5"/>` : "";
+    const ticks = [[1, "1 h"], [6, "6 h"], [24, "1 d"], [168, "7 d"], [720, "30 d"]].filter(([h]) => h <= maxH * 1.01);
+    const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".", ",") + " K" : String(n);
+    const line = (k, label) => r && r[k] ? `<div style="margin-top:4px"><b style="color:var(--accent)">${label}:</b> ${esc(r[k])}</div>` : "";
+    box.innerHTML = `<h2>¿Por qué funcionó?</h2><div class="card">
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">${band}
+        <polyline points="${c.points.map((p) => `${x(p[0])},${y(p[1])}`).join(" ")}" fill="none" stroke="#2bb3e6" stroke-width="3"/>
+        ${c.points.map((p) => `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="3.5" fill="#2bb3e6"/>`).join("")}
+        <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="#999"/>
+        ${ticks.map(([h, t]) => `<text x="${x(h)}" y="${H - P + 16}" font-size="11" text-anchor="middle" fill="#888">${t}</text>`).join("")}
+        <text x="${P}" y="${P - 10}" font-size="11" fill="#888">${fmt(maxV)}</text></svg>
+      <div class="small muted">— este vídeo · - - lo normal del canal · gris: lo normal (la mitad central de sus vídeos)</div>
+      <div style="margin-top:6px"><b>${fmt(c.views)}</b> visitas a ${c.age < 48 ? Math.round(c.age) + " h" : Math.round(c.age / 24) + " días"}${c.usual ? ` · lo normal del canal a esa edad: ${fmt(c.usual)} (<b>${String(c.ratio).replace(".", ",")}x</b>)` : " · aún pocos vídeos del canal para comparar"}</div>
+      ${r ? `${line("topic", "tema")}${line("title", "título")}${line("length", "duración")}${line("hook", "gancho")}${line("lesson", "lección")}
+        <div class="small muted" style="margin-top:6px">Analizado el ${esc(r.at.slice(0, 10))}: la lección entra en los próximos guiones del canal.</div>` : ""}
+      <button style="margin-top:8px" onclick="whyAnalyse(this)">${r ? "Volver a analizar" : "Analizar ahora"}</button></div>`;
+  };
+  window.whyAnalyse = async (button) => {
+    button.disabled = true; button.textContent = "Analizando…";
+    try { await post(`/api/video/${encodeURIComponent(slug)}/porque`); } catch (e) { alert(e.message); }
+    whyLoad();
+  };
+  whyLoad();
   window.exportPremiere = async (button) => {
     button.disabled = true;
     try { await post(`/api/video/${encodeURIComponent(slug)}/exportar`); } catch (e) { alert(e.message); button.disabled = false; return; }
