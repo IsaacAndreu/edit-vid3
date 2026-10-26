@@ -239,7 +239,7 @@ def old_cache(ctx: RunContext) -> None:
 
 PUBLISHED = "publicado.json"          # in out/<slug>/: {at, url} — marked in the studio or found on your channel
 REMOVED = "borrado.json"              # in out/<slug>/: the heavy files were deleted (the video counts as done)
-OUT_HEAVY = ("*.mp4", "shorts/*.mp4", "*.mov", "*.mkv", "*.wav")
+OUT_HEAVY = ("*.mp4", "shorts/*.mp4", "*.mov", "*.mkv", "*.wav", "*.zip", "premiere/media/*.mp4", "premiere/audio/*.wav")
 
 
 def is_done(root: Path, slug: str) -> bool:

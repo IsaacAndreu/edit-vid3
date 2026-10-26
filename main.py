@@ -45,6 +45,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--check", metavar="SLUG",
                         help="Antes de grabar la voz: verifica los datos del guion de materiales/SLUG (→ out/SLUG/verificacion.md) "
                              "y si su arranque cumple lo que promete el título (→ out/SLUG/gancho.md).")
+    target.add_argument("--exportar", metavar="SLUG",
+                        help="El vídeo terminado como proyecto de Premiere Pro / DaVinci Resolve → out/SLUG/premiere/ y .zip.")
     target.add_argument("--shorts", metavar="SLUG",
                         help="Hace 3 Shorts verticales de un vídeo ya terminado → out/SLUG/shorts/.")
     target.add_argument("--dub", metavar="SLUG:IDIOMA",
@@ -917,6 +919,14 @@ def main() -> None:
     args = _parser().parse_args()
     _stop_signals()
     _more_open_files()
+    if args.exportar:
+        from pipeline import export
+
+        try:
+            export.export(RunContext.create(args.exportar))
+        except RuntimeError as error:
+            raise SystemExit(str(error))
+        return
     if args.check:
         from pipeline import factcheck
 

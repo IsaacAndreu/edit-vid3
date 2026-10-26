@@ -622,10 +622,26 @@ async function videoPage(slug) {
         ${v.thumbnails.length ? `poster="${base + v.thumbnails[0]}"` : ""} src="${base}${v.preview ? "preview.mp4" : "video-final.mp4"}"></video>
       <div class="small muted" style="margin-top:4px">${v.preview ? `Copia ligera en 720p para verlo rápido (también en el móvil) · <a href="${base}video-final.mp4" target="_blank" rel="noopener">ver el original en 1080p</a>`
         : "Preparando una copia ligera para verlo sin cortes en el móvil (unos minutos); mientras tanto, el original pesa mucho y puede ir a trompicones."}</div>
-      <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a></div>` : ""}
+      <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a>
+        <button onclick="exportPremiere(this)" title="Una carpeta con timeline.xml, los clips en pistas, la voz, la música, los efectos y los subtítulos">🎞️ Proyecto para Premiere / DaVinci</button>
+        <span id="exportBox" class="small"></span></div>` : ""}
     ${titles}${thumbs}${shorts}${dubs}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div>`;
+  window.exportPremiere = async (button) => {
+    button.disabled = true;
+    try { await post(`/api/video/${encodeURIComponent(slug)}/exportar`); } catch (e) { alert(e.message); button.disabled = false; return; }
+    exportWatch();
+  };
+  const exportWatch = async () => {
+    const box = $("#exportBox");
+    if (!box) return;
+    const e = await api(`/api/video/${encodeURIComponent(slug)}/exportar`);
+    if (e.zip) box.innerHTML = `<a class="btn" href="${base}${encodeURIComponent(e.zip)}?download">Descargar proyecto (${e.mb} MB)</a>`;
+    else if (e.job.failed) box.innerHTML = `<span class="pill error">No se pudo: ${esc((e.job.log || "").trim().split("\n").pop() || "error")}</span>`;
+    else if (e.job.running) { box.textContent = "Preparando el proyecto…"; setTimeout(exportWatch, 3000); }
+  };
+  exportWatch();
   window.markUploaded = async (value = true) => {
     const url = value ? prompt("Enlace del vídeo en YouTube (opcional):", "") : "";
     if (url === null) return;

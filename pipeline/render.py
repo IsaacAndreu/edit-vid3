@@ -689,7 +689,10 @@ class Renderer:
              "el bucle de la música")
         return out
 
-    def audio(self, timeline: dict[str, Any]) -> Path:
+    def audio(self, timeline: dict[str, Any], only: str | None = None) -> Path | None:
+        """The mastered mix; with `only` ("voice", "music" or "effects": the original sound and the SFX) that part
+        alone, unmastered, for an editor's audio tracks (export.py). None when the video has no such part."""
+
         audio = timeline["audio"]
         total = timeline["durationInFrames"]
         seconds = total / self.fps
@@ -703,10 +706,13 @@ class Renderer:
             return len(files) - 1
 
         stereo = "aresample=48000,aformat=channel_layouts=stereo"
-        chains = voice_chains(add(work / audio["voice"]), audio.get("voiceFrom", 0), audio.get("voiceGaps", []),
-                              self.fps, stereo)
-        mix = ["[voice]"]
-        if audio.get("music"):
+        chains: list[str] = []
+        mix: list[str] = []
+        if only in (None, "voice"):
+            chains += voice_chains(add(work / audio["voice"]), audio.get("voiceFrom", 0), audio.get("voiceGaps", []),
+                                   self.fps, stereo)
+            mix.append("[voice]")
+        if audio.get("music") and only in (None, "music"):
             parts = audio.get("musicParts") or []
             index = add(self.chapter_bed(parts, seconds) if len(parts) > 1 else
                         self.music_bed(work / (parts[0]["src"] if parts else audio["music"]), seconds))
@@ -725,7 +731,7 @@ class Renderer:
             chains.append(f"[bed][gain]amultiply,afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}[music]")
             mix.append("[music]")
         # Original sound of the cold-open clips (the only clip audio ever used), then SFX.
-        for n, clip in enumerate(audio.get("clips", [])):
+        for n, clip in enumerate(audio.get("clips", []) if only in (None, "effects") else []):
             index = add(work / clip["src"])
             delay = round(clip["from"] / self.fps * 1000)
             length = clip["durationInFrames"] / self.fps
@@ -734,14 +740,24 @@ class Renderer:
             chains.append(f"[{index}:a]{stereo},atrim=end={length:.3f},{fades}"
                           f"volume={clip.get('volume', 1.0)},adelay={delay}:all=1[c{n}]")
             mix.append(f"[c{n}]")
-        for n, sfx in enumerate(audio.get("sfx", [])):
+        for n, sfx in enumerate(audio.get("sfx", []) if only in (None, "effects") else []):
             index = add(work / sfx["src"])
             delay = round(sfx["from"] / self.fps * 1000)
             chains.append(f"[{index}:a]{stereo},atrim=end={SFX_FRAMES / self.fps:.3f},"
                           f"volume={sfx['volume']},adelay={delay}:all=1[s{n}]")
             mix.append(f"[s{n}]")
+        if not mix:
+            return None
         mixed = (f"{''.join(mix)}amix=inputs={len(mix)}:duration=longest:normalize=0," if len(mix) > 1 else f"{mix[0]}anull,")
         base = ";".join(chains) + f";{mixed}apad,atrim=end={seconds:.4f}"
+        if only:
+            out = self.dir / f"stem-{only}-{_hash(VERSION, base, [_file_sig(f) for f in files])}.wav"
+            if not out.is_file():
+                tmp = out.with_suffix(".tmp.wav")
+                _run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", f"{base},aresample=48000",
+                      "-c:a", "pcm_s16le", str(tmp)], f"la pista de {only}")
+                tmp.replace(out)
+            return out
         target, peak = float(self.cfg.get("loudness", -16)), float(self.cfg.get("true_peak", -1.5))
         key = _hash(VERSION, base, [_file_sig(f) for f in files], target, peak)
         out = self.dir / f"audio-{key}.wav"

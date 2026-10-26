@@ -1189,6 +1189,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, image.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
                 if path == "/api/search":                  # ?q=…: «¿ya lo hice?» por título o guion
                     return self._ok(search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000]))
+                if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):     # the Premiere / DaVinci project
+                    slug = urllib.parse.unquote(match.group(1))
+                    archive = root / "out" / slug / f"{slug}-premiere.zip"
+                    return self._ok({"job": job_state(root, f"exportar-{slug}"), "zip": archive.name if archive.is_file() else None,
+                                     "mb": round(archive.stat().st_size / 1e6) if archive.is_file() else None})
                 if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):
                     from . import piloto
 
@@ -1299,6 +1304,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(youtube_retry_now(root))
                 if match := re.fullmatch(r"/api/video/([^/]+)/for-claude", path):
                     return self._ok({"text": for_claude(root, urllib.parse.unquote(match.group(1)))})
+                if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):
+                    slug = urllib.parse.unquote(match.group(1))
+                    if not (root / "out" / slug / "video-final.mp4").is_file():
+                        raise ValueError("Primero tiene que estar el vídeo terminado")
+                    (root / "out" / slug / f"{slug}-premiere.zip").unlink(missing_ok=True)
+                    return self._ok(background(root, f"exportar-{slug}", ["--exportar", slug]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):     # {on, reference}: the scene pilot
                     from . import piloto
 
