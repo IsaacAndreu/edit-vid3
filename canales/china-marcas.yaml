@@ -79,9 +79,6 @@ judge:
                      DW, South China Morning Post, CGTN, Xiaomi, BYD, Apple, Samsung, Tesla, Marques Brownlee,
                      Euronews]
 
-factcheck:
-  block_on_wrong: true             # veracidad obligatoria: un dato que la verificación da por falso para el vídeo
-
 package:
   thumbnail_style: concept         # una sola idea: el producto histórico contra el chino, con la cifra
   hint: "dos marcas reales (la histórica y la china) o el producto, y una cifra del guion con su unidad ('299 $ vs

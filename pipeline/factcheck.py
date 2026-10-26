@@ -9,7 +9,7 @@ wrong date found after recording means recording again. It also runs as a stage 
    (Serper if SERPER_API_KEY, else DuckDuckGo) for each claim.
 3. The LLM judges each claim ONLY against that evidence: ok / wrong (with the correction and the
    source) / unverified (the evidence does not say — check it yourself).
-It never blocks the video unless `factcheck.block_on_wrong: true`.
+It never stops the video: the report is there to read, the video goes on.
 """
 
 from __future__ import annotations
@@ -198,8 +198,6 @@ def run(ctx: RunContext) -> None:
     (ctx.out_dir / REPORT).write_text(report(result), encoding="utf-8")
     wrong = [c for c in result["claims"] if c["verdict"] == "wrong"]
     print(f"   {len(wrong)} datos a corregir · informe en {ctx.out_dir / REPORT}")
-    if wrong and ctx.section("factcheck").get("block_on_wrong", False):
-        raise RuntimeError(f"{len(wrong)} datos del guion parecen incorrectos: revisa {ctx.out_dir / REPORT}")
 
 
 def validate(ctx: RunContext) -> bool:

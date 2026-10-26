@@ -442,7 +442,7 @@ python main.py --check <nombre>
 Solo necesita `materiales/<nombre>/guion.txt`. Saca las afirmaciones comprobables (fechas,
 resultados, edades, récords, citas…) y las contrasta con Wikipedia y búsquedas web →
 `out/<nombre>/verificacion.md`. Hazlo antes de grabar la voz: corregir un dato después obliga a
-regrabar. En la cola también se hace solo, pero no para el vídeo (salvo `factcheck.block_on_wrong: true`).
+regrabar. En la cola también se hace solo, y nunca para el vídeo.
 
 **Datos de los gráficos.** Antes de montar, cada gráfico con datos (podio, clasificación, marcador,
 ficha, récords, comparativas, línea de tiempo, ticket de coste…) se contrasta con Wikipedia y una
