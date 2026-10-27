@@ -372,7 +372,7 @@ class YouTubeSource:
         return True
 
     def _metric(self, action: str, *, ok: bool, seconds: float, error: str = "", attempt: int = 0,
-                cookies: bool = False, size: int | None = None) -> None:
+                cookies: bool = False, size: int | None = None, span: tuple[float, float] | None = None) -> None:
         """One line per request to YouTube in work/<slug>/youtube_downloads.jsonl: what was asked, how it went,
         with or without an account, client and PO Token (python main.py --youtube-stats sums them up)."""
 
@@ -388,6 +388,8 @@ class YouTubeSource:
             row["proxy"] = "metadatos"
         elif len(self.proxies) > 1:
             row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
+        if span is not None:             # the source seconds of a clip: overlapping downloads can be found later
+            row["start"], row["end"] = round(span[0], 2), round(span[1], 2)
         if size is not None:
             row["bytes"] = size
             row["mbps"] = round(size / 1e6 / max(seconds, 0.01), 2)
@@ -1162,11 +1164,12 @@ class YouTubeSource:
         try:
             path = self._download_range(video_id, start, end, fmt=fmt, prefix=prefix, audio=audio, audio_only=audio_only)
         except Exception as error:
-            self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)))
+            self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)),
+                         span=(start, end))
             raise
         if getattr(self._local, "fetched", 0) != before:      # downloaded now, not taken from the cache
             size = path.stat().st_size if path.is_file() else 0
-            self._metric(f"archivo {prefix}", ok=True, seconds=time.monotonic() - began, size=size)
+            self._metric(f"archivo {prefix}", ok=True, seconds=time.monotonic() - began, size=size, span=(start, end))
         return path
 
     def _download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,

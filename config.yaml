@@ -101,6 +101,9 @@ sourcing:
     # y el filtro de nombre la descarta). Son fotos de prensa sin licencia libre: se acreditan con la web.
     web: {enabled: true, queries_per_shot: 2, results: 20, min_width: 800, min_interval: 1.5}
 
+# analysis.adaptive (false por defecto): primero los `adaptive_first` (2) mejores vídeos de cada plano a 360p; los
+# siguientes, hasta los de siempre, solo para los planos sin ningún fragmento útil (mismos umbrales). Para probarlo en
+# un vídeo: en su config.yaml, analysis: {adaptive: true}. Comparar: python main.py --informe-analisis [canal].
 analysis:
   model: ViT-B-32                  # OpenCLIP; ~28 fotogramas/s en 4 núcleos de CPU
   pretrained: laion2b_s34b_b79k

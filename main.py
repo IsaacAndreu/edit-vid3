@@ -45,6 +45,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--check", metavar="SLUG",
                         help="Antes de grabar la voz: verifica los datos del guion de materiales/SLUG (→ out/SLUG/verificacion.md) "
                              "y si su arranque cumple lo que promete el título (→ out/SLUG/gancho.md).")
+    target.add_argument("--informe-analisis", nargs="?", const="", metavar="CANAL",
+                        help="Análisis adaptativo antes y después: vídeos mirados, unidades, minutos y planos cubiertos → out/_informe_analisis.md.")
     target.add_argument("--autopiloto", metavar="CANAL[:ID]",
                         help="Piloto automático: hace ya el vídeo propio de la mejor idea del radar del canal (o de esa).")
     target.add_argument("--exportar", metavar="SLUG",
@@ -933,6 +935,16 @@ def main() -> None:
     args = _parser().parse_args()
     _stop_signals()
     _more_open_files()
+    if args.informe_analisis is not None:
+        from pipeline import informe_analisis
+
+        data = informe_analisis.report(PROJECT_ROOT, args.informe_analisis or None)
+        text = informe_analisis.markdown(data)
+        out = PROJECT_ROOT / "out" / "_informe_analisis.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        print(text + f"\n→ {out.relative_to(PROJECT_ROOT)}")
+        return
     if args.autopiloto:
         from pipeline import autopilot
 
