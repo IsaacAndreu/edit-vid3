@@ -50,6 +50,11 @@ def _probe(ctx: RunContext, cookies: bool, ipv4: bool, clients: str = "") -> dic
     WARNING_COUNTS.clear()
     with tempfile.TemporaryDirectory() as tmp:
         source = YouTubeSource(root=ctx.root, cache_dir=Path(tmp), config=cfg, cookie_sets=sets)
+        from .sourcing.youtube import proxy_reachable
+
+        for way, proxy in enumerate(source.proxies or []):   # like the queue: a PC that is off is set aside, not waited for
+            if len(source.proxies) > 1 and not proxy_reachable(proxy):
+                source._rest(way, 600, "no responde")
         began = time.monotonic()
         try:
             size, error = source.download_range(TEST_VIDEO, *TEST_RANGE, fmt=FORMAT, prefix="probe").stat().st_size, ""
