@@ -243,6 +243,11 @@ class YouTubeSource:
         # Downloads keep going out the usual way: stream URLs belong to the IP that asked for them, so a video to be
         # downloaded is extracted again that way first (_fresh_full_info), and the proxy's paid GB are only JSON.
         self.metadata_proxy = str(os.environ.get("YOUTUBE_METADATA_PROXY") or config.get("metadata_proxy") or "").strip()
+        # «modo sin YouTube» (pipeline/sin_youtube.py, while the queue's YouTube pause lasts): what is on disk is still
+        # read, but nothing goes out — every request stops here before the network, with this reason
+        from ..sin_youtube import REASON, active
+
+        self.offline: str | None = REASON if active() else None
         interval = float(config.get("min_interval", 1.0))
         self._pacers = [SharedPacer(interval, cache_dir / "videos" / pacer_name(p)) for p in (self.proxies or [""])]
         self.pacer = self._pacers[0]                # all processes, per way out
@@ -495,6 +500,8 @@ class YouTubeSource:
             threading.Thread(target=lambda: [self._slots.acquire() for _ in range(extra)], daemon=True).start()
 
     def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
+        if self.offline:
+            raise SourceUnavailable(self.offline)
         if self.blocked:
             raise SourceUnavailable(self.blocked)
         attempt = 0
@@ -800,6 +807,8 @@ class YouTubeSource:
     def _get(self, url: str, timeout: float = 30) -> requests.Response:
         """A plain HTTP GET (storyboards, captions) through the least busy way out."""
 
+        if self.offline:
+            raise SourceUnavailable(self.offline)
         if self.blocked or self._all_in_quarantine():
             raise SourceUnavailable(self.blocked or "YouTube: todas las conexiones en cuarentena")
         way = self._pick_way()
@@ -902,6 +911,8 @@ class YouTubeSource:
         """The same entries as a yt-dlp search, from the official API (never bot-checked). None when
         there are no keys or the day's quota ran out: then yt-dlp searches as before."""
 
+        if self.offline:
+            raise SourceUnavailable(self.offline)
         api = self.api
         if api is None:
             return None
@@ -1164,8 +1175,9 @@ class YouTubeSource:
         try:
             path = self._download_range(video_id, start, end, fmt=fmt, prefix=prefix, audio=audio, audio_only=audio_only)
         except Exception as error:
-            self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)),
-                         span=(start, end))
+            if not (self.offline and str(error) == self.offline):      # never asked: not a failed download
+                self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began,
+                             error=error_kind(str(error)), span=(start, end))
             raise
         if getattr(self._local, "fetched", 0) != before:      # downloaded now, not taken from the cache
             size = path.stat().st_size if path.is_file() else 0
@@ -1198,6 +1210,8 @@ class YouTubeSource:
         whole = next((p for p in sorted(target_dir.glob(f"full_{prefix}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
         if whole is not None and not audio_only:          # already downloaded whole (prefetch_sections)
             return self._cut(whole, video_id, start, end, prefix, audio)
+        if self.offline:                                  # not on disk: without YouTube this clip cannot come
+            raise SourceUnavailable(self.offline)
         info_path = self._fresh_full_info(video_id)
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
         if hls and _has_hls(info_path):

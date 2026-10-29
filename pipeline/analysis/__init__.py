@@ -373,12 +373,19 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     config_key = key(cfg, VERSION)
     todo: list[Shot] = []
     shot_hash: dict[str, str] = {}
+    from .. import sin_youtube
+
+    offline = sin_youtube.active()
     for shot in shots:
-        shot_hash[shot.id] = key(shot.model_dump(), candidates[shot.id].model_dump(), config_key)
+        usual = shot_hash[shot.id] = key(shot.model_dump(), candidates[shot.id].model_dump(), config_key)
+        if offline and any(c.source == "youtube" for c in candidates[shot.id].candidates):
+            # YouTube windows that are not on disk cannot come now: a result of its own, redone after the pause
+            shot_hash[shot.id] = key(usual, sin_youtube.NOTE)
         path = out_dir / f"{shot.id}.json"
         if path.is_file():
             try:
-                if ShotScores.model_validate_json(path.read_text(encoding="utf-8")).inputsHash == shot_hash[shot.id]:
+                done = ShotScores.model_validate_json(path.read_text(encoding="utf-8")).inputsHash
+                if done in (shot_hash[shot.id], usual if offline else None):   # analysed with YouTube: kept, even without it
                     continue
             except (ValidationError, ValueError):
                 pass

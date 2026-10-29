@@ -513,10 +513,22 @@ def run(ctx: RunContext) -> None:
         said = ascii_upper(f"{c.title} {c.channel}")
         return bool(who) and not any(surname(n) and surname(n) in said for n in who)
 
+    # modo sin YouTube (sin_youtube.py): a YouTube clip already in media/ keeps its shot as it was; any other YouTube
+    # option cannot be downloaded now, so the choice is among the rest
+    from . import sin_youtube
+
+    offline = sin_youtube.active()
+    kept = sin_youtube.kept(ctx) if offline else {}
+    if kept:
+        print(f"   Sin YouTube: {len(kept)} planos conservan el clip de YouTube que ya estaba descargado")
     for shot in shots:
+        if shot.id in kept:
+            plans[shot.id] = []
+            continue
         order = sorted((
             (s + official(o), o) for s, o in ranked(scores[shot.id].options, bonus)
-            if s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
+            if not (offline and o.source == "youtube")
+            and s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
             and not seen_elsewhere(o, elsewhere)
         ), key=lambda pair: -pair[0])
         plans[shot.id] = [o for _, o in order]
@@ -572,6 +584,9 @@ def run(ctx: RunContext) -> None:
     back_to_back = float(cfg.get("back_to_back_margin", 0.05 if scenes else 0.02) or 0)
     selections: list[Selection] = []
     for shot in shots:
+        if shot.id in kept:
+            selections.append(kept[shot.id])
+            continue
         preference: list[Option] = plans[shot.id]
         judged: list[Option] = []
         verdict_info: dict[str, Any] | None = None

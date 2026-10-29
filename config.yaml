@@ -406,3 +406,15 @@ compilations:                      # compilaciones largas (python main.py --comp
   min_videos: 3
   keep_finals: true                # el vídeo final de los ya subidos se guarda para una compilación…
   keep_days: 30                    # …hasta 30 días, hasta que entra en una o hasta que falta disco (cleanup.min_free_gb)
+
+watch:
+  continue_without_youtube: false  # con YouTube en pausa, los vídeos que aún lo necesitan siguen sin él (pipeline/sin_youtube.py):
+                                   # ninguna petición a YouTube, se reutiliza lo ya hecho y solo se termina si la cobertura no es
+                                   # peor que la habitual del canal; si no, espera a YouTube. Mejor por canal (canales/<canal>.yaml)
+without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue al montaje (se compara con los vídeos del canal hechos con él)
+  fallback_margin: 0.05            # planos al relleno: como mucho lo habitual del canal + 5 puntos
+  reference_videos: 10             # últimos vídeos terminados del canal con los que se compara
+  reference_min_videos: 3          # con menos, se compara con todos los canales; sin ninguno, los dos límites de abajo
+  max_fallback_share: 0.35
+  max_unfilled_share: 0
+  require_cold_open: true          # si el canal suele llevar cold open (sus clips con sonido salen de YouTube), sin él espera

@@ -140,6 +140,11 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
             quota_wait = f"{why or 'cuota de la API de YouTube'} · hasta las {local:%H:%M}"
     except (OSError, ValueError):
         pass
+    from . import sin_youtube
+
+    if quota_wait is None and sin_youtube.waiting(root, slug):   # made without YouTube, short: waits for it (not a failure)
+        problems = (_json(work / sin_youtube.STATE) or {}).get("problems") or []
+        quota_wait = "espera a YouTube: " + "; ".join(problems)[:200]
     redo = (folder / REDO).is_file() and not held      # «Rehacer»: back in the queue although it has a final video
     waiting_quota = quota_wait is not None and not current   # the API's searches ran out: it waits, it did not fail
     if (ready and not done and not current and not held and not waiting_quota and (diag.get("error") or failed)

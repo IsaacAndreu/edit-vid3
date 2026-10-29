@@ -217,6 +217,9 @@ def run(ctx: RunContext) -> None:
     http = requests.Session()
     http.headers["User-Agent"] = USER_AGENT
     youtube = youtube_source(ctx)
+    from . import sin_youtube
+
+    offline = sin_youtube.active()
     lut = find_lut(ctx)
     materialiser = Materialiser(ctx, ctx.section("ingest"), lut, youtube, http)
     clip = None
@@ -226,10 +229,12 @@ def run(ctx: RunContext) -> None:
     todo: list[tuple[str, str]] = []
     for shot_id, reason in pending.items():
         shot = shots[shot_id]
-        digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
+        usual = digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
+        if offline:          # chosen without YouTube's options: its own result, looked at again once YouTube is back
+            digest = key(usual, sin_youtube.NOTE)
         old = previous.get(shot_id)
         # Reuse the cached result unless a shot earlier in this run has already taken that media.
-        if (old and old.specHash == digest and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used
+        if (old and old.specHash in (digest, usual) and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used
                 and shot_id not in marked_wrong and not feedback.is_wrong(elsewhere, old.candidateId, old.start, old.end)
                 and not looks_used(ctx.root / old.path, old.kind)):
             items.append(old)
@@ -336,6 +341,8 @@ def run(ctx: RunContext) -> None:
         event_key = " ".join(sorted(tokens(shot.broll.event))) if shot.broll and shot.broll.event else ""
         needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
         digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
+        if offline:
+            digest = key(digest, sin_youtube.NOTE)
         item: FallbackItem | None = None
         tried: list[str] = []
 
@@ -348,7 +355,8 @@ def run(ctx: RunContext) -> None:
             per_source = source_cap(judge_cfg, len(story.shots) * 2 // 3)   # about the footage shots
             blocklist = ctx.section("content").get("title_blocklist")
             options = [o for o in options
-                       if not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
+                       if not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
+                       and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
                        and not overused(o.candidateId, used,
                                         per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
                        and f"{o.candidateId}@{o.start}" not in dead
@@ -459,7 +467,9 @@ def run(ctx: RunContext) -> None:
 
         # 1b''. A second search: new YouTube queries written from why the judge said no (another accident, another
         # athlete, a re-edit…), scored like the first ones and vetted by the judge — real footage before photos/stock.
-        if item is None and shot.broll and cfg.get("research", True):
+        if item is None and shot.broll and cfg.get("research", True) and offline:
+            tried.append(f"segunda búsqueda: {sin_youtube.NOTE}")      # its queries are YouTube's: not even the LLM
+        elif item is None and shot.broll and cfg.get("research", True):
             options, research_candidates = research(shot, reason, tried)
             options = [o for o in options if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
                        and not seen_elsewhere(o, elsewhere)][:limit]

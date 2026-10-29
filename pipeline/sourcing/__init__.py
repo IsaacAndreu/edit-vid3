@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .. import library
+from .. import library, sin_youtube
 from ..context import RunContext
 from ..schemas import Shot, ShotCandidates, ShotsFile
 from .common import SourceUnavailable, key
@@ -201,6 +201,10 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
         print("   YouTube: sin cookies (busco archivos .txt/.json en "
               + " y ".join(str(f) for f in cookie_folders(ctx, yt_cfg)) + ")")
     source = YouTubeSource(root=ctx.root, cache_dir=ctx.cache_dir, config=yt_cfg, cookie_sets=sets)
+    source.metrics_path = ctx.work_dir / "youtube_downloads.jsonl"
+    if source.offline:          # modo sin YouTube: not even the proxies' ports or the API's quota are asked
+        print(f"   {source.offline}: solo lo que ya está en disco")
+        return source
     from .youtube import proxy_reachable
 
     rest = float(yt_cfg.get("proxy_rest_minutes", 10)) * 60
@@ -371,7 +375,9 @@ def run(ctx: RunContext) -> None:
         if path.is_file():
             try:
                 found = ShotCandidates.model_validate_json(path.read_text(encoding="utf-8"))
-                if found.specHash == spec_hash and not any("bloquea" in n for n in found.notes):
+                # searched without YouTube (its pause): kept while the pause lasts, searched again once it is over
+                missed = not sin_youtube.active() and any(sin_youtube.NOTE in n for n in found.notes)
+                if found.specHash == spec_hash and not any("bloquea" in n for n in found.notes) and not missed:
                     return found
             except (ValidationError, ValueError):
                 pass
@@ -381,10 +387,14 @@ def run(ctx: RunContext) -> None:
         """One search for the whole scene (scenes.py); library and images stay per shot."""
 
         api = youtube is not None and youtube.api is not None
-        queries = scene_queries(scene, yt_cfg, api=api)
-        signature = [[s.id for s in scene], queries, scene_settings(yt_cfg, len(scene)), options_per_shot(yt_cfg)]
-        hashes = {s.id: key(_spec_hash(s, cfg), signature) for s in scene}
-        done = [existing(s, hashes[s.id]) for s in scene]
+        # without YouTube there is no API client either: a scene searched before, with or without it, is kept
+        flags = [True, False] if getattr(youtube, "offline", None) else [api]
+        done: list[ShotCandidates | None] = [None] * len(scene)
+        for flag in flags:
+            queries = scene_queries(scene, yt_cfg, api=flag)
+            signature = [[s.id for s in scene], queries, scene_settings(yt_cfg, len(scene)), options_per_shot(yt_cfg)]
+            hashes = {s.id: key(_spec_hash(s, cfg), signature) for s in scene}
+            done = [found or existing(s, hashes[s.id]) for found, s in zip(done, scene)]
         if all(done):
             for result in done:
                 if precompute is not None:
@@ -415,7 +425,10 @@ def run(ctx: RunContext) -> None:
         print(f"   escena {scene[0].id}-{scene[-1].id} ({len(scene)} planos): {len(queries)} búsquedas, "
               f"{len(next(iter(per_shot.values()), []))} vídeos")
         results = []
-        for shot in scene:
+        for shot, before in zip(scene, done):
+            if before is not None and getattr(youtube, "offline", None):
+                results.append(before)          # searched with YouTube already: never replaced by a search without it
+                continue
             results.append(_finish(shot, hashes[shot.id], {"youtube": queries}, per_shot[shot.id], list(notes)))
             if precompute is not None:
                 precompute.submit(results[-1].candidates)
@@ -482,7 +495,7 @@ def run(ctx: RunContext) -> None:
             return result
         notes = [*result.notes, WIDENED]
         candidates = []
-        if youtube is not None:
+        if youtube is not None and not getattr(youtube, "offline", None):
             try:
                 candidates += youtube.candidates(wide, notes)
             except SourceUnavailable as error:

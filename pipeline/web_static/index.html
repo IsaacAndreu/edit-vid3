@@ -389,7 +389,7 @@ function drawHome() {               // the channel buttons redraw from what is a
     ${block("▶ Haciéndose ahora", by("haciendo"), {cls: "now", id: "h-now"})}
     ${block("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
     ${block("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
-      right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ espera API ${esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
+      right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API " + esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
         : v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
     ${block("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
       right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}

@@ -140,7 +140,18 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
         if formats.ensure_auto(ctx):                      # a new video: the format that suits its script
             ctx = RunContext.create(slug, root=root)
         redo = redo_stages(ctx.materials_dir)             # «Rehacer»: from those stages, whoever runs it
-        _run_one(ctx, force=set(force) | redo, until=until, review=review)
+        from pipeline import sin_youtube, ytpause
+
+        if ytpause.paused(root) and needs_youtube(root, slug) and sin_youtube.enabled(root, slug):
+            print(f"{slug}: YouTube en pausa → modo sin YouTube (ninguna petición; se termina solo si el material "
+                  "es tan bueno como el habitual del canal)")
+            with sin_youtube.offline():
+                sin_youtube.begin(ctx)
+                _run_one(ctx, force=set(force) | redo, until=until, review=review)
+        else:
+            if not ytpause.paused(root):
+                sin_youtube.resumed(ctx)
+            _run_one(ctx, force=set(force) | redo, until=until, review=review)
         if redo and until is None and not review:
             (ctx.materials_dir / REDO).unlink(missing_ok=True)
 
@@ -200,10 +211,11 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
         except BaseException as error:
             diag.write(ctx, error)
             from pipeline import ytpause
+            from pipeline.sin_youtube import WaitingForYouTube
 
             if isinstance(error, ytpause.YouTubeBlocked):    # the whole queue waits (one message, not one per video)
                 ytpause.pause(ctx.root, str(error))
-            elif not isinstance(error, KeyboardInterrupt):
+            elif not isinstance(error, (KeyboardInterrupt, WaitingForYouTube)):   # waiting is no failure
                 from pipeline import notify as messages
 
                 try:
@@ -260,10 +272,11 @@ def needs_youtube(root: Path, slug: str) -> bool:
     ingest stage is done), a dub (same clips, retimed) or a channel without YouTube: no. While YouTube blocks this
     connection those still go on (render, Shorts, titles), instead of the whole queue waiting behind the block."""
 
+    from pipeline import sin_youtube
     from pipeline.context import find_video, load_config
 
-    if (root / "work" / slug / ".stages" / "ingest.json").is_file():
-        return False
+    if (root / "work" / slug / ".stages" / "ingest.json").is_file() and not sin_youtube.made_without(root, slug):
+        return False                     # (made during YouTube's pause, it still needs YouTube to be redone)
     folder = find_video(root, slug)
     try:
         cfg = load_config(folder / "config.yaml") if (folder / "config.yaml").is_file() else {}
@@ -271,7 +284,22 @@ def needs_youtube(root: Path, slug: str) -> bool:
         cfg = {}
     if (cfg.get("dub") or {}).get("of"):
         return False
+    try:
+        from pipeline import stickman
+
+        if stickman.active(RunContext.create(slug, root=root)):     # drawn in code: no footage at all
+            return False
+    except Exception:
+        pass
     return True
+
+
+def waits_for_youtube(root: Path, slug: str) -> bool:
+    """YouTube is paused and this video needs it: it waits, unless it may go on without it (sin_youtube.py)."""
+
+    from pipeline import sin_youtube, ytpause
+
+    return bool(ytpause.paused(root)) and needs_youtube(root, slug) and not sin_youtube.can_continue(root, slug)
 
 
 def channel_rank(root: Path) -> dict[str, int]:
@@ -288,6 +316,8 @@ QUOTA_WAIT = ".espera-cuota"           # in a video's folder: epoch of the API q
 
 
 QUOTA_EXIT = 75                        # `--slug` exit code (EX_TEMPFAIL): the video waits for the API quota
+YOUTUBE_EXIT = 76                      # `--slug` exit code: made without YouTube it fell short, it waits for YouTube
+WAITING = ("espera cuota", "en espera", "espera YouTube")     # statuses of the queue that are not failures
 
 
 def wait_for_quota(root: Path, slug: str, error: BaseException) -> None:
@@ -525,7 +555,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             if ytpause.paused(root):
                 from pipeline import dub as _dub
 
-                offline = [s for s in pending_slugs(root) if not needs_youtube(root, s)] + list(_dub.pending(root))
+                offline = [s for s in pending_slugs(root) if not waits_for_youtube(root, s)] + list(_dub.pending(root))
                 if not offline:                                     # nothing that can go on without YouTube
                     time.sleep(60)
                     continue
@@ -552,7 +582,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 time.sleep(30 * 60)
             waited = any(status == "en espera" for _, status, _, _ in LAST_RESULTS)
             for slug, status, _, _ in LAST_RESULTS:
-                if status in ("en espera", "espera cuota"):          # budget / API quota: not a failure
+                if status in WAITING:                                # budget / API quota / YouTube: not a failure
                     continue
                 if status == "OK":
                     state.pop(slug, None)
@@ -698,7 +728,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         from pipeline import ytpause
 
         for number, slug in enumerate(slugs, start=1):
-            if ytpause.paused(root) and needs_youtube(root, slug):
+            if waits_for_youtube(root, slug):
                 print(f"{slug}: necesita YouTube, que está bloqueado: espera (sigo con los que ya no lo necesitan)")
                 continue
             if on_hold(root, slug):
@@ -725,7 +755,13 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 raise
             except BaseException as error:  # SystemExit too: one bad video must not end the queue
                 from pipeline.budget import ApiSearchesShort, BudgetReached
+                from pipeline.sin_youtube import WaitingForYouTube
 
+                if isinstance(error, WaitingForYouTube):      # short without YouTube: it waits, the rest go on
+                    results.append((slug, "espera YouTube", time.monotonic() - started, str(error)))
+                    print(f"⏸ {error}")
+                    _write_report(root, results)
+                    continue
                 if isinstance(error, ApiSearchesShort):       # only this video waits for the quota; the rest go on
                     wait_for_quota(root, slug, error)
                     results.append((slug, "espera cuota", time.monotonic() - started, str(error)))
@@ -751,11 +787,11 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         lock.unlink(missing_ok=True)
         _write_report(root, results)
     LAST_RESULTS[:] = results
-    failures = sum(1 for _, status, _, _ in results if status not in ("OK", "espera cuota", "en espera"))
+    failures = sum(1 for _, status, _, _ in results if status != "OK" and status not in WAITING)
     print(f"\nCola terminada: {len(results) - failures} OK · {failures} con error · resumen en {QUEUE_REPORT}")
     if results:
         notify(root, f"Cola terminada: {len(results) - failures} OK · {failures} con error\n" + "\n".join(
-            f"{'✅' if status == 'OK' else '⏸' if status in ('espera cuota', 'en espera') else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
+            f"{'✅' if status == 'OK' else '⏸' if status in WAITING else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
             for slug, status, seconds, detail in results))
     return failures
 
@@ -832,7 +868,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                     print(f"[{slug}] {line}", flush=True)
             code = process.wait()
         detail = "" if code == 0 else _error_line(list(tail), code)
-        status = "OK" if code == 0 else "espera cuota" if code == QUOTA_EXIT else "ERROR"
+        status = "OK" if code == 0 else "espera cuota" if code == QUOTA_EXIT else "espera YouTube" if code == YOUTUBE_EXIT \
+            else "ERROR"
         with lock:
             results.append((slug, status, time.monotonic() - started, detail))
             _write_report(root, results)
@@ -845,7 +882,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 slug = pending.popleft()
             from pipeline import ytpause
 
-            if ytpause.paused(root) and needs_youtube(root, slug):
+            if waits_for_youtube(root, slug):
                 continue                         # waits for YouTube; the ones that no longer need it go on
             if on_hold(root, slug):
                 print(f"{slug}: quitado de la cola, se salta")
@@ -1137,6 +1174,7 @@ def main() -> None:
         failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)
         sys.exit(1 if failures else 0)
     from pipeline.budget import ApiSearchesShort
+    from pipeline.sin_youtube import WaitingForYouTube
 
     try:
         run_one(args.slug, force=set(args.force), until=args.until, review=args.review)
@@ -1144,6 +1182,9 @@ def main() -> None:
         wait_for_quota(PROJECT_ROOT, args.slug, error)
         print(f"⏸ {error}")
         sys.exit(QUOTA_EXIT)
+    except WaitingForYouTube as error:         # made without YouTube it fell short: it waits for YouTube
+        print(f"⏸ {error}")
+        sys.exit(YOUTUBE_EXIT)
     except StageNotImplemented as error:
         raise SystemExit(f"Parada: {error}") from error
     except QABlocked as error:

@@ -148,7 +148,12 @@ def find_quotes(ctx: RunContext, sents: list[dict[str, Any]], count: int) -> lis
 def transcript(ctx: RunContext, youtube: Any, video_id: str, language: str, minutes: float) -> list[tuple[str, float, float]]:
     """Timed words of a video: its captions, else Whisper over its first `minutes` of audio."""
 
-    path = youtube.subtitle_file(video_id, language)
+    try:
+        path = youtube.subtitle_file(video_id, language)
+    except Exception:
+        if getattr(youtube, "offline", None):       # modo sin YouTube: no subtitles on disk, none to ask for
+            return []
+        raise
     if path is not None:
         return timed_words(parse_vtt(path.read_text("utf-8", errors="replace")))
     if not ctx.section("quotes").get("whisper", True):
@@ -219,6 +224,8 @@ def pick_quotes(ctx: RunContext, youtube: Any, out_dir: Path) -> list[dict[str, 
         surname = tokens(q["speaker"].split()[-1])
         language = str(q.get("language") or "en")[:2]
         done = False
+        if getattr(youtube, "offline", None) and not youtube.search_cached(str(q["search"])):
+            continue                     # modo sin YouTube: only quotes whose search is already on disk
         for entry in youtube.search(str(q["search"]))[: int(cfg.get("videos_per_quote", 4))]:
             if done:
                 break

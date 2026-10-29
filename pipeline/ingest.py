@@ -345,8 +345,11 @@ def run(ctx: RunContext) -> None:
             print("   AVISO: las descargas van muy lentas (más de 25 s por tramo). Casi siempre es yt-dlp sin poder "
                   "resolver los retos de YouTube: pip install -U \"yt-dlp[default]\" deno")
     ordered = [media[s.shotId] for s in todo if s.shotId in media]
+    from . import sin_youtube
+
+    offline = sin_youtube.active()
     for stale in out_dir.iterdir():
-        if stale.name != MANIFEST and stale.stem not in media:
+        if stale.name != MANIFEST and stale.stem not in media and not offline:   # without YouTube nothing is deleted
             stale.unlink()
     ctx.write_json(f"{OUTPUT}/{MANIFEST}", IngestFile(slug=ctx.slug, media=ordered, skipped=skipped, failed=failed).model_dump(exclude_none=True))
     videos = [m for m in ordered if m.kind == "video"]
@@ -358,7 +361,7 @@ def run(ctx: RunContext) -> None:
     print(f"   Ingesta en {time.monotonic() - started:.0f} s")
     # atlet1: 95 of 95 clips failed (YouTube blocking, the home proxy off) and the video went on to the render with
     # no footage at all. Stop instead: what downloaded is kept and the watcher tries again later.
-    if len(todo) >= 10 and len(failed) / len(todo) > 0.5:
+    if len(todo) >= 10 and len(failed) / len(todo) > 0.5 and not offline:    # without YouTube: the gate decides
         from .ytpause import YouTubeBlocked
 
         blocked = any(re.search(r"bot|bloquea|429|sign in|too many", e, re.I) for e in failed.values())

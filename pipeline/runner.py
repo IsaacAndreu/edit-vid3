@@ -132,8 +132,15 @@ def is_up_to_date(ctx: RunContext, stage: Stage) -> bool:
     if not marker.is_file() or not all(path.exists() for path in stage.outputs(ctx)):
         return False
     try:
-        recorded = json.loads(marker.read_text(encoding="utf-8")).get("inputsHash")
+        recorded_marker = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return False
+    recorded = recorded_marker.get("inputsHash")
+    from . import sin_youtube
+
+    if recorded_marker.get("withoutYouTube") and not sin_youtube.active():
+        # done during YouTube's pause: again now, and inside the stage only what missed YouTube is redone
+        print(f"   {stage.name}: se hizo sin YouTube; se rehace con YouTube (solo lo que faltaba)")
         return False
     if recorded != fingerprint(ctx, stage) and recorded != fingerprint(ctx, stage, legacy=True):
         return False
@@ -172,8 +179,9 @@ def run_stages(
     from . import budget
 
     spent_before = budget.video_spent(ctx.work_dir)      # budget.per_video_usd counts this attempt only
-    from . import feedback
+    from . import feedback, sin_youtube
 
+    offline = sin_youtube.active()                       # modo sin YouTube: YouTube's pause lasts (sin_youtube.py)
     learned = feedback.load_learned(ctx.root)            # channels your «Errores» labels taught it to avoid
     if learned:
         print(f"Canales de YouTube bloqueados por tus correcciones: {', '.join(learned)}")
@@ -226,6 +234,7 @@ def run_stages(
                         "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                         "seconds": round(time.monotonic() - started, 1),
                         **usage.fields(),
+                        **({"withoutYouTube": True} if offline and stage.name in sin_youtube.STAGES else {}),
                     },
                     indent=2,
                 )
@@ -236,6 +245,8 @@ def run_stages(
             executed.append(stage.name)
             spent = time.monotonic() - started
             print(f"{label}: hecho en {spent:.1f} s" + (f" ({spent / 60:.0f} min)" if spent >= 120 else ""))
+        if offline and stage.name == "coldopen":
+            sin_youtube.gate(ctx)        # worse than the channel's usual without YouTube: it waits (WaitingForYouTube)
         if stage.name == last:
             if review and stage.name == "qa":
                 print("Revisión: pipeline detenido tras la QA (--review). Revisa out/<slug>/qa/ y relanza sin --review.")
