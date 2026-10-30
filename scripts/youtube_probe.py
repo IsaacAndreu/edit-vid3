@@ -17,6 +17,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# When invoked as `python scripts/youtube_probe.py`, Python puts `scripts/`
+# on sys.path rather than the repository root. Add the root before importing
+# the project's pipeline package.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from pipeline.context import RunContext
 from pipeline.sourcing import youtube_source
 
@@ -88,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         print("results, download-count y seconds deben ser positivos; start no puede ser negativo", file=sys.stderr)
         return 2
 
-    root = Path(__file__).resolve().parents[1]
+    root = PROJECT_ROOT
     run_dir = _run_dir(root, args.output_root)
     downloads_dir = run_dir / "downloads"
     downloads_dir.mkdir(parents=True, exist_ok=True)
