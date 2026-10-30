@@ -24,10 +24,16 @@ const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 export const fade = (f: number, a: number, b: number, edge = 12) =>
   interpolate(f, [a, a + edge, b - edge, b], [0, 1, 1, 0], clamp);
 
+/** A panel: navy glass with the accent along its left edge; it rises a little as it comes in, and its contents follow
+ * a beat later (the edge first, then the words). */
 export const Panel: FC<{style?: CSSProperties; o: number; children: ReactNode}> = ({style, o, children}) => (
-  <div style={{position: 'absolute', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 6, padding: '16px 22px',
-               fontFamily: FONT, color: C.text, opacity: o, transform: `translateY(${(1 - o) * 10}px)`, ...style}}>
-    {children}
+  <div style={{position: 'absolute', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: '16px 22px 16px 26px',
+               fontFamily: FONT, color: C.text, opacity: Math.min(1, o * 1.4), overflow: 'hidden',
+               boxShadow: '0 18px 40px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)',
+               transform: `translateY(${(1 - o) * 16}px)`, ...style}}>
+    <div style={{position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: C.accent,
+                 transform: `scaleY(${Math.min(1, o * 1.6)})`, transformOrigin: 'top'}} />
+    <div style={{opacity: interpolate(o, [0.35, 1], [0, 1], clamp)}}>{children}</div>
   </div>
 );
 

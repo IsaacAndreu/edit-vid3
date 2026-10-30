@@ -62,10 +62,22 @@ export const SideTitle: FC<{text: string; style: CSSProperties}> = ({text, style
 
 /** A small line chart of a series up to now (x: 0 → total), in a panel. */
 export const Spark: FC<{values: number[]; total: number; max: number; color: string; w?: number; h?: number}> = ({values, total, max, color, w = 420, h = 150}) => {
-  const pts = values.map((v, i) => `${((i / Math.max(1, total - 1)) * w).toFixed(1)},${(h - (v / Math.max(1e-9, max)) * h).toFixed(1)}`).join(' ');
+  const xy = values.map((v, i) => [(i / Math.max(1, total - 1)) * w, h - 4 - (v / Math.max(1e-9, max)) * (h - 8)] as const);
+  const pts = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const last = xy[xy.length - 1];
+  const id = `spark-${color.replace(/[^0-9a-z]/gi, '')}`;
   return (
-    <svg width={w} height={h} style={{display: 'block', marginTop: 10, background: 'rgba(255,255,255,0.03)'}}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={3} strokeLinejoin="round" />
+    <svg width={w} height={h} style={{display: 'block', marginTop: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 4}}>
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      {[0.25, 0.5, 0.75].map((f) => <line key={f} x1={0} x2={w} y1={h * f} y2={h * f} stroke="rgba(255,255,255,0.06)" />)}
+      {xy.length > 1 && <polygon points={`${xy[0][0]},${h} ${pts} ${last[0]},${h}`} fill={`url(#${id})`} />}
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+      {last && <circle cx={last[0]} cy={last[1]} r={5} fill={color} stroke="#0b1020" strokeWidth={2} />}
     </svg>
   );
 };

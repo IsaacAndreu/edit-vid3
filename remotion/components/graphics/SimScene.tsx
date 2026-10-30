@@ -7,6 +7,7 @@
 import type { FC } from 'react';
 import { AbsoluteFill, Audio, Easing, interpolate, Sequence, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { SimGraphic } from '../../graphics';
+import { countUp } from '../countUp';
 import { setTheme } from '../../sim/city';
 import { C, FONT, Label, Panel, Section, setAccent } from '../../sim/hud';
 import { setLang, tx } from '../../sim/i18n';
@@ -59,6 +60,8 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ transform: `scale(${punch})` }}>{body}</AbsoluteFill>
+      {/* depth: the edges of every world a touch darker, the eye on the middle */}
+      <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 58%, rgba(4,8,18,0.42) 100%)', pointerEvents: 'none' }} />
       <SimSounds graphic={graphic} durationInFrames={durationInFrames} fps={fps} />
       {graphic.title && (
         <div style={{ position: 'absolute', left: 0, top: 96, width: 1920 }}>
@@ -68,7 +71,9 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
       {graphic.stat && (
         <Panel o={on} style={{ left: '50%', bottom: 70, transform: 'translateX(-50%)', textAlign: 'center', minWidth: 360 }}>
           <Label>{graphic.stat.label}</Label>
-          <div style={{ fontSize: 64, fontWeight: 800, color: C.accent, lineHeight: 1.05 }}>{graphic.stat.value}</div>
+          <div style={{ fontSize: 64, fontWeight: 800, color: C.accent, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
+            {countUp(graphic.stat.value, interpolate(local, [0.2, 1.1], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }))}
+          </div>
         </Panel>
       )}
       {graphic.source && (
