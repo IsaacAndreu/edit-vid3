@@ -152,6 +152,19 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
               <Stat value={group.stat.value} label={group.stat.label} />
             </AbsoluteFill>
           ) : (
+          <>
+          {group.graphic?.type === 'sim' ? (
+            // a simulation has no footage behind it: the same world, blurred, fills the tall frame
+            <div
+              style={{
+                position: 'absolute', left: Math.round((width - 1920 * (height / 1080)) / 2), top: 0, width: 1920, height: 1080,
+                overflow: 'hidden', transform: `scale(${height / 1080})`, transformOrigin: 'top left',
+                filter: 'blur(26px) brightness(0.5) saturate(1.2)',
+              }}
+            >
+              <GroupContent group={group} />
+            </div>
+          ) : null}
           <div
             style={{
               position: 'absolute', left: 0, top: windowTop, width: 1920, height: 1080, overflow: 'hidden',
@@ -161,6 +174,7 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           >
             <GroupContent group={group} />
           </div>
+          </>
           )}
         </Sequence>
       ))}

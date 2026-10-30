@@ -1,0 +1,16 @@
+# Perfil del canal «Paciente Cero»: epidemias y bulos: cómo se contagia una ciudad, qué hacen la vacuna y la cuarentena, por qué un bulo corre más que la verdad. Todo simulado y dibujado en código: ni YouTube ni metraje de terceros.
+# Úsalo con `canal: paciente-cero` en materiales/<vídeo>/config.yaml. Cada frase del guion recibe una escena
+# (pipeline/simulacion.py): el mundo, dónde mira la cámara, qué panel sale y, si la frase la nombra, la fuente.
+# Mundos y parámetros: remotion/sim/worlds.json. Para otro idioma, align.language (es/pt/fr/de/en) traduce los paneles.
+# Lo que no se pone aquí sale de config.yaml.
+
+visual:
+  style: simulacion
+  worlds: [contagio]
+  theme: night                       # day | night | sepia (el mapa de la ciudad; los demás mundos llevan su propio fondo)
+
+brand:
+  accent: "#e5484d"                # rojo de alerta
+
+graphics:
+  types: [chart, compare, timeline]   # los gráficos del programa, encima de la simulación, solo cuando aportan una cifra

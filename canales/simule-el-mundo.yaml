@@ -1,0 +1,16 @@
+# Perfil del canal «Simulé el Mundo»: «simulé X para ver qué pasa»: cualquier sistema del mundo con un experimento por vídeo. Todo simulado y dibujado en código: ni YouTube ni metraje de terceros.
+# Úsalo con `canal: simule-el-mundo` en materiales/<vídeo>/config.yaml. Cada frase del guion recibe una escena
+# (pipeline/simulacion.py): el mundo, dónde mira la cámara, qué panel sale y, si la frase la nombra, la fuente.
+# Mundos y parámetros: remotion/sim/worlds.json. Para otro idioma, align.language (es/pt/fr/de/en) traduce los paneles.
+# Lo que no se pone aquí sale de config.yaml.
+
+visual:
+  style: simulacion
+  worlds: [cruces, anillo, autovia, contagio, red, incendio, segregacion, colas, embarque, manada]
+  theme: day                       # day | night | sepia (el mapa de la ciudad; los demás mundos llevan su propio fondo)
+
+brand:
+  accent: "#5b8def"                # azul de laboratorio
+
+graphics:
+  types: [chart, compare, timeline]   # los gráficos del programa, encima de la simulación, solo cuando aportan una cifra

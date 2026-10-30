@@ -1,0 +1,16 @@
+# Perfil del canal «Efecto Dominó»: desastres en cadena: el apagón que tumba un país, el incendio que salta el cortafuegos. Todo simulado y dibujado en código: ni YouTube ni metraje de terceros.
+# Úsalo con `canal: efecto-domino` en materiales/<vídeo>/config.yaml. Cada frase del guion recibe una escena
+# (pipeline/simulacion.py): el mundo, dónde mira la cámara, qué panel sale y, si la frase la nombra, la fuente.
+# Mundos y parámetros: remotion/sim/worlds.json. Para otro idioma, align.language (es/pt/fr/de/en) traduce los paneles.
+# Lo que no se pone aquí sale de config.yaml.
+
+visual:
+  style: simulacion
+  worlds: [red, incendio]
+  theme: night                       # day | night | sepia (el mapa de la ciudad; los demás mundos llevan su propio fondo)
+
+brand:
+  accent: "#ff8c1a"                # naranja de fuego y de aviso
+
+graphics:
+  types: [chart, compare, timeline]   # los gráficos del programa, encima de la simulación, solo cuando aportan una cifra

@@ -248,3 +248,25 @@ def writing(ctx: RunContext) -> str:
             "inesperado); un dato real de un estudio, citando quién y cuándo; un segundo experimento cambiando un "
             "parámetro («¿y si hubiera el doble de coches?»); y un resumen final de 3-4 ideas. Frases cortas, en "
             "presente, señalando lo que se ve.")
+
+
+def moments(groups: list[Any], fps: int, count: int) -> list[float]:
+    """Seconds of the video for thumbnails: one per experiment (a world with its parameters), the longest first, late
+    in its last shot — the simulation has played out (the jam formed, the fire spread) and its comparison is on."""
+
+    runs: dict[tuple[str, float], list[Any]] = {}
+    for group in groups:
+        g = (group.graphic if hasattr(group, "graphic") else group.get("graphic")) or {}
+        if g.get("type") == "sim":
+            runs.setdefault((g["world"], g["since"]), []).append(group)
+
+    def span(group: Any) -> tuple[int, int]:
+        return (group.from_, group.durationInFrames) if hasattr(group, "from_") else (group["from"], group["durationInFrames"])
+
+    ordered = sorted(runs.values(), key=lambda run: -sum(span(g)[1] for g in run))
+    late = lambda group: round((span(group)[0] + span(group)[1] * 0.75) / fps, 2)
+    out = [late(run[-1]) for run in ordered[:count]]
+    rest = [g for run in ordered for g in run[:-1]]          # fewer experiments than frames asked: other shots, spread
+    step = max(1, len(rest) // max(1, count - len(out)))
+    out += [late(g) for g in rest[::step]][: count - len(out)]
+    return out

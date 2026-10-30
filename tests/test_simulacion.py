@@ -141,3 +141,25 @@ def test_a_new_experiment_restarts_the_clock_and_the_look_comes_with_every_shot(
     assert [g["graphic"]["since"] for g in groups] == [0, 0, 4]                           # 28 cars: a new run
     assert groups[2]["graphic"]["cues"] == {"jam": 4.0}
     assert {(g["graphic"]["lang"], g["graphic"]["accent"], g["graphic"]["theme"]) for g in groups} == {("pt", "#19fe5b", "night")}
+
+
+def test_thumbnail_moments_one_per_experiment_longest_first():
+    def group(start, frames, world, since):
+        return {"from": start, "durationInFrames": frames, "graphic": {"type": "sim", "world": world, "since": since}}
+
+    groups = [group(0, 150, "anillo", 0), group(150, 300, "anillo", 0), group(450, 100, "cruces", 15),
+              group(550, 90, "cruces", 15), {"from": 640, "durationInFrames": 30, "graphic": {"type": "chart"}}]
+    assert simulacion.moments(groups, 30, 2) == [12.5, 20.58]        # late in the last shot of each run
+    assert len(simulacion.moments(groups, 30, 4)) == 4               # then other shots fill the count
+
+
+def test_niche_profiles_use_known_worlds():
+    import yaml
+    from pathlib import Path
+
+    known = set(simulacion.worlds())
+    for path in Path("canales").glob("*.yaml"):
+        visual = (yaml.safe_load(path.read_text("utf-8")) or {}).get("visual") or {}
+        if visual.get("style") == "simulacion":
+            assert set(visual.get("worlds") or []) <= known, path
+            assert visual.get("theme", "day") in ("day", "night", "sepia"), path

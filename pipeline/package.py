@@ -115,6 +115,13 @@ def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3, out_d
     """Middle frames of the cold-open clips, then of the hook's video shots, as 1280x720 JPEGs. With `spread`, after
     the cold open the video shots of the whole video, evenly (stills for your own thumbnail)."""
 
+    from . import simulacion
+
+    width, height = size
+    out_dir = out_dir or ctx.work_dir / "thumbs"
+    if simulacion.active(ctx):                  # no footage: the simulation at its most telling moments
+        return _video_frames(ctx, simulacion.moments(timeline.groups, timeline.fps, count), out_dir, size,
+                             "fotograma" if spread else "bg", ctx.work_dir if not spread else out_dir.parent)
     shots = [s for s in timeline.shots if s.coldOpen and s.media]
     if spread:
         rest = [s for s in timeline.shots if not s.coldOpen and s.media and s.media.kind == "video"]
@@ -123,8 +130,6 @@ def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3, out_d
     else:
         shots += [s for s in timeline.shots if not s.coldOpen and s.media and s.media.kind == "video"
                   and s.from_ < 40 * timeline.fps]
-    width, height = size
-    out_dir = out_dir or ctx.work_dir / "thumbs"
     out_dir.mkdir(parents=True, exist_ok=True)
     frames: list[str] = []
     for shot in shots:
@@ -143,6 +148,28 @@ def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3, out_d
         frames.append(str(target.relative_to(ctx.work_dir if not spread else out_dir.parent)).replace("\\", "/"))
         if len(frames) == count:
             break
+    return frames
+
+
+def _video_frames(ctx: RunContext, seconds: list[float], out_dir: Path, size: tuple[int, int], prefix: str,
+                  base: Path) -> list[str]:
+    """Frames of the finished video at these seconds, scaled to `size` (paths relative to `base`)."""
+
+    import subprocess
+
+    final = ctx.out_dir / "video-final.mp4"
+    if not final.is_file():
+        return []
+    out_dir.mkdir(parents=True, exist_ok=True)
+    width, height = size
+    frames = []
+    for at in seconds:
+        target = out_dir / f"{prefix}-{len(frames) + 1}.jpg"
+        done = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{at:.2f}", "-i", str(final), "-frames:v", "1",
+                               "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
+                               "-q:v", "2", str(target)], capture_output=True)
+        if done.returncode == 0 and target.is_file():
+            frames.append(str(target.relative_to(base)).replace("\\", "/"))
     return frames
 
 
