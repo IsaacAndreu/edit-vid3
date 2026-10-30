@@ -1,0 +1,48 @@
+{
+ "audio": "voz.mp3",
+ "duration": 47.148,
+ "scenes": [
+  {
+   "text": "En Estados Unidos, casi todos los cruces tienen semáforo. En Europa, cada vez más, rotondas.",
+   "start": 0.0,
+   "end": 7.301,
+   "focus": "both",
+   "overlay": "labels"
+  },
+  {
+   "text": "Vamos a mandar exactamente el mismo tráfico a los dos: los mismos coches, llegando al mismo ritmo.",
+   "start": 7.751,
+   "end": 15.113,
+   "focus": "both",
+   "overlay": "demand"
+  },
+  {
+   "text": "Con semáforo, cada calle pasa la mitad del tiempo parada, aunque por la otra no venga nadie.",
+   "start": 15.563,
+   "end": 22.066,
+   "focus": "left",
+   "overlay": "queue"
+  },
+  {
+   "text": "En la rotonda casi nadie se para del todo: solo cedes el paso a quien ya está dentro.",
+   "start": 22.516,
+   "end": 28.719,
+   "focus": "right",
+   "overlay": "yield"
+  },
+  {
+   "text": "Al cabo de un minuto, los contadores lo dejan claro: en la rotonda se espera mucho menos.",
+   "start": 29.169,
+   "end": 35.926,
+   "focus": "both",
+   "overlay": "results"
+  },
+  {
+   "text": "Y lo más importante: en un cruce normal hay treinta y dos puntos donde dos trayectorias pueden chocar. En una rotonda, solo ocho.",
+   "start": 36.376,
+   "end": 45.198,
+   "focus": "both",
+   "overlay": "conflicts"
+  }
+ ]
+}

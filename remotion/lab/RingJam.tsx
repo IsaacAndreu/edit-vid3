@@ -4,7 +4,7 @@
 import type {FC} from 'react';
 import {AbsoluteFill, Easing, interpolate, random, useCurrentFrame} from 'remotion';
 import '../theme';
-import {City, toScreen, type Cam} from './city';
+import {BODY, Car, City, toScreen, type Cam} from './city';
 import {C, FONT, Label, Panel, Section, Tag, fade} from './hud';
 import {FRAMES, PERTURB, RING, SAMPLE, at, meanSpeed, startSpeed, stopped} from './traffic';
 
@@ -39,30 +39,6 @@ const camera = (f: number): Cam => {
 };
 
 // --- cars ---------------------------------------------------------------------------------------------------------
-const BODY = ['#e8e4dc', '#c9ccd2', '#2d3440', '#8a2d2d', '#3b5e8c', '#d9d2b0', '#4c4f56', '#9aa3ad'];
-
-const Car: FC<{sx: number; sy: number; deg: number; s: number; color: string; brake: number; mark?: string}> = ({sx, sy, deg, s, color, brake, mark}) => {
-  const l = 4.4 * s;
-  const w = 1.9 * s;
-  return (
-    <g transform={`translate(${sx} ${sy}) rotate(${deg})`}>
-      {mark && <circle r={l * 0.95} fill="none" stroke={mark} strokeWidth={Math.max(1.5, s * 0.25)} opacity={0.9} />}
-      <ellipse cx={l * 0.9} cy={0} rx={l * 0.55} ry={w * 0.6} fill="#ffe9a8" opacity={0.18} />
-      <rect x={-l / 2 + s * 0.25} y={-w / 2 + s * 0.25} width={l} height={w} rx={s * 0.5} fill="rgba(0,0,0,0.35)" />
-      <rect x={-l / 2} y={-w / 2} width={l} height={w} rx={s * 0.5} fill={color} />
-      <rect x={-l * 0.12} y={-w / 2 + s * 0.2} width={l * 0.38} height={w - s * 0.4} rx={s * 0.25} fill="rgba(20,26,36,0.55)" />
-      <circle cx={l / 2 - s * 0.15} cy={-w / 2 + s * 0.35} r={s * 0.22} fill="#fff6cf" />
-      <circle cx={l / 2 - s * 0.15} cy={w / 2 - s * 0.35} r={s * 0.22} fill="#fff6cf" />
-      {brake > 0 && (
-        <g opacity={brake}>
-          <circle cx={-l / 2} cy={0} r={w * 1.1} fill="#ff2d2d" opacity={0.28} />
-          <rect x={-l / 2 - s * 0.05} y={-w / 2 + s * 0.15} width={s * 0.35} height={w - s * 0.3} fill="#ff3b3b" />
-        </g>
-      )}
-    </g>
-  );
-};
-
 const Ring: FC<{cam: Cam; t: number; f: number}> = ({cam, t, f}) => {
   const c = toScreen(cam, 0, 0);
   const fr = at(t);

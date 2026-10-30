@@ -21,12 +21,12 @@ export const CITY = {
 
 const BLOCK = 72;          // street spacing
 const STREET = 9;          // street width
-const EXTENT = 520;        // the city goes from -EXTENT to +EXTENT on both axes
+const EXTENT = 504;        // the city goes from -EXTENT to +EXTENT on both axes (a street crossing at the origin)
 
 type Rect = {x: number; y: number; w: number; h: number; c: string};
 type Tree = {x: number; y: number; r: number};
 
-const build = (clearing: number, ring: [number, number]) => {
+const build = (clearing: number, ring: [number, number], disc: boolean) => {
   const houses: Rect[] = [];
   const trees: Tree[] = [];
   const parks: Rect[] = [];
@@ -39,7 +39,7 @@ const build = (clearing: number, ring: [number, number]) => {
       const cy = y0 + size / 2;
       const nx = Math.max(x0, Math.min(0, x0 + size));
       const ny = Math.max(y0, Math.min(0, y0 + size));
-      if (Math.hypot(nx, ny) < clearing + 4 || Math.hypot(cx, cy) < clearing) continue;      // the clearing: a park
+      if (disc && (Math.hypot(nx, ny) < clearing + 4 || Math.hypot(cx, cy) < clearing)) continue;      // the clearing: a park
       const seed = `${bx}:${by}`;
       if (random(`park${seed}`) < 0.12) {
         parks.push({x: x0, y: y0, w: size, h: size, c: CITY.grass});
@@ -70,11 +70,17 @@ const build = (clearing: number, ring: [number, number]) => {
       }
     }
   }
+  if (!disc) {         // no park: only what stands inside the clearing goes (a roundabout takes the corners of the blocks)
+    const near = (r: Rect) => Math.hypot(Math.max(r.x, Math.min(0, r.x + r.w)), Math.max(r.y, Math.min(0, r.y + r.h)));
+    for (let i = houses.length - 1; i >= 0; i--) if (near(houses[i]) < clearing + 3) houses.splice(i, 1);
+    for (let i = trees.length - 1; i >= 0; i--) if (Math.hypot(trees[i].x, trees[i].y) < clearing + 3) trees.splice(i, 1);
+  }
   // the park in the clearing: trees all round, none on the ring road
   for (let i = 0; i < 260; i++) {
     const r = Math.sqrt(random(`pr${i}`)) * clearing;
     const th = random(`pa${i}`) * 2 * Math.PI;
     if (r > ring[0] - 3 && r < ring[1] + 3) continue;
+    if (!disc && (Math.abs(Math.cos(th) * r) < STREET || Math.abs(Math.sin(th) * r) < STREET)) continue;   // not on the streets
     if (r < ring[0] - 3 && random(`pin${i}`) < 0.6) continue;
     trees.push({x: Math.cos(th) * r, y: Math.sin(th) * r, r: 1.8 + random(`ps${i}`) * 2.4});
   }
@@ -83,9 +89,10 @@ const build = (clearing: number, ring: [number, number]) => {
 
 const CACHE = new Map<string, ReturnType<typeof build>>();
 
-export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; children?: ReactNode}> = ({cam, clearing, ring = [0, 0], children}) => {
-  const id = `${clearing}:${ring}`;
-  if (!CACHE.has(id)) CACHE.set(id, build(clearing, ring));
+export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; disc?: boolean; width?: number; children?: ReactNode}> = (
+  {cam, clearing, ring = [0, 0], disc = true, width = 1920, children}) => {
+  const id = `${clearing}:${ring}:${disc}`;
+  if (!CACHE.has(id)) CACHE.set(id, build(clearing, ring, disc));
   const {houses, trees, parks} = CACHE.get(id)!;
   const p = (x: number, y: number) => toScreen(cam, x, y);
   const view = (x: number, y: number, w: number, h: number) => {
@@ -106,10 +113,10 @@ export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; chil
     );
   }
   return (
-    <svg width={1920} height={1080} style={{position: 'absolute'}}>
-      <rect width={1920} height={1080} fill={CITY.ground} />
+    <svg width={width} height={1080} style={{position: 'absolute'}}>
+      <rect width={width} height={1080} fill={CITY.ground} />
       {streets}
-      <circle cx={p(0, 0).sx} cy={p(0, 0).sy} r={clearing * cam.s} fill={CITY.grass} />
+      {disc && <circle cx={p(0, 0).sx} cy={p(0, 0).sy} r={clearing * cam.s} fill={CITY.grass} />}
       {parks.filter((r) => view(r.x, r.y, r.w, r.h)).map((r, i) => {
         const a = p(r.x, r.y);
         return <rect key={`p${i}`} x={a.sx} y={a.sy} width={r.w * cam.s} height={r.h * cam.s} fill={r.c} />;
@@ -139,3 +146,28 @@ export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; chil
     </svg>
   );
 };
+
+// --- a car seen from above (metres → pixels with s); brake lights glow with `brake` (0-1) ----------------------------
+export const BODY = ['#e8e4dc', '#c9ccd2', '#2d3440', '#8a2d2d', '#3b5e8c', '#d9d2b0', '#4c4f56', '#9aa3ad'];
+
+export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: string; brake: number; mark?: string}> = ({sx, sy, deg, s, color, brake, mark}) => {
+  const l = 4.4 * s;
+  const w = 1.9 * s;
+  return (
+    <g transform={`translate(${sx} ${sy}) rotate(${deg})`}>
+      {mark && <circle r={l * 0.95} fill="none" stroke={mark} strokeWidth={Math.max(1.5, s * 0.25)} opacity={0.9} />}
+      <rect x={-l / 2 + s * 0.25} y={-w / 2 + s * 0.25} width={l} height={w} rx={s * 0.5} fill="rgba(0,0,0,0.35)" />
+      <rect x={-l / 2} y={-w / 2} width={l} height={w} rx={s * 0.5} fill={color} />
+      <rect x={-l * 0.12} y={-w / 2 + s * 0.2} width={l * 0.38} height={w - s * 0.4} rx={s * 0.25} fill="rgba(20,26,36,0.55)" />
+      <circle cx={l / 2 - s * 0.15} cy={-w / 2 + s * 0.35} r={s * 0.22} fill="#fff6cf" />
+      <circle cx={l / 2 - s * 0.15} cy={w / 2 - s * 0.35} r={s * 0.22} fill="#fff6cf" />
+      {brake > 0 && (
+        <g opacity={brake}>
+          <circle cx={-l / 2} cy={0} r={w * 1.1} fill="#ff2d2d" opacity={0.28} />
+          <rect x={-l / 2 - s * 0.05} y={-w / 2 + s * 0.15} width={s * 0.35} height={w - s * 0.3} fill="#ff3b3b" />
+        </g>
+      )}
+    </g>
+  );
+};
+
