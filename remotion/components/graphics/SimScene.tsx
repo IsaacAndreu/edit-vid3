@@ -148,8 +148,10 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
                        focus={graphic.focus as 'both' | 'left' | 'right'} o={o} revealLights={reveal(0.05, 0.45)} revealRound={reveal(0.55, 0.8)}
                        pathsDrawn={interpolate(local, [0.2, 1.8], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) })} />;
   }
-  // a small zoom punch as each line starts: in and back in half a second
-  const punch = 1 + 0.035 * Math.sin(Math.PI * Math.min(1, local / 0.5));
+  // a small zoom punch only when a world comes on screen (a real cut): a panel coming in, or the camera moving to the
+  // other side, already says «new line» — a punch on top of them jarred
+  const cut = Math.abs(graphic.at - graphic.since) < 0.01;
+  const punch = cut ? 1 + 0.03 * Math.sin(Math.PI * Math.min(1, local / 0.5)) : 1;
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ transform: `scale(${punch})` }}>{body}</AbsoluteFill>
