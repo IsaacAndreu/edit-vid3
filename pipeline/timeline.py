@@ -1482,6 +1482,9 @@ def run(ctx: RunContext) -> None:
             g.model_copy(update={"from_": 0, "durationInFrames": g.durationInFrames + g.from_}) if g.id == "q-open" else g
             for g in timeline.groups]})
     timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
+    from . import depth
+
+    timeline = depth.add(ctx, timeline)                      # visual.depth: photos with their subject in front
     if cfg.get("captions"):
         timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
     bites = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).bites if (ctx.work_dir / "coldopen.json").is_file() else []

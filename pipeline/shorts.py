@@ -204,6 +204,7 @@ def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict
                   length: float, hook: str, out: Path) -> None:
     """The stretch rendered vertical with Remotion, then the finished video's sound and the hook laid on top."""
 
+    from . import depth
     from .render import Renderer, graphic_media
 
     fps = timeline["fps"]
@@ -211,6 +212,7 @@ def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict
     b = min(timeline["durationInFrames"], a + round(length * fps))
     props = vertical_props(timeline, a, b, captions)
     public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
+    public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
     public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
     renderer = Renderer(ctx)
     raw = out.with_name(out.stem + ".raw.mp4")

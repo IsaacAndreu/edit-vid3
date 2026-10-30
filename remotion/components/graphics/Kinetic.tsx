@@ -4,8 +4,63 @@ import { fontFamily, theme } from '../../theme';
 import { GridBackground } from '../GridBackground';
 import type { KineticGraphic } from '../../graphics';
 
-/** Kinetic typography for a punchline: words drop in one by one, the final word in yellow. */
-export const Kinetic: FC<{ graphic: KineticGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
+/** Kinetic typography for a punchline: words drop in one by one, the final word in yellow. With the film finish
+ * (brand.finish: cine) the line is written instead, as in war documentaries: a serif in sentence case, each word
+ * coming out of a blur, the key word in the keyword colour, over the footage barely darkened. */
+export const Kinetic: FC<{ graphic: KineticGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) =>
+  theme.finish === 'cine' && !graphic.board ? (
+    <CineLine graphic={graphic} durationInFrames={durationInFrames} />
+  ) : (
+    <Punch graphic={graphic} durationInFrames={durationInFrames} />
+  );
+
+const CineLine: FC<{ graphic: KineticGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  // *word* marks the key word; without marks, the last word of the last line
+  const words = graphic.lines.map((line) => line.split(/\s+/).filter(Boolean));
+  const marked = words.flat().some((w) => /^\*.+\*[.,;:!?…]*$/.test(w));
+  const total = words.flat().length;
+  const gap = Math.max(4, Math.min(9, Math.floor((durationInFrames * 0.55) / Math.max(1, total))));
+  const out = interpolate(frame, [durationInFrames - 10, durationInFrames], [1, 0], { extrapolateLeft: 'clamp' });
+  const veil = interpolate(frame, [0, 8], [0, 1], { extrapolateRight: 'clamp' }) * out;
+  let n = 0;
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{ background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.28) 60%, rgba(0,0,0,0.5) 100%)', opacity: veil }} />
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 4, opacity: out }}>
+        {words.map((line, li) => (
+          <div key={li} style={{ display: 'flex', gap: 22, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 1500 }}>
+            {line.map((w, wi) => {
+              const k = n++;
+              const t = interpolate(frame - k * gap, [0, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+              const key = marked ? /^\*.+\*[.,;:!?…]*$/.test(w) : li === words.length - 1 && wi === line.length - 1;
+              return (
+                <span
+                  key={wi}
+                  style={{
+                    fontFamily: "'DM Serif Display', serif",
+                    fontSize: total > 12 ? 84 : 104,
+                    lineHeight: 1.15,
+                    color: key ? theme.keyword : '#f4f1ea',
+                    textShadow: '0 4px 24px rgba(0,0,0,0.7)',
+                    opacity: t,
+                    filter: `blur(${(1 - t) * 10}px)`,
+                    transform: `translateY(${(1 - t) * 14}px)`,
+                    display: 'inline-block',
+                  }}
+                >
+                  {w.replace(/\*/g, '')}
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+const Punch: FC<{ graphic: KineticGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const words = graphic.lines.map((line) => line.split(/\s+/).filter(Boolean));
@@ -47,7 +102,7 @@ export const Kinetic: FC<{ graphic: KineticGraphic; durationInFrames: number }> 
                   display: 'inline-block',
                 }}
               >
-                {w.toUpperCase()}
+                {w.replace(/\*/g, '').toUpperCase()}
               </span>
             );
           })}

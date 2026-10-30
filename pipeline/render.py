@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import depth
 from .context import RunContext
 from .encoder import use_nvenc, video_args
 from .postflight import enforce_postflight, inspect_render, write_postflight_report
@@ -811,6 +812,7 @@ def run(ctx: RunContext) -> None:
         if not condensed_path.is_file():
             t = time.monotonic()
             public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
+            public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
             public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
             tmp = r.dir / "remotion.tmp.mp4"
             # an intermediate: every piece is cut from it and encoded again, so the cheapest preset (same crf 12)

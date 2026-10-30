@@ -163,3 +163,15 @@ def test_niche_profiles_use_known_worlds():
         if visual.get("style") == "simulacion":
             assert set(visual.get("worlds") or []) <= known, path
             assert visual.get("theme", "day") in ("day", "night", "sepia"), path
+
+
+def test_depth_off_by_default_and_files():
+    from types import SimpleNamespace
+
+    from pipeline import depth
+
+    ctx = SimpleNamespace(section=lambda name: {})
+    timeline = SimpleNamespace(shots=[])
+    assert depth.add(ctx, timeline) is timeline
+    assert depth.files({"src": "a.jpg"}) == set()
+    assert depth.files({"src": "a.jpg", "cutout": "depth/x.png"}) == {"depth/x.png", "depth/x-plate.jpg"}

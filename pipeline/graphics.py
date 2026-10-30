@@ -163,7 +163,7 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   recreada. data: {{"author": "quién lo publicó, como se dice", "text": "lo publicado, LITERAL del guion, máx. 35
   palabras", "platform": "x" | "instagram" | "facebook" | "tiktok" | null (solo si se dice), "date": "fecha dicha" o
   null}}. Nunca si el guion no dice que se publicó.
-- "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2. data: {{"lines": ["…", "…"]}}
+- "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2; la palabra clave entre *asteriscos* (una sola). data: {{"lines": ["…", "… *clave*"]}}
 - "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
   qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
   paga, máx. 5 palabras", "items": [{{"label": "partida, máx. 4 palabras", "value": "cifra como se dice"}}],

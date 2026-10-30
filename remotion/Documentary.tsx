@@ -8,6 +8,7 @@ import { CreditBadge } from './components/CreditBadge';
 import { CutMotion } from './components/CutMotion';
 import { EndScreen } from './components/EndScreen';
 import { FilmBurn } from './components/FilmBurn';
+import { FilmFinish } from './components/FilmFinish';
 import { GraphicScene } from './components/graphics/GraphicScene';
 import { FramedCard } from './components/FramedCard';
 import { GridBackground } from './components/GridBackground';
@@ -178,6 +179,7 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           )}
         </Sequence>
       ))}
+      {theme.finish === 'cine' ? <FilmFinish /> : null}
       {captions.map((caption, i) => (
         <Sequence key={`cap-${i}`} from={caption.from} durationInFrames={caption.durationInFrames} name={`caption ${i}`}>
           <CaptionChunk caption={caption} />
@@ -211,6 +213,7 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
       </Sequence>
     ))}
     </CutMotion>
+    {theme.finish === 'cine' ? <FilmFinish /> : null}
     {labels.map((label, i) => (
       <Sequence key={`label-${i}`} from={label.from} durationInFrames={label.durationInFrames} name={`label ${label.text}`}>
         <LowerThird kind={label.kind} text={label.text} durationInFrames={label.durationInFrames} />

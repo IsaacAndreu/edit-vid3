@@ -127,6 +127,10 @@ const DEFAULTS = {
   // dataStyle: 'dark' | 'light' (charts on a light background, like printed infographics)
   articleStyle: 'dark',
   dataStyle: 'dark',
+  // finish: 'none' | 'cine' (the whole video as film: moving grain, vignette, a breath of flicker, now and then a
+  // speck of dust or a scratch; key lines written word by word in a serif, the key word in keyword colour)
+  finish: 'none',
+  keyword: '#e0282e',
 };
 
 export type Brand = Partial<typeof DEFAULTS>;

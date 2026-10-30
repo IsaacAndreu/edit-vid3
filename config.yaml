@@ -244,6 +244,9 @@ brand:                             # kit de marca del canal: colores de TODAS la
   border: "#35274d"
   motion: sport                    # paquete de movimiento: sport (barridos diagonales, letra condensada en cursiva) |
                                    # editorial (fundidos, filetes de revista, títulos con serifa) | tech (glitch, corchetes, mono) | clean
+  # finish: cine                   # acabado de película en TODO el vídeo: grano que se mueve, viñeta, un leve parpadeo y
+                                   # alguna mota o raya; las frases cinéticas se escriben palabra a palabra con serifa y la
+                                   # palabra clave (*así* en el guion de gráficos) en `keyword` (rojo por defecto). none = sin acabado
 
 report:                            # resumen de la mañana (out/<slug>/resumen.md y el email): cuándo pedir revisión
   min_protagonist: 0.5             # menos de la mitad del tiempo con el protagonista → revisar
@@ -342,6 +345,8 @@ qa:
 # visual: {style: simulacion} = vídeo de simulaciones vistas desde arriba, sin metraje (canales/hora-punta.yaml): cada
 # frase del guion recibe del LLM su escena (mundo simulado, foco de la cámara, panel, título, cifra dicha, lista final;
 # pipeline/simulacion.py) y la simulación corre sola mientras ese mundo sigue en pantalla.
+# visual: {depth: true} = fotos con profundidad (2.5D): en las fotos con movimiento parallax se recorta el sujeto (rembg)
+# y avanza por delante de la foto, con el hueco rellenado detrás (pipeline/depth.py). Apagado por defecto.
 render:
   # Híbrido: los planos que son solo vídeo + crédito se montan con ffmpeg (rápido); el resto
   # (paneles, cifras, capítulos, fotos con Ken Burns) lo dibuja Remotion en una sola pasada.
