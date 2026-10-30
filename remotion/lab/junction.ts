@@ -132,6 +132,26 @@ const signal = (t: number) => {
   if (p < CYCLE.green + CYCLE.amber) return {green: axis as 'EW' | 'NS', amber: true};
   return {green: null, amber: false};
 };
+const HALF = CYCLE.green + CYCLE.amber + CYCLE.allRed;
+const BOUNDS = [0, CYCLE.green, CYCLE.green + CYCLE.amber, HALF].flatMap((b) => [b, b + HALF]).filter((b, i, all) => all.indexOf(b) === i);
+
+/** At a scene time (the simulations' clock, without the warm-up): how long ago the lights last changed, and every
+ * change between two scene times (for the click, and for the light to pulse). */
+export const signalAge = (t: number) => {
+  const k = (((t + WARMUP) % (2 * HALF)) + 2 * HALF) % (2 * HALF);
+  return k - Math.max(...BOUNDS.filter((b) => b <= k + 1e-9));
+};
+export const signalChanges = (from: number, to: number): number[] => {
+  const out: number[] = [];
+  for (let n = Math.floor((from + WARMUP) / (2 * HALF)) - 1; n * 2 * HALF - WARMUP <= to; n++) {
+    for (const b of BOUNDS) {
+      const at = n * 2 * HALF + b - WARMUP;
+      if (at > from && at <= to && !out.includes(at)) out.push(at);
+    }
+  }
+  return out.sort((x, y) => x - y);
+};
+
 const axisOf = (arm: Arm) => (arm === 'W' || arm === 'E' ? 'EW' : 'NS');
 
 const idm = (v: number, v0: number, gap: number, dv: number) => {

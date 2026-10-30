@@ -6,7 +6,7 @@ import {AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame} f
 import '../theme';
 import {BODY, Car, City, toScreen, type Cam} from './city';
 import {C, FONT, Label, Panel} from './hud';
-import {APPROACH, DEMAND, LANE, RING_R, STOP, sample, sim, type Snapshot} from './junction';
+import {APPROACH, DEMAND, LANE, RING_R, STOP, sample, signalAge, sim, type Snapshot} from './junction';
 
 export type Line = {text: string; start: number; end: number; focus: 'both' | 'left' | 'right'; overlay: string};
 export type CrucesProps = {audio: string; duration: number; scenes: Line[]};
@@ -48,20 +48,24 @@ const Zebra: FC<{cam: Cam; arm: 'W' | 'E' | 'N' | 'S'; at: number}> = ({cam, arm
   return <g>{stripes}</g>;
 };
 
-const SignalHead: FC<{cam: Cam; x: number; y: number; state: 'green' | 'amber' | 'red'}> = ({cam, x, y, state}) => {
+// `age`: seconds since the lights changed — the head beats once and a ring spreads from it
+const SignalHead: FC<{cam: Cam; x: number; y: number; state: 'green' | 'amber' | 'red'; age: number}> = ({cam, x, y, state, age}) => {
   const {sx, sy} = toScreen(cam, x, y);
-  const r = Math.max(2.5, cam.s * 0.45);
+  const beat = Math.max(0, 1 - age / 0.45);
+  const r = Math.max(2.5, cam.s * 0.45) * (1 + 0.6 * beat);
   const colour = {green: '#3ddc84', amber: '#f5b324', red: '#ff4b4b'}[state];
+  const wave = Math.min(1, age / 0.9);
   return (
     <g>
-      <circle cx={sx} cy={sy} r={r * 4} fill={colour} opacity={0.22} />
+      {age < 0.9 && <circle cx={sx} cy={sy} r={r * (2 + 7 * wave)} fill="none" stroke={colour} strokeWidth={Math.max(1.5, cam.s * 0.25)} opacity={1 - wave} />}
+      <circle cx={sx} cy={sy} r={r * 4} fill={colour} opacity={0.22 + 0.3 * beat} />
       <rect x={sx - r * 1.4} y={sy - r * 1.4} width={r * 2.8} height={r * 2.8} rx={r * 0.5} fill="#12161f" />
       <circle cx={sx} cy={sy} r={r} fill={colour} />
     </g>
   );
 };
 
-const LightsJunction: FC<{cam: Cam; snap: Snapshot}> = ({cam, snap}) => {
+const LightsJunction: FC<{cam: Cam; snap: Snapshot; age: number}> = ({cam, snap, age}) => {
   const state = (axis: 'EW' | 'NS') => (snap.green === axis ? (snap.amber ? 'amber' : 'green') : 'red') as 'green' | 'amber' | 'red';
   // the stop line across the inbound half of each arm (right-hand traffic)
   const stop = (arm: 'W' | 'E' | 'N' | 'S') => {
@@ -74,10 +78,10 @@ const LightsJunction: FC<{cam: Cam; snap: Snapshot}> = ({cam, snap}) => {
     <g>
       {(['W', 'E', 'N', 'S'] as const).map((arm) => <Zebra key={arm} cam={cam} arm={arm} at={9.5} />)}
       {(['W', 'E', 'N', 'S'] as const).map(stop)}
-      <SignalHead cam={cam} x={-6.5} y={6.5} state={state('EW')} />
-      <SignalHead cam={cam} x={6.5} y={-6.5} state={state('EW')} />
-      <SignalHead cam={cam} x={-6.5} y={-6.5} state={state('NS')} />
-      <SignalHead cam={cam} x={6.5} y={6.5} state={state('NS')} />
+      <SignalHead cam={cam} x={-6.5} y={6.5} state={state('EW')} age={age} />
+      <SignalHead cam={cam} x={6.5} y={-6.5} state={state('EW')} age={age} />
+      <SignalHead cam={cam} x={-6.5} y={-6.5} state={state('NS')} age={age} />
+      <SignalHead cam={cam} x={6.5} y={6.5} state={state('NS')} age={age} />
     </g>
   );
 };
@@ -163,9 +167,82 @@ const Conflicts: FC<{cam: Cam; kind: 'lights' | 'roundabout'; o: number; reveal:
   );
 };
 
+// the queue at each red light: a red band on the lane from the stop line to the last car standing — it shrinks
+// from the front as the light turns green and the cars pull away
+const Queues: FC<{cam: Cam; snap: Snapshot; strong: number}> = ({cam, snap, strong}) => {
+  const arms: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  return (
+    <g>
+      {arms.map(([ox, oy]) => {
+        const mine = snap.cars.filter((c) => c.waiting && (ox ? Math.sign(c.x) === ox && Math.abs(c.x) > Math.abs(c.y) : Math.sign(c.y) === oy && Math.abs(c.y) > Math.abs(c.x)));
+        if (!mine.length) return null;
+        const dists = mine.map((c) => Math.abs(ox ? c.x : c.y));
+        const near = Math.max(STOP, Math.min(...dists) - 2.6);
+        const far = Math.max(...dists) + 2.6;
+        const a = toScreen(cam, ox * near + oy * LANE, oy * near - ox * LANE);
+        const b = toScreen(cam, ox * far + oy * LANE, oy * far - ox * LANE);
+        return <line key={`${ox}${oy}`} x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy} stroke={C.red} strokeOpacity={0.22 + 0.33 * strong}
+                     strokeWidth={cam.s * 3.6} strokeLinecap="round" />;
+      })}
+    </g>
+  );
+};
+
+// the paths cars take, drawn as arrows (`draw` 0-1: how much of them): two straight crossing paths and where they
+// meet at the lights; at the roundabout, two entries that join the ring and leave it — no path crosses another
+const Arrow: FC<{d: string; colour: string; draw: number; cam: Cam; id: string}> = ({d, colour, draw, cam, id}) => (
+  <g>
+    <defs>
+      <marker id={id} markerWidth="4" markerHeight="4" refX="2.2" refY="2" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L4,2 L0,4 z" fill={colour} />
+      </marker>
+    </defs>
+    <path d={d} fill="none" stroke={colour} strokeWidth={Math.max(3, cam.s * 0.7)} strokeLinecap="round" pathLength={1}
+          strokeDasharray="1 1" strokeDashoffset={1 - draw} markerEnd={draw > 0.97 ? `url(#${id})` : undefined} opacity={0.95} />
+  </g>
+);
+
+const Paths: FC<{cam: Cam; kind: 'lights' | 'roundabout'; o: number; draw: number}> = ({cam, kind, o, draw}) => {
+  if (o <= 0) return null;
+  const pt = (x: number, y: number) => {
+    const {sx, sy} = toScreen(cam, x, y);
+    return `${sx.toFixed(1)},${sy.toFixed(1)}`;
+  };
+  if (kind === 'lights') {
+    const cross = toScreen(cam, -LANE, LANE);
+    return (
+      <g opacity={o}>
+        <Arrow id="p-ew" cam={cam} colour={C.accent} draw={draw} d={`M${pt(-38, LANE)} L${pt(38, LANE)}`} />
+        <Arrow id="p-ns" cam={cam} colour="#5b8def" draw={draw} d={`M${pt(-LANE, -38)} L${pt(-LANE, 38)}`} />
+        {draw > 0.6 && (
+          <g opacity={Math.min(1, (draw - 0.6) * 3)}>
+            <circle cx={cross.sx} cy={cross.sy} r={cam.s * 2.2} fill={C.red} opacity={0.3} />
+            <text x={cross.sx} y={cross.sy + cam.s * 0.9} textAnchor="middle" fontFamily={FONT} fontWeight={800} fontSize={cam.s * 2.6} fill="#ffffff">×</text>
+          </g>
+        )}
+      </g>
+    );
+  }
+  const delta = Math.asin(LANE / RING_R);
+  const arc = (from: number, to: number) => {
+    const [x0, y0] = [Math.cos(from) * RING_R, Math.sin(from) * RING_R];
+    const [x1, y1] = [Math.cos(to) * RING_R, Math.sin(to) * RING_R];
+    return `M${pt(x0, y0)} A${RING_R * cam.s},${RING_R * cam.s} 0 0 0 ${pt(x1, y1)}`;
+  };
+  // from the west to the east, and from the north to the south: each joins the ring, follows it and leaves it
+  const west = `M${pt(-38, LANE)} L${pt(-Math.cos(delta) * RING_R, LANE)} ${arc(Math.PI - delta, delta).replace(/^M[^A]+/, '')} L${pt(38, LANE)}`;
+  const north = `M${pt(-LANE, -38)} L${pt(-LANE, -Math.cos(delta) * RING_R)} ${arc(-Math.PI / 2 - delta, -Math.PI * 1.5 + delta).replace(/^M[^A]+/, '')} L${pt(-LANE, 38)}`;
+  return (
+    <g opacity={o}>
+      <Arrow id="p-w" cam={cam} colour={C.accent} draw={draw} d={west} />
+      <Arrow id="p-n" cam={cam} colour="#5b8def" draw={draw} d={north} />
+    </g>
+  );
+};
+
 // --- one side of the split ------------------------------------------------------------------------------------------
 const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scale: number; simT: number; dim: boolean;
-                o: (name: string) => number; reveal: number}> = ({kind, left, width, scale, simT, dim, o, reveal}) => {
+                o: (name: string) => number; reveal: number; pathsDrawn: number}> = ({kind, left, width, scale, simT, dim, o, reveal, pathsDrawn}) => {
   const centre = left + width / 2;
   const cam: Cam = {x: (960 - centre) / scale, y: 0, s: scale};
   const snap = sample(sim(kind), simT);
@@ -178,7 +255,9 @@ const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scal
     <div style={{position: 'absolute', inset: 0, clipPath: `inset(0 ${1920 - left - width}px 0 ${left}px)`}}>
       <City cam={cam} clearing={kind === 'roundabout' ? 21 : 0} ring={kind === 'roundabout' ? [RING_R - 5, RING_R + 4] : [0, 0]} disc={false} />
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
-        {kind === 'lights' ? <LightsJunction cam={cam} snap={snap} /> : <RoundaboutJunction cam={cam} />}
+        {kind === 'lights' && <Queues cam={cam} snap={snap} strong={o('queue')} />}
+        {kind === 'lights' ? <LightsJunction cam={cam} snap={snap} age={signalAge(simT)} /> : <RoundaboutJunction cam={cam} />}
+        <Paths cam={cam} kind={kind} o={o('paths')} draw={pathsDrawn} />
         <Cars cam={cam} snap={snap} mark={mark} />
         <Conflicts cam={cam} kind={kind} o={o('conflicts')} reveal={reveal} />
       </svg>
@@ -205,9 +284,9 @@ const Big: FC<{label: string; value: string; color?: string; style?: CSSProperti
 /** The split screen at one moment: where the divider stands, how close each camera is, which side is in focus, the
  * opacity of each overlay, how much of each set of conflict points shows (0-1). `simT`: the simulations' clock. */
 export type CrucesState = {simT: number; split: number; left: number; right: number; focus: 'both' | 'left' | 'right';
-                           o: (name: string) => number; revealLights: number; revealRound: number};
+                           o: (name: string) => number; revealLights: number; revealRound: number; pathsDrawn?: number};
 
-export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o, revealLights, revealRound}) => {
+export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o, revealLights, revealRound, pathsDrawn = 1}) => {
   const L = stats(sim('lights'), simT);
   const R = stats(sim('roundabout'), simT);
   const perMinute = Math.round(60 / (1 / DEMAND + 1.2));
@@ -215,8 +294,8 @@ export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o,
   const titleStyle: CSSProperties = {position: 'absolute', top: 44, fontFamily: FONT, fontSize: 40, fontWeight: 800, color: C.text, textTransform: 'uppercase'};
   return (
     <AbsoluteFill style={{backgroundColor: C.night}}>
-      <Side kind="lights" left={0} width={split} scale={left} simT={simT} dim={focus === 'right'} o={o} reveal={revealLights} />
-      <Side kind="roundabout" left={split} width={1920 - split} scale={right} simT={simT} dim={focus === 'left'} o={o} reveal={revealRound} />
+      <Side kind="lights" left={0} width={split} scale={left} simT={simT} dim={focus === 'right'} o={o} reveal={revealLights} pathsDrawn={pathsDrawn} />
+      <Side kind="roundabout" left={split} width={1920 - split} scale={right} simT={simT} dim={focus === 'left'} o={o} reveal={revealRound} pathsDrawn={pathsDrawn} />
       <div style={{position: 'absolute', left: split - 2, top: 0, width: 4, height: 1080, background: C.night}} />
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(5,8,18,0.55) 100%)', pointerEvents: 'none'}} />
 

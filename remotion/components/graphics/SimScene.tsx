@@ -3,10 +3,11 @@
 // (graphic.since), so consecutive shots of one world are one continuous simulation; the camera moves from the previous
 // shot's focus (graphic.prev) to this one's.
 import type { FC } from 'react';
-import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Audio, Easing, interpolate, Sequence, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { SimGraphic } from '../../graphics';
 import { BODY, Car, City, toScreen, type Cam } from '../../lab/city';
 import { CrucesView, LAYOUTS } from '../../lab/Cruces';
+import { signalChanges } from '../../lab/junction';
 import { C, FONT, Label, Panel, Section } from '../../lab/hud';
 import { FIRST_STOP, FRAMES, PERTURB, RING, SAMPLE, at, clock, meanSpeed, startSpeed, stopped } from '../../lab/traffic';
 
@@ -89,6 +90,39 @@ const RingView: FC<{ simT: number; cam: Cam; o: (name: string) => number }> = ({
   );
 };
 
+// --- sound: the street's hum under every shot of a world (continuing where the last shot left it), a relay click when
+// the lights change (when they are in sight), a soft tick when a panel comes in and each time a car stands still in the jam
+const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps: number }> = ({ graphic, durationInFrames, fps }) => {
+  const sounds = graphic.sounds;
+  if (!sounds) return null;
+  const length = durationInFrames / fps;
+  const t0 = graphic.at - graphic.since;
+  const cues: number[] = [];                       // seconds in this shot
+  const clicks: number[] = [];
+  if (graphic.overlay !== 'none' || graphic.stat) cues.push(0.35);
+  if (graphic.world === 'cruces' && graphic.focus !== 'right') clicks.push(...signalChanges(t0, t0 + length).map((c) => c - t0));
+  if (graphic.world === 'anillo' && graphic.overlay === 'jam') {
+    let before = stopped(clock(graphic.at, graphic.since, graphic.cues, RING_LAPSE));
+    for (let s = 0.1; s < length; s += 0.1) {
+      const now = stopped(clock(graphic.at + s, graphic.since, graphic.cues, RING_LAPSE));
+      if (now > before) cues.push(s);
+      before = now;
+    }
+  }
+  const loop = 20 * fps;
+  return (
+    <>
+      {sounds.ambient && <Audio src={staticFile(sounds.ambient)} loop volume={0.35} startFrom={Math.round(t0 * fps) % loop} />}
+      {sounds.click && clicks.map((s) => (
+        <Sequence key={`c${s}`} from={Math.round(s * fps)} durationInFrames={6}><Audio src={staticFile(sounds.click!)} volume={0.32} /></Sequence>
+      ))}
+      {sounds.tick && cues.filter((s, i) => i === 0 || s - cues[i - 1] > 0.25).map((s) => (
+        <Sequence key={`t${s}`} from={Math.round(s * fps)} durationInFrames={6}><Audio src={staticFile(sounds.tick!)} volume={0.22} /></Sequence>
+      ))}
+    </>
+  );
+};
+
 // --- one shot ---------------------------------------------------------------------------------------------------------
 export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const frame = useCurrentFrame();
@@ -111,11 +145,15 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
     const mix = (x: number, y: number) => x + (y - x) * move;
     const reveal = (from: number, to: number) => (graphic.overlay === 'conflicts' ? interpolate(local, [length * from, length * to], [0, 1], clamp) : 0);
     body = <CrucesView simT={worldT} split={mix(a.split, b.split)} left={mix(a.left, b.left)} right={mix(a.right, b.right)}
-                       focus={graphic.focus as 'both' | 'left' | 'right'} o={o} revealLights={reveal(0.05, 0.45)} revealRound={reveal(0.55, 0.8)} />;
+                       focus={graphic.focus as 'both' | 'left' | 'right'} o={o} revealLights={reveal(0.05, 0.45)} revealRound={reveal(0.55, 0.8)}
+                       pathsDrawn={interpolate(local, [0.2, 1.8], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) })} />;
   }
+  // a small zoom punch as each line starts: in and back in half a second
+  const punch = 1 + 0.035 * Math.sin(Math.PI * Math.min(1, local / 0.5));
   return (
     <AbsoluteFill>
-      {body}
+      <AbsoluteFill style={{ transform: `scale(${punch})` }}>{body}</AbsoluteFill>
+      <SimSounds graphic={graphic} durationInFrames={durationInFrames} fps={fps} />
       {graphic.title && (
         <div style={{ position: 'absolute', left: 0, top: 96, width: 1920 }}>
           <Section text={graphic.title} o={on} f={frame} start={0} />

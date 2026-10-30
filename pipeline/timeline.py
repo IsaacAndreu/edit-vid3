@@ -1144,7 +1144,8 @@ def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap:
     points += [s.from_ for s in moments if s.from_ > 0] + [s.from_ + s.durationInFrames for s in moments]
     points += [s.from_ for s in timeline.shots if s.type == "endscreen"]
     points += [s.from_ for s in timeline.shots if s.media and s.media.layout == "person"]
-    points += [g.from_ for g in timeline.groups if g.kind in ("graphic", "stat", "datacard", "split")]
+    points += [g.from_ for g in timeline.groups if g.kind in ("graphic", "stat", "datacard", "split")
+               and not (g.graphic or {}).get("type") == "sim"]          # a simulation's shots: its own sounds, no swoosh
     placed: list[int] = []
     for point in points:
         at = max(0, point - 4)                    # the swoosh peaks just as the cut lands
@@ -1432,9 +1433,16 @@ def run(ctx: RunContext) -> None:
     entry = publish(_first_audio(folder("sfx", f"grafico-{motion}"), f"grafico-{motion}")) if motion != "clean" else None
     if entry:
         for group in groups:
-            if group.kind == "graphic" and group.graphic and not group.graphic.get("board") and group.graphic.get("type") != "quote":
+            if group.kind == "graphic" and group.graphic and not group.graphic.get("board") and group.graphic.get("type") not in ("quote", "sim"):
                 sfx.append(TimelineSfx.model_validate({"src": entry, "from": group.from_,
                                                        "volume": float(cfg.get("graphic_sfx_volume", 0.3))}))
+    from . import simulacion
+
+    if simulacion.active(ctx):           # the simulation sounds its own street, lights and counters (SimScene)
+        sim_sounds = simulacion.sounds(ctx, publish)
+        for group in groups:
+            if group.kind == "graphic" and group.graphic and group.graphic.get("type") == "sim":
+                group.graphic["sounds"] = sim_sounds
     for kind, at in animation_cues(groups):
         src = pop if kind == "pop" else impact
         if src:

@@ -22,11 +22,11 @@ from .sourcing.common import key
 # world → its focuses and overlays (what remotion/components/graphics/SimScene.tsx knows how to draw)
 WORLDS: dict[str, dict[str, tuple[str, ...]]] = {
     "cruces": {"focus": ("both", "left", "right"),
-               "overlay": ("none", "labels", "demand", "queue", "yield", "results", "conflicts")},
+               "overlay": ("none", "labels", "demand", "queue", "yield", "results", "conflicts", "paths")},
     "anillo": {"focus": ("ring", "chart"),
                "overlay": ("none", "speed", "brake", "jam", "chart")},
 }
-VERSION = 1
+VERSION = 2
 SYSTEM = f"""
 Eres el realizador de un canal que explica cómo funciona el mundo con simulaciones vistas desde arriba (tráfico,
 ciudades). Te paso las frases del guion, numeradas, una por plano. Para CADA plano elige qué se ve, SOLO con este
@@ -37,7 +37,9 @@ vocabulario:
   en "anillo": "ring" (el círculo) o "chart" (el círculo a un lado y la gráfica espacio-tiempo al otro).
 - "overlay" (el panel que aparece): en "cruces": "labels" (títulos), "demand" (el mismo tráfico a los dos), "queue"
   (coches esperando en rojo y qué dirección tiene verde), "yield" (los que ceden el paso en la rotonda), "results"
-  (espera media y coches que han pasado en cada uno), "conflicts" (32 puntos de choque frente a 8), "none";
+  (espera media y coches que han pasado en cada uno), "conflicts" (32 puntos de choque frente a 8), "paths" (flechas
+  de las trayectorias: dónde se cruzan dos coches en el semáforo y cómo se incorporan y salen en la rotonda: para
+  frases sobre cruzar, incorporarse o ceder), "none";
   en "anillo": "speed" (velocidad media), "brake" (señala al conductor que frena), "jam" (coches parados ahora),
   "chart" (gráfica espacio-tiempo), "none".
 - "title": título de sección de 2-5 palabras cuando empieza una idea nueva, si no "".
@@ -110,6 +112,21 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             before = out[shot_id] = clean(found.get(n) or {}, text, before)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
+    return out
+
+
+SOUNDS = {"ambient": "ambiente", "click": "clic", "tick": "tic"}     # assets/sfx/sim/: street hum, relay click, soft tick
+
+
+def sounds(ctx: RunContext, publish: Any) -> dict[str, str]:
+    """The simulation's sounds, published next to the voice (`publish`: timeline.py's copy into the render's folder)."""
+
+    folder = ctx.root / "assets" / "sfx" / "sim"
+    out = {}
+    for name, stem in SOUNDS.items():
+        found = next((p for p in sorted(folder.glob(f"{stem}.*")) if p.suffix in (".mp3", ".wav", ".m4a")), None)
+        if found:
+            out[name] = publish(found)
     return out
 
 

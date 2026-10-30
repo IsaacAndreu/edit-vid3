@@ -80,3 +80,17 @@ def test_the_ring_gets_the_voices_cues_for_the_brake_and_the_jam(tmp_path, monke
     groups = simulacion.groups(ctx, [_shot(n, (n - 1) * 60, n * 60, f"frase {n}") for n in range(1, 5)], 30, [])
     assert {g["graphic"]["cues"]["brake"] for g in groups} == {2.0}
     assert {g["graphic"]["cues"]["jam"] for g in groups} == {6.0}
+
+
+def test_the_simulation_sounds_are_published_from_assets(tmp_path):
+    folder = tmp_path / "assets" / "sfx" / "sim"
+    folder.mkdir(parents=True)
+    for name in ("ambiente.mp3", "clic.wav"):
+        (folder / name).write_bytes(b"x")
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    published = simulacion.sounds(ctx, lambda path: f"audio/{path.name}")
+    assert published == {"ambient": "audio/ambiente.mp3", "click": "audio/clic.wav"}       # no tick file: no tick
+
+
+def test_paths_is_in_the_junctions_vocabulary():
+    assert simulacion.clean({"world": "cruces", "overlay": "paths"}, "x", None)["overlay"] == "paths"

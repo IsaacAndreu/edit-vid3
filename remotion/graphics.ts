@@ -291,13 +291,14 @@ export interface SimGraphic {
   world: 'cruces' | 'anillo';
   focus: string;        // cruces: both | left | right · anillo: ring | chart
   prev: string;         // the previous shot's focus (the camera moves from there)
-  overlay: string;      // cruces: none | labels | demand | queue | yield | results | conflicts · anillo: none | speed | brake | jam | chart
+  overlay: string;      // cruces: none | labels | demand | queue | yield | results | conflicts | paths · anillo: none | speed | brake | jam | chart
   title: string;
   stat: { label: string; value: string } | null;
   list: string[];
   at: number;           // seconds: when this shot starts in the video
   since: number;        // seconds: when this world came on screen (its simulation's clock starts there)
   cues?: { brake?: number; jam?: number };   // anillo: when the voice points at the brake and at the jam (video seconds)
+  sounds?: { ambient?: string; click?: string; tick?: string };   // files in the render's public folder (timeline.py)
 }
 
 export interface StickmanProp { icon: string; x: number; y: number; label: string; held: boolean }
