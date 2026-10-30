@@ -1,54 +1,79 @@
 """Simulation videos: the whole video is a simulation drawn in code, no footage (canales/<canal>.yaml →
-visual: {style: simulacion}).
+visual: {style: simulacion, worlds: [...], theme: day|night|sepia}).
 
 Like the «simulation explainers» (a city seen from above, cars that really drive, live counters and charts):
 nothing is searched or downloaded — the footage stages leave empty results, as for stickman videos — and in the
-edit (timeline.py) every line of the script gets a scene the LLM picks from a fixed vocabulary: the world being
-simulated (`WORLDS`, remotion/lab: junction.ts, traffic.ts), where the camera looks, which panel shows, plus a
-section title, a big figure or a recap list. The simulation runs on its own and continuously while one world stays
-on screen (its clock starts when that world comes in), so the voice only moves the camera and brings the panels.
-Scenes cached in work/<slug>/simulacion.json.
+edit (timeline.py) every line of the script gets a scene the LLM picks from the worlds the channel uses. Each world
+describes itself in remotion/sim/worlds.json (what it shows, its camera focuses, its panels, the parameters the
+script may set within limits, and the moments the voice can cue): the LLM's instructions are built from it, its
+answers are cleaned to it, and remotion/sim/worlds.tsx draws it. Adding a niche is adding a world there.
+
+The simulation runs on its own and continuously while one world stays on screen with the same parameters (its
+clock starts when that world comes in), so the voice only moves the camera, brings the panels and cues the
+world's events. Scenes cached in work/<slug>/simulacion.json.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from .context import RunContext
 from .sourcing.common import key
 
-# world → its focuses and overlays (what remotion/components/graphics/SimScene.tsx knows how to draw)
-WORLDS: dict[str, dict[str, tuple[str, ...]]] = {
-    "cruces": {"focus": ("both", "left", "right"),
-               "overlay": ("none", "labels", "demand", "queue", "yield", "results", "conflicts", "paths")},
-    "anillo": {"focus": ("ring", "chart"),
-               "overlay": ("none", "speed", "brake", "jam", "chart")},
-}
-VERSION = 2
-SYSTEM = f"""
-Eres el realizador de un canal que explica cómo funciona el mundo con simulaciones vistas desde arriba (tráfico,
-ciudades). Te paso las frases del guion, numeradas, una por plano. Para CADA plano elige qué se ve, SOLO con este
-vocabulario:
-- "world": "cruces" (un cruce con semáforos a la izquierda y una rotonda a la derecha, con los mismos coches) o
-  "anillo" (22 coches en un círculo de 230 m: un conductor frena un poco y se forma un atasco sin motivo).
-- "focus": en "cruces": "both" (pantalla partida), "left" (se amplía el semáforo), "right" (se amplía la rotonda);
-  en "anillo": "ring" (el círculo) o "chart" (el círculo a un lado y la gráfica espacio-tiempo al otro).
-- "overlay" (el panel que aparece): en "cruces": "labels" (títulos), "demand" (el mismo tráfico a los dos), "queue"
-  (coches esperando en rojo y qué dirección tiene verde), "yield" (los que ceden el paso en la rotonda), "results"
-  (espera media y coches que han pasado en cada uno), "conflicts" (32 puntos de choque frente a 8), "paths" (flechas
-  de las trayectorias: dónde se cruzan dos coches en el semáforo y cómo se incorporan y salen en la rotonda: para
-  frases sobre cruzar, incorporarse o ceder), "none";
-  en "anillo": "speed" (velocidad media), "brake" (señala al conductor que frena), "jam" (coches parados ahora),
-  "chart" (gráfica espacio-tiempo), "none".
+MANIFEST = Path(__file__).resolve().parent.parent / "remotion" / "sim" / "worlds.json"
+VERSION = 3
+
+
+@lru_cache(maxsize=1)
+def worlds() -> dict[str, dict[str, Any]]:
+    return json.loads(MANIFEST.read_text("utf-8"))
+
+
+def allowed(ctx: RunContext) -> dict[str, dict[str, Any]]:
+    """The worlds this channel uses (visual.worlds), all of them when it does not say."""
+
+    every = worlds()
+    chosen = [str(w) for w in (ctx.section("visual").get("worlds") or []) if str(w) in every]
+    return {w: every[w] for w in chosen} if chosen else every
+
+
+def describe(spec: dict[str, dict[str, Any]]) -> str:
+    """The worlds as the LLM reads them: what each one is, its focuses, panels and parameters."""
+
+    out = []
+    for name, w in spec.items():
+        out.append(f'- "{name}": {w["describe"]}.')
+        out.append("  focus: " + "; ".join(f'"{k}" ({v})' for k, v in w["focus"].items()))
+        out.append("  overlay: " + "; ".join(f'"{k}" ({v})' for k, v in w["overlay"].items()) + '; "none"')
+        if w.get("params"):
+            parts = []
+            for k, p in w["params"].items():
+                values = "|".join(map(str, p["options"])) if "options" in p else f'{p["min"]}-{p["max"]}'
+                parts.append(f'"{k}" ({values}, por defecto {p["default"]}: {p["describe"]})')
+            out.append("  params: " + "; ".join(parts))
+    return "\n".join(out)
+
+
+SYSTEM = """
+Eres el realizador de un canal que explica cómo funciona el mundo con simulaciones vistas desde arriba. Te paso las
+frases del guion, numeradas, una por plano. Para CADA plano elige qué se ve, SOLO con estos mundos:
+{worlds}
+Además, en cada plano:
+- "params": solo los parámetros del mundo que la frase cambia (p. ej. «con el doble de tráfico»), si no {{}}. Un
+  cambio de parámetros reinicia la simulación: úsalo solo cuando el guion propone un experimento nuevo.
 - "title": título de sección de 2-5 palabras cuando empieza una idea nueva, si no "".
 - "stat": {{"label": "2-5 palabras", "value": "cifra o 1-3 palabras"}} SOLO si la frase da una cifra concreta, o null.
+- "source": el estudio o la fuente que la frase cita («Sugiyama et al., 2008»), si no "".
 - "list": 2-4 frases muy cortas SOLO para el resumen final, o [].
-Reglas: elige el mundo que ilustra la frase; mantén el mismo mundo y foco en frases seguidas de la misma idea (la
-cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes cifras: en
-"stat" solo las que dice la frase. Devuelve SOLO JSON:
-{{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "title": "", "stat": null, "list": []}}]}}
+Reglas: elige el mundo que ilustra la frase; mantén el mismo mundo, foco y parámetros en frases seguidas de la misma
+idea (la cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
+cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
+Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
+"title": "", "stat": null, "source": "", "list": []}}]}}
 """.strip()
 
 
@@ -60,15 +85,39 @@ def _words(text: Any, limit: int) -> str:
     return " ".join(str(text or "").split()[:limit])
 
 
-def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None) -> dict[str, Any]:
-    """A scene the component can draw: only the vocabulary; a figure only when the line says it."""
+def _params(spec: dict[str, Any], given: Any) -> dict[str, Any]:
+    """Every parameter of the world: the one asked for within its limits, else its default."""
 
-    world = str(scene.get("world") or (before or {}).get("world") or "cruces").lower()
-    world = world if world in WORLDS else "cruces"
+    given = given if isinstance(given, dict) else {}
+    out: dict[str, Any] = {}
+    for name, p in (spec.get("params") or {}).items():
+        value = given.get(name, p["default"])
+        if "options" in p:
+            out[name] = next((o for o in p["options"] if str(o) == str(value)), p["default"])
+        else:
+            try:
+                out[name] = round(min(float(p["max"]), max(float(p["min"]), float(value))), 3)
+            except (TypeError, ValueError):
+                out[name] = p["default"]
+    return out
+
+
+def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
+          spec: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """A scene the component can draw: only the vocabulary; parameters within their limits; a figure or a source
+    only when the line says it. With no answer, the world (and its parameters) go on."""
+
+    spec = spec or worlds()
+    world = str(scene.get("world") or (before or {}).get("world") or next(iter(spec))).lower()
+    world = world if world in spec else ((before or {}).get("world") if (before or {}).get("world") in spec else next(iter(spec)))
+    w = spec[world]
     focus = str(scene.get("focus") or "").lower()
-    focus = focus if focus in WORLDS[world]["focus"] else WORLDS[world]["focus"][0]
+    focus = focus if focus in w["focus"] else ((before or {}).get("focus") if (before or {}).get("world") == world
+                                               and (before or {}).get("focus") in w["focus"] else next(iter(w["focus"])))
     overlay = str(scene.get("overlay") or "none").lower()
-    overlay = overlay if overlay in WORLDS[world]["overlay"] else "none"
+    overlay = overlay if overlay in w["overlay"] else "none"
+    asked = scene.get("params") if isinstance(scene.get("params"), dict) and scene.get("params") else None
+    params = _params(w, asked if asked is not None else ((before or {}).get("params") if (before or {}).get("world") == world else {}))
     stat = scene.get("stat") if isinstance(scene.get("stat"), dict) else None
     if stat:
         value = _words(stat.get("value"), 3)
@@ -77,39 +126,45 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None) -> di
         # a figure must be one the narrator says (or a word for it): never one the LLM made up
         stat = {"label": _words(stat.get("label"), 5).upper()[:40], "value": value.upper()[:18]} \
             if value and (not digits or set(digits) <= said) else None
+    source = _words(scene.get("source"), 8)[:60]
+    named = {t for t in re.findall(r"\w{4,}", source.lower())}
+    if source and not (named & set(re.findall(r"\w{4,}", line.lower()))):
+        source = ""                       # a source the line does not name is not shown
     items = [_words(x, 9).upper() for x in (scene.get("list") or []) if str(x).strip()][:4]
-    return {"type": "sim", "world": world, "focus": focus, "overlay": overlay,
-            "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "list": items}
+    return {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
+            "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items}
 
 
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
-    """shot id → scene, from the LLM in batches of 40 lines (cached by the lines themselves)."""
+    """shot id → scene, from the LLM in batches of 40 lines (cached by the lines and the channel's worlds)."""
 
     from .llm import complete_json
 
+    spec = allowed(ctx)
     lines = [(s.id, " ".join(s.text.split())) for s in shots]
     cache = ctx.work_dir / "simulacion.json"
-    digest = key(VERSION, lines)
+    digest = key(VERSION, lines, spec)
     try:
         saved = json.loads(cache.read_text("utf-8"))
         if saved.get("key") == digest:
             return saved["scenes"]
     except (OSError, ValueError, KeyError):
         pass
+    system = SYSTEM.format(worlds=describe(spec))
     out: dict[str, dict[str, Any]] = {}
     before: dict[str, Any] | None = None
     for start in range(0, len(lines), 40):
         batch = lines[start:start + 40]
         listing = "\n".join(f"[{n}] {text}" for n, (_, text) in enumerate(batch, 1))
         try:
-            result = complete_json(ctx, stage="simulacion", section="planner", system=SYSTEM, user=listing,
-                                   max_tokens=220 * len(batch))
+            result = complete_json(ctx, stage="simulacion", section="planner", system=system, user=listing,
+                                   max_tokens=260 * len(batch))
             found = {int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)}
         except Exception as error:      # the simulation alone rather than no video
             print(f"   Escenas de simulación no disponibles ({str(error)[:100]}): la simulación sin paneles")
             found = {}
         for n, (shot_id, text) in enumerate(batch, 1):
-            before = out[shot_id] = clean(found.get(n) or {}, text, before)
+            before = out[shot_id] = clean(found.get(n) or {}, text, before, spec)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
     return out
@@ -130,10 +185,19 @@ def sounds(ctx: RunContext, publish: Any) -> dict[str, str]:
     return out
 
 
+def look(ctx: RunContext) -> dict[str, str]:
+    """The channel's language (the panels' words), accent colour and map theme, for every shot."""
+
+    return {"lang": str(ctx.section("align").get("language", "es"))[:2],
+            "accent": str(ctx.section("brand").get("accent") or ""),
+            "theme": str(ctx.section("visual").get("theme") or "day")}
+
+
 def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> list[dict[str, Any]]:
     """The simulation on every shot nothing else covers (graphics, chapter cards stay on top). Shots in a row with the
     same scene become one group (a panel does not blink between two shots of one sentence); each group knows when its
-    world came on screen (`since`: the simulation's clock) and the focus it comes from (the camera moves from there)."""
+    world came on screen with these parameters (`since`: the simulation's clock), the focus it comes from, and the
+    run's cues (the first line of the run with a cue's overlay: the world paces its events to it)."""
 
     def covered(a: int, b: int) -> bool:
         return any(g.from_ < b and a < g.from_ + g.durationInFrames for g in taken)
@@ -145,26 +209,42 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
     for shot, a, b in todo:
         scene = found[shot.id]
         last = merged[-1] if merged else None
-        if last and last[2] == a and last[3] == scene and not scene["title"] and not scene["stat"]:
+        if last and last[2] == a and last[3] == scene and not scene["title"] and not scene["stat"] and not scene.get("source"):
             last[2] = b
         else:
             merged.append([shot.id, a, b, scene])
+    extra = look(ctx)
     out = []
     since = 0.0
     previous: dict[str, Any] | None = None
     for shot_id, a, b, scene in merged:
-        if previous is None or previous["world"] != scene["world"] or out and out[-1]["from"] + out[-1]["durationInFrames"] < a - fps:
-            since = a / fps                      # the world comes (back) on screen: its simulation starts
-        prev = previous["focus"] if previous and previous["world"] == scene["world"] else scene["focus"]
+        same = previous is not None and previous["world"] == scene["world"] and previous.get("params") == scene.get("params")
+        if not same or out and out[-1]["from"] + out[-1]["durationInFrames"] < a - fps:
+            since = a / fps                      # the world comes (back) on screen, or a new experiment: it starts
+        prev = previous["focus"] if same else scene["focus"]
         out.append({"id": f"sim-{shot_id}", "kind": "graphic", "from": a, "durationInFrames": b - a,
-                    "graphic": {**scene, "at": round(a / fps, 3), "since": round(since, 3), "prev": prev}})
+                    "graphic": {**scene, **extra, "at": round(a / fps, 3), "since": round(since, 3), "prev": prev}})
         previous = scene
-    # the ring's events on the voice: the brake when a line first points at it, the cars standing still when a line
-    # first speaks of the jam (SimScene paces the simulation's clock to land them there)
+    every = worlds()
     for group in out:
         g = group["graphic"]
-        if g["world"] == "anillo":
-            run = [o["graphic"] for o in out if o["graphic"]["since"] == g["since"] and o["graphic"]["world"] == "anillo"]
-            g["cues"] = {name: next(r["at"] for r in run if r["overlay"] == name) for name in ("brake", "jam")
+        names = (every.get(g["world"], {}).get("cues") or {}).keys()
+        if names:
+            run = [o["graphic"] for o in out if o["graphic"]["since"] == g["since"] and o["graphic"]["world"] == g["world"]]
+            g["cues"] = {name: next(r["at"] for r in run if r["overlay"] == name) for name in names
                          if any(r["overlay"] == name for r in run)}
     return out
+
+
+def writing(ctx: RunContext) -> str:
+    """For the script draft (organizar.draft_script): what the simulation can show, so the narration asks for it."""
+
+    if not active(ctx):
+        return ""
+    return ("ESTE CANAL SE HACE CON SIMULACIONES VISTAS DESDE ARRIBA, SIN METRAJE. Escribe el guion para que cada idea "
+            "se pueda ENSEÑAR con estos mundos (y sus paneles y parámetros):\n" + describe(allowed(ctx)) + "\n"
+            "Estructura: una pregunta gancho que la simulación responde; montas el experimento (qué hay, qué reglas); "
+            "lo dejas correr y narras lo que pasa en el momento en que pasa («ahora, este coche frena»); el giro (lo "
+            "inesperado); un dato real de un estudio, citando quién y cuándo; un segundo experimento cambiando un "
+            "parámetro («¿y si hubiera el doble de coches?»); y un resumen final de 3-4 ideas. Frases cortas, en "
+            "presente, señalando lo que se ve.")

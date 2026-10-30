@@ -258,6 +258,11 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     brief.append(f"LONGITUD: unas {words} palabras (como los vídeos del canal).")
     if writing:
         brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
+    from .simulacion import writing as simulation_writing
+
+    shown = simulation_writing(ctx)               # a simulation channel: the script asks for what the worlds can show
+    if shown:
+        brief.append(shown)
     from .porque import lessons
 
     learned = lessons(root, channel)

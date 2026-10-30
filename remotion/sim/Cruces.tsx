@@ -4,9 +4,10 @@
 import type {CSSProperties, FC} from 'react';
 import {AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame} from 'remotion';
 import '../theme';
+import {tx} from './i18n';
 import {BODY, Car, City, toScreen, type Cam} from './city';
 import {C, FONT, Label, Panel} from './hud';
-import {APPROACH, DEMAND, LANE, RING_R, STOP, sample, signalAge, sim, type Snapshot} from './junction';
+import {APPROACH, DEFAULTS, LANE, RING_R, STOP, perMinute, sample, signalAge, sim, type Params, type Snapshot} from './junction';
 
 export type Line = {text: string; start: number; end: number; focus: 'both' | 'left' | 'right'; overlay: string};
 export type CrucesProps = {audio: string; duration: number; scenes: Line[]};
@@ -241,11 +242,11 @@ const Paths: FC<{cam: Cam; kind: 'lights' | 'roundabout'; o: number; draw: numbe
 };
 
 // --- one side of the split ------------------------------------------------------------------------------------------
-const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scale: number; simT: number; dim: boolean;
-                o: (name: string) => number; reveal: number; pathsDrawn: number}> = ({kind, left, width, scale, simT, dim, o, reveal, pathsDrawn}) => {
+const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scale: number; simT: number; dim: boolean; p: Params;
+                o: (name: string) => number; reveal: number; pathsDrawn: number}> = ({kind, left, width, scale, simT, dim, p, o, reveal, pathsDrawn}) => {
   const centre = left + width / 2;
   const cam: Cam = {x: (960 - centre) / scale, y: 0, s: scale};
-  const snap = sample(sim(kind), simT);
+  const snap = sample(sim(kind, p), simT);
   const mark = (car: Snapshot['cars'][number]) => {
     if (kind === 'lights' && car.waiting && o('queue') > 0.5) return C.red;
     if (kind === 'roundabout' && car.waiting && o('yield') > 0.5) return C.accent;
@@ -256,7 +257,7 @@ const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scal
       <City cam={cam} clearing={kind === 'roundabout' ? 21 : 0} ring={kind === 'roundabout' ? [RING_R - 5, RING_R + 4] : [0, 0]} disc={false} />
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
         {kind === 'lights' && <Queues cam={cam} snap={snap} strong={o('queue')} />}
-        {kind === 'lights' ? <LightsJunction cam={cam} snap={snap} age={signalAge(simT)} /> : <RoundaboutJunction cam={cam} />}
+        {kind === 'lights' ? <LightsJunction cam={cam} snap={snap} age={signalAge(simT, p.green)} /> : <RoundaboutJunction cam={cam} />}
         <Paths cam={cam} kind={kind} o={o('paths')} draw={pathsDrawn} />
         <Cars cam={cam} snap={snap} mark={mark} />
         <Conflicts cam={cam} kind={kind} o={o('conflicts')} reveal={reveal} />
@@ -284,49 +285,49 @@ const Big: FC<{label: string; value: string; color?: string; style?: CSSProperti
 /** The split screen at one moment: where the divider stands, how close each camera is, which side is in focus, the
  * opacity of each overlay, how much of each set of conflict points shows (0-1). `simT`: the simulations' clock. */
 export type CrucesState = {simT: number; split: number; left: number; right: number; focus: 'both' | 'left' | 'right';
-                           o: (name: string) => number; revealLights: number; revealRound: number; pathsDrawn?: number};
+                           o: (name: string) => number; revealLights: number; revealRound: number; pathsDrawn?: number; p?: Params};
 
-export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o, revealLights, revealRound, pathsDrawn = 1}) => {
-  const L = stats(sim('lights'), simT);
-  const R = stats(sim('roundabout'), simT);
-  const perMinute = Math.round(60 / (1 / DEMAND + 1.2));
-  const green = sample(sim('lights'), simT).green;
+export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o, revealLights, revealRound, pathsDrawn = 1, p = DEFAULTS}) => {
+  const L = stats(sim('lights', p), simT);
+  const R = stats(sim('roundabout', p), simT);
+  const cars = perMinute(p);
+  const green = sample(sim('lights', p), simT).green;
   const titleStyle: CSSProperties = {position: 'absolute', top: 44, fontFamily: FONT, fontSize: 40, fontWeight: 800, color: C.text, textTransform: 'uppercase'};
   return (
     <AbsoluteFill style={{backgroundColor: C.night}}>
-      <Side kind="lights" left={0} width={split} scale={left} simT={simT} dim={focus === 'right'} o={o} reveal={revealLights} pathsDrawn={pathsDrawn} />
-      <Side kind="roundabout" left={split} width={1920 - split} scale={right} simT={simT} dim={focus === 'left'} o={o} reveal={revealRound} pathsDrawn={pathsDrawn} />
+      <Side kind="lights" left={0} width={split} scale={left} simT={simT} dim={focus === 'right'} p={p} o={o} reveal={revealLights} pathsDrawn={pathsDrawn} />
+      <Side kind="roundabout" left={split} width={1920 - split} scale={right} simT={simT} dim={focus === 'left'} p={p} o={o} reveal={revealRound} pathsDrawn={pathsDrawn} />
       <div style={{position: 'absolute', left: split - 2, top: 0, width: 4, height: 1080, background: C.night}} />
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(5,8,18,0.55) 100%)', pointerEvents: 'none'}} />
 
-      <div style={{...titleStyle, left: 48}}>Semáforos<div style={{height: 4, width: 120, background: C.accent, marginTop: 4}} /></div>
-      <div style={{...titleStyle, left: split + 48}}>Rotonda<div style={{height: 4, width: 100, background: C.accent, marginTop: 4}} /></div>
+      <div style={{...titleStyle, left: 48}}>{tx('lights')}<div style={{height: 4, width: 120, background: C.accent, marginTop: 4}} /></div>
+      <div style={{...titleStyle, left: split + 48}}>{tx('roundabout')}<div style={{height: 4, width: 100, background: C.accent, marginTop: 4}} /></div>
 
       <Panel o={o('demand')} style={{left: '50%', bottom: 70, transform: 'translateX(-50%)', textAlign: 'center', width: 640}}>
-        <Label>El mismo tráfico a los dos</Label>
-        <div style={{fontSize: 38, fontWeight: 800, marginTop: 4}}>~{perMinute} COCHES POR MINUTO <span style={{color: C.label, fontSize: 26}}>EN CADA CALLE</span></div>
+        <Label>{tx('sameTraffic')}</Label>
+        <div style={{fontSize: 38, fontWeight: 800, marginTop: 4}}><span style={{textTransform: 'uppercase'}}>~{cars} {tx('carsPerMinute')} <span style={{color: C.label, fontSize: 26}}>{tx('perStreet')}</span></span></div>
       </Panel>
 
-      <Big o={o('queue')} label="Esperando ahora" value={String(L.waiting)} color={C.red} style={{left: 48, bottom: 70}} />
+      <Big o={o('queue')} label={tx('waitingNow')} value={String(L.waiting)} color={C.red} style={{left: 48, bottom: 70}} />
       <Panel o={o('queue')} style={{left: 340, bottom: 70}}>
-        <Label>Verde para</Label>
-        <div style={{fontSize: 34, fontWeight: 800, color: C.green}}>{green === 'EW' ? 'ESTE-OESTE' : green === 'NS' ? 'NORTE-SUR' : '—'}</div>
+        <Label>{tx('greenFor')}</Label>
+        <div style={{fontSize: 34, fontWeight: 800, color: C.green}}>{green === 'EW' ? tx('eastWest').toUpperCase() : green === 'NS' ? tx('northSouth').toUpperCase() : '—'}</div>
       </Panel>
-      <Big o={o('yield')} label="Esperando ahora" value={String(R.waiting)} color={C.accent} style={{right: 48, bottom: 70}} />
+      <Big o={o('yield')} label={tx('waitingNow')} value={String(R.waiting)} color={C.accent} style={{right: 48, bottom: 70}} />
       <Panel o={o('yield')} style={{right: 340, bottom: 70}}>
-        <Label>La única regla</Label>
-        <div style={{fontSize: 30, fontWeight: 800}}>CEDE AL QUE YA ESTÁ DENTRO</div>
+        <Label>{tx('onlyRule')}</Label>
+        <div style={{fontSize: 30, fontWeight: 800, textTransform: 'uppercase'}}>{tx('giveWay')}</div>
       </Panel>
 
-      <Big o={o('results')} label="Espera media por coche" value={`${L.wait.toFixed(1)} s`} color={C.red} style={{left: 48, bottom: 70, width: 300}} />
-      <Big o={o('results')} label="Espera media por coche" value={`${R.wait.toFixed(1)} s`} color={C.green} style={{left: split + 48, bottom: 70, width: 300}} />
-      <Big o={o('results')} label="Han pasado" value={String(L.passed)} style={{left: 380, bottom: 70, width: 200}} />
-      <Big o={o('results')} label="Han pasado" value={String(R.passed)} style={{left: split + 380, bottom: 70, width: 200}} />
+      <Big o={o('results')} label={tx('averageWait')} value={`${L.wait.toFixed(1)} s`} color={C.red} style={{left: 48, bottom: 70, width: 300}} />
+      <Big o={o('results')} label={tx('averageWait')} value={`${R.wait.toFixed(1)} s`} color={C.green} style={{left: split + 48, bottom: 70, width: 300}} />
+      <Big o={o('results')} label={tx('passed')} value={String(L.passed)} style={{left: 380, bottom: 70, width: 200}} />
+      <Big o={o('results')} label={tx('passed')} value={String(R.passed)} style={{left: split + 380, bottom: 70, width: 200}} />
 
-      <Big o={o('conflicts') * Math.min(1, revealLights * 4)} label="Puntos de choque" value="32" color={CROSS} style={{left: 48, bottom: 70, width: 220}} />
-      <Big o={o('conflicts') * Math.min(1, revealRound * 4)} label="Puntos de choque" value="8" color={C.green} style={{left: split + 48, bottom: 70, width: 220}} />
+      <Big o={o('conflicts') * Math.min(1, revealLights * 4)} label={tx('conflictPoints')} value="32" color={CROSS} style={{left: 48, bottom: 70, width: 220}} />
+      <Big o={o('conflicts') * Math.min(1, revealRound * 4)} label={tx('conflictPoints')} value="8" color={C.green} style={{left: split + 48, bottom: 70, width: 220}} />
       <Panel o={o('conflicts')} style={{left: '50%', top: 130, transform: 'translateX(-50%)', display: 'flex', gap: 22, padding: '10px 18px'}}>
-        {[[CROSS, 'Cruce'], [MERGE, 'Incorporación'], [DIVERGE, 'Salida']].map(([colour, name]) => (
+        {[[CROSS, tx('crossing')], [MERGE, tx('merging')], [DIVERGE, tx('diverging')]].map(([colour, name]) => (
           <span key={name} style={{display: 'flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 700, letterSpacing: 1}}>
             <span style={{width: 12, height: 12, borderRadius: 6, background: colour}} />{name.toUpperCase()}
           </span>
@@ -334,7 +335,7 @@ export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o,
       </Panel>
 
       <div style={{position: 'absolute', left: 48, bottom: 24, fontFamily: FONT, fontSize: 14, letterSpacing: 1.2, color: 'rgba(255,255,255,0.5)'}}>
-        SIMULACIÓN · MISMAS LLEGADAS EN LOS DOS CRUCES · {APPROACH} M DE ACCESO POR CALLE
+        {tx('junctionNote', {n: APPROACH}).toUpperCase()}
       </div>
     </AbsoluteFill>
   );

@@ -1,5 +1,5 @@
 import {Composition} from 'remotion';
-import {Cruces, FPS as CRUCES_FPS, type CrucesProps} from './Cruces';
+import {Cruces, FPS as CRUCES_FPS, type CrucesProps} from '../sim/Cruces';
 import {DURATION, FPS, RaceReplay} from './RaceReplay';
 import {DURATION as JAM_DURATION, RingJam} from './RingJam';
 import {SimPreview, type SimPreviewProps} from './SimPreview';

@@ -4,9 +4,9 @@
 import type {FC} from 'react';
 import {AbsoluteFill, Easing, interpolate, random, useCurrentFrame} from 'remotion';
 import '../theme';
-import {BODY, Car, City, toScreen, type Cam} from './city';
-import {C, FONT, Label, Panel, Section, Tag, fade} from './hud';
-import {FRAMES, PERTURB, RING, SAMPLE, at, meanSpeed, startSpeed, stopped} from './traffic';
+import {BODY, Car, City, toScreen, type Cam} from '../sim/city';
+import {C, FONT, Label, Panel, Section, Tag, fade} from '../sim/hud';
+import {FRAMES, PERTURB, RING, SAMPLE, at, meanSpeed, startSpeed, stopped} from '../sim/traffic';
 
 export const FPS = 30;
 export const DURATION = 2250;

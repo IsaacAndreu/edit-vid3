@@ -17,7 +17,22 @@ export const CITY = {
   tree: '#2f5a2c',
   treeLight: '#3f7337',
   shadow: 'rgba(0,0,0,0.28)',
+  night: false,
 };
+
+// the map's look for the channel or the story (visual.theme): day, night (lit windows, headlights) or sepia (history)
+const THEMES: Record<string, Partial<typeof CITY>> = {
+  day: {ground: '#3c5a36', grass: '#4a6e3f', road: '#33363c', roadEdge: '#4a4d54', sidewalk: '#62656b', marking: '#d9c36a',
+        roofs: ['#7a5f4f', '#8b6a52', '#6d7480', '#5f6672', '#8f8572', '#6a5a4c', '#9a7c62', '#55606b'], tree: '#2f5a2c',
+        treeLight: '#3f7337', shadow: 'rgba(0,0,0,0.28)', night: false},
+  night: {ground: '#141c17', grass: '#1a2a1c', road: '#1d1f24', roadEdge: '#2a2d33', sidewalk: '#2c2f35', marking: '#8a7a3a',
+          roofs: ['#2b2f38', '#33302c', '#262b33', '#2f343c', '#38332c', '#2a2724', '#353a42', '#24282e'], tree: '#14261a',
+          treeLight: '#1c3322', shadow: 'rgba(0,0,0,0.45)', night: true},
+  sepia: {ground: '#8a7656', grass: '#93805c', road: '#5e4f3c', roadEdge: '#6e5e48', sidewalk: '#7c6a52', marking: '#c9b48a',
+          roofs: ['#a08462', '#8f7454', '#b29470', '#7d6649', '#a6906c', '#94795a', '#ba9f7a', '#856b4e'], tree: '#5e5838',
+          treeLight: '#736c47', shadow: 'rgba(40,25,10,0.3)', night: false},
+};
+export const setTheme = (name: string | undefined) => Object.assign(CITY, THEMES[String(name || 'day')] ?? THEMES.day);
 
 const BLOCK = 72;          // street spacing
 const STREET = 9;          // street width
@@ -42,7 +57,7 @@ const build = (clearing: number, ring: [number, number], disc: boolean) => {
       if (disc && (Math.hypot(nx, ny) < clearing + 4 || Math.hypot(cx, cy) < clearing)) continue;      // the clearing: a park
       const seed = `${bx}:${by}`;
       if (random(`park${seed}`) < 0.12) {
-        parks.push({x: x0, y: y0, w: size, h: size, c: CITY.grass});
+        parks.push({x: x0, y: y0, w: size, h: size, c: 'grass'});
         for (let i = 0; i < 14; i++) {
           trees.push({x: x0 + random(`tpx${seed}${i}`) * size, y: y0 + random(`tpy${seed}${i}`) * size, r: 2.2 + random(`tpr${seed}${i}`) * 2.2});
         }
@@ -58,7 +73,7 @@ const build = (clearing: number, ring: [number, number], disc: boolean) => {
           const w = lot * (0.55 + random(`w${k}`) * 0.3);
           const d = 9 + random(`d${k}`) * 7;
           const along = i * lot + (lot - w) / 2;
-          const c = CITY.roofs[Math.floor(random(`c${k}`) * CITY.roofs.length)];
+          const c = `r${Math.floor(random(`c${k}`) * 8)}`;      // the theme's roof colour, chosen when drawn
           if (side === 0) houses.push({x: x0 + along, y: y0 + 1, w, h: d, c});
           if (side === 1) houses.push({x: x0 + along, y: y0 + size - d - 1, w, h: d, c});
           if (side === 2 && i > 0 && i < per - 1) houses.push({x: x0 + 1, y: y0 + along, w: d, h: w, c});
@@ -119,7 +134,7 @@ export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; disc
       {disc && <circle cx={p(0, 0).sx} cy={p(0, 0).sy} r={clearing * cam.s} fill={CITY.grass} />}
       {parks.filter((r) => view(r.x, r.y, r.w, r.h)).map((r, i) => {
         const a = p(r.x, r.y);
-        return <rect key={`p${i}`} x={a.sx} y={a.sy} width={r.w * cam.s} height={r.h * cam.s} fill={r.c} />;
+        return <rect key={`p${i}`} x={a.sx} y={a.sy} width={r.w * cam.s} height={r.h * cam.s} fill={CITY.grass} />;
       })}
       {houses.filter((r) => view(r.x, r.y, r.w, r.h)).map((r, i) => {
         const a = p(r.x, r.y);
@@ -127,7 +142,11 @@ export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; disc
         return (
           <g key={`hs${i}`}>
             <rect x={a.sx + off} y={a.sy + off} width={r.w * cam.s} height={r.h * cam.s} fill={CITY.shadow} />
-            <rect x={a.sx} y={a.sy} width={r.w * cam.s} height={r.h * cam.s} fill={r.c} />
+            <rect x={a.sx} y={a.sy} width={r.w * cam.s} height={r.h * cam.s} fill={CITY.roofs[Number(r.c.slice(1)) % CITY.roofs.length]} />
+            {CITY.night && i % 5 < 2 && (     // a lit window at night
+              <rect x={a.sx + r.w * cam.s * 0.3} y={a.sy + r.h * cam.s * 0.35} width={r.w * cam.s * 0.25} height={r.h * cam.s * 0.25}
+                    fill="#ffcf73" opacity={0.85} />
+            )}
             <rect x={a.sx} y={a.sy} width={r.w * cam.s} height={(r.h * cam.s) / 2} fill="rgba(255,255,255,0.08)" />
           </g>
         );
@@ -156,6 +175,7 @@ export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: str
   return (
     <g transform={`translate(${sx} ${sy}) rotate(${deg})`}>
       {mark && <circle r={l * 0.95} fill="none" stroke={mark} strokeWidth={Math.max(1.5, s * 0.25)} opacity={0.9} />}
+      {CITY.night && <path d={`M${l * 0.45},${-w * 0.35} L${l * 2.6},${-w * 1.3} L${l * 2.6},${w * 1.3} L${l * 0.45},${w * 0.35} Z`} fill="#fff1b8" opacity={0.16} />}
       <rect x={-l / 2 + s * 0.25} y={-w / 2 + s * 0.25} width={l} height={w} rx={s * 0.5} fill="rgba(0,0,0,0.35)" />
       <rect x={-l / 2} y={-w / 2} width={l} height={w} rx={s * 0.5} fill={color} />
       <rect x={-l * 0.12} y={-w / 2 + s * 0.2} width={l * 0.38} height={w - s * 0.4} rx={s * 0.25} fill="rgba(20,26,36,0.55)" />

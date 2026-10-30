@@ -94,3 +94,50 @@ def test_the_simulation_sounds_are_published_from_assets(tmp_path):
 
 def test_paths_is_in_the_junctions_vocabulary():
     assert simulacion.clean({"world": "cruces", "overlay": "paths"}, "x", None)["overlay"] == "paths"
+
+
+def test_every_world_in_the_manifest_is_complete_and_drawn():
+    import re
+    from pathlib import Path
+
+    registry = Path(simulacion.MANIFEST).with_name("registry.ts").read_text()
+    for name, w in simulacion.worlds().items():
+        assert w["describe"] and w["focus"] and w["overlay"], name
+        for p in (w.get("params") or {}).values():
+            assert "default" in p and ("options" in p or p["min"] <= p["default"] <= p["max"])
+        assert re.search(rf"\b{name}\b", registry), f"{name} is in worlds.json but not in registry.ts"
+
+
+def test_parameters_stay_within_their_limits_and_go_on_with_the_world():
+    scene = simulacion.clean({"world": "anillo", "params": {"cars": 99}}, "x", None)
+    assert scene["params"] == {"cars": 30}
+    assert simulacion.clean({"world": "contagio", "params": {"mode": "bulo", "quarantine": "1"}}, "x", None)["params"]["mode"] == "bulo"
+    assert simulacion.clean({"world": "contagio", "params": {"mode": "zombi"}}, "x", None)["params"]["mode"] == "virus"
+    nothing = simulacion.clean({}, "x", scene)
+    assert nothing["world"] == "anillo" and nothing["params"] == {"cars": 30}             # no answer: the same experiment
+
+
+def test_a_source_is_shown_only_when_the_line_names_it():
+    named = simulacion.clean({"source": "Sugiyama et al., 2008"}, "Sugiyama lo comprobó en 2008 con 22 coches.", None)
+    assert named["source"] == "Sugiyama et al., 2008"
+    assert simulacion.clean({"source": "Universidad de Harvard"}, "Un estudio lo comprobó.", None)["source"] == ""
+
+
+def test_a_channel_uses_only_its_worlds_and_the_llm_reads_them(tmp_path):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "worlds": ["contagio", "nada"]}})
+    assert list(simulacion.allowed(ctx)) == ["contagio"]
+    text = simulacion.describe(simulacion.allowed(ctx))
+    assert '"contagio"' in text and '"cruces"' not in text and "vaccinated" in text
+    assert "contagio" in simulacion.writing(ctx)
+
+
+def test_a_new_experiment_restarts_the_clock_and_the_look_comes_with_every_shot(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "theme": "night"},
+                                                         "align": {"language": "pt"}, "brand": {"accent": "#19fe5b"}})
+    plan = [{"world": "anillo", "params": {"cars": 22}}, {"world": "anillo", "params": {"cars": 22}, "overlay": "speed"},
+            {"world": "anillo", "params": {"cars": 28}, "overlay": "jam"}]
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **k: {"scenes": [{"n": n, **p} for n, p in enumerate(plan, 1)]})
+    groups = simulacion.groups(ctx, [_shot(n, (n - 1) * 60, n * 60, f"frase {n}") for n in range(1, 4)], 30, [])
+    assert [g["graphic"]["since"] for g in groups] == [0, 0, 4]                           # 28 cars: a new run
+    assert groups[2]["graphic"]["cues"] == {"jam": 4.0}
+    assert {(g["graphic"]["lang"], g["graphic"]["accent"], g["graphic"]["theme"]) for g in groups} == {("pt", "#19fe5b", "night")}

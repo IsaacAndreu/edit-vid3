@@ -1,0 +1,287 @@
+{
+  "cruces": {
+    "niche": "tráfico",
+    "describe": "un cruce con semáforos (izquierda) y una rotonda (derecha) con exactamente los mismos coches llegando",
+    "focus": {
+      "both": "pantalla partida",
+      "left": "se amplía el semáforo",
+      "right": "se amplía la rotonda"
+    },
+    "overlay": {
+      "labels": "solo los títulos",
+      "demand": "el mismo tráfico a los dos",
+      "queue": "coches esperando en rojo y qué dirección tiene verde",
+      "yield": "los que ceden el paso en la rotonda",
+      "results": "espera media y coches que han pasado en cada uno",
+      "conflicts": "32 puntos de choque frente a 8",
+      "paths": "flechas de las trayectorias: dónde se cruzan en el semáforo y cómo se incorporan en la rotonda"
+    },
+    "params": {
+      "demand": {
+        "min": 0.05,
+        "max": 0.3,
+        "default": 0.15,
+        "describe": "coches por segundo y calle (0.08 poco tráfico, 0.25 hora punta)"
+      },
+      "green": {
+        "min": 10,
+        "max": 60,
+        "default": 22,
+        "describe": "segundos de verde de cada fase del semáforo"
+      }
+    }
+  },
+  "anillo": {
+    "niche": "tráfico",
+    "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo",
+    "focus": {
+      "ring": "el círculo",
+      "chart": "el círculo a un lado y la gráfica espacio-tiempo al otro"
+    },
+    "overlay": {
+      "speed": "velocidad media",
+      "brake": "señala al conductor que frena",
+      "jam": "coches parados ahora",
+      "chart": "gráfica espacio-tiempo: el atasco viajando hacia atrás"
+    },
+    "params": {
+      "cars": {
+        "min": 12,
+        "max": 30,
+        "default": 22,
+        "describe": "coches en el círculo (con 18 o menos no se forma atasco; con 28 casi todos se paran)"
+      }
+    },
+    "cues": {
+      "brake": "la frase que habla del frenazo",
+      "jam": "la frase en la que los coches ya están parados"
+    }
+  },
+  "autovia": {
+    "niche": "tráfico",
+    "describe": "una obra cierra un carril de autovía: arriba los conductores se incorporan pronto (una sola cola larga), abajo en cremallera (usan los dos carriles hasta el final y se alternan); los mismos coches",
+    "focus": {
+      "both": "las dos carreteras",
+      "top": "se amplía la incorporación temprana",
+      "bottom": "se amplía la cremallera"
+    },
+    "overlay": {
+      "queue": "longitud de la cola en cada carretera",
+      "merge": "marca el punto donde se incorporan",
+      "results": "coches que han pasado y longitud de la cola"
+    },
+    "params": {
+      "demand": {
+        "min": 0.3,
+        "max": 0.8,
+        "default": 0.55,
+        "describe": "coches por segundo que llegan: 0.3 fluido (no hay cola en ninguna); 0.55 la cremallera deja la cola en la mitad y pasan más coches; 0.7 atasco en las dos, la cremallera sigue pasando más"
+      }
+    }
+  },
+  "contagio": {
+    "niche": "epidemias y bulos",
+    "describe": "400 personas que van y vienen por un barrio visto desde arriba; una empieza contagiada (o creyéndose un bulo) y se transmite al cruzarse",
+    "focus": {
+      "town": "todo el barrio",
+      "close": "de cerca, alrededor del paciente cero"
+    },
+    "overlay": {
+      "zero": "señala al paciente cero",
+      "counts": "sanos, contagiados y recuperados ahora",
+      "curve": "la curva de contagios día a día",
+      "vaccine": "marca a los vacunados",
+      "quarantine": "los contagiados se quedan en casa"
+    },
+    "params": {
+      "contagion": {
+        "min": 0.15,
+        "max": 1.0,
+        "default": 0.5,
+        "describe": "lo contagioso que es (0.2 poco, 1 como el sarampión)"
+      },
+      "vaccinated": {
+        "min": 0,
+        "max": 0.95,
+        "default": 0,
+        "describe": "parte de la gente vacunada desde el principio"
+      },
+      "quarantine": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 0,
+        "describe": "1: los contagiados se quedan en casa"
+      },
+      "mode": {
+        "options": [
+          "virus",
+          "bulo"
+        ],
+        "default": "virus",
+        "describe": "virus (contagiados) o bulo (gente que se lo cree)"
+      }
+    }
+  },
+  "red": {
+    "niche": "desastres",
+    "describe": "la red eléctrica de un país de noche (subestaciones y líneas, ciudades iluminadas): falla una pieza, su carga pasa a las vecinas y caen en cascada",
+    "focus": {
+      "map": "todo el país"
+    },
+    "overlay": {
+      "load": "lo cargada que va cada línea",
+      "fail": "señala la primera avería",
+      "cascade": "porcentaje del país sin luz"
+    },
+    "params": {
+      "margin": {
+        "min": 0.05,
+        "max": 0.6,
+        "default": 0.2,
+        "describe": "capacidad de reserva de la red (hasta 0.15 se apaga todo el país; 0.2 se apagan tres cuartas partes; desde 0.3 la avería se queda en una ciudad: es un punto de no retorno)"
+      }
+    },
+    "cues": {
+      "fail": "la frase en la que falla la primera pieza"
+    }
+  },
+  "incendio": {
+    "niche": "desastres",
+    "describe": "un bosque visto desde arriba: empieza un fuego y se propaga de árbol en árbol con el viento",
+    "focus": {
+      "forest": "todo el bosque",
+      "close": "de cerca, donde empieza"
+    },
+    "overlay": {
+      "start": "señala dónde empieza",
+      "burned": "superficie quemada",
+      "firebreak": "marca los cortafuegos"
+    },
+    "params": {
+      "density": {
+        "min": 0.45,
+        "max": 0.8,
+        "default": 0.62,
+        "describe": "lo denso que es el bosque (por debajo de 0.55 el fuego suele apagarse solo)"
+      },
+      "wind": {
+        "min": 0,
+        "max": 1,
+        "default": 0.4,
+        "describe": "fuerza del viento hacia el este"
+      },
+      "firebreaks": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 0,
+        "describe": "1: hay cortafuegos"
+      }
+    },
+    "cues": {
+      "start": "la frase en la que empieza el fuego"
+    }
+  },
+  "segregacion": {
+    "niche": "sociedad",
+    "describe": "un barrio de casas de dos colores (modelo de Schelling): cada familia se muda si menos de cierta parte de sus vecinos son como ella",
+    "focus": {
+      "town": "todo el barrio"
+    },
+    "overlay": {
+      "unhappy": "marca las familias que quieren mudarse",
+      "share": "porcentaje medio de vecinos iguales"
+    },
+    "params": {
+      "tolerance": {
+        "min": 0.2,
+        "max": 0.75,
+        "default": 0.35,
+        "describe": "parte de vecinos iguales que quiere cada familia (0.3 ya separa el barrio)"
+      }
+    }
+  },
+  "colas": {
+    "niche": "colas y multitudes",
+    "describe": "un supermercado visto desde arriba: a la izquierda una cola por caja (cada cliente elige la más corta), a la derecha una sola cola que reparte a todas las cajas; los mismos clientes",
+    "focus": {
+      "both": "los dos supermercados",
+      "left": "se amplía el de varias colas",
+      "right": "se amplía el de una sola cola"
+    },
+    "overlay": {
+      "wait": "espera media en cada uno",
+      "unlucky": "un cliente que eligió la cola lenta",
+      "results": "espera media y la espera más larga"
+    },
+    "params": {
+      "tills": {
+        "min": 3,
+        "max": 6,
+        "default": 4,
+        "describe": "cajas abiertas"
+      },
+      "arrivals": {
+        "min": 0.2,
+        "max": 0.6,
+        "default": 0.38,
+        "describe": "clientes por segundo que llegan a pagar"
+      }
+    }
+  },
+  "embarque": {
+    "niche": "colas y multitudes",
+    "describe": "dos aviones embarcando a la vez vistos desde arriba: arriba de atrás hacia delante (lo habitual), abajo con el método indicado",
+    "focus": {
+      "both": "los dos aviones",
+      "top": "se amplía el de atrás hacia delante",
+      "bottom": "se amplía el del otro método"
+    },
+    "overlay": {
+      "timer": "tiempo de embarque de cada avión",
+      "blocked": "pasajeros bloqueando el pasillo mientras guardan la maleta"
+    },
+    "params": {
+      "method": {
+        "options": [
+          "random",
+          "steffen",
+          "window"
+        ],
+        "default": "steffen",
+        "describe": "random (sin orden), steffen (filas alternas, ventanilla primero), window (ventanilla, luego pasillo)"
+      }
+    }
+  },
+  "manada": {
+    "niche": "animales",
+    "describe": "una sabana vista desde arriba: gacelas y leones; las gacelas en manada o dispersas, los leones persiguen a la más cercana",
+    "focus": {
+      "savanna": "toda la sabana",
+      "close": "de cerca, una persecución"
+    },
+    "overlay": {
+      "caught": "gacelas cazadas",
+      "herd": "marca la manada"
+    },
+    "params": {
+      "lions": {
+        "min": 2,
+        "max": 12,
+        "default": 6,
+        "describe": "leones"
+      },
+      "herd": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 1,
+        "describe": "1: las gacelas van en manada; 0: cada una a lo suyo"
+      }
+    }
+  }
+}

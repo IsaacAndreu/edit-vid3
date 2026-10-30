@@ -285,19 +285,25 @@ export interface StickmanActor {
   size: number;
 }
 
-/** A shot of a simulation video (pipeline/simulacion.py): the simulated world, where the camera looks, which panel. */
+/** A shot of a simulation video (pipeline/simulacion.py): the simulated world (remotion/sim/worlds.json), where the
+ * camera looks, which panel, the script's parameters, and the channel's language, colour and map theme. */
 export interface SimGraphic {
   type: 'sim';
-  world: 'cruces' | 'anillo';
-  focus: string;        // cruces: both | left | right · anillo: ring | chart
+  world: string;
+  focus: string;
   prev: string;         // the previous shot's focus (the camera moves from there)
-  overlay: string;      // cruces: none | labels | demand | queue | yield | results | conflicts | paths · anillo: none | speed | brake | jam | chart
+  overlay: string;
+  params?: Record<string, number | string>;
   title: string;
   stat: { label: string; value: string } | null;
+  source?: string;      // the study the line cites
   list: string[];
   at: number;           // seconds: when this shot starts in the video
-  since: number;        // seconds: when this world came on screen (its simulation's clock starts there)
-  cues?: { brake?: number; jam?: number };   // anillo: when the voice points at the brake and at the jam (video seconds)
+  since: number;        // seconds: when this world came on screen with these parameters (its simulation's clock starts)
+  cues?: Record<string, number>;   // video seconds when the voice cues the world's events (brake, jam, fail, start…)
+  lang?: string;
+  accent?: string;
+  theme?: string;
   sounds?: { ambient?: string; click?: string; tick?: string };   // files in the render's public folder (timeline.py)
 }
 

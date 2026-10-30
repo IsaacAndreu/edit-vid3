@@ -13,6 +13,11 @@ export const C = {
   red: '#ff5d5d',
   green: '#3ddc84',
 };
+const ACCENT = C.accent;
+/** The channel's accent colour (brand.accent) for every panel and mark of this render; none: the default orange. */
+export const setAccent = (colour: string | undefined) => {
+  C.accent = colour && /^#[0-9a-f]{3,8}$/i.test(colour) ? colour : ACCENT;
+};
 export const FONT = '"Barlow Condensed", "Oswald", sans-serif';
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 

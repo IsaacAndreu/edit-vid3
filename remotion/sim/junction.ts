@@ -107,45 +107,59 @@ const mulberry = (seed: number) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
+// what the script may change (worlds.json): cars per second per arm, and how long each green lasts
+export type Params = {demand: number; green: number};
+export const DEFAULTS: Params = {demand: 0.15, green: 22};
+export const params = (p: Partial<Params> = {}): Params => ({
+  demand: Math.max(0.05, Math.min(0.3, Number(p.demand ?? DEFAULTS.demand))),
+  green: Math.max(10, Math.min(60, Number(p.green ?? DEFAULTS.green))),
+});
+export const DEMAND = DEFAULTS.demand;
+export const perMinute = (p: Params) => Math.round(60 / (1 / p.demand + 1.2));
+
 // the same arrivals for both junctions: [time, arm, exits ahead]
-export const DEMAND = 0.15;                  // cars per second per arm
-const arrivals = (span: number): [number, Arm, 1 | 2][] => {
+const arrivals = (span: number, demand: number): [number, Arm, 1 | 2][] => {
   const rnd = mulberry(11);
   const out: [number, Arm, 1 | 2][] = [];
   for (const arm of ARMS) {
     let t = rnd() * 3;
     while (t < span) {
       out.push([t, arm, rnd() < 0.3 ? 1 : 2]);
-      t += -Math.log(1 - rnd()) / DEMAND + 1.2;
+      t += -Math.log(1 - rnd()) / demand + 1.2;
     }
   }
   return out.sort((a, b) => a[0] - b[0]);
 };
 
-const CYCLE = {green: 22, amber: 3, allRed: 2};
-const signal = (t: number) => {
-  const half = CYCLE.green + CYCLE.amber + CYCLE.allRed;
+const AMBER = 3;
+const ALL_RED = 2;
+const signal = (t: number, green: number) => {
+  const half = green + AMBER + ALL_RED;
   const k = t % (2 * half);
   const axis = k < half ? 'EW' : 'NS';
   const p = k % half;
-  if (p < CYCLE.green) return {green: axis as 'EW' | 'NS', amber: false};
-  if (p < CYCLE.green + CYCLE.amber) return {green: axis as 'EW' | 'NS', amber: true};
+  if (p < green) return {green: axis as 'EW' | 'NS', amber: false};
+  if (p < green + AMBER) return {green: axis as 'EW' | 'NS', amber: true};
   return {green: null, amber: false};
 };
-const HALF = CYCLE.green + CYCLE.amber + CYCLE.allRed;
-const BOUNDS = [0, CYCLE.green, CYCLE.green + CYCLE.amber, HALF].flatMap((b) => [b, b + HALF]).filter((b, i, all) => all.indexOf(b) === i);
+const bounds = (green: number) => {
+  const half = green + AMBER + ALL_RED;
+  return {half, at: [0, green, green + AMBER, half].flatMap((b) => [b, b + half]).filter((b, i, all) => all.indexOf(b) === i)};
+};
 
 /** At a scene time (the simulations' clock, without the warm-up): how long ago the lights last changed, and every
  * change between two scene times (for the click, and for the light to pulse). */
-export const signalAge = (t: number) => {
-  const k = (((t + WARMUP) % (2 * HALF)) + 2 * HALF) % (2 * HALF);
-  return k - Math.max(...BOUNDS.filter((b) => b <= k + 1e-9));
+export const signalAge = (t: number, green = DEFAULTS.green) => {
+  const {half, at} = bounds(green);
+  const k = (((t + WARMUP) % (2 * half)) + 2 * half) % (2 * half);
+  return k - Math.max(...at.filter((b) => b <= k + 1e-9));
 };
-export const signalChanges = (from: number, to: number): number[] => {
+export const signalChanges = (from: number, to: number, green = DEFAULTS.green): number[] => {
+  const {half, at: marks} = bounds(green);
   const out: number[] = [];
-  for (let n = Math.floor((from + WARMUP) / (2 * HALF)) - 1; n * 2 * HALF - WARMUP <= to; n++) {
-    for (const b of BOUNDS) {
-      const at = n * 2 * HALF + b - WARMUP;
+  for (let n = Math.floor((from + WARMUP) / (2 * half)) - 1; n * 2 * half - WARMUP <= to; n++) {
+    for (const b of marks) {
+      const at = n * 2 * half + b - WARMUP;
       if (at > from && at <= to && !out.includes(at)) out.push(at);
     }
   }
@@ -159,8 +173,8 @@ const idm = (v: number, v0: number, gap: number, dv: number) => {
   return IDM.a * (1 - (v / v0) ** 4 - (want / Math.max(gap, 0.1)) ** 2);
 };
 
-export const simulate = (kind: Kind, span: number): Snapshot[] => {
-  const queue = arrivals(span);
+export const simulate = (kind: Kind, span: number, p: Params = DEFAULTS): Snapshot[] => {
+  const queue = arrivals(span, p.demand);
   const cars: Agent[] = [];
   const out: Snapshot[] = [];
   let next = 0;
@@ -180,7 +194,7 @@ export const simulate = (kind: Kind, span: number): Snapshot[] => {
       cars.push({id: id++, path, total: path.reduce((s, p) => s + p.len, 0), s: 0, v: 10, a: 0, born: t, waited: 0, from: arm, committed: false});
       next++;
     }
-    const sig = signal(t);
+    const sig = signal(t, p.green);
     const where = cars.map((c) => locate(c.path, c.s));
     const onRing = cars.map((c, k) => {
       const p = c.path[where[k].i];
@@ -274,6 +288,10 @@ export const simulate = (kind: Kind, span: number): Snapshot[] => {
 export const WARMUP = 25;                    // seconds simulated before the scene starts: queues already formed
 export const SPAN = 300;                     // a world may stay on screen for minutes: then its clock stops
 // simulated the first time they are needed (every documentary's render loads this module)
-const SIMS: Partial<Record<Kind, Snapshot[]>> = {};
-export const sim = (kind: Kind): Snapshot[] => (SIMS[kind] ??= simulate(kind, SPAN));
+const SIMS = new Map<string, Snapshot[]>();
+export const sim = (kind: Kind, p: Params = DEFAULTS): Snapshot[] => {
+  const id = `${kind}:${p.demand}:${p.green}`;
+  if (!SIMS.has(id)) SIMS.set(id, simulate(kind, SPAN, p));
+  return SIMS.get(id)!;
+};
 export const sample = (run: Snapshot[], t: number) => run[Math.max(0, Math.min(run.length - 1, Math.round((t + WARMUP) * FPS)))];

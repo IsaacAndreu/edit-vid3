@@ -3,7 +3,7 @@
 import type {CSSProperties, FC, ReactNode} from 'react';
 import {AbsoluteFill, Easing, interpolate, random, useCurrentFrame} from 'remotion';
 import '../theme';
-import {C as HUD, FONT, Label, Panel, Section, Tag, fade} from './hud';
+import {C as HUD, FONT, Label, Panel, Section, Tag, fade} from '../sim/hud';
 import {ATHLETES, RACE, distance, order, peakSpeed, speed, timeAt, type Athlete} from './race';
 
 export const FPS = 30;
