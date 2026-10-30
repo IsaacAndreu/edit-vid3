@@ -207,7 +207,7 @@ def run_stages(
                     with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
                         from . import stickman
 
-                        if stage.name in stickman.SKIP and stickman.active(ctx):   # drawn in code: no footage
+                        if stage.name in stickman.SKIP and stickman.drawn(ctx):    # drawn in code: no footage
                             stickman.skip(ctx, stage.name)
                         else:
                             stage.run(ctx)

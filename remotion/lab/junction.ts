@@ -252,7 +252,8 @@ export const simulate = (kind: Kind, span: number): Snapshot[] => {
 };
 
 export const WARMUP = 25;                    // seconds simulated before the scene starts: queues already formed
-export const SPAN = 140;
-export const LIGHTS = simulate('lights', SPAN);
-export const ROUNDABOUT = simulate('roundabout', SPAN);
-export const sample = (sim: Snapshot[], t: number) => sim[Math.max(0, Math.min(sim.length - 1, Math.round((t + WARMUP) * FPS)))];
+export const SPAN = 300;                     // a world may stay on screen for minutes: then its clock stops
+// simulated the first time they are needed (every documentary's render loads this module)
+const SIMS: Partial<Record<Kind, Snapshot[]>> = {};
+export const sim = (kind: Kind): Snapshot[] => (SIMS[kind] ??= simulate(kind, SPAN));
+export const sample = (run: Snapshot[], t: number) => run[Math.max(0, Math.min(run.length - 1, Math.round((t + WARMUP) * FPS)))];

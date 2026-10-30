@@ -672,10 +672,12 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                     graphic[side]["logo"] = logo(ctx, name) or (logo(ctx, name.split()[0]) if " " in name else None)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
-    from . import stickman
+    from . import simulacion, stickman
 
     if stickman.active(ctx):                                   # every shot drawn: no borrowed footage, no chalkboards
         added += [TimelineGroup.model_validate(g) for g in stickman.groups(ctx, shots, fps, [*groups, *added])]
+    elif simulacion.active(ctx):                               # every shot simulated, the voice choosing what shows
+        added += [TimelineGroup.model_validate(g) for g in simulacion.groups(ctx, shots, fps, [*groups, *added])]
     borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
     punches = fill_empty_shots(shots, [*groups, *added], fps) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
@@ -1332,7 +1334,7 @@ def run(ctx: RunContext) -> None:
     boards = set(fallback.unresolved) if cfg.get("pizarra", True) else set()
     from . import stickman
 
-    if stickman.active(ctx):                  # drawn in code: no shot has (or needs) footage
+    if stickman.drawn(ctx):                   # drawn in code: no shot has (or needs) footage
         boards |= {s.id for s in shots_file.shots}
     for shot_id in boards:
         media.pop(shot_id, None)

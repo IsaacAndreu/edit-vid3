@@ -285,6 +285,21 @@ export interface StickmanActor {
   size: number;
 }
 
+/** A shot of a simulation video (pipeline/simulacion.py): the simulated world, where the camera looks, which panel. */
+export interface SimGraphic {
+  type: 'sim';
+  world: 'cruces' | 'anillo';
+  focus: string;        // cruces: both | left | right · anillo: ring | chart
+  prev: string;         // the previous shot's focus (the camera moves from there)
+  overlay: string;      // cruces: none | labels | demand | queue | yield | results | conflicts · anillo: none | speed | brake | jam | chart
+  title: string;
+  stat: { label: string; value: string } | null;
+  list: string[];
+  at: number;           // seconds: when this shot starts in the video
+  since: number;        // seconds: when this world came on screen (its simulation's clock starts there)
+  cues?: { brake?: number; jam?: number };   // anillo: when the voice points at the brake and at the jam (video seconds)
+}
+
 export interface StickmanProp { icon: string; x: number; y: number; label: string; held: boolean }
 
 export interface StickmanGraphic {
@@ -353,6 +368,7 @@ export type Graphic =
   | CompareGraphic
   | BoardGraphic
   | StickmanGraphic
+  | SimGraphic
   | PostGraphic
   | ChartGraphic
   | TimelineGraphic

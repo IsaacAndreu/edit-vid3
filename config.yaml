@@ -339,6 +339,9 @@ qa:
 # visual: {style: stickman} (en canales/<canal>.yaml) = vídeo de monigotes dibujado en código, sin metraje: no se busca
 # ni se descarga nada y cada plano es una escena (poses, caras, objetos, lugares) elegida por el LLM. palette: color
 # (por defecto: lugares rellenos de color, camisetas de colores, rótulo en caja negra) o paper (líneas negras sobre papel).
+# visual: {style: simulacion} = vídeo de simulaciones vistas desde arriba, sin metraje (canales/hora-punta.yaml): cada
+# frase del guion recibe del LLM su escena (mundo simulado, foco de la cámara, panel, título, cifra dicha, lista final;
+# pipeline/simulacion.py) y la simulación corre sola mientras ese mundo sigue en pantalla.
 render:
   # Híbrido: los planos que son solo vídeo + crédito se montan con ffmpeg (rápido); el resto
   # (paneles, cifras, capítulos, fotos con Ken Burns) lo dibuja Remotion en una sola pasada.

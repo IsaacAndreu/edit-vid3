@@ -8,7 +8,7 @@ const P = {v0: 16, T: 0.7, a: 0.2, b: 1.5, s0: 1.0, noise: 0.08};
 export const PERTURB = {car: 0, from: 6, to: 7.5, decel: -1.5};     // one driver brakes a little
 const DT = 0.05;
 export const SAMPLE = 0.1;
-export const SPAN = 130;
+export const SPAN = 200;
 
 const mulberry = (seed: number) => () => {
   seed |= 0;
@@ -62,7 +62,33 @@ const simulate = (): Frame[] => {
 
 export const FRAMES = simulate();
 
-export const at = (t: number): Frame => FRAMES[Math.max(0, Math.min(FRAMES.length - 1, Math.round(t / SAMPLE)))];
+// before the start (t < 0) the cars were already going round at the same speed: the first frame, turned back
+export const at = (t: number): Frame => {
+  if (t >= 0) return FRAMES[Math.min(FRAMES.length - 1, Math.round(t / SAMPLE))];
+  const first = FRAMES[0];
+  return {x: first.x.map((x) => (((x + first.v[0] * t) % RING.length) + RING.length) % RING.length), v: first.v, a: first.a.map(() => 0)};
+};
+
+export const FIRST_STOP = FRAMES.findIndex((fr) => Array.from(fr.v).some((v) => v < 0.6)) * SAMPLE;
+
+/** The simulation's clock for a video time, so that the brake falls when the voice points at it (cues.brake) and the
+ * first car stands still when the voice speaks of the jam (cues.jam); in between it runs faster or slower, never
+ * backwards, and with no cue it runs `lapse` times faster than the video. */
+export const clock = (t: number, since: number, cues: {brake?: number; jam?: number} = {}, lapse = 2.5): number => {
+  const points: [number, number][] = [];
+  if (cues.brake !== undefined) points.push([cues.brake + 0.6, PERTURB.from]);
+  if (cues.jam !== undefined && (cues.brake === undefined || cues.jam > cues.brake + 1)) points.push([cues.jam + 0.8, FIRST_STOP]);
+  if (!points.length) return (t - since) * lapse;
+  const [t0, s0] = points[0];
+  if (t <= t0) return s0 - (t0 - t);                                  // real time up to the first cue
+  for (let i = 1; i < points.length; i++) {
+    const [a, sa] = points[i - 1];
+    const [b, sb] = points[i];
+    if (t <= b) return sa + ((t - a) / (b - a)) * (sb - sa);
+  }
+  const [tl, sl] = points[points.length - 1];
+  return sl + (t - tl) * (points.length > 1 ? 1.5 : lapse);
+};
 
 export const stopped = (t: number) => Array.from(at(t).v).filter((v) => v < 0.6).length;
 export const meanSpeed = (t: number) => Array.from(at(t).v).reduce((s, v) => s + v, 0) / RING.cars;

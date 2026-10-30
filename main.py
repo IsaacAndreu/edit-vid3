@@ -287,7 +287,7 @@ def needs_youtube(root: Path, slug: str) -> bool:
     try:
         from pipeline import stickman
 
-        if stickman.active(RunContext.create(slug, root=root)):     # drawn in code: no footage at all
+        if stickman.drawn(RunContext.create(slug, root=root)):      # drawn in code: no footage at all
             return False
     except Exception:
         pass

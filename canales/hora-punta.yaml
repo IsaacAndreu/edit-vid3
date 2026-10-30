@@ -1,0 +1,13 @@
+# Perfil del canal «Hora Punta»: tráfico y ciudad explicados con simulaciones vistas desde arriba (atascos, rotondas
+# contra semáforos, por qué tu ciudad está mal diseñada). Todo dibujado y simulado en código: ni YouTube ni metraje
+# de terceros. Úsalo con `canal: hora-punta` en materiales/<vídeo>/config.yaml.
+# Cada frase del guion recibe una escena (pipeline/simulacion.py): el mundo simulado (cruces: semáforo y rotonda con
+# los mismos coches · anillo: el atasco fantasma), dónde mira la cámara y qué panel sale, más títulos, cifras y la
+# lista final. La simulación corre sola; la voz solo mueve la cámara y trae los paneles.
+# Lo que no se pone aquí sale de config.yaml.
+
+visual:
+  style: simulacion
+
+graphics:
+  types: [chart, compare, timeline]   # los gráficos del programa, encima de la simulación, solo cuando aportan una cifra

@@ -38,6 +38,7 @@ import { Earth3D } from './Earth3D';
 import { Bars3D } from './Bars3D';
 import { Board } from './Board';
 import { Stickman } from './Stickman';
+import { SimScene } from './SimScene';
 import { Post } from './Post';
 import { GraphicFrame } from './GraphicFrame';
 import { Grain } from './Paper';
@@ -57,6 +58,9 @@ export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed
   graphic.type === 'stickman' ? (
     // a drawn scene per shot: hard cuts from one to the next, like footage
     <Stickman graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'sim' ? (
+    // one continuous simulation under the shots of a world: no entrance, the camera and panels change with the voice
+    <SimScene graphic={graphic} durationInFrames={durationInFrames} />
   ) : graphic.type === 'quote' ? (
     // subtitles over a real statement: no entrance, the clip itself is the picture
     <QuoteOverlay graphic={graphic} durationInFrames={durationInFrames} />

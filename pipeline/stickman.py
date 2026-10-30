@@ -51,12 +51,20 @@ def active(ctx: RunContext) -> bool:
     return str(ctx.section("visual").get("style") or "").lower() == "stickman"
 
 
+def drawn(ctx: RunContext) -> bool:
+    """The whole video is drawn in code (stickman or simulation): no footage to search, download or measure."""
+
+    from . import simulacion
+
+    return active(ctx) or simulacion.active(ctx)
+
+
 def skip(ctx: RunContext, stage: str) -> None:
     """A footage stage of a stickman video: its empty but valid result, without searching or downloading anything."""
 
     from .schemas import ShotsFile
 
-    print("   Vídeo de monigotes: sin metraje que buscar")
+    print("   Vídeo dibujado en código: sin metraje que buscar")
     if stage in ("sourcing", "analysis"):
         from .schemas import ShotCandidates, ShotScores
         from .sourcing import needs_footage

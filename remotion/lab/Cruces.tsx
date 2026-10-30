@@ -6,7 +6,7 @@ import {AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame} f
 import '../theme';
 import {BODY, Car, City, toScreen, type Cam} from './city';
 import {C, FONT, Label, Panel} from './hud';
-import {APPROACH, DEMAND, LANE, LIGHTS, RING_R, ROUNDABOUT, STOP, sample, type Snapshot} from './junction';
+import {APPROACH, DEMAND, LANE, RING_R, STOP, sample, sim, type Snapshot} from './junction';
 
 export type Line = {text: string; start: number; end: number; focus: 'both' | 'left' | 'right'; overlay: string};
 export type CrucesProps = {audio: string; duration: number; scenes: Line[]};
@@ -145,9 +145,9 @@ const conflictPoints = (kind: 'lights' | 'roundabout'): [number, number, string]
   return pts;
 };
 
-const Conflicts: FC<{cam: Cam; kind: 'lights' | 'roundabout'; o: number; t0: number; t: number}> = ({cam, kind, o, t0, t}) => {
+const Conflicts: FC<{cam: Cam; kind: 'lights' | 'roundabout'; o: number; reveal: number}> = ({cam, kind, o, reveal}) => {
   const pts = conflictPoints(kind);
-  const shown = Math.floor(interpolate(t, [t0 + (kind === 'lights' ? 0.3 : 4.2), t0 + (kind === 'lights' ? 3.2 : 5.4)], [0, pts.length], clamp));
+  const shown = Math.floor(Math.max(0, Math.min(1, reveal)) * pts.length);
   return (
     <g opacity={o}>
       {pts.slice(0, shown).map(([x, y, colour], i) => {
@@ -164,12 +164,11 @@ const Conflicts: FC<{cam: Cam; kind: 'lights' | 'roundabout'; o: number; t0: num
 };
 
 // --- one side of the split ------------------------------------------------------------------------------------------
-const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scale: number; t: number; line: Line; o: (name: string) => number}> = (
-  {kind, left, width, scale, t, line, o}) => {
+const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scale: number; simT: number; dim: boolean;
+                o: (name: string) => number; reveal: number}> = ({kind, left, width, scale, simT, dim, o, reveal}) => {
   const centre = left + width / 2;
   const cam: Cam = {x: (960 - centre) / scale, y: 0, s: scale};
-  const snap = sample(kind === 'lights' ? LIGHTS : ROUNDABOUT, t);
-  const focus = line.focus === 'both' || (line.focus === 'left') === (kind === 'lights');
+  const snap = sample(sim(kind), simT);
   const mark = (car: Snapshot['cars'][number]) => {
     if (kind === 'lights' && car.waiting && o('queue') > 0.5) return C.red;
     if (kind === 'roundabout' && car.waiting && o('yield') > 0.5) return C.accent;
@@ -181,17 +180,17 @@ const Side: FC<{kind: 'lights' | 'roundabout'; left: number; width: number; scal
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
         {kind === 'lights' ? <LightsJunction cam={cam} snap={snap} /> : <RoundaboutJunction cam={cam} />}
         <Cars cam={cam} snap={snap} mark={mark} />
-        <Conflicts cam={cam} kind={kind} o={o('conflicts')} t0={line.start} t={t} />
+        <Conflicts cam={cam} kind={kind} o={o('conflicts')} reveal={reveal} />
       </svg>
-      <AbsoluteFill style={{background: '#050814', opacity: focus ? 0 : 0.45}} />
+      <AbsoluteFill style={{background: '#050814', opacity: dim ? 0.45 : 0}} />
     </div>
   );
 };
 
 // --- panels -----------------------------------------------------------------------------------------------------------
-const stats = (sim: Snapshot[], t: number) => {
-  const a = sample(sim, 0);
-  const b = sample(sim, t);
+const stats = (run: Snapshot[], t: number) => {
+  const a = sample(run, 0);
+  const b = sample(run, t);
   const passed = b.finished - a.finished;
   return {passed, wait: passed ? (b.waited - a.waited) / passed : 0, waiting: b.cars.filter((c) => c.waiting).length};
 };
@@ -203,28 +202,21 @@ const Big: FC<{label: string; value: string; color?: string; style?: CSSProperti
   </Panel>
 );
 
-export const Cruces: FC<CrucesProps> = ({audio, scenes}) => {
-  const f = useCurrentFrame();
-  const t = f / FPS;
-  const k = current(scenes, t);
-  const line = scenes[k];
-  const {split, left, right} = layout(scenes, t);
-  // an overlay is on during its own line, fading in and out
-  const o = (name: string) => {
-    const s = scenes.find((x) => x.overlay === name);
-    if (!s) return 0;
-    const end = name === 'results' || name === 'conflicts' ? (scenes[scenes.indexOf(s) + 1]?.start ?? s.end + 3) - 0.1 : s.end + 0.3;
-    return interpolate(t, [s.start - 0.1, s.start + 0.35, end - 0.3, end], [0, 1, 1, 0], clamp);
-  };
-  const L = stats(LIGHTS, t);
-  const R = stats(ROUNDABOUT, t);
+/** The split screen at one moment: where the divider stands, how close each camera is, which side is in focus, the
+ * opacity of each overlay, how much of each set of conflict points shows (0-1). `simT`: the simulations' clock. */
+export type CrucesState = {simT: number; split: number; left: number; right: number; focus: 'both' | 'left' | 'right';
+                           o: (name: string) => number; revealLights: number; revealRound: number};
+
+export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o, revealLights, revealRound}) => {
+  const L = stats(sim('lights'), simT);
+  const R = stats(sim('roundabout'), simT);
   const perMinute = Math.round(60 / (1 / DEMAND + 1.2));
+  const green = sample(sim('lights'), simT).green;
   const titleStyle: CSSProperties = {position: 'absolute', top: 44, fontFamily: FONT, fontSize: 40, fontWeight: 800, color: C.text, textTransform: 'uppercase'};
   return (
     <AbsoluteFill style={{backgroundColor: C.night}}>
-      <Audio src={staticFile(audio)} />
-      <Side kind="lights" left={0} width={split} scale={left} t={t} line={line} o={o} />
-      <Side kind="roundabout" left={split} width={1920 - split} scale={right} t={t} line={line} o={o} />
+      <Side kind="lights" left={0} width={split} scale={left} simT={simT} dim={focus === 'right'} o={o} reveal={revealLights} />
+      <Side kind="roundabout" left={split} width={1920 - split} scale={right} simT={simT} dim={focus === 'left'} o={o} reveal={revealRound} />
       <div style={{position: 'absolute', left: split - 2, top: 0, width: 4, height: 1080, background: C.night}} />
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(5,8,18,0.55) 100%)', pointerEvents: 'none'}} />
 
@@ -239,7 +231,7 @@ export const Cruces: FC<CrucesProps> = ({audio, scenes}) => {
       <Big o={o('queue')} label="Esperando ahora" value={String(L.waiting)} color={C.red} style={{left: 48, bottom: 70}} />
       <Panel o={o('queue')} style={{left: 340, bottom: 70}}>
         <Label>Verde para</Label>
-        <div style={{fontSize: 34, fontWeight: 800, color: C.green}}>{sample(LIGHTS, t).green === 'EW' ? 'ESTE-OESTE' : sample(LIGHTS, t).green === 'NS' ? 'NORTE-SUR' : '—'}</div>
+        <div style={{fontSize: 34, fontWeight: 800, color: C.green}}>{green === 'EW' ? 'ESTE-OESTE' : green === 'NS' ? 'NORTE-SUR' : '—'}</div>
       </Panel>
       <Big o={o('yield')} label="Esperando ahora" value={String(R.waiting)} color={C.accent} style={{right: 48, bottom: 70}} />
       <Panel o={o('yield')} style={{right: 340, bottom: 70}}>
@@ -252,9 +244,8 @@ export const Cruces: FC<CrucesProps> = ({audio, scenes}) => {
       <Big o={o('results')} label="Han pasado" value={String(L.passed)} style={{left: 380, bottom: 70, width: 200}} />
       <Big o={o('results')} label="Han pasado" value={String(R.passed)} style={{left: split + 380, bottom: 70, width: 200}} />
 
-      <Big o={o('conflicts')} label="Puntos de choque" value="32" color={CROSS} style={{left: 48, bottom: 70, width: 220}} />
-      <Big o={o('conflicts') * interpolate(t, [(scenes.find((x) => x.overlay === 'conflicts')?.start ?? 0) + 4.2, (scenes.find((x) => x.overlay === 'conflicts')?.start ?? 0) + 4.6], [0, 1], clamp)}
-           label="Puntos de choque" value="8" color={C.green} style={{left: split + 48, bottom: 70, width: 220}} />
+      <Big o={o('conflicts') * Math.min(1, revealLights * 4)} label="Puntos de choque" value="32" color={CROSS} style={{left: 48, bottom: 70, width: 220}} />
+      <Big o={o('conflicts') * Math.min(1, revealRound * 4)} label="Puntos de choque" value="8" color={C.green} style={{left: split + 48, bottom: 70, width: 220}} />
       <Panel o={o('conflicts')} style={{left: '50%', top: 130, transform: 'translateX(-50%)', display: 'flex', gap: 22, padding: '10px 18px'}}>
         {[[CROSS, 'Cruce'], [MERGE, 'Incorporación'], [DIVERGE, 'Salida']].map(([colour, name]) => (
           <span key={name} style={{display: 'flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 700, letterSpacing: 1}}>
@@ -266,6 +257,32 @@ export const Cruces: FC<CrucesProps> = ({audio, scenes}) => {
       <div style={{position: 'absolute', left: 48, bottom: 24, fontFamily: FONT, fontSize: 14, letterSpacing: 1.2, color: 'rgba(255,255,255,0.5)'}}>
         SIMULACIÓN · MISMAS LLEGADAS EN LOS DOS CRUCES · {APPROACH} M DE ACCESO POR CALLE
       </div>
+    </AbsoluteFill>
+  );
+};
+
+export const LAYOUTS = LAYOUT;
+
+// the lab's narrated test: one line of escenas.json at a time
+export const Cruces: FC<CrucesProps> = ({audio, scenes}) => {
+  const f = useCurrentFrame();
+  const t = f / FPS;
+  const line = scenes[current(scenes, t)];
+  const {split, left, right} = layout(scenes, t);
+  // an overlay is on during its own line, fading in and out
+  const o = (name: string) => {
+    const s = scenes.find((x) => x.overlay === name);
+    if (!s) return 0;
+    const end = name === 'results' || name === 'conflicts' ? (scenes[scenes.indexOf(s) + 1]?.start ?? s.end + 3) - 0.1 : s.end + 0.3;
+    return interpolate(t, [s.start - 0.1, s.start + 0.35, end - 0.3, end], [0, 1, 1, 0], clamp);
+  };
+  const c = scenes.find((x) => x.overlay === 'conflicts');
+  return (
+    <AbsoluteFill>
+      <Audio src={staticFile(audio)} />
+      <CrucesView simT={t} split={split} left={left} right={right} focus={line.focus} o={o}
+                  revealLights={c ? interpolate(t, [c.start + 0.3, c.start + 3.2], [0, 1], clamp) : 0}
+                  revealRound={c ? interpolate(t, [c.start + 4.2, c.start + 5.4], [0, 1], clamp) : 0} />
     </AbsoluteFill>
   );
 };

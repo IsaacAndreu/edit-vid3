@@ -258,7 +258,7 @@ def gate(ctx: Any) -> dict[str, Any]:
     from . import stickman
     from .coldopen import opening_seconds
 
-    if stickman.active(ctx):                     # drawn in code: no footage to measure
+    if stickman.drawn(ctx):                      # drawn in code: no footage to measure
         return {}
     cfg = ctx.section("without_youtube")
     found = coverage(ctx)
