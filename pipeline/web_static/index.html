@@ -6,36 +6,52 @@
 <title>Estudio de vídeos</title>
 <style>
   :root {
-    --bg: #0d1117; --panel: #161b22; --panel2: #1f2630; --line: #2b3440; --text: #e6edf3; --muted: #8b98a8;
+    --bg: #0b0f16; --panel: #121821; --panel2: #1a2230; --line: #243042; --text: #e8eef6; --muted: #8c99ab;
     --accent: #f5b301; --ok: #3fb950; --bad: #f85149; --work: #58a6ff; --wait: #a371f7;
-    --radius: 12px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --radius: 14px; --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --shadow: 0 1px 2px rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.18); --side: 248px;
   }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --line: #dfe3e8; --text: #1b1f24; --muted: #5b6570; }
+    :root { --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef1f5; --line: #e1e6ed; --text: #172030; --muted: #5d6878;
+            --shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 18px rgba(16,24,40,.06); }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
   a { color: var(--work); text-decoration: none; }
-  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
-           display: flex; gap: 12px; align-items: center; padding: 10px 20px; flex-wrap: wrap; }
-  header b { font-size: 17px; margin-right: 8px; }
-  header nav { display: flex; gap: 4px; flex-wrap: wrap; }
-  header nav a { color: var(--muted); padding: 6px 9px; border-radius: 8px; font-size: 14px; }
-  header nav a.on, header nav a:hover { color: var(--text); background: var(--panel2); }
-  header nav { align-items: center; }
-  header nav a.newv { background: var(--accent); color: #1b1300; font-weight: 700; margin-left: 4px; }
-  .dd { position: relative; }
-  .dd > button { background: none; border: 0; color: var(--muted); font-weight: 400; font-size: 14px; padding: 6px 9px; }
-  .dd > button:hover, .dd.open > button, .dd.on > button { color: var(--text); background: var(--panel2); }
-  .dd .menu { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 250px; background: var(--panel);
-              border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-  .dd .menu.right { left: auto; right: 0; }
-  .dd.open .menu { display: block; }
-  @media (max-width: 700px) {                    /* on a phone the menu spans the header, under it */
-    .dd { position: static; } .dd .menu, .dd .menu.right { left: 12px; right: 12px; top: 100%; min-width: 0; }
+  ::selection { background: rgba(245,179,1,.35); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* --- navigation: a sidebar on a computer, a drawer on a phone --- */
+  header { position: fixed; z-index: 10; top: 0; left: 0; bottom: 0; width: var(--side); background: var(--panel);
+           border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 16px 12px; overflow-y: auto; }
+  header .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; font-weight: 800; font-size: 17px; letter-spacing: -.01em; }
+  header .brand i { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), #ff7a00);
+                    display: grid; place-items: center; font-style: normal; font-size: 16px; color: #1b1300; }
+  header .burger { display: none; }
+  header nav { display: flex; flex-direction: column; gap: 1px; }
+  header nav .sec { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+                    padding: 16px 10px 6px; opacity: .8; }
+  header nav a { color: var(--muted); padding: 7px 10px; border-radius: 9px; font-size: 14px; display: flex; gap: 10px; align-items: center;
+                 transition: background .15s, color .15s; }
+  header nav a .ic { width: 20px; text-align: center; flex: none; }
+  header nav a:hover { color: var(--text); background: var(--panel2); }
+  header nav a.on { color: var(--text); background: var(--panel2); font-weight: 650; box-shadow: inset 3px 0 0 var(--accent); }
+  header nav a.newv { background: var(--accent); color: #1b1300; font-weight: 750; justify-content: center; margin: 2px 0 6px; padding: 9px 10px; box-shadow: none; }
+  header nav a.newv:hover { filter: brightness(1.06); }
+  header form { margin: 4px 0 2px; } header form input { padding: 8px 11px; font-size: 14px; }
+  header .foot { margin-top: auto; padding: 14px 10px 0; border-top: 1px solid var(--line); }
+  body.authed main { margin-left: var(--side); }
+  @media (max-width: 1000px) {
+    header { position: sticky; width: auto; bottom: auto; flex-direction: row; align-items: center; padding: 10px 14px; gap: 10px;
+             border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+    header .brand { padding: 0; }
+    header .burger { display: inline-block; margin-left: auto; padding: 7px 12px; }
+    header nav, header form, header .foot { display: none; }
+    body.menu header { flex-wrap: wrap; }
+    body.menu header nav, body.menu header form { display: flex; width: 100%; }
+    body.menu header nav { max-height: 70vh; overflow-y: auto; padding-bottom: 8px; }
+    body.menu header form input { width: 100%; }
+    body.authed main { margin-left: 0; }
   }
-  .dd .menu a { display: block; color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 14px; }
-  .dd .menu a span { display: block; font-size: 12px; color: var(--muted); }
   main { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; }
   h1 { font-size: 22px; margin: 0 0 16px; } h2 { font-size: 17px; margin: 26px 0 10px; }
   .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -98,7 +114,7 @@
   .vids { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   .vids .card { padding: 0; overflow: hidden; } .vids img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
   .vids .body { padding: 10px 12px; } .big { font-size: 20px; font-weight: 800; color: var(--accent); }
-  .chips { position: sticky; top: 54px; z-index: 4; background: var(--bg); display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; }
+  .chips { position: sticky; top: 0; z-index: 4; background: var(--bg); display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; }
   .chips a { white-space: nowrap; padding: 6px 14px; border-radius: 99px; background: var(--panel2); color: var(--text); font-size: 14px; }
   .kicker { color: var(--ok); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-top: 34px; }
   .heat { display: grid; grid-template-columns: 44px repeat(8, 1fr); gap: 5px; font-size: 12px; }
@@ -198,36 +214,69 @@
   .upl[open] > summary { border-bottom: 1px solid var(--line); } .upl > .in { padding: 4px 16px 16px; }
   .daylabel { margin: 22px 0 4px; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .daylabel.late { color: var(--bad); } .daylabel.today { color: var(--accent); }
+  /* --- finish: one look for every page --- */
+  main { max-width: 1240px; padding: 28px 28px 80px; }
+  @media (max-width: 1000px) { main { padding: 18px 14px 60px; } .chips { top: 56px; } }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 18px; }
+  h2 { font-size: 13px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 30px 0 10px; }
+  h3 { letter-spacing: -.01em; }
+  .card, .block, .kpi, .upl, .slot { box-shadow: var(--shadow); }
+  .card { border-radius: var(--radius); padding: 18px; }
+  .card.click, a.kpi, .vrow, .vids .card { transition: border-color .15s, transform .15s, background .15s; }
+  .card.click:hover, .vids .card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .kpi { border-radius: var(--radius); padding: 16px 18px; } .kpi .v { font-size: 28px; letter-spacing: -.02em; }
+  .pill { padding: 3px 10px; font-weight: 650; letter-spacing: .01em; }
+  .pill.hecho { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+  .pill.error { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+  .pill.haciendo { background: color-mix(in srgb, var(--work) 16%, transparent); }
+  .pill.cola { background: color-mix(in srgb, var(--wait) 16%, transparent); }
+  button, .btn { border-radius: 10px; transition: background .15s, border-color .15s, filter .15s, transform .05s; }
+  button:hover:not(:disabled), .btn:hover { border-color: var(--muted); }
+  button:active:not(:disabled), .btn:active { transform: translateY(1px); }
+  button.main:hover:not(:disabled), .btn.main:hover { filter: brightness(1.07); border-color: var(--accent); }
+  input, select, textarea { border-radius: 10px; transition: border-color .15s, box-shadow .15s; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  label { font-size: 14px; }
+  table th { font-size: 12px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  table tr:hover td { background: color-mix(in srgb, var(--panel2) 55%, transparent); }
+  .tabs { border-bottom: 1px solid var(--line); gap: 2px; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); padding: 9px 12px; }
+  .tabs button.on { background: none; color: var(--text); border-bottom-color: var(--accent); }
+  .notice { border-radius: 12px; }
+  .block > .bh { background: color-mix(in srgb, var(--panel2) 40%, transparent); }
+  pre { border: 1px solid var(--line); }
+  #login { box-shadow: var(--shadow); }
 </style>
 </head>
 <body>
 <header id="top" class="hide">
-  <b>🎬 Estudio</b>
+  <div class="brand"><i>▶</i>Estudio</div>
+  <button class="burger" type="button" onclick="document.body.classList.toggle('menu')" aria-label="Menú">☰</button>
+  <form onsubmit="event.preventDefault();const q=this.q.value.trim();if(q)location.hash='#/buscar/'+encodeURIComponent(q)">
+    <input name="q" placeholder="🔎 ¿Ya lo hice?"></form>
   <nav>
-    <a href="#/">Inicio</a>
-    <a href="#/subir">Para subir</a>
-    <div class="dd"><button type="button">Planificar ▾</button><div class="menu">
-      <a href="#/guiones">📝 Guiones <span>qué falta por escribir</span></a>
-      <a href="#/calendario">📅 Calendario <span>qué sale cada día</span></a>
-      <a href="#/tablero">🗂 Tablero <span>ideas en marcha</span></a>
-      <a href="#/videos">🎞 Todos los vídeos <span>lista entera, canal de cada uno</span></a></div></div>
-    <div class="dd"><button type="button">Crecer ▾</button><div class="menu">
-      <a href="#/competencia">📡 Radar <span>competencia, nichos y huecos</span></a>
-      <a href="#/canal">📈 Mi canal <span>qué funciona en tus vídeos</span></a>
-      <a href="#/estadisticas">📊 Estadísticas <span>visitas, horas y cómo se hizo</span></a>
-      <a href="#/gasto">💸 Gasto de API <span>media por canal y por vídeo</span></a>
-      <a href="#/experimentos">🧪 Experimentos <span>qué cambio funciona y cuál no</span></a>
-      <a href="#/piloto">🛫 Piloto automático <span>de la idea al vídeo, solo</span></a></div></div>
-    <div class="dd"><button type="button">⚙️ ▾</button><div class="menu right">
-      <a href="#/biblioteca">📚 Biblioteca <span>clips guardados por persona</span></a>
-      <a href="#/errores">🧐 Errores <span>clips marcados como malos</span></a>
-      <a href="#/servidor">🖥 Estado del servidor <span>RAM, cuota, proxy, cola, copias</span></a>
-      <a href="#/ajustes">⚙️ Ajustes <span>pausa, límites, voces, actualizar</span></a></div></div>
     <a href="#/nuevo" class="newv">＋ Nuevo vídeo</a>
+    <div class="sec">Producción</div>
+    <a href="#/"><span class="ic">🏠</span>Inicio</a>
+    <a href="#/subir"><span class="ic">⬆️</span>Para subir</a>
+    <a href="#/videos"><span class="ic">🎞</span>Todos los vídeos</a>
+    <a href="#/guiones"><span class="ic">📝</span>Guiones</a>
+    <a href="#/calendario"><span class="ic">📅</span>Calendario</a>
+    <a href="#/tablero"><span class="ic">🗂</span>Tablero de ideas</a>
+    <div class="sec">Crecer</div>
+    <a href="#/competencia"><span class="ic">📡</span>Radar</a>
+    <a href="#/canal"><span class="ic">📈</span>Mi canal</a>
+    <a href="#/estadisticas"><span class="ic">📊</span>Estadísticas</a>
+    <a href="#/experimentos"><span class="ic">🧪</span>Experimentos</a>
+    <a href="#/piloto"><span class="ic">🛫</span>Piloto automático</a>
+    <div class="sec">Sistema</div>
+    <a href="#/biblioteca"><span class="ic">📚</span>Biblioteca</a>
+    <a href="#/errores"><span class="ic">🧐</span>Clips marcados</a>
+    <a href="#/gasto"><span class="ic">💸</span>Gasto de API</a>
+    <a href="#/servidor"><span class="ic">🖥</span>Estado del servidor</a>
+    <a href="#/ajustes"><span class="ic">⚙️</span>Ajustes</a>
   </nav>
-  <form onsubmit="event.preventDefault();const q=this.q.value.trim();if(q)location.hash='#/buscar/'+encodeURIComponent(q)" style="margin-left:auto">
-    <input name="q" placeholder="🔎 ¿Ya lo hice?" style="width:150px;padding:6px 10px"></form>
-  <span id="service" class="small muted"></span>
+  <div class="foot"><span id="service" class="small muted"></span></div>
 </header>
 <main id="app"></main>
 
@@ -2114,6 +2163,7 @@ function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (
 
 async function route() {
   clearTimeout(timer);
+  document.body.classList.remove("menu");
   const hash = location.hash || "#/";
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
@@ -2167,6 +2217,7 @@ async function start() {
   const session = await fetch("/api/session").then((r) => r.json());
   if (!session.authorised) return showLogin();
   $("#top").classList.remove("hide");
+  document.body.classList.add("authed");
   window.onhashchange = () => { tab = "diagnosis"; route(); };
   route();
 }
