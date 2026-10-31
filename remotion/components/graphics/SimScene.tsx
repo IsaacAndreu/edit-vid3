@@ -35,6 +35,8 @@ export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps:
   const hits = [...(own.hits ?? []), ...(graphic.replay && length >= 5 ? [Math.min(1.5, length * 0.3)] : []),
                 ...(graphic.rulesOff && graphic.rulesOff.length > 0 ? [0.6] : []), ...(hold > 0 ? [holdFrom] : []),
                 ...(graphic.teaser ? [0.05, length - 0.12] : [])].filter((s) => s >= 0 && s < length).sort((a, b) => a - b);
+  // a softer hit when a key figure lands (the panel's number the voice says)
+  const figure = graphic.stat && graphic.statAt !== undefined && graphic.statAt >= 0 && graphic.statAt < length ? [graphic.statAt] : [];
   const clicks = (own.clicks ?? []).filter((s) => hold <= 0 || s < holdFrom);
   const beeps = (own.beeps ?? []).filter((s) => hold <= 0 || s < holdFrom);
   const dings = (own.dings ?? []).filter((s) => hold <= 0 || s < holdFrom);
@@ -55,6 +57,7 @@ export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps:
       {at(beeps, sounds.beep, 'b', 0.16, 6)}
       {at(dings, sounds.ding, 'd', 0.3, Math.round(1.3 * fps))}
       {at(hits, sounds.impact, 'h', 0.45, Math.round(1.1 * fps))}
+      {at(figure.filter((s) => !hits.some((h) => Math.abs(h - s) < 0.4)), sounds.impact, 'f', 0.22, Math.round(1.1 * fps))}
     </>
   );
 };

@@ -648,6 +648,8 @@ async function videoPage(slug) {
       <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div></div>` : "";
   const titles = v.youtubeTxt ? `<h2>Para YouTube</h2><div class="card"><pre id="yt">${esc(v.youtubeTxt)}</pre>
       <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">Copiar</button></div>` : "";
+  const scenesPreview = v.scenesPreview ? `<h2>Vista previa de las escenas</h2><div class="card"><a href="${base + v.scenesPreview}" target="_blank">
+      <img src="${base + v.scenesPreview}" style="max-width:100%;border-radius:8px"></a><div class="small muted">Una imagen de cada escena, sacada antes del render.</div></div>` : "";
   const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
       `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
   const dubState = (d) => d.manual ? "✅ doblado por ti (la cola no lo hace)" : d.done ? `✅ hecho · <a href="#/video/${encodeURIComponent(d.slug)}">ver ${esc(d.slug)}</a>`
@@ -728,7 +730,7 @@ async function videoPage(slug) {
       <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a>
         <button onclick="exportPremiere(this)" title="Una carpeta con timeline.xml, los clips en pistas, la voz, la música, los efectos y los subtítulos">🎞️ Proyecto para Premiere / DaVinci</button>
         <span id="exportBox" class="small"></span></div>` : ""}
-    ${titles}${thumbs}${shorts}${dubs}
+    ${scenesPreview}${titles}${thumbs}${shorts}${dubs}
     ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
     ${v.published ? '<div id="whyBox"></div>' : ""}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>

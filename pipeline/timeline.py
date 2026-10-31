@@ -1477,6 +1477,8 @@ def run(ctx: RunContext) -> None:
     if simulacion.active(ctx) and fps and int(video.get("width", 1920)) > int(video.get("height", 1080)):
         # «¿tú qué harías?»: the voice and the world stop on the question (not in a Short: it would cut it in two)
         timeline = simulacion.with_asks(timeline, fps, float(ctx.section("visual").get("ask_seconds", simulacion.ASK_SECONDS)))
+        # a breath at each change of scene: the picture changes, then the voice goes on
+        timeline = simulacion.with_breaths(timeline, fps, float(ctx.section("visual").get("breath_seconds", simulacion.BREATH_SECONDS)))
     # half a second of silence as each chapter begins (pacing.chapter_pause), before the cold open shifts frames
     timeline = with_chapter_pauses(timeline, float(ctx.section("pacing").get("chapter_pause", 0.5)), fps)
     if opening:

@@ -476,6 +476,43 @@ class Renderer:
             shutil.rmtree(bundle_dir, ignore_errors=True)
             shutil.rmtree(public_dir, ignore_errors=True)
 
+    def stills(self, composition: str, props: dict[str, Any], frames: list[int], public: set[str]) -> list[Path]:
+        """A few frames of a composition as JPEGs (one bundle, one still each): the scenes' preview."""
+
+        public_dir = self.dir / "public"
+        bundle_dir = self.dir / "bundle-stills"
+        shutil.rmtree(public_dir, ignore_errors=True)
+        shutil.rmtree(bundle_dir, ignore_errors=True)
+        for rel in public:
+            source, target = self.ctx.work_dir / rel, public_dir / rel
+            if not rel or not source.is_file():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(source, target)
+            except OSError:
+                shutil.copy2(source, target)
+        props_file = self.dir / f"{composition}.stills.props.json"
+        props_file.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
+        npx = shutil.which("npx") or "npx"
+        root = str(self.ctx.root)
+        ensure_node_modules(self.ctx.root)
+        out: list[Path] = []
+        try:
+            subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
+                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
+            browser = _browser(self.cfg)
+            for n, frame in enumerate(frames):
+                target = self.dir / f"still-{n:02d}.jpg"
+                cmd = [npx, "remotion", "still", str(bundle_dir), composition, str(target), f"--props={props_file}", f"--frame={frame}",
+                       "--image-format=jpeg", "--jpeg-quality=70", "--log=error", *([f"--browser-executable={browser}"] if browser else [])]
+                if subprocess.run(cmd, cwd=root, capture_output=True, text=True).returncode == 0 and target.is_file():
+                    out.append(target)
+        finally:
+            shutil.rmtree(bundle_dir, ignore_errors=True)
+            shutil.rmtree(public_dir, ignore_errors=True)
+        return out
+
     def sequence_dir(self, name: str) -> Path:
         """Folder for a PNG sequence. Remotion takes anything after a dot in the path for an extension and refuses
         it ('video1.ice' → '.ice\\render\\badges'), so never under the video's own folder."""
@@ -808,6 +845,70 @@ def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "timeline.json", ctx.root / "remotion", ctx.root / "pipeline" / "render.py"]
 
 
+PREVIEW = "vista-previa.jpg"
+
+
+def scenes_preview(r: "Renderer", timeline: dict[str, Any]) -> Path | None:
+    """Before the long render of a simulation video: one frame of each scene (up to 12, late in each, the opening
+    first), tiled into out/<slug>/vista-previa.jpg and sent to Telegram / email — if something looks wrong, stop it in
+    the studio instead of waiting for the whole render. Done once per montage."""
+
+    from . import simulacion
+
+    if not simulacion.active(r.ctx):
+        return None
+    fps = int(timeline["fps"])
+    sims = sorted([g for g in timeline["groups"] if (g.get("graphic") or {}).get("type") == "sim"], key=lambda g: g["from"])
+    if not sims:
+        return None
+    runs: list[list[dict[str, Any]]] = []
+    for g in sims:
+        key = (g["graphic"]["world"], (g["graphic"].get("params") or {}).get("scene"), g["graphic"].get("teaser"))
+        if runs and (runs[-1][-1]["graphic"]["world"], (runs[-1][-1]["graphic"].get("params") or {}).get("scene"),
+                     runs[-1][-1]["graphic"].get("teaser")) == key:
+            runs[-1].append(g)
+        else:
+            runs.append([g])
+    if len(runs) > 12:                                   # spread over the video
+        step = len(runs) / 12
+        runs = [runs[int(k * step)] for k in range(12)]
+    frames = [min(timeline["durationInFrames"] - 1, run[0]["from"] + int((run[-1]["from"] + run[-1]["durationInFrames"] - run[0]["from"]) * 0.6))
+              for run in runs]
+    key = _hash(VERSION, frames, [g["graphic"] for g in sims])
+    out = r.ctx.out_dir / PREVIEW
+    stamp = r.dir / "vista-previa.key"
+    if out.is_file() and stamp.is_file() and stamp.read_text() == key:
+        return out
+    started = time.monotonic()
+    public = {s["media"]["src"] for s in timeline["shots"] if s.get("media")} | {timeline["audio"]["voice"]}
+    public |= {m["src"] for g in timeline["groups"] for m in graphic_media(g.get("graphic"))}
+    shots = r.stills("Documentary", timeline, frames, public)
+    if not shots:
+        return None
+    cols = 4 if len(shots) > 6 else 3 if len(shots) > 4 else 2
+    rows = (len(shots) + cols - 1) // cols
+    wide = int(timeline["width"]) >= int(timeline["height"])
+    w, h = (640, 360) if wide else (360, 640)
+    inputs = [x for p in shots for x in ("-i", str(p))]
+    cells = "".join(f"[{i}]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}];" for i in range(len(shots)))
+    joined = "".join(f"[v{i}]" for i in range(len(shots))) + f"concat=n={len(shots)}:v=1:a=0,tile={cols}x{rows}:padding=6:color=0x0b1020[out]"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *inputs, "-filter_complex", cells + joined,
+                    "-map", "[out]", "-frames:v", "1", str(out)], check=True)
+    for p in shots:
+        p.unlink(missing_ok=True)
+    stamp.write_text(key)
+    print(f"   Vista previa de {len(shots)} escenas en {time.monotonic() - started:.0f} s → {out}")
+    try:
+        from .notify import send
+
+        send(r.ctx, f"👀 Vista previa · {r.ctx.slug}",
+             f"Una imagen de cada escena, antes del render ({len(shots)}). Si algo pinta mal, páralo en el estudio; si no, no hagas nada.", [out])
+    except Exception as error:                      # noqa: BLE001 — the preview is there anyway
+        print(f"   Vista previa sin enviar ({type(error).__name__})")
+    return out
+
+
 def run(ctx: RunContext) -> None:
     started = time.monotonic()
     timeline = ctx.read_json("timeline.json")
@@ -822,6 +923,10 @@ def run(ctx: RunContext) -> None:
           f"Remotion {slow_frames} fotogramas ({len(slow)} tramos)"
           + (" · pantalla final aparte (en caché)" if any(s.kind == "endscreen" for s in segments) else ""))
 
+    try:                                        # a simulation video: a frame of each scene first, to look at
+        scenes_preview(r, timeline)
+    except Exception as error:                  # the video does not depend on it
+        print(f"   Vista previa no disponible ({type(error).__name__}: {str(error)[:120]})")
     track = sim_track(r, timeline)              # a simulation video: its street, clicks and ticks, under the voice
     if track:
         timeline["audio"]["simTrack"] = track

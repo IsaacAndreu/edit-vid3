@@ -216,3 +216,13 @@ def test_the_wildcard_keeps_only_figures_the_voice_says_and_stays_short():
              "c": {"world": "anillo", "focus": "ring", "params": {}}}
     out = simulacion.steady(found, [("a", 0, 900), ("b", 900, 1080), ("c", 1080, 2000)], 30)
     assert out["b"]["world"] == "explica"                                                   # 6 s, and it stays
+
+
+def test_a_breath_at_each_change_of_scene():
+    tl = _timeline([{"world": "anillo"}, {"world": "anillo"}, {"world": "colas", "params": {"scene": "comparar"}},
+                    {"world": "colas", "params": {"scene": "limite"}}])
+    out = simulacion.with_breaths(tl, 30, 0.6)
+    assert out.durationInFrames == tl.durationInFrames + 2 * 18                 # anillo → colas, comparar → limite
+    assert [g.from_ for g in out.groups] == [0, 600, 1218, 1836]
+    assert [gap for _, gap in out.audio.voiceGaps] == [18, 18]
+    assert all("askHold" not in g.graphic for g in out.groups)

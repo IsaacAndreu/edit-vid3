@@ -810,13 +810,36 @@ def with_asks(timeline: Any, fps: int, seconds: float = ASK_SECONDS) -> Any:
     that long (the world frozen with the question and a countdown, SimScene); everything after it moves, the world's
     clock with it (it goes on where it stopped). Run while timeline frames are still voice frames plus gaps."""
 
+    ids = [g.id for g in timeline.groups if (g.graphic or {}).get("type") == "sim" and (g.graphic or {}).get("ask")]
+    return _hold(timeline, ids, round(seconds * fps), fps, freeze=True)
+
+
+BREATH_SECONDS = 0.6
+
+
+def with_breaths(timeline: Any, fps: int, seconds: float = BREATH_SECONDS) -> Any:
+    """A breath at every change of scene (another world, or another scene of it): the voice stops `seconds` while the
+    scene before it finishes on screen, so the change does not run under the words (hora1, sim3: the voice talked
+    straight over every cut). Run while timeline frames are still voice frames plus gaps."""
+
+    sims = sorted([g for g in timeline.groups if (g.graphic or {}).get("type") == "sim"], key=lambda g: g.from_)
+    key = lambda g: (g.graphic.get("world"), (g.graphic.get("params") or {}).get("scene"))   # noqa: E731
+    ids = [a.id for a, b in zip(sims, sims[1:]) if key(a) != key(b) and a.from_ + a.durationInFrames == b.from_
+           and not a.graphic.get("ask") and not b.graphic.get("list")]
+    return _hold(timeline, ids, round(seconds * fps), fps, freeze=False)
+
+
+def _hold(timeline: Any, ids: list[str], frames: int, fps: int, freeze: bool) -> Any:
+    """The groups `ids` last `frames` longer and the voice stops that long where each ends; everything after moves (the
+    worlds' clocks with it). `freeze`: the world stands still meanwhile (askHold, «¿tú qué harías?»)."""
+
     from .camera import voice_frame_at
     from .schemas import Timeline
 
-    frames = round(seconds * fps)
     if frames <= 0:
         return timeline
-    for gid in [g.id for g in timeline.groups if (g.graphic or {}).get("type") == "sim" and (g.graphic or {}).get("ask")]:
+    seconds = frames / fps
+    for gid in ids:
         group = next(g for g in timeline.groups if g.id == gid)
         end = group.from_ + group.durationInFrames
         if not any(s.from_ + s.durationInFrames == end for s in timeline.shots):
@@ -833,7 +856,7 @@ def with_asks(timeline: Any, fps: int, seconds: float = ASK_SECONDS) -> Any:
                 return item.model_copy(update=update)
             if item.from_ + getattr(item, "durationInFrames", 0) >= end and hasattr(item, "durationInFrames"):
                 update = {"durationInFrames": item.durationInFrames + frames}
-                if getattr(item, "id", None) == gid:
+                if getattr(item, "id", None) == gid and freeze:
                     update["graphic"] = {**item.graphic, "askHold": round(frames / fps, 3)}
                 return item.model_copy(update=update)
             return item

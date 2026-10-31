@@ -506,6 +506,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "diagnosis": read("diagnostico.md"), "factcheck": read("verificacion.md"), "youtubeTxt": read("youtube.txt"),
         "graphics": read("graficos.md"), "hook": read("gancho.md"), "retention": read("retencion.md"), "audit": audit_text(root, slug),
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
+        "scenesPreview": "vista-previa.jpg" if "vista-previa.jpg" in files else "",
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],
         "files": files,
         "preview": ensure_preview(root, slug) if summary.get("hasVideo") else False,
