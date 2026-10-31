@@ -191,7 +191,7 @@
   },
   "contagio": {
     "niche": "epidemias y bulos",
-    "describe": "400 personas que van y vienen por un barrio visto desde arriba; una empieza contagiada (o creyéndose un bulo) y se transmite al cruzarse. Elige scene según la frase: barrio (el barrio con la gente contagiándose al cruzarse, con sus contadores y la curva) · comparar (a la izquierda sin hacer nada, a la derecha que (que = cuarentena: los enfermos en casa; vacunas: 70 % vacunados): sin medidas se contagian 397 de 400, con cuarentena 2, con 70 % vacunados 48) · curva (aplanar la curva: contagiados a la vez día a día sin medidas, con 50 % vacunados y con cuarentena, con la línea de las camas del hospital) · vacunas (de los no vacunados, cuántos se contagian según cuánta gente está vacunada: 88 % con la mitad vacunada, 41 % con 70 %, casi nadie con 80 %: la inmunidad de grupo) · bulo (lo mismo con un bulo que la gente se cree y comparte)",
+    "describe": "400 personas que van y vienen por un barrio visto desde arriba; una empieza contagiada (o creyéndose un bulo) y se transmite al cruzarse. Elige scene según la frase: barrio (el barrio con la gente contagiándose al cruzarse, con sus contadores y la curva) · comparar (a la izquierda sin hacer nada, a la derecha que (que = cuarentena: los enfermos en casa; vacunas: 70 % vacunados): sin medidas se contagian 397 de 400, con cuarentena 2, con 70 % vacunados 48) · curva (aplanar la curva: contagiados a la vez día a día sin medidas, con 50 % vacunados y con cuarentena, con la línea de las camas del hospital) · vacunas (de los no vacunados, cuántos se contagian según cuánta gente está vacunada: 88 % con la mitad vacunada, 41 % con 70 %, casi nadie con 80 %: la inmunidad de grupo) · bulo (lo mismo con un bulo que la gente se cree y comparte · oficina (una oficina real vista desde arriba, como un plano: 36 personas con sus mesas en islas, la sala de reuniones acristalada con su ventana, el rincón del café y los ascensores; llegan por la mañana, se sientan, van a por café y a reuniones, se van; el lunes el paciente cero llega tosiendo; el contagio va de cerca y por el aire de cada sala, que se tiñe de rojo al cargarse. Sin hacer nada: lunes 4 contagiados, martes 14 (la reunión del martes con la ventana cerrada), miércoles 20, viernes 35 de 36; con ventana: 1 la abre (martes 8, miércoles 14); con quarantine: 1 los que tosen se quedan en casa (viernes 12, aunque siguen contagiando los que aún no tienen síntomas). dia: 0 lunes … 4 viernes (el día con que empieza el plano); ritmo: 0 en directo (1 s = 1 min), 1 normal (1 s = 6 min), 2 la semana entera en 15 s. Overlays: zero (el paciente cero tosiendo), counts (contagiados), aire (el aire de las salas), red (quién contagió a quién: la red de cruces que nadie ve), tu (tú: alguien que se contagió el jueves sin haber hablado con el paciente cero)) · oficinas (dos oficinas iguales: izquierda como siempre, derecha con que = cuarentena (los enfermos en casa: 12 contagiados el viernes contra 35) | ventana (la ventana de la sala abierta)) · snow (el mapa de John Snow: Soho, Londres, 1854: las calles, la fuente de Broad Street y cada muerte como una raya negra junto a su casa, amontonándose alrededor de la fuente; abajo las muertes por día de su tabla, que ya bajaban cuando quitaron la palanca el 8 de septiembre; 616 en total) · super (supercontagiadores: 40 enfermos con R ≈ 3 pero muy desigual, la dispersión medida en el SARS de 2003 por Lloyd-Smith y otros en 2005: el 20 % causa la gran mayoría de los contagios y muchos no contagian a nadie))",
     "focus": {
       "town": "todo el barrio",
       "close": "de cerca, alrededor del paciente cero"
@@ -201,7 +201,10 @@
       "counts": "sanos, contagiados y recuperados ahora",
       "curve": "la curva de contagios día a día",
       "vaccine": "marca a los vacunados",
-      "quarantine": "los contagiados se quedan en casa"
+      "quarantine": "los contagiados se quedan en casa",
+      "aire": "en oficina: el aire de cada sala, rojo cuanto más cargado",
+      "red": "en oficina: quién contagió a quién",
+      "tu": "en oficina: tú"
     },
     "params": {
       "scene": {
@@ -210,10 +213,14 @@
           "comparar",
           "curva",
           "vacunas",
-          "bulo"
+          "bulo",
+          "oficina",
+          "oficinas",
+          "snow",
+          "super"
         ],
         "default": "barrio",
-        "describe": "qué escena: barrio · comparar · curva · vacunas · bulo"
+        "describe": "qué escena: barrio · comparar · curva · vacunas · bulo · oficina · oficinas · snow · super"
       },
       "contagion": {
         "min": 0.15,
@@ -247,7 +254,7 @@
           1
         ],
         "default": 0,
-        "describe": "1: los contagiados se quedan en casa"
+        "describe": "1: los contagiados se quedan en casa (en oficina: los que tienen síntomas)"
       },
       "mode": {
         "options": [
@@ -260,11 +267,58 @@
       "que": {
         "options": [
           "cuarentena",
-          "vacunas"
+          "vacunas",
+          "ventana"
         ],
         "default": "cuarentena",
-        "describe": "solo en comparar: lo que tiene el lado derecho"
+        "describe": "solo en comparar (cuarentena | vacunas) y oficinas (cuarentena | ventana): lo que tiene el lado derecho"
+      },
+      "ventana": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 0,
+        "describe": "solo en oficina: 1 la ventana de la sala de reuniones abierta"
+      },
+      "dia": {
+        "options": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "default": 0,
+        "describe": "solo en oficina: el día con que empieza el plano (0 lunes … 4 viernes)"
+      },
+      "ritmo": {
+        "options": [
+          0,
+          1,
+          2
+        ],
+        "default": 1,
+        "describe": "solo en oficina: 0 en directo, 1 normal, 2 la semana en 15 s"
       }
+    },
+    "marks": {
+      "cafe": [
+        "la cafetera",
+        "el café"
+      ],
+      "sala": [
+        "la reunión",
+        "la sala"
+      ],
+      "ascensor": [
+        "el ascensor"
+      ],
+      "bomba": [
+        "la fuente",
+        "la bomba",
+        "la palanca"
+      ]
     }
   },
   "red": {
@@ -872,31 +926,39 @@
   },
   "restaurante": {
     "niche": "colas y esperas",
-    "describe": "la cocina de un restaurante a la hora de la cena vista desde arriba: el riel con las comandas esperando, 3 cocineros con el plato al fuego (un anillo: lo que le falta), el pase por donde salen los platos; entrante ≈ 4 min, pasta ≈ 9, carne ≈ 15. Elige scene: comandas (una cocina con los cocineros ocupados según ocupacion: de la comanda al plato ~15 min al 80 %, ~26 al 90 %, ~47 al 95 %: al 90 % casi el doble que al 80 %) · orden (las mismas comandas: izquierda por orden de llegada, derecha lo rápido primero: la espera media baja de ~26 a ~20 min, pero la comanda lenta puede esperar horas) · curva (de la comanda al plato según lo ocupada que está la cocina: 13 min al 75 %, 26 al 90 %, 47 al 95 %; con lo rápido primero, 31)",
+    "describe": "un restaurante a la hora de la cena. Elige scene: cocina (la cocina en línea vista desde arriba: plancha, freidora, parte fría y emplatado, cada una con sus platos haciéndose y su cola delante; el pase con los platos terminados esperando a los de su mesa; y el comedor con 16 mesas, cuántos son, cuánto llevan esperando y sus platos al llegar. La plancha es el cuello de botella (≈ 61 platos/h, el resto 120+): con la plancha ocupada al 70 % la mesa de 2 espera ~25 min y la de 10 ~32; al 90 %, ~43 y ~57. regla: juntos (la mesa recibe todo cuando está el último plato) | centro (cada plato sale al centro al estar listo: la mesa de 10 come a los ~12 min). arreglo: ninguno | plancha2 (una segunda plancha: al 90 % la mesa media baja de ~48 a ~28 min) | frio (un cocinero más en la parte fría: no cambia nada, ~48) | carta (carta corta: ~37). Con el overlay cuello sale lo que saca cada estación por hora y la plancha en rojo: el más lento) · comparar (izquierda como está, derecha con que: centro | plancha2 | frio | carta; con sus minutos) · sentar (un comedor que se llena de golpe: diez mesas a la vez contra de dos en dos; la cola de la plancha no se dispara) · mesas (gráfica: lo que espera la mesa según cuántos sois, todo a la vez contra al centro) · noche (gráfica: la espera según la hora del pedido de 20:30 a 24:00: sube con el comedor lleno, pico hacia las 22:30, y tarda en recuperarse) · herbie (la excursión de Goldratt: chavales en fila por el monte; el grupo avanza al ritmo de Herbie, el de la mochila; herbie: detras | delante) · comandas (la cocina antigua de cocineros sueltos: de la comanda al plato según ocupacion: ~15 min al 80 %, ~26 al 90 %, ~47 al 95 %) · orden (por orden de llegada contra lo rápido primero) · curva (de la comanda al plato según lo ocupada que está la cocina)",
     "focus": {
       "kitchen": "la cocina"
     },
     "overlay": {
-      "panel": "el panel (de la comanda al plato, comandas esperando, la que más espera)"
+      "panel": "el panel (lo que espera la mesa de 2 y la de 10, la plancha ocupada)",
+      "cuello": "lo que saca cada estación por hora, la más lenta en rojo"
     },
     "params": {
       "scene": {
         "options": [
+          "cocina",
+          "comparar",
+          "sentar",
+          "mesas",
+          "noche",
+          "herbie",
           "comandas",
           "orden",
           "curva"
         ],
-        "default": "comandas",
-        "describe": "qué escena: comandas · orden · curva"
+        "default": "cocina",
+        "describe": "qué escena: cocina · comparar · sentar · mesas · noche · herbie · comandas · orden · curva"
       },
       "ocupacion": {
         "options": [
+          0.7,
           0.8,
           0.9,
           0.95
         ],
         "default": 0.9,
-        "describe": "solo en comandas: lo ocupados que están los cocineros",
+        "describe": "cocina, comparar, mesas, comandas: lo ocupada que está la estación más lenta (la plancha)",
         "label": {
           "es": "ocupación de la cocina",
           "en": "how busy the cooks are",
@@ -904,6 +966,42 @@
           "de": "Auslastung der Küche"
         },
         "percent": true
+      },
+      "regla": {
+        "options": [
+          "juntos",
+          "centro"
+        ],
+        "default": "juntos",
+        "describe": "solo en cocina: juntos (todo a la vez, cuando está el último) o centro (raciones al centro según salen)"
+      },
+      "arreglo": {
+        "options": [
+          "ninguno",
+          "plancha2",
+          "frio",
+          "carta"
+        ],
+        "default": "ninguno",
+        "describe": "solo en cocina: el arreglo aplicado"
+      },
+      "que": {
+        "options": [
+          "centro",
+          "plancha2",
+          "frio",
+          "carta"
+        ],
+        "default": "centro",
+        "describe": "solo en comparar: lo que tiene el lado derecho"
+      },
+      "herbie": {
+        "options": [
+          "detras",
+          "delante"
+        ],
+        "default": "detras",
+        "describe": "solo en herbie: Herbie en medio de la fila o delante con la mochila repartida"
       }
     },
     "marks": {
@@ -911,10 +1009,25 @@
         "las comandas",
         "el riel",
         "la comanda"
+      ],
+      "plancha": [
+        "la plancha",
+        "el cuello de botella",
+        "herbie"
+      ],
+      "pase": [
+        "el pase",
+        "los platos terminados"
+      ],
+      "mesas": [
+        "tu mesa",
+        "las mesas",
+        "el comedor"
       ]
     },
     "panels": [
-      "panel"
+      "panel",
+      "cuello"
     ]
   },
   "metro": {

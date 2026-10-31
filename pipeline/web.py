@@ -119,6 +119,36 @@ def _channel_of(root: Path, folder: Path) -> str:
     return str(load_config(root / "config.yaml").get("canal") or "")
 
 
+_VERTICAL: dict[str, tuple[float, bool]] = {}
+
+
+def is_short(root: Path, folder: Path, channel: str = "") -> bool:
+    """A Short: one made from a long video (<slug>-shortN, `shorts.of`), a `serie: short`, a vertical format, or a
+    video of a vertical channel (its profile 1080x1920, like the rules thrillers)."""
+
+    if re.search(r"-short\d+$", folder.name):
+        return True
+    cfg = _json_yaml(folder / "config.yaml")
+    if (cfg.get("shorts") or {}).get("of") or str(cfg.get("serie") or "") == "short" or str(cfg.get("format") or "") == "short":
+        return True
+    video = cfg.get("video") or {}
+    if video.get("height") and video.get("width"):
+        return int(video["height"]) > int(video["width"])
+    if not channel:
+        return False
+    path = root / "canales" / f"{channel}.yaml"
+    try:
+        stamp = path.stat().st_mtime
+    except OSError:
+        return False
+    hit = _VERTICAL.get(channel)
+    if not hit or hit[0] != stamp:
+        size = (_json_yaml(path).get("video") or {})
+        hit = (stamp, int(size.get("height") or 1080) > int(size.get("width") or 1920))
+        _VERTICAL[channel] = hit
+    return hit[1]
+
+
 def _json_yaml(path: Path) -> dict[str, Any]:
     try:
         return load_config(path) if path.is_file() else {}
@@ -196,8 +226,9 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     status = ("haciendo" if current else "en cola" if redo else "hecho" if done else "en pausa" if held
               else "en cola" if queued_again or (waiting_quota and ready)
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
+    channel = _channel_of(root, folder)
     return {
-        "slug": slug, "channel": _channel_of(root, folder), "status": status, "quotaWait": quota_wait,
+        "slug": slug, "channel": channel, "status": status, "quotaWait": quota_wait, "short": is_short(root, folder, channel),
         "archived": any(part.startswith("_") for part in folder.relative_to(root / "materiales").parts),
         "stage": current, "stagesDone": len(stages), "costUsd": round(float(costs.get("totalUsd") or 0), 2),
         "error": None if done or current or queued_again else diag.get("error") or ((failed or {}).get("status") and "falló"),

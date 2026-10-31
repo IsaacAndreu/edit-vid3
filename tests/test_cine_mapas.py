@@ -196,3 +196,30 @@ def test_drawn_films_dub_with_a_native_voice(tmp_path):
     assert cfg["enabled"] and cfg["languages"] == ["de"] and cfg["voices"]["de"]["voice_id"] == "de"
     (root / "out" / "_voces.json").write_text(json.dumps({"y-si-animado": {"voice_id": "es", "name": "ES"}}), "utf-8")
     assert not doblaje.settings(RunContext.create("x", root=root, channel="y-si-animado"))["enabled"]   # never Spanish reading German
+
+
+def test_shorts_are_told_apart_from_long_videos(tmp_path):
+    from pipeline.web import is_short
+
+    root = _root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "atasco-short2"
+    folder.mkdir(parents=True)
+    assert is_short(root, folder, "el-porque-simulado")                       # made from a long video
+    plain = root / "materiales" / "el-porque-simulado" / "atasco"
+    plain.mkdir()
+    assert not is_short(root, plain, "el-porque-simulado")
+    assert is_short(root, plain, "reglas-de-la-noche")                         # a vertical channel
+    (plain / "config.yaml").write_text("serie: short\n", "utf-8")
+    assert is_short(root, plain, "el-porque-simulado")
+
+
+def test_the_new_scenes_are_offered_to_the_planner():
+    import json
+
+    worlds = json.loads((ROOT / "remotion" / "sim" / "worlds.json").read_text("utf-8"))
+    kitchen = worlds["restaurante"]["params"]
+    assert {"cocina", "comparar", "sentar", "mesas", "noche", "herbie"} <= set(kitchen["scene"]["options"])
+    assert kitchen["regla"]["options"] == ["juntos", "centro"] and "plancha2" in kitchen["arreglo"]["options"]
+    town = worlds["contagio"]["params"]
+    assert {"oficina", "oficinas", "snow", "super"} <= set(town["scene"]["options"]) and "ventana" in town["que"]["options"]
+    assert "oficina" in worlds["contagio"]["describe"] and "Lloyd-Smith" in worlds["contagio"]["describe"]

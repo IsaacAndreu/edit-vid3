@@ -346,6 +346,15 @@ function pill(status) { return `<span class="pill ${status === "en cola" ? "cola
 
 const hue = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const chColor = (name) => name ? `hsl(${hue(name)} 70% 58%)` : "var(--muted)";
+let homeKind = (() => { try { return localStorage.getItem("inicio:tipo") || ""; } catch (e) { return ""; } })();   // "" | videos | shorts
+window.pickKind = (k) => { homeKind = k; try { localStorage.setItem("inicio:tipo", k); } catch (e) {} drawHome(); };
+// the same block twice: the long videos, then the Shorts (each with its own count)
+function splitBlock(title, list, opts = {}) {
+  if (homeKind) return block(title, list, opts);
+  const longs = list.filter((v) => !v.short), shorts = list.filter((v) => v.short);
+  if (!shorts.length || !longs.length) return block(`${title}${shorts.length ? " · 📱 Shorts" : ""}`, list, opts);
+  return block(`${title} · 🎬 Vídeos`, longs, opts) + block(`${title} · 📱 Shorts`, shorts, {...opts, id: opts.id ? opts.id + "-s" : ""});
+}
 let homeChannel = (() => { try { return localStorage.getItem("inicio:canal") || ""; } catch (e) { return ""; } })();
 
 function vrow(v, right = "") {
@@ -391,7 +400,8 @@ function drawHome() {               // the channel buttons redraw from what is a
   const all = data.videos.filter((v) => !v.archived);
   const channels = [...new Set(all.map((v) => v.channel).filter(Boolean))].sort();
   if (homeChannel && !channels.includes(homeChannel)) homeChannel = "";
-  const vids = all.filter((v) => !homeChannel || v.channel === homeChannel);
+  const vids = all.filter((v) => (!homeChannel || v.channel === homeChannel)
+    && (!homeKind || (homeKind === "shorts" ? v.short : !v.short)));
   const by = (st) => vids.filter((v) => v.status === st);
   const toUpload = by("hecho").filter((v) => !v.published);
   const slot = dates || {};
@@ -435,12 +445,14 @@ function drawHome() {               // the channel buttons redraw from what is a
       right: (v) => v.status === "incompleto" ? '<span class="pill">falta guion o voz</span>'
         : v.status === "en pausa" ? `${pill(v.status)} <button onclick="event.preventDefault();event.stopPropagation();unholdHome('${esc(v.slug)}')">Volver a la cola</button>`
         : pill(v.status)})}
-    ${block("▶ Haciéndose ahora", by("haciendo"), {cls: "now", id: "h-now"})}
-    ${block("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
-    ${block("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
+    <div class="chiprow">${[["", "Todo"], ["videos", "🎬 Vídeos"], ["shorts", "📱 Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}
+      <span class="muted">${all.filter((v) => (!homeChannel || v.channel === homeChannel) && (!k || (k === "shorts" ? v.short : !v.short))).length}</span></button>`).join("")}</div>
+    ${splitBlock("▶ Haciéndose ahora", by("haciendo"), {cls: "now", id: "h-now"})}
+    ${splitBlock("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
+    ${splitBlock("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
       right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API " + esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
         : v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
-    ${block("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
+    ${splitBlock("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
       right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;
   schedule(home, by("haciendo").length ? 10000 : 30000);
@@ -997,13 +1009,14 @@ async function changeChannel(slug, current, el) {
 // «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
 let spendSort = "last", spendChannel = "";
 
-let allFilter = {q: "", channel: "", state: "todos"};
+let allFilter = {q: "", channel: "", state: "todos", kind: ""};
 async function allVideosPage() {
   data = await api("/api/overview");
   const f = allFilter, words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
   const stateOf = (v) => v.published ? "subidos" : v.archived ? "archivados" : v.status === "hecho" ? "sin subir" : "en marcha";
   const list = data.videos.filter((v) => (!f.channel || (f.channel === "(sin canal)" ? !v.channel : v.channel === f.channel))
       && (f.state === "todos" || stateOf(v) === f.state)
+      && (!f.kind || (f.kind === "shorts" ? v.short : !v.short))
       && words.every((w) => `${v.slug} ${v.title || ""}`.toLowerCase().includes(w)))
     .sort((a, b) => String((b.published || {}).at || "").localeCompare(String((a.published || {}).at || "")) || b.updated - a.updated);
   const count = (fn) => data.videos.filter(fn).length;
@@ -1013,6 +1026,8 @@ async function allVideosPage() {
     <input placeholder="🔎 Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)" style="margin-bottom:8px">
     <div class="yt-tools">${["todos", "subidos", "sin subir", "en marcha", "archivados"].map((s) => `<button class="yt-chip ${f.state === s ? "on" : ""}" onclick="allFilter.state='${s}';allVideosPage()">${s}
       <span class="muted">${s === "todos" ? data.videos.length : count((v) => stateOf(v) === s)}</span></button>`).join("")}</div>
+    <div class="yt-tools">${[["", "todo"], ["videos", "🎬 vídeos"], ["shorts", "📱 Shorts"]].map(([k, name]) => `<button class="yt-chip ${(f.kind || "") === k ? "on" : ""}" onclick="allFilter.kind='${k}';allVideosPage()">${name}
+      <span class="muted">${count((v) => !k || (k === "shorts" ? v.short : !v.short))}</span></button>`).join("")}</div>
     <div class="yt-tools">${["", ...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) => `<button class="yt-chip ${f.channel === c ? "on" : ""}" onclick="allFilter.channel='${esc(c)}';allVideosPage()">
       ${c && c !== "(sin canal)" ? `<i class="dot" style="background:${chColor(c)}"></i>` : ""}${c || "Todos los canales"}
       <span class="muted">${c === "" ? data.videos.length : count((v) => c === "(sin canal)" ? !v.channel : v.channel === c)}</span></button>`).join("")}</div>

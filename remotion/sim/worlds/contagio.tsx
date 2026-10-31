@@ -9,6 +9,7 @@ import {addWords, tx} from '../i18n';
 import {Note, param, Spark, type World, type WorldProps} from '../world';
 import {Figure, LineChart, Split} from '../scenes';
 import CURVES from '../curves.json';
+import {OfficeCompare, OfficeScene, SnowMap, Superspreaders} from './oficina';
 
 addWords({
   healthy: {es: 'Sanos', pt: 'Saudáveis', fr: 'Sains', de: 'Gesund', en: 'Healthy'},
@@ -111,6 +112,7 @@ const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
 // a tick each time ten more people catch it while the counts are on
 const sounds = (g: WorldProps['g'], length: number) => {
   if (g.overlay !== 'counts' && g.overlay !== 'curve') return {};
+  if (!['barrio', 'bulo'].includes(String(g.params?.scene ?? 'barrio'))) return {};     // the office, Snow's map: their own pace
   const e = epidemic(paramsOf(g));
   const t0 = g.at - g.since;
   const ticks: number[] = [];
@@ -140,6 +142,10 @@ addWords({
 const View: FC<WorldProps> = (props) => {
   const {g, worldT} = props;
   const scene = param<string>(g, 'scene', 'barrio');
+  if (scene === 'oficina') return <OfficeScene {...props} />;
+  if (scene === 'oficinas') return <OfficeCompare {...props} />;
+  if (scene === 'snow') return <SnowMap {...props} />;
+  if (scene === 'super') return <Superspreaders {...props} />;
   const epi = CURVES.epi as Record<string, number[]>;
   const ever = (k: string) => epi[k].reduce((a, b) => a + b, 0) > 0 ? Math.max(...epi[k]) : 0;
   const total = (p: Record<string, number>) => { const e = epidemic({contagion: 0.5, vaccinated: 0, quarantine: 0, ...p}); const c = e.counts[e.counts.length - 1]; return PEOPLE - c[S] - c[V]; };

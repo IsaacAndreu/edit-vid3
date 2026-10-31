@@ -14,6 +14,13 @@ const CHARTS = ['curva', 'vacunas', 'umbral', 'ojos', 'dilucion', 'trafico', 've
 const SHARED = ['contagio', 'incendio', 'segregacion', 'manada', 'cruces', 'autovia'];
 
 export const verticalOf = (g: SimGraphic): Vertical => {
+  if (g.world === 'contagio') {
+    const sc = scene(g, '');
+    if (sc === 'oficina') return {mode: 'crop', cx: 760, cy: 540, scale: 0.95};
+    if (sc === 'oficinas') return {mode: 'halves'};
+    if (sc === 'snow') return {mode: 'crop', cx: 900, cy: 540, scale: 0.9};
+    if (sc === 'super') return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
+  }
   if (SHARED.includes(g.world)) {
     const sc = scene(g, '');
     if (SPLITS.includes(sc) || (sc === 'comparar' && g.world !== 'cruces' && g.world !== 'autovia')) return {mode: 'halves'};
@@ -59,8 +66,12 @@ export const verticalOf = (g: SimGraphic): Vertical => {
     case 'ascensores':
       return ['zonas', 'destino', 'reparto'].includes(scene(g, 'pico')) ? {mode: 'halves'} : ['juntos', 'botones'].includes(scene(g, 'pico'))
         ? {mode: 'crop', cx: 760, cy: 540, scale: 1.0} : {mode: 'crop', cx: 960, cy: 540, scale: 1.1};
-    case 'restaurante':
-      return scene(g, 'comandas') === 'orden' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 540, scale: 1.2};
+    case 'restaurante': {
+      const s = scene(g, 'cocina');
+      if (['orden', 'comparar', 'sentar', 'cocina'].includes(s)) return {mode: 'halves'};
+      if (['mesas', 'noche'].includes(s)) return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
+      return {mode: 'crop', cx: 960, cy: 540, scale: s === 'herbie' ? 1.0 : 1.2};
+    }
     case 'aparcamiento':
       return scene(g, 'buscar') === 'comparar' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 540, scale: 1.15};
     default:
