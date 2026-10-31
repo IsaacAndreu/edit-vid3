@@ -42,6 +42,11 @@ graphics:
   types: [chart, compare, timeline]   # solo con graphics.over_simulation: true; si no, todo lo enseña la simulación
   extra_types: []
 
+dubbing:                           # cada vídeo en español sale también en los otros tres canales (misma simulación,
+  enabled: true                    # voz y rótulos en su idioma, sus propios Shorts); voces: Ajustes → Voces por canal
+  languages: [en, pt, de]
+  channels: {en: simulated-why, pt: porque-simulado-pt, de: simuliertes-warum}
+
 ideas:
   about: 'un canal de YouTube en español que explica cosas cotidianas y del mundo con simulaciones vistas desde arriba
     (por qué hay atascos sin motivo, por qué la cola de al lado va más rápida, cómo se propaga un bulo o un incendio),

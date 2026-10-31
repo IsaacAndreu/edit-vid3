@@ -548,6 +548,55 @@ def recap_scenes(out: list[dict[str, Any]]) -> None:
                        "prev": x["graphic"]["focus"], "title": "", "stat": None, "source": "", "list": []} for x in keys]
 
 
+def retime_sim(old: dict[str, Any], new: dict[str, Any], lang: str) -> None:
+    """A dubbed simulation video (pipeline/dub.py): the shots moved with the new voice, so each world's clock moves
+    with them — a shot starts at its new second, a world's run starts where its first shot now starts, the voice's cues
+    fall on the same lines, a figure or an arrow keeps its place inside its shot — and every panel speaks `lang`."""
+
+    fps = int(new.get("fps", 30))
+    before = {g["id"]: g for g in old.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"}
+    moved: dict[float, float] = {}                       # old second where a shot started → its new second
+    for g in new.get("groups", []):
+        if g["id"] in before:
+            moved[round(float(before[g["id"]]["graphic"]["at"]), 3)] = round(g["from"] / fps, 3)
+
+    def when(t: float) -> float:
+        t = round(float(t), 3)
+        if t in moved:
+            return moved[t]
+        keys = sorted(moved)                               # between two shots: in proportion
+        lower = max((k for k in keys if k <= t), default=None)
+        upper = min((k for k in keys if k > t), default=None)
+        if lower is None or upper is None:
+            return moved[lower if lower is not None else upper] if moved else t
+        return round(moved[lower] + (t - lower) * (moved[upper] - moved[lower]) / (upper - lower), 3)
+
+    def fix(graphic: dict[str, Any]) -> dict[str, Any]:
+        out = {**graphic, "lang": lang, "at": when(graphic["at"]), "since": when(graphic["since"])}
+        if graphic.get("cues"):
+            out["cues"] = {k: when(v) for k, v in graphic["cues"].items()}
+        if graphic.get("recap"):
+            out["recap"] = [fix(r) for r in graphic["recap"]]
+        return out
+
+    for g in new.get("groups", []):
+        if g["id"] not in before:
+            continue
+        o = before[g["id"]]
+        k = g["durationInFrames"] / max(1, o["durationInFrames"])
+        graphic = fix(g["graphic"])
+        if graphic.get("statAt") is not None:
+            graphic["statAt"] = round(graphic["statAt"] * k, 2)
+        if graphic.get("marks"):
+            graphic["marks"] = [{**m, "at": round(m["at"] * k, 2)} for m in graphic["marks"]]
+        if graphic.get("dial"):
+            label = (worlds().get(graphic["world"], {}).get("params") or {})
+            for name, p in label.items():
+                if isinstance(p.get("label"), dict) and graphic["dial"]["label"] == str(p["label"].get("es", "")).upper()[:30]:
+                    graphic["dial"]["label"] = str(p["label"].get(lang, p["label"]["es"])).upper()[:30]
+        g["graphic"] = graphic
+
+
 def writing(ctx: RunContext) -> str:
     """For the script draft (organizar.draft_script): what the simulation can show, so the narration asks for it."""
 

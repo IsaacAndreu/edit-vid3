@@ -495,7 +495,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "stages": stages,
         "log": log.read_text("utf-8", errors="replace")[-12000:] if log.is_file() else "",
         "diagnosis": read("diagnostico.md"), "factcheck": read("verificacion.md"), "youtubeTxt": read("youtube.txt"),
-        "graphics": read("graficos.md"), "hook": read("gancho.md"), "audit": audit_text(root, slug),
+        "graphics": read("graficos.md"), "hook": read("gancho.md"), "retention": read("retencion.md"), "audit": audit_text(root, slug),
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],
         "files": files,
@@ -1177,7 +1177,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if path == "/api/board":
                     from . import agenda
 
-                    return self._ok({"columns": agenda.board(root), "channels": agenda.channels(root)})
+                    return self._ok({"columns": agenda.board(root), "channels": agenda.channels(root), "kinds": channel_kinds(root)})
                 if path == "/api/notify":
                     from . import notify
 
@@ -1314,6 +1314,17 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import copia
 
                     return self._ok({"made": copia.make(root).name, "backup": copia.info(root)})
+                if match := re.fullmatch(r"/api/video/([^/]+)/retencion", path):   # {csv}: YouTube Studio's export
+                    from . import retencion
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    find_video(root, slug)
+                    ctx = RunContext.create(slug, root=root)
+                    if not (ctx.work_dir / "timeline.json").is_file():
+                        raise ValueError("Este vídeo aún no tiene montaje")
+                    text = str(body.get("csv") or "")
+                    (ctx.out_dir / "retencion.csv").write_text(text, encoding="utf-8")
+                    return self._ok(retencion.analyse(ctx, text))
                 if match := re.fullmatch(r"/api/video/([^/]+)/doblaje", path):   # {lang, script, title} | {lang, manual}
                     from . import doblaje
 
@@ -1444,6 +1455,13 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import organizar
 
                     return self._ok(organizar.draft_script(root, str(body.get("channel") or ""), body.get("idea") or {}))
+                if path == "/api/board/temas":             # {channel}: two weeks of topics its worlds can show
+                    from . import temas
+
+                    channel = str(body.get("channel") or "")
+                    if channel not in channels(root):
+                        raise ValueError("Elige un canal de simulación")
+                    return self._ok({"added": temas.calendar(root, channel, int(body.get("count") or 10))})
                 if path == "/api/board/idea":
                     from . import agenda
 

@@ -7,6 +7,9 @@ base: el-porque-simulado
 align:
   language: de
 
+dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
+  enabled: false
+
 ideas:
   about: 'a YouTube channel in alemán: Alltägliches und die Welt mit Simulationen von oben erklärt (warum Staus aus dem Nichts entstehen, warum die andere Schlange schneller ist, wie sich ein Gerücht oder ein Feuer ausbreitet), ~10-Minuten-Videos mit einem sichtbaren Experiment'
   niches: [Verkehr, Warteschlangen, Epidemien, Katastrophen, Gesellschaft, Tiere, Alltagswissenschaft]

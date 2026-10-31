@@ -301,9 +301,26 @@ def screen_texts(timeline: dict[str, Any]) -> dict[str, str]:
 SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", "query", "year", "id", "person", "style", "author", "platform"}
 
 
+# a simulation shot (pipeline/simulacion.py): only what is read on screen is translated — never the names the
+# world draws from (world, focus, overlay, scene…); the panels translate themselves with the graphic's «lang»
+SIM_TEXTS = ("title", "list", "rules", "marks", "stat")
+
+
 def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:
     """Every translatable string inside a graphic (titles, names, labels, notes, lines…)."""
 
+    if isinstance(value, dict) and value.get("type") == "sim":
+        for key in SIM_TEXTS:
+            item = value.get(key)
+            if key == "stat" and isinstance(item, dict):
+                _graphic_strings({"label": item.get("label"), "value": item.get("value")}, f"{path}.stat", out)
+            elif key in ("rules", "marks") and isinstance(item, list):
+                for i, r in enumerate(item):
+                    if isinstance(r, dict) and r.get("text"):
+                        _graphic_strings(r["text"], f"{path}.{key}.{i}.text", out)
+            elif item:
+                _graphic_strings(item, f"{path}.{key}", out)
+        return
     if isinstance(value, dict):
         for key, item in value.items():
             if key not in SKIP:
@@ -316,6 +333,14 @@ def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:
 
 
 def _set_graphic_strings(value: Any, path: str, texts: dict[str, str]) -> Any:
+    if isinstance(value, dict) and value.get("type") == "sim":
+        out = dict(value)
+        for key in SIM_TEXTS:
+            if key in out and out[key]:
+                out[key] = _set_graphic_strings(out[key], f"{path}.{key}", texts) if key not in ("rules", "marks") else [
+                    {**r, "text": texts.get(f"{path}.{key}.{i}.text", r.get("text"))} if isinstance(r, dict) else r
+                    for i, r in enumerate(out[key])]
+        return out
     if isinstance(value, dict):
         return {k: v if k in SKIP else _set_graphic_strings(v, f"{path}.{k}", texts) for k, v in value.items()}
     if isinstance(value, list):
@@ -456,6 +481,9 @@ def run(ctx: RunContext) -> None:
     print("[3/6] Reajustando cortes, paneles y rótulos")
     timeline = retime(old_timeline, time_map(points), new_words["durationSeconds"], MAX_THIRD_PARTY_SECONDS)
     timeline["slug"] = ctx.slug
+    from . import simulacion
+
+    simulacion.retime_sim(old_timeline, timeline, lang)          # its clock follows the new voice, its panels speak it
     question_words(timeline, new_words["words"])
     timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0),
                                                pauses=timeline["audio"].get("voiceGaps", []))

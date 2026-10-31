@@ -338,3 +338,35 @@ def test_the_summary_replays_the_key_scenes_in_order(tmp_path, monkeypatch):
     assert [r["world"] for r in recap] == ["anillo", "colas", "cruces"]
     assert recap[0]["at"] == 3.0 and recap[1]["at"] == 9.0               # the replayed shot, the one with a figure
     assert "recap" not in g[0]
+
+
+def test_a_dubbed_simulation_keeps_its_clock_with_the_new_voice():
+    def group(gid, a, n, at, since, **k):
+        return {"id": gid, "from": a, "durationInFrames": n, "graphic": {"type": "sim", "world": "anillo", "focus": "ring",
+                "overlay": "none", "at": at, "since": since, "lang": "es", "title": "EL ATASCO", **k}}
+
+    old = {"fps": 30, "groups": [group("a", 0, 90, 0.0, 0.0, cues={"brake": 3.0}),
+                                 group("b", 90, 150, 3.0, 0.0, statAt=2.0, dial={"label": "COCHES EN LA PISTA"}),
+                                 group("c", 240, 60, 8.0, 8.0)]}
+    new = {"fps": 30, "groups": [{**old["groups"][0], "durationInFrames": 120}, {**old["groups"][1], "from": 120, "durationInFrames": 300},
+                                 {**old["groups"][2], "from": 420}]}
+    simulacion.retime_sim(old, new, "de")
+    a, b, c = (g["graphic"] for g in new["groups"])
+    assert (a["at"], b["at"], c["at"]) == (0.0, 4.0, 14.0) and b["since"] == 0.0 and c["since"] == 14.0
+    assert a["cues"] == {"brake": 4.0} and b["statAt"] == 4.0 and a["lang"] == "de"
+    assert b["dial"]["label"] == "AUTOS AUF DER STRECKE"
+
+
+def test_a_dub_translates_only_what_is_read_on_a_simulation():
+    from pipeline import dub
+
+    g = {"type": "sim", "world": "anillo", "focus": "ring", "overlay": "jam", "params": {"driver": "calma"}, "title": "EL ATASCO",
+         "stat": {"label": "COCHES", "value": "22"}, "list": ["UNA ONDA"], "rules": [{"text": "FRENA", "off": False}],
+         "marks": [{"kind": "car", "at": 1.0, "text": "ESTE COCHE"}], "source": "Sugiyama"}
+    out: dict = {}
+    dub._graphic_strings(g, "graphic:x", out)
+    assert set(out.values()) == {"EL ATASCO", "COCHES", "UNA ONDA", "FRENA", "ESTE COCHE"}
+    texts = {k: v.replace("EL ATASCO", "THE JAM").replace("ESTE COCHE", "THIS CAR") for k, v in out.items()}
+    back = dub._set_graphic_strings(g, "graphic:x", texts)
+    assert back["title"] == "THE JAM" and back["marks"][0]["text"] == "THIS CAR" and back["world"] == "anillo"
+    assert back["params"] == {"driver": "calma"} and back["rules"][0]["off"] is False

@@ -7,6 +7,9 @@ base: el-porque-simulado
 align:
   language: en
 
+dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
+  enabled: false
+
 ideas:
   about: 'a YouTube channel in English: everyday things and the world explained with simulations seen from above (why jams appear out of nothing, why the other line moves faster, how a rumour or a fire spreads), ~10 min videos with an experiment you can watch'
   niches: [traffic, queues, epidemics, disasters, society, animals, everyday science]

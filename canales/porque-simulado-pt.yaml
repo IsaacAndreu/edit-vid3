@@ -7,6 +7,9 @@ base: el-porque-simulado
 align:
   language: pt
 
+dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
+  enabled: false
+
 ideas:
   about: 'a YouTube channel in portugués: coisas do dia a dia e do mundo explicadas com simulações vistas de cima (por que há engarrafamentos sem motivo, por que a fila do lado anda mais rápido, como se espalha um boato ou um incêndio), vídeos de ~10 min com uma experiência que se vê'
   niches: [trânsito, filas, epidemias, desastres, sociedade, animais, ciência do cotidiano]
