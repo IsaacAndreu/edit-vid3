@@ -830,6 +830,25 @@ def parallel_videos(root: Path) -> int:
     return max(1, int(cfg.get("parallel_videos", 1)))
 
 
+def footage_at_once(root: Path) -> int:
+    try:
+        cfg = RunContext.create("_cola", root=root).section("queue")
+    except ConfigError:
+        return 1
+    return max(1, int(cfg.get("footage_at_once", 1)))
+
+
+def is_drawn(root: Path, slug: str) -> bool:
+    """The video is drawn in code (simulation, stick figures): no footage to search or download."""
+
+    from pipeline import stickman
+
+    try:
+        return stickman.drawn(RunContext.create(slug, root=root))
+    except Exception:                    # an unreadable config: treated as footage (the careful side)
+        return False
+
+
 def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
                  root: Path) -> list[tuple[str, str, float, str]]:
     """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
@@ -874,22 +893,39 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             results.append((slug, status, time.monotonic() - started, detail))
             _write_report(root, results)
 
+    # third-party footage videos at once (queue.footage_at_once, 1): the other lines are for videos drawn in code
+    # (simulation, stick figures), which need neither YouTube nor the footage analysis
+    footage_max = footage_at_once(root)
+    kinds = {slug: is_drawn(root, slug) for slug in slugs}
+    footage_running = [0]
+
     def worker() -> None:
         while True:
             with lock:
                 if not pending:
                     return
-                slug = pending.popleft()
-            from pipeline import ytpause
-
-            if waits_for_youtube(root, slug):
-                continue                         # waits for YouTube; the ones that no longer need it go on
-            if on_hold(root, slug):
-                print(f"{slug}: quitado de la cola, se salta")
+                slug = next((s for s in pending if kinds[s] or footage_running[0] < footage_max), None)
+                if slug is not None:
+                    pending.remove(slug)
+                    if not kinds[slug]:
+                        footage_running[0] += 1
+            if slug is None:                     # only footage left and its line is busy: wait for it
+                time.sleep(5)
                 continue
-            run(slug)
+            try:
+                if waits_for_youtube(root, slug):
+                    continue                     # waits for YouTube; the ones that no longer need it go on
+                if on_hold(root, slug):
+                    print(f"{slug}: quitado de la cola, se salta")
+                    continue
+                run(slug)
+            finally:
+                if not kinds[slug]:
+                    with lock:
+                        footage_running[0] -= 1
 
-    print(f"Cola en paralelo: {workers} vídeos a la vez (red y CPU por turnos) · registros en out/_cola/")
+    print(f"Cola en paralelo: {workers} vídeos a la vez (red y CPU por turnos), de ellos {footage_max} como mucho con "
+          "metraje de terceros; el resto, dibujados (simulación, monigotes) · registros en out/_cola/")
     threads = [threading.Thread(target=worker, daemon=True) for _ in range(workers)]
     for thread in threads:
         thread.start()
