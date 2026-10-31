@@ -68,7 +68,11 @@ def with_chapters(script: str, chapters: list[dict[str, Any]]) -> str:
 def ensure(ctx: RunContext) -> bool:
     """Write the chapters into guion.txt if it has none and the video has not started. True if it wrote them."""
 
+    from . import simulacion
+
     script_path = ctx.materials_dir / "guion.txt"
+    if simulacion.active(ctx):                # a simulation video has no chapter cards: it never stops the world
+        return False
     if not script_path.is_file() or not ctx.section("chapters").get("auto", True) or started(ctx):
         return False
     script = script_path.read_text("utf-8")

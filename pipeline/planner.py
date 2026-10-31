@@ -21,6 +21,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from . import simulacion
 from .context import RunContext
 from .llm import LLMError, complete_json
 from .schemas import MAX_SHOT_SECONDS, MIN_SHOT_SECONDS, PlanChapter, Shot, ShotsFile, StoryEvent, Word, WordsFile
@@ -271,6 +272,8 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         context = str(result.get("context") or "").strip()[:400]
     if not chapters or chapters[0].startWord != 0:
         chapters.insert(0, PlanChapter(title=words_file.title.upper()[:48] or "INTRO", startWord=0, fromScript=False, showTitle=False))
+    if simulacion.active(ctx):      # no chapter cards in a simulation video: the world stays on screen
+        chapters = [c.model_copy(update={"showTitle": False}) for c in chapters]
     return chapters, context, result
 
 
@@ -844,6 +847,15 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     return shot
 
 
+def drawn_shot(shot: dict[str, Any]) -> dict[str, Any]:
+    """A shot of a simulation video: always the simulation. The planner's own cards (a giant figure or a bar panel on
+    black, a chapter title, a split) stopped the world for 2-3 s and broke the video (hora1: «22 coches», «20 km/h»,
+    the 22/230/30 bars); the simulation shows the figure in its own panel instead (simulacion.py: "stat")."""
+
+    plain = {k: v for k, v in shot.items() if k not in ("stat", "panel", "panelId", "chapterTitle", "label")}
+    return {**plain, "type": "broll"}
+
+
 def normalize_groups(shots: list[dict[str, Any]]) -> None:
     """Give consecutive shots that show the same panel (or the same stat) one global panelId.
 
@@ -984,6 +996,8 @@ def run(ctx: RunContext) -> None:
 
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 4))) as pool:
         shots = [shot for batch_result in pool.map(label, batches) for shot in batch_result]
+    if simulacion.active(ctx):
+        shots = [drawn_shot(s) for s in shots]
     normalize_groups(shots)
 
     shots_file = ShotsFile(

@@ -76,6 +76,11 @@ const ShotBackground: FC<{ shot: Shot }> = ({ shot }) => {
 export const localCredit = (credit: string, source?: string): string =>
   source && credit.startsWith('Fuente: ') ? `${source}: ${credit.slice('Fuente: '.length)}` : credit;
 
+/** Questions are see-through text: drawn after the rest, so a simulation running under one stays visible. */
+const onTop = (groups: Group[]): Group[] => [
+  ...groups.filter((g) => g.kind !== 'question'), ...groups.filter((g) => g.kind === 'question'),
+];
+
 /** What a data group draws (stat, panels, animated graphic, question), in a 1920x1080 frame. */
 const GroupContent: FC<{ group: Group }> = ({ group }) => (
   <>
@@ -145,7 +150,7 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           )}
         </Sequence>
       ))}
-      {groups.map((group) => (
+      {onTop(groups).map((group) => (
         <Sequence key={group.id} from={group.from} durationInFrames={group.durationInFrames} name={`${group.kind} ${group.id}`}>
           {group.kind === 'stat' && group.stat ? (
             // the giant figure fills the vertical frame's width, over the footage
@@ -207,7 +212,7 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
         <ShotLayer shot={shot} />
       </Sequence>
     ))}
-    {groups.map((group) => (
+    {onTop(groups).map((group) => (
       <Sequence key={group.id} from={group.from} durationInFrames={group.durationInFrames} name={`${group.kind} ${group.id}`}>
         <GroupContent group={group} />
       </Sequence>

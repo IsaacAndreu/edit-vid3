@@ -187,3 +187,32 @@ def test_no_sim_track_without_simulation_sounds():
                            {"from": 30, "durationInFrames": 30, "graphic": {"type": "sim"}}],
                 "durationInFrames": 60, "fps": 30}
     assert sim_track(SimpleNamespace(), timeline) is None          # no Remotion call when there is nothing to sound
+
+
+def test_the_recap_list_only_at_the_end():
+    scenes = {f"s{n}": {"list": ["UNO", "DOS"]} for n in range(20)}
+    simulacion.recap(scenes, [f"s{n}" for n in range(20)])
+    assert [n for n in range(20) if scenes[f"s{n}"]["list"]] == [17, 18, 19]
+
+
+def test_a_question_does_not_stop_the_simulation(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    shots = [_shot(1, 0, 90), _shot(2, 90, 180)]
+    monkeypatch.setattr(simulacion, "scenes", lambda ctx, todo: {s.id: simulacion.clean({}, s.text, None) for s in todo})
+    question = SimpleNamespace(kind="question", from_=0, durationInFrames=90)
+    card = SimpleNamespace(kind="graphic", from_=90, durationInFrames=90)
+    assert [g["from"] for g in simulacion.groups(ctx, shots, 30, [question])] == [0]          # one group over both
+    assert [g["from"] for g in simulacion.groups(ctx, shots, 30, [question, card])] == [0]
+    assert simulacion.groups(ctx, shots, 30, [question, card])[0]["durationInFrames"] == 90
+
+
+def test_a_simulation_video_has_no_chapter_cards_and_no_planner_cards(tmp_path):
+    from pipeline import capitulos, planner
+
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    (ctx.materials_dir).mkdir(parents=True, exist_ok=True)
+    (ctx.materials_dir / "guion.txt").write_text("\n\n".join(f"Párrafo {n}." for n in range(8)), "utf-8")
+    assert capitulos.ensure(ctx) is False                       # never asks for chapters
+    shot = {"id": "s001", "type": "stat", "stat": {"value": "22", "label": "coches"}, "chapterTitle": "CAPÍTULO",
+            "text": "22 coches", "broll": {"q": "x"}}
+    assert planner.drawn_shot(shot) == {"id": "s001", "type": "broll", "text": "22 coches", "broll": {"q": "x"}}

@@ -25,7 +25,7 @@ from .context import RunContext
 from .sourcing.common import key
 
 MANIFEST = Path(__file__).resolve().parent.parent / "remotion" / "sim" / "worlds.json"
-VERSION = 3
+VERSION = 4
 
 
 @lru_cache(maxsize=1)
@@ -69,7 +69,9 @@ Además, en cada plano:
 - "stat": {{"label": "2-5 palabras", "value": "cifra o 1-3 palabras"}} SOLO si la frase da una cifra concreta, o null.
 - "source": el estudio o la fuente que la frase cita («Sugiyama et al., 2008»), si no "".
 - "list": 2-4 frases muy cortas SOLO para el resumen final, o [].
-Reglas: elige el mundo que ilustra la frase; mantén el mismo mundo, foco y parámetros en frases seguidas de la misma
+Reglas: elige el mundo cuyo TEMA es el de la frase (lee bien qué enseña cada uno; una frase sobre atascos en
+general no va al mundo de un carril que se cierra ni al de un cruce); si ningún mundo enseña la frase, sigue en el
+mundo de la frase anterior; mantén el mismo mundo, foco y parámetros en frases seguidas de la misma
 idea (la cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
 cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
@@ -165,9 +167,22 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             found = {}
         for n, (shot_id, text) in enumerate(batch, 1):
             before = out[shot_id] = clean(found.get(n) or {}, text, before, spec)
+    recap(out, [shot_id for shot_id, _ in lines])
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
     return out
+
+
+RECAP = 0.85          # the summary list only in the last 15 % of the lines
+
+
+def recap(scenes: dict[str, dict[str, Any]], order: list[str]) -> None:
+    """The checklist is the closing summary: earlier lists go (hora1: «lo que hemos visto» at 1:36, over a blurred
+    ring, and again over the crossroads)."""
+
+    for n, shot_id in enumerate(order):
+        if n < RECAP * len(order) and shot_id in scenes:
+            scenes[shot_id]["list"] = []
 
 
 SOUNDS = {"ambient": "ambiente", "click": "clic", "tick": "tic"}     # assets/sfx/sim/: street hum, relay click, soft tick
@@ -199,8 +214,11 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
     world came on screen with these parameters (`since`: the simulation's clock), the focus it comes from, and the
     run's cues (the first line of the run with a cue's overlay: the world paces its events to it)."""
 
+    # a question is see-through text: the world keeps running under it (hora1: «¿qué te ha parado?» on black)
+    solid = [g for g in taken if getattr(g, "kind", None) != "question"]
+
     def covered(a: int, b: int) -> bool:
-        return any(g.from_ < b and a < g.from_ + g.durationInFrames for g in taken)
+        return any(g.from_ < b and a < g.from_ + g.durationInFrames for g in solid)
 
     todo = [(s, s.from_, s.from_ + s.durationInFrames) for s in shots
             if s.type != "endscreen" and not covered(s.from_, s.from_ + s.durationInFrames)]

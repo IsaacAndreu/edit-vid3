@@ -524,7 +524,12 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     sents = sentences([w.model_dump() for w in words.words])
     weak = weak_sentences(ctx, sents) if ctx.section("graphics").get("cover_weak") else set()
     strong = strong_sentences(ctx, sents) if ctx.section("graphics").get("keep_best_footage", True) else set()
-    planned = graphics.plan(ctx, sents, words.durationSeconds, weak=weak, strong=strong)
+    from . import simulacion
+
+    # a simulation video keeps its world on screen: the generic full-frame graphics stopped it (hora1: a «cronología»
+    # with 1935 twice, the bars of three unrelated figures); its own panels show the figures and the charts
+    planned = [] if simulacion.active(ctx) and not ctx.section("graphics").get("over_simulation") \
+        else graphics.plan(ctx, sents, words.durationSeconds, weak=weak, strong=strong)
     from .datacheck import filter_planned
 
     planned = filter_planned(ctx, planned, sents)       # no wrong figure goes on screen (datos-graficos.md)

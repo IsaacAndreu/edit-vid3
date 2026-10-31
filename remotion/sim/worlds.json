@@ -1,7 +1,7 @@
 {
   "cruces": {
     "niche": "tráfico",
-    "describe": "un cruce con semáforos (izquierda) y una rotonda (derecha) con exactamente los mismos coches llegando",
+    "describe": "SOLO para frases sobre cruces y rotondas (semáforos de un cruce, ceder el paso): un cruce con semáforos (izquierda) y una rotonda (derecha) con exactamente los mismos coches llegando",
     "focus": {
       "both": "pantalla partida",
       "left": "se amplía el semáforo",
@@ -72,7 +72,7 @@
   },
   "autovia": {
     "niche": "tráfico",
-    "describe": "una obra cierra un carril de autovía: arriba los conductores se incorporan pronto (una sola cola larga), abajo en cremallera (usan los dos carriles hasta el final y se alternan); los mismos coches",
+    "describe": "SOLO para frases sobre incorporarse cuando un carril se cierra (obras, «cremallera», incorporación temprana): una obra cierra un carril de autovía: arriba los conductores se incorporan pronto (una sola cola larga), abajo en cremallera (usan los dos carriles hasta el final y se alternan); los mismos coches",
     "focus": {
       "both": "las dos carreteras",
       "top": "se amplía la incorporación temprana",
@@ -299,7 +299,7 @@
   },
   "carretera": {
     "niche": "tráfico",
-    "describe": "una carretera recta vista desde arriba sobre fondo oscuro; cada escena explica una pieza del tráfico (elige scene): frenazo (8 coches numerados, el primero toca el freno y cada uno frena más fuerte que el de delante hasta que el último se para; who: acc = coches con control de crucero), onda (carretera llena: los coches van a la derecha y el atasco viaja hacia atrás; panel: por qué dura), carril (dos carriles, TÚ en uno: adelantas a 4 coches rápido y 4 coches tardan mucho en adelantarte: la ilusión del carril de al lado), hueco (TÚ dejas hueco y sigues rodando sin pararte; detrás quedan menos parados), limite (paneles que bajan el límite antes de las ondas: llegan despacio y se paran menos), carriles (se abre un tercer carril y vuelve a llenarse; panel +10 % carril, +10 % tráfico)",
+    "describe": "el mundo para atascos en carretera o autovía en general: una carretera recta vista desde arriba sobre fondo oscuro; cada escena explica una pieza del tráfico (elige scene): frenazo (8 coches numerados, el primero toca el freno y cada uno frena más fuerte que el de delante hasta que el último se para; who: acc = coches con control de crucero), onda (carretera llena: los coches van a la derecha y el atasco viaja hacia atrás; panel: por qué dura), carril (dos carriles, TÚ en uno: adelantas a 4 coches rápido y 4 coches tardan mucho en adelantarte: la ilusión del carril de al lado), hueco (TÚ dejas hueco y sigues rodando sin pararte; detrás quedan menos parados), limite (paneles que bajan el límite antes de las ondas: llegan despacio y se paran menos), carriles (se abre un tercer carril y vuelve a llenarse; panel +10 % carril, +10 % tráfico)",
     "focus": {
       "road": "la carretera"
     },
