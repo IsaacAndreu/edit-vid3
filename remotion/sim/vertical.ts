@@ -28,6 +28,16 @@ export const verticalOf = (g: SimGraphic): Vertical => {
       const s = scene(g, 'evacuacion');
       return s === 'evacuacion' ? {mode: 'crop', cx: 1260, cy: 540, scale: 1.35} : {mode: 'halves'};
     }
+    case 'aeropuerto':
+      return {mode: 'halves'};
+    case 'metro':
+      return scene(g, 'comparar') === 'comparar' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 560, scale: 1.2};
+    case 'ascensores':
+      return scene(g, 'pico') === 'zonas' ? {mode: 'halves'} : {mode: 'crop', cx: 860, cy: 540, scale: 1.25};
+    case 'restaurante':
+      return scene(g, 'comandas') === 'orden' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 540, scale: 1.2};
+    case 'aparcamiento':
+      return scene(g, 'buscar') === 'comparar' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 540, scale: 1.15};
     default:
       return {mode: 'crop', cx: 960, cy: 540, scale: 1.15};
   }

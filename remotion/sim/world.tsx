@@ -16,11 +16,13 @@ export type WorldProps = {
   o: (name: string) => number;
 };
 
-export type WorldSounds = {clicks: number[]; ticks: number[]};      // seconds inside the shot
+// seconds inside the shot: clicks (a light, a relay), ticks (a counter), beeps (a till), dings (a lift), hits (a key event)
+export type WorldSounds = {clicks: number[]; ticks: number[]; beeps: number[]; dings: number[]; hits: number[]};
 
 export type World = {
   View: FC<WorldProps>;
   sounds?: (g: SimGraphic, length: number) => Partial<WorldSounds>;
+  ambient?: 'ambient' | 'murmur' | 'rain' | 'crowd' | 'kitchen' | 'none';   // the place's own sound (default: the street)
 };
 
 export const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;

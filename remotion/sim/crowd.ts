@@ -9,7 +9,10 @@ const DT = 0.02;
 const P = {tau: 0.5, A: 2000, B: 0.08, k: 1.2e5, kappa: 2.4e5, mass: 80};
 
 export type Wall = [number, number, number, number];          // a segment x1, y1, x2, y2 (metres)
-export type Space = {w: number; h: number; walls: Wall[]; goals: (x: number, y: number, i: number) => [number, number]; done: (x: number, y: number) => boolean;
+export type Space = {w: number; h: number; walls: Wall[];
+  // where person i heads now (t: seconds; X, Y, OUT: everyone's place, for goals that wait on the others)
+  goals: (x: number, y: number, i: number, t: number, X: Float64Array, Y: Float64Array, OUT: Uint8Array) => [number, number];
+  done: (x: number, y: number, i: number) => boolean;
   pillars?: [number, number, number][];                        // x, y, radius
   wrap?: number};                                               // a loop in x of this length (a corridor)
 export type CrowdFrame = {x: Float32Array; y: Float32Array; push: Float32Array; out: Uint8Array};
@@ -52,7 +55,7 @@ export const simulate = (key: string, space: Space, people: {x: number; y: numbe
     push.fill(0);
     for (let i = 0; i < n; i++) {
       if (out[i]) continue;
-      const [gx, gy] = space.goals(x[i], y[i], i);
+      const [gx, gy] = space.goals(x[i], y[i], i, step * DT, x, y, out);
       const dx = gx - x[i];
       const dy = gy - y[i];
       const d = Math.hypot(dx, dy) || 1;
@@ -132,7 +135,7 @@ export const simulate = (key: string, space: Space, people: {x: number; y: numbe
       x[i] += vx[i] * DT;
       y[i] += vy[i] * DT;
       if (space.wrap) x[i] = ((x[i] % space.wrap) + space.wrap) % space.wrap;
-      if (space.done(x[i], y[i])) {
+      if (space.done(x[i], y[i], i)) {
         out[i] = 1;
         outAt[i] = step * DT;
       }
@@ -199,3 +202,64 @@ export const corridorPeople = (n: number, seed = 9) => {
 
 /** How many are out by each second. */
 export const outBy = (c: Crowd, t: number) => c.outAt.filter((s) => s <= t).length;
+
+// --- a metro platform: a carriage (top) with two doors, the platform (bottom) ----------------------------------------------
+export const PLATFORM = {w: 16, car: 2.8, h: 8, doors: [5, 11], door: 1.3};
+
+/** People getting off (group 0, in the carriage) and on (group 1, on the platform). `block`: those getting on stand in
+ * front of the doors and go in at once; otherwise they wait beside the doors until nobody is still getting off there. */
+export const platform = (block: boolean, group: Uint8Array): Space => {
+  const {w, car, h, doors, door} = PLATFORM;
+  const walls: Wall[] = [[0, 0, w, 0], [0, 0, 0, car], [w, 0, w, car]];
+  let from = 0;
+  for (const d of doors) {
+    walls.push([from, car, d - door / 2, car]);
+    from = d + door / 2;
+  }
+  walls.push([from, car, w, car]);
+  const nearest = (x: number) => doors.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a));
+  const home = new Map<number, [number, number]>();
+  const busy = new Set<number>();
+  let seen = -1;
+  return {
+    w, h, walls,
+    goals: (px, py, i, t, X, Y, OUT) => {
+      const d = nearest(px);
+      const clampX = Math.max(d - door / 2 + 0.3, Math.min(d + door / 2 - 0.3, px));
+      if (group[i] === 0) return py < car + 0.3 ? [clampX, car + 1.2] : [px, h + 2];     // off: out the door, then away
+      if (!home.has(i)) home.set(i, [px, py]);
+      if (!block && py > car + 0.2) {
+        // beside the door: wait while someone is still getting off through it
+        if (t !== seen) {                                 // once per step: the doors someone is still getting off by
+          seen = t;
+          busy.clear();
+          for (let j = 0; j < X.length; j++) if (group[j] === 0 && !OUT[j] && Y[j] < car + 0.9) busy.add(nearest(X[j]));
+        }
+        if (busy.has(d) || t < 0.8) return home.get(i)!;
+      }
+      return py > car - 0.1 ? [clampX, car - 1.1] : [px, 0.6];                       // on: through the door, then in
+    },
+    done: (px, py, i) => (group[i] === 0 ? py > h - 0.4 : py < 1.0),
+  };
+};
+
+/** `off` people in the carriage, `on` on the platform: in front of the doors (block) or beside them. */
+export const platformPeople = (off: number, on: number, block: boolean, seed = 21) => {
+  const rnd = mulberry(seed);
+  const {w, car, doors, door} = PLATFORM;
+  const out: {x: number; y: number; v0: number; r: number; group: number}[] = [];
+  const free = (x: number, y: number) => out.every((p) => Math.hypot(p.x - x, p.y - y) > 0.58);
+  for (let tries = 0; out.length < off && tries < 20000; tries++) {
+    const x = 0.5 + rnd() * (w - 1);
+    const y = 0.4 + rnd() * (car - 0.8);
+    if (free(x, y)) out.push({x, y, v0: 1.3 * (0.85 + rnd() * 0.3), r: 0.25, group: 0});
+  }
+  for (let tries = 0; out.length < off + on && tries < 40000; tries++) {
+    const d = doors[Math.floor(rnd() * doors.length)];
+    const side = rnd() < 0.5 ? -1 : 1;
+    const x = block ? d + (rnd() - 0.5) * 3.2 : d + side * (door / 2 + 0.5 + rnd() * 1.8);
+    const y = car + 0.5 + rnd() * (block ? 2.4 : 2.0);
+    if (free(x, y)) out.push({x, y, v0: 1.3 * (0.85 + rnd() * 0.3), r: 0.25, group: 1});
+  }
+  return out;
+};

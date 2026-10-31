@@ -137,4 +137,4 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
   );
 };
 
-export const segregacion: World = {View};
+export const segregacion: World = {View, ambient: 'murmur'};

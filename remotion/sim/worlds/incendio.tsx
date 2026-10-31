@@ -158,4 +158,4 @@ const View: FC<WorldProps> = ({g, worldT, move, o}) => {
   );
 };
 
-export const incendio: World = {View};
+export const incendio: World = {View, ambient: 'kitchen'};

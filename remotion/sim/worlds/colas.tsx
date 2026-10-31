@@ -14,7 +14,7 @@ import {C, FONT, Label, Panel} from '../hud';
 import {addWords, tx, num} from '../i18n';
 import {Pointers, type Anchor} from '../look';
 import {SHOP, customers, kingman, longRun, lottery, runShop, waits, type Person, type ShopFrame, type ShopRun} from '../shop';
-import {Big, Note, param, SideTitle, splitAt, type World, type WorldProps} from '../world';
+import {Big, mulberry, Note, param, SideTitle, splitAt, type World, type WorldProps} from '../world';
 
 addWords({
   manyLines: {es: 'Una cola por caja', pt: 'Uma fila por caixa', fr: 'Une file par caisse', de: 'Eine Schlange pro Kasse', en: 'A line per till'},
@@ -582,4 +582,12 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
 /** When this person arrived (the wait = start − arrival). */
 const people0 = (run: ShopRun, id: number) => (run.people.find((p: Person) => p.id === id)?.arrive ?? 0);
 
-export const colas: World = {View};
+// the tills beep as they scan (a beep every 1-3 s somewhere in the shop)
+const beeps = (g: WorldProps['g'], length: number) => {
+  const rand = mulberry(Math.round(g.at * 100) + 7);
+  const out: number[] = [];
+  for (let t = 0.4 + rand(); t < length - 0.2; t += 0.9 + rand() * 2.1) out.push(Math.round(t * 100) / 100);
+  return {beeps: out};
+};
+
+export const colas: World = {View, sounds: beeps, ambient: 'murmur'};

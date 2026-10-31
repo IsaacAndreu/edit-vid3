@@ -25,7 +25,7 @@ from .context import RunContext
 from .sourcing.common import key
 
 MANIFEST = Path(__file__).resolve().parent.parent / "remotion" / "sim" / "worlds.json"
-VERSION = 6
+VERSION = 7
 
 
 @lru_cache(maxsize=1)
@@ -72,6 +72,9 @@ Además, en cada plano:
 - "rules": SOLO cuando la frase enumera las reglas del sistema o apaga una: la lista de reglas que se ven en pantalla
   hasta ese momento, cada una {{"text": "2-4 palabras", "off": false}}; la que la frase apaga, con "off": true (y en
   "params" el cambio que la apaga en el mundo, si lo hay). Si no, [].
+- "ask": SOLO cuando la frase le pregunta al espectador qué haría o qué va a pasar («¿qué cola eliges?», «¿frenas o
+  dejas hueco?»): esa pregunta en 2-6 palabras; la simulación se para 3 segundos con ella en pantalla y luego enseña
+  la respuesta. Como mucho dos en todo el vídeo, nunca en la primera frase; si no, "".
 - "replay": true SOLO en la frase del momento clave que merece verse otra vez (el frenazo que lo empieza todo, el
   primer coche que se para…): la imagen se congela con «PAUSA», se rebobina y se repite a cámara lenta. Como mucho
   dos en todo el vídeo; si no, false.
@@ -81,7 +84,7 @@ mundo de la frase anterior; mantén el mismo mundo, foco y parámetros en frases
 idea (la cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
 cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
-"title": "", "stat": null, "source": "", "list": [], "rules": [], "replay": false}}]}}
+"title": "", "stat": null, "source": "", "list": [], "rules": [], "ask": "", "replay": false}}]}}
 """.strip()
 
 
@@ -143,9 +146,13 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
         overlay = "none"                  # one panel at a time: the figure the voice says wins over the world's counter
     rules = [{"text": _words(r.get("text"), 5).upper()[:36], "off": r.get("off") is True}
              for r in (scene.get("rules") or []) if isinstance(r, dict) and str(r.get("text") or "").strip()][:5]
-    return {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
-            "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items,
-            "rules": rules, "replay": scene.get("replay") is True}
+    ask = _words(scene.get("ask"), 8).strip(" ¿?")[:60]
+    out = {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
+           "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items,
+           "rules": rules, "replay": scene.get("replay") is True}
+    if ask and "?" in line:               # «¿tú qué harías?»: only on a line that asks
+        out["ask"] = f"¿{ask.upper()}?" if "¿" in line else f"{ask.upper()}?"
+    return out
 
 
 DIRECTOR = "escenas.txt"
@@ -169,7 +176,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     spec = allowed(ctx)
     lines = [(s.id, " ".join(s.text.split())) for s in shots]
     cache = ctx.work_dir / "simulacion.json"
-    digest = key(VERSION, lines, spec, str(ctx.section("visual").get("guide") or ""), director_scenes(ctx))
+    digest = key(VERSION, lines, spec, str(ctx.section("visual").get("guide") or ""), director_scenes(ctx), series_guide(ctx))
     try:
         saved = json.loads(cache.read_text("utf-8"))
         if saved.get("key") == digest:
@@ -180,6 +187,9 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     guide = str(ctx.section("visual").get("guide") or "").strip()
     if guide:                                    # the channel's own rules for turning a script into scenes
         system += "\n\nGUÍA DEL CANAL:\n" + guide
+    serie = series_guide(ctx)
+    if serie:                                    # a series of the channel («¿Y si…?»: one world, one dial)
+        system += "\n\n" + serie
     director = director_scenes(ctx)
     if director:                                 # the scene list written for this script: followed line by line
         system += ("\n\nLISTA DE ESCENAS DEL DIRECTOR para este guion (síguela: cada bloque del guion con la escena que pide, "
@@ -203,12 +213,19 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     replays = [shot_id for shot_id, _ in lines if out[shot_id].get("replay")]
     for shot_id in replays[REPLAYS:]:                 # a pause is special: two at most
         out[shot_id]["replay"] = False
+    if lines:
+        out[lines[0][0]].pop("ask", None)            # never on the opening line
+    for shot_id in [shot_id for shot_id, _ in lines if out[shot_id].get("ask")][ASKS:]:
+        out[shot_id].pop("ask", None)                # «¿tú qué harías?» is special: two at most
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
     return out
 
 
 REPLAYS = 2
+ASKS = 2
+ASK_SECONDS = 3.0     # «¿tú qué harías?»: the world stops this long with the question, the voice too
+TEASER_SECONDS = 5.0  # the opening: the strongest moment of the video before the voice's hook
 MIN_WORLD = 12.0      # seconds: a world stays at least this long (hora1 jumped ring → merge → crossroads in 10 s)
 RECAP = 0.85          # the summary list only in the last 15 % of the lines
 
@@ -222,7 +239,10 @@ def recap(scenes: dict[str, dict[str, Any]], order: list[str]) -> None:
             scenes[shot_id]["list"] = []
 
 
-SOUNDS = {"ambient": "ambiente", "click": "clic", "tick": "tic"}     # assets/sfx/sim/: street hum, relay click, soft tick
+# assets/sfx/sim/: street hum, relay click, soft tick; each world's own place (indoor murmur, rain, a crowd, a kitchen)
+# and events (a till's beep, a lift's bell); a hit on the key moments (the replay, a rule switched off, the opening)
+SOUNDS = {"ambient": "ambiente", "click": "clic", "tick": "tic", "murmur": "murmullo", "rain": "lluvia", "crowd": "gentio",
+          "kitchen": "cocina", "beep": "pitido", "ding": "campana", "impact": "golpe"}
 
 
 def sounds(ctx: RunContext, publish: Any) -> dict[str, str]:
@@ -266,7 +286,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
         scene = found[shot.id]
         last = merged[-1] if merged else None
         if last and last[2] == a and last[3] == scene and not scene["title"] and not scene["stat"] and not scene.get("source") \
-                and not scene.get("replay"):
+                and not scene.get("replay") and not scene.get("ask"):
             last[2] = b
         else:
             merged.append([shot.id, a, b, scene])
@@ -317,6 +337,11 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
                                  "min": low, "max": high, "percent": bool(p.get("percent"))}
                     break
     recap_scenes(out)
+    if out and ctx.section("shorts").get("of") and ctx.section("visual").get("loop", True) is not False:
+        # a Short loops: its last shot ends on its first scene, so watched again it does not jump
+        first = out[0]["graphic"]
+        out[-1]["graphic"]["loopTo"] = {**{k: first[k] for k in KEEP if k in first}, "type": "sim", "prev": first["focus"],
+                                         "title": "", "stat": None, "source": "", "list": [], "overlay": "none"}
     legend = False
     for n, group in enumerate(out):
         g = group["graphic"]
@@ -481,7 +506,8 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
             if p["kind"] == "frozen":
                 end = p["end"] if p["end"] is not None else timeline["durationInFrames"] / fps
                 found.append(f"{stamp(p['start'] * fps)} · {end - p['start']:.0f} s sin movimiento")
-    sims = [g for g in timeline.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"]
+    sims = [g for g in timeline.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"
+            and not g["graphic"].get("teaser")]                    # the opening is short on purpose
     runs: list[list[dict[str, Any]]] = []
     for g in sims:
         if runs and runs[-1][-1]["graphic"]["world"] == g["graphic"]["world"]:
@@ -597,6 +623,12 @@ def retime_sim(old: dict[str, Any], new: dict[str, Any], lang: str) -> None:
         g["graphic"] = graphic
 
 
+def series_guide(ctx: RunContext) -> str:
+    """The rules of the video's series (canales/<canal>.yaml → series.<serie>.visual.serie), if any."""
+
+    return str(ctx.section("visual").get("serie") or "").strip()
+
+
 def writing(ctx: RunContext) -> str:
     """For the script draft (organizar.draft_script): what the simulation can show, so the narration asks for it."""
 
@@ -608,7 +640,9 @@ def writing(ctx: RunContext) -> str:
             "lo dejas correr y narras lo que pasa en el momento en que pasa («ahora, este coche frena»); el giro (lo "
             "inesperado); un dato real de un estudio, citando quién y cuándo; un segundo experimento cambiando un "
             "parámetro («¿y si hubiera el doble de coches?»); y un resumen final de 3-4 ideas. Frases cortas, en "
-            "presente, señalando lo que se ve.")
+            "presente, señalando lo que se ve. Si pide a quien mira que prediga o elija («¿qué cola eliges?»), "
+            "deja esa pregunta sola en su frase: el vídeo se para 3 segundos con ella."
+            + ("\n\n" + series_guide(ctx) if series_guide(ctx) else ""))
 
 
 def moments(groups: list[Any], fps: int, count: int) -> list[float]:
@@ -631,3 +665,191 @@ def moments(groups: list[Any], fps: int, count: int) -> list[float]:
     step = max(1, len(rest) // max(1, count - len(out)))
     out += [late(g) for g in rest[::step]][: count - len(out)]
     return out
+
+
+def _shift_graphic(g: dict[str, Any], seconds: float, after: float = -1.0) -> dict[str, Any]:
+    """A sim graphic `seconds` later in the video (its clock, its cues and its recap's scenes with it): only the
+    parts at or after `after` (video seconds) move."""
+
+    out = dict(g)
+    if float(g.get("at", 0)) >= after:
+        out["at"] = round(float(g["at"]) + seconds, 3)
+        out["since"] = round(float(g["since"]) + seconds, 3)
+        if g.get("cues"):
+            out["cues"] = {k: round(float(v) + seconds, 3) for k, v in g["cues"].items()}
+    if g.get("recap"):
+        out["recap"] = [_shift_graphic(r, seconds, after) for r in g["recap"]]
+    if g.get("teaser"):
+        out["teaser"] = _shift_graphic(g["teaser"], seconds, after)
+    return out
+
+
+def with_asks(timeline: Any, fps: int, seconds: float = ASK_SECONDS) -> Any:
+    """«¿Tú qué harías?»: after a line that asks the viewer (graphic.ask) the voice stops `seconds` and its shot holds
+    that long (the world frozen with the question and a countdown, SimScene); everything after it moves, the world's
+    clock with it (it goes on where it stopped). Run while timeline frames are still voice frames plus gaps."""
+
+    from .camera import voice_frame_at
+    from .schemas import Timeline
+
+    frames = round(seconds * fps)
+    if frames <= 0:
+        return timeline
+    for gid in [g.id for g in timeline.groups if (g.graphic or {}).get("type") == "sim" and (g.graphic or {}).get("ask")]:
+        group = next(g for g in timeline.groups if g.id == gid)
+        end = group.from_ + group.durationInFrames
+        if not any(s.from_ + s.durationInFrames == end for s in timeline.shots):
+            continue
+        voice_at = voice_frame_at(list(timeline.audio.voiceGaps), end)
+        moved_s = end / fps
+
+        def moved(item: Any) -> Any:
+            if item.from_ >= end:
+                update: dict[str, Any] = {"from_": item.from_ + frames}
+                graphic = getattr(item, "graphic", None)
+                if isinstance(graphic, dict) and graphic.get("type") == "sim":
+                    update["graphic"] = _shift_graphic(graphic, seconds, moved_s)
+                return item.model_copy(update=update)
+            if item.from_ + getattr(item, "durationInFrames", 0) >= end and hasattr(item, "durationInFrames"):
+                update = {"durationInFrames": item.durationInFrames + frames}
+                if getattr(item, "id", None) == gid:
+                    update["graphic"] = {**item.graphic, "askHold": round(frames / fps, 3)}
+                return item.model_copy(update=update)
+            return item
+
+        speech = []
+        for a, b in timeline.audio.speech:
+            if b <= end:
+                speech.append((a, b))
+            elif a >= end:
+                speech.append((a + frames, b + frames))
+            else:
+                speech += [(a, end), (end + frames, b + frames)]
+        audio = timeline.audio.model_copy(update={
+            "clips": [c.model_copy(update={"from_": c.from_ + frames}) if c.from_ >= end else c for c in timeline.audio.clips],
+            "sfx": [x.model_copy(update={"from_": x.from_ + frames}) if x.from_ >= end else x for x in timeline.audio.sfx],
+            "speech": speech, "voiceGaps": sorted([*timeline.audio.voiceGaps, (voice_at, frames)]),
+        })
+        shots = [s.model_copy(update={"durationInFrames": s.durationInFrames + frames}) if s.from_ + s.durationInFrames == end
+                 else s.model_copy(update={"from_": s.from_ + frames}) if s.from_ >= end else s for s in timeline.shots]
+        timeline = Timeline.model_validate({
+            **timeline.model_dump(by_alias=True),
+            "durationInFrames": timeline.durationInFrames + frames,
+            "shots": [s.model_dump(by_alias=True) for s in shots],
+            "groups": [moved(g).model_dump(by_alias=True) for g in timeline.groups],
+            "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
+            "audio": audio.model_dump(by_alias=True),
+        })
+    return timeline
+
+
+def climax(groups: list[Any], fps: int) -> dict[str, Any] | None:
+    """The strongest moment of the video, for its opening: the replayed moment, a rule switched off, a figure, else
+    the longest experiment — late in its shot (the jam formed, the crowd pressed), not the closing recap. A sim graphic
+    whose clock (at) is that moment."""
+
+    def parts(group: Any) -> tuple[int, int, dict[str, Any]]:
+        if hasattr(group, "from_"):
+            return group.from_, group.durationInFrames, group.graphic or {}
+        return group["from"], group["durationInFrames"], group.get("graphic") or {}
+
+    sims = [parts(g) for g in groups if parts(g)[2].get("type") == "sim" and not parts(g)[2].get("list")]
+    if not sims:
+        return None
+    end = max(a + n for a, n, _ in sims)
+    runs: dict[tuple[str, float], int] = {}
+    for a, n, g in sims:
+        runs[(g["world"], g["since"])] = runs.get((g["world"], g["since"]), 0) + n
+
+    def weight(item: tuple[int, int, dict[str, Any]]) -> tuple[int, int, int]:
+        a, n, g = item
+        early = 1 if a < 0.15 * end else 0                   # the opening's own world is no surprise
+        key = 3 if g.get("replay") else 2 if g.get("rulesOff") else 1 if g.get("stat") else 0
+        return (key - early, runs[(g["world"], g["since"])], n)
+
+    a, n, g = max(sims, key=weight)
+    seconds = n / fps
+    if g.get("replay"):                                       # the frozen moment itself, from just before it
+        moment = a / fps + max(0.0, min(1.5, seconds * 0.3) - 1.0)
+    else:
+        moment = a / fps + max(0.0, seconds * 0.75 - TEASER_SECONDS)
+    keep = {k: g[k] for k in KEEP if k in g}
+    return {**keep, "type": "sim", "at": round(moment, 3), "prev": g["focus"], "title": "", "stat": None, "source": "",
+            "list": [], "overlay": "none", "enter": True, "exit": True, "sounds": g.get("sounds")}
+
+
+def with_teaser(timeline: Any, fps: int, seconds: float = TEASER_SECONDS) -> Any:
+    """The opening: the video's strongest moment (climax) for `seconds` before anything else, then the voice's hook.
+    Everything — shots, panels, sounds, the voice — moves after it; the world's clocks with it."""
+
+    from .schemas import Timeline
+
+    key = climax(timeline.groups, fps)
+    frames = round(seconds * fps)
+    if key is None or frames <= 0:
+        return timeline
+    teaser_shot = {"id": "teaser", "type": "broll", "from": 0, "durationInFrames": frames, "text": ""}
+
+    def moved(item: Any) -> Any:
+        update: dict[str, Any] = {"from_": item.from_ + frames}
+        graphic = getattr(item, "graphic", None)
+        if isinstance(graphic, dict) and graphic.get("type") == "sim":
+            update["graphic"] = _shift_graphic(graphic, seconds)
+        return item.model_copy(update=update)
+
+    shifted = _shift_graphic(key, seconds)
+    group = {"id": "sim-teaser", "kind": "graphic", "from": 0, "durationInFrames": frames,
+             "graphic": {**shifted, "since": round(shifted["since"], 3), "teaser": True}}
+    audio = timeline.audio.model_copy(update={
+        "voiceFrom": timeline.audio.voiceFrom + frames,
+        "clips": [c.model_copy(update={"from_": c.from_ + frames}) for c in timeline.audio.clips],
+        "speech": [(a + frames, b + frames) for a, b in timeline.audio.speech],
+        "sfx": [x.model_copy(update={"from_": x.from_ + frames}) for x in timeline.audio.sfx],
+        "musicParts": [p.model_copy(update={"from_": p.from_ + frames}) if hasattr(p, "from_") else p
+                       for p in timeline.audio.musicParts],
+    })
+    return Timeline.model_validate({
+        **timeline.model_dump(by_alias=True),
+        "durationInFrames": timeline.durationInFrames + frames,
+        "shots": [teaser_shot, *[moved(s).model_dump(by_alias=True) for s in timeline.shots]],
+        "groups": [group, *[moved(g).model_dump(by_alias=True) for g in timeline.groups]],
+        "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
+        "captions": [moved(c).model_dump(by_alias=True) if hasattr(c, "from_") else c.model_dump(by_alias=True)
+                     for c in timeline.captions],
+        "audio": audio.model_dump(by_alias=True),
+    })
+
+
+def chapters(timeline: Any, intro: str = "Intro") -> list[tuple[float, str]]:
+    """YouTube chapters of a simulation video (in the description, no cards on screen): a mark where each experiment
+    starts (a world, or the same world with new parameters) with a section title, named by that title; the first at
+    0:00. publish.chapter_lines applies YouTube's rules (≥ 3, ≥ 10 s apart)."""
+
+    fps = timeline.fps if hasattr(timeline, "fps") else timeline["fps"]
+    groups = timeline.groups if hasattr(timeline, "groups") else timeline["groups"]
+    marks: list[tuple[float, str]] = []
+    run: tuple[str, float] | None = None
+    for group in sorted(groups, key=lambda g: g.from_ if hasattr(g, "from_") else g["from"]):
+        g = (group.graphic if hasattr(group, "graphic") else group.get("graphic")) or {}
+        if g.get("type") != "sim" or g.get("teaser"):
+            continue
+        a = (group.from_ if hasattr(group, "from_") else group["from"]) / fps
+        current = (g["world"], g["since"])
+        title = str(g.get("title") or "").strip()
+        if g.get("list") and title:
+            marks.append((a, title))
+        elif current != run and title:
+            marks.append((a, title))
+        elif current != run and marks and marks[-1][0] >= a - 1.5:
+            pass
+        elif current != run and not title:
+            marks.append((a, ""))                      # named by the first title of the run, if it has one
+        elif title and marks and not marks[-1][1]:
+            marks[-1] = (marks[-1][0], title)
+        run = current
+    marks = [(t, name) for t, name in marks if name]
+    if not marks or marks[0][0] > 0:
+        marks.insert(0, (0.0, intro))
+    else:
+        marks[0] = (0.0, marks[0][1])
+    return marks

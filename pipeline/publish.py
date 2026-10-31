@@ -40,15 +40,21 @@ def mmss(seconds: float) -> str:
 def chapter_lines(timeline: Timeline, intro: str = "Intro") -> list[str]:
     """YouTube chapters: first at 0:00, at least 3, each at least 10 s long; otherwise none."""
 
+    found = [(shot.from_ / timeline.fps, shot.chapterTitle) for shot in timeline.shots
+             if shot.type == "chapter" and shot.chapterTitle]
+    if not found and any((g.graphic or {}).get("type") == "sim" for g in timeline.groups):
+        from .simulacion import chapters     # a simulation video: a chapter per experiment, only in the description
+
+        found = [(t, name) for t, name in chapters(timeline, intro) if t > 0]
+        first = chapters(timeline, intro)[0][1]
+        intro = first.capitalize() if first else intro
     marks = [(0.0, intro)]
-    for shot in timeline.shots:
-        if shot.type == "chapter" and shot.chapterTitle:
-            seconds = shot.from_ / timeline.fps
-            title = shot.chapterTitle.capitalize()
-            if seconds - marks[-1][0] >= 10:
-                marks.append((seconds, title))
-            else:
-                marks[-1] = (marks[-1][0], title if marks[-1][0] > 0 else marks[-1][1])
+    for seconds, name in found:
+        title = name.capitalize()
+        if seconds - marks[-1][0] >= 10:
+            marks.append((seconds, title))
+        else:
+            marks[-1] = (marks[-1][0], title if marks[-1][0] > 0 else marks[-1][1])
     if len(marks) < 3:
         return []
     return [f"{mmss(t)} {name}" for t, name in marks]

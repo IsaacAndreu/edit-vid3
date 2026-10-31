@@ -121,4 +121,4 @@ const sounds = (g: WorldProps['g'], length: number) => {
   return {ticks};
 };
 
-export const contagio: World = {View, sounds};
+export const contagio: World = {View, sounds, ambient: 'murmur'};

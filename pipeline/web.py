@@ -1478,7 +1478,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     channel = str(body.get("channel") or "")
                     if channel not in channels(root):
                         raise ValueError("Elige un canal de simulación")
-                    return self._ok({"added": temas.calendar(root, channel, int(body.get("count") or 10))})
+                    return self._ok({"added": temas.calendar(root, channel, int(body.get("count") or 10),
+                                                             serie=str(body.get("serie") or ""))})
                 if path == "/api/board/idea":
                     from . import agenda
 

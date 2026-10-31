@@ -269,4 +269,4 @@ const sounds = (g: WorldProps['g'], length: number) => {
   return {ticks};
 };
 
-export const manada: World = {View, sounds};
+export const manada: World = {View, sounds, ambient: 'none'};

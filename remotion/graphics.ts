@@ -305,7 +305,7 @@ export interface SimGraphic {
   lang?: string;
   accent?: string;
   theme?: string;
-  sounds?: { ambient?: string; click?: string; tick?: string };   // files in the render's public folder (timeline.py)
+  sounds?: Record<string, string>;   // ambient, click, tick, murmur, rain, crowd, kitchen, beep, ding, impact (timeline.py)
   replay?: boolean;     // the key moment: freeze («PAUSA»), rewind, again at half speed
   enter?: boolean;      // this world comes on screen here (zoom in from the last one)
   exit?: boolean;       // the next shot is another world (zoom out)
@@ -317,6 +317,10 @@ export interface SimGraphic {
   rulesOff?: number[];  // the rules this line switches off (the strike animates)
   recap?: SimGraphic[];  // the closing summary: the key scenes of the video again, one per idea
   dial?: { label: string; from: number; to: number; min: number; max: number; percent?: boolean };   // a number turned
+  ask?: string;         // «¿tú qué harías?»: the question the world stops on
+  askHold?: number;     // seconds at the end of the shot: the world frozen with the question and a countdown
+  teaser?: boolean;     // the opening: the video's strongest moment before the voice
+  loopTo?: SimGraphic;  // a Short's last shot: it ends on its first scene (the loop)
 }
 
 export interface StickmanProp { icon: string; x: number; y: number; label: string; held: boolean }

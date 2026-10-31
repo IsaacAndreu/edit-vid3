@@ -2163,15 +2163,15 @@ async function boardPage() {
     <div class="card" style="margin-bottom:14px"><div class="row">
       <b>🧪 Ideas que ya se pueden simular</b>
       <select id="tc" style="flex:1;min-width:160px">${b.channels.filter((c) => (b.kinds || {})[c] === "simulacion").map((c) => `<option>${esc(c)}</option>`).join("")}</select>
-      <button class="main" id="tbtn" onclick="topicIdeas()">Llenar 10 días</button><span id="tmsg" class="small muted"></span></div>
+      <button class="main" id="tbtn" onclick="topicIdeas()">Llenar 10 días</button> <button id="tbtn2" onclick="topicIdeas('y-si')" title="Serie «¿Y si…?»: un mundo, un dial, una pregunta">Serie «¿Y si…?»</button><span id="tmsg" class="small muted"></span></div>
       <div class="small muted" style="margin-top:6px">Ideas de vídeo que los mundos del canal saben enseñar, una por día desde mañana, con su gancho y sus escenas.</div></div>
     <div class="kanban">${Object.entries(b.columns).map(([k, items]) => `<div class="col"><h3>${names[k] || k} <span class="muted">${items.length}</span></h3>
       ${items.map(card).join("") || '<div class="small muted" style="padding:4px">—</div>'}</div>`).join("")}</div>`;
   window.addIdea = async () => { try { await post("/api/board/idea", {title: $("#bt").value, channel: $("#bc").value, date: $("#bd").value, note: $("#bn").value}); boardPage(); }
     catch (e) { alert(e.message); } };
-  window.topicIdeas = async () => { $("#tbtn").disabled = true; $("#tmsg").textContent = "Pensando ideas… (~30 s)";
-    try { const r = await post("/api/board/temas", {channel: $("#tc").value}); $("#tmsg").textContent = `${r.added.length} ideas añadidas`; boardPage(); }
-    catch (e) { $("#tmsg").textContent = e.message; $("#tbtn").disabled = false; } };
+  window.topicIdeas = async (serie) => { $("#tbtn").disabled = true; $("#tbtn2").disabled = true; $("#tmsg").textContent = "Pensando ideas… (~30 s)";
+    try { const r = await post("/api/board/temas", {channel: $("#tc").value, serie: serie || ""}); $("#tmsg").textContent = `${r.added.length} ideas añadidas`; boardPage(); }
+    catch (e) { $("#tmsg").textContent = e.message; $("#tbtn").disabled = false; $("#tbtn2").disabled = false; } };
   window.dropIdea = async (id) => { if (!confirm("¿Quitar esta idea?")) return; await post("/api/board/idea", {delete: id}); boardPage(); };
   window.makeVideo = (id) => { const x = window.boardIdeas[id], idea = {...(x.idea || {}), title: x.title};
     try { sessionStorage.setItem("prefill", JSON.stringify({idea, channel: x.channel})); } catch (e) {}

@@ -180,4 +180,4 @@ const View: FC<WorldProps> = ({g, worldT, move, o}) => {
   );
 };
 
-export const embarque: World = {View};
+export const embarque: World = {View, ambient: 'murmur'};

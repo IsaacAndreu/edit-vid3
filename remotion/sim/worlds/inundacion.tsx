@@ -258,4 +258,4 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   );
 };
 
-export const inundacion: World = {View};
+export const inundacion: World = {View, ambient: 'rain'};

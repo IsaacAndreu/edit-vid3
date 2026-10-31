@@ -42,7 +42,7 @@ const SHIRT = ['#c9ced6', '#b5bcc6', '#d9dde3', '#a9b1bc'];
 const HAIR = ['#2b2118', '#4a3426', '#1d1d1f', '#8a6a46', '#c9b28a'];
 
 /** One person from above: shoulders, head; pressed bodies go red (the harder, the redder). */
-const Person: FC<{x: number; y: number; s: number; i: number; push: number; tint?: string}> = ({x, y, s, i, push, tint}) => {
+export const Person: FC<{x: number; y: number; s: number; i: number; push: number; tint?: string}> = ({x, y, s, i, push, tint}) => {
   const crush = Math.min(1, push / CRUSH);
   return (
     <g transform={`translate(${x} ${y})`}>
@@ -186,4 +186,4 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   );
 };
 
-export const multitud: World = {View};
+export const multitud: World = {View, ambient: 'crowd'};

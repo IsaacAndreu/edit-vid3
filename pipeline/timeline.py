@@ -1474,6 +1474,9 @@ def run(ctx: RunContext) -> None:
         ], fps, float(cfg.get("moment_volume", 1.0)))
     if opening and opening.quotes:
         timeline = with_quotes(timeline, opening.quotes, ctx, fps, float(cfg.get("quote_volume", 1.0)))
+    if simulacion.active(ctx) and fps and int(video.get("width", 1920)) > int(video.get("height", 1080)):
+        # «¿tú qué harías?»: the voice and the world stop on the question (not in a Short: it would cut it in two)
+        timeline = simulacion.with_asks(timeline, fps, float(ctx.section("visual").get("ask_seconds", simulacion.ASK_SECONDS)))
     # half a second of silence as each chapter begins (pacing.chapter_pause), before the cold open shifts frames
     timeline = with_chapter_pauses(timeline, float(ctx.section("pacing").get("chapter_pause", 0.5)), fps)
     if opening:
@@ -1486,6 +1489,10 @@ def run(ctx: RunContext) -> None:
         timeline = timeline.model_copy(update={"groups": [
             g.model_copy(update={"from_": 0, "durationInFrames": g.durationInFrames + g.from_}) if g.id == "q-open" else g
             for g in timeline.groups]})
+    if simulacion.active(ctx) and timeline.width > timeline.height and ctx.section("apertura").get("enabled", True) is not False \
+            and ctx.section("visual").get("teaser", True) is not False:
+        # the opening: the strongest moment of the simulation first, then the voice's hook
+        timeline = simulacion.with_teaser(timeline, fps, float(ctx.section("visual").get("teaser_seconds", simulacion.TEASER_SECONDS)))
     timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
     from . import depth
 

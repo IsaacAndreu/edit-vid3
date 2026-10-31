@@ -595,5 +595,218 @@
     "panels": [
       "panel"
     ]
+  },
+  "ascensores": {
+    "niche": "colas y esperas",
+    "describe": "un edificio de oficinas de 12 plantas cortado de lado a las 9 de la mañana: la gente llega al vestíbulo, cada ascensor (10 personas) sale lleno o a los 8 s, para en cada planta que alguien pidió y baja sin parar; en cada cabina, cuánta gente lleva. Elige scene: pico (la hora punta: la cola de abajo crece porque cada viaje para en casi todas las plantas, ~7 paradas; por qué el ascensor siempre tarda) · zonas (los mismos ascensores y la misma gente: izquierda todos van a todas las plantas, derecha la mitad solo a las bajas y la mitad solo a las altas: menos paradas por viaje, la espera media baja de ~2:20 min a ~25 s con 4 ascensores)",
+    "focus": {
+      "building": "el edificio"
+    },
+    "overlay": {
+      "panel": "el panel (espera media, gente esperando abajo, paradas por viaje)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "pico",
+          "zonas"
+        ],
+        "default": "pico",
+        "describe": "qué escena: pico · zonas"
+      },
+      "ascensores": {
+        "min": 3,
+        "max": 5,
+        "default": 4,
+        "describe": "cuántos ascensores",
+        "label": {
+          "es": "ascensores",
+          "en": "lifts",
+          "pt": "elevadores",
+          "de": "Aufzüge"
+        }
+      }
+    },
+    "marks": {
+      "lobby": [
+        "el vestibulo",
+        "la cola de abajo",
+        "la planta baja"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "aparcamiento": {
+    "niche": "tráfico y ciudad",
+    "describe": "un aparcamiento de 128 plazas visto desde arriba: los coches entran, recorren los pasillos en orden y cogen la primera plaza libre que ven; los que buscan van en rojo con su tiempo buscando, TÚ en amarillo. Elige scene: buscar (el aparcamiento lleno según ocupacion: cuánto se tarda en encontrar sitio, ~30 s al 70 %, ~1 min al 88 %, ~3 min al 95 %) · ocupacion (la curva: tiempo buscando según lo lleno que está: plana y luego un muro pasado el 85 %; la regla de Donald Shoup: que quede libre 1 plaza de cada 7) · comparar (el mismo aparcamiento al 70 % y al 95 %, lado a lado)",
+    "focus": {
+      "lot": "el aparcamiento"
+    },
+    "overlay": {
+      "panel": "el panel (tiempo medio buscando, lo lleno que está, coches buscando)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "buscar",
+          "ocupacion",
+          "comparar"
+        ],
+        "default": "buscar",
+        "describe": "qué escena: buscar · ocupacion · comparar"
+      },
+      "ocupacion": {
+        "options": [
+          0.7,
+          0.85,
+          0.95
+        ],
+        "default": 0.85,
+        "describe": "lo lleno que está (en buscar y ocupacion)",
+        "label": {
+          "es": "ocupación del aparcamiento",
+          "en": "how full the car park is",
+          "pt": "ocupação do estacionamento",
+          "de": "Belegung des Parkplatzes"
+        },
+        "percent": true
+      }
+    },
+    "marks": {
+      "you": [
+        "tu coche",
+        "tú buscas",
+        "te toca buscar"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "aeropuerto": {
+    "niche": "colas y esperas",
+    "describe": "el control de seguridad de un aeropuerto visto desde arriba: carriles con su arco y su cinta de rayos X, un agente en cada uno; cada pasajero ≈ 30 s + 8 s por bandeja y 3 de cada 10 no vienen preparados (+40-120 s: los líquidos, el portátil, el cinturón, el arco que pita; anillo rojo). Siempre en dos mitades. Elige scene: filas (izquierda una cola por control, derecha una sola cola en zigzag que reparte a todos: la misma gente; espera media ~86 s contra ~75 s y la más larga baja) · preparados (como llega la gente contra todos preparados antes de la cinta: la espera media cae de ~75 s a ~5 s) · carriles (con carriles controles y con uno más: cerca del límite un control más lo cambia todo, ~75 s → ~13 s con 4 → 5)",
+    "focus": {
+      "both": "los dos controles"
+    },
+    "overlay": {
+      "panel": "las esperas medias y las más largas de cada lado"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "filas",
+          "preparados",
+          "carriles"
+        ],
+        "default": "filas",
+        "describe": "qué escena: filas · preparados · carriles"
+      },
+      "carriles": {
+        "min": 3,
+        "max": 5,
+        "default": 4,
+        "describe": "solo en carriles: controles abiertos a la izquierda (la derecha, uno más)",
+        "label": {
+          "es": "controles abiertos",
+          "en": "lanes open",
+          "pt": "controles abertos",
+          "de": "offene Spuren"
+        }
+      }
+    },
+    "marks": {
+      "arch": [
+        "el arco",
+        "la cinta",
+        "el control"
+      ],
+      "line": [
+        "la cola",
+        "una sola cola"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "restaurante": {
+    "niche": "colas y esperas",
+    "describe": "la cocina de un restaurante a la hora de la cena vista desde arriba: el riel con las comandas esperando, 3 cocineros con el plato al fuego (un anillo: lo que le falta), el pase por donde salen los platos; entrante ≈ 4 min, pasta ≈ 9, carne ≈ 15. Elige scene: comandas (una cocina con los cocineros ocupados según ocupacion: de la comanda al plato ~15 min al 80 %, ~26 al 90 %, ~47 al 95 %: al 90 % casi el doble que al 80 %) · orden (las mismas comandas: izquierda por orden de llegada, derecha lo rápido primero: la espera media baja de ~26 a ~20 min, pero la comanda lenta puede esperar horas)",
+    "focus": {
+      "kitchen": "la cocina"
+    },
+    "overlay": {
+      "panel": "el panel (de la comanda al plato, comandas esperando, la que más espera)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comandas",
+          "orden"
+        ],
+        "default": "comandas",
+        "describe": "qué escena: comandas · orden"
+      },
+      "ocupacion": {
+        "options": [
+          0.8,
+          0.9,
+          0.95
+        ],
+        "default": 0.9,
+        "describe": "solo en comandas: lo ocupados que están los cocineros",
+        "label": {
+          "es": "ocupación de la cocina",
+          "en": "how busy the cooks are",
+          "pt": "ocupação da cozinha",
+          "de": "Auslastung der Küche"
+        },
+        "percent": true
+      }
+    },
+    "marks": {
+      "rail": [
+        "las comandas",
+        "el riel",
+        "la comanda"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "metro": {
+    "niche": "multitudes",
+    "describe": "un andén de metro visto desde arriba (modelo de fuerzas sociales): un vagón con dos puertas, 30 personas que bajan y 30 que esperan para subir (en azul); las puertas cierran a los 40 s. Elige scene: comparar (izquierda esperan delante de las puertas y empujan para entrar a la vez: las puertas se atascan: a los 40 s solo han bajado 13 de 30 y subido 19; derecha esperan a los lados hasta que nadie más baja: todos bajan en ~19 s y todos suben en ~32 s) · delante (solo las puertas bloqueadas) · lados (solo esperando a los lados)",
+    "focus": {
+      "platform": "el andén"
+    },
+    "overlay": {
+      "panel": "el panel (han bajado, han subido, las puertas cierran en)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "delante",
+          "lados"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · delante · lados"
+      }
+    },
+    "marks": {
+      "doors": [
+        "las puertas",
+        "la puerta",
+        "delante de la puerta"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
   }
 }

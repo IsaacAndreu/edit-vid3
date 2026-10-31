@@ -281,7 +281,9 @@ Eres guionista de YouTube Shorts. Te paso el guion de un vídeo largo. Escribe {
   sin haber visto el vídeo largo; no es un trozo copiado: reescríbelo para vertical y para alguien que pasa el dedo;
 - la PRIMERA frase engancha en 2 segundos (una pregunta, un dato que sorprende, algo que parece imposible);
 - UNA sola idea del vídeo por Short, distinta en cada uno; frases cortas, en presente;
-- termina con una frase con fuerza (la respuesta o el giro), sin «suscríbete» ni «en el vídeo largo»;
+- termina con una frase con fuerza (la respuesta o el giro), sin «suscríbete» ni «en el vídeo largo», que ENLACE con
+  la primera (en bucle: al volver a empezar, la última frase lleva a la primera sin que se note el corte; p. ej. la
+  última termina «…y por eso» y la primera empieza «tu cola siempre es la más lenta»);
 - usa SOLO datos, cifras, nombres y fechas que están en el guion: no inventes nada;
 - sin títulos ni líneas «## », sin acotaciones: solo el texto que se lee.
 {drawn}Devuelve SOLO JSON: {{"shorts": [{{"script": "…", "title": "título del Short, máx. 80 caracteres",

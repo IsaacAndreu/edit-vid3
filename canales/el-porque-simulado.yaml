@@ -11,7 +11,8 @@ video:
 
 visual:
   style: simulacion
-  worlds: [anillo, carretera, autovia, cruces, colas, embarque, multitud, contagio, red, incendio, inundacion, segregacion, manada]
+  worlds: [anillo, carretera, autovia, cruces, colas, embarque, multitud, contagio, red, incendio, inundacion, segregacion, manada,
+            ascensores, aparcamiento, aeropuerto, metro, restaurante]
   theme: day                       # un solo aspecto en todos los vídeos, reconocible: de día (hierba, casas, árboles); dark, night o sepia si un vídeo lo pide
   # La guía del canal: cómo se convierte un guion en escenas (la lee la IA que elige cada escena). Para un vídeo
   # concreto, una lista de escenas propia va en materiales/<vídeo>/escenas.txt (o en «Nuevo vídeo»): manda sobre esto.
@@ -53,3 +54,19 @@ ideas:
     (por qué hay atascos sin motivo, por qué la cola de al lado va más rápida, cómo se propaga un bulo o un incendio),
     vídeos de ~10 min con un experimento que se ve'
   niches: [tráfico, colas, epidemias, desastres, sociedad, animales, ciencia cotidiana]
+
+# --- series (en materiales/<vídeo>/config.yaml: `serie: y-si`) ---
+series:
+  y-si:                            # «¿Y si todos los coches fueran autónomos?»: un mundo, un dial, una pregunta
+    visual:
+      teaser: true
+      serie: |
+        ESTE VÍDEO ES DE LA SERIE «¿Y SI…?»: UNA pregunta, UN mundo y UN dial (un parámetro de ese mundo que se gira).
+        - El título y la primera frase son la pregunta: «¿Y si <el cambio>?» (¿y si todos los coches fueran autónomos?,
+          ¿y si hubiera una caja más?, ¿y si nadie bloqueara las puertas del metro?).
+        - Todo el vídeo en ese mundo: primero cómo es hoy (el dial en su valor real), luego el dial se gira paso a paso
+          (dos o tres valores, cada uno una frase con el nuevo valor en "params": el dial sale solo en pantalla) y la voz
+          narra qué cambia en cada paso; el giro es el punto donde todo cambia de golpe (el umbral).
+        - Un «¿tú qué crees que pasará?» antes del paso más fuerte ("ask").
+        - Cierra con la respuesta en una frase y el valor del dial donde está el truco.
+        - 4-6 minutos: corto y directo; nada de otros mundos.
