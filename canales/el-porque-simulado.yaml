@@ -7,7 +7,7 @@
 # parámetros en remotion/sim/worlds.json. Lo que no se pone aquí sale de config.yaml.
 
 video:
-  fps: 60                          # animación suave (la guía del canal); el render tarda el doble que a 30
+  fps: 30                          # los vídeos largos a 30 (el render de 60 tarda el doble); los Shorts nuevos van a 60
 
 visual:
   style: simulacion

@@ -45,7 +45,7 @@ def test_each_short_is_a_new_vertical_video_in_the_queue(tmp_path, monkeypatch):
     folder = tmp_path / "materiales" / "trafico" / "hora1-short1"
     assert (folder / "guion.txt").read_text("utf-8").strip() == good          # no heading, its own words
     cfg = yaml.safe_load((folder / "config.yaml").read_text("utf-8"))
-    assert cfg["video"] == {"width": 1080, "height": 1920} and cfg["timeline"]["endscreen_seconds"] == 0
+    assert cfg["video"] == {"width": 1080, "height": 1920, "fps": 60} and cfg["timeline"]["endscreen_seconds"] == 0
     assert cfg["shorts"] == {"enabled": False, "of": "hora1"} and cfg["timeline"]["captions"] is True
     assert (tmp_path / "materiales" / "trafico" / "hora1-short2").is_dir()   # the too-short one was skipped
     assert not (tmp_path / "materiales" / "trafico" / "hora1-short3").exists()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import tempfile
+
+import pytest
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -335,3 +337,19 @@ def test_a_long_video_holds_ordinary_shots_longer_after_its_opening(tmp_path):
     assert targets[-1] == 3.6 and targets[60] == 1.9                   # later longer; fast sentences stay fast
     short = words[: int(10 * 60 / 0.4)]                                                     # a 10-minute video
     assert set(pace_targets(ctx, short, {}, 2.6)[0]) == {2.6}
+
+
+def test_a_short_needs_no_chapters_but_a_long_video_does(tmp_path, monkeypatch):
+    from pipeline.schemas import AlignmentStats, WordsFile
+
+    def words_file(seconds):
+        return WordsFile(slug="t", title="Atascos", language="es", durationSeconds=seconds, words=_words(28), chapters=[],
+                         alignment=AlignmentStats(provider="x", model="x", scriptWords=28, whisperWords=28,
+                                                  matchedWords=28, matchRatio=1.0))
+
+    monkeypatch.setattr(planner, "complete_json", lambda ctx, **k: {"context": "tráfico", "chapters": [{"title": "UNO", "sentence": 0}]})
+    ctx = RunContext.create("t", root=tmp_path, config={"planner": {"max_attempts": 1}})
+    chapters, context, _ = planner.plan_chapters(ctx, words_file(53.0))
+    assert len(chapters) == 1 and not chapters[0].showTitle and context == "tráfico"
+    with pytest.raises(RuntimeError):
+        planner.plan_chapters(ctx, words_file(600.0))

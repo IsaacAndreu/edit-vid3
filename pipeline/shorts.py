@@ -348,10 +348,12 @@ def write_new(ctx: RunContext) -> list[dict[str, Any]]:
 def make_new(ctx: RunContext) -> None:
     """Each Short as a new vertical video in the queue (materiales/<canal>/<slug>-shortN/)."""
 
+    from . import stickman
     from .web import create_video
 
     if ctx.section("shorts").get("of"):            # a Short makes no Shorts
         return
+    drawn = stickman.drawn(ctx)
     out_dir = ctx.out_dir / DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     channel = str(ctx.config.get("canal") or "")
@@ -367,8 +369,10 @@ def make_new(ctx: RunContext) -> None:
             continue
         config = ctx.root / created["folder"] / "config.yaml"
         before = config.read_text("utf-8") if config.is_file() else ""
-        config.write_text(before + SHORT_CONFIG.replace("shorts:\n  enabled: false\n",
-                                                        f"shorts:\n  enabled: false\n  of: {ctx.slug}\n"), encoding="utf-8")
+        extra = SHORT_CONFIG.replace("shorts:\n  enabled: false\n", f"shorts:\n  enabled: false\n  of: {ctx.slug}\n")
+        if drawn:                                  # a drawn Short: 60 fps (short, so the render stays quick)
+            extra = extra.replace("  height: 1920\n", "  height: 1920\n  fps: 60\n")
+        config.write_text(before + extra, encoding="utf-8")
         made.append({**item, "slug": name})
         print(f"   Short nuevo en la cola: {name} · {len(item['script'].split())} palabras · {item['title']}")
     if not made:
