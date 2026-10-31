@@ -188,3 +188,19 @@ def test_the_boarding_world_has_a_scene_for_each_part_of_the_script():
 def test_the_lift_world_covers_bunching_buses_buttons_and_history():
     w = simulacion.worlds()["ascensores"]
     assert {"juntos", "autobuses", "reparto", "curva", "botones", "destino", "paternoster", "otis", "pico", "zonas"} == set(w["params"]["scene"]["options"])
+
+
+def test_the_script_check_says_what_each_block_shows_and_writes_the_scene_list(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    script = "\n\n".join(["Bloque uno sobre el pasillo " * 20, "Bloque dos sobre Otis en 1854 " * 20, "Bloque tres de historia suelta " * 20,
+                          "Bloque cuatro otra vez pasillo " * 20])
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **k: {"blocks": [
+        {"n": 1, "world": "embarque", "scene": "pasillo", "fit": "bien", "line": "El pasillo: embarque pasillo"},
+        {"n": 2, "world": "ascensores", "scene": "otis", "fit": "bien", "line": "Otis: ascensores otis"},
+        {"n": 3, "world": "embarque", "scene": "inventada", "fit": "bien", "line": "x"},
+        {"n": 4, "world": "nada", "fit": "bien"}]})
+    r = simulacion.review_script(ctx, script)
+    fits = [b["fit"] for b in r["blocks"]]
+    assert fits == ["bien", "bien", "regular", "no"]                  # a scene that does not exist, a world that does not
+    assert 40 < r["coverage"] < 80 and r["flagged"][0]["n"] == 4
+    assert "embarque pasillo" in r["escenas"] and "ascensores otis" in r["escenas"]

@@ -578,8 +578,13 @@ async function checkScenes() {
   try {
     const r = await post("/api/scenes", {script: $("#script").value, channel: $("#channel").value});
     msg.textContent = "";
-    $("#scenebox").innerHTML = `<div class="notice ${r.flagged.length ? "" : "ok"}"><b>${esc(r.verdict)}</b>
-      ${r.flagged.length ? `<ul class="small">${r.flagged.map((f) => `<li><b>[${f.n}]</b> «${esc(f.line)}»<br>${esc(f.why)}<br><i>Propuesta:</i> ${esc(f.fix)}</li>`).join("")}</ul>` : ""}</div>`;
+    const icon = {bien: "✅", regular: "🟡", no: "🔴"};
+    window.proposedScenes = r.escenas || "";
+    $("#scenebox").innerHTML = `<div class="notice ${r.coverage >= 85 && !r.warnings.length ? "ok" : ""}"><b>${esc(r.verdict)}</b>
+      ${r.warnings.length ? `<ul class="small">${r.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}
+      <ul class="small">${(r.blocks || []).map((b) => `<li>${icon[b.fit] || "•"} <b>[${b.n}]</b> ${esc(b.world || "—")} ${esc(b.scene || "")}
+        <span class="muted">· ~${b.seconds} s · «${esc(b.text.slice(0, 90))}…»</span>${b.why ? `<br><i>Falta:</i> ${esc(b.why)}` : ""}</li>`).join("")}</ul>
+      ${r.escenas ? `<button onclick="$('#scenelist').value = window.proposedScenes; this.textContent = 'Lista de escenas puesta ✓'">Usar esta lista de escenas</button>` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
   $("#scenebtn").disabled = false;
 }

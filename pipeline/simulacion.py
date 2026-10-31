@@ -459,50 +459,98 @@ def sync(groups: list[Any], words: list[Any], frame_of: Any, fps: int) -> None:
             g["marks"] = sorted(marks, key=lambda m: m["at"])[:3]
 
 
-REVIEW = """
-Eres el realizador de un canal que explica cosas con simulaciones. Te paso los mundos que el canal puede enseñar y el
-guion numerado por frases. Para cada frase di si algún mundo la puede ENSEÑAR (no solo acompañar):
+PLAN = """
+Eres el realizador de un canal que explica cosas con simulaciones vistas desde arriba. Te paso los mundos que el canal
+puede enseñar (con sus escenas: el parámetro "scene" y lo que enseña cada una) y el guion por bloques numerados. Para
+CADA bloque elige la escena que mejor ENSEÑA lo que dice (no solo lo acompaña):
 {worlds}
-Devuelve SOLO JSON: {{"lines": [{{"n": 1, "ok": true, "world": "…", "why": "", "fix": ""}}]}}
-- "ok": false solo si ningún mundo enseña lo que dice la frase (un dato histórico suelto, una idea abstracta, algo
-  que pasa fuera de lo simulado); entonces "why" en 1 frase y "fix": la frase reescrita para que se pueda enseñar,
-  o "quitar".
+Devuelve SOLO JSON: {{"blocks": [{{"n": 1, "world": "…", "scene": "valor de scene o \"\"", "params": {{}},
+"fit": "bien|regular|no", "why": "", "line": ""}}]}}
+- "fit": "bien" si esa escena enseña justo lo que dice el bloque; "regular" si solo lo acompaña o enseña una parte;
+  "no" si ningún mundo lo enseña (un dato histórico suelto, una idea abstracta, algo fuera de lo simulado).
+- "why": en "regular" o "no", en una frase qué falta en pantalla (la escena o el mundo que haría falta); si no, "".
+- "params": solo los parámetros que el bloque cambia (otro método, otro margen, el dial que gira).
+- "line": una línea para la lista de escenas del director: «<de qué va el bloque, 3-8 palabras>: <mundo> <escena> (y los
+  parámetros o el dial, si los hay)».
+- Varía: cada idea nueva pide su escena; no repitas la misma escena en más de dos bloques seguidos si hay otra que lo
+  enseñe igual de bien.
 """.strip()
+
+WORDS_PER_SECOND = 2.6
 
 
 def review_script(ctx: RunContext, script: str) -> dict[str, Any]:
-    """Before recording: the lines of the script no world can show, with a fix for each."""
+    """Before recording (the studio's «Revisar escenas» and --check): the script by blocks, each with the world and the
+    scene that would show it and how well; how much of it the worlds cover, where the same picture would stay too long,
+    the blocks nothing can show (with what is missing), and the scene list for the director, ready to use."""
 
     from .llm import complete_json
 
-    lines = [l.strip() for l in re.split(r"(?<=[.!?…])\s+", " ".join(
-        l for l in script.splitlines() if not l.strip().startswith("## "))) if len(l.strip()) > 3]
-    if not lines:
+    text = "\n".join(l for l in script.splitlines() if not l.strip().startswith("## "))
+    blocks = [" ".join(b.split()) for b in re.split(r"\n\s*\n", text) if len(b.split()) > 3]
+    if len(blocks) < 3:                               # one long paragraph: blocks of ~4 sentences
+        sentences = [x for x in re.split(r"(?<=[.!?…])\s+", " ".join(text.split())) if x.strip()]
+        blocks = [" ".join(sentences[i:i + 4]) for i in range(0, len(sentences), 4)]
+    if not blocks:
         raise ValueError("El guion está vacío")
-    listing = "\n".join(f"[{n}] {l}" for n, l in enumerate(lines, 1))
-    result = complete_json(ctx, stage="simulacion", section="planner", system=REVIEW.format(worlds=describe(allowed(ctx))),
-                           user=listing, max_tokens=120 * len(lines) + 400)
-    flagged = []
-    for item in result.get("lines") or []:
+    spec = allowed(ctx)
+    listing = "\n\n".join(f"[{n}] {b}" for n, b in enumerate(blocks, 1))
+    result = complete_json(ctx, stage="simulacion", section="planner", system=PLAN.format(worlds=describe(spec)),
+                           user=listing, max_tokens=170 * len(blocks) + 600)
+    found = {}
+    for item in result.get("blocks") or []:
         try:
-            n = int(item.get("n"))
+            found[int(item.get("n"))] = item
         except (TypeError, ValueError):
             continue
-        if item.get("ok") is False and 1 <= n <= len(lines):
-            flagged.append({"n": n, "line": lines[n - 1], "why": str(item.get("why") or "")[:200],
-                            "fix": str(item.get("fix") or "")[:400]})
-    return {"lines": len(lines), "flagged": flagged,
-            "verdict": "✅ Todas las frases se pueden enseñar" if not flagged
-            else f"⚠️ {len(flagged)} de {len(lines)} frases no las enseña ningún mundo"}
+    plan = []
+    for n, block in enumerate(blocks, 1):
+        item = found.get(n) or {}
+        world = str(item.get("world") or "")
+        scene = str(item.get("scene") or "")
+        options = [str(o) for o in ((spec.get(world) or {}).get("params", {}).get("scene", {}).get("options") or [])]
+        fit = str(item.get("fit") or "no") if world in spec else "no"
+        if scene and options and scene not in options:
+            scene, fit = "", "regular" if fit == "bien" else fit
+        plan.append({"n": n, "text": block[:220], "seconds": round(len(block.split()) / WORDS_PER_SECOND), "world": world if world in spec else "",
+                     "scene": scene, "params": item.get("params") if isinstance(item.get("params"), dict) else {},
+                     "fit": fit if fit in ("bien", "regular", "no") else "no", "why": str(item.get("why") or "")[:240],
+                     "line": str(item.get("line") or "")[:200]})
+    total = sum(b["seconds"] for b in plan) or 1
+    coverage = sum(b["seconds"] * (1 if b["fit"] == "bien" else 0.5 if b["fit"] == "regular" else 0) for b in plan) / total
+    warnings = []
+    for key, limit, what in ((lambda b: b["world"], LONGEST_WORLD * 60, "el mismo mundo"),
+                             (lambda b: (b["world"], b["scene"], json.dumps(b["params"], sort_keys=True)), LONGEST_SCENE * 60, "la misma escena")):
+        start = 0
+        for k in range(1, len(plan) + 1):
+            if k == len(plan) or key(plan[k]) != key(plan[start]):
+                seconds = sum(b["seconds"] for b in plan[start:k])
+                if plan[start]["world"] and seconds > limit:
+                    warnings.append(f"Bloques {plan[start]['n']}-{plan[k - 1]['n']}: {seconds / 60:.1f} min seguidos en {what} "
+                                    f"(«{plan[start]['world']}{' ' + plan[start]['scene'] if plan[start]['scene'] else ''}»)")
+                start = k
+    flagged = [{"n": b["n"], "line": b["text"], "why": b["why"] or "Ningún mundo lo enseña", "fix": "una escena nueva, o reescribirlo"}
+               for b in plan if b["fit"] == "no"]
+    pct = round(coverage * 100)
+    verdict = ("✅ Se puede hacer bien" if pct >= 85 and not warnings else
+               "🟡 Se puede hacer, con huecos" if pct >= 65 else "🔴 Hoy saldría flojo: faltan escenas")
+    return {"lines": len(blocks), "coverage": pct, "verdict": f"{verdict} · {pct} % del guion se enseña con escenas",
+            "blocks": plan, "warnings": warnings, "flagged": flagged,
+            "escenas": "\n".join(b["line"] for b in plan if b["line"])}
 
 
 def review_file(ctx: RunContext) -> Path:
-    """--check: escenas.md next to the other checks."""
+    """--check: escenas.md next to the other checks (and escenas-propuestas.txt, the list to use)."""
 
     result = review_script(ctx, (ctx.materials_dir / "guion.txt").read_text("utf-8"))
+    icon = {"bien": "✅", "regular": "🟡", "no": "🔴"}
     out = [f"# Escenas · {ctx.slug}", "", result["verdict"], ""]
-    for item in result["flagged"]:
-        out += [f"- **[{item['n']}]** «{item['line']}»", f"  - Por qué: {item['why']}", f"  - Propuesta: {item['fix']}", ""]
+    out += [f"- ⚠️ {w}" for w in result["warnings"]] + ([""] if result["warnings"] else [])
+    for b in result["blocks"]:
+        out += [f"{icon[b['fit']]} **[{b['n']}]** {b['world'] or '—'} {b['scene']} · ~{b['seconds']} s · «{b['text'][:120]}…»"]
+        if b["why"]:
+            out += [f"  - Falta: {b['why']}"]
+    out += ["", "## Lista de escenas propuesta", "", "```", result["escenas"], "```", ""]
     ctx.out_dir.mkdir(parents=True, exist_ok=True)
     path = ctx.out_dir / "escenas.md"
     path.write_text("\n".join(out), encoding="utf-8")
