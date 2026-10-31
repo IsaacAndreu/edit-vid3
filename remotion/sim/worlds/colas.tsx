@@ -95,6 +95,30 @@ const layout = (f: ShopFrame, tills: number, left: number, width: number, single
   return {spots, tillX, TILL_Y, cx};
 };
 
+/** Where everyone is, walking: each person's place averaged over the last ~1.2 s, so when a line moves up people
+ * walk to their new place instead of jumping there; `moving` says who is walking now (a little sway). */
+const WALK = {samples: 8, step: 0.15};
+const walking = (run: ShopRun, f: ShopFrame, left: number, width: number, single: boolean) => {
+  const now = layout(f, run.tills, left, width, single);
+  const past = Array.from({length: WALK.samples}, (_, k) => layout(run.at(Math.max(0, f.t - (k + 1) * WALK.step)), run.tills, left, width, single).spots);
+  const spots = now.spots.map((spot) => {
+    let x = spot.x;
+    let y = spot.y;
+    let n = 1;
+    for (const list of past) {
+      const before = list.find((p) => p.id === spot.id);
+      if (!before) break;                              // just arrived: from here on
+      x += before.x;
+      y += before.y;
+      n++;
+    }
+    const sx = x / n;
+    const sy = y / n;
+    return {...spot, x: sx, y: sy, moving: Math.hypot(sx - spot.x, sy - spot.y) > 1.5};
+  });
+  return {...now, spots};
+};
+
 // a supermarket as people know it, flat: tiled floor, shelves full of products, checkouts with their belt, cashier and
 // bagging end; people from above (hair, shoulders) in quiet colours — the colour code stays for what matters: the
 // customer holding a till up gets a red ring, YOU are yellow
@@ -102,8 +126,8 @@ const PRODUCTS = ['#d9534f', '#f0ad4e', '#5cb85c', '#5bc0de', '#e8e4dc', '#9b59b
 const SHIRTS = ['#8d99ae', '#adb5bd', '#6c7a89', '#a3917b', '#7f8c8d', '#b0a8b9', '#8a9a8c', '#9fa8b3'];
 const HAIR = ['#2b2118', '#4a3426', '#1d1d1f', '#8a6a46', '#c9b28a', '#5b5b5b'];
 
-export const Shopper: FC<{x: number; y: number; id: number; items: number; you?: boolean; slow?: boolean; paying?: boolean; scale?: number}> = (
-  {x, y, id, items, you = false, slow = false, paying = false, scale = 1}) => {
+export const Shopper: FC<{x: number; y: number; id: number; items: number; you?: boolean; slow?: boolean; paying?: boolean; scale?: number;
+  sway?: number; side?: boolean}> = ({x, y, id, items, you = false, slow = false, paying = false, scale = 1, sway = 0, side = false}) => {
   const k = scale;
   const cart = items > 10;
   const shirt = you ? C.you : SHIRTS[id % SHIRTS.length];
@@ -111,7 +135,7 @@ export const Shopper: FC<{x: number; y: number; id: number; items: number; you?:
     <g transform={`translate(${x} ${y}) scale(${k})`}>
       {!paying && (cart ? (
         // a wire trolley ahead of them, its load showing
-        <g transform="translate(0 -68)">
+        <g transform={side ? 'translate(30 -14) rotate(-90) scale(0.8)' : 'translate(0 -68)'}>
           <rect x={-17} y={-4} width={34} height={44} rx={4} fill="rgba(210,215,222,0.18)" stroke="#c3c9d2" strokeWidth={2} />
           {[8, 18, 28].map((yy) => <line key={yy} x1={-17} x2={17} y1={yy} y2={yy} stroke="#c3c9d2" strokeWidth={1} opacity={0.6} />)}
           {Array.from({length: Math.min(9, Math.ceil(items / 5))}, (_, j) => (
@@ -125,11 +149,16 @@ export const Shopper: FC<{x: number; y: number; id: number; items: number; you?:
           {Array.from({length: Math.min(3, items)}, (_, j) => <rect key={j} x={-6 + j * 4} y={-4} width={4} height={6} fill={PRODUCTS[(id + j) % PRODUCTS.length]} />)}
         </g>
       ))}
+      <ellipse cx={4} cy={9} rx={21} ry={13} fill="rgba(0,0,0,0.28)" />
       {slow && paying && <circle r={34} fill="none" stroke={C.red} strokeWidth={4} opacity={0.9} />}
       {you && <circle r={30} fill="none" stroke={C.you} strokeWidth={4} />}
-      <ellipse cx={0} cy={2} rx={19} ry={12} fill={shirt} stroke="rgba(0,0,0,0.35)" strokeWidth={2} />
-      <circle cx={0} cy={0} r={9.5} fill={HAIR[id % HAIR.length]} />
-      <circle cx={0} cy={3} r={6} fill="#e8c4a0" />
+      <g transform={`rotate(${sway * 6})`}>
+        <ellipse cx={0} cy={2} rx={19} ry={12} fill={shirt} stroke="rgba(0,0,0,0.35)" strokeWidth={2} />
+        <ellipse cx={-14} cy={4 + sway * 3} rx={5} ry={6} fill={shirt} opacity={0.9} />
+        <ellipse cx={14} cy={4 - sway * 3} rx={5} ry={6} fill={shirt} opacity={0.9} />
+        <circle cx={0} cy={0} r={9.5} fill={HAIR[id % HAIR.length]} />
+        <circle cx={0} cy={3} r={6} fill="#e8c4a0" />
+      </g>
     </g>
   );
 };
@@ -137,16 +166,34 @@ export const Shopper: FC<{x: number; y: number; id: number; items: number; you?:
 const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single: boolean; look?: Look}> = (
   {run, f, left, width, single, look = {}}) => {
   const byId = new Map(run.people.map((p) => [p.id, p]));
-  const {spots, tillX, TILL_Y, cx} = layout(f, run.tills, left, width, single);
+  const {spots, tillX, TILL_Y, cx} = walking(run, f, left, width, single);
   const tile = 56;
   return (
     <svg width={1920} height={1080} style={{position: 'absolute', clipPath: `inset(0 ${1920 - left - width}px 0 ${left}px)`}}>
+      <defs>
+        <radialGradient id="ceiling"><stop offset="0%" stopColor="#fff6dc" stopOpacity={0.22} /><stop offset="100%" stopColor="#fff6dc" stopOpacity={0} /></radialGradient>
+        <linearGradient id="counter" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#8a929e" /><stop offset="100%" stopColor="#6c7480" /></linearGradient>
+      </defs>
       {/* the floor */}
-      <rect x={left} y={0} width={width} height={1080} fill="#3b4048" />
+      <rect x={left} y={0} width={width} height={1080} fill="#77726a" />
       {Array.from({length: Math.ceil(width / tile) + 1}, (_, i) => (
-        <line key={`fx${i}`} x1={left + i * tile} y1={0} x2={left + i * tile} y2={1080} stroke="rgba(255,255,255,0.05)" />
+        <line key={`fx${i}`} x1={left + i * tile} y1={0} x2={left + i * tile} y2={1080} stroke="rgba(255,255,255,0.08)" strokeWidth={2} />
       ))}
-      {Array.from({length: 20}, (_, i) => <line key={`fy${i}`} x1={left} y1={i * tile} x2={left + width} y2={i * tile} stroke="rgba(255,255,255,0.05)" />)}
+      {Array.from({length: 20}, (_, i) => <line key={`fy${i}`} x1={left} y1={i * tile} x2={left + width} y2={i * tile} stroke="rgba(255,255,255,0.08)" strokeWidth={2} />)}
+      {/* the lights in the ceiling, pools on the floor */}
+      {Array.from({length: Math.max(1, Math.round(width / 420))}, (_, i) => [0, 1].map((r) => (
+        <ellipse key={`l${i}${r}`} cx={left + (i + 0.5) * (width / Math.max(1, Math.round(width / 420)))} cy={420 + r * 380} rx={300} ry={220} fill="url(#ceiling)" />
+      )))}
+      {/* side shelves: the shop goes on */}
+      {[left + 4, left + width - 30].map((sx, side) => (
+        <g key={`side${side}`}>
+          <rect x={sx} y={240} width={26} height={820} rx={3} fill="#555c67" />
+          {Array.from({length: 40}, (_, j) => (
+            <rect key={j} x={sx + 4 + (j % 2) * 9} y={246 + Math.floor(j / 2) * 40 + (j % 3) * 3} width={8} height={30} rx={1.5}
+                  fill={PRODUCTS[(j * 3 + side * 5) % PRODUCTS.length]} opacity={0.75} />
+          ))}
+        </g>
+      ))}
       {/* the shelves behind the tills */}
       {[0].map((row) => (
         <g key={`row${row}`}>
@@ -170,7 +217,8 @@ const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single
         const shift = (f.t * 18) % 16;
         return (
           <g key={`t${i}`}>
-            <rect x={x - 20} y={TILL_Y - 110} width={40} height={150} rx={6} fill="#7a828e" />
+            <rect x={x - 16} y={TILL_Y - 104} width={40} height={150} rx={6} fill="rgba(0,0,0,0.3)" />
+            <rect x={x - 20} y={TILL_Y - 110} width={40} height={150} rx={6} fill="url(#counter)" />
             <rect x={x - 14} y={TILL_Y - 104} width={28} height={110} rx={3} fill="#22262d" />
             {busy && Array.from({length: 7}, (_, j) => (
               <line key={j} x1={x - 14} x2={x + 14} y1={TILL_Y - 100 + ((j * 16 + shift) % 110)} y2={TILL_Y - 100 + ((j * 16 + shift) % 110)} stroke="rgba(255,255,255,0.08)" />
@@ -178,6 +226,12 @@ const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single
             {Array.from({length: onBelt}, (_, j) => (
               <rect key={`it${j}`} x={x - 8 + (j % 2) * 4} y={TILL_Y - 2 - j * 12} width={12} height={10} rx={2} fill={PRODUCTS[(f.paying[i] + j) % PRODUCTS.length]} />
             ))}
+            {busy && payer && f.left[i] < payer.service * 0.5 && (
+              <g>
+                <rect x={x - 46} y={TILL_Y - 104} width={18} height={20} rx={3} fill="#d9c7a3" stroke="#a8956f" strokeWidth={1.5} />
+                {payer.items > 10 && <rect x={x - 46} y={TILL_Y - 80} width={18} height={20} rx={3} fill="#d9c7a3" stroke="#a8956f" strokeWidth={1.5} />}
+              </g>
+            )}
             <rect x={x - 22} y={TILL_Y - 150} width={44} height={34} rx={5} fill="#4c535e" />
             <rect x={x - 14} y={TILL_Y - 144} width={20} height={14} rx={2} fill={busy ? '#9fe3c0' : '#3a3f47'} />
             <g transform={`translate(${x + 44} ${TILL_Y - 132})`}>
@@ -196,20 +250,21 @@ const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single
       {single && Array.from({length: 4}, (_, r) => (
         // the belt barriers of a single line: posts and their tape
         <g key={`bar${r}`}>
-          <line x1={cx - 230} x2={cx + 230} y1={TILL_Y + 140 + r * 92} y2={TILL_Y + 140 + r * 92} stroke="#c9b458" strokeWidth={3} opacity={0.6}
+          <line x1={cx - 230} x2={cx + 230} y1={TILL_Y + 184 + r * 92} y2={TILL_Y + 184 + r * 92} stroke="#c9b458" strokeWidth={3} opacity={0.6}
                 strokeDasharray={r % 2 ? '0 40 420' : '420 40'} />
-          {[-230, 0, 230].map((dx) => <circle key={dx} cx={cx + dx} cy={TILL_Y + 140 + r * 92} r={6} fill="#9aa3ad" />)}
+          {[-230, 0, 230].map((dx) => <circle key={dx} cx={cx + dx} cy={TILL_Y + 184 + r * 92} r={6} fill="#9aa3ad" />)}
         </g>
       ))}
       {look.ghost && (
         <circle cx={look.ghost[0]} cy={look.ghost[1] - 8} r={24} fill="none" stroke={C.you} strokeWidth={3} strokeDasharray="6 5" opacity={0.7} />
       )}
-      {spots.map(({id, x, y, paying}) => {
+      {spots.map(({id, x, y, paying, moving}) => {
         const p = byId.get(id)!;
         const you = look.you === id;
         return (
           <g key={id}>
-            <Shopper x={x} y={y - 8} id={id} items={p.items} you={you} slow={p.slow && look.slowMark === true} paying={paying} />
+            <Shopper x={x} y={y - 8} id={id} items={p.items} you={you} slow={p.slow && look.slowMark === true} paying={paying}
+                     sway={moving ? Math.sin(f.t * 9 + id) : 0} side={single && !paying} />
             {you && <text x={x} y={y - 46} textAnchor="middle" fill={C.you} fontFamily={FONT} fontSize={28} fontWeight={800}>{tx('youWord').toUpperCase()}</text>}
           </g>
         );

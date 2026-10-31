@@ -56,7 +56,8 @@ export const Note: FC<{children: ReactNode}> = ({children}) => (
 
 /** A title over one half (or band) of a split screen. */
 export const SideTitle: FC<{text: string; style: CSSProperties}> = ({text, style}) => (
-  <div style={{position: 'absolute', fontFamily: FONT, fontSize: 40, fontWeight: 800, color: C.text, textTransform: 'uppercase', ...style}}>
+  <div style={{position: 'absolute', fontFamily: FONT, fontSize: 40, fontWeight: 800, color: C.text, textTransform: 'uppercase',
+               textShadow: '0 2px 10px rgba(0,0,0,0.6)', ...style}}>
     {text}<div style={{height: 4, width: 110, background: C.accent, marginTop: 4}} />
   </div>
 );
