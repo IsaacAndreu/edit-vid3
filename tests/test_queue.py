@@ -347,3 +347,16 @@ def test_a_stage_that_stops_is_not_shown_as_still_running(tmp_path, monkeypatch)
         runner.run_stages(ctx)
     current = _json.loads((ctx.work_dir / "current.json").read_text())
     assert current["stage"] == stage.name and current["ended"] and web.running(current) is None
+
+
+def test_an_easy_short_goes_first(tmp_path, monkeypatch):
+    import time as _time
+
+    _materials(tmp_path, "long1")
+    _time.sleep(0.01)
+    _materials(tmp_path, "long1-short1")
+    (tmp_path / "materiales" / "long1-short1" / "config.yaml").write_text("shorts:\n  enabled: false\n  of: long1\n", "utf-8")
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: True)
+    assert main.pending_slugs(tmp_path) == ["long1-short1", "long1"]
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)     # a footage Short: no jump
+    assert main.pending_slugs(tmp_path) == ["long1", "long1-short1"]

@@ -263,8 +263,24 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
         first = {d.name: rank.get(_channel_of(root, d), len(rank)) for d in ready}
     else:
         first = {}
-    return [d.name for d in sorted(ready, key=lambda d: (first.get(d.name, 0), due.get(d.name, "9999"),
+    easy = {d.name for d in ready if easy_short(root, d)}  # a Short drawn in code: minutes, so it never waits
+    return [d.name for d in sorted(ready, key=lambda d: (d.name not in easy, first.get(d.name, 0), due.get(d.name, "9999"),
                                                          d.stat().st_mtime, d.name))]
+
+
+def easy_short(root: Path, folder: Path) -> bool:
+    """A Short made as a new video (shorts.style: nuevo → `shorts: of:` in its config) whose channel draws it in code
+    (simulation, stick figures): no footage to search, a minute of voice — it goes before everything else."""
+
+    import yaml
+
+    try:
+        cfg = yaml.safe_load((folder / "config.yaml").read_text("utf-8")) or {}
+    except (OSError, ValueError):
+        return False
+    if not isinstance(cfg, dict) or not (cfg.get("shorts") or {}).get("of"):
+        return False
+    return is_drawn(root, folder.name)
 
 
 def needs_youtube(root: Path, slug: str) -> bool:
