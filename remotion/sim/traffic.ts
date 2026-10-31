@@ -3,6 +3,8 @@
 // backwards. The setting of Sugiyama et al. (2008): 22 cars on a 230 m circle. Simulated once, deterministically
 // (seeded noise), and sampled every SAMPLE seconds for the frames.
 
+import {sampled} from './sample';
+
 export const RING = {cars: 22, length: 230, carLength: 4.5};
 const P = {v0: 16, T: 0.7, a: 0.2, b: 1.5, s0: 1.0, noise: 0.08};
 export const PERTURB = {car: 0, from: 6, to: 7.5, decel: -1.5};     // one driver brakes a little
@@ -106,8 +108,9 @@ const build = (cars: number, mode: Mode): Ring => {
   const smoothAt = mode === 'suave' && Number.isFinite(ring(cars).firstStop) ? ring(cars).firstStop + SMOOTH.lead : Infinity;
   const frames = simulate(cars, mode, smoothAt);
   // before the start (t < 0) the cars were already going round at the same speed: the first frame, turned back
+  const smooth = sampled(frames, SAMPLE, RING.length);
   const at = (t: number): Frame => {
-    if (t >= 0) return frames[Math.min(frames.length - 1, Math.round(t / SAMPLE))];
+    if (t >= 0) return smooth(t);
     const first = frames[0];
     return {x: first.x.map((x) => (((x + first.v[0] * t) % RING.length) + RING.length) % RING.length), v: first.v, a: first.a.map(() => 0)};
   };

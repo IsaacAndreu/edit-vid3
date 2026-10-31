@@ -6,6 +6,8 @@
 //    a lower limit before the waves («limite»), a second lane with its own waves («carril»).
 // Deterministic (seeded noise) and simulated once per setting.
 
+import {sampled} from './sample';
+
 export const P = {v0: 16, T: 1.0, a: 0.5, b: 1.5, s0: 2.0, noise: 0.08};
 export const CAR = 4.5;
 const DT = 0.05;
@@ -79,7 +81,7 @@ export const platoon = (): Platoon => {
       hardest[i] = Math.max(hardest[i], -acc[i]);
     }
   }
-  const at = (t: number) => frames[Math.max(0, Math.min(frames.length - 1, Math.round(t / SAMPLE)))];
+  const at = sampled(frames, SAMPLE, 0);
   PLAT = {frames, minSpeed, hardest, at};
   return PLAT;
 };
@@ -148,7 +150,7 @@ export const road = (variant: Variant = 'normal', seed = 7, cars = ROAD.cars): R
       x[i] = (x[i] + v[i] * DT) % L;
     }
   }
-  const at = (t: number) => frames[Math.max(0, Math.min(frames.length - 1, Math.round(t / SAMPLE)))];
+  const at = sampled(frames, SAMPLE, L);
   const out: Road = {
     frames, at, L, cars: n,
     stopped: (t) => Array.from(at(t).v).filter((s) => s < 0.6).length,
