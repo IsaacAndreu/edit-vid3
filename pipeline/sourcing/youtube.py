@@ -134,7 +134,9 @@ _WARNINGS = (
     (("challenge", "javascript runtime", "js runtime", "n function", "nsig", "ejs"),
      "yt-dlp no puede resolver los retos de YouTube → descargas lentas o formatos que faltan. "
      "Arréglalo con: pip install -U \"yt-dlp[default]\" deno"),
-    (("po token", "some formats may be missing", "sabr"), "YouTube esconde formatos a este cliente (PO token/SABR)"),
+    (("po token", "some formats may be missing", "sabr"),
+     "YouTube esconde algunos formatos a este cliente (PO token/SABR): se usan los que quedan (HLS); solo es un "
+     "problema si además fallan las descargas"),
     (("http error 429", "too many requests"), "YouTube limita peticiones (429): el programa espera y reintenta"),
     (("http error 403", "forbidden"), "YouTube rechaza una descarga (403): se reintenta con enlaces nuevos"),
     (("timed out", "timeout", "retrying"), "descargas que se cortan o tardan en responder (red lenta): se reintentan"),
@@ -217,8 +219,9 @@ class _QuietLogger:
                 with _warning_lock:
                     first = text not in WARNING_COUNTS
                     WARNING_COUNTS[text] = WARNING_COUNTS.get(text, 0) + 1
-                if first:
-                    print(f"   AVISO yt-dlp: {text}")
+                if first:                  # yt-dlp's own words once (a proxy's password hidden)
+                    said = re.sub(r"//[^/@\s]+@", "//***@", " ".join(msg.split()))[:240]
+                    print(f"   AVISO yt-dlp: {text}\n      yt-dlp dice: {said}")
                 return
 
     def error(self, msg: str) -> None: ...
