@@ -14,3 +14,4 @@ brand:
 
 graphics:
   types: [chart, compare, timeline]   # los gráficos del programa, encima de la simulación, solo cuando aportan una cifra
+  extra_types: []                     # sin los gráficos «de papel» (pergamino, periódico…): rompen el aspecto de la simulación
