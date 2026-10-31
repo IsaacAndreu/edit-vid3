@@ -7,7 +7,8 @@ import {C, FONT, Label, Panel} from './hud';
 
 export type WorldProps = {
   g: SimGraphic;
-  local: number;              // seconds since this shot started
+  local: number;              // seconds since this shot started (in a replay: the time shown, rewound and slowed)
+  real?: number;              // seconds since this shot started on the clock (camera moves, arrows)
   length: number;             // the shot's length in seconds
   worldT: number;             // seconds since this world came on screen (its clock, before any pacing of its own)
   move: number;               // 0 → 1: the camera going from the previous shot's focus to this one's
@@ -49,7 +50,7 @@ export const Big: FC<{label: string; value: string; color?: string; style?: CSSP
 
 /** The small line at the bottom saying what is simulated and how. */
 export const Note: FC<{children: ReactNode}> = ({children}) => (
-  <div style={{position: 'absolute', left: 48, bottom: 24, fontFamily: FONT, fontSize: 14, letterSpacing: 1.2, color: 'rgba(255,255,255,0.5)',
+  <div style={{position: 'absolute', left: 48, bottom: 22, fontFamily: FONT, fontSize: 20, letterSpacing: 1.1, color: 'rgba(255,255,255,0.62)',
                textTransform: 'uppercase'}}>{children}</div>
 );
 

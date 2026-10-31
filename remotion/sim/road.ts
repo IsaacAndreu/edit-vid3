@@ -219,3 +219,122 @@ export const jamOf = (f: Frame, L: number) => {
   const big = runs.reduce((a, b) => (b.length > a.length ? b : a));
   return {tail: big[0], front: big[big.length - 1], cars: big.length};
 };
+
+// --- the on-ramp (ramp metering) ---------------------------------------------------------------------------------------
+// A busy periodic road with an exit and, before it, an on-ramp. Cars leaving at the exit come back a while later to the
+// ramp (the city around), in bunches (a traffic light upstream lets them go together). Without a meter each bunch
+// squeezes in at once into whatever gap there is, the cars behind brake hard and waves start; with a meter (a light on
+// the ramp) one car goes every `every` seconds into a real gap, and the rest wait on the ramp.
+export const RAMP = {cars: 64, merge: 300, exit: 720, share: 0.18, away: 24, bunch: 6, bunchEvery: 14, every: 2.6,
+  minGap: 5, mergeSpeed: 9, span: 300};
+
+export type RampFrame = Frame & {on: Uint8Array; waiting: number};
+export type Ramp = {frames: RampFrame[]; at: (t: number) => RampFrame; L: number; cars: number; stopped: (t: number) => number;
+  waitingAt: (t: number) => number};
+const RAMPS = new Map<string, Ramp>();
+
+export const ramp = (metered: boolean, seed = 11): Ramp => {
+  const key = `${metered}:${seed}`;
+  if (RAMPS.has(key)) return RAMPS.get(key)!;
+  const L = ROAD.length;
+  const n = RAMP.cars;
+  const rnd = mulberry(seed);
+  const pick = mulberry(seed * 7 + 3);
+  const onCount = Math.round(n * 0.86);                     // the rest start off the road, coming back
+  const avg = L / onCount - CAR;
+  const even = equilibrium(avg);
+  const x = Array(n).fill(0);
+  const v = Array(n).fill(0);
+  const on = Array(n).fill(false);
+  for (let i = 0; i < onCount; i++) {
+    x[i] = ((onCount - i) * L) / onCount % L;
+    v[i] = even;
+    on[i] = true;
+  }
+  const back: {car: number; at: number}[] = [];             // cars away, and when they reach the ramp's queue
+  for (let i = onCount; i < n; i++) back.push({car: i, at: 4 + (i - onCount) * 2});
+  const queue: number[] = [];                               // cars on the ramp, in order
+  let lastIn = -Infinity;
+  const frames: RampFrame[] = [];
+  const every = Math.round(SAMPLE / DT);
+  const acc = Array(n).fill(0);
+  let nextBunch = 6;
+  const gapAt = (pos: number) => {                          // the car just ahead of and just behind a position
+    let ahead = -1;
+    let behind = -1;
+    let da = Infinity;
+    let db = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (!on[i]) continue;
+      const d = ((x[i] - pos) % L + L) % L;
+      if (d < da) { da = d; ahead = i; }
+      const e = ((pos - x[i]) % L + L) % L;
+      if (e < db) { db = e; behind = i; }
+    }
+    return {ahead, behind, da, db};
+  };
+  for (let step = 0; step * DT <= RAMP.span; step++) {
+    const t = step * DT;
+    // cars coming back to the ramp: unmetered they arrive together (released by a light upstream)
+    if (t >= nextBunch) {
+      nextBunch += RAMP.bunchEvery;
+      const due = back.filter((b) => b.at <= t).slice(0, RAMP.bunch);
+      for (const b of due) {
+        back.splice(back.indexOf(b), 1);
+        queue.push(b.car);
+      }
+    }
+    // the ramp lets cars in
+    if (queue.length) {
+      const g = gapAt(RAMP.merge);
+      // without a meter they squeeze into any hole; the meter waits for a real gap and lets one go at a time
+      const room = metered ? g.da - CAR > RAMP.minGap && g.db - CAR > RAMP.minGap * 0.6 && t - lastIn >= RAMP.every
+        : g.da - CAR > 1.5 && g.db - CAR > 1;
+      if (room) {
+        const car = queue.shift()!;
+        on[car] = true;
+        x[car] = RAMP.merge;
+        v[car] = metered ? Math.min(RAMP.mergeSpeed + 3, g.ahead >= 0 ? v[g.ahead] : RAMP.mergeSpeed) : RAMP.mergeSpeed * 0.7;
+        lastIn = t;
+      }
+    }
+    // order on the road: each car's leader is the next one ahead
+    const ids = [];
+    for (let i = 0; i < n; i++) if (on[i]) ids.push(i);
+    ids.sort((a, b) => x[a] - x[b]);
+    for (let k = 0; k < ids.length; k++) {
+      const i = ids[k];
+      const j = ids[(k + 1) % ids.length];
+      const gap = ((x[j] - x[i] + L) % L) - CAR;
+      acc[i] = Math.max(-9, idm(P, v[i], gap, v[i] - v[j]) + P.noise * gauss(rnd));
+    }
+    if (step % every === 0) {
+      frames.push({x: Float32Array.from(x), v: Float32Array.from(v), a: Float32Array.from(acc),
+                   on: Uint8Array.from(on.map(Number)), waiting: queue.length});
+    }
+    for (const i of ids) {
+      const before = x[i];
+      v[i] = Math.max(0, v[i] + acc[i] * DT);
+      x[i] = (x[i] + v[i] * DT) % L;
+      const passed = ((RAMP.exit - before + L) % L) < v[i] * DT + 1e-6 && v[i] > 0;
+      if (passed && pick() < RAMP.share) {                    // takes the exit: back to the ramp in a while
+        on[i] = false;
+        back.push({car: i, at: t + RAMP.away * (0.7 + 0.6 * pick())});
+      }
+    }
+  }
+  const smooth = sampled(frames, SAMPLE, L);
+  const at = (t: number): RampFrame => {
+    const f = smooth(t);
+    const k = Math.max(0, Math.min(frames.length - 1, Math.round(t / SAMPLE)));
+    return {...f, on: frames[k].on, waiting: frames[k].waiting};
+  };
+  const out: Ramp = {frames, at, L, cars: n,
+    stopped: (t) => {
+      const f = at(t);
+      return Array.from(f.v).filter((s, i) => f.on[i] && s < 0.6).length;
+    },
+    waitingAt: (t) => at(t).waiting};
+  RAMPS.set(key, out);
+  return out;
+};

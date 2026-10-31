@@ -3,7 +3,8 @@
 // used to the end and the cars take turns at the cones (the zipper). Every car drives with the IDM.
 import type {FC} from 'react';
 import {AbsoluteFill} from 'remotion';
-import {BODY, Car} from '../city';
+import {Car, CITY} from '../city';
+import {paint, Pointers, trail} from '../look';
 import {C, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {Big, mulberry, Note, param, SideTitle, type World, type WorldProps} from '../world';
@@ -24,7 +25,7 @@ const SIGN = 150;                                // the sign: early mergers move
 const DT = 1 / 30;
 const SPAN = 140;
 const WARM = 90;                                 // seconds driven before we look (the queue already there)
-const VIEW = [120, 520];                         // the metres of road on screen: from before the sign to past the cones
+const VIEW = [190, 505];                         // the metres of road on screen: the queues up to just past the cones
 const IDM = {v0: 25, T: 1.4, a: 1.4, b: 2.2, s0: 2.5};
 const CAR = 4.4;
 // the zipper: merging allowed in the last `from` metres; whoever lets a car in is within `reach`; the gaps accepted
@@ -140,14 +141,14 @@ export const queue = (s: Snap) => {
 const Highway: FC<{s: Snap; top: number; scale: number; mark: number}> = ({s, top, scale, mark}) => {
   const m = 1920 / (VIEW[1] - VIEW[0]);
   const px = (x: number) => (x - VIEW[0]) * m;
-  const lane = 40 * scale;
+  const lane = 54 * scale;
   const laneY = (l: number) => top + (l === 0 ? -lane / 2 : lane / 2);
   const q = queue(s);
   return (
     <g>
-      <rect x={0} y={top - lane * 1.4} width={1920} height={lane * 2.8} fill="#4a6e3f" />
-      <rect x={0} y={top - lane} width={px(CLOSE + 25)} height={lane * 2} fill="#33363c" />
-      <rect x={px(CLOSE + 25)} y={top - lane} width={1920} height={lane} fill="#33363c" />
+      <rect x={0} y={top - lane * 1.4} width={1920} height={lane * 2.8} fill={CITY.grass} />
+      <rect x={0} y={top - lane} width={px(CLOSE + 25)} height={lane * 2} fill={CITY.road} />
+      <rect x={px(CLOSE + 25)} y={top - lane} width={1920} height={lane} fill={CITY.road} />
       <line x1={0} y1={top} x2={px(CLOSE)} y2={top} stroke="#f2f2f2" strokeWidth={3} strokeDasharray="22 22" />
       <line x1={0} y1={top - lane} x2={1920} y2={top - lane} stroke="#f2f2f2" strokeWidth={3} />
       <line x1={0} y1={top + lane} x2={px(CLOSE + 25)} y2={top + lane} stroke="#f2f2f2" strokeWidth={3} />
@@ -166,13 +167,14 @@ const Highway: FC<{s: Snap; top: number; scale: number; mark: number}> = ({s, to
       )}
       {Array.from(s.x).map((x, k) => {
         const braking = Math.min(1, Math.max(0, -s.a[k] - 0.3) / 1.5) || (s.v[k] < 1 ? 1 : 0);
-        return <Car key={s.id[k]} sx={px(x)} sy={laneY(s.lane[k])} deg={0} s={m * 1.35 * Math.min(1.15, scale)} color={BODY[s.id[k] % BODY.length]} brake={braking} />;
+        return <Car key={s.id[k]} sx={px(x)} sy={laneY(s.lane[k])} deg={0} s={m * 1.3 * Math.min(1.15, scale)} color={paint(s.v[k], 20)}
+                    brake={braking} trail={trail(s.v[k], 20)} />;
       })}
     </g>
   );
 };
 
-const View: FC<WorldProps> = ({g, worldT, move, o}) => {
+const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o}) => {
   const demand = param(g, 'demand', 0.55);
   const early = road(false, demand);
   const zip = road(true, demand);
@@ -184,7 +186,7 @@ const View: FC<WorldProps> = ({g, worldT, move, o}) => {
   const b = zip[f];
   const qShow = Math.max(o('queue'), o('results'));
   return (
-    <AbsoluteFill style={{background: '#3c5a36'}}>
+    <AbsoluteFill style={{background: CITY.ground}}>
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
         <Highway s={a} top={1080 * s * 0.55} scale={scale(g.focus, 'top')} mark={qShow} />
         <Highway s={b} top={1080 * s + 1080 * (1 - s) * 0.5} scale={scale(g.focus, 'bottom')} mark={qShow} />
@@ -206,6 +208,10 @@ const View: FC<WorldProps> = ({g, worldT, move, o}) => {
       <Panel o={o('merge')} style={{left: '50%', bottom: 70, transform: 'translateX(-50%)'}}>
         <div style={{fontSize: 30, fontWeight: 800, textTransform: 'uppercase'}}>{tx('mergeHere')}</div>
       </Panel>
+      <Pointers marks={g.marks} local={real} at={{
+        jam: queue(a) > 5 ? {x: (CLOSE - queue(a) - VIEW[0]) * (1920 / (VIEW[1] - VIEW[0])), y: 1080 * s * 0.55} : null,
+        merge: {x: (CLOSE - 12 - VIEW[0]) * (1920 / (VIEW[1] - VIEW[0])), y: 1080 * s + 1080 * (1 - s) * 0.5},
+      }} />
       <Note>{tx('roadNote', {n: Math.round(demand * 60)})}</Note>
     </AbsoluteFill>
   );

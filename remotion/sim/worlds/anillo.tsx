@@ -4,10 +4,11 @@
 // driver: calma nobody gets distracted (no noise, no brake) and the same ring flows. Overlay flow: the fundamental
 // diagram (cars an hour against cars per kilometre), this ring's point on it.
 import type {FC} from 'react';
-import {AbsoluteFill} from 'remotion';
-import {BODY, Car, City, toScreen, type Cam} from '../city';
+import {AbsoluteFill, Easing, interpolate} from 'remotion';
+import {Car, CITY, City, toScreen, type Cam} from '../city';
 import {C, FONT, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
+import {paint, Pointers, trail} from '../look';
 import {flowCurve, PERTURB, RING, SAMPLE, ring, type Mode, type Ring} from '../traffic';
 import {Note, param, type World, type WorldProps} from '../world';
 
@@ -23,6 +24,7 @@ addWords({
   carsN: {es: '{n} coches', pt: '{n} carros', fr: '{n} voitures', de: '{n} Autos', en: '{n} cars'},
   ringSpec: {es: '230 m de vuelta · a {v} km/h', pt: '230 m de volta · a {v} km/h', fr: '230 m de tour · à {v} km/h', de: '230 m Runde · {v} km/h', en: '230 m round · at {v} km/h'},
   noJamYet: {es: 'Aún sin atasco', pt: 'Ainda sem engarrafamento', fr: 'Pas encore de bouchon', de: 'Noch kein Stau', en: 'No jam yet'},
+  oneStopped: {es: '1 parado', pt: '1 parado', fr: '1 à l’arrêt', de: '1 steht', en: '1 stopped'},
   nStopped: {es: '{n} parados', pt: '{n} parados', fr: '{n} à l’arrêt', de: '{n} stehen', en: '{n} stopped'},
   noWaves: {es: 'Sin ondas', pt: 'Sem ondas', fr: 'Plus de vagues', de: 'Keine Wellen', en: 'No waves'},
   tapFades: {es: 'El frenazo se apaga', pt: 'A travagem apaga-se', fr: 'Le coup de frein s’éteint', de: 'Das Bremsen verpufft', en: 'The tap fades'},
@@ -33,7 +35,7 @@ addWords({
 const LAPSE = 2.5;                       // with no cue the jam (a minute and a half to grow) is shown faster
 const R = RING.length / (2 * Math.PI);
 const angle = (x: number) => -Math.PI / 2 + (2 * Math.PI * x) / RING.length;
-const camera = (focus: string): Cam => (focus === 'chart' ? {x: 50, y: 0, s: 8.5} : {x: 0, y: 0, s: 10.5});
+const camera = (focus: string): Cam => (focus === 'chart' ? {x: 50, y: 0, s: 9.2} : {x: 0, y: 0, s: 12.6});
 
 const speedColour = (v: number, top: number) => {
   const k = Math.min(1, v / top);
@@ -42,6 +44,7 @@ const speedColour = (v: number, top: number) => {
 };
 
 const SpaceTime: FC<{r: Ring; simT: number; o: number}> = ({r, simT, o}) => {
+  if (o <= 0.01) return null;                     // 22 lines of up to 220 points: only when it is on screen
   const W = 760;
   const H = 470;
   const span = Math.max(20, Math.min(simT, r.frames.length * SAMPLE));
@@ -52,7 +55,7 @@ const SpaceTime: FC<{r: Ring; simT: number; o: number}> = ({r, simT, o}) => {
   for (let i = 0; i < r.cars; i++) {
     let prev: [number, number] | null = null;
     for (let t = 0; t <= simT; t += step) {
-      const fr = r.at(t);
+      const fr = r.frames[Math.min(r.frames.length - 1, Math.round(t / SAMPLE))];     // the stored steps: no blending needed
       const p: [number, number] = [(t / span) * W, H - (fr.x[i] / RING.length) * H];
       if (prev && Math.abs(p[1] - prev[1]) < H / 2) {
         lines.push(<line key={`${i}-${t}`} x1={prev[0]} y1={prev[1]} x2={p[0]} y2={p[1]}
@@ -107,7 +110,7 @@ const FlowChart: FC<{cars: number; o: number}> = ({cars, o}) => {
         <text x={X(here.perKm) + 16} y={Y(here.perHour) - 12} fill={C.accent} fontFamily={FONT} fontSize={22} fontWeight={800} opacity={o > 0.6 ? 1 : 0}>
           {tx('thisRing')}: {cars}
         </text>
-        <text x={0} y={H + 26} fill={C.label} fontFamily={FONT} fontSize={17} letterSpacing={1.2}>{tx('perKm').toUpperCase()} →</text>
+        <text x={0} y={H + 26} fill={C.label} fontFamily={FONT} fontSize={20} letterSpacing={1.2}>{tx('perKm').toUpperCase()} →</text>
       </svg>
     </Panel>
   );
@@ -147,12 +150,12 @@ const RingRoad: FC<RingProps> = ({r, simT, cx, cy, s, show, centre, arc}) => {
   const k = knot(fr);
   const ra = (R + 9) * s;
   const pt = (th: number, rr = ra) => `${cx + Math.cos(th) * rr},${cy + Math.sin(th) * rr}`;
-  const status = now ? tx('nStopped', {n: now}) : driving ? tx('noWaves') : tx('noJamYet');
+  const status = now === 1 ? tx('oneStopped') : now ? tx('nStopped', {n: now}) : driving ? tx('noWaves') : tx('noJamYet');
   return (
     <g>
-      <circle cx={cx} cy={cy} r={(R + 5.5) * s} fill="#62656b" />
-      <circle cx={cx} cy={cy} r={(R + 3.6) * s} fill="#33363c" />
-      <circle cx={cx} cy={cy} r={(R - 3.6) * s} fill="#4a6e3f" />
+      <circle cx={cx} cy={cy} r={(R + 5.5) * s} fill={CITY.sidewalk} />
+      <circle cx={cx} cy={cy} r={(R + 3.6) * s} fill={CITY.road} />
+      <circle cx={cx} cy={cy} r={(R - 3.6) * s} fill={CITY.grass} />
       {[R + 3.2, R - 3.2].map((rr) => <circle key={rr} cx={cx} cy={cy} r={rr * s} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={Math.max(1, s * 0.12)} />)}
       {centre > 0 && (
         <g opacity={centre}>
@@ -188,7 +191,7 @@ const RingRoad: FC<RingProps> = ({r, simT, cx, cy, s, show, centre, arc}) => {
         const mark = driving && i === autoCar ? C.green : brakeMark ? C.accent
           : fr.v[i] < 0.6 && simT > r.firstStop && show('jam') > 0.5 ? C.red : undefined;
         return <Car key={i} sx={cx + Math.cos(th) * R * s} sy={cy + Math.sin(th) * R * s} deg={(th * 180) / Math.PI + 90}
-                    s={s} color={BODY[i % BODY.length]} brake={braking} mark={mark} />;
+                    s={s} color={paint(fr.v[i], r.startSpeed)} brake={braking} mark={mark} trail={0.8 * trail(fr.v[i], r.startSpeed)} />;
       })}
       {driving && (() => {
         const th = angle(fr.x[autoCar]);
@@ -220,7 +223,7 @@ const Compare: FC<{g: WorldProps['g']; local: number; on: number; o: WorldProps[
           const cx = i ? 1400 : 520;
           return (
             <g key={i}>
-              <RingRoad r={r} simT={t} cx={cx} cy={520} s={7.2} show={show} centre={1} arc={on} />
+              <RingRoad r={r} simT={t} cx={cx} cy={520} s={8} show={show} centre={1} arc={on} />
               <text x={cx} y={940} textAnchor="middle" fill={i ? C.red : C.green} fontFamily={FONT} fontSize={30} fontWeight={800} letterSpacing={1.4}
                     opacity={on}>{tx(i ? 'tapGrows' : 'tapFades').toUpperCase()}</text>
             </g>
@@ -232,18 +235,46 @@ const Compare: FC<{g: WorldProps['g']; local: number; on: number; o: WorldProps[
   );
 };
 
-const View: FC<WorldProps> = ({g, local, move, on, o}) => {
+/** Where the camera goes to look at one car: towards it and closer, the ring still in sight. */
+const closeUp = (r: Ring, simT: number, i: number): Cam => {
+  const th = angle(r.at(simT).x[i]);
+  return {x: Math.cos(th) * R * 0.62, y: Math.sin(th) * R * 0.62, s: 19};
+};
+
+const mixCam = (a: Cam, b: Cam, k: number): Cam => ({x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, s: a.s + (b.s - a.s) * k});
+
+const View: FC<WorldProps> = ({g, local, real = local, move, on, o}) => {
   if (g.focus === 'compare') return <Compare g={g} local={local} on={on} o={o} />;
   const r = ring(param(g, 'cars', 22), modeOf(g));
   const simT = clockOf(g, r, g.at + local);
   const a = camera(g.prev);
   const b = camera(g.overlay === 'flow' ? 'chart' : g.focus);        // the curve takes the right half
-  const cam = {x: a.x + (b.x - a.x) * move, y: 0, s: a.s + (b.s - a.s) * move};
+  let cam = mixCam(a, b, move);
+  // the camera follows what the voice speaks of: in on the car that brakes (or the one that drives itself) while the
+  // line is about it, back out from it on the next line, when the jam (or the calm) is the point
+  const ease = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.inOut(Easing.cubic)} as const;
+  const followed = g.overlay === 'auto' ? Math.floor(r.cars / 2) : PERTURB.car;
+  if (g.focus === 'ring' && (g.overlay === 'brake' || g.overlay === 'auto')) {
+    cam = mixCam(cam, closeUp(r, simT, followed), interpolate(real, [0.2, 1.6], [0, 1], ease));
+  } else if (g.focus === 'ring' && (g.prevOverlay === 'brake' || g.prevOverlay === 'auto')) {
+    cam = mixCam(closeUp(r, simT, g.prevOverlay === 'auto' ? Math.floor(r.cars / 2) : PERTURB.car), cam, interpolate(real, [0, 1.8], [0, 1], ease));
+  }
   const show = (name: string) =>
     name === 'chart' && g.focus === 'chart' && g.overlay !== 'flow' ? on
-      : (name === 'speed' || name === 'jam') && g.overlay === 'auto' ? on : o(name);
+      : name === 'speed' && g.overlay === 'auto' ? on : o(name);
   const c = toScreen(cam, 0, 0);
   const now = r.stopped(simT);
+  const fr = r.at(simT);
+  const onRing = (x: number, out = 0) => {
+    const th = angle(x);
+    return {x: c.sx + Math.cos(th) * (R + out) * cam.s, y: c.sy + Math.sin(th) * (R + out) * cam.s};
+  };
+  const k = knot(fr);
+  const jamAt = k ? (() => {
+    let mid = (k.tail + k.front) / 2;
+    if (k.front < k.tail) mid += Math.PI;
+    return {x: c.sx + Math.cos(mid) * R * cam.s, y: c.sy + Math.sin(mid) * R * cam.s};
+  })() : null;
   return (
     <AbsoluteFill style={{backgroundColor: C.night}}>
       <City cam={cam} clearing={58} ring={[R - 4, R + 6]} />
@@ -251,15 +282,16 @@ const View: FC<WorldProps> = ({g, local, move, on, o}) => {
         <RingRoad r={r} simT={simT} cx={c.sx} cy={c.sy} s={cam.s} show={show} centre={g.focus === 'ring' ? 0.92 : 0} arc={g.focus === 'ring' ? 0.95 : 0} />
       </svg>
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(5,8,18,0.6) 100%)'}} />
-      <Panel o={show('speed')} style={{right: 64, top: 52, width: 250}}>
+      <Pointers marks={g.marks} local={real} at={{car: onRing(fr.x[PERTURB.car]), auto: r.mode === 'suave' ? onRing(fr.x[Math.floor(r.cars / 2)]) : null, jam: jamAt}} />
+      <Panel o={show('speed')} style={{right: 64, top: 52, width: 270}}>
         <Label>{tx('meanSpeed')}</Label>
-        <div style={{fontSize: 54, fontWeight: 800, color: C.accent, fontVariantNumeric: 'tabular-nums'}}>
-          {(r.meanSpeed(simT) * 3.6).toFixed(0)} <span style={{fontSize: 26}}>KM/H</span>
+        <div style={{fontSize: 58, fontWeight: 800, color: C.accent, fontVariantNumeric: 'tabular-nums'}}>
+          {(r.meanSpeed(simT) * 3.6).toFixed(0)} <span style={{fontSize: 28}}>KM/H</span>
         </div>
       </Panel>
-      <Panel o={show('jam')} style={{right: 64, bottom: 80, width: 250}}>
+      <Panel o={show('jam')} style={{right: 64, bottom: 80, width: 270}}>
         <Label>{tx('stoppedNow')}</Label>
-        <div style={{fontSize: 54, fontWeight: 800, color: now ? C.red : C.text, fontVariantNumeric: 'tabular-nums'}}>{now}</div>
+        <div style={{fontSize: 58, fontWeight: 800, color: now ? C.red : C.text, fontVariantNumeric: 'tabular-nums'}}>{now}</div>
         <Label>{tx('ofCars', {n: r.cars})}</Label>
       </Panel>
       <SpaceTime r={r} simT={simT} o={show('chart')} />

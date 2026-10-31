@@ -1051,6 +1051,14 @@ def main() -> None:
             print(path.read_text("utf-8").split("\n")[2] + f" ({path.relative_to(ctx.root)})")
         except Exception as error:
             print(f"Gancho no revisado: {str(error)[:160]}")
+        from pipeline import simulacion
+
+        if simulacion.active(ctx):                  # the lines no simulated world can show → escenas.md
+            try:
+                path = simulacion.review_file(ctx)
+                print(path.read_text("utf-8").split("\n")[2] + f" ({path.relative_to(ctx.root)})")
+            except Exception as error:
+                print(f"Escenas no revisadas: {str(error)[:160]}")
         return
     if args.shorts:
         from pipeline import shorts

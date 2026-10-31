@@ -292,6 +292,7 @@ export interface SimGraphic {
   world: string;
   focus: string;
   prev: string;         // the previous shot's focus (the camera moves from there)
+  prevOverlay?: string; // the previous shot's panel, same world (the camera comes back from what it followed)
   overlay: string;
   params?: Record<string, number | string>;
   title: string;
@@ -305,6 +306,12 @@ export interface SimGraphic {
   accent?: string;
   theme?: string;
   sounds?: { ambient?: string; click?: string; tick?: string };   // files in the render's public folder (timeline.py)
+  replay?: boolean;     // the key moment: freeze («PAUSA»), rewind, again at half speed
+  enter?: boolean;      // this world comes on screen here (zoom in from the last one)
+  exit?: boolean;       // the next shot is another world (zoom out)
+  legend?: string;      // the colour key, once a video: where it goes (top | bottom | right)
+  statAt?: number;      // seconds into the shot: the voice says the figure
+  marks?: { kind: string; at: number; text: string }[];   // what the voice points at, when (an arrow with its words)
 }
 
 export interface StickmanProp { icon: string; x: number; y: number; label: string; held: boolean }

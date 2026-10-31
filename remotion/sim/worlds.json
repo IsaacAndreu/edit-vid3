@@ -29,7 +29,12 @@
         "default": 22,
         "describe": "segundos de verde de cada fase del semáforo"
       }
-    }
+    },
+    "legend": "bottom",
+    "panels": [
+      "results",
+      "demand"
+    ]
   },
   "anillo": {
     "niche": "tráfico",
@@ -68,7 +73,32 @@
       "brake": "la frase que habla del frenazo",
       "jam": "la frase en la que los coches ya están parados",
       "auto": "la frase en la que un coche empieza a conducir solo"
-    }
+    },
+    "marks": {
+      "car": [
+        "este coche",
+        "ese coche",
+        "un conductor",
+        "el conductor",
+        "el primero"
+      ],
+      "jam": [
+        "el atasco",
+        "la onda",
+        "los coches parados",
+        "ese grupo"
+      ],
+      "auto": [
+        "conduce solo",
+        "condujera solo",
+        "coche autonomo"
+      ]
+    },
+    "legend": "right",
+    "panels": [
+      "speed",
+      "jam"
+    ]
   },
   "autovia": {
     "niche": "tráfico",
@@ -90,7 +120,23 @@
         "default": 0.55,
         "describe": "coches por segundo que llegan: 0.3 fluido (no hay cola en ninguna); 0.55 la cremallera deja la cola en la mitad y pasan más coches; 0.7 atasco en las dos, la cremallera sigue pasando más"
       }
-    }
+    },
+    "marks": {
+      "jam": [
+        "la cola",
+        "el atasco"
+      ],
+      "merge": [
+        "la cremallera",
+        "se incorporan",
+        "incorporarse"
+      ]
+    },
+    "legend": "right",
+    "panels": [
+      "queue",
+      "results"
+    ]
   },
   "contagio": {
     "niche": "epidemias y bulos",
@@ -299,7 +345,7 @@
   },
   "carretera": {
     "niche": "tráfico",
-    "describe": "el mundo para atascos en carretera o autovía en general: una carretera recta vista desde arriba sobre fondo oscuro; cada escena explica una pieza del tráfico (elige scene): frenazo (8 coches numerados, el primero toca el freno y cada uno frena más fuerte que el de delante hasta que el último se para; who: acc = coches con control de crucero), onda (carretera llena: los coches van a la derecha y el atasco viaja hacia atrás; panel: por qué dura), carril (dos carriles, TÚ en uno: adelantas a 4 coches rápido y 4 coches tardan mucho en adelantarte: la ilusión del carril de al lado), hueco (TÚ dejas hueco y sigues rodando sin pararte; detrás quedan menos parados), limite (paneles que bajan el límite antes de las ondas: llegan despacio y se paran menos), carriles (se abre un tercer carril y vuelve a llenarse; panel +10 % carril, +10 % tráfico)",
+    "describe": "el mundo para atascos en carretera o autovía en general: una carretera recta vista desde arriba sobre fondo oscuro; cada escena explica una pieza del tráfico (elige scene): frenazo (8 coches numerados, el primero toca el freno y cada uno frena más fuerte que el de delante hasta que el último se para; who: acc = coches con control de crucero), onda (carretera llena: los coches van a la derecha y el atasco viaja hacia atrás; panel: por qué dura), carril (dos carriles, TÚ en uno: adelantas a 4 coches rápido y 4 coches tardan mucho en adelantarte: la ilusión del carril de al lado), hueco (TÚ dejas hueco y sigues rodando sin pararte; detrás quedan menos parados), limite (paneles que bajan el límite antes de las ondas: llegan despacio y se paran menos), carriles (se abre un tercer carril y vuelve a llenarse; panel +10 % carril, +10 % tráfico), rampa (semáforo en la entrada de la autopista: arriba sin semáforo los coches se meten a la vez y se forman ondas; abajo con semáforo entran de uno en uno y la carretera sigue moviéndose; panel: coches por hora, 1.800 frente a 1.390)",
     "focus": {
       "road": "la carretera"
     },
@@ -315,10 +361,11 @@
           "carril",
           "hueco",
           "limite",
-          "carriles"
+          "carriles",
+          "rampa"
         ],
         "default": "onda",
-        "describe": "qué escena: frenazo · onda · carril · hueco · limite · carriles"
+        "describe": "qué escena: frenazo · onda · carril · hueco · limite · carriles · rampa"
       },
       "who": {
         "options": [
@@ -331,6 +378,28 @@
     },
     "cues": {
       "brake": "en frenazo: la frase en la que el primer coche toca el freno"
-    }
+    },
+    "marks": {
+      "car": [
+        "este coche",
+        "ese coche",
+        "el de atras",
+        "el siguiente"
+      ],
+      "jam": [
+        "la onda",
+        "el atasco",
+        "la cola"
+      ],
+      "gap": [
+        "el hueco",
+        "deja hueco",
+        "dejar hueco"
+      ]
+    },
+    "legend": "top",
+    "panels": [
+      "panel"
+    ]
   }
 }

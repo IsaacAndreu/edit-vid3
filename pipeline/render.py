@@ -914,6 +914,15 @@ def run(ctx: RunContext) -> None:
             files = heal(ctx, timeline, segments, files, build, join, r.fps)
         except Exception as error:      # a check: never costs the video
             print(f"   Render doctor no disponible: {str(error)[:120]}")
+    from . import simulacion
+
+    if simulacion.active(ctx):           # quiet stretches, worlds that flash by, words on top of each other
+        try:
+            warnings = simulacion.qa(ctx, timeline, final)
+            print("   Control de la simulación: " + ("sin avisos" if not warnings else
+                  f"{len(warnings)} avisos (out/{ctx.slug}/qa/simulacion.md) · " + " · ".join(warnings[:4])))
+        except Exception as error:      # a check: never costs the video
+            print(f"   Control de la simulación no disponible: {str(error)[:120]}")
     _prune(r.dir / "segments", {f.name for f in files})
     for old in r.dir.glob("remotion-*.mp4"):
         if old != condensed_path:

@@ -5,7 +5,8 @@ import type {CSSProperties, FC} from 'react';
 import {AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame} from 'remotion';
 import '../theme';
 import {tx} from './i18n';
-import {BODY, Car, City, toScreen, type Cam} from './city';
+import {Car, CITY, City, toScreen, type Cam} from './city';
+import {paint, trail} from './look';
 import {C, FONT, Label, Panel} from './hud';
 import {APPROACH, DEFAULTS, LANE, RING_R, STOP, perMinute, sample, signalAge, sim, type Params, type Snapshot} from './junction';
 
@@ -100,13 +101,13 @@ const RoundaboutJunction: FC<{cam: Cam}> = ({cam}) => {
   });
   return (
     <g>
-      <circle cx={c.sx} cy={c.sy} r={(RING_R + 3.6) * cam.s} fill="#33363c" />
+      <circle cx={c.sx} cy={c.sy} r={(RING_R + 3.6) * cam.s} fill={CITY.road} />
       <circle cx={c.sx} cy={c.sy} r={(RING_R + 3.4) * cam.s} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth={Math.max(1, cam.s * 0.12)} />
-      <circle cx={c.sx} cy={c.sy} r={(RING_R - 3.4) * cam.s} fill="#62656b" />
-      <circle cx={c.sx} cy={c.sy} r={(RING_R - 4.2) * cam.s} fill="#4a6e3f" />
+      <circle cx={c.sx} cy={c.sy} r={(RING_R - 3.4) * cam.s} fill={CITY.sidewalk} />
+      <circle cx={c.sx} cy={c.sy} r={(RING_R - 4.2) * cam.s} fill={CITY.grass} />
       {[0, 1, 2, 3, 4, 5].map((k) => {
         const p = toScreen(cam, Math.cos(k) * 4.2, Math.sin(k * 1.7) * 4.2);
-        return <circle key={k} cx={p.sx} cy={p.sy} r={2.1 * cam.s} fill={k % 2 ? '#2f5a2c' : '#3f7337'} />;
+        return <circle key={k} cx={p.sx} cy={p.sy} r={2.1 * cam.s} fill={k % 2 ? CITY.tree : CITY.treeLight} />;
       })}
       {splitters}
     </g>
@@ -118,7 +119,8 @@ const Cars: FC<{cam: Cam; snap: Snapshot; mark?: (car: Snapshot['cars'][number])
     {snap.cars.map((car) => {
       const {sx, sy} = toScreen(cam, car.x, car.y);
       const brake = car.waiting ? 1 : Math.min(1, Math.max(0, -car.a - 0.4) / 1.2);
-      return <Car key={car.id} sx={sx} sy={sy} deg={(car.h * 180) / Math.PI} s={cam.s} color={BODY[car.id % BODY.length]} brake={brake} mark={mark?.(car)} />;
+      return <Car key={car.id} sx={sx} sy={sy} deg={(car.h * 180) / Math.PI} s={cam.s} color={paint(car.waiting ? 0 : car.v, 11)} brake={brake} mark={mark?.(car)}
+                  trail={trail(car.v, 11) * 0.7} />;
     })}
   </g>
 );
@@ -334,7 +336,7 @@ export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o,
         ))}
       </Panel>
 
-      <div style={{position: 'absolute', left: 48, bottom: 24, fontFamily: FONT, fontSize: 14, letterSpacing: 1.2, color: 'rgba(255,255,255,0.5)'}}>
+      <div style={{position: 'absolute', left: 48, bottom: 24, fontFamily: FONT, fontSize: 20, letterSpacing: 1.1, color: 'rgba(255,255,255,0.62)'}}>
         {tx('junctionNote', {n: APPROACH}).toUpperCase()}
       </div>
     </AbsoluteFill>

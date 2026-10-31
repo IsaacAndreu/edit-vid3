@@ -7,7 +7,7 @@
 visual:
   style: simulacion
   worlds: [cruces, anillo, autovia, carretera]
-  theme: day                       # day | night | sepia (el mapa de la ciudad; los demás mundos llevan su propio fondo)
+  theme: dark                      # dark (fondo oscuro, el mismo que la carretera: un solo aspecto en todo el vídeo) | day | night | sepia
 
 brand:
   accent: "#f5a623"                # ámbar de semáforo: cifras, títulos, paneles

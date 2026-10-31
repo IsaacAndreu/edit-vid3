@@ -25,7 +25,7 @@ from .context import RunContext
 from .sourcing.common import key
 
 MANIFEST = Path(__file__).resolve().parent.parent / "remotion" / "sim" / "worlds.json"
-VERSION = 4
+VERSION = 5
 
 
 @lru_cache(maxsize=1)
@@ -69,13 +69,16 @@ Además, en cada plano:
 - "stat": {{"label": "2-5 palabras", "value": "cifra o 1-3 palabras"}} SOLO si la frase da una cifra concreta, o null.
 - "source": el estudio o la fuente que la frase cita («Sugiyama et al., 2008»), si no "".
 - "list": 2-4 frases muy cortas SOLO para el resumen final, o [].
+- "replay": true SOLO en la frase del momento clave que merece verse otra vez (el frenazo que lo empieza todo, el
+  primer coche que se para…): la imagen se congela con «PAUSA», se rebobina y se repite a cámara lenta. Como mucho
+  dos en todo el vídeo; si no, false.
 Reglas: elige el mundo cuyo TEMA es el de la frase (lee bien qué enseña cada uno; una frase sobre atascos en
 general no va al mundo de un carril que se cierra ni al de un cruce); si ningún mundo enseña la frase, sigue en el
 mundo de la frase anterior; mantén el mismo mundo, foco y parámetros en frases seguidas de la misma
 idea (la cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
 cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
-"title": "", "stat": null, "source": "", "list": []}}]}}
+"title": "", "stat": null, "source": "", "list": [], "replay": false}}]}}
 """.strip()
 
 
@@ -133,8 +136,11 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
     if source and not (named & set(re.findall(r"\w{4,}", line.lower()))):
         source = ""                       # a source the line does not name is not shown
     items = [_words(x, 9).upper() for x in (scene.get("list") or []) if str(x).strip()][:4]
+    if stat and overlay in (w.get("panels") or []):
+        overlay = "none"                  # one panel at a time: the figure the voice says wins over the world's counter
     return {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
-            "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items}
+            "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items,
+            "replay": scene.get("replay") is True}
 
 
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
@@ -168,11 +174,16 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         for n, (shot_id, text) in enumerate(batch, 1):
             before = out[shot_id] = clean(found.get(n) or {}, text, before, spec)
     recap(out, [shot_id for shot_id, _ in lines])
+    replays = [shot_id for shot_id, _ in lines if out[shot_id].get("replay")]
+    for shot_id in replays[REPLAYS:]:                 # a pause is special: two at most
+        out[shot_id]["replay"] = False
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
     return out
 
 
+REPLAYS = 2
+MIN_WORLD = 12.0      # seconds: a world stays at least this long (hora1 jumped ring → merge → crossroads in 10 s)
 RECAP = 0.85          # the summary list only in the last 15 % of the lines
 
 
@@ -222,12 +233,14 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
 
     todo = [(s, s.from_, s.from_ + s.durationInFrames) for s in shots
             if s.type != "endscreen" and not covered(s.from_, s.from_ + s.durationInFrames)]
-    found = scenes(ctx, [s for s, _, _ in todo])
+    found = steady(scenes(ctx, [s for s, _, _ in todo]), [(s.id, a, b) for s, a, b in todo], fps,
+                   float(ctx.section("visual").get("min_world_seconds", MIN_WORLD)))
     merged: list[list[Any]] = []
     for shot, a, b in todo:
         scene = found[shot.id]
         last = merged[-1] if merged else None
-        if last and last[2] == a and last[3] == scene and not scene["title"] and not scene["stat"] and not scene.get("source"):
+        if last and last[2] == a and last[3] == scene and not scene["title"] and not scene["stat"] and not scene.get("source") \
+                and not scene.get("replay"):
             last[2] = b
         else:
             merged.append([shot.id, a, b, scene])
@@ -241,17 +254,203 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
             since = a / fps                      # the world comes (back) on screen, or a new experiment: it starts
         prev = previous["focus"] if same else scene["focus"]
         out.append({"id": f"sim-{shot_id}", "kind": "graphic", "from": a, "durationInFrames": b - a,
-                    "graphic": {**scene, **extra, "at": round(a / fps, 3), "since": round(since, 3), "prev": prev}})
+                    "graphic": {**scene, **extra, "at": round(a / fps, 3), "since": round(since, 3), "prev": prev,
+                                "prevOverlay": previous["overlay"] if same else "none"}})
         previous = scene
     every = worlds()
-    for group in out:
+    legend = False
+    for n, group in enumerate(out):
         g = group["graphic"]
+        before = out[n - 1] if n else None
+        after = out[n + 1] if n + 1 < len(out) else None
+        joined = lambda x, y: x["from"] + x["durationInFrames"] >= y["from"] - 1     # noqa: E731
+        # a world coming on screen zooms in from the last one; a world leaving zooms out (no blurred cut)
+        g["enter"] = not (before and before["graphic"]["world"] == g["world"] and joined(before, group))
+        g["exit"] = not (after and after["graphic"]["world"] == g["world"] and joined(group, after))
+        if not legend and every.get(g["world"], {}).get("legend"):
+            # the colours explained once, for the whole video, where that world has room (worlds.json → legend)
+            g["legend"] = str(every[g["world"]]["legend"])
+            legend = True
         names = (every.get(g["world"], {}).get("cues") or {}).keys()
         if names:
             run = [o["graphic"] for o in out if o["graphic"]["since"] == g["since"] and o["graphic"]["world"] == g["world"]]
             g["cues"] = {name: next(r["at"] for r in run if r["overlay"] == name) for name in names
                          if any(r["overlay"] == name for r in run)}
     return out
+
+
+def steady(found: dict[str, dict[str, Any]], spans: list[tuple[str, int, int]], fps: int,
+           least: float = MIN_WORLD) -> dict[str, dict[str, Any]]:
+    """No world on screen for less than MIN_WORLD seconds: a short visit stays in the world before it (the first one,
+    in the world after it), with that world's camera and no panel of its own; its title, figure, source and recap
+    are kept. The scenes are copied, not changed."""
+
+    out = {k: dict(v) for k, v in found.items()}
+
+    def runs() -> list[list[int]]:
+        result: list[list[int]] = []
+        for i, (shot_id, _, _) in enumerate(spans):
+            if result and out[spans[result[-1][-1]][0]]["world"] == out[shot_id]["world"]:
+                result[-1].append(i)
+            else:
+                result.append([i])
+        return result
+
+    for _ in range(len(spans)):
+        current = runs()
+        if len(current) < 2:
+            break
+        short = next((r for r in current if (spans[r[-1]][2] - spans[r[0]][1]) / fps < least), None)
+        if short is None:
+            break
+        k = current.index(short)
+        host = current[k - 1][-1] if k else current[1][0]
+        model = out[spans[host][0]]
+        for i in short:
+            scene = out[spans[i][0]]
+            scene.update(world=model["world"], focus=model["focus"], params=model["params"], overlay="none")
+    return out
+
+
+def _plain(text: str) -> str:
+    import unicodedata
+
+    text = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in text if c.isalnum() or c.isspace())
+
+
+def sync(groups: list[Any], words: list[Any], frame_of: Any, fps: int) -> None:
+    """With the voice's word times: the figure of a shot comes in on the word that says it (statAt), and the things
+    the voice points at («este coche», «la onda», «el hueco») get an arrow with those words at that moment (marks:
+    the world's vocabulary in worlds.json → marks). Changes the sim groups' graphics in place."""
+
+    every = worlds()
+    timed = [(frame_of(w.start), _plain(w.text)) for w in words if w.text.strip()]
+    for group in groups:
+        g = group.graphic if hasattr(group, "graphic") else group.get("graphic")
+        if not isinstance(g, dict) or g.get("type") != "sim":
+            continue
+        a = group.from_ if hasattr(group, "from_") else group["from"]
+        b = a + (group.durationInFrames if hasattr(group, "durationInFrames") else group["durationInFrames"])
+        said = [(f, t) for f, t in timed if a <= f < b]
+        if g.get("stat"):
+            digits = re.findall(r"\d+", str(g["stat"].get("value") or ""))
+            hit = next((f for f, t in said if digits and any(d in t for d in digits)), None)
+            if hit is None:
+                value = _plain(str(g["stat"].get("value") or "")).split()
+                hit = next((f for f, t in said if value and t == value[0]), None)
+            if hit is not None:
+                g["statAt"] = round((hit - a) / fps, 2)
+        vocab = every.get(g["world"], {}).get("marks") or {}
+        marks = []
+        for kind, phrases in vocab.items():
+            for phrase in phrases:
+                parts = _plain(phrase).split()
+                found = next((i for i in range(len(said)) if [t for _, t in said[i:i + len(parts)]] == parts), None)
+                if found is not None:
+                    text = " ".join(t for _, t in said[found:found + len(parts)])
+                    marks.append({"kind": kind, "at": round((said[found][0] - a) / fps, 2), "text": text.upper()})
+                    break
+        if marks:
+            g["marks"] = sorted(marks, key=lambda m: m["at"])[:3]
+
+
+REVIEW = """
+Eres el realizador de un canal que explica cosas con simulaciones. Te paso los mundos que el canal puede enseñar y el
+guion numerado por frases. Para cada frase di si algún mundo la puede ENSEÑAR (no solo acompañar):
+{worlds}
+Devuelve SOLO JSON: {{"lines": [{{"n": 1, "ok": true, "world": "…", "why": "", "fix": ""}}]}}
+- "ok": false solo si ningún mundo enseña lo que dice la frase (un dato histórico suelto, una idea abstracta, algo
+  que pasa fuera de lo simulado); entonces "why" en 1 frase y "fix": la frase reescrita para que se pueda enseñar,
+  o "quitar".
+""".strip()
+
+
+def review_script(ctx: RunContext, script: str) -> dict[str, Any]:
+    """Before recording: the lines of the script no world can show, with a fix for each."""
+
+    from .llm import complete_json
+
+    lines = [l.strip() for l in re.split(r"(?<=[.!?…])\s+", " ".join(
+        l for l in script.splitlines() if not l.strip().startswith("## "))) if len(l.strip()) > 3]
+    if not lines:
+        raise ValueError("El guion está vacío")
+    listing = "\n".join(f"[{n}] {l}" for n, l in enumerate(lines, 1))
+    result = complete_json(ctx, stage="simulacion", section="planner", system=REVIEW.format(worlds=describe(allowed(ctx))),
+                           user=listing, max_tokens=120 * len(lines) + 400)
+    flagged = []
+    for item in result.get("lines") or []:
+        try:
+            n = int(item.get("n"))
+        except (TypeError, ValueError):
+            continue
+        if item.get("ok") is False and 1 <= n <= len(lines):
+            flagged.append({"n": n, "line": lines[n - 1], "why": str(item.get("why") or "")[:200],
+                            "fix": str(item.get("fix") or "")[:400]})
+    return {"lines": len(lines), "flagged": flagged,
+            "verdict": "✅ Todas las frases se pueden enseñar" if not flagged
+            else f"⚠️ {len(flagged)} de {len(lines)} frases no las enseña ningún mundo"}
+
+
+def review_file(ctx: RunContext) -> Path:
+    """--check: escenas.md next to the other checks."""
+
+    result = review_script(ctx, (ctx.materials_dir / "guion.txt").read_text("utf-8"))
+    out = [f"# Escenas · {ctx.slug}", "", result["verdict"], ""]
+    for item in result["flagged"]:
+        out += [f"- **[{item['n']}]** «{item['line']}»", f"  - Por qué: {item['why']}", f"  - Propuesta: {item['fix']}", ""]
+    ctx.out_dir.mkdir(parents=True, exist_ok=True)
+    path = ctx.out_dir / "escenas.md"
+    path.write_text("\n".join(out), encoding="utf-8")
+    return path
+
+
+def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> list[str]:
+    """After the render of a simulation video: stretches with nothing moving for more than `still` seconds (in the
+    finished picture), worlds that come and go in less than MIN_WORLD seconds, and words that land on top of each
+    other (a figure and the recap, the pause sign and a title, two arrows at once). out/<slug>/qa/simulacion.md."""
+
+    fps = int(timeline.get("fps", 30))
+    still = float(ctx.section("visual").get("qa_still_seconds", 6))
+    least = float(ctx.section("visual").get("min_world_seconds", MIN_WORLD))
+    found: list[str] = []
+    stamp = lambda frames: f"{int(frames / fps) // 60}:{int(frames / fps) % 60:02d}"   # noqa: E731
+    if final is not None and final.is_file():
+        from .doctor import detect
+
+        for p in detect(final, {"freeze_seconds": still, "black_seconds": 99, "freeze_noise": 0.003}):
+            if p["kind"] == "frozen":
+                end = p["end"] if p["end"] is not None else timeline["durationInFrames"] / fps
+                found.append(f"{stamp(p['start'] * fps)} · {end - p['start']:.0f} s sin movimiento")
+    sims = [g for g in timeline.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"]
+    runs: list[list[dict[str, Any]]] = []
+    for g in sims:
+        if runs and runs[-1][-1]["graphic"]["world"] == g["graphic"]["world"]:
+            runs[-1].append(g)
+        else:
+            runs.append([g])
+    for n, run in enumerate(runs):
+        seconds = (run[-1]["from"] + run[-1]["durationInFrames"] - run[0]["from"]) / fps
+        if len(runs) > 1 and seconds < least:
+            found.append(f"{stamp(run[0]['from'])} · «{run[0]['graphic']['world']}» solo {seconds:.0f} s en pantalla")
+    for g in sims:
+        x = g["graphic"]
+        at = stamp(g["from"])
+        if x.get("stat") and x.get("list"):
+            found.append(f"{at} · la cifra y el resumen a la vez")
+        if x.get("replay") and x.get("title"):
+            found.append(f"{at} · el rótulo de pausa y el título a la vez")
+        if x.get("legend") == "bottom" and x.get("stat"):
+            found.append(f"{at} · la leyenda y la cifra en la misma zona")
+        marks = sorted(m["at"] for m in x.get("marks") or [])
+        if any(b - a < 1.0 for a, b in zip(marks, marks[1:])):
+            found.append(f"{at} · dos flechas casi a la vez")
+    lines = [f"# Control de la simulación · {ctx.slug}", "",
+             "✅ Sin tramos quietos, saltos de mundo ni textos que se pisen" if not found
+             else f"⚠️ {len(found)} avisos:", "", *[f"- {x}" for x in found]]
+    (ctx.out_dir / "qa").mkdir(parents=True, exist_ok=True)
+    (ctx.out_dir / "qa" / "simulacion.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return found
 
 
 def writing(ctx: RunContext) -> str:

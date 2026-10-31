@@ -1490,6 +1490,8 @@ def run(ctx: RunContext) -> None:
     from . import depth
 
     timeline = depth.add(ctx, timeline)                      # visual.depth: photos with their subject in front
+    if simulacion.active(ctx):           # figures and arrows on the word the voice says them
+        simulacion.sync(timeline.groups, words.words, lambda seconds: voice_frame(timeline, seconds), fps)
     if cfg.get("captions"):
         timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
     bites = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).bites if (ctx.work_dir / "coldopen.json").is_file() else []
@@ -1515,9 +1517,14 @@ def run(ctx: RunContext) -> None:
         extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.22)), float(cfg.get("sfx_min_gap", 4.0)),
                                str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)),
                                float(cfg.get("hook_whoosh_seconds", 30) or 0), float(cfg.get("hook_whoosh_gap", 2.5)))
+        if simulacion.active(ctx):
+            # only where the world changes (SimScene zooms from one world to the next itself): a whoosh and a blurred
+            # whip on every line of one continuous simulation made it stutter (hora1)
+            changes = [g.from_ for g in timeline.groups if (g.graphic or {}).get("type") == "sim" and g.graphic.get("enter")]
+            extra = [x for x in extra if any(abs(x.from_ + 4 - c) <= 6 for c in changes)]
         timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
             "sfx": sorted([*timeline.audio.sfx, *extra], key=lambda x: x.from_)})})
-        if cfg.get("transitions", True):
+        if cfg.get("transitions", True) and not simulacion.active(ctx):
             timeline = timeline.model_copy(update={"transitions": key_cuts(timeline, [x.from_ + 4 for x in extra])})
         sfx = timeline.audio.sfx
     from . import editor

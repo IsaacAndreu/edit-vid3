@@ -1458,6 +1458,14 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if not title:
                         raise ValueError("Pon el título que vas a usar: el gancho se mide contra él")
                     return self._ok(hook.review(ctx, title, str(body.get("script") or "")))
+                if path == "/api/scenes":                  # {script, channel}: the lines no simulated world can show
+                    from . import simulacion
+
+                    channel = str(body.get("channel") or "")
+                    ctx = RunContext.create("_escenas", root=root, channel=channel if channel in channels(root) else None)
+                    if not simulacion.active(ctx):
+                        raise ValueError("Ese canal no es de simulación")
+                    return self._ok(simulacion.review_script(ctx, str(body.get("script") or "")))
                 if path == "/api/notify":                  # {token?, studio_url?}: save, find the chat, send a test
                     from . import notify
 

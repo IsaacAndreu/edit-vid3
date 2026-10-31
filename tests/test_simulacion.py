@@ -34,7 +34,7 @@ def _shot(n, a, b, text="frase"):
 
 
 def test_shots_become_groups_with_one_clock_per_world(tmp_path, monkeypatch):
-    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "min_world_seconds": 0}})
     shots = [_shot(n, (n - 1) * 90, n * 90, f"frase {n}") for n in range(1, 7)]
     plan = {1: {"world": "cruces", "focus": "both", "overlay": "labels"},
             2: {"world": "cruces", "focus": "both", "overlay": "labels"},           # the same scene: one group with s001
@@ -163,7 +163,7 @@ def test_niche_profiles_use_known_worlds():
         visual = (yaml.safe_load(path.read_text("utf-8")) or {}).get("visual") or {}
         if visual.get("style") == "simulacion":
             assert set(visual.get("worlds") or []) <= known, path
-            assert visual.get("theme", "day") in ("day", "night", "sepia"), path
+            assert visual.get("theme", "day") in ("day", "night", "sepia", "dark"), path
 
 
 def test_depth_off_by_default_and_files():
@@ -216,3 +216,61 @@ def test_a_simulation_video_has_no_chapter_cards_and_no_planner_cards(tmp_path):
     shot = {"id": "s001", "type": "stat", "stat": {"value": "22", "label": "coches"}, "chapterTitle": "CAPÍTULO",
             "text": "22 coches", "broll": {"q": "x"}}
     assert planner.drawn_shot(shot) == {"id": "s001", "type": "broll", "text": "22 coches", "broll": {"q": "x"}}
+
+
+def test_a_world_stays_at_least_twelve_seconds():
+    scene = lambda world, **k: {"world": world, "focus": "f-" + world, "overlay": "x", "params": {}, "title": "", **k}  # noqa: E731
+    found = {"a": scene("anillo"), "b": scene("autovia", title="CREMALLERA"), "c": scene("anillo"), "d": scene("cruces"),
+             "e": scene("cruces")}
+    spans = [("a", 0, 450), ("b", 450, 600), ("c", 600, 900), ("d", 900, 1200), ("e", 1200, 1500)]
+    out = simulacion.steady(found, spans, 30)
+    assert [out[k]["world"] for k in "abcde"] == ["anillo", "anillo", "anillo", "cruces", "cruces"]
+    assert out["b"]["title"] == "CREMALLERA" and out["b"]["overlay"] == "none" and out["b"]["focus"] == "f-anillo"
+    assert found["b"]["world"] == "autovia"                                    # the scenes given are not changed
+    first = simulacion.steady({"a": scene("autovia"), "b": scene("anillo")}, [("a", 0, 90), ("b", 90, 900)], 30)
+    assert first["a"]["world"] == "anillo"                                     # a short opening joins the next world
+
+
+def test_marks_and_figures_on_the_word_the_voice_says_them():
+    words = [SimpleNamespace(text=t, start=i * 0.5) for i, t in enumerate(
+        "Mira este coche: frena. Diez coches atrás hay 22 parados y la onda va hacia atrás".split())]
+    group = {"from": 0, "durationInFrames": 300, "graphic": {"type": "sim", "world": "anillo",
+                                                           "stat": {"label": "PARADOS", "value": "22"}}}
+    simulacion.sync([group], words, lambda s: round(s * 30), 30)
+    g = group["graphic"]
+    assert g["statAt"] == 4.0
+    assert [(m["kind"], m["at"], m["text"]) for m in g["marks"]] == [("car", 0.5, "ESTE COCHE"), ("jam", 5.5, "LA ONDA")]
+
+
+def test_flags_for_the_zoom_between_worlds_and_one_legend(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "min_world_seconds": 0}})
+    shots = [_shot(n, (n - 1) * 90, n * 90, f"frase {n}") for n in range(1, 4)]
+    worlds = {1: "anillo", 2: "anillo", 3: "cruces"}
+    monkeypatch.setattr(simulacion, "scenes", lambda ctx, todo: {
+        s.id: simulacion.clean({"world": worlds[int(s.id[1:])], "title": s.id}, s.text, None) for s in todo})
+    g = [x["graphic"] for x in simulacion.groups(ctx, shots, 30, [])]
+    assert [(x["enter"], x["exit"]) for x in g] == [(True, False), (False, True), (True, True)]
+    assert [x.get("legend", "") for x in g] == ["right", "", ""]
+
+
+def test_the_check_after_the_render(tmp_path):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    sim = lambda a, n, world, **k: {"from": a, "durationInFrames": n, "graphic": {"type": "sim", "world": world, **k}}  # noqa: E731
+    timeline = {"fps": 30, "durationInFrames": 2400, "groups": [
+        sim(0, 900, "anillo", stat={"value": "22"}, list=["UNO"]),
+        sim(900, 150, "autovia", replay=True, title="X"),
+        sim(1050, 900, "anillo", marks=[{"at": 1.0}, {"at": 1.4}])]}
+    found = simulacion.qa(ctx, timeline)
+    assert any("autovia" in f and "5 s" in f for f in found)
+    assert any("cifra y el resumen" in f for f in found) and any("pausa" in f for f in found)
+    assert any("dos flechas" in f for f in found)
+    assert (ctx.out_dir / "qa" / "simulacion.md").is_file()
+
+
+def test_one_panel_at_a_time():
+    both = simulacion.clean({"world": "anillo", "focus": "ring", "overlay": "jam", "stat": {"label": "coches", "value": "22"}},
+                            "Pusieron 22 coches en una pista.", None)
+    assert both["stat"] and both["overlay"] == "none"
+    mark = simulacion.clean({"world": "anillo", "focus": "ring", "overlay": "brake", "stat": {"label": "coches", "value": "22"}},
+                            "Pusieron 22 coches en una pista.", None)
+    assert mark["overlay"] == "brake"                                 # a mark on the road is not a panel

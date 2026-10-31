@@ -5,7 +5,7 @@ import {interpolate} from 'remotion';
 
 export const C = {
   night: '#0b1020',
-  panel: 'rgba(12, 18, 34, 0.92)',
+  panel: 'rgba(12, 18, 34, 0.95)',          // opaque enough without a backdrop blur (the blur cost every frame)
   line: 'rgba(255,255,255,0.09)',
   label: '#93a0b8',
   text: '#f2f4f8',
@@ -29,7 +29,7 @@ export const fade = (f: number, a: number, b: number, edge = 12) =>
 export const Panel: FC<{style?: CSSProperties; o: number; children: ReactNode}> = ({style, o, children}) => (
   <div style={{position: 'absolute', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: '16px 22px 16px 26px',
                fontFamily: FONT, color: C.text, opacity: Math.min(1, o * 1.4), overflow: 'hidden',
-               boxShadow: '0 18px 40px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)',
+               boxShadow: '0 18px 40px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.4)',
                transform: `translateY(${(1 - o) * 16}px)`, ...style}}>
     <div style={{position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: C.accent,
                  transform: `scaleY(${Math.min(1, o * 1.6)})`, transformOrigin: 'top'}} />
@@ -38,19 +38,19 @@ export const Panel: FC<{style?: CSSProperties; o: number; children: ReactNode}> 
 );
 
 export const Label: FC<{children: ReactNode; color?: string}> = ({children, color = C.label}) => (
-  <div style={{fontSize: 15, fontWeight: 600, letterSpacing: 1.6, color, textTransform: 'uppercase'}}>{children}</div>
+  <div style={{fontSize: 20, fontWeight: 700, letterSpacing: 1.4, color, textTransform: 'uppercase'}}>{children}</div>
 );
 
 export const Section: FC<{text: string; o: number; f: number; start: number}> = ({text, o, f, start}) => (
   <div style={{position: 'absolute', left: 64, top: 52, fontFamily: FONT, opacity: o}}>
-    <div style={{fontSize: 46, fontWeight: 800, color: C.text, letterSpacing: 1, textTransform: 'uppercase'}}>{text}</div>
+    <div style={{fontSize: 54, fontWeight: 800, color: C.text, letterSpacing: 1, textTransform: 'uppercase'}}>{text}</div>
     <div style={{height: 4, background: C.accent, marginTop: 4,
                  width: `${interpolate(f, [start, start + 18], [0, 100], clamp)}%`}} />
   </div>
 );
 
 export const Tag: FC<{text: string; o: number; style?: CSSProperties; color?: string}> = ({text, o, style, color = C.text}) => (
-  <div style={{position: 'absolute', fontFamily: FONT, fontSize: 19, fontWeight: 700, letterSpacing: 1.2, color,
+  <div style={{position: 'absolute', fontFamily: FONT, fontSize: 24, fontWeight: 700, letterSpacing: 1.2, color,
                background: C.panel, border: `1px solid ${C.line}`, borderRadius: 4, padding: '6px 12px', textTransform: 'uppercase',
                opacity: o, ...style}}>
     {text}

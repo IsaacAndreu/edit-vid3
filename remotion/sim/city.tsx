@@ -1,6 +1,6 @@
 // A city seen from above, made from a seed: a grid of streets, blocks of houses with shaded roofs, trees and parks,
 // and a clearing in the middle for whatever the scene needs (here a ring road). World units are metres.
-import type {FC, ReactNode} from 'react';
+import {memo, type FC, type ReactNode} from 'react';
 import {random} from 'remotion';
 
 export type Cam = {x: number; y: number; s: number};
@@ -18,6 +18,7 @@ export const CITY = {
   treeLight: '#3f7337',
   shadow: 'rgba(0,0,0,0.28)',
   night: false,
+  minimal: false,           // no houses or trees: the streets faint on a dark field (the «dark» look)
 };
 
 // the map's look for the channel or the story (visual.theme): day, night (lit windows, headlights) or sepia (history)
@@ -31,8 +32,11 @@ const THEMES: Record<string, Partial<typeof CITY>> = {
   sepia: {ground: '#8a7656', grass: '#93805c', road: '#5e4f3c', roadEdge: '#6e5e48', sidewalk: '#7c6a52', marking: '#c9b48a',
           roofs: ['#a08462', '#8f7454', '#b29470', '#7d6649', '#a6906c', '#94795a', '#ba9f7a', '#856b4e'], tree: '#5e5838',
           treeLight: '#736c47', shadow: 'rgba(40,25,10,0.3)', night: false},
+  // one look for a whole traffic video: the dark field of the straight road (carretera), streets barely there
+  dark: {ground: '#1d2a22', grass: '#223127', road: '#2b2e34', roadEdge: '#3a3e45', sidewalk: '#3a3e45', marking: '#6e6a52',
+         roofs: ['#26312a'], tree: '#1f2b23', treeLight: '#26352b', shadow: 'rgba(0,0,0,0.3)', night: false, minimal: true},
 };
-export const setTheme = (name: string | undefined) => Object.assign(CITY, THEMES[String(name || 'day')] ?? THEMES.day);
+export const setTheme = (name: string | undefined) => Object.assign(CITY, {minimal: false}, THEMES[String(name || 'day')] ?? THEMES.day);
 
 const BLOCK = 72;          // street spacing
 const STREET = 9;          // street width
@@ -104,11 +108,23 @@ const build = (clearing: number, ring: [number, number], disc: boolean) => {
 
 const CACHE = new Map<string, ReturnType<typeof build>>();
 
-export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; disc?: boolean; width?: number; children?: ReactNode}> = (
-  {cam, clearing, ring = [0, 0], disc = true, width = 1920, children}) => {
+type CityProps = {cam: Cam; clearing: number; ring?: [number, number]; disc?: boolean; width?: number; children?: ReactNode};
+
+/** The map. Thousands of shapes: drawn again only when the camera or the look changes (memo), not on every frame —
+ * the cars go in a layer of their own above it. */
+export const City: FC<CityProps> = (props) => <CityMap {...props} look={`${CITY.ground}:${CITY.minimal}:${CITY.night}`} />;
+
+const same = (a: CityProps & {look: string}, b: CityProps & {look: string}) =>
+  a.look === b.look && a.clearing === b.clearing && a.disc === b.disc && a.width === b.width && !a.children && !b.children
+  && String(a.ring) === String(b.ring) && Math.abs(a.cam.x - b.cam.x) < 1e-3 && Math.abs(a.cam.y - b.cam.y) < 1e-3
+  && Math.abs(a.cam.s - b.cam.s) < 1e-4;
+
+const CityMap = memo((
+  {cam, clearing, ring = [0, 0] as [number, number], disc = true, width = 1920, children}: CityProps & {look: string}) => {
   const id = `${clearing}:${ring}:${disc}`;
   if (!CACHE.has(id)) CACHE.set(id, build(clearing, ring, disc));
-  const {houses, trees, parks} = CACHE.get(id)!;
+  const built = CACHE.get(id)!;
+  const {houses, trees, parks} = CITY.minimal ? {houses: [], trees: [], parks: []} : built;
   const p = (x: number, y: number) => toScreen(cam, x, y);
   const view = (x: number, y: number, w: number, h: number) => {
     const a = p(x, y);
@@ -119,8 +135,8 @@ export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; disc
     const a = p(g - STREET / 2, -EXTENT);
     const b = p(-EXTENT, g - STREET / 2);
     streets.push(
-      <rect key={`v${g}`} x={a.sx} y={a.sy} width={STREET * cam.s} height={2 * EXTENT * cam.s} fill={CITY.road} />,
-      <rect key={`h${g}`} x={b.sx} y={b.sy} width={2 * EXTENT * cam.s} height={STREET * cam.s} fill={CITY.road} />,
+      <rect key={`v${g}`} x={a.sx} y={a.sy} width={STREET * cam.s} height={2 * EXTENT * cam.s} fill={CITY.road} opacity={CITY.minimal && disc ? 0.45 : 1} />,
+      <rect key={`h${g}`} x={b.sx} y={b.sy} width={2 * EXTENT * cam.s} height={STREET * cam.s} fill={CITY.road} opacity={CITY.minimal && disc ? 0.45 : 1} />,
       <line key={`vm${g}`} x1={p(g, 0).sx} x2={p(g, 0).sx} y1={p(0, -EXTENT).sy} y2={p(0, EXTENT).sy} stroke={CITY.marking}
             strokeWidth={Math.max(0.6, cam.s * 0.15)} strokeDasharray={`${cam.s * 3} ${cam.s * 3}`} opacity={0.7} />,
       <line key={`hm${g}`} y1={p(0, g).sy} y2={p(0, g).sy} x1={p(-EXTENT, 0).sx} x2={p(EXTENT, 0).sx} stroke={CITY.marking}
@@ -164,16 +180,25 @@ export const City: FC<{cam: Cam; clearing: number; ring?: [number, number]; disc
       {children}
     </svg>
   );
-};
+}, same);
 
 // --- a car seen from above (metres → pixels with s); brake lights glow with `brake` (0-1) ----------------------------
 export const BODY = ['#e8e4dc', '#c9ccd2', '#2d3440', '#8a2d2d', '#3b5e8c', '#d9d2b0', '#4c4f56', '#9aa3ad'];
 
-export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: string; brake: number; mark?: string}> = ({sx, sy, deg, s, color, brake, mark}) => {
+/** `trail` (0 → 1): a short fading streak behind the car, longer the faster it goes. */
+export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: string; brake: number; mark?: string; trail?: number}> = (
+  {sx, sy, deg, s, color, brake, mark, trail = 0}) => {
   const l = 4.4 * s;
   const w = 1.9 * s;
+  const tail = l * 1.9 * trail;
   return (
     <g transform={`translate(${sx} ${sy}) rotate(${deg})`}>
+      {tail > 1 && (
+        <>
+          <path d={`M${-l / 2},${-w * 0.42} L${-l / 2 - tail},${-w * 0.12} L${-l / 2 - tail},${w * 0.12} L${-l / 2},${w * 0.42} Z`} fill={color} opacity={0.16} />
+          <path d={`M${-l / 2},${-w * 0.3} L${-l / 2 - tail * 0.55},${-w * 0.08} L${-l / 2 - tail * 0.55},${w * 0.08} L${-l / 2},${w * 0.3} Z`} fill={color} opacity={0.22} />
+        </>
+      )}
       {mark && <circle r={l * 0.95} fill="none" stroke={mark} strokeWidth={Math.max(1.5, s * 0.25)} opacity={0.9} />}
       {CITY.night && <path d={`M${l * 0.45},${-w * 0.35} L${l * 2.6},${-w * 1.3} L${l * 2.6},${w * 1.3} L${l * 0.45},${w * 0.35} Z`} fill="#fff1b8" opacity={0.16} />}
       <rect x={-l / 2 + s * 0.25} y={-w / 2 + s * 0.25} width={l} height={w} rx={s * 0.5} fill="rgba(0,0,0,0.35)" />

@@ -7,12 +7,15 @@
 //  hueco     YOU leave a gap and roll at a steady speed instead of stopping: the queue melts before you get there
 //  limite    gantries lower the limit before the waves: the cars arrive slowly, fewer stop
 //  carriles  a third lane appears and fills up again (panel: lane kilometres and kilometres driven, +10 %)
+//  rampa     the same busy road twice with an on-ramp: above, the cars squeeze in as they come and waves start; below,
+//            a light on the ramp lets one in at a time and the road keeps moving (panel: cars an hour, stopped)
 import type {FC, ReactElement} from 'react';
 import {AbsoluteFill} from 'remotion';
-import {BODY, Car} from '../city';
+import {Car} from '../city';
+import {paint, Pointers, trail, type Anchor} from '../look';
 import {C, FONT, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
-import {PLATOON, ROAD, VARIANT, capacity, jamOf, laneTimes, platoon, road, type Frame} from '../road';
+import {PLATOON, RAMP, ROAD, VARIANT, capacity, jamOf, laneTimes, platoon, ramp, road, type Frame} from '../road';
 import {Note, param, type World, type WorldProps} from '../world';
 
 addWords({
@@ -32,6 +35,7 @@ addWords({
   sameSpeed: {es: 'Los dos carriles, la misma velocidad media', pt: 'As duas faixas, a mesma velocidade média', fr: 'Les deux voies, même vitesse moyenne', de: 'Beide Spuren, gleiches Durchschnittstempo', en: 'Both lanes, the same average speed'},
   theGap: {es: 'El hueco', pt: 'O espaço', fr: 'L’espace', de: 'Die Lücke', en: 'The gap'},
   stillRolling: {es: '{v} km/h · sigue rodando', pt: '{v} km/h · continua a andar', fr: '{v} km/h · roule encore', de: '{v} km/h · rollt weiter', en: '{v} km/h · still rolling'},
+  nStoppedRoad: {es: '{n} parados', pt: '{n} parados', fr: '{n} à l’arrêt', de: '{n} stehen', en: '{n} stopped'},
   stoppedBehind: {es: 'Parados ahora', pt: 'Parados agora', fr: 'À l’arrêt', de: 'Stehen gerade', en: 'Stopped now'},
   withoutGap: {es: 'sin dejar hueco: {n}', pt: 'sem deixar espaço: {n}', fr: 'sans espace : {n}', de: 'ohne Lücke: {n}', en: 'without the gap: {n}'},
   arriveSlowly: {es: 'Llegan despacio', pt: 'Chegam devagar', fr: 'Ils arrivent lentement', de: 'Sie kommen langsam an', en: 'Arriving slowly'},
@@ -41,6 +45,11 @@ addWords({
   laneKm: {es: 'Kilómetros de carril', pt: 'Quilómetros de faixa', fr: 'Kilomètres de voie', de: 'Spurkilometer', en: 'Lane kilometres'},
   kmDriven: {es: 'Kilómetros recorridos', pt: 'Quilómetros percorridos', fr: 'Kilomètres parcourus', de: 'Gefahrene Kilometer', en: 'Kilometres driven'},
   roadNote: {es: 'Simulación con el modelo de conductor inteligente (IDM) · {n} coches por km', pt: 'Simulação com o modelo do condutor inteligente (IDM) · {n} carros por km', fr: 'Simulation avec le modèle du conducteur intelligent (IDM) · {n} voitures par km', de: 'Simulation mit dem Intelligent Driver Model (IDM) · {n} Autos pro km', en: 'Simulation with the Intelligent Driver Model (IDM) · {n} cars per km'},
+  noMeter: {es: 'Sin semáforo en la entrada', pt: 'Sem semáforo na entrada', fr: 'Sans feu à l’entrée', de: 'Ohne Ampel an der Auffahrt', en: 'No light on the ramp'},
+  withMeter: {es: 'Con semáforo en la entrada', pt: 'Com semáforo na entrada', fr: 'Avec feu à l’entrée', de: 'Mit Ampel an der Auffahrt', en: 'A light on the ramp'},
+  carsHour: {es: 'Coches que pasan por hora', pt: 'Carros que passam por hora', fr: 'Voitures par heure', de: 'Autos pro Stunde', en: 'Cars through an hour'},
+  waitRamp: {es: '{n} esperan en la rampa', pt: '{n} esperam na rampa', fr: '{n} attendent sur la bretelle', de: '{n} warten an der Auffahrt', en: '{n} waiting on the ramp'},
+  rampNote: {es: 'Simulación (IDM) · los mismos coches salen y vuelven a entrar por la rampa', pt: 'Simulação (IDM) · os mesmos carros saem e voltam a entrar pela rampa', fr: 'Simulation (IDM) · les mêmes voitures sortent et reviennent par la bretelle', de: 'Simulation (IDM) · dieselben Autos fahren ab und wieder auf', en: 'Simulation (IDM) · the same cars leave and come back up the ramp'},
   platoonNote: {es: 'Simulación · cada conductor reacciona {r} s tarde', pt: 'Simulação · cada condutor reage {r} s atrasado', fr: 'Simulation · chaque conducteur réagit avec {r} s de retard', de: 'Simulation · jeder reagiert {r} s zu spät', en: 'Simulation · every driver reacts {r} s late'},
 });
 
@@ -67,55 +76,56 @@ const Asphalt: FC<{lanes: number; y?: number; appear?: number}> = ({lanes, y = R
 
 const laneY = (lanes: number, lane: number, y = ROAD_Y) => y - (lanes * LANE) / 2 + LANE * (lane + 0.5);
 
-// one car with its brake glow (the red bloom that makes a wave visible from far away)
-const RoadCar: FC<{sx: number; sy: number; s: number; v: number; a: number; colour: string; mark?: string}> = ({sx, sy, s, v, a, colour, mark}) => {
+// one car with its brake glow (the red bloom that makes a wave visible from far away), coloured by its speed
+const RoadCar: FC<{sx: number; sy: number; s: number; v: number; a: number; top: number; mark?: string}> = ({sx, sy, s, v, a, top, mark}) => {
   const brake = Math.min(1, Math.max(0, -a - 0.15) / 0.8) || (v < 0.6 ? 1 : 0);
   return (
     <g>
-      {brake > 0.05 && <circle cx={sx - 2.2 * s} cy={sy} r={5.5 * s} fill="#ff2a2a" opacity={0.35 * brake} filter="url(#bloom)" />}
-      <Car sx={sx} sy={sy} deg={0} s={s} color={colour} brake={brake} mark={mark} />
+      {brake > 0.05 && <circle cx={sx - 2.2 * s} cy={sy} r={6 * s} fill="url(#glow)" opacity={brake} />}
+      <Car sx={sx} sy={sy} deg={0} s={s} color={paint(v, top)} brake={brake} mark={mark} trail={trail(v, top)} />
     </g>
   );
 };
 
 const Defs = () => (
   <defs>
-    <filter id="bloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="9" /></filter>
+    <radialGradient id="glow"><stop offset="0%" stopColor="#ff2a2a" stopOpacity={0.55} /><stop offset="100%" stopColor="#ff2a2a" stopOpacity={0} /></radialGradient>
     <marker id="arrowR" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill={C.text} /></marker>
     <marker id="arrowL" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill={C.red} /></marker>
   </defs>
 );
 
 // the cars of a periodic road inside the window [x0, x0 + span) metres, in one lane
-const Traffic: FC<{f: Frame; L: number; x0: number; span: number; y: number; marks?: Record<number, string>}> = ({f, L, x0, span, y, marks = {}}) => {
+const TOP = 13;              // m/s: going well on the long road
+const Traffic: FC<{f: Frame & {on?: Uint8Array}; L: number; x0: number; span: number; y: number; marks?: Record<number, string>}> = ({f, L, x0, span, y, marks = {}}) => {
   const m = 1920 / span;
   return (
     <g>
       {Array.from(f.x).map((x, i) => {
         const d = ((x - x0) % L + L) % L;
-        if (d > span + 10) return null;
-        return <RoadCar key={i} sx={d * m} sy={y} s={m * 1.05} v={f.v[i]} a={f.a[i]} colour={BODY[i % BODY.length]} mark={marks[i]} />;
+        if (d > span + 10 || (f.on && !f.on[i])) return null;
+        return <RoadCar key={i} sx={d * m} sy={y} s={m * 1.05} v={f.v[i]} a={f.a[i]} top={TOP} mark={marks[i]} />;
       })}
     </g>
   );
 };
 
 const Bars: FC<{rows: {label: string; value: number; text: string; colour: string}[]; max: number; o: number; style: object}> = ({rows, max, o, style}) => (
-  <Panel o={o} style={{width: 620, ...style}}>
+  <Panel o={o} style={{width: 700, ...style}}>
     {rows.map((r) => (
       <div key={r.label} style={{display: 'flex', alignItems: 'center', gap: 14, marginTop: 8}}>
-        <div style={{width: 250, fontSize: 18, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: r.colour}}>{r.label}</div>
+        <div style={{width: 300, fontSize: 22, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: r.colour}}>{r.label}</div>
         <div style={{flex: 1, height: 10, background: 'rgba(255,255,255,0.08)', borderRadius: 5}}>
           <div style={{width: `${Math.min(100, (r.value / max) * 100 * Math.min(1, o * 1.3))}%`, height: 10, background: r.colour, borderRadius: 5}} />
         </div>
-        <div style={{width: 90, textAlign: 'right', fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums'}}>{r.text}</div>
+        <div style={{width: 110, textAlign: 'right', fontSize: 26, fontWeight: 800, fontVariantNumeric: 'tabular-nums'}}>{r.text}</div>
       </div>
     ))}
   </Panel>
 );
 
 const Caption: FC<{text: string; x: number; y: number; colour?: string; anchor?: 'start' | 'middle' | 'end'; o?: number}> = ({text, x, y, colour = C.text, anchor = 'middle', o = 1}) => (
-  <text x={x} y={y} textAnchor={anchor} fill={colour} fontFamily={FONT} fontSize={22} fontWeight={800} letterSpacing={1.4} opacity={o}
+  <text x={x} y={y} textAnchor={anchor} fill={colour} fontFamily={FONT} fontSize={26} fontWeight={800} letterSpacing={1.4} opacity={o}
         style={{textTransform: 'uppercase'}}>{text.toUpperCase()}</text>
 );
 
@@ -142,7 +152,7 @@ const Platoon: FC<{g: WorldProps['g']; t: number; o: WorldProps['o']; on: number
       <Asphalt lanes={1} />
       {Array.from(f.x).map((x, i) => (
         <g key={i}>
-          <RoadCar sx={(x - x0) * m} sy={ROAD_Y} s={m * 0.95} v={f.v[i]} a={f.a[i]} colour={BODY[(i + 2) % BODY.length]} />
+          <RoadCar sx={(x - x0) * m} sy={ROAD_Y} s={m * 0.95} v={f.v[i]} a={f.a[i]} top={PLATOON.speed} />
           <text x={(x - x0) * m} y={ROAD_Y + 62} textAnchor="middle" fill={C.label} fontFamily={FONT} fontSize={26} fontWeight={800}>{i + 1}</text>
           <rect x={(x - x0) * m - 9} y={ROAD_Y - 60 - Math.min(260, hardest[i] * 34)} width={18} height={Math.min(260, hardest[i] * 34)}
                 fill={i ? C.red : C.accent} opacity={showBars} rx={3} />
@@ -160,11 +170,76 @@ const Platoon: FC<{g: WorldProps['g']; t: number; o: WorldProps['o']; on: number
   );
 };
 
+const platoonAnchors = (t: number): Record<string, Anchor> => {
+  const f = platoon().at(t);
+  const centre = Array.from(f.x).reduce((a, b) => a + b, 0) / f.x.length;
+  const m = 1920 / 190;
+  const at = (i: number) => ({x: (f.x[i] - (centre - 95)) * m, y: ROAD_Y});
+  return {car: at(0), jam: at(f.x.length - 1)};
+};
+
+// --- the on-ramp ------------------------------------------------------------------------------------------------------
+const RAMP_VIEW = {before: 140, span: 380};
+const rampFlow = new Map<boolean, number>();
+/** Cars an hour past the middle of the road, over the settled part of the run. */
+const flowOf = (metered: boolean) => {
+  if (!rampFlow.has(metered)) {
+    const r = ramp(metered);
+    let passes = 0;
+    for (let t = 100; t < RAMP.span - 0.2; t += 0.1) {
+      const a = r.at(t);
+      const b = r.at(t + 0.1);
+      for (let i = 0; i < r.cars; i++) if (a.on[i] && b.on[i] && a.x[i] < 500 && b.x[i] >= 500) passes++;
+    }
+    rampFlow.set(metered, (passes / (RAMP.span - 100.2)) * 3600);
+  }
+  return rampFlow.get(metered)!;
+};
+
+const RampRoad: FC<{metered: boolean; simT: number; y: number; o: WorldProps['o']}> = ({metered, simT, y, o}) => {
+  const r = ramp(metered);
+  const f = r.at(simT);
+  const x0 = RAMP.merge - RAMP_VIEW.before;
+  const m = 1920 / RAMP_VIEW.span;
+  const mx = RAMP_VIEW.before * m;
+  const end = {x: mx, y: y + LANE / 2 + 4};
+  const start = {x: mx - 330, y: y + 150};
+  const len = Math.hypot(end.x - start.x, end.y - start.y);
+  const ux = (end.x - start.x) / len;
+  const uy = (end.y - start.y) / len;
+  // a light shows green for a moment each time it lets a car in
+  const before = r.at(Math.max(0, simT - 0.7));
+  const justIn = Array.from(f.on).some((v, i) => v && !before.on[i] && Math.abs(f.x[i] - RAMP.merge) < 15);
+  const waiting = Math.min(f.waiting, 14);
+  return (
+    <g>
+      <path d={`M${start.x - ux * 400},${start.y - uy * 400} L${end.x + ux * 40},${end.y + uy * 40}`} stroke="#3a3e45" strokeWidth={LANE + 10} />
+      <path d={`M${start.x - ux * 400},${start.y - uy * 400} L${end.x + ux * 40},${end.y + uy * 40}`} stroke="#2b2e34" strokeWidth={LANE - 2} />
+      <Asphalt lanes={1} y={y} />
+      {Array.from({length: waiting}, (_, k) => {
+        const d = 40 + k * 26;
+        return <RoadCar key={k} sx={end.x - ux * d} sy={end.y - uy * d} s={m * 1.05} v={metered ? 0 : 1.2} a={0} top={TOP} />;
+      }).map((car, k) => <g key={k} transform={`rotate(${(Math.atan2(uy, ux) * 180) / Math.PI} ${end.x - ux * (40 + k * 26)} ${end.y - uy * (40 + k * 26)})`}>{car}</g>)}
+      <Traffic f={f} L={r.L} x0={x0} span={RAMP_VIEW.span} y={y} />
+      {metered && (
+        <g>
+          <rect x={end.x - 70} y={end.y + 18} width={30} height={62} rx={8} fill="#0d0f13" stroke="#444" strokeWidth={2} />
+          <circle cx={end.x - 55} cy={end.y + 35} r={10} fill={justIn ? '#333' : '#ff3b30'} />
+          <circle cx={end.x - 55} cy={end.y + 62} r={10} fill={justIn ? '#3ddc84' : '#333'} />
+        </g>
+      )}
+      <Caption text={tx(metered ? 'withMeter' : 'noMeter')} x={60} y={y - 60} anchor="start" colour={metered ? C.green : C.red} />
+      <Caption text={tx('waitRamp', {n: f.waiting})} x={start.x - 40} y={start.y + 70} anchor="middle" colour={C.label} o={Math.max(o('labels'), 0.9)} />
+      <Caption text={tx('nStoppedRoad', {n: r.stopped(simT)})} x={1860} y={y - 60} anchor="end" colour={r.stopped(simT) ? C.red : C.green} />
+    </g>
+  );
+};
+
 // --- the long road scenes ----------------------------------------------------------------------------------------------
 const LAPSE = 1.5;
 const START: Record<string, number> = {onda: 120, carril: 120, hueco: 92, limite: 150, carriles: 140};
 
-const View: FC<WorldProps> = ({g, worldT, local, on, o}) => {
+const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
   const scene = param<string>(g, 'scene', 'onda');
   if (scene === 'frenazo') {
     const cue = g.cues?.brake;
@@ -172,7 +247,32 @@ const View: FC<WorldProps> = ({g, worldT, local, on, o}) => {
     return (
       <AbsoluteFill style={{background: `radial-gradient(ellipse at center, #26352b 0%, ${FIELD} 70%)`}}>
         <Platoon g={g} t={Math.max(0, Math.min(PLATOON.span, t))} o={o} on={on} />
+        <Pointers marks={g.marks} local={real} at={platoonAnchors(Math.max(0, Math.min(PLATOON.span, t)))} />
         <Note>{tx('platoonNote', {r: PLATOON.react})}</Note>
+      </AbsoluteFill>
+    );
+  }
+  if (scene === 'rampa') {
+    const t = Math.min(RAMP.span, 60 + worldT * LAPSE);
+    const free = flowOf(false);
+    const metered = flowOf(true);
+    return (
+      <AbsoluteFill style={{background: `radial-gradient(ellipse at center, #26352b 0%, ${FIELD} 70%)`}}>
+        <svg width={1920} height={1080} style={{position: 'absolute'}}>
+          <Defs />
+          <RampRoad metered={false} simT={t} y={300} o={o} />
+          <RampRoad metered simT={t} y={700} o={o} />
+        </svg>
+        <Bars o={o('panel')} max={Math.max(free, metered)} style={{right: 64, bottom: 60}} rows={[
+          {label: `${tx('carsHour')} · ${tx('noMeter')}`, value: free, text: String(Math.round(free / 10) * 10), colour: C.red},
+          {label: `${tx('carsHour')} · ${tx('withMeter')}`, value: metered, text: String(Math.round(metered / 10) * 10), colour: C.green},
+        ]} />
+        <Pointers marks={g.marks} local={real} at={{jam: (() => {
+          const r = ramp(false);
+          const j = jamOf({...r.at(t), x: r.at(t).x.map((x, i) => (r.at(t).on[i] ? x : -9999))}, r.L);
+          return j ? {x: ((((j.tail + j.front) / 2 - (RAMP.merge - RAMP_VIEW.before)) % r.L + r.L) % r.L) * (1920 / RAMP_VIEW.span), y: 300} : null;
+        })()}} />
+        <Note>{tx('rampNote')}</Note>
       </AbsoluteFill>
     );
   }
@@ -183,7 +283,7 @@ const View: FC<WorldProps> = ({g, worldT, local, on, o}) => {
   const f = r.at(simT);
   const you = VARIANT.you;
   const follow = scene === 'hueco' || scene === 'carril';
-  const span = scene === 'limite' ? 470 : 300;
+  const span = scene === 'limite' ? 400 : 240;            // close enough to see each car
   // onda: the camera stays where the jam was when the scene began, so the jam is seen sliding back through it
   const startJam = scene === 'onda' ? jamOf(r.at(START.onda), L) : null;
   const x0 = follow ? f.x[you] - span * 0.62 : scene === 'limite' ? VARIANT.limite.at - 60
@@ -320,6 +420,19 @@ const View: FC<WorldProps> = ({g, worldT, local, on, o}) => {
         {overlay}
       </svg>
       {panel}
+      <Pointers marks={g.marks} local={real} at={(() => {
+        const jam = jamOf(f, L);
+        const jamAt = jam ? {x: sx((jam.tail + jam.front) / 2), y: yOf(0)} : null;
+        let ahead = -1;
+        let gap = Infinity;
+        for (let i = 0; i < r.cars; i++) {
+          const d = ((f.x[i] - f.x[you]) % L + L) % L;
+          if (i !== you && d > 0 && d < gap) { gap = d; ahead = i; }
+        }
+        const youAt = {x: sx(f.x[you]), y: yOf(0)};
+        return {car: follow ? youAt : jam ? {x: sx(jam.tail) - 30 * m * 0.2, y: yOf(0)} : null, jam: jamAt,
+                gap: follow && ahead >= 0 ? {x: sx(f.x[you]) + (gap * m) / 2, y: yOf(0)} : null};
+      })()} />
       <Note>{tx('roadNote', {n: Math.round(ROAD.cars / (L / 1000))})}</Note>
     </AbsoluteFill>
   );

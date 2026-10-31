@@ -526,6 +526,8 @@ async function newVideo() {
       <label>Voz <span class="muted">(mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
       <div class="row" style="margin-top:18px"><button id="hookbtn" onclick="checkHook()">Revisar el gancho (antes de grabar)</button><span id="hookmsg" class="small muted"></span></div>
       <div id="hookbox"></div>
+      <div class="row" style="margin-top:10px"><button id="scenebtn" onclick="checkScenes()">Revisar escenas (canales de simulación)</button><span id="scenemsg" class="small muted"></span></div>
+      <div id="scenebox"></div>
       <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><b id="msg" style="color:var(--accent)"></b></div>
       <div class="bar hide" id="upbar"><i style="width:0"></i></div>
     </div>`;
@@ -555,6 +557,16 @@ async function checkHook() {
       ${r.tips.length ? `<ul class="small">${r.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
   $("#hookbtn").disabled = false;
+}
+async function checkScenes() {
+  const msg = $("#scenemsg"); msg.textContent = "Mirando qué se puede enseñar… (~20 s)"; $("#scenebtn").disabled = true;
+  try {
+    const r = await post("/api/scenes", {script: $("#script").value, channel: $("#channel").value});
+    msg.textContent = "";
+    $("#scenebox").innerHTML = `<div class="notice ${r.flagged.length ? "" : "ok"}"><b>${esc(r.verdict)}</b>
+      ${r.flagged.length ? `<ul class="small">${r.flagged.map((f) => `<li><b>[${f.n}]</b> «${esc(f.line)}»<br>${esc(f.why)}<br><i>Propuesta:</i> ${esc(f.fix)}</li>`).join("")}</ul>` : ""}</div>`;
+  } catch (e) { msg.textContent = e.message; }
+  $("#scenebtn").disabled = false;
 }
 function useOpening() {
   const box = $("#script"), text = document.getElementById("newopen").innerText.trim();
