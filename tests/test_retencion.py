@@ -126,6 +126,7 @@ def test_the_voice_waits_for_the_review_of_the_adapted_script(tmp_path, monkeypa
     (root / "materiales" / "el-porque-simulado" / "config.yaml").write_text("canal: el-porque-simulado\n", "utf-8")
     (folder / "guion.txt").write_text("Vas por la autovía. " * 30, "utf-8")
     (folder / "guion-en.txt").write_text("You're on the freeway. " * 30, "utf-8")
+    (folder / "config.yaml").write_text("dubbing:\n  review: true\n", "utf-8")      # off by default; on for this one
     calls = []
     monkeypatch.setattr("pipeline.tts.generate", lambda *a, **k: calls.append(a) or {"chars": 10})
     ctx = RunContext.create("atasco2", root=root)
@@ -134,3 +135,11 @@ def test_the_voice_waits_for_the_review_of_the_adapted_script(tmp_path, monkeypa
     assert status["en"]["review"] is True
     doblaje.approve(root, "atasco2", "en")
     assert not doblaje.waiting_review(ctx, "en") and doblaje.voice(ctx, "en") and calls
+
+
+
+def test_by_default_the_dub_goes_on_without_waiting(tmp_path):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    assert not doblaje.waiting_review(RunContext.create("x", root=root, channel="el-porque-simulado"), "en")
