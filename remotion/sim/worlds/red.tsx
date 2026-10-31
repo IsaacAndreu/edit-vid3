@@ -177,7 +177,7 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
           </g>
         )}
       </svg>
-      <Big o={o('cascade')} label={tx(skin.down)} value={`${Math.round(dark * 100)} %`} color={dark > 0.3 ? C.red : C.text}
+      <Big o={o('cascade')} label={tx(skin.down)} value={`${Math.round((down.size / GRID.nodes.length) * 100)} %`} color={dark > 0.3 ? C.red : C.text}
            sub={tx(skin.of, {n: down.size, m: GRID.nodes.length})} style={{right: 48, top: 52, width: 360}} />
       <Panel o={showLoad} style={{right: 48, bottom: 70}}>
         <Label>{tx('lineLoad')}</Label>

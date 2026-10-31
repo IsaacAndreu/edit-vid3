@@ -43,10 +43,11 @@ export const mulberry = (seed: number) => () => {
 /** A big figure in a panel. */
 export const Big: FC<{label: string; value: string; color?: string; style?: CSSProperties; o: number; sub?: string}> = (
   {label, value, color = C.text, style, o, sub}) => (
-  <Panel o={o} style={{width: 260, ...style}}>
-    <Label>{label}</Label>
-    <div style={{fontSize: 56, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums', lineHeight: 1.05}}>{value}</div>
-    {sub && <Label>{sub}</Label>}
+  // the width is a minimum: a long figure («2:52 min») widens its panel instead of breaking in two lines
+  <Panel o={o} style={{...style, minWidth: style?.width ?? 260, width: 'auto'}}>
+    <div style={{fontSize: 24, fontWeight: 800, letterSpacing: 1.2, color: C.label, textTransform: 'uppercase'}}>{label}</div>
+    <div style={{fontSize: 74, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums', lineHeight: 1.05, whiteSpace: 'nowrap'}}>{value}</div>
+    {sub && <div style={{fontSize: 22, fontWeight: 700, letterSpacing: 1, color: C.label, textTransform: 'uppercase', marginTop: 2}}>{sub}</div>}
   </Panel>
 );
 

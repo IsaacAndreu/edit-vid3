@@ -140,3 +140,39 @@ def test_the_what_if_series_reaches_the_scenes_and_the_topics(tmp_path, monkeypa
     ideas = temas.propose(tmp_path, "el-porque-simulado", 5, "y-si")
     assert "«¿Y si…?»" in seen["system"]
     assert [i["title"] for i in ideas] == ["¿Y si hubiera una caja más?"] and ideas[0]["dial"] == "tills"   # a real dial only
+
+
+def test_a_rule_is_never_cut_and_keeps_its_words(tmp_path, monkeypatch):
+    rule = simulacion.clean({"world": "red", "rules": [{"text": "Su carga pasa a las vecinas"}]}, "x", None)["rules"][0]
+    assert rule["text"] == "SU CARGA PASA A LAS VECINAS"                       # sim3 showed «SU CARGA PASA A LAS»
+    assert simulacion._rule("cada línea tiene un límite un poco por encima de su") == "CADA LÍNEA TIENE UN LÍMITE UN POCO"
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "min_world_seconds": 0}})
+    plan = [[{"text": "su carga pasa a las vecinas"}], [], [{"text": "carga a las vecinas"}, {"text": "se desconecta"}]]
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **k: {"scenes": [
+        {"n": n, "world": "apagon", "rules": r, "title": f"T{n}"} for n, r in enumerate(plan, 1)]})
+    shots = [SimpleNamespace(id=f"s{n}", type="broll", from_=n * 300, durationInFrames=300, text=f"frase {n}") for n in range(3)]
+    groups = simulacion.groups(ctx, shots, 30, [])
+    first, carried, more = (g["graphic"] for g in groups)
+    assert not first.get("rulesMini") and carried["rulesMini"] is True               # explained, then put in a corner
+    assert [r["text"] for r in more["rules"]] == ["SU CARGA PASA A LAS VECINAS", "SE DESCONECTA"]   # the same words
+    assert not more.get("rulesMini")                                                   # a new rule: shown big
+
+
+def test_the_same_picture_for_minutes_is_a_warning():
+    fps = 30
+    sims = [{"from": k * 1800, "durationInFrames": 1800, "graphic": {"type": "sim", "world": "red", "params": {"margin": 0.2}}}
+            for k in range(5)]                                                        # 5 minutes of one map (sim3)
+    found = simulacion.monotony(sims, fps)
+    assert any("min seguidos en el mismo mundo" in w for w in found)
+    assert any("la misma escena" in w for w in found)
+    varied = [{"from": k * 1800, "durationInFrames": 1800, "graphic": {"type": "sim", "world": "apagon" if k < 2 else "anillo",
+                                                                          "params": {"scene": ["cascada", "frecuencia", "x", "y", "z"][k]}}}
+              for k in range(5)]
+    assert simulacion.monotony(varied, fps) == []
+
+
+def test_the_grid_world_has_its_scenes_and_follows_the_language():
+    w = simulacion.worlds()["apagon"]
+    assert set(w["params"]["scene"]["options"]) == {"cascada", "reparto", "combado", "frecuencia", "inercia", "arena", "arranque", "isla"}
+    assert w["params"]["pais"]["default"] == "auto" and {"iberia", "alemania", "brasil", "eeuu"} <= set(w["params"]["pais"]["options"])
+    assert "apagon" in simulacion.worlds()["red"]["describe"]                            # the old map sends the LLM here

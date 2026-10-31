@@ -70,8 +70,9 @@ Además, en cada plano:
 - "source": el estudio o la fuente que la frase cita («Sugiyama et al., 2008»), si no "".
 - "list": 2-4 frases muy cortas SOLO para el resumen final, o [].
 - "rules": SOLO cuando la frase enumera las reglas del sistema o apaga una: la lista de reglas que se ven en pantalla
-  hasta ese momento, cada una {{"text": "2-4 palabras", "off": false}}; la que la frase apaga, con "off": true (y en
-  "params" el cambio que la apaga en el mundo, si lo hay). Si no, [].
+  hasta ese momento, cada una {{"text": "2-5 palabras, una frase completa", "off": false}} (la MISMA redacción cada vez que
+  una regla vuelve a salir); la que la frase apaga, con "off": true (y en "params" el cambio que la apaga en el mundo,
+  si lo hay). Si no, [].
 - "ask": SOLO cuando la frase le pregunta al espectador qué haría o qué va a pasar («¿qué cola eliges?», «¿frenas o
   dejas hueco?»): esa pregunta en 2-6 palabras; la simulación se para 3 segundos con ella en pantalla y luego enseña
   la respuesta. Como mucho dos en todo el vídeo, nunca en la primera frase; si no, "".
@@ -81,7 +82,8 @@ Además, en cada plano:
 Reglas: elige el mundo cuyo TEMA es el de la frase (lee bien qué enseña cada uno; una frase sobre atascos en
 general no va al mundo de un carril que se cierra ni al de un cruce); si ningún mundo enseña la frase, sigue en el
 mundo de la frase anterior; mantén el mismo mundo, foco y parámetros en frases seguidas de la misma
-idea (la cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
+idea (la cámara no salta sin motivo), pero cada idea nueva del guion pide su escena (el "scene" del mundo que la
+enseña): nunca más de 1-2 minutos con la misma escena ni 3 con el mismo mundo; el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
 cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
 "title": "", "stat": null, "source": "", "list": [], "rules": [], "ask": "", "replay": false}}]}}
@@ -144,7 +146,7 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
     items = [_words(x, 9).upper() for x in (scene.get("list") or []) if str(x).strip()][:4]
     if stat and overlay in (w.get("panels") or []):
         overlay = "none"                  # one panel at a time: the figure the voice says wins over the world's counter
-    rules = [{"text": _words(r.get("text"), 5).upper()[:36], "off": r.get("off") is True}
+    rules = [{"text": _rule(r.get("text")), "off": r.get("off") is True}
              for r in (scene.get("rules") or []) if isinstance(r, dict) and str(r.get("text") or "").strip()][:5]
     ask = _words(scene.get("ask"), 8).strip(" ¿?")[:60]
     out = {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
@@ -153,6 +155,16 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
     if ask and "?" in line:               # «¿tú qué harías?»: only on a line that asks
         out["ask"] = f"¿{ask.upper()}?" if "¿" in line else f"{ask.upper()}?"
     return out
+
+
+def _rule(text: Any) -> str:
+    """A rule as it goes on screen: whole (hora3 showed «SU CARGA PASA A LAS»), up to 7 words; a longer one ends on
+    its last full word, never on «a», «de», «las»…"""
+
+    words = str(text or "").split()[:7]
+    while len(words) > 2 and words[-1].lower().strip(",.;:") in {"a", "de", "del", "la", "las", "el", "los", "y", "en", "con", "su", "sus", "al", "o", "que", "por"}:
+        words.pop()
+    return " ".join(words).upper()[:48]
 
 
 DIRECTOR = "escenas.txt"
@@ -311,16 +323,22 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
         if before is None or before["world"] != g["world"]:
             carried = []
         if g.get("rules"):
+            # a rule said again keeps the words it came with (hora3: «SU CARGA PASA A LAS VECINAS», later «CARGA A
+            # LAS VECINAS»): the LLM rewords, the screen does not
+            g["rules"] = [{**r, "text": carried[i]["text"]} if i < len(carried) and r["text"] != carried[i]["text"]
+                          and r["text"] not in [c["text"] for c in carried] else r for i, r in enumerate(g["rules"])]
             # the ones already on screen do not come in again: only the new ones (and a rule switched off) animate
             known = [r["text"] for r in carried]
             g["rulesFrom"] = sum(1 for r in g["rules"] if r["text"] in known)
             g["rulesOff"] = [i for i, r in enumerate(g["rules"]) if r["off"]
                              and not any(c["text"] == r["text"] and c["off"] for c in carried)]
             carried = g["rules"]
+            g["rulesMini"] = g["rulesFrom"] >= len(g["rules"]) and not g["rulesOff"]
         elif carried:
-            g["rules"] = carried                 # the rules stay on screen while the world does
+            g["rules"] = carried                 # the rules stay while the world does, put away in a corner
             g["rulesFrom"] = len(carried)
             g["rulesOff"] = []
+            g["rulesMini"] = True
         # the dial: a number of the same world turned up or down by this line
         if before is not None and before["world"] == g["world"]:
             spec_params = every.get(g["world"], {}).get("params") or {}
@@ -337,6 +355,8 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
                                  "min": low, "max": high, "percent": bool(p.get("percent"))}
                     break
     recap_scenes(out)
+    for warning in monotony(out, fps, ctx):        # before the render: the same picture for minutes (sim3)
+        print(f"   AVISO simulación: {warning}")
     if out and ctx.section("shorts").get("of") and ctx.section("visual").get("loop", True) is not False:
         # a Short loops: its last shot ends on its first scene, so watched again it does not jump
         first = out[0]["graphic"]
@@ -518,6 +538,7 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
         seconds = (run[-1]["from"] + run[-1]["durationInFrames"] - run[0]["from"]) / fps
         if len(runs) > 1 and seconds < least:
             found.append(f"{stamp(run[0]['from'])} · «{run[0]['graphic']['world']}» solo {seconds:.0f} s en pantalla")
+    found += monotony(sims, fps, ctx)
     for g in sims:
         x = g["graphic"]
         at = stamp(g["from"])
@@ -536,6 +557,37 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
     (ctx.out_dir / "qa").mkdir(parents=True, exist_ok=True)
     (ctx.out_dir / "qa" / "simulacion.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return found
+
+
+LONGEST_WORLD = 3.0       # minutes: one world on screen longer than this is a warning (sim3: 13 minutes of one map)
+LONGEST_SCENE = 1.5       # minutes: the same scene (world and parameters) without a change
+
+
+def monotony(sims: list[dict[str, Any]], fps: int, ctx: RunContext | None = None) -> list[str]:
+    """Stretches where the picture does not change enough: one world for more than visual.qa_world_minutes (3), the
+    same scene of it (its parameters) for more than visual.qa_scene_minutes (1.5)."""
+
+    cfg = ctx.section("visual") if ctx is not None else {}
+    world_max = float(cfg.get("qa_world_minutes", LONGEST_WORLD)) * 60
+    scene_max = float(cfg.get("qa_scene_minutes", LONGEST_SCENE)) * 60
+    stamp = lambda frames: f"{int(frames / fps) // 60}:{int(frames / fps) % 60:02d}"   # noqa: E731
+    out = []
+    for key, limit, what in ((lambda g: g["world"], world_max, "el mismo mundo"),
+                             (lambda g: (g["world"], json.dumps(g.get("params") or {}, sort_keys=True)), scene_max, "la misma escena")):
+        start = None
+        for k, group in enumerate(sims):
+            g = group["graphic"]
+            if g.get("teaser") or g.get("list"):
+                continue
+            if start is None or key(sims[start]["graphic"]) != key(g):
+                start = k
+            end = group["from"] + group["durationInFrames"]
+            if (end - sims[start]["from"]) / fps > limit and (k + 1 == len(sims) or key(sims[k + 1]["graphic"]) != key(g)):
+                minutes = (end - sims[start]["from"]) / fps / 60
+                out.append(f"{stamp(sims[start]['from'])} · {minutes:.1f} min seguidos en {what} («{g['world']}»"
+                           + (f", {(g.get('params') or {}).get('scene')}" if (g.get("params") or {}).get("scene") else "")
+                           + "): cambia de escena o de mundo")
+    return out
 
 
 KEEP = ("world", "focus", "overlay", "params", "at", "since", "cues", "lang", "accent", "theme")

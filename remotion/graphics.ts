@@ -315,6 +315,7 @@ export interface SimGraphic {
   rules?: { text: string; off: boolean }[];   // the system's rules on screen, numbered; «off» ones struck out
   rulesFrom?: number;   // the rules before this index were already on screen (do not come in again)
   rulesOff?: number[];  // the rules this line switches off (the strike animates)
+  rulesMini?: boolean;  // the rules were already explained: small, in a corner
   recap?: SimGraphic[];  // the closing summary: the key scenes of the video again, one per idea
   dial?: { label: string; from: number; to: number; min: number; max: number; percent?: boolean };   // a number turned
   ask?: string;         // «¿tú qué harías?»: the question the world stops on

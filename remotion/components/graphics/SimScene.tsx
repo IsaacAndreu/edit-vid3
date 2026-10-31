@@ -123,6 +123,22 @@ const Recap: FC<{ graphic: SimGraphic; real: number; length: number }> = ({ grap
 const Rules: FC<{ graphic: SimGraphic; real: number }> = ({ graphic, real }) => {
   const from = graphic.rulesFrom ?? 0;
   const off = new Set(graphic.rulesOff ?? []);
+  if (graphic.rulesMini) {
+    // already explained: small, in the bottom-left corner, out of the world's way
+    return (
+      <Panel o={0.92} style={{ left: 40, bottom: 64, width: 400, padding: '10px 16px' }}>
+        {(graphic.rules ?? []).map((r, i) => (
+          <div key={r.text} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: i ? 6 : 0, fontSize: 19, fontWeight: 800,
+                                     textTransform: 'uppercase', color: r.off ? 'rgba(242,244,248,0.45)' : C.text,
+                                     textDecoration: r.off ? 'line-through' : 'none', textDecorationColor: C.red }}>
+            <span style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
+                           background: r.off ? C.red : C.green, color: '#0b1020', flexShrink: 0 }}>{r.off ? '✕' : i + 1}</span>
+            {r.text}
+          </div>
+        ))}
+      </Panel>
+    );
+  }
   return (
     <Panel o={1} style={{ left: 64, top: 230, width: 470, padding: '20px 26px' }}>
       <Label>{tx('rulesTitle')}</Label>
@@ -300,7 +316,7 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
       {graphic.stat && (
         <Panel o={statOn} style={{ left: '50%', bottom: 70, transform: 'translateX(-50%)', textAlign: 'center', minWidth: 360 }}>
           <Label>{graphic.stat.label}</Label>
-          <div style={{ fontSize: 64, fontWeight: 800, color: C.accent, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ fontSize: 88, fontWeight: 800, color: C.accent, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
             {countUp(graphic.stat.value, interpolate(real, [statFrom, statFrom + 0.9], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }))}
           </div>
         </Panel>

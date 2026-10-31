@@ -223,7 +223,7 @@
   },
   "red": {
     "niche": "desastres y crisis",
-    "describe": "una red en la que un fallo se contagia (elige kind): electricidad (la red eléctrica de un país de noche: subestaciones y ciudades iluminadas), bancos (bancos que se prestan entre sí: uno quiebra y sus deudas tumban a los que le prestaron; crisis financieras), suministro (fábricas y almacenes: una se para y a las que abastecía les faltan piezas; cadenas de suministro). Falla una pieza, su carga pasa a las vecinas y caen en cascada",
+    "describe": "una red en la que un fallo se contagia (para la red eléctrica y los apagones usa SIEMPRE el mundo apagon, no este; aquí elige kind): bancos (bancos que se prestan entre sí: uno quiebra y sus deudas tumban a los que le prestaron; crisis financieras), suministro (fábricas y almacenes: una se para y a las que abastecía les faltan piezas; cadenas de suministro). Falla una pieza, su carga pasa a las vecinas y caen en cascada",
     "focus": {
       "map": "todo el país"
     },
@@ -803,6 +803,91 @@
         "las puertas",
         "la puerta",
         "delante de la puerta"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "apagon": {
+    "niche": "desastres y crisis",
+    "describe": "la red eléctrica de un país vista desde arriba (la península ibérica, Alemania, Brasil o el noreste de EE. UU., ver pais), de noche: ciudades como manchas de casas con las ventanas encendidas, centrales con su aspecto (nucleares, ciclos combinados, presas, campos solares, molinos), torres y líneas por las que se ve correr la corriente, y las conexiones con Francia y Marruecos. USA ESTE MUNDO para TODO lo de apagones y red eléctrica (no red). Elige scene según lo que explica la frase: cascada (una línea cae, su carga pasa a las vecinas y caen una a una: se apaga la de al lado, luego otras dos, luego cinco; las ciudades se apagan una a una; con margin 0.1-0.2 se queda sin luz ~70 % de la gente, con 0.3 una esquina, con 0.4 nada; el modelo de Motter y Lai 2002; y también el apagón de 2025) · reparto (las leyes de Kirchhoff: se corta una línea y la corriente se reparte sola por todos los caminos a la vez, unas líneas engordan; no hay llave que cerrar) · combado (una línea vista de lado en un día de calor: se calienta, se dilata, se comba, toca los árboles y se desconecta; la alarma que no sonó; Ohio 2003) · frecuencia (50 hercios: cae una central, producción y consumo dejan de pesar igual en la balanza, la aguja cae; con deslastre los relés cortan barrios a propósito y se recupera; sin él se desconectan centrales y se apaga todo) · inercia (la misma avería con turbinas pesadas girando: la frecuencia cae despacio y aguanta; con paneles solares: cae rápido y se apaga todo) · arena (el montón de arena de Bak, Tang y Wiesenfeld 1987: granos de uno en uno y avalanchas pequeñas y enormes; los apagones siguen el mismo patrón, Dobson) · arranque (el arranque en frío: las hidroeléctricas y las conexiones con Francia y Marruecos encienden islas que crecen y se sincronizan; horas; con golpe si: todos encienden todo a la vez y una isla se vuelve a caer) · isla (una zona se separa a tiempo con su parte de la conexión con Francia y se salva mientras el resto se apaga; Europa partida en trozos en 2006; las interconexiones con protecciones)",
+    "focus": {
+      "map": "la península"
+    },
+    "overlay": {
+      "panel": "el panel de la escena (sin luz, líneas desconectadas, frecuencia, con luz…)",
+      "fail": "señala el primer fallo",
+      "load": "lo cargada que va cada línea (verde, ámbar, rojo)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "cascada",
+          "reparto",
+          "combado",
+          "frecuencia",
+          "inercia",
+          "arena",
+          "arranque",
+          "isla"
+        ],
+        "default": "cascada",
+        "describe": "qué escena: cascada · reparto · combado · frecuencia · inercia · arena · arranque · isla"
+      },
+      "margin": {
+        "min": 0.05,
+        "max": 0.5,
+        "default": 0.15,
+        "describe": "solo en cascada: margen de cada línea sobre su carga normal (0.1-0.2: se apaga ~70 %; 0.3: una esquina; 0.4: nada)",
+        "label": {
+          "es": "margen de la red",
+          "en": "grid margin",
+          "pt": "margem da rede",
+          "de": "Netzreserve"
+        },
+        "percent": true
+      },
+      "deslastre": {
+        "options": [
+          "si",
+          "no"
+        ],
+        "default": "si",
+        "describe": "solo en frecuencia: si los relés cortan barrios a propósito (si: se salva; no: se apaga todo)"
+      },
+      "golpe": {
+        "options": [
+          "no",
+          "si"
+        ],
+        "default": "no",
+        "describe": "solo en arranque: si todos encienden todo a la vez (si: una isla se vuelve a caer)"
+      },
+      "pais": {
+        "options": [
+          "auto",
+          "iberia",
+          "alemania",
+          "brasil",
+          "eeuu"
+        ],
+        "default": "auto",
+        "describe": "el mapa: auto (el del idioma del vídeo: español la península, alemán Alemania, portugués Brasil, inglés el noreste de EE. UU.; los doblajes cambian solos); otro solo si la frase habla de ese país (el apagón de Ohio y Nueva York de 2003: eeuu)"
+      }
+    },
+    "cues": {
+      "fail": "la frase en la que falla la primera pieza (o se corta la línea, o cae la central)"
+    },
+    "marks": {
+      "fail": [
+        "el primer fallo",
+        "una sola linea",
+        "una linea"
+      ],
+      "france": [
+        "francia",
+        "la conexion con francia"
       ]
     },
     "panels": [
