@@ -59,7 +59,7 @@ const SpaceTime: FC<{r: Ring; simT: number; o: number}> = ({r, simT, o}) => {
       const p: [number, number] = [(t / span) * W, H - (fr.x[i] / RING.length) * H];
       if (prev && Math.abs(p[1] - prev[1]) < H / 2) {
         lines.push(<line key={`${i}-${t}`} x1={prev[0]} y1={prev[1]} x2={p[0]} y2={p[1]}
-                         stroke={i === PERTURB.car ? C.accent : speedColour(fr.v[i], r.startSpeed)} strokeWidth={i === PERTURB.car ? 3 : 1.6} />);
+                         stroke={i === PERTURB.car ? C.you : speedColour(fr.v[i], r.startSpeed)} strokeWidth={i === PERTURB.car ? 3 : 1.6} />);
       }
       prev = p;
     }
@@ -188,7 +188,7 @@ const RingRoad: FC<RingProps> = ({r, simT, cx, cy, s, show, centre, arc}) => {
         const th = angle(x);
         const braking = Math.min(1, Math.max(0, -fr.a[i] - 0.15) / 0.6) || (fr.v[i] < 0.6 ? 1 : 0);
         const brakeMark = i === PERTURB.car && show('brake') > 0.5 && simT >= PERTURB.from - 2 && simT <= PERTURB.to + 6;
-        const mark = driving && i === autoCar ? C.green : brakeMark ? C.accent
+        const mark = driving && i === autoCar ? C.you : brakeMark ? C.you
           : fr.v[i] < 0.6 && simT > r.firstStop && show('jam') > 0.5 ? C.red : undefined;
         return <Car key={i} sx={cx + Math.cos(th) * R * s} sy={cy + Math.sin(th) * R * s} deg={(th * 180) / Math.PI + 90}
                     s={s} color={paint(fr.v[i], r.startSpeed)} brake={braking} mark={mark} trail={0.8 * trail(fr.v[i], r.startSpeed)} />;
@@ -199,8 +199,8 @@ const RingRoad: FC<RingProps> = ({r, simT, cx, cy, s, show, centre, arc}) => {
         const py = cy + Math.sin(th) * (R + 13) * s;
         return (
           <g opacity={Math.max(0.75, show('auto'))}>
-            <rect x={px - 92} y={py - 20} width={184} height={40} rx={6} fill={C.panel} stroke={C.green} strokeWidth={2} />
-            <text x={px} y={py + 9} textAnchor="middle" fill={C.green} fontFamily={FONT} fontSize={24} fontWeight={800}>
+            <rect x={px - 92} y={py - 20} width={184} height={40} rx={6} fill={C.panel} stroke={C.you} strokeWidth={2} />
+            <text x={px} y={py + 9} textAnchor="middle" fill={C.you} fontFamily={FONT} fontSize={24} fontWeight={800}>
               {tx('selfDriving').toUpperCase()}
             </text>
           </g>

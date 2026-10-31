@@ -12,6 +12,7 @@ export const C = {
   accent: '#f5a623',
   red: '#ff5d5d',
   green: '#3ddc84',
+  you: '#ffd23f',             // yellow: only YOU (the viewer) or the one thing that changes everything
 };
 const ACCENT = C.accent;
 /** The channel's accent colour (brand.accent) for every panel and mark of this render; none: the default orange. */

@@ -119,7 +119,7 @@ const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single
       {single && <rect x={cx - 230} y={TILL_Y + 150} width={460} height={5} rx={3} fill="#c9ccd2" opacity={0.25} />}
       {look.ghost && (
         <g opacity={0.55}>
-          <circle cx={look.ghost[0]} cy={look.ghost[1] - 8} r={19} fill="none" stroke={C.accent} strokeWidth={3} strokeDasharray="6 5" />
+          <circle cx={look.ghost[0]} cy={look.ghost[1] - 8} r={19} fill="none" stroke={C.you} strokeWidth={3} strokeDasharray="6 5" />
         </g>
       )}
       {spots.map(({id, x, y, paying}) => {
@@ -131,10 +131,10 @@ const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single
           <g key={id}>
             {!paying && <rect x={x - 12 - cart * 10} y={y + 10} width={24 + cart * 20} height={14 + cart * 14} rx={4}
                               fill={p.items > 10 ? '#8f98a3' : '#b8864a'} stroke="#c9ccd2" strokeWidth={1.5} opacity={0.9} />}
-            <circle cx={x} cy={y - 8} r={18} fill={shirt} stroke={you ? C.accent : '#12161f'} strokeWidth={you ? 5 : 3} />
+            <circle cx={x} cy={y - 8} r={18} fill={shirt} stroke={you ? C.you : '#12161f'} strokeWidth={you ? 5 : 3} />
             <circle cx={x} cy={y - 8} r={7} fill="#f1d3b5" />
             {p.slow && look.slowMark !== false && <circle cx={x + 22} cy={y - 26} r={7} fill="#ffd23f" />}
-            {you && <text x={x} y={y - 38} textAnchor="middle" fill={C.accent} fontFamily={FONT} fontSize={26} fontWeight={800}>{tx('youWord').toUpperCase()}</text>}
+            {you && <text x={x} y={y - 38} textAnchor="middle" fill={C.you} fontFamily={FONT} fontSize={26} fontWeight={800}>{tx('youWord').toUpperCase()}</text>}
           </g>
         );
       })}
@@ -336,7 +336,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
         <Store run={run} f={f} left={0} width={1920} single={false} look={{you: j.you, ghost: ghostSpot ? [ghostSpot.x, ghostSpot.y + 8] : undefined}} />
         {ghostSpot && (
           <div style={{position: 'absolute', left: ghostSpot.x - 160, top: ghostSpot.y + 30, width: 320, textAlign: 'center', fontFamily: FONT,
-                       fontSize: 22, fontWeight: 800, color: C.accent, opacity: 0.85, textTransform: 'uppercase'}}>{tx('ifStayed')}</div>
+                       fontSize: 22, fontWeight: 800, color: C.you, opacity: 0.85, textTransform: 'uppercase'}}>{tx('ifStayed')}</div>
         )}
         <Panel o={over} style={{right: 64, top: 160, width: 560}}>
           {bar(tx('staying'), j.stayEnd - people0(j.stay, j.you), j.goEnd - people0(j.go, j.you), fmt(j.stayEnd - people0(j.stay, j.you)), C.green, over)}
@@ -363,8 +363,8 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
           {[[tx('outPerMinute'), out.toFixed(1)], [tx('ahead'), String(ahead)],
             [tx('yourWait'), out > 0 ? `≈ ${fmt((ahead / out) * 60)}` : '—']].map(([a, b], k) => (
             <div key={a} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: k ? 14 : 0}}>
-              <span style={{fontSize: 28, fontWeight: 700, textTransform: 'uppercase', color: k === 2 ? C.accent : C.label}}>{a}</span>
-              <span style={{fontSize: 52, fontWeight: 800, color: k === 2 ? C.accent : C.text, fontVariantNumeric: 'tabular-nums'}}>{b}</span>
+              <span style={{fontSize: 28, fontWeight: 700, textTransform: 'uppercase', color: k === 2 ? C.you : C.label}}>{a}</span>
+              <span style={{fontSize: 52, fontWeight: 800, color: k === 2 ? C.you : C.text, fontVariantNumeric: 'tabular-nums'}}>{b}</span>
             </div>
           ))}
         </Panel>

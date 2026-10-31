@@ -25,7 +25,7 @@ from .context import RunContext
 from .sourcing.common import key
 
 MANIFEST = Path(__file__).resolve().parent.parent / "remotion" / "sim" / "worlds.json"
-VERSION = 5
+VERSION = 6
 
 
 @lru_cache(maxsize=1)
@@ -69,6 +69,9 @@ Además, en cada plano:
 - "stat": {{"label": "2-5 palabras", "value": "cifra o 1-3 palabras"}} SOLO si la frase da una cifra concreta, o null.
 - "source": el estudio o la fuente que la frase cita («Sugiyama et al., 2008»), si no "".
 - "list": 2-4 frases muy cortas SOLO para el resumen final, o [].
+- "rules": SOLO cuando la frase enumera las reglas del sistema o apaga una: la lista de reglas que se ven en pantalla
+  hasta ese momento, cada una {{"text": "2-4 palabras", "off": false}}; la que la frase apaga, con "off": true (y en
+  "params" el cambio que la apaga en el mundo, si lo hay). Si no, [].
 - "replay": true SOLO en la frase del momento clave que merece verse otra vez (el frenazo que lo empieza todo, el
   primer coche que se para…): la imagen se congela con «PAUSA», se rebobina y se repite a cámara lenta. Como mucho
   dos en todo el vídeo; si no, false.
@@ -78,7 +81,7 @@ mundo de la frase anterior; mantén el mismo mundo, foco y parámetros en frases
 idea (la cámara no salta sin motivo); el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
 cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
-"title": "", "stat": null, "source": "", "list": [], "replay": false}}]}}
+"title": "", "stat": null, "source": "", "list": [], "rules": [], "replay": false}}]}}
 """.strip()
 
 
@@ -138,9 +141,24 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
     items = [_words(x, 9).upper() for x in (scene.get("list") or []) if str(x).strip()][:4]
     if stat and overlay in (w.get("panels") or []):
         overlay = "none"                  # one panel at a time: the figure the voice says wins over the world's counter
+    rules = [{"text": _words(r.get("text"), 5).upper()[:36], "off": r.get("off") is True}
+             for r in (scene.get("rules") or []) if isinstance(r, dict) and str(r.get("text") or "").strip()][:5]
     return {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
             "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items,
-            "replay": scene.get("replay") is True}
+            "rules": rules, "replay": scene.get("replay") is True}
+
+
+DIRECTOR = "escenas.txt"
+
+
+def director_scenes(ctx: RunContext) -> str:
+    """The scene list written for this video (materiales/<vídeo>/escenas.txt), if any."""
+
+    path = ctx.materials_dir / DIRECTOR
+    try:
+        return path.read_text("utf-8").strip() if path.is_file() else ""
+    except OSError:
+        return ""
 
 
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
@@ -151,7 +169,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     spec = allowed(ctx)
     lines = [(s.id, " ".join(s.text.split())) for s in shots]
     cache = ctx.work_dir / "simulacion.json"
-    digest = key(VERSION, lines, spec)
+    digest = key(VERSION, lines, spec, str(ctx.section("visual").get("guide") or ""), director_scenes(ctx))
     try:
         saved = json.loads(cache.read_text("utf-8"))
         if saved.get("key") == digest:
@@ -159,6 +177,14 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     except (OSError, ValueError, KeyError):
         pass
     system = SYSTEM.format(worlds=describe(spec))
+    guide = str(ctx.section("visual").get("guide") or "").strip()
+    if guide:                                    # the channel's own rules for turning a script into scenes
+        system += "\n\nGUÍA DEL CANAL:\n" + guide
+    director = director_scenes(ctx)
+    if director:                                 # the scene list written for this script: followed line by line
+        system += ("\n\nLISTA DE ESCENAS DEL DIRECTOR para este guion (síguela: cada bloque del guion con la escena que pide, "
+                   "traducida a los mundos, focos, paneles, parámetros y escenas que hay; lo que no exista, con lo más parecido):\n"
+                   + director[:20000])
     out: dict[str, dict[str, Any]] = {}
     before: dict[str, Any] | None = None
     for start in range(0, len(lines), 40):
@@ -258,6 +284,38 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
                                 "prevOverlay": previous["overlay"] if same else "none"}})
         previous = scene
     every = worlds()
+    carried: list[dict[str, Any]] = []
+    for n, group in enumerate(out):
+        g = group["graphic"]
+        before = out[n - 1]["graphic"] if n else None
+        if before is None or before["world"] != g["world"]:
+            carried = []
+        if g.get("rules"):
+            # the ones already on screen do not come in again: only the new ones (and a rule switched off) animate
+            known = [r["text"] for r in carried]
+            g["rulesFrom"] = sum(1 for r in g["rules"] if r["text"] in known)
+            g["rulesOff"] = [i for i, r in enumerate(g["rules"]) if r["off"]
+                             and not any(c["text"] == r["text"] and c["off"] for c in carried)]
+            carried = g["rules"]
+        elif carried:
+            g["rules"] = carried                 # the rules stay on screen while the world does
+            g["rulesFrom"] = len(carried)
+            g["rulesOff"] = []
+        # the dial: a number of the same world turned up or down by this line
+        if before is not None and before["world"] == g["world"]:
+            spec_params = every.get(g["world"], {}).get("params") or {}
+            for name, value in (g.get("params") or {}).items():
+                old = (before.get("params") or {}).get(name)
+                if isinstance(value, (int, float)) and isinstance(old, (int, float)) and old != value:
+                    p = spec_params.get(name, {})
+                    options = [o for o in p.get("options", []) if isinstance(o, (int, float))]
+                    low = p.get("min", min(options) if options else min(old, value))
+                    high = p.get("max", max(options) if options else max(old, value))
+                    label = p.get("label") or name
+                    label = label.get(str(g.get("lang") or "es"), label.get("es", name)) if isinstance(label, dict) else label
+                    g["dial"] = {"label": str(label).upper()[:30], "from": old, "to": value,
+                                 "min": low, "max": high, "percent": bool(p.get("percent"))}
+                    break
     legend = False
     for n, group in enumerate(out):
         g = group["graphic"]

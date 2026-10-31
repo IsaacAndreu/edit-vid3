@@ -48,6 +48,65 @@ addWords({
   slowMo: {es: 'Cámara lenta · 0,5×', pt: 'Câmara lenta · 0,5×', fr: 'Ralenti · 0,5×', de: 'Zeitlupe · 0,5×', en: 'Slow motion · 0.5×'},
 });
 
+addWords({
+  rulesTitle: {es: 'Las reglas', pt: 'As regras', fr: 'Les règles', de: 'Die Regeln', en: 'The rules'},
+});
+
+/** The rules of the system, numbered, one by one as the voice names them; the one switched off is struck out in red
+ * (the key moment of a video: it stays on screen). */
+const Rules: FC<{ graphic: SimGraphic; real: number }> = ({ graphic, real }) => {
+  const from = graphic.rulesFrom ?? 0;
+  const off = new Set(graphic.rulesOff ?? []);
+  return (
+    <Panel o={1} style={{ left: 64, top: 230, width: 470, padding: '20px 26px' }}>
+      <Label>{tx('rulesTitle')}</Label>
+      {(graphic.rules ?? []).map((r, i) => {
+        const shown = i < from ? 1 : interpolate(real, [0.3 + (i - from) * 0.7, 0.7 + (i - from) * 0.7], [0, 1], clamp);
+        const strike = r.off ? (off.has(i) ? interpolate(real, [0.6, 1.3], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) }) : 1) : 0;
+        return (
+          <div key={r.text} style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 14, opacity: shown,
+                                     transform: `translateX(${(1 - shown) * -20}px)` }}>
+            <span style={{ width: 40, height: 40, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                           fontSize: 24, fontWeight: 800, background: strike > 0.5 ? C.red : C.green, color: '#0b1020' }}>
+              {strike > 0.5 ? '✕' : i + 1}
+            </span>
+            <span style={{ position: 'relative', fontSize: 30, fontWeight: 800, textTransform: 'uppercase',
+                           color: strike > 0.5 ? 'rgba(242,244,248,0.45)' : C.text }}>
+              {r.text}
+              <span style={{ position: 'absolute', left: 0, top: '52%', height: 4, width: `${strike * 100}%`, background: C.red }} />
+            </span>
+          </div>
+        );
+      })}
+    </Panel>
+  );
+};
+
+/** The dial: a number of the world turned from its last value to this line's, the world reacting with it. */
+const Dial: FC<{ dial: NonNullable<SimGraphic['dial']>; real: number }> = ({ dial, real }) => {
+  const k = interpolate(real, [0.3, 1.6], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
+  const value = dial.from + (dial.to - dial.from) * k;
+  const span = Math.max(1e-9, dial.max - dial.min);
+  const at = (v: number) => Math.max(0, Math.min(1, (v - dial.min) / span));
+  const text = (v: number) => (dial.percent ? `${Math.round(v * 100)} %` : Math.abs(v) >= 10 || Number.isInteger(dial.to) ? String(Math.round(v)) : v.toFixed(2));
+  const W = 420;
+  return (
+    <Panel o={interpolate(real, [0, 0.3], [0, 1], clamp)} style={{ right: 64, top: 52, width: W + 52 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Label>{dial.label}</Label>
+        <span style={{ fontSize: 44, fontWeight: 800, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{text(value)}</span>
+      </div>
+      <div style={{ position: 'relative', height: 30, marginTop: 10 }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 12, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.15)' }} />
+        <div style={{ position: 'absolute', left: 0, width: at(value) * W, top: 12, height: 6, borderRadius: 3, background: C.you }} />
+        <div style={{ position: 'absolute', left: at(dial.from) * W - 2, top: 6, width: 4, height: 18, background: 'rgba(255,255,255,0.35)' }} />
+        <div style={{ position: 'absolute', left: at(value) * W - 14, top: 1, width: 28, height: 28, borderRadius: 14, background: C.you,
+                      border: '3px solid #0b1020' }} />
+      </div>
+    </Panel>
+  );
+};
+
 /** The key moment again (graphic.replay): the shot's own time, frozen, rewound and played at half speed, then catching
  * up so the next shot goes on where the world really is. Returns [time shown, phase]. */
 export const replayTime = (local: number, length: number): [number, '' | 'pause' | 'rewind' | 'slow'] => {
@@ -111,6 +170,8 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
         </div>
       )}
       {graphic.legend && <Legend local={real} at={String(graphic.legend)} />}
+      {graphic.rules && graphic.rules.length > 0 && <Rules graphic={graphic} real={real} />}
+      {graphic.dial && <Dial dial={graphic.dial} real={real} />}
       {graphic.stat && (
         <Panel o={statOn} style={{ left: '50%', bottom: 70, transform: 'translateX(-50%)', textAlign: 'center', minWidth: 360 }}>
           <Label>{graphic.stat.label}</Label>

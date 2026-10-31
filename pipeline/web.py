@@ -655,6 +655,8 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     (folder / "guion.txt").write_text(script + "\n", encoding="utf-8")
     if str(body.get("title") or "").strip():
         (folder / "titulo.txt").write_text(str(body["title"]).strip() + "\n", encoding="utf-8")
+    if str(body.get("scenes") or "").strip():             # the scene list for a simulation video (simulacion.DIRECTOR)
+        (folder / "escenas.txt").write_text(str(body["scenes"]).strip() + "\n", encoding="utf-8")
     if isinstance(body.get("idea"), dict):                 # made from a radar idea: the brief next to the script
         from .niche_ideas import brief
 

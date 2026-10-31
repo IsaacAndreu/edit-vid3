@@ -21,13 +21,25 @@
         "min": 0.05,
         "max": 0.3,
         "default": 0.15,
-        "describe": "coches por segundo y calle (0.08 poco tráfico, 0.25 hora punta)"
+        "describe": "coches por segundo y calle (0.08 poco tráfico, 0.25 hora punta)",
+        "label": {
+          "es": "tráfico por calle",
+          "en": "traffic per street",
+          "pt": "trânsito por rua",
+          "de": "Verkehr pro Straße"
+        }
       },
       "green": {
         "min": 10,
         "max": 60,
         "default": 22,
-        "describe": "segundos de verde de cada fase del semáforo"
+        "describe": "segundos de verde de cada fase del semáforo",
+        "label": {
+          "es": "segundos de verde",
+          "en": "seconds of green",
+          "pt": "segundos de verde",
+          "de": "Sekunden Grün"
+        }
       }
     },
     "legend": "bottom",
@@ -57,7 +69,13 @@
         "min": 12,
         "max": 30,
         "default": 22,
-        "describe": "coches en el círculo (con 18 o menos no se forma atasco; con 28 casi todos se paran)"
+        "describe": "coches en el círculo (con 18 o menos no se forma atasco; con 28 casi todos se paran)",
+        "label": {
+          "es": "coches en la pista",
+          "en": "cars on the track",
+          "pt": "carros na pista",
+          "de": "Autos auf der Strecke"
+        }
       },
       "driver": {
         "options": [
@@ -118,7 +136,13 @@
         "min": 0.3,
         "max": 0.8,
         "default": 0.55,
-        "describe": "coches por segundo que llegan: 0.3 fluido (no hay cola en ninguna); 0.55 la cremallera deja la cola en la mitad y pasan más coches; 0.7 atasco en las dos, la cremallera sigue pasando más"
+        "describe": "coches por segundo que llegan: 0.3 fluido (no hay cola en ninguna); 0.55 la cremallera deja la cola en la mitad y pasan más coches; 0.7 atasco en las dos, la cremallera sigue pasando más",
+        "label": {
+          "es": "tráfico que llega",
+          "en": "traffic arriving",
+          "pt": "trânsito que chega",
+          "de": "ankommender Verkehr"
+        }
       }
     },
     "marks": {
@@ -157,13 +181,27 @@
         "min": 0.15,
         "max": 1.0,
         "default": 0.5,
-        "describe": "lo contagioso que es (0.2 poco, 1 como el sarampión)"
+        "describe": "lo contagioso que es (0.2 poco, 1 como el sarampión)",
+        "label": {
+          "es": "contagio",
+          "en": "how contagious",
+          "pt": "contágio",
+          "de": "Ansteckung"
+        },
+        "percent": true
       },
       "vaccinated": {
         "min": 0,
         "max": 0.95,
         "default": 0,
-        "describe": "parte de la gente vacunada desde el principio"
+        "describe": "parte de la gente vacunada desde el principio",
+        "label": {
+          "es": "vacunados",
+          "en": "vaccinated",
+          "pt": "vacinados",
+          "de": "geimpft"
+        },
+        "percent": true
       },
       "quarantine": {
         "options": [
@@ -199,7 +237,14 @@
         "min": 0.05,
         "max": 0.6,
         "default": 0.2,
-        "describe": "capacidad de reserva de la red (hasta 0.15 se apaga todo el país; 0.2 se apagan tres cuartas partes; desde 0.3 la avería se queda en una ciudad: es un punto de no retorno)"
+        "describe": "capacidad de reserva de la red (hasta 0.15 se apaga todo el país; 0.2 se apagan tres cuartas partes; desde 0.3 la avería se queda en una ciudad: es un punto de no retorno)",
+        "label": {
+          "es": "margen de la red",
+          "en": "grid margin",
+          "pt": "margem da rede",
+          "de": "Netzreserve"
+        },
+        "percent": true
       }
     },
     "cues": {
@@ -223,13 +268,26 @@
         "min": 0.45,
         "max": 0.8,
         "default": 0.62,
-        "describe": "lo denso que es el bosque (por debajo de 0.55 el fuego suele apagarse solo)"
+        "describe": "lo denso que es el bosque (por debajo de 0.55 el fuego suele apagarse solo)",
+        "label": {
+          "es": "densidad del bosque",
+          "en": "forest density",
+          "pt": "densidade da floresta",
+          "de": "Walddichte"
+        },
+        "percent": true
       },
       "wind": {
         "min": 0,
         "max": 1,
         "default": 0.4,
-        "describe": "fuerza del viento hacia el este"
+        "describe": "fuerza del viento hacia el este",
+        "label": {
+          "es": "viento",
+          "en": "wind",
+          "pt": "vento",
+          "de": "Wind"
+        }
       },
       "firebreaks": {
         "options": [
@@ -259,7 +317,14 @@
         "min": 0.2,
         "max": 0.75,
         "default": 0.35,
-        "describe": "parte de vecinos iguales que quiere cada familia (0.3 ya separa el barrio)"
+        "describe": "parte de vecinos iguales que quiere cada familia (0.3 ya separa el barrio)",
+        "label": {
+          "es": "vecinos iguales que quieren",
+          "en": "like neighbours wanted",
+          "pt": "vizinhos iguais desejados",
+          "de": "gewünschte gleiche Nachbarn"
+        },
+        "percent": true
       }
     }
   },
@@ -295,7 +360,13 @@
         "min": 3,
         "max": 5,
         "default": 4,
-        "describe": "cajas abiertas (en eleccion: 3 o 5)"
+        "describe": "cajas abiertas (en eleccion: 3 o 5)",
+        "label": {
+          "es": "cajas abiertas",
+          "en": "tills open",
+          "pt": "caixas abertas",
+          "de": "offene Kassen"
+        }
       },
       "ocupacion": {
         "options": [
@@ -304,7 +375,14 @@
           0.95
         ],
         "default": 0.9,
-        "describe": "solo en limite: lo ocupada que está la caja"
+        "describe": "solo en limite: lo ocupada que está la caja",
+        "label": {
+          "es": "ocupación de la caja",
+          "en": "how busy the till is",
+          "pt": "ocupação da caixa",
+          "de": "Auslastung der Kasse"
+        },
+        "percent": true
       }
     },
     "marks": {
@@ -370,7 +448,13 @@
         "min": 2,
         "max": 12,
         "default": 6,
-        "describe": "leones"
+        "describe": "leones",
+        "label": {
+          "es": "leones",
+          "en": "lions",
+          "pt": "leões",
+          "de": "Löwen"
+        }
       },
       "herd": {
         "options": [

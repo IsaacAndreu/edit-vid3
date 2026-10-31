@@ -1,6 +1,7 @@
-// What every traffic world shares so a video reads as one: the cars coloured by their speed (green going well, amber
-// slow, red stopped — with the brake glow), the colour key once a video, and the arrows that point at what the voice
-// names («este coche», «la onda», «el hueco») at the moment it names it.
+// What every traffic world shares so a video reads as one — the channel's colour code (El Porqué Simulado): green
+// flows, light grey neutral, red delay (the stronger, the worse: stopped glows), yellow only for YOU or the thing that
+// changes everything; the colour key once a video; the arrows that point at what the voice names («este coche»,
+// «la onda», «el hueco») at the moment it names it.
 import type {FC} from 'react';
 import {interpolate} from 'remotion';
 import {C, FONT} from './hud';
@@ -12,7 +13,7 @@ addWords({
   standing: {es: 'Parado', pt: 'Parado', fr: 'À l’arrêt', de: 'Steht', en: 'Stopped'},
 });
 
-export const PAINT = {fast: '#3ddc84', slow: '#f5b041', stopped: '#ff4d4d'};
+export const PAINT = {fast: '#3ddc84', neutral: '#d4d9e2', slow: '#ff9b8f', stopped: '#ff3b3b', you: '#ffd23f'};
 
 const mix = (a: string, b: string, k: number) => {
   const p = (h: string, i: number) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
@@ -24,7 +25,9 @@ const mix = (a: string, b: string, k: number) => {
 export const paint = (v: number, top: number) => {
   if (v < 0.6) return PAINT.stopped;
   const k = v / Math.max(0.1, top);
-  return k >= 0.6 ? mix(PAINT.slow, PAINT.fast, (k - 0.6) / 0.25) : mix(PAINT.stopped, PAINT.slow, (k - 0.08) / 0.3);
+  if (k >= 0.6) return mix(PAINT.neutral, PAINT.fast, (k - 0.6) / 0.25);         // going well: grey → green
+  return k >= 0.35 ? mix(PAINT.slow, PAINT.neutral, (k - 0.35) / 0.25)           // slowing: light red → grey
+    : mix(PAINT.stopped, PAINT.slow, (k - 0.05) / 0.3);                             // crawling: red, stronger
 };
 
 /** The trail behind a car: how long (0 → 1) for its speed. */
@@ -77,10 +80,10 @@ export const Pointers: FC<{marks?: Mark[]; local: number; at: Record<string, Anc
       const x = Math.max(w / 2 + 20, Math.min(1900 - w / 2, p.x));
       return (
         <g key={`${m.kind}${m.at}`} opacity={o}>
-          <line x1={p.x} y1={baseY} x2={p.x} y2={tipY + (up ? -14 : 14)} stroke={C.accent} strokeWidth={6} strokeLinecap="round" />
+          <line x1={p.x} y1={baseY} x2={p.x} y2={tipY + (up ? -14 : 14)} stroke={C.you} strokeWidth={6} strokeLinecap="round" />
           <path d={up ? `M${p.x - 16},${tipY - 16} L${p.x},${tipY + 4} L${p.x + 16},${tipY - 16} Z` : `M${p.x - 16},${tipY + 16} L${p.x},${tipY - 4} L${p.x + 16},${tipY + 16} Z`}
-                fill={C.accent} />
-          <rect x={x - w / 2} y={labelY - 34} width={w} height={46} rx={8} fill={C.accent} />
+                fill={C.you} />
+          <rect x={x - w / 2} y={labelY - 34} width={w} height={46} rx={8} fill={C.you} />
           <text x={x} y={labelY - 2} textAnchor="middle" fill="#10131a" fontFamily={FONT} fontSize={30} fontWeight={800} letterSpacing={1}>{m.text}</text>
         </g>
       );

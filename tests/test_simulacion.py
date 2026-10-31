@@ -289,3 +289,36 @@ def test_one_general_simulation_channel_per_language_and_the_niches_put_away():
     assert all(kinds[c] == "simulacion" for c in langs)
     assert all(kinds[c] == "oculto" for c in ("hora-punta", "cola-de-al-lado", "simule-el-mundo"))
     assert "colas" in RunContext.create("x", root=root, channel="simuliertes-warum").section("visual")["worlds"]
+
+
+def test_rules_stay_and_one_is_switched_off_and_the_dial_turns(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "min_world_seconds": 0}})
+    shots = [_shot(n, (n - 1) * 90, n * 90, f"frase {n}") for n in range(1, 5)]
+    answers = {1: {"world": "anillo", "rules": [{"text": "acelera"}, {"text": "frena si hace falta"}], "title": "a"},
+               2: {"world": "anillo", "title": "b"},
+               3: {"world": "anillo", "title": "c", "params": {"driver": "calma"},
+                   "rules": [{"text": "acelera"}, {"text": "frena si hace falta"}, {"text": "despistes", "off": True}]},
+               4: {"world": "anillo", "title": "d", "params": {"driver": "calma", "cars": 28}}}
+    monkeypatch.setattr(simulacion, "scenes", lambda ctx, todo: {
+        s.id: simulacion.clean(answers[int(s.id[1:])], s.text, None) for s in todo})
+    g = [x["graphic"] for x in simulacion.groups(ctx, shots, 30, [])]
+    assert [len(x["rules"]) for x in g] == [2, 2, 3, 3]
+    assert g[1]["rulesFrom"] == 2 and g[2]["rulesFrom"] == 2 and g[2]["rulesOff"] == [2] and g[3]["rulesOff"] == []
+    assert g[3]["dial"]["from"] == 22 and g[3]["dial"]["to"] == 28 and g[3]["dial"]["label"] == "COCHES EN LA PISTA"
+    assert "dial" not in g[2]
+
+
+def test_the_directors_scene_list_goes_to_the_llm(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "guide": "Una idea por escena."}})
+    ctx.materials_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.materials_dir / "escenas.txt").write_text("Escena 1 · el protagonista amarillo en la cola", "utf-8")
+    seen = {}
+
+    def fake(ctx, **kwargs):
+        seen.update(kwargs)
+        return {"scenes": []}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    simulacion.scenes(ctx, [_shot(1, 0, 90, "Vas al súper.")])
+    assert "GUÍA DEL CANAL" in seen["system"] and "Una idea por escena" in seen["system"]
+    assert "protagonista amarillo en la cola" in seen["system"]

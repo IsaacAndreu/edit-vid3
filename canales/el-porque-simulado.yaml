@@ -10,9 +10,27 @@ visual:
   style: simulacion
   worlds: [anillo, carretera, autovia, cruces, colas, embarque, contagio, red, incendio, segregacion, manada]
   theme: dark                      # un solo aspecto en todos los vídeos: fondo oscuro (día, noche o sepia por vídeo si hace falta)
+  # La guía del canal: cómo se convierte un guion en escenas (la lee la IA que elige cada escena). Para un vídeo
+  # concreto, una lista de escenas propia va en materiales/<vídeo>/escenas.txt (o en «Nuevo vídeo»): manda sobre esto.
+  guide: |
+    - Una idea por escena: la pantalla enseña ocurriendo lo que dice la voz, nunca de relleno. Mismo mundo mientras
+      dure la idea; un mundo nuevo solo cuando cambia la idea.
+    - «Tú», «tu coche», «tu cola», un consejo práctico: escenas con el protagonista (colas: eleccion, cambiar, contar;
+      carretera: hueco, carril). El amarillo es solo para él o para lo que lo cambia todo (el coche que conduce solo).
+    - Si el guion enumera reglas: "rules" con cada regla en la frase que la nombra. Apagar una regla es el momento más
+      importante del vídeo: "rules" con esa regla en "off": true y en "params" el cambio que la quita (anillo
+      driver: calma; colas scene: iguales), y deja ese plano largo, sin título ni cifra encima.
+    - Umbrales, puntos de inflexión, «si subes X pasa Y»: el mismo mundo cambiando ese parámetro (el dial sale solo).
+    - Comparaciones (antes/después, A contra B, con y sin): las escenas de pantalla partida (colas comparar, iguales,
+      rapida; carretera rampa; autovía; cruces; anillo compare).
+    - Probabilidades («una de cada tres»): colas eleccion. Un estudio con datos: el panel o gráfico del mundo.
+    - «En tal año unos investigadores…»: la reconstrucción del experimento (anillo con 22 coches, Sugiyama 2008…) con
+      su "source" y su "stat".
+    - Toda cifra que dice la voz va en "stat" (aparece cuando se dice).
+    - Resumen final: "list" con las ideas, en el orden del vídeo.
 
 brand:
-  accent: "#f5a623"
+  accent: "#e8ecf3"                # paneles y cifras en blanco: el amarillo queda solo para «tú» y lo que lo cambia todo
 
 align:
   language: es

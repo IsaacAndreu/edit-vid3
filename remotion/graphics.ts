@@ -312,6 +312,10 @@ export interface SimGraphic {
   legend?: string;      // the colour key, once a video: where it goes (top | bottom | right)
   statAt?: number;      // seconds into the shot: the voice says the figure
   marks?: { kind: string; at: number; text: string }[];   // what the voice points at, when (an arrow with its words)
+  rules?: { text: string; off: boolean }[];   // the system's rules on screen, numbered; «off» ones struck out
+  rulesFrom?: number;   // the rules before this index were already on screen (do not come in again)
+  rulesOff?: number[];  // the rules this line switches off (the strike animates)
+  dial?: { label: string; from: number; to: number; min: number; max: number; percent?: boolean };   // a number turned
 }
 
 export interface StickmanProp { icon: string; x: number; y: number; label: string; held: boolean }

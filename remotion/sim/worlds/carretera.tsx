@@ -359,12 +359,12 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
       <g>
         {driving && ahead >= 0 && (
           <g opacity={Math.max(o('labels'), 0.85)}>
-            <line x1={sx(f.x[you]) + 28} x2={sx(f.x[you]) + gap * m - 28} y1={ys} y2={ys} stroke={C.accent} strokeWidth={3} strokeDasharray="10 8" />
-            <Caption text={tx('theGap')} x={sx(f.x[you]) + (gap * m) / 2} y={ys - 50} colour={C.accent} />
+            <line x1={sx(f.x[you]) + 28} x2={sx(f.x[you]) + gap * m - 28} y1={ys} y2={ys} stroke={C.you} strokeWidth={3} strokeDasharray="10 8" />
+            <Caption text={tx('theGap')} x={sx(f.x[you]) + (gap * m) / 2} y={ys - 50} colour={C.you} />
           </g>
         )}
         <Caption text={driving ? `${tx('you')} · ${tx('stillRolling', {v: Math.round(f.v[you] * 3.6)})}` : tx('you')} x={sx(f.x[you])} y={ys + 72}
-                 colour={C.accent} />
+                 colour={C.you} />
       </g>
     );
     const without = road('normal').stopped(simT);
@@ -414,7 +414,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
         <Defs />
         <Asphalt lanes={lanes} appear={scene === 'carriles' ? appear : 1} />
-        <Traffic f={f} L={L} x0={x0} span={span} y={yOf(0)} marks={follow ? {[you]: C.accent} : {}} />
+        <Traffic f={f} L={L} x0={x0} span={span} y={yOf(0)} marks={follow ? {[you]: C.you} : {}} />
         {lanes >= 2 && <Traffic f={road('normal', 19).at(simT)} L={L} x0={x0} span={span} y={yOf(1)} />}
         {lanes >= 3 && <g opacity={appear}><Traffic f={road('normal', 23).at(simT)} L={L} x0={x0} span={span} y={yOf(2)} /></g>}
         {overlay}
