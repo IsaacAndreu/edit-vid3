@@ -20,6 +20,8 @@ import { Question } from './components/Question';
 import { Stat } from './components/Stat';
 import { applyBrand, fontFamily, theme } from './theme';
 import type { Caption, Group, Shot, TimelineProps } from './types';
+import type { SimGraphic } from './graphics';
+import { verticalOf } from './sim/vertical';
 
 /** A shot's footage; a piece of a split shot (render) plays from `offset` frames into the whole shot. */
 const ShotLayer: FC<{ shot: Shot }> = ({ shot }) =>
@@ -80,6 +82,42 @@ export const localCredit = (credit: string, source?: string): string =>
 const onTop = (groups: Group[]): Group[] => [
   ...groups.filter((g) => g.kind !== 'question'), ...groups.filter((g) => g.kind === 'question'),
 ];
+
+/** A simulation shot in a vertical frame (sim/vertical.ts): two stacked halves, or enlarged around what matters. */
+const SimVertical: FC<{ group: Group; width: number; height: number }> = ({ group, width, height }) => {
+  const v = verticalOf(group.graphic as unknown as SimGraphic);
+  if (v.mode === 'halves') {
+    const k = Math.min(width / 960, (height / 2 - 20) / 1080);
+    const w = 960 * k;
+    const h = 1080 * k;
+    const left = (width - w) / 2;
+    const top = (height - 2 * h - 24) / 2;
+    return (
+      <AbsoluteFill style={{ backgroundColor: '#0b1020' }}>
+        {[0, 1].map((half) => (
+          <div key={half} style={{ position: 'absolute', left, top: top + half * (h + 24), width: w, height: h, overflow: 'hidden', borderRadius: 18 }}>
+            <div style={{ position: 'absolute', left: -half * 960 * k, top: 0, width: 1920, height: 1080, transform: `scale(${k})`, transformOrigin: 'top left' }}>
+              <GroupContent group={group} />
+            </div>
+          </div>
+        ))}
+      </AbsoluteFill>
+    );
+  }
+  const k = v.scale;
+  const h = 1080 * k;
+  const top = Math.max(0, (height - h) / 2);
+  const x = Math.max(0, Math.min(1920 * k - width, v.cx * k - width / 2));
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#0b1020' }}>
+      <div style={{ position: 'absolute', left: 0, top, width, height: h, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', left: -x, top: 0, width: 1920, height: 1080, transform: `scale(${k})`, transformOrigin: 'top left' }}>
+          <GroupContent group={group} />
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
 
 /** What a data group draws (stat, panels, animated graphic, question), in a 1920x1080 frame. */
 const GroupContent: FC<{ group: Group }> = ({ group }) => (
@@ -160,17 +198,8 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           ) : (
           <>
           {group.graphic?.type === 'sim' ? (
-            // a simulation has no footage behind it: the same world, blurred, fills the tall frame
-            <div
-              style={{
-                position: 'absolute', left: Math.round((width - 1920 * (height / 1080)) / 2), top: 0, width: 1920, height: 1080,
-                overflow: 'hidden', transform: `scale(${height / 1080})`, transformOrigin: 'top left',
-                filter: 'blur(26px) brightness(0.5) saturate(1.2)',
-              }}
-            >
-              <GroupContent group={group} />
-            </div>
-          ) : null}
+            <SimVertical group={group} width={width} height={height} />
+          ) : (
           <div
             style={{
               position: 'absolute', left: 0, top: windowTop, width: 1920, height: 1080, overflow: 'hidden',
@@ -180,6 +209,7 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           >
             <GroupContent group={group} />
           </div>
+          )}
           </>
           )}
         </Sequence>
