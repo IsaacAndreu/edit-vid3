@@ -59,7 +59,7 @@
   },
   "anillo": {
     "niche": "tráfico",
-    "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo; también: un coche que conduce solo y deshace la onda (Arizona, 2018), el mismo círculo sin despistes, y la curva flujo-densidad",
+    "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo; también: un coche que conduce solo y deshace la onda (Arizona, 2018), el mismo círculo sin despistes, y la curva flujo-densidad. Elige scene: anillo (el círculo con sus focos y paneles de siempre) · densidad (la velocidad media según cuántos coches hay en 230 m: hasta 17 coches van a 30-55 km/h, con 19 cae a 9 km/h: el atasco fantasma aparece de golpe) · conductores (lado a lado, conductores normales contra conductores que dejan hueco: el mismo frenazo y solo a la izquierda se forma la onda)",
     "focus": {
       "ring": "el círculo",
       "chart": "el círculo a un lado y la gráfica espacio-tiempo al otro",
@@ -74,6 +74,15 @@
       "flow": "la curva flujo-densidad: coches por hora según cuántos hay por km, sube hasta un máximo y se hunde; marca este anillo en ella"
     },
     "params": {
+      "scene": {
+        "options": [
+          "anillo",
+          "densidad",
+          "conductores"
+        ],
+        "default": "anillo",
+        "describe": "qué escena: anillo · densidad · conductores"
+      },
       "cars": {
         "min": 12,
         "max": 30,
@@ -260,7 +269,7 @@
   },
   "red": {
     "niche": "desastres y crisis",
-    "describe": "una red en la que un fallo se contagia (para la red eléctrica y los apagones usa SIEMPRE el mundo apagon, no este; aquí elige kind): bancos (bancos que se prestan entre sí: uno quiebra y sus deudas tumban a los que le prestaron; crisis financieras), suministro (fábricas y almacenes: una se para y a las que abastecía les faltan piezas; cadenas de suministro). Falla una pieza, su carga pasa a las vecinas y caen en cascada",
+    "describe": "una red en la que un fallo se contagia (para la red eléctrica y los apagones usa SIEMPRE el mundo apagon, no este; aquí elige kind): bancos (bancos que se prestan entre sí: uno quiebra y sus deudas tumban a los que le prestaron; crisis financieras), suministro (fábricas y almacenes: una se para y a las que abastecía les faltan piezas; cadenas de suministro). Falla una pieza, su carga pasa a las vecinas y caen en cascada. Elige scene: red (la cascada de siempre) · umbral (cuánto cae según el margen de cada pieza: con un 20 % cae el 77 %, con un 25 % solo el 2 %: el punto de no retorno)",
     "focus": {
       "map": "todo el país"
     },
@@ -270,6 +279,14 @@
       "cascade": "porcentaje del país sin luz"
     },
     "params": {
+      "scene": {
+        "options": [
+          "red",
+          "umbral"
+        ],
+        "default": "red",
+        "describe": "qué escena: red · umbral"
+      },
       "margin": {
         "min": 0.05,
         "max": 0.6,
@@ -677,7 +694,7 @@
   },
   "multitud": {
     "niche": "multitudes",
-    "describe": "multitudes vistas desde arriba (modelo de fuerzas sociales, Helbing 2000): cada persona solo quiere llegar a su sitio, guarda distancia y empuja cuando toca a otra; los cuerpos apretados se ven en rojo. Elige scene: evacuacion (una sala se vacía por una puerta: se forma un arco delante; evacuaciones, conciertos, estadios, metro) · columna (la misma gente con prisa en la misma puerta, sin y con una columna delante: con columna el último sale antes, se rompe el arco) · prisa (con calma frente a con prisa: con prisa la gente se aplasta contra la puerta, aplastamientos y estampidas) · pasillo (un pasillo con gente en las dos direcciones: se forman carriles solos, nadie los organiza)",
+    "describe": "multitudes vistas desde arriba (modelo de fuerzas sociales, Helbing 2000): cada persona solo quiere llegar a su sitio, guarda distancia y empuja cuando toca a otra; los cuerpos apretados se ven en rojo. Elige scene: evacuacion (una sala se vacía por una puerta: se forma un arco delante; evacuaciones, conciertos, estadios, metro) · columna (la misma gente con prisa en la misma puerta, sin y con una columna delante: con columna el último sale antes, se rompe el arco) · prisa (con calma frente a con prisa: con prisa la gente se aplasta contra la puerta, aplastamientos y estampidas) · pasillo (un pasillo con gente en las dos direcciones: se forman carriles solos, nadie los organiza) · tiempos (cuántos han salido segundo a segundo: con calma, con prisa y con prisa y una columna delante de la puerta; ojo: en esta simulación con prisa salen antes, pero aplastándose contra la puerta; la columna adelanta un poco al último)",
     "focus": {
       "space": "el espacio"
     },
@@ -690,10 +707,11 @@
           "evacuacion",
           "columna",
           "prisa",
-          "pasillo"
+          "pasillo",
+          "tiempos"
         ],
         "default": "evacuacion",
-        "describe": "qué escena: evacuacion · columna · prisa · pasillo"
+        "describe": "qué escena: evacuacion · columna · prisa · pasillo · tiempos"
       }
     },
     "marks": {
@@ -758,7 +776,7 @@
   },
   "aparcamiento": {
     "niche": "tráfico y ciudad",
-    "describe": "un aparcamiento de 128 plazas visto desde arriba: los coches entran, recorren los pasillos en orden y cogen la primera plaza libre que ven; los que buscan van en rojo con su tiempo buscando, TÚ en amarillo. Elige scene: buscar (el aparcamiento lleno según ocupacion: cuánto se tarda en encontrar sitio, ~30 s al 70 %, ~1 min al 88 %, ~3 min al 95 %) · ocupacion (la curva: tiempo buscando según lo lleno que está: plana y luego un muro pasado el 85 %; la regla de Donald Shoup: que quede libre 1 plaza de cada 7) · comparar (el mismo aparcamiento al 70 % y al 95 %, lado a lado)",
+    "describe": "un aparcamiento de 128 plazas visto desde arriba: los coches entran, recorren los pasillos en orden y cogen la primera plaza libre que ven; los que buscan van en rojo con su tiempo buscando, TÚ en amarillo. Elige scene: buscar (el aparcamiento lleno según ocupacion: cuánto se tarda en encontrar sitio, ~30 s al 70 %, ~1 min al 88 %, ~3 min al 95 %) · ocupacion (la curva: tiempo buscando según lo lleno que está: plana y luego un muro pasado el 85 %; la regla de Donald Shoup: que quede libre 1 plaza de cada 7) · comparar (el mismo aparcamiento al 70 % y al 95 %, lado a lado) · buscando (coches dando vueltas a la vez buscando sitio según lo lleno que está: 2 al 85 %, 15 al 96 %; parte del tráfico del centro es gente buscando aparcamiento)",
     "focus": {
       "lot": "el aparcamiento"
     },
@@ -770,10 +788,11 @@
         "options": [
           "buscar",
           "ocupacion",
-          "comparar"
+          "comparar",
+          "buscando"
         ],
         "default": "buscar",
-        "describe": "qué escena: buscar · ocupacion · comparar"
+        "describe": "qué escena: buscar · ocupacion · comparar · buscando"
       },
       "ocupacion": {
         "options": [
@@ -805,7 +824,7 @@
   },
   "aeropuerto": {
     "niche": "colas y esperas",
-    "describe": "el control de seguridad de un aeropuerto visto desde arriba: carriles con su arco y su cinta de rayos X, un agente en cada uno; cada pasajero ≈ 30 s + 8 s por bandeja y 3 de cada 10 no vienen preparados (+40-120 s: los líquidos, el portátil, el cinturón, el arco que pita; anillo rojo). Siempre en dos mitades. Elige scene: filas (izquierda una cola por control, derecha una sola cola en zigzag que reparte a todos: la misma gente; espera media ~86 s contra ~75 s y la más larga baja) · preparados (como llega la gente contra todos preparados antes de la cinta: la espera media cae de ~75 s a ~5 s) · carriles (con carriles controles y con uno más: cerca del límite un control más lo cambia todo, ~75 s → ~13 s con 4 → 5)",
+    "describe": "el control de seguridad de un aeropuerto visto desde arriba: carriles con su arco y su cinta de rayos X, un agente en cada uno; cada pasajero ≈ 30 s + 8 s por bandeja y 3 de cada 10 no vienen preparados (+40-120 s: los líquidos, el portátil, el cinturón, el arco que pita; anillo rojo). Siempre en dos mitades. Elige scene: filas (izquierda una cola por control, derecha una sola cola en zigzag que reparte a todos: la misma gente; espera media ~86 s contra ~75 s y la más larga baja) · preparados (como llega la gente contra todos preparados antes de la cinta: la espera media cae de ~75 s a ~5 s) · carriles (con carriles controles y con uno más: cerca del límite un control más lo cambia todo, ~75 s → ~13 s con 4 → 5) · curva (la espera media según los controles abiertos: con 3 la cola no para de crecer, con 4 ~76 s, con 5 ~13 s, con 6 ~4 s)",
     "focus": {
       "both": "los dos controles"
     },
@@ -817,10 +836,11 @@
         "options": [
           "filas",
           "preparados",
-          "carriles"
+          "carriles",
+          "curva"
         ],
         "default": "filas",
-        "describe": "qué escena: filas · preparados · carriles"
+        "describe": "qué escena: filas · preparados · carriles · curva"
       },
       "carriles": {
         "min": 3,
@@ -852,7 +872,7 @@
   },
   "restaurante": {
     "niche": "colas y esperas",
-    "describe": "la cocina de un restaurante a la hora de la cena vista desde arriba: el riel con las comandas esperando, 3 cocineros con el plato al fuego (un anillo: lo que le falta), el pase por donde salen los platos; entrante ≈ 4 min, pasta ≈ 9, carne ≈ 15. Elige scene: comandas (una cocina con los cocineros ocupados según ocupacion: de la comanda al plato ~15 min al 80 %, ~26 al 90 %, ~47 al 95 %: al 90 % casi el doble que al 80 %) · orden (las mismas comandas: izquierda por orden de llegada, derecha lo rápido primero: la espera media baja de ~26 a ~20 min, pero la comanda lenta puede esperar horas)",
+    "describe": "la cocina de un restaurante a la hora de la cena vista desde arriba: el riel con las comandas esperando, 3 cocineros con el plato al fuego (un anillo: lo que le falta), el pase por donde salen los platos; entrante ≈ 4 min, pasta ≈ 9, carne ≈ 15. Elige scene: comandas (una cocina con los cocineros ocupados según ocupacion: de la comanda al plato ~15 min al 80 %, ~26 al 90 %, ~47 al 95 %: al 90 % casi el doble que al 80 %) · orden (las mismas comandas: izquierda por orden de llegada, derecha lo rápido primero: la espera media baja de ~26 a ~20 min, pero la comanda lenta puede esperar horas) · curva (de la comanda al plato según lo ocupada que está la cocina: 13 min al 75 %, 26 al 90 %, 47 al 95 %; con lo rápido primero, 31)",
     "focus": {
       "kitchen": "la cocina"
     },
@@ -863,10 +883,11 @@
       "scene": {
         "options": [
           "comandas",
-          "orden"
+          "orden",
+          "curva"
         ],
         "default": "comandas",
-        "describe": "qué escena: comandas · orden"
+        "describe": "qué escena: comandas · orden · curva"
       },
       "ocupacion": {
         "options": [
@@ -898,7 +919,7 @@
   },
   "metro": {
     "niche": "multitudes",
-    "describe": "un andén de metro visto desde arriba (modelo de fuerzas sociales): un vagón con dos puertas, 30 personas que bajan y 30 que esperan para subir (en azul); las puertas cierran a los 40 s. Elige scene: comparar (izquierda esperan delante de las puertas y empujan para entrar a la vez: las puertas se atascan: a los 40 s solo han bajado 13 de 30 y subido 19; derecha esperan a los lados hasta que nadie más baja: todos bajan en ~19 s y todos suben en ~32 s) · delante (solo las puertas bloqueadas) · lados (solo esperando a los lados)",
+    "describe": "un andén de metro visto desde arriba (modelo de fuerzas sociales): un vagón con dos puertas, 30 personas que bajan y 30 que esperan para subir (en azul); las puertas cierran a los 40 s. Elige scene: comparar (izquierda esperan delante de las puertas y empujan para entrar a la vez: las puertas se atascan: a los 40 s solo han bajado 13 de 30 y subido 19; derecha esperan a los lados hasta que nadie más baja: todos bajan en ~19 s y todos suben en ~32 s) · delante (solo las puertas bloqueadas) · lados (solo esperando a los lados) · curva (personas que ya han bajado o subido segundo a segundo: esperando a los lados contra delante de las puertas)",
     "focus": {
       "platform": "el andén"
     },
@@ -910,10 +931,11 @@
         "options": [
           "comparar",
           "delante",
-          "lados"
+          "lados",
+          "curva"
         ],
         "default": "comparar",
-        "describe": "qué escena: comparar · delante · lados"
+        "describe": "qué escena: comparar · delante · lados · curva"
       }
     },
     "marks": {

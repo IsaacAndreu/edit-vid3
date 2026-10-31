@@ -12,6 +12,8 @@ import {addWords, num, tx} from '../i18n';
 import {Pointers, type Anchor} from '../look';
 import {CURVE, PARK, ROUTE, SPACES, runPark, searchAt, type ParkRun} from '../park';
 import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   searching: {es: 'Buscando sitio', pt: 'Procurando vaga', fr: 'Cherchent une place', de: 'Suchen einen Platz', en: 'Looking for a space'},
@@ -137,7 +139,7 @@ const Curve: FC<{o: number; full: number; real: number}> = ({o, full, real}) => 
   );
 };
 
-const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
+const Base: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   const scene = param<string>(g, 'scene', 'buscar');
   const full = param(g, 'ocupacion', 0.9);
   const panel = Math.max(o('panel'), on * 0.9);
@@ -188,6 +190,21 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
       <Note>{tx('parkNote', {n: SPACES, x: LAPSE})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  cruisingCurve: {es: 'Coches dando vueltas buscando sitio a la vez', pt: 'Carros às voltas à procura de vaga', fr: 'Voitures qui tournent en cherchant', de: 'Autos, die gleichzeitig Parkplatz suchen', en: 'Cars cruising for a space at once'},
+  cruising: {es: 'buscando', pt: 'procurando', fr: 'cherchent', de: 'suchen', en: 'cruising'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  if (param<string>(g, 'scene', 'buscar') === 'buscando') {
+    return <LineChart t={worldT} draw={3} x={[55, 100]} y={[0, 16]} title={tx('cruisingCurve')} xLabel={tx('howFull')} yLabel={tx('cruising')}
+                      xFmt={(v) => `${v} %`} xTicks={[60, 70, 80, 90, 100]} yTicks={[4, 8, 12, 16]} marker={{x: 85, label: '85 %'}}
+                      series={[{name: tx('searching'), colour: C.red, pts: CURVES.park as [number, number][]}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const aparcamiento: World = {View};

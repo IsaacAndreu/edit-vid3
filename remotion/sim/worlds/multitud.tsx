@@ -12,6 +12,8 @@ import {addWords, tx} from '../i18n';
 import {Pointers, type Anchor} from '../look';
 import {CORRIDOR, ROOM, corridor, corridorPeople, outBy, room, roomPeople, simulate, type Crowd} from '../crowd';
 import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   outside: {es: 'Han salido', pt: 'Saíram', fr: 'Sont sortis', de: 'Draußen', en: 'Out'},
@@ -91,7 +93,7 @@ const Room: FC<{c: Crowd; t: number; left: number; width: number; pillar: boolea
 const lastOut = (c: Crowd) => Math.max(...c.outAt.filter(Number.isFinite));
 const crushedNow = (c: Crowd, t: number) => Array.from(c.at(t).push).filter((p, i) => !c.at(t).out[i] && p > CRUSH).length;
 
-const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
+const Base: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   const scene = param<string>(g, 'scene', 'evacuacion');
   const panel = Math.max(o('panel'), on * 0.9);
   const marks: Record<string, Anchor | null> = {};
@@ -184,6 +186,24 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
       <Note>{tx('crowdNote', {n: N})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  outCurve: {es: 'Cuántos han salido, segundo a segundo', pt: 'Quantos saíram, segundo a segundo', fr: 'Combien sont sortis, seconde par seconde', de: 'Wie viele draußen sind, Sekunde für Sekunde', en: 'How many are out, second by second'},
+  seconds: {es: 'segundos', pt: 'segundos', fr: 'secondes', de: 'Sekunden', en: 'seconds'},
+  hurryColumn: {es: 'Con prisa y una columna', pt: 'Com pressa e uma coluna', fr: 'Pressés, avec une colonne', de: 'In Eile, mit Säule', en: 'Hurried, with a column'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  if (param<string>(g, 'scene', 'evacuacion') === 'tiempos') {
+    const room = CURVES.room as unknown as Record<string, [number, number][]>;
+    return <LineChart t={worldT} draw={3.5} x={[0, 120]} y={[0, 150]} title={tx('outCurve')} xLabel={tx('seconds')} yLabel={tx('outside')}
+                      xTicks={[0, 30, 60, 90, 120]} yTicks={[50, 100, 150]}
+                      series={[{name: tx('calm'), colour: C.green, pts: room.calm}, {name: tx('hurry'), colour: C.red, pts: room.hurry},
+                               {name: tx('hurryColumn'), colour: '#f5b324', pts: room.column}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const multitud: World = {View, ambient: 'crowd'};

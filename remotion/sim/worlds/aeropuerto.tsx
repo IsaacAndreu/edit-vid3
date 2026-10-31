@@ -13,6 +13,8 @@ import {rateFor, security, securityLong} from '../security';
 import type {ShopFrame, ShopRun} from '../shop';
 import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world';
 import {Shopper} from './colas';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   linePerLane: {es: 'Una cola por control', pt: 'Uma fila por controle', fr: 'Une file par poste', de: 'Eine Schlange pro Spur', en: 'A line per lane'},
@@ -117,7 +119,7 @@ const Hall: FC<{run: ShopRun; t: number; left: number; width: number; single: bo
   );
 };
 
-const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
+const Base: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   const scene = param<string>(g, 'scene', 'filas');
   const lanes = Math.round(param(g, 'carriles', 4));
   const panel = Math.max(o('panel'), on * 0.9);
@@ -147,6 +149,22 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
       <Note>{tx('secNote', {x: LAPSE})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  lanesCurve: {es: 'Espera media según los controles abiertos', pt: 'Espera média conforme os controles abertos', fr: 'Attente moyenne selon les postes ouverts', de: 'Mittlere Wartezeit je nach offenen Spuren', en: 'Average wait by lanes open'},
+  lanesAxis: {es: 'controles abiertos', pt: 'controles abertos', fr: 'postes ouverts', de: 'offene Spuren', en: 'lanes open'},
+  overflow: {es: 'La cola no para de crecer', pt: 'A fila não para de crescer', fr: 'La file ne cesse de grandir', de: 'Die Schlange wächst immer weiter', en: 'The line never stops growing'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  if (param<string>(g, 'scene', 'filas') === 'curva') {
+    return <LineChart t={worldT} draw={3} x={[3, 6]} y={[0, 180]} title={tx('lanesCurve')} xLabel={tx('lanesAxis')} yLabel={tx('averageWaitShort')}
+                      yFmt={(v) => `${v} s`} xTicks={[3, 4, 5, 6]} yTicks={[60, 120, 180]} hline={{y: 175, label: tx('overflow')}}
+                      series={[{name: tx('averageWaitShort'), colour: C.red, pts: CURVES.lanes as [number, number][]}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const aeropuerto: World = {View, ambient: 'murmur'};

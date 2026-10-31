@@ -11,6 +11,8 @@ import {addWords, tx, num} from '../i18n';
 import {paint, Pointers, trail} from '../look';
 import {flowCurve, PERTURB, RING, SAMPLE, ring, type Mode, type Ring} from '../traffic';
 import {Note, param, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   selfDriving: {es: 'Conduce solo', pt: 'Conduz sozinho', fr: 'Conduite autonome', de: 'Fährt selbst', en: 'Drives itself'},
@@ -243,7 +245,7 @@ const closeUp = (r: Ring, simT: number, i: number): Cam => {
 
 const mixCam = (a: Cam, b: Cam, k: number): Cam => ({x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, s: a.s + (b.s - a.s) * k});
 
-const View: FC<WorldProps> = ({g, local, real = local, move, on, o}) => {
+const Base: FC<WorldProps> = ({g, local, real = local, move, on, o}) => {
   if (g.focus === 'compare') return <Compare g={g} local={local} on={on} o={o} />;
   const r = ring(param(g, 'cars', 22), modeOf(g));
   const simT = clockOf(g, r, g.at + local);
@@ -313,6 +315,30 @@ const sounds = (g: WorldProps['g'], length: number) => {
     before = now;
   }
   return {ticks};
+};
+
+addWords({
+  ringCurve: {es: 'Velocidad media según cuántos coches hay en el círculo', pt: 'Velocidade média conforme os carros no círculo', fr: 'Vitesse moyenne selon le nombre de voitures', de: 'Durchschnittstempo je nach Autos im Kreis', en: 'Average speed by how many cars are on the ring'},
+  carsOnRing: {es: 'coches en 230 m', pt: 'carros em 230 m', fr: 'voitures sur 230 m', de: 'Autos auf 230 m', en: 'cars on 230 m'},
+  phantom: {es: 'Atasco fantasma', pt: 'Engarrafamento fantasma', fr: 'Bouchon fantôme', de: 'Stau aus dem Nichts', en: 'Phantom jam'},
+  normalDrivers: {es: 'Conductores normales', pt: 'Condutores normais', fr: 'Conducteurs normaux', de: 'Normale Fahrer', en: 'Normal drivers'},
+  calmDrivers: {es: 'Conductores que dejan hueco', pt: 'Condutores que deixam espaço', fr: 'Conducteurs qui laissent de l’espace', de: 'Fahrer mit Abstand', en: 'Drivers who leave a gap'},
+});
+
+const Pts = (rows: number[][], col: number) => rows.map((r) => [r[0], r[col]] as [number, number]);
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  const scene = param<string>(g, 'scene', 'anillo');
+  if (scene === 'densidad') {
+    return <LineChart t={worldT} draw={3} x={[6, 30]} y={[0, 60]} title={tx('ringCurve')} xLabel={tx('carsOnRing')} yLabel="km/h"
+                      xTicks={[6, 10, 14, 18, 22, 26, 30]} yTicks={[15, 30, 45, 60]} marker={{x: 18, label: tx('phantom')}}
+                      series={[{name: 'km/h', colour: C.accent, pts: Pts(CURVES.ring as number[][], 1)}]} />;
+  }
+  if (scene === 'conductores') {
+    const with_ = (driver: string) => ({...props, g: {...g, focus: 'ring', prev: 'ring', overlay: 'speed', params: {...g.params, driver}}});
+    return <Split left={<Base {...with_('normal')} />} right={<Base {...with_('calma')} />} titles={[tx('normalDrivers'), tx('calmDrivers')]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const anillo: World = {View, sounds};

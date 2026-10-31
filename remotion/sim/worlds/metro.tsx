@@ -11,6 +11,8 @@ import {Pointers, type Anchor} from '../look';
 import {PLATFORM, platform, platformPeople, simulate, type Crowd} from '../crowd';
 import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world';
 import {Person} from './multitud';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   blockDoors: {es: 'Esperando delante de las puertas', pt: 'Esperando na frente das portas', fr: 'Devant les portes', de: 'Vor den Türen wartend', en: 'Waiting in front of the doors'},
@@ -71,7 +73,7 @@ const Platform: FC<{r: {c: Crowd; group: Uint8Array}; t: number; left: number; w
   );
 };
 
-const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
+const Base: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   const scene = param<string>(g, 'scene', 'comparar');
   const panel = Math.max(o('panel'), on * 0.9);
   const t = Math.min(OPEN, worldT * SPEED);
@@ -116,6 +118,21 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
       <Note>{tx('metroNote', {n: OFF, m: ON, d: OPEN})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  metroCurve: {es: 'Personas que ya han bajado o subido', pt: 'Pessoas que já desceram ou subiram', fr: 'Personnes descendues ou montées', de: 'Ausgestiegene und Eingestiegene', en: 'People already off or on'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  if (param<string>(g, 'scene', 'comparar') === 'curva') {
+    const m = CURVES.metro as unknown as Record<string, [number, number][]>;
+    return <LineChart t={worldT} draw={3} x={[0, 40]} y={[0, 60]} title={tx('metroCurve')} xLabel={tx('seconds')} yLabel="/ 60"
+                      xTicks={[0, 10, 20, 30, 40]} yTicks={[20, 40, 60]}
+                      series={[{name: tx('sideDoors'), colour: C.green, pts: m.sides}, {name: tx('blockDoors'), colour: C.red, pts: m.block}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const metro: World = {View, ambient: 'crowd'};

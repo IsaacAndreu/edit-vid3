@@ -226,3 +226,11 @@ def test_a_breath_at_each_change_of_scene():
     assert [g.from_ for g in out.groups] == [0, 600, 1218, 1836]
     assert [gap for _, gap in out.audio.voiceGaps] == [18, 18]
     assert all("askHold" not in g.graphic for g in out.groups)
+
+
+def test_every_world_has_several_scenes():
+    for name, w in simulacion.worlds().items():
+        if name in ("cruces", "red"):
+            continue                                                              # the junctions keep their focuses; red is the old map
+        options = (w["params"].get("scene") or {}).get("options") or []
+        assert len(options) >= 3, name

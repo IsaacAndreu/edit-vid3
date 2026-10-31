@@ -8,6 +8,8 @@ import {AbsoluteFill, interpolate} from 'remotion';
 import {C, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {Big, clamp, mulberry, Note, param, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   blackout: {es: 'Sin luz', pt: 'Sem luz', fr: 'Sans courant', de: 'Ohne Strom', en: 'Without power'},
@@ -128,7 +130,7 @@ const Node: FC<{x: number; y: number; icon: Skin['icon']; fill: string}> = ({x, 
   return <rect x={x - 6} y={y - 6} width={12} height={12} fill={fill} stroke="#060a14" strokeWidth={2} />;
 };
 
-const View: FC<WorldProps> = ({g, worldT, o}) => {
+const Base: FC<WorldProps> = ({g, worldT, o}) => {
   const margin = param(g, 'margin', 0.2);
   const skin = SKINS[param<string>(g, 'kind', 'electricidad')] ?? SKINS.electricidad;
   const c = cascade(margin);
@@ -198,6 +200,23 @@ const sounds = (g: WorldProps['g'], length: number) => {
   const failAt = (g.cues?.fail ?? g.since + 3) - g.since;
   const t0 = g.at - g.since;
   return {clicks: c.steps.map((_, k) => failAt + k * STEP - t0).filter((s) => s >= 0 && s < length)};
+};
+
+addWords({
+  marginCurve: {es: 'Cuánto cae según el margen de cada pieza', pt: 'Quanto cai conforme a margem de cada peça', fr: 'Ce qui tombe selon la marge de chaque pièce', de: 'Was ausfällt je nach Reserve', en: 'How much falls by each piece’s margin'},
+  marginAxis: {es: 'margen sobre lo normal', pt: 'margem sobre o normal', fr: 'marge au-dessus de la normale', de: 'Reserve über normal', en: 'margin over normal'},
+  fallen: {es: 'Caídos', pt: 'Caídos', fr: 'Tombés', de: 'Ausgefallen', en: 'Fallen'},
+  noReturn: {es: 'Punto de no retorno', pt: 'Ponto sem retorno', fr: 'Point de bascule', de: 'Kipppunkt', en: 'Tipping point'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  if (param<string>(g, 'scene', 'red') === 'umbral') {
+    return <LineChart t={worldT} draw={3} x={[0.05, 0.6]} y={[0, 100]} title={tx('marginCurve')} xLabel={tx('marginAxis')} yLabel={tx('fallen')}
+                      xFmt={(v) => `${Math.round(v * 100)} %`} yFmt={(v) => `${v} %`} xTicks={[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]} yTicks={[25, 50, 75, 100]}
+                      marker={{x: 0.22, label: tx('noReturn')}} series={[{name: tx('fallen'), colour: C.red, pts: CURVES.cascade as [number, number][]}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const red: World = {View, sounds};

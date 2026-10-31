@@ -12,6 +12,8 @@ import {addWords, num, tx} from '../i18n';
 import {kitchenLong, runKitchen, type KitchenRun} from '../kitchen';
 import {Pointers, type Anchor} from '../look';
 import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   ticketTime: {es: 'De la comanda al plato', pt: 'Do pedido ao prato', fr: 'De la commande à l’assiette', de: 'Von der Bestellung zum Teller', en: 'From order to plate'},
@@ -103,7 +105,7 @@ const Kitchen: FC<{run: KitchenRun; t: number; left: number; width: number}> = (
   );
 };
 
-const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
+const Base: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
   const scene = param<string>(g, 'scene', 'comandas');
   const load = param(g, 'ocupacion', 0.9);
   const panel = Math.max(o('panel'), on * 0.9);
@@ -150,6 +152,24 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
       <Note>{tx('kitchenNote', {n: COOKS, x: LAPSE})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  kitchenCurve: {es: 'De la comanda al plato según lo ocupada que está la cocina', pt: 'Do pedido ao prato conforme a ocupação da cozinha', fr: 'De la commande à l’assiette selon la charge', de: 'Von der Bestellung zum Teller je nach Auslastung', en: 'From order to plate by how busy the kitchen is'},
+  busyAxis: {es: 'cocineros ocupados', pt: 'cozinheiros ocupados', fr: 'cuisiniers occupés', de: 'Köche beschäftigt', en: 'cooks busy'},
+  minutes: {es: 'minutos', pt: 'minutos', fr: 'minutes', de: 'Minuten', en: 'minutes'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  if (param<string>(g, 'scene', 'comandas') === 'curva') {
+    const rows = CURVES.kitchen as number[][];
+    return <LineChart t={worldT} draw={3} x={[0.7, 0.95]} y={[0, 50]} title={tx('kitchenCurve')} xLabel={tx('busyAxis')} yLabel={tx('minutes')}
+                      xFmt={(v) => `${Math.round(v * 100)} %`} xTicks={[0.7, 0.75, 0.8, 0.85, 0.9, 0.95]} yTicks={[10, 20, 30, 40, 50]}
+                      series={[{name: tx('inOrder'), colour: C.red, pts: rows.map((r) => [r[0], r[1]] as [number, number])},
+                               {name: tx('quickFirst'), colour: C.green, pts: rows.map((r) => [r[0], r[2]] as [number, number])}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const restaurante: World = {View, ambient: 'kitchen'};

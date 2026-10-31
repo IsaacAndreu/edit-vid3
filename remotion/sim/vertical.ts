@@ -19,6 +19,13 @@ export const verticalOf = (g: SimGraphic): Vertical => {
     if (SPLITS.includes(sc) || (sc === 'comparar' && g.world !== 'cruces' && g.world !== 'autovia')) return {mode: 'halves'};
     if (CHARTS.includes(sc)) return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
   }
+  // the charts of the other worlds, and the ring's drivers side by side
+  const sc = scene(g, '');
+  if ((g.world === 'anillo' && sc === 'densidad') || (g.world === 'red' && sc === 'umbral') || (g.world === 'multitud' && sc === 'tiempos')
+      || (g.world === 'aparcamiento' && sc === 'buscando') || (['aeropuerto', 'metro', 'restaurante'].includes(g.world) && sc === 'curva')) {
+    return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
+  }
+  if (g.world === 'anillo' && sc === 'conductores') return {mode: 'halves'};
   switch (g.world) {
     case 'carretera':
     case 'autovia':
