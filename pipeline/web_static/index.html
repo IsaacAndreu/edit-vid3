@@ -509,7 +509,7 @@ async function newVideo() {
       <div class="small muted" style="margin-top:6px">Se guarda como idea.md junto al guion. Escribe el guion con este esquema y graba la voz.</div></div>` : ""}
     <div class="card">
       <div class="two">
-        <div><label>Canal <a class="small" href="#/canal-nuevo" style="font-weight:400">+ nuevo canal</a></label><select id="channel">${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+        <div><label>Canal <a class="small" href="#/canal-nuevo" style="font-weight:400">+ nuevo canal</a></label><select id="channel">${channelOptions(data)}</select></div>
         <div><label>Nombre <span class="muted">(sin espacios: avion2, olga-korbut…)</span></label><input id="name" placeholder="nombre-del-video"></div>
       </div>
       <div class="two">
@@ -2157,6 +2157,17 @@ async function newChannelPage() {
       setTimeout(() => { location.hash = "#/nuevo"; }, 1200);
     } catch (e) { msg.textContent = e.message; }
   };
+}
+
+// the new-video form: channels grouped by how their videos are made, so each kind is found at a glance
+function channelOptions(d) {
+  const kinds = d.channelKinds || {};
+  const groups = [["metraje", "🎬 Contenido de terceros (metraje)"], ["simulacion", "🧪 Simulación"], ["stickman", "✏️ Monigotes"]];
+  const html = groups.map(([k, name]) => {
+    const list = d.channels.filter((c) => (kinds[c] || "metraje") === k);
+    return list.length ? `<optgroup label="${name}">${list.map((c) => `<option>${esc(c)}</option>`).join("")}</optgroup>` : "";
+  }).join("");
+  return html || d.channels.map((c) => `<option>${esc(c)}</option>`).join("");
 }
 
 function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (!document.hidden) fn(); else schedule(fn, ms); }, ms); }

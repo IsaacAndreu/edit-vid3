@@ -7,6 +7,7 @@ cookies, then without — and times it. The verdict says which of the usual caus
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import time
@@ -88,7 +89,7 @@ def _try(ctx: RunContext, label: str, cookies: bool, ipv4: bool, clients: str = 
     result.update(label=label, cookies=cookies, ipv4=ipv4, tried=clients)
     if result.get("clients") is not None:
         label += (f" · clientes {', '.join(result['clients'])} · PO Token {'sí' if result.get('pot') else 'NO'}"
-                  + (" · por la conexión de casa (proxy)" if result.get("proxy") else ""))
+                  + (" · por el proxy" if result.get("proxy") else ""))
     if result.get("timeout"):
         print(f"   {label}: más de {PROBE_LIMIT} s para 10 s de vídeo (cortado)")
     elif result["error"]:
@@ -138,15 +139,20 @@ def verdict(info: dict[str, str], runs: list[dict[str, Any]]) -> list[str]:
     if fastest_run and fastest_run["seconds"] > SLOW:
         phases = fastest_run.get("phases") or {}
         waited = phases.get("espera por límite", 0)
-        download = phases.get("download", 0)
-        info_time = sum(v for k, v in phases.items() if k not in ("download", "espera por límite"))
+        # «download», «download (HLS)», «download (completo)»: all of them are the download, not the video's data
+        download = sum(v for k, v in phases.items() if k.startswith("download"))
+        info_time = sum(v for k, v in phases.items() if not k.startswith("download") and k != "espera por límite")
         if waited > fastest_run["seconds"] / 2:
             out.append(f"Casi todo el tiempo ({waited:.0f} s) fue esperar porque YouTube limita a tu conexión (429). "
                        "Deja la cola en parallel_videos: 1 y sube sourcing.youtube.min_interval a 3.")
         elif info_time > download and info_time > SLOW:
             out.append(f"Lo lento es pedir los datos del vídeo ({info_time:.0f} s), no bajarlo: suele ser deno resolviendo "
-                       "los retos muy despacio. Prueba: deno upgrade, excluye la carpeta de deno y la del proyecto del "
-                       "antivirus (Windows Defender → Exclusiones) y vuelve a probar.")
+                       "los retos muy despacio. Prueba: deno upgrade" + (", excluye la carpeta de deno y la del proyecto del "
+                       "antivirus (Windows Defender → Exclusiones)" if os.name == "nt" else "") + " y vuelve a probar.")
+        elif fastest_run.get("proxy") and download > SLOW:
+            out.append(f"Lo lento es la descarga ({download:.0f} s; pedir los datos, {info_time:.0f} s) y va por el "
+                       f"proxy: la conexión del servidor va bien ({line} MB/s fuera de YouTube). Ese tramo lo marca el "
+                       "proxy, no el programa.")
         elif line is not None and line >= 2 and download > SLOW:
             out.append(f"Tu conexión va bien ({line} MB/s fuera de YouTube) pero YouTube te sirve el vídeo a paso de tortuga "
                        f"({download:.0f} s de descarga): YouTube frena a tu IP. Apaga el router 5 minutos (IP nueva) y "

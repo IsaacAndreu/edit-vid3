@@ -56,6 +56,27 @@ def channels(root: Path) -> list[str]:
     return sorted(p.stem for p in (root / "canales").glob("*.yaml"))
 
 
+def channel_kinds(root: Path) -> dict[str, str]:
+    """Each channel's kind for the new-video form: «simulacion», «stickman» or «metraje» (third-party footage), from
+    its profile's visual.style (a channel built on another, `base:`, takes that one's)."""
+
+    out: dict[str, str] = {}
+    for name in channels(root):
+        style = ""
+        seen: set[str] = set()
+        current = name
+        while current and current not in seen:
+            seen.add(current)
+            data = _json_yaml(root / "canales" / f"{current}.yaml")
+            style = str((data.get("visual") or {}).get("style") or "").lower()
+            if style:
+                break
+            current = str(data.get("base") or "")
+        out[name] = ("simulacion" if style in ("simulacion", "simulación", "simulation")
+                     else "stickman" if style == "stickman" else "metraje")
+    return out
+
+
 def set_channel(root: Path, slug: str, channel: str) -> dict[str, Any]:
     """«Cambiar de canal»: canal: in materiales/<vídeo>/config.yaml (the rest of that file stays). A finished video
     is not made again: it only changes where it is counted (statistics, spend, «Para subir»)."""
@@ -332,7 +353,7 @@ def overview(root: Path) -> dict[str, Any]:
                     "youtubeBlocked": _youtube_blocked(root),
                     "lastBeat": beat.read_text().strip() if beat.is_file() else None, "code": code_version(root)},
         "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config)},
-        "videos": videos, "channels": channels(root), "formats": formats(root),
+        "videos": videos, "channels": channels(root), "channelKinds": channel_kinds(root), "formats": formats(root),
         "youtube": youtube,
     }
 

@@ -56,3 +56,9 @@ def test_everything_cut_off_with_a_good_line_is_the_home_ip():
     runs = [{**run("con cookies, IPv4", 90), **cut}, {**run("con cookies, red por defecto (IPv6)", 90), **cut},
             {**run("sin cookies, IPv4", 90), **cut}]
     assert "router" in verdict({**OK, "line": 11.0}, runs)[0]
+
+
+def test_slow_hls_download_through_a_proxy_is_not_blamed_on_deno():
+    slow = {**run("con cookies, IPv6", 52.2), "proxy": True, "phases": {"metadata": 6.1, "download (HLS)": 45.8}}
+    lines = verdict({**OK, "line": 42.5}, [slow])
+    assert any("proxy" in line and "46 s" in line for line in lines) and not any("deno" in line for line in lines)
