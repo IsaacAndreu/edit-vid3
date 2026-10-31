@@ -132,8 +132,9 @@ def test_the_what_if_series_reaches_the_scenes_and_the_topics(tmp_path, monkeypa
 
     def fake(ctx, **kwargs):
         seen["system"] = kwargs["system"]
-        return {"ideas": [{"title": "¿Y si hubiera una caja más?", "worlds": ["colas"], "dial": "tills", "hook": "h"},
-                          {"title": "¿Y si nadie frenara?", "worlds": ["anillo"], "dial": "inventado"}]}
+        plan = [{"idea": f"b{k}", "world": "colas", "scene": sc} for k, sc in enumerate(["comparar", "eleccion", "limite", "contar", "rapida"])]
+        return {"ideas": [{"title": "¿Y si hubiera una caja más?", "worlds": ["colas"], "dial": "tills", "hook": "h", "plan": plan},
+                          {"title": "¿Y si nadie frenara?", "worlds": ["anillo"], "dial": "inventado", "plan": plan}]}
 
     monkeypatch.setattr("pipeline.llm.complete_json", fake)
     monkeypatch.setattr("pipeline.repeticion.recent_titles", lambda root, channel: [])

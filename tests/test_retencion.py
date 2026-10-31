@@ -49,13 +49,20 @@ def test_topic_ideas_only_with_the_channels_worlds_and_one_a_day(tmp_path, monke
     root = Path(__file__).resolve().parent.parent
     shutil.copy(root / "config.yaml", tmp_path / "config.yaml")
     shutil.copytree(root / "canales", tmp_path / "canales")
+    good = [{"idea": f"bloque {k}", "world": w, "scene": sc} for k, (w, sc) in enumerate(
+        [("metro", "comparar"), ("multitud", "evacuacion"), ("metro", "lados"), ("multitud", "pasillo"), ("explica", "dato"), ("metro", "delante")])]
+    half = good[:3] + [{"idea": "x", "world": "volcan", "scene": "y"}] * 3
     monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **k: {"ideas": [
-        {"title": "Por qué el metro se colapsa", "hook": "Llegas al andén…", "worlds": ["multitud"], "scenes": "pasillo", "why": "x"},
-        {"title": "Algo imposible", "worlds": ["volcan"]},
-        {"title": "Por qué el wifi va lento", "worlds": ["colas"], "scenes": "limite"}]})
+        {"title": "Por qué el wifi va lento", "worlds": ["colas"], "scenes": "limite", "plan": good, "interest": "media"},
+        {"title": "Por qué el metro se colapsa", "hook": "Llegas al andén…", "worlds": ["multitud"], "scenes": "pasillo", "why": "x",
+         "plan": good, "interest": "alta"},
+        {"title": "Algo imposible", "worlds": ["volcan"], "plan": good},
+        {"title": "A medias", "worlds": ["metro"], "plan": half, "interest": "alta"},
+        {"title": "Sin plan", "worlds": ["colas"]}]})
     added = temas.calendar(tmp_path, "el-porque-simulado", 10, start=date(2026, 11, 2))
-    assert [a["title"] for a in added] == ["Por qué el metro se colapsa", "Por qué el wifi va lento"]
+    assert [a["title"] for a in added] == ["Por qué el metro se colapsa", "Por qué el wifi va lento"]   # most searched first
     assert [a["date"] for a in added] == ["2026-11-02", "2026-11-03"] and "Mundos: multitud" in added[0]["note"]
+    assert "100 %" in added[0]["note"] and "metro comparar" in added[0]["escenas"]
     assert len(agenda.load(tmp_path)["ideas"]) == 2
 
 

@@ -536,6 +536,7 @@ async function newVideo() {
     </div>`;
   $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
   if (pre && pre.script) $("#script").value = pre.script;
+  if (idea && idea.escenas) $("#scenelist").value = idea.escenas;      // a board idea comes with its scene list
   // a simulation channel: the languages it can be dubbed to, each only if it has a GenAIPro voice
   window.dubOptions = {};
   api("/api/voices").then((v) => { window.dubOptions = v.dubOptions || {}; showDub(); }).catch(() => {});
@@ -2178,7 +2179,7 @@ async function boardPage() {
     try { const r = await post("/api/board/temas", {channel: $("#tc").value, serie: serie || ""}); $("#tmsg").textContent = `${r.added.length} ideas añadidas`; boardPage(); }
     catch (e) { $("#tmsg").textContent = e.message; $("#tbtn").disabled = false; $("#tbtn2").disabled = false; } };
   window.dropIdea = async (id) => { if (!confirm("¿Quitar esta idea?")) return; await post("/api/board/idea", {delete: id}); boardPage(); };
-  window.makeVideo = (id) => { const x = window.boardIdeas[id], idea = {...(x.idea || {}), title: x.title};
+  window.makeVideo = (id) => { const x = window.boardIdeas[id], idea = {...(x.idea || {}), title: x.title, ...(x.escenas ? {escenas: x.escenas} : {}), ...(x.hook && !(x.idea || {}).hook ? {hook: x.hook} : {})};
     try { sessionStorage.setItem("prefill", JSON.stringify({idea, channel: x.channel})); } catch (e) {}
     window.prefill = {idea, channel: x.channel}; location.hash = "#/nuevo"; };
 }

@@ -432,14 +432,14 @@ def board(root: Path) -> dict[str, list[dict[str, Any]]]:
     return columns
 
 
-def add_idea(root: Path, title: str, channel: str = "", note: str = "", day: str = "") -> dict[str, Any]:
+def add_idea(root: Path, title: str, channel: str = "", note: str = "", day: str = "", extra: dict[str, Any] | None = None) -> dict[str, Any]:
     if not title.strip():
         raise ValueError("Pon un título a la idea")
     if day:
         date.fromisoformat(day)
     data = load(root)
     idea = {"id": f"tablero-{int(time.time() * 1000)}", "title": title.strip(), "channel": channel, "note": note.strip(),
-            "date": day, "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            "date": day, "created": time.strftime("%Y-%m-%dT%H:%M:%S"), **(extra or {})}
     data.setdefault("ideas", []).insert(0, idea)
     save(root, data)
     return idea
