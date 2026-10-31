@@ -52,6 +52,49 @@ addWords({
   rulesTitle: {es: 'Las reglas', pt: 'As regras', fr: 'Les règles', de: 'Die Regeln', en: 'The rules'},
 });
 
+/** The closing summary as a montage: each idea of the list over its key scene of the video, played fast, one after
+ * the other in the video's order; along the bottom the ideas ticked off as they pass. */
+const Recap: FC<{ graphic: SimGraphic; real: number; length: number }> = ({ graphic, real, length }) => {
+  const items = graphic.list;
+  const clips = graphic.recap ?? [];
+  const seg = length / items.length;
+  const i = Math.min(items.length - 1, Math.floor(real / seg));
+  const inSeg = real - i * seg;
+  const clip = clips[i % clips.length];
+  const world = WORLDS[clip.world] ?? WORLDS.cruces;
+  const fast = inSeg * 2.2;                                   // «montaje rápido»: the scene runs at double speed
+  const fade = interpolate(inSeg, [0, 0.25, seg - 0.25, seg], [0, 1, 1, 0], clamp);
+  const on = (name: string) => (clip.overlay === name ? 1 : 0);
+  return (
+    <AbsoluteFill style={{ background: C.night }}>
+      <AbsoluteFill style={{ opacity: fade, transform: `scale(${1.04 - 0.04 * Math.min(1, inSeg / seg)})` }}>
+        <world.View g={clip} local={fast} real={inSeg} length={seg * 2.2} worldT={clip.at + fast - clip.since} move={1} on={1} o={on} />
+      </AbsoluteFill>
+      <AbsoluteFill style={{ background: 'linear-gradient(180deg, rgba(5,8,15,0) 55%, rgba(5,8,15,0.85) 100%)' }} />
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 150, textAlign: 'center', fontFamily: FONT, fontSize: 64, fontWeight: 800,
+                    color: C.text, textTransform: 'uppercase', letterSpacing: 1, opacity: fade, textShadow: '0 4px 18px rgba(0,0,0,0.7)',
+                    transform: `translateY(${(1 - fade) * 14}px)` }}>
+        {items[i]}
+      </div>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 60, display: 'flex', justifyContent: 'center', gap: 18 }}>
+        {items.map((text, k) => (
+          <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: FONT, fontSize: 22, fontWeight: 800,
+                                   textTransform: 'uppercase', color: k === i ? C.you : k < i ? C.text : C.label,
+                                   opacity: k <= i ? 1 : 0.55 }}>
+            <span style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                           background: k < i ? C.green : k === i ? C.you : 'rgba(255,255,255,0.15)', color: '#0b1020', fontSize: 16 }}>
+              {k < i ? '✓' : k + 1}
+            </span>
+            {text.length > 26 ? `${text.slice(0, 24)}…` : text}
+          </div>
+        ))}
+      </div>
+      <div style={{ position: 'absolute', left: 64, top: 52, fontFamily: FONT, fontSize: 30, fontWeight: 800, color: C.label,
+                    textTransform: 'uppercase', letterSpacing: 2 }}>{tx('recap')}</div>
+    </AbsoluteFill>
+  );
+};
+
 /** The rules of the system, numbered, one by one as the voice names them; the one switched off is struck out in red
  * (the key moment of a video: it stays on screen). */
 const Rules: FC<{ graphic: SimGraphic; real: number }> = ({ graphic, real }) => {
@@ -136,7 +179,8 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
   setAccent(graphic.accent);
   setTheme(graphic.theme);
   const world = WORLDS[graphic.world] ?? WORLDS.cruces;
-  const body = <world.View g={graphic} local={local} real={real} length={length} worldT={worldT} move={move} on={on} o={o} />;
+  const montage = !!(graphic.recap && graphic.recap.length > 0 && graphic.list.length > 0);
+  const body = montage ? null : <world.View g={graphic} local={local} real={real} length={length} worldT={worldT} move={move} on={on} o={o} />;
   // the camera is never still: a slow breath in and out over the world's own clock (continuous from shot to shot);
   // a world comes in zooming from the last one and leaves zooming on (no blurred cut between two worlds)
   const breath = 1 + 0.035 * (0.5 - 0.5 * Math.cos((2 * Math.PI * (graphic.at + real - graphic.since)) / 26));
@@ -187,7 +231,8 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
           <span style={{ color: C.label }}>{tx('source')}:</span> {graphic.source}
         </div>
       )}
-      {graphic.list.length > 0 && (
+      {graphic.recap && graphic.recap.length > 0 && graphic.list.length > 0 && <Recap graphic={graphic} real={real} length={length} />}
+      {graphic.list.length > 0 && !(graphic.recap && graphic.recap.length > 0) && (
         <>
           <AbsoluteFill style={{ background: C.night, opacity: 0.55 * on }} />
           <Panel o={on} style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 780, padding: '28px 34px' }}>

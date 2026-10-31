@@ -316,6 +316,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
                     g["dial"] = {"label": str(label).upper()[:30], "from": old, "to": value,
                                  "min": low, "max": high, "percent": bool(p.get("percent"))}
                     break
+    recap_scenes(out)
     legend = False
     for n, group in enumerate(out):
         g = group["graphic"]
@@ -509,6 +510,42 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
     (ctx.out_dir / "qa").mkdir(parents=True, exist_ok=True)
     (ctx.out_dir / "qa" / "simulacion.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return found
+
+
+KEEP = ("world", "focus", "overlay", "params", "at", "since", "cues", "lang", "accent", "theme")
+
+
+def recap_scenes(out: list[dict[str, Any]]) -> None:
+    """The closing summary (a group with "list") replays the video's key scenes in order, one per idea: from each
+    experiment (a world with its parameters) its key shot — the replayed moment, a rule switched off, a figure, else
+    its longest shot — as it was on screen (graphic.recap). Changes the groups in place."""
+
+    for n, group in enumerate(out):
+        g = group["graphic"]
+        if not g.get("list"):
+            continue
+        runs: list[list[dict[str, Any]]] = []
+        for x in out[:n]:
+            if runs and runs[-1][-1]["graphic"]["world"] == x["graphic"]["world"] \
+                    and runs[-1][-1]["graphic"]["since"] == x["graphic"]["since"]:
+                runs[-1].append(x)
+            else:
+                runs.append([x])
+        if not runs:
+            continue
+
+        def weight(x: dict[str, Any]) -> tuple[int, int]:
+            y = x["graphic"]
+            return (3 if y.get("replay") else 2 if y.get("rulesOff") else 1 if y.get("stat") else 0, x["durationInFrames"])
+
+        keys = [max(run, key=weight) for run in runs]
+        want = max(2, min(4, len(g["list"])))
+        if len(keys) > want:                     # the strongest ones, kept in the order of the video
+            best = sorted(range(len(keys)), key=lambda i: (weight(keys[i]), sum(x["durationInFrames"] for x in runs[i])),
+                          reverse=True)[:want]
+            keys = [keys[i] for i in sorted(best)]
+        g["recap"] = [{**{k: x["graphic"][k] for k in KEEP if k in x["graphic"]}, "type": "sim",
+                       "prev": x["graphic"]["focus"], "title": "", "stat": None, "source": "", "list": []} for x in keys]
 
 
 def writing(ctx: RunContext) -> str:

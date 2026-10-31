@@ -322,3 +322,19 @@ def test_the_directors_scene_list_goes_to_the_llm(tmp_path, monkeypatch):
     simulacion.scenes(ctx, [_shot(1, 0, 90, "Vas al súper.")])
     assert "GUÍA DEL CANAL" in seen["system"] and "Una idea por escena" in seen["system"]
     assert "protagonista amarillo en la cola" in seen["system"]
+
+
+def test_the_summary_replays_the_key_scenes_in_order(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "min_world_seconds": 0}})
+    shots = [_shot(n, (n - 1) * 90, n * 90, f"frase {n}") for n in range(1, 7)]
+    answers = {1: {"world": "anillo", "title": "a"}, 2: {"world": "anillo", "title": "b", "replay": True},
+               3: {"world": "colas", "title": "c"}, 4: {"world": "colas", "title": "d", "stat": {"label": "x", "value": "3"}},
+               5: {"world": "cruces", "title": "e"}, 6: {"world": "anillo", "list": ["uno", "dos", "tres"]}}
+    monkeypatch.setattr(simulacion, "scenes", lambda ctx, todo: {
+        s.id: {**simulacion.clean(answers[int(s.id[1:])], "Hay 3 coches.", None), "list": answers[int(s.id[1:])].get("list", [])}
+        for s in todo})
+    g = [x["graphic"] for x in simulacion.groups(ctx, shots, 30, [])]
+    recap = g[-1]["recap"]
+    assert [r["world"] for r in recap] == ["anillo", "colas", "cruces"]
+    assert recap[0]["at"] == 3.0 and recap[1]["at"] == 9.0               # the replayed shot, the one with a figure
+    assert "recap" not in g[0]
