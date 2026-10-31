@@ -1,4 +1,12 @@
-"""Shorts from the finished video: out/<slug>/shorts/short-N.mp4 (1080x1920) + shorts.txt.
+"""Shorts of a video: out/<slug>/shorts/shorts.txt and, depending on `shorts.style`, the Shorts themselves.
+
+`shorts.style: nuevo` (default for videos drawn in code: simulation and stickman channels; any channel can set it):
+each Short is a NEW video, not a piece of this one. The LLM writes `count` short scripts (35-55 s) from the video's
+script — each one stands on its own, opens with a hook and keeps to the video's facts — and each becomes a video of
+its own in materiales/<canal>/<slug>-shortN/, vertical 1080x1920 from the start (its own voice, its own scenes, big
+captions, no end screen), which the queue makes like any other and leaves in «Para subir».
+
+The other styles cut them out of the finished video: out/<slug>/shorts/short-N.mp4 (1080x1920).
 
 The LLM picks the strongest self-contained moments of the narration (25–58 s, starting on a sentence that hooks;
 the sentences with a graphic or an original moment on screen are marked ★, the ones the video's opening chose too).
@@ -267,9 +275,118 @@ def outputs(ctx: RunContext) -> list:
     return [ctx.out_dir / DIR / "shorts.txt"] if enabled(ctx) else []
 
 
+NEW_SYSTEM = """
+Eres guionista de YouTube Shorts. Te paso el guion de un vídeo largo. Escribe {count} Shorts NUEVOS a partir de él:
+- cada uno es un guion propio de {min_w}-{max_w} palabras (35-55 segundos leído), en {language}, que se entiende
+  sin haber visto el vídeo largo; no es un trozo copiado: reescríbelo para vertical y para alguien que pasa el dedo;
+- la PRIMERA frase engancha en 2 segundos (una pregunta, un dato que sorprende, algo que parece imposible);
+- UNA sola idea del vídeo por Short, distinta en cada uno; frases cortas, en presente;
+- termina con una frase con fuerza (la respuesta o el giro), sin «suscríbete» ni «en el vídeo largo»;
+- usa SOLO datos, cifras, nombres y fechas que están en el guion: no inventes nada;
+- sin títulos ni líneas «## », sin acotaciones: solo el texto que se lee.
+{drawn}Devuelve SOLO JSON: {{"shorts": [{{"script": "…", "title": "título del Short, máx. 80 caracteres",
+  "description": "1-2 frases + 3 hashtags"}}]}}
+""".strip()
+
+# A Short is a small vertical video of its own: what its config adds to the channel's
+SHORT_CONFIG = """video:
+  width: 1080
+  height: 1920
+timeline:
+  captions: true                  # subtítulos grandes que siguen a la voz
+  endscreen_seconds: 0
+render:
+  hybrid: false                   # todo con Remotion (el montaje rápido con ffmpeg es solo horizontal)
+apertura:
+  enabled: false
+without_youtube:
+  require_cold_open: false
+shorts:
+  enabled: false
+"""
+
+
+def style(ctx: RunContext) -> str:
+    from . import stickman
+
+    return str(ctx.section("shorts").get("style") or ("nuevo" if stickman.drawn(ctx) else "native")).lower()
+
+
+def short_name(slug: str, n: int) -> str:
+    return f"{slug}-short{n}"
+
+
+def write_new(ctx: RunContext) -> list[dict[str, Any]]:
+    """The Short scripts from the LLM, cleaned: their own words, the right length, no headings."""
+
+    from . import simulacion
+
+    cfg = ctx.section("shorts")
+    script = (ctx.materials_dir / "guion.txt").read_text("utf-8")
+    script = "\n".join(line for line in script.splitlines() if not line.strip().startswith("## ")).strip()
+    count = int(cfg.get("count", 3))
+    min_w, max_w = int(cfg.get("min_words", 90)), int(cfg.get("max_words", 140))
+    drawn = simulacion.writing(ctx)
+    system = NEW_SYSTEM.format(count=count, min_w=min_w, max_w=max_w, language=ctx.language,
+                               drawn=(drawn + "\nEn un Short: UN solo experimento, sin resumen final.\n") if drawn else "")
+    result = complete_json(ctx, stage=STAGE, section="planner", system=system, user=script[:60000], max_tokens=4000)
+    out = []
+    for item in result.get("shorts") or []:
+        if not isinstance(item, dict):
+            continue
+        text = "\n".join(l.strip() for l in str(item.get("script") or "").splitlines()
+                         if l.strip() and not l.strip().startswith("#"))
+        words = len(text.split())
+        if words < min_w * 0.7 or words > max_w * 1.3:
+            print(f"   Short descartado: {words} palabras")
+            continue
+        out.append({"script": text, "title": " ".join(str(item.get("title") or "").split())[:100],
+                    "description": str(item.get("description") or "").strip()[:500]})
+    return out[:count]
+
+
+def make_new(ctx: RunContext) -> None:
+    """Each Short as a new vertical video in the queue (materiales/<canal>/<slug>-shortN/)."""
+
+    from .web import create_video
+
+    if ctx.section("shorts").get("of"):            # a Short makes no Shorts
+        return
+    out_dir = ctx.out_dir / DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    channel = str(ctx.config.get("canal") or "")
+    made = []
+    for n, item in enumerate(write_new(ctx), 1):
+        name = short_name(ctx.slug, n)
+        try:
+            created = create_video(ctx.root, {"name": name, "channel": channel, "script": item["script"],
+                                              "title": item["title"], "language": str(ctx.section("align").get("language", "es"))})
+        except ValueError as error:                # already there (made before): kept as it is
+            print(f"   {name}: {error}")
+            made.append({**item, "slug": name})
+            continue
+        config = ctx.root / created["folder"] / "config.yaml"
+        before = config.read_text("utf-8") if config.is_file() else ""
+        config.write_text(before + SHORT_CONFIG.replace("shorts:\n  enabled: false\n",
+                                                        f"shorts:\n  enabled: false\n  of: {ctx.slug}\n"), encoding="utf-8")
+        made.append({**item, "slug": name})
+        print(f"   Short nuevo en la cola: {name} · {len(item['script'].split())} palabras · {item['title']}")
+    if not made:
+        raise RuntimeError("No salió ningún guion de Short válido")
+    notes = ["SHORTS · vídeos nuevos en vertical, cada uno en la cola con su nombre (súbelos con «Vídeo relacionado» "
+             "apuntando al vídeo largo)", ""]
+    for item in made:
+        notes += [item["slug"], f"TÍTULO: {item['title']}", f"DESCRIPCIÓN: {item['description']}", "", item["script"], ""]
+    (out_dir / "shorts.txt").write_text("\n".join(notes), encoding="utf-8")
+    ctx.write_json("shorts.json", {"style": "nuevo", "shorts": made})
+
+
 def run(ctx: RunContext) -> None:
     if not enabled(ctx):
         print("   Shorts desactivados (python main.py --shorts <vídeo> para hacerlos)")
+        return
+    if style(ctx) == "nuevo":
+        make_new(ctx)
         return
     words = ctx.read_json("words.json")["words"]
     timeline = ctx.read_json("timeline.json")
@@ -282,7 +399,7 @@ def run(ctx: RunContext) -> None:
 
     sents = sentences(words)
     chosen = pick(ctx, sents, strong_sentences(timeline, sents, final))
-    native = str(ctx.section("shorts").get("style", "native")) == "native" and timeline.get("height", 1080) < timeline.get("width", 1920)
+    native = style(ctx) == "native" and timeline.get("height", 1080) < timeline.get("width", 1920)
     vertical_captions: list[dict[str, Any]] = []
     if native:
         from .schemas import Timeline, WordsFile
@@ -330,4 +447,6 @@ def run(ctx: RunContext) -> None:
 def validate(ctx: RunContext) -> bool:
     if not enabled(ctx):
         return True
+    if style(ctx) == "nuevo":
+        return ctx.section("shorts").get("of") is not None or (ctx.out_dir / DIR / "shorts.txt").is_file()
     return (ctx.out_dir / DIR / "shorts.txt").is_file() and any((ctx.out_dir / DIR).glob("short-*.mp4"))
