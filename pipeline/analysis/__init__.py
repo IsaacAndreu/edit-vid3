@@ -491,108 +491,11 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     ways = max(1, len(getattr(youtube, "_pacers", None) or [None]))
     workers = max(int(yt_cfg.get("concurrency", 3)), getattr(youtube, "concurrency", 0)) * ways
 
-    def fine_pass(batch: list[tuple[str, float, float]]) -> None:
-        # A video with several windows comes down once, whole at 360p, and the windows are cut from it.
-        by_video: dict[str, list[tuple[str, float, float]]] = {}
-        for job in dict.fromkeys(batch):
-            by_video.setdefault(job[0], []).append(job)
+    # 4. Assemble a shot's result: as soon as all its windows are in (a restart then goes on from there instead of
+    # starting the whole fine pass again: patilong lost 1.2 h three times to a restart in the middle).
+    written: set[str] = set()
 
-        def download(video: str) -> list[tuple[tuple[str, float, float], Path | Exception]]:
-            its = by_video[video]
-            if not video.startswith("yt:"):          # historical footage (sourcing/archive.py): cut from its local preview
-                from ..sourcing.archive import cut
-
-                preview = ctx.root / str(videos[video].previewPath or "")
-                out = []
-                for job in its:
-                    target = ctx.cache_dir / "archive" / "windows" / key(video)[:20] / f"a360_{job[1]:.2f}_{job[2]:.2f}.mp4"
-                    try:
-                        out.append((job, cut(preview, job[1], job[2], target)))
-                    except Exception as error:
-                        out.append((job, error))
-                return out
-            if len(its) >= whole_from:
-                try:
-                    youtube.prefetch_sections(video.removeprefix("yt:"))
-                except Exception:
-                    pass
-            out: list[tuple[tuple[str, float, float], Path | Exception]] = []
-            for job in its:
-                try:
-                    out.append((job, youtube.download_section(video.removeprefix("yt:"), job[1], job[2])))
-                except (SourceUnavailable, Exception) as error:
-                    out.append((job, error))
-            return out
-
-        done = 0
-        total = sum(len(v) for v in by_video.values())
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(download, video) for video in by_video]
-            arrived = ((job, result) for future in as_completed(futures) for job, result in future.result())
-            for job, result in arrived:
-                done += 1
-                if isinstance(result, Exception):
-                    for sid in jobs[job]:
-                        notes[sid].append(f"{job[0]} {job[1]}-{job[2]}: {str(result)[:120]}")
-                    continue
-                path = result
-                for sid in jobs[job]:
-                    shot = next(s for s in todo if s.id == sid)
-                    fine[(sid, *job)] = [
-                        {**o, "path": path}
-                        for o in fine_options(
-                            window_path=path,
-                            window=(job[1], job[2]),
-                            needed=min(shot.duration, MAX_THIRD_PARTY_SECONDS),
-                            shot_vector=shot_vectors[sid],
-                            clip=clip,
-                            detectors=detectors,
-                            cfg=cfg,
-                        )
-                    ]
-                if done % 50 == 0:
-                    print(f"   ventanas: {done}/{total} ({time.monotonic() - started:.0f} s)")
-
-    print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
-          + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
-    fine_pass(round_one)
-    round_two: list[tuple[str, float, float]] = []
-    second_shots = 0
-    if adaptive:
-        min_clip = float(cfg.get("min_clip", 0.20))
-        min_clip_entity = float(cfg.get("min_clip_entity", 0.15))
-        accept = float(ctx.section("judge").get("min_accept", 0.22))
-
-        def usable(shot: Shot) -> bool:
-            """A fine fragment that would pass this stage's filters and the judge's score floor."""
-
-            for (sid, *job), items in fine.items():
-                if sid != shot.id:
-                    continue
-                for item in items:
-                    scores = item["scores"]
-                    floor = min_clip_entity if scores.get("entity", 0) >= 0.5 else min_clip
-                    if not item["discarded"] and scores.get("clip", 0) >= floor and total_score(scores, weights) >= accept:
-                        return True
-            return False
-
-        for shot in todo:
-            if len(picked[shot.id]) < limit_for[shot.id] and not usable(shot):
-                added = plan(shot, limit_for[shot.id])
-                second_shots += bool(added)
-                round_two += added
-        if round_two:
-            print(f"   Segunda ronda: {len(set(round_two))} ventanas más para {second_shots} planos sin fragmento útil")
-            fine_pass(round_two)
-    if own:
-        ctx.write_json(f"{folder}/{ROUNDS}", {
-            "adaptive": adaptive, "first": first if adaptive else None,
-            "windows": len(set(round_one)) + len(set(round_two)), "windowsSecondRound": len(set(round_two)),
-            "shotsSecondRound": second_shots, "videos": len({job[0] for job in jobs}),
-            "seconds": round(time.monotonic() - started, 1)})
-
-    # 4. Assemble per-shot results.
-    for shot in todo:
+    def assemble(shot: Shot) -> None:
         needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
         entities = shot.broll.entities if shot.broll else []
         options: list[Option] = []
@@ -648,6 +551,127 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             prompts=prompts_for(shot), options=options, notes=notes[shot.id],
         )
         ctx.write_json(f"{folder}/{shot.id}.json", result.model_dump(by_alias=True, exclude_none=True))
+        written.add(shot.id)
+
+    pending: dict[str, int] = {}
+
+    def finished(job: tuple[str, float, float]) -> None:
+        """One window less for its shots; a shot with all its windows in is assembled and saved now."""
+        for sid in jobs.get(job, []):
+            if sid not in pending:
+                continue
+            pending[sid] -= 1
+            if pending[sid] <= 0 and not adaptive and sid not in written:
+                assemble(next(s for s in todo if s.id == sid))
+
+    def fine_pass(batch: list[tuple[str, float, float]]) -> None:
+        # A video with several windows comes down once, whole at 360p, and the windows are cut from it.
+        by_video: dict[str, list[tuple[str, float, float]]] = {}
+        for job in dict.fromkeys(batch):
+            by_video.setdefault(job[0], []).append(job)
+
+        def download(video: str) -> list[tuple[tuple[str, float, float], Path | Exception]]:
+            its = by_video[video]
+            if not video.startswith("yt:"):          # historical footage (sourcing/archive.py): cut from its local preview
+                from ..sourcing.archive import cut
+
+                preview = ctx.root / str(videos[video].previewPath or "")
+                out = []
+                for job in its:
+                    target = ctx.cache_dir / "archive" / "windows" / key(video)[:20] / f"a360_{job[1]:.2f}_{job[2]:.2f}.mp4"
+                    try:
+                        out.append((job, cut(preview, job[1], job[2], target)))
+                    except Exception as error:
+                        out.append((job, error))
+                return out
+            if len(its) >= whole_from:
+                try:
+                    youtube.prefetch_sections(video.removeprefix("yt:"))
+                except Exception:
+                    pass
+            out: list[tuple[tuple[str, float, float], Path | Exception]] = []
+            for job in its:
+                try:
+                    out.append((job, youtube.download_section(video.removeprefix("yt:"), job[1], job[2])))
+                except (SourceUnavailable, Exception) as error:
+                    out.append((job, error))
+            return out
+
+        done = 0
+        total = sum(len(v) for v in by_video.values())
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(download, video) for video in by_video]
+            arrived = ((job, result) for future in as_completed(futures) for job, result in future.result())
+            for job, result in arrived:
+                done += 1
+                if isinstance(result, Exception):
+                    for sid in jobs[job]:
+                        notes[sid].append(f"{job[0]} {job[1]}-{job[2]}: {str(result)[:120]}")
+                    finished(job)
+                    continue
+                path = result
+                for sid in jobs[job]:
+                    shot = next(s for s in todo if s.id == sid)
+                    fine[(sid, *job)] = [
+                        {**o, "path": path}
+                        for o in fine_options(
+                            window_path=path,
+                            window=(job[1], job[2]),
+                            needed=min(shot.duration, MAX_THIRD_PARTY_SECONDS),
+                            shot_vector=shot_vectors[sid],
+                            clip=clip,
+                            detectors=detectors,
+                            cfg=cfg,
+                        )
+                    ]
+                finished(job)
+                if done % 50 == 0:
+                    print(f"   ventanas: {done}/{total} ({time.monotonic() - started:.0f} s) · {len(written)} planos guardados")
+
+    print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
+          + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
+    for job in set(round_one):
+        for sid in jobs.get(job, []):
+            pending[sid] = pending.get(sid, 0) + 1
+    fine_pass(round_one)
+    round_two: list[tuple[str, float, float]] = []
+    second_shots = 0
+    if adaptive:
+        min_clip = float(cfg.get("min_clip", 0.20))
+        min_clip_entity = float(cfg.get("min_clip_entity", 0.15))
+        accept = float(ctx.section("judge").get("min_accept", 0.22))
+
+        def usable(shot: Shot) -> bool:
+            """A fine fragment that would pass this stage's filters and the judge's score floor."""
+
+            for (sid, *job), items in fine.items():
+                if sid != shot.id:
+                    continue
+                for item in items:
+                    scores = item["scores"]
+                    floor = min_clip_entity if scores.get("entity", 0) >= 0.5 else min_clip
+                    if not item["discarded"] and scores.get("clip", 0) >= floor and total_score(scores, weights) >= accept:
+                        return True
+            return False
+
+        for shot in todo:
+            if len(picked[shot.id]) < limit_for[shot.id] and not usable(shot):
+                added = plan(shot, limit_for[shot.id])
+                second_shots += bool(added)
+                round_two += added
+        if round_two:
+            print(f"   Segunda ronda: {len(set(round_two))} ventanas más para {second_shots} planos sin fragmento útil")
+            fine_pass(round_two)
+    if own:
+        ctx.write_json(f"{folder}/{ROUNDS}", {
+            "adaptive": adaptive, "first": first if adaptive else None,
+            "windows": len(set(round_one)) + len(set(round_two)), "windowsSecondRound": len(set(round_two)),
+            "shotsSecondRound": second_shots, "videos": len({job[0] for job in jobs}),
+            "seconds": round(time.monotonic() - started, 1)})
+
+    for shot in todo:
+        if shot.id not in written:
+            assemble(shot)
     youtube.close()
     if own:
         _write_summary(ctx, shots)

@@ -120,3 +120,36 @@ def test_the_report_compares_videos_before_and_with_the_adaptive_pass(tmp_path, 
     assert (before["videos"], before["units"], before["accepted"]) == (200, 800, 0.8)
     assert (after["videos"], after["units"], after["accepted"]) == (120, 480, 0.79)
     assert "adaptativo" in informe_analisis.markdown(data)
+
+
+def test_a_restart_in_the_middle_keeps_the_shots_already_analysed(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={"analysis": {"fine_windows": 2, "extra_windows_with_entities": 0},
+                                                        "sourcing": {"youtube": {"concurrency": 1}}})
+    shots = [_shot(1), _shot(2)]
+    ctx.write_json("shots.json", ShotsFile.model_validate({
+        "slug": "v", "title": "v", "durationSeconds": 8.0, "chapters": [{"title": "c", "startWord": 0, "fromScript": False}],
+        "shots": [s.model_dump() for s in shots]}).model_dump(by_alias=True))
+    pools = {"s001": [_candidate(1), _candidate(2)], "s002": [_candidate(3), _candidate(4)]}
+    for sid, cands in pools.items():
+        ctx.write_json(f"candidates/{sid}.json", ShotCandidates(shotId=sid, specHash="h", queries={}, candidates=cands).model_dump())
+    monkeypatch.setattr(analysis, "make_models", lambda ctx: (FakeClip(), None))
+    monkeypatch.setattr(analysis, "video_features", lambda clip, c, root, cfg: (np.array([50.0]), np.full((1, 4), 0.6, np.float32)))
+    monkeypatch.setattr(analysis, "fine_options", lambda window_path, window, needed, **_: [
+        {"start": window[0], "end": window[0] + needed, "scores": {"clip": 0.3}, "phash": "0" * 16, "discarded": None}])
+    monkeypatch.setattr(analysis, "_write_summary", lambda ctx, shots: None)
+
+    class Crashing(FakeYouTube):
+        def download_section(self, video, a, b):
+            if video.endswith("3"):
+                raise SystemExit("the service restarts")          # not an Exception: it stops the whole stage
+            return super().download_section(video, a, b)
+
+    monkeypatch.setattr(analysis, "youtube_source", lambda ctx: Crashing(tmp_path))
+    with pytest.raises(SystemExit):
+        analysis.analyse(ctx)
+    assert (ctx.work_dir / "scores" / "s001.json").is_file()          # its windows were all in: kept
+    assert not (ctx.work_dir / "scores" / "s002.json").is_file()
+    again = FakeYouTube(tmp_path)
+    monkeypatch.setattr(analysis, "youtube_source", lambda ctx: again)
+    analysis.analyse(ctx)
+    assert {v[:14] for v in again.downloaded} == {"yt:00000000003", "yt:00000000004"}   # only what was missing
