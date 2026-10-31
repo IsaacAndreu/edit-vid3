@@ -264,8 +264,18 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     else:
         first = {}
     easy = {d.name for d in ready if easy_short(root, d)}  # a Short drawn in code: minutes, so it never waits
-    return [d.name for d in sorted(ready, key=lambda d: (d.name not in easy, first.get(d.name, 0), due.get(d.name, "9999"),
-                                                         d.stat().st_mtime, d.name))]
+    # queue.drawn_first: the videos drawn in code (simulation, stick figures) before the footage ones
+    drawn_first = bool(_queue_cfg(root).get("drawn_first", True))
+    drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
+    return [d.name for d in sorted(ready, key=lambda d: (d.name not in easy, d.name not in drawn, first.get(d.name, 0),
+                                                         due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
+
+
+def _queue_cfg(root: Path) -> dict:
+    try:
+        return RunContext.create("_cola", root=root).section("queue")
+    except Exception:
+        return {}
 
 
 def easy_short(root: Path, folder: Path) -> bool:

@@ -360,3 +360,15 @@ def test_an_easy_short_goes_first(tmp_path, monkeypatch):
     assert main.pending_slugs(tmp_path) == ["long1-short1", "long1"]
     monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)     # a footage Short: no jump
     assert main.pending_slugs(tmp_path) == ["long1", "long1-short1"]
+
+
+def test_simulation_videos_go_before_footage_ones(tmp_path, monkeypatch):
+    import time as _time
+
+    _materials(tmp_path, "gym1")
+    _time.sleep(0.01)
+    _materials(tmp_path, "sim1")
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: slug.startswith("sim"))
+    assert main.pending_slugs(tmp_path) == ["sim1", "gym1"]
+    monkeypatch.setattr(main, "_queue_cfg", lambda root: {"drawn_first": False})
+    assert main.pending_slugs(tmp_path) == ["gym1", "sim1"]

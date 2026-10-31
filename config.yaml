@@ -329,6 +329,7 @@ speed:                             # solo cuánto trabajo va a la vez: cambiarlo
 queue:                             # cola nocturna (python main.py --all)
   parallel_videos: 2               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
   footage_at_once: 1               # de esos, como mucho 1 con metraje de terceros: la otra línea es para los dibujados
+  drawn_first: true                # los vídeos de simulación y monigotes antes que los de metraje (false: por orden)
                                    # (simulación, monigotes); si solo quedan de terceros, esperan su turno
   # slots: {red: 1, cpu: 1}        # cuántos vídeos a la vez en cada turno (red: buscar/descargar · cpu: analizar,
   #                                  rellenar, renderizar). En una máquina grande (64 GB, 16 núcleos): {red: 3, cpu: 2}
