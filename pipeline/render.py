@@ -460,7 +460,7 @@ class Renderer:
             subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
                             f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
             cmd = [npx, "remotion", "render", str(bundle_dir), composition, str(output), f"--props={props_file}",
-                   "--log=error", *extra]
+                   "--log=error", *self.video_cache(), *extra]
             text = props_file.read_text("utf-8")
             if '"earth": {' in text or '"three": true' in text:   # the globe and 3D bars are WebGL: a GL that works headless
                 cmd.append(f"--gl={self.cfg.get('gl', 'swangle')}")
@@ -528,13 +528,23 @@ class Renderer:
         """Chrome tabs for Remotion: render.concurrency, else the cores — shared among the CPU places of the queue
         (queue.slots.cpu), so two renders at once do not each take every core and twice the memory."""
 
-        value = int(self.cfg.get("concurrency", 0) or 0)
-        if value > 0:
-            return str(value)
         from .locks import ENV, slots
 
         share = slots(self.ctx.root, "cpu") if os.environ.get(ENV) else 1
-        return str(max(2, (os.cpu_count() or 2) // share))
+        value = int(self.cfg.get("concurrency", 0) or 0)
+        # render.concurrency is the machine's total: two renders at once share it (6 each on 8 cores was 12 Chromes
+        # fighting for the cores and the memory, both slower)
+        return str(max(2, (value if value > 0 else (os.cpu_count() or 2)) // share))
+
+    def video_cache(self) -> list[str]:
+        """Remotion's cache of decoded video frames has no limit by default: a long video with many clips filled the
+        memory until Chrome died («Target closed»). render.video_cache_mb per render (2048), shared like the cores."""
+
+        from .locks import ENV, slots
+
+        share = slots(self.ctx.root, "cpu") if os.environ.get(ENV) else 1
+        mb = int(self.cfg.get("video_cache_mb", 2048) or 0)
+        return [f"--offthreadvideo-cache-size-in-bytes={max(512, mb // share) * 1024 * 1024}"] if mb > 0 else []
 
     def badges(self, credits: list[str]) -> dict[str, Path]:
         """One transparent 1920x1080 PNG per distinct credit text, cached by text."""
@@ -910,11 +920,30 @@ def scenes_preview(r: "Renderer", timeline: dict[str, Any]) -> Path | None:
 
 
 def run(ctx: RunContext) -> None:
+    """The render, hybrid (ffmpeg for plain footage, Remotion for the rest); if the fast path fails in ffmpeg, the whole
+    timeline again with Remotion (slower, the reference) — an optimisation must never cost the video."""
+
+    try:
+        _render(ctx)
+    except Exception as error:
+        message = str(error)
+        hybrid = bool(Renderer(ctx).cfg.get("hybrid", True))
+        if not hybrid or "Remotion" in message or isinstance(error, (KeyboardInterrupt, SystemExit)):
+            raise
+        print(f"   El render rápido falló ({message.splitlines()[-1][:160] if message else type(error).__name__}): "
+              "lo repito todo con Remotion")
+        log = ctx.out_dir / "qa" / "render-plan-b.txt"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(f"{time.strftime('%Y-%m-%d %H:%M')} · {type(error).__name__}: {message[-3000:]}\n", encoding="utf-8")
+        _render(ctx, hybrid=False)
+
+
+def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     started = time.monotonic()
     timeline = ctx.read_json("timeline.json")
     Timeline.model_validate(timeline)
     r = Renderer(ctx)
-    hybrid = bool(r.cfg.get("hybrid", True))
+    hybrid = bool(r.cfg.get("hybrid", True)) if hybrid is None else hybrid
     segments = plan_segments(timeline, hybrid)
     fast = [s for s in segments if s.kind == "ffmpeg"]
     slow = [s for s in segments if s.kind == "remotion"]
