@@ -110,11 +110,12 @@ def test_every_world_in_the_manifest_is_complete_and_drawn():
 
 def test_parameters_stay_within_their_limits_and_go_on_with_the_world():
     scene = simulacion.clean({"world": "anillo", "params": {"cars": 99}}, "x", None)
-    assert scene["params"] == {"cars": 30}
+    assert scene["params"] == {"cars": 30, "driver": "normal"}
+    assert simulacion.clean({"world": "anillo", "params": {"driver": "suave"}}, "x", None)["params"]["driver"] == "suave"
     assert simulacion.clean({"world": "contagio", "params": {"mode": "bulo", "quarantine": "1"}}, "x", None)["params"]["mode"] == "bulo"
     assert simulacion.clean({"world": "contagio", "params": {"mode": "zombi"}}, "x", None)["params"]["mode"] == "virus"
     nothing = simulacion.clean({}, "x", scene)
-    assert nothing["world"] == "anillo" and nothing["params"] == {"cars": 30}             # no answer: the same experiment
+    assert nothing["world"] == "anillo" and nothing["params"] == {"cars": 30, "driver": "normal"}             # no answer: the same experiment
 
 
 def test_a_source_is_shown_only_when_the_line_names_it():

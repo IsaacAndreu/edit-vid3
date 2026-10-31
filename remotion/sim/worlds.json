@@ -33,7 +33,7 @@
   },
   "anillo": {
     "niche": "tráfico",
-    "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo",
+    "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo; también: un coche que conduce solo y deshace la onda (Arizona, 2018), el mismo círculo sin despistes, y la curva flujo-densidad",
     "focus": {
       "ring": "el círculo",
       "chart": "el círculo a un lado y la gráfica espacio-tiempo al otro"
@@ -42,7 +42,9 @@
       "speed": "velocidad media",
       "brake": "señala al conductor que frena",
       "jam": "coches parados ahora",
-      "chart": "gráfica espacio-tiempo: el atasco viajando hacia atrás"
+      "chart": "gráfica espacio-tiempo: el atasco viajando hacia atrás",
+      "auto": "marca el coche que conduce solo (driver: suave) con la velocidad media y los parados: la onda se deshace",
+      "flow": "la curva flujo-densidad: coches por hora según cuántos hay por km, sube hasta un máximo y se hunde; marca este anillo en ella"
     },
     "params": {
       "cars": {
@@ -50,11 +52,21 @@
         "max": 30,
         "default": 22,
         "describe": "coches en el círculo (con 18 o menos no se forma atasco; con 28 casi todos se paran)"
+      },
+      "driver": {
+        "options": [
+          "normal",
+          "suave",
+          "calma"
+        ],
+        "default": "normal",
+        "describe": "normal (conductores humanos: atasco) · suave (como normal y, en la frase que lo dice, un coche empieza a conducir solo: la onda desaparece y la velocidad media sube de 6 a 17 km/h; funciona con 20-22 coches, con 24 o más no basta uno) · calma (sin despistes ni frenazo: el mismo círculo fluye)"
       }
     },
     "cues": {
       "brake": "la frase que habla del frenazo",
-      "jam": "la frase en la que los coches ya están parados"
+      "jam": "la frase en la que los coches ya están parados",
+      "auto": "la frase en la que un coche empieza a conducir solo"
     }
   },
   "autovia": {
