@@ -105,11 +105,12 @@ def settings(ctx: RunContext) -> dict[str, Any]:
                 out["voices"][lang] = spec
             else:
                 out["voices"].pop(lang, None)
-        chosen = ctx.config.get("dub_languages")          # what «Nuevo vídeo» ticked for this video
-        if isinstance(chosen, list):
-            out["languages"] = [l for l in out["languages"] if l in [str(c) for c in chosen]]
-            out["enabled"] = out["enabled"] and bool(out["languages"])
         out["languages"] = [l for l in out["languages"] if (out["voices"].get(l) or {}).get("voice_id")]
+        # the languages switched off for this video (unticked in «Nuevo vídeo», or «No doblar» on its page). Only an
+        # explicit «no» counts: a language that had no voice yet when the video was made is dubbed once it has one
+        # (the old `dub_languages` kept what was ticked, so German, greyed out then, was never dubbed)
+        out["offered"] = list(out["languages"])
+        out["languages"] = [l for l in out["languages"] if l not in skipped(ctx)]
         out["enabled"] = out["enabled"] and bool(out["languages"])
         return out
     own = tts.voice_for(ctx.root, channel) if channel else None
@@ -118,6 +119,44 @@ def settings(ctx: RunContext) -> dict[str, Any]:
             out["voices"][lang] = {**own, "model_id": "eleven_multilingual_v2" if own.get("model_id") in
                                    ("eleven_turbo_v2_5", "eleven_flash_v2_5", None) else own["model_id"]}
     return out
+
+
+SKIP = ".no-doblar-{lang}"           # in the video's folder: never dub it to that language
+FORCE = ".doblar-{lang}"              # in the video's folder: dub it although it is older than «solo vídeos nuevos»
+
+
+def skipped(ctx: RunContext) -> list[str]:
+    folder = ctx.materials_dir
+    listed = [str(l) for l in ctx.config.get("dub_skip") or []]
+    return [l for l in NAMES if l in listed or (folder / SKIP.format(lang=l)).is_file()]
+
+
+def choose(root: Path, slug: str, lang: str, on: bool) -> dict[str, Any]:
+    """«Doblar a …» / «No doblar a …» on the video's page: also a video older than the dubbing setting, or one whose
+    language was unticked when it was made."""
+
+    from .context import find_video
+
+    folder = find_video(root, slug)
+    if not folder.is_dir():
+        raise FileNotFoundError(slug)
+    skip, force = folder / SKIP.format(lang=lang), folder / FORCE.format(lang=lang)
+    if on:
+        skip.unlink(missing_ok=True)
+        force.write_text("", encoding="utf-8")
+        (folder / "doblaje.error").unlink(missing_ok=True)      # try now, not in 6 h
+        config = folder / "config.yaml"
+        if config.is_file():                                     # the «Nuevo vídeo» list: drop this language from it
+            import yaml
+
+            data = yaml.safe_load(config.read_text("utf-8")) or {}
+            if lang in [str(l) for l in data.get("dub_skip") or []]:
+                data["dub_skip"] = [l for l in data["dub_skip"] if str(l) != lang]
+                config.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    else:
+        force.unlink(missing_ok=True)
+        skip.write_text("", encoding="utf-8")
+    return {"ok": True}
 
 
 def dub_voice(root: Path, target: str | None, given: dict[str, Any]) -> dict[str, Any] | None:
@@ -248,6 +287,18 @@ OWN = ".guion-{lang}.propio"          # in the video's folder: guion-<lang>.txt 
 MANUAL = "doblado-a-mano.json"         # in out/<slug>-<lang>/: you dubbed it yourself, the queue never does it
 
 
+def _older(cfg: dict[str, Any], final: Path) -> bool:
+    """Made before dubbing was turned on with «solo los vídeos nuevos»."""
+
+    return bool(not cfg["existing"] and cfg["since"] and final.is_file() and final.stat().st_mtime < cfg["since"])
+
+
+def _forced(folder: Path, lang: str) -> bool:
+    """You asked for it on its page («Doblar a …»), or pasted its script yourself."""
+
+    return (folder / FORCE.format(lang=lang)).is_file() or (folder / OWN.format(lang=lang)).is_file()
+
+
 def status(root: Path, slug: str) -> list[dict[str, Any]]:
     """Each dubbing language of this video's channel: its script (yours or translated), voice and dubbed video."""
 
@@ -257,11 +308,15 @@ def status(root: Path, slug: str) -> list[dict[str, Any]]:
     if ctx.section("dub").get("of"):
         return []
     cfg = settings(ctx)
-    if not cfg["enabled"]:
+    offered = targets(ctx, {"languages": cfg.get("offered") or (cfg["languages"] if cfg["enabled"] else [])})
+    if not offered:
         return []
     folder = ctx.materials_dir
+    skip = skipped(ctx)
+    final = root / "out" / slug / "video-final.mp4"
+    old = _older(cfg, final)
     out = []
-    for lang in targets(ctx, cfg):
+    for lang in offered:
         dubbed = f"{slug}-{lang}"
         script = folder / f"guion-{lang}.txt"
         out.append({"lang": lang, "name": NAMES.get(lang, lang), "slug": dubbed,
@@ -272,6 +327,7 @@ def status(root: Path, slug: str) -> list[dict[str, Any]]:
                     "manual": (root / "out" / dubbed / MANUAL).is_file(),
                     "review": waiting_review(ctx, lang) and script.is_file(),
                     "adapted": (folder / f"adaptacion-{lang}.md").read_text("utf-8") if (folder / f"adaptacion-{lang}.md").is_file() else "",
+                    "skipped": lang in skip, "old": old and not _forced(folder, lang),
                     "done": is_done(root, dubbed), "error": (folder / "doblaje.error").read_text("utf-8")
                     if (folder / "doblaje.error").is_file() else ""})
     return out
@@ -347,11 +403,11 @@ def prepare_all(root: Path, log: Any = print) -> int:
         if not cfg["enabled"]:
             continue
         final = root / "out" / folder.name / "video-final.mp4"
-        old = not cfg["existing"] and cfg["since"] and final.is_file() and final.stat().st_mtime < cfg["since"]
+        old = _older(cfg, final)
         for lang in targets(ctx, cfg):
             if (folder / f"voz-{lang}.mp3").is_file() or is_done(root, f"{folder.name}-{lang}"):
                 continue
-            if old and not (folder / OWN.format(lang=lang)).is_file():
+            if old and not _forced(folder, lang):
                 continue                        # «solo los vídeos nuevos», unless you pasted its script yourself
             try:
                 translate(ctx, lang)

@@ -94,10 +94,35 @@ def test_a_simulation_dubs_only_where_there_is_a_voice_of_that_language(tmp_path
     script = "Vas al súper con prisa y eliges la cola más corta. " * 10
     create_video(root, {"name": "super1", "channel": "el-porque-simulado", "script": script, "dub": []})
     none = RunContext.create("super1", root=root)
-    assert none.config.get("dub_languages") == [] and not doblaje.settings(none)["enabled"]
+    assert none.config.get("dub_skip") == ["en"] and not doblaje.settings(none)["enabled"]
     create_video(root, {"name": "super2", "channel": "el-porque-simulado", "script": script, "dub": ["en", "de"]})
     chosen = doblaje.settings(RunContext.create("super2", root=root))
     assert chosen["enabled"] and chosen["languages"] == ["en"]                # German ticked but it has no voice
+
+
+def test_a_language_without_a_voice_when_made_is_dubbed_once_it_has_one(tmp_path):
+    import json
+
+    from pipeline import doblaje
+    from pipeline.web import create_video
+
+    root = _sim_root(tmp_path)
+    script = "Vas al súper con prisa y eliges la cola más corta. " * 10
+    create_video(root, {"name": "super1", "channel": "el-porque-simulado", "script": script, "dub": ["en"]})
+    voices = json.loads((root / "out" / "_voces.json").read_text("utf-8"))
+    voices["simuliertes-warum"] = {"voice_id": "de-voice", "name": "Sprecher DE"}       # German set later in Ajustes
+    (root / "out" / "_voces.json").write_text(json.dumps(voices), "utf-8")
+    assert doblaje.settings(RunContext.create("super1", root=root))["languages"] == ["en", "de"]
+    old = RunContext.create("super0", root=root, channel="el-porque-simulado")        # an old `dub_languages: [en]`
+    old.config["dub_languages"] = ["en"]
+    assert doblaje.settings(old)["languages"] == ["en", "de"]
+    doblaje.choose(root, "super1", "en", False)                                       # «No doblar a English»
+    ctx = RunContext.create("super1", root=root)
+    assert doblaje.settings(ctx)["languages"] == ["de"]
+    rows = {d["lang"]: d for d in doblaje.status(root, "super1")}
+    assert rows["en"]["skipped"] and not rows["de"]["skipped"]                         # the box still offers English
+    doblaje.choose(root, "super1", "en", True)
+    assert doblaje.settings(RunContext.create("super1", root=root))["languages"] == ["en", "de"]
 
 
 def test_a_dub_is_adapted_to_its_viewers(tmp_path, monkeypatch):

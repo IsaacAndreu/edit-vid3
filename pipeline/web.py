@@ -680,10 +680,15 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         lines += f"align:\n  language: {lang}\n"
     if lines:
         (folder / "config.yaml").write_text(lines, encoding="utf-8")
-    if isinstance(body.get("dub"), list):                  # the languages ticked for this video (a simulation channel)
-        dub = [str(l) for l in body["dub"] if str(l) in ("en", "pt", "de", "fr", "it")]
-        with (folder / "config.yaml").open("a", encoding="utf-8") as f:
-            f.write(f"dub_languages: [{', '.join(dub)}]\n")
+    if isinstance(body.get("dub"), list):                  # a simulation channel: the languages you UNticked
+        from . import doblaje
+
+        ticked = [str(l) for l in body["dub"]]
+        offered = [o["lang"] for o in doblaje.options(root, str(body.get("channel") or "")) if o.get("voice")]
+        skip = [l for l in offered if l not in ticked]         # one without a voice yet is dubbed once it has one
+        if skip:
+            with (folder / "config.yaml").open("a", encoding="utf-8") as f:
+                f.write(f"dub_skip: [{', '.join(skip)}]\n")
     return {"slug": name, "folder": str(folder.relative_to(root))}
 
 
@@ -1347,6 +1352,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     slug, lang = urllib.parse.unquote(match.group(1)), str(body.get("lang") or "")
                     if lang not in doblaje.NAMES:
                         raise ValueError("Idioma desconocido")
+                    if "on" in body:                       # «Doblar a …» / «No doblar a …»
+                        return self._ok(doblaje.choose(root, slug, lang, bool(body["on"])))
                     if "manual" in body:
                         return self._ok(doblaje.mark_manual(root, slug, lang, bool(body["manual"])))
                     if body.get("approve"):                # the adapted script checked: the voice can be read
