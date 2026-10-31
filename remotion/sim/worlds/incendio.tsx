@@ -6,6 +6,8 @@ import {AbsoluteFill} from 'remotion';
 import {C} from '../hud';
 import {addWords, tx, num} from '../i18n';
 import {Big, mulberry, Note, param, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   burned: {es: 'Superficie quemada', pt: 'Área queimada', fr: 'Surface brûlée', de: 'Verbrannte Fläche', en: 'Area burned'},
@@ -118,7 +120,7 @@ const Forest: FC<{cells: Uint8Array; flicker: number}> = ({cells, flicker}) => {
   return <canvas ref={ref} width={COLS * CELL} height={ROWS * CELL} style={{position: 'absolute', left: 0, top: 0}} />;
 };
 
-const View: FC<WorldProps> = ({g, worldT, move, o}) => {
+const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
   const [density, wind, breaks] = paramsOf(g);
   const run = fire(density, wind, breaks);
   const step = Math.floor((worldT - startOf(g)) * RATE);
@@ -156,6 +158,53 @@ const View: FC<WorldProps> = ({g, worldT, move, o}) => {
       <Note>{tx('fireNote', {d: Math.round(density * 100)})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  noBreaks: {es: 'Sin cortafuegos', pt: 'Sem aceiros', fr: 'Sans pare-feu', de: 'Ohne Brandschneisen', en: 'No firebreaks'},
+  withBreaks: {es: 'Con cortafuegos', pt: 'Com aceiros', fr: 'Avec pare-feu', de: 'Mit Brandschneisen', en: 'With firebreaks'},
+  noWind: {es: 'Sin viento', pt: 'Sem vento', fr: 'Sans vent', de: 'Windstill', en: 'No wind'},
+  strongWind: {es: 'Con viento fuerte', pt: 'Com vento forte', fr: 'Vent fort', de: 'Starker Wind', en: 'Strong wind'},
+  forestOf: {es: 'Bosque al {p} %', pt: 'Floresta a {p} %', fr: 'Forêt à {p} %', de: 'Wald zu {p} %', en: 'Forest {p} % full'},
+  burntShare: {es: 'Se quema', pt: 'Arde', fr: 'Brûle', de: 'Verbrennt', en: 'Burns'},
+  fireCurve: {es: 'Cuánto bosque se quema según lo denso que está', pt: 'Quanta floresta arde conforme a densidade', fr: 'Part de forêt brûlée selon la densité', de: 'Verbrannter Wald je nach Dichte', en: 'How much forest burns by how dense it is'},
+  density2: {es: 'densidad del bosque', pt: 'densidade da floresta', fr: 'densité de la forêt', de: 'Walddichte', en: 'forest density'},
+  tipping: {es: 'Punto de no retorno', pt: 'Ponto sem retorno', fr: 'Point de bascule', de: 'Kipppunkt', en: 'Tipping point'},
+});
+
+const pctBurnt = (d: number, col: number) => {
+  const rows = CURVES.fire as number[][];
+  const near = rows.reduce((a, b) => (Math.abs(b[0] - d) < Math.abs(a[0] - d) ? b : a));
+  return Math.round(near[col]);
+};
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  const scene = param<string>(g, 'scene', 'bosque');
+  const with_ = (extra: Record<string, number>) => ({...props, g: {...g, params: {...g.params, ...extra}}});
+  const fig = (label: string, v: number, good: boolean) => <Figure key={label + v} label={tx('burntShare')} value={`${v} %`} colour={good ? C.green : C.red} sub={label} />;
+  if (scene === 'cortafuegos') {
+    return <Split left={<Base {...with_({firebreaks: 0, density: 0.65, wind: 0.4})} />} right={<Base {...with_({firebreaks: 2, density: 0.65, wind: 0.4})} />}
+                  titles={[tx('noBreaks'), tx('withBreaks')]} figures={[fig('', pctBurnt(0.65, 1), false), fig('', pctBurnt(0.65, 2), true)]} />;
+  }
+  if (scene === 'viento') {
+    return <Split left={<Base {...with_({wind: 0, density: 0.58, firebreaks: 0})} />} right={<Base {...with_({wind: 0.4, density: 0.58, firebreaks: 0})} />}
+                  titles={[tx('noWind'), tx('strongWind')]} figures={[fig('', pctBurnt(0.58, 3), true), fig('', pctBurnt(0.58, 1), false)]} />;
+  }
+  if (scene === 'densidad') {
+    return <Split left={<Base {...with_({density: 0.55, wind: 0.4, firebreaks: 0})} />} right={<Base {...with_({density: 0.6, wind: 0.4, firebreaks: 0})} />}
+                  titles={[tx('forestOf', {p: 55}), tx('forestOf', {p: 60})]} figures={[fig('', pctBurnt(0.55, 1), true), fig('', pctBurnt(0.6, 1), false)]} />;
+  }
+  if (scene === 'umbral') {
+    const rows = CURVES.fire as number[][];
+    return (
+      <LineChart t={worldT} draw={3} x={[0.45, 0.8]} y={[0, 100]} title={tx('fireCurve')} xLabel={tx('density2')} yLabel={tx('burntShare')}
+                 xFmt={(v) => `${Math.round(v * 100)} %`} yFmt={(v) => `${v} %`} xTicks={[0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]} yTicks={[25, 50, 75, 100]}
+                 marker={{x: 0.57, label: tx('tipping')}}
+                 series={[{name: tx('noBreaks'), colour: C.red, pts: rows.map((r) => [r[0], r[1]] as [number, number])},
+                          {name: tx('withBreaks'), colour: C.green, pts: rows.map((r) => [r[0], r[2]] as [number, number])}]} />
+    );
+  }
+  return <Base {...props} />;
 };
 
 export const incendio: World = {View, ambient: 'kitchen'};

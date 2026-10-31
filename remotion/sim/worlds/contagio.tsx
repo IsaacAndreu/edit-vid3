@@ -7,6 +7,8 @@ import {epidemic, I, PEOPLE, R, S, stepAt, STEPS_PER_DAY, V, ZERO, ZERO_AT} from
 import {C, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {Note, param, Spark, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   healthy: {es: 'Sanos', pt: 'Saudáveis', fr: 'Sains', de: 'Gesund', en: 'Healthy'},
@@ -34,7 +36,7 @@ const paramsOf = (g: WorldProps['g']) => ({contagion: param(g, 'contagion', 0.5)
 
 const camera = (focus: string, zx: number, zy: number): Cam => (focus === 'close' ? {x: zx, y: zy, s: 7} : {x: 0, y: 0, s: 3.1});
 
-const View: FC<WorldProps> = ({g, worldT, move, o}) => {
+const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
   const e = epidemic(paramsOf(g));
   const hoax = param<string>(g, 'mode', 'virus') === 'bulo';
   const colour = hoax ? HOAX : COLOURS;
@@ -119,6 +121,57 @@ const sounds = (g: WorldProps['g'], length: number) => {
     before = now;
   }
   return {ticks};
+};
+
+addWords({
+  noMeasures: {es: 'Sin hacer nada', pt: 'Sem fazer nada', fr: 'Sans rien faire', de: 'Ohne Maßnahmen', en: 'Doing nothing'},
+  withQuarantine: {es: 'Los enfermos en casa', pt: 'Os doentes em casa', fr: 'Les malades à la maison', de: 'Kranke bleiben zu Hause', en: 'The sick stay home'},
+  vax50: {es: '50 % vacunados', pt: '50 % vacinados', fr: '50 % vaccinés', de: '50 % geimpft', en: '50 % vaccinated'},
+  vax70: {es: '70 % vacunados', pt: '70 % vacinados', fr: '70 % vaccinés', de: '70 % geimpft', en: '70 % vaccinated'},
+  sickEver: {es: 'Se contagian en total', pt: 'Infectam-se no total', fr: 'Contaminés au total', de: 'Insgesamt infiziert', en: 'Infected in all'},
+  flatten: {es: 'Contagiados a la vez, día a día', pt: 'Infectados ao mesmo tempo, dia a dia', fr: 'Malades en même temps, jour après jour', de: 'Gleichzeitig krank, Tag für Tag', en: 'Sick at the same time, day by day'},
+  hospital: {es: 'Camas del hospital', pt: 'Camas do hospital', fr: 'Lits d’hôpital', de: 'Krankenhausbetten', en: 'Hospital beds'},
+  days: {es: 'días', pt: 'dias', fr: 'jours', de: 'Tage', en: 'days'},
+  herd: {es: 'Inmunidad de grupo', pt: 'Imunidade de grupo', fr: 'Immunité collective', de: 'Herdenimmunität', en: 'Herd immunity'},
+  vaxCurve: {es: 'De los no vacunados, cuántos se contagian', pt: 'Dos não vacinados, quantos se infectam', fr: 'Parmi les non-vaccinés, combien sont touchés', de: 'Von den Ungeimpften, wie viele sich anstecken', en: 'Of the unvaccinated, how many catch it'},
+  vaxShare: {es: 'vacunados', pt: 'vacinados', fr: 'vaccinés', de: 'geimpft', en: 'vaccinated'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  const scene = param<string>(g, 'scene', 'barrio');
+  const epi = CURVES.epi as Record<string, number[]>;
+  const ever = (k: string) => epi[k].reduce((a, b) => a + b, 0) > 0 ? Math.max(...epi[k]) : 0;
+  const total = (p: Record<string, number>) => { const e = epidemic({contagion: 0.5, vaccinated: 0, quarantine: 0, ...p}); const c = e.counts[e.counts.length - 1]; return PEOPLE - c[S] - c[V]; };
+  if (scene === 'comparar') {
+    const vax = param<string>(g, 'que', 'cuarentena') === 'vacunas';
+    const other: Record<string, number> = vax ? {vaccinated: 0.7} : {quarantine: 1};
+    const with_ = (extra: Record<string, number>) => ({...props, g: {...g, params: {...g.params, contagion: 0.5, vaccinated: 0, quarantine: 0, ...extra}}});
+    return (
+      <Split left={<Base {...with_({})} />} right={<Base {...with_(other)} />} titles={[tx('noMeasures'), vax ? tx('vax70') : tx('withQuarantine')]}
+             figures={[<Figure key="a" label={tx('sickEver')} value={`${total({})} / ${PEOPLE}`} colour={C.red} />,
+                       <Figure key="b" label={tx('sickEver')} value={`${total(other)} / ${PEOPLE}`} colour={C.green} />]} />
+    );
+  }
+  if (scene === 'curva') {
+    const line = (k: string): [number, number][] => epi[k].map((v, d) => [d, v]);
+    return (
+      <LineChart t={worldT - (g.since - g.since)} draw={3} x={[0, 49]} y={[0, 330]} title={tx('flatten')} xLabel={tx('days')} yLabel={tx('infected')}
+                 xTicks={[0, 10, 20, 30, 40]} yTicks={[100, 200, 300]} hline={{y: 100, label: tx('hospital')}}
+                 series={[{name: tx('noMeasures'), colour: C.red, pts: line('none')}, {name: tx('vax50'), colour: '#f5b324', pts: line('v50')},
+                          {name: tx('withQuarantine'), colour: C.green, pts: line('q')}]} />
+    );
+  }
+  if (scene === 'vacunas') {
+    return (
+      <LineChart t={worldT} draw={3} x={[0, 0.9]} y={[0, 100]} title={tx('vaxCurve')} xLabel={tx('vaxShare')} yLabel="%"
+                 xFmt={(v) => `${Math.round(v * 100)} %`} yFmt={(v) => `${v} %`} xTicks={[0, 0.2, 0.4, 0.6, 0.8]} yTicks={[25, 50, 75, 100]}
+                 marker={{x: 0.75, label: tx('herd')}} series={[{name: tx('sickEver'), colour: C.red, pts: (CURVES.vax as [number, number][])}]} />
+    );
+  }
+  if (scene === 'bulo') return <Base {...props} g={{...g, params: {...g.params, mode: 'bulo'}}} />;
+  void ever;
+  return <Base {...props} />;
 };
 
 export const contagio: World = {View, sounds, ambient: 'murmur'};

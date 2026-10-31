@@ -6,6 +6,8 @@ import {AbsoluteFill} from 'remotion';
 import {C} from '../hud';
 import {addWords, tx} from '../i18n';
 import {Big, mulberry, Note, param, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   caught: {es: 'Gacelas cazadas', pt: 'Gazelas caçadas', fr: 'Gazelles attrapées', de: 'Gefangene Gazellen', en: 'Gazelles caught'},
@@ -193,7 +195,7 @@ const TREES = (() => {
   return Array.from({length: 26}, () => ({x: rnd() * W, y: rnd() * H, r: 18 + rnd() * 26}));
 })();
 
-const View: FC<WorldProps> = ({g, worldT, move, o}) => {
+const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
   const lions = Math.round(param(g, 'lions', 6));
   const herd = param(g, 'herd', 1);
   const h = hunt(lions, herd);
@@ -267,6 +269,50 @@ const sounds = (g: WorldProps['g'], length: number) => {
   const ticks: number[] = [];
   for (let f = f0 + 1; f < Math.min(FRAMES, f0 + length * 30); f++) if (h.caught[f] > h.caught[f - 1]) ticks.push((f - f0) / 30);
   return {ticks};
+};
+
+addWords({
+  inHerd: {es: 'En manada', pt: 'Em manada', fr: 'En troupeau', de: 'In der Herde', en: 'In a herd'},
+  alone2: {es: 'Cada una a lo suyo', pt: 'Cada uma por si', fr: 'Chacune pour soi', de: 'Jede für sich', en: 'Each on its own'},
+  caughtTotal: {es: 'Cazadas', pt: 'Caçadas', fr: 'Attrapées', de: 'Gefangen', en: 'Caught'},
+  huntCurve: {es: 'Gacelas cazadas según cuántos leones hay', pt: 'Gazelas caçadas conforme os leões', fr: 'Gazelles attrapées selon le nombre de lions', de: 'Gefangene Gazellen je nach Löwen', en: 'Gazelles caught by how many lions'},
+  lionsAxis: {es: 'leones', pt: 'leões', fr: 'lions', de: 'Löwen', en: 'lions'},
+  eyesCurve: {es: 'Probabilidad de ver al león a tiempo', pt: 'Probabilidade de ver o leão a tempo', fr: 'Chance de voir le lion à temps', de: 'Chance, den Löwen rechtzeitig zu sehen', en: 'Chance of spotting the lion in time'},
+  groupSize: {es: 'gacelas en el grupo', pt: 'gazelas no grupo', fr: 'gazelles dans le groupe', de: 'Gazellen in der Gruppe', en: 'gazelles in the group'},
+  eachLooks: {es: 'Cada una vigila el 10 % del tiempo', pt: 'Cada uma vigia 10 % do tempo', fr: 'Chacune guette 10 % du temps', de: 'Jede schaut 10 % der Zeit', en: 'Each one looks up 10 % of the time'},
+  riskCurve: {es: 'Riesgo de cada gacela si el león caza una', pt: 'Risco de cada gazela se o leão caçar uma', fr: 'Risque de chaque gazelle si le lion en prend une', de: 'Risiko jeder Gazelle, wenn der Löwe eine fängt', en: 'Each gazelle’s risk when the lion takes one'},
+  dilution: {es: 'Efecto dilución', pt: 'Efeito diluição', fr: 'Effet de dilution', de: 'Verdünnungseffekt', en: 'Dilution effect'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  const scene = param<string>(g, 'scene', 'caza');
+  const rows = CURVES.hunt as number[][];
+  const with_ = (extra: Record<string, number>) => ({...props, g: {...g, params: {...g.params, ...extra}}});
+  if (scene === 'comparar') {
+    const row = rows.find((r) => r[0] === 6)!;
+    return <Split left={<Base {...with_({herd: 1, lions: 6})} />} right={<Base {...with_({herd: 0, lions: 6})} />} titles={[tx('inHerd'), tx('alone2')]}
+                  figures={[<Figure key="a" label={tx('caughtTotal')} value={`${row[1]} / 150`} colour={C.green} />,
+                            <Figure key="b" label={tx('caughtTotal')} value={`${row[2]} / 150`} colour={C.red} />]} bg="#3b4a2a" />;
+  }
+  if (scene === 'curva') {
+    return <LineChart t={worldT} draw={3} x={[2, 12]} y={[0, 45]} title={tx('huntCurve')} xLabel={tx('lionsAxis')} yLabel={tx('caughtTotal')}
+                      xTicks={[2, 4, 6, 8, 10, 12]} yTicks={[10, 20, 30, 40]}
+                      series={[{name: tx('alone2'), colour: C.red, pts: rows.map((r) => [r[0], r[2]] as [number, number])},
+                               {name: tx('inHerd'), colour: C.green, pts: rows.map((r) => [r[0], r[1]] as [number, number])}]} />;
+  }
+  if (scene === 'ojos') {
+    const pts = Array.from({length: 30}, (_, k) => [k + 1, Math.round((1 - Math.pow(0.9, k + 1)) * 100)] as [number, number]);
+    return <LineChart t={worldT} draw={3} x={[1, 30]} y={[0, 100]} title={tx('eyesCurve')} xLabel={tx('groupSize')} yLabel="%" yFmt={(v) => `${v} %`}
+                      xTicks={[1, 5, 10, 15, 20, 25, 30]} yTicks={[25, 50, 75, 100]} hline={{y: 10, label: tx('eachLooks')}}
+                      series={[{name: tx('eyesCurve'), colour: C.green, pts}]} />;
+  }
+  if (scene === 'dilucion') {
+    const pts = Array.from({length: 30}, (_, k) => [k + 1, Math.round(100 / (k + 1))] as [number, number]);
+    return <LineChart t={worldT} draw={3} x={[1, 30]} y={[0, 100]} title={tx('riskCurve')} xLabel={tx('groupSize')} yLabel="%" yFmt={(v) => `${v} %`}
+                      xTicks={[1, 5, 10, 15, 20, 25, 30]} yTicks={[25, 50, 75, 100]} series={[{name: tx('dilution'), colour: C.red, pts}]} />;
+  }
+  return <Base {...props} />;
 };
 
 export const manada: World = {View, sounds, ambient: 'none'};

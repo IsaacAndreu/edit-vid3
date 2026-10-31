@@ -8,7 +8,17 @@ export type Vertical = {mode: 'halves'} | {mode: 'crop'; cx: number; cy: number;
 
 const scene = (g: SimGraphic, fallback: string) => String(g.params?.scene ?? fallback);
 
+// the scenes shared by many worlds: two runs side by side (one above the other) and the charts (the whole picture, smaller)
+const SPLITS = ['densidad', 'viento', 'cortafuegos', 'antes'];
+const CHARTS = ['curva', 'vacunas', 'umbral', 'ojos', 'dilucion', 'trafico', 'verde', 'pasan'];
+const SHARED = ['contagio', 'incendio', 'segregacion', 'manada', 'cruces', 'autovia'];
+
 export const verticalOf = (g: SimGraphic): Vertical => {
+  if (SHARED.includes(g.world)) {
+    const sc = scene(g, '');
+    if (SPLITS.includes(sc) || (sc === 'comparar' && g.world !== 'cruces' && g.world !== 'autovia')) return {mode: 'halves'};
+    if (CHARTS.includes(sc)) return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
+  }
   switch (g.world) {
     case 'carretera':
     case 'autovia':

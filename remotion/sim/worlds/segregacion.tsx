@@ -6,6 +6,8 @@ import {AbsoluteFill} from 'remotion';
 import {C, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {mulberry, Note, param, Spark, type World, type WorldProps} from '../world';
+import {Figure, LineChart, Split} from '../scenes';
+import CURVES from '../curves.json';
 
 addWords({
   sameNeighbours: {es: 'Vecinos iguales, de media', pt: 'Vizinhos iguais, em média', fr: 'Voisins semblables, en moyenne', de: 'Gleiche Nachbarn, im Schnitt', en: 'Like neighbours, on average'},
@@ -111,7 +113,7 @@ const Houses: FC<{grid: Uint8Array; sad: Uint8Array; mark: number}> = ({grid, sa
   return <canvas ref={ref} width={COLS * CELL} height={ROWS * CELL} style={{position: 'absolute', left: 0, top: 0}} />;
 };
 
-const View: FC<WorldProps> = ({g, worldT, o}) => {
+const Base: FC<WorldProps> = ({g, worldT, o}) => {
   const tolerance = param(g, 'tolerance', 0.35);
   const town = schelling(tolerance);
   const round = Math.max(0, Math.min(ROUNDS - 1, Math.floor(worldT * RATE) - 2));     // a second of the mixed town first
@@ -135,6 +137,45 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
       <Note>{tx('schellingNote', {t: Math.round(tolerance * 100)})}</Note>
     </AbsoluteFill>
   );
+};
+
+addWords({
+  wantsShare: {es: 'Quieren un {p} % de vecinos iguales', pt: 'Querem {p} % de vizinhos iguais', fr: 'Veulent {p} % de voisins semblables', de: 'Wollen {p} % gleiche Nachbarn', en: 'Want {p} % like neighbours'},
+  endsShare: {es: 'Acaban con', pt: 'Acabam com', fr: 'Finissent avec', de: 'Am Ende', en: 'End up with'},
+  before: {es: 'Al principio', pt: 'No início', fr: 'Au début', de: 'Am Anfang', en: 'At the start'},
+  after: {es: 'Después de mudarse', pt: 'Depois das mudanças', fr: 'Après les déménagements', de: 'Nach den Umzügen', en: 'After the moves'},
+  segCurve: {es: 'Lo que cada familia pide y lo que sale', pt: 'O que cada família pede e o que acontece', fr: 'Ce que chaque famille veut et ce qui arrive', de: 'Was jede Familie will und was herauskommt', en: 'What each family asks for and what comes out'},
+  asked: {es: 'vecinos iguales que piden', pt: 'vizinhos iguais pedidos', fr: 'voisins semblables voulus', de: 'gewünschte gleiche Nachbarn', en: 'like neighbours asked for'},
+  result: {es: 'Vecinos iguales al final', pt: 'Vizinhos iguais no fim', fr: 'Voisins semblables à la fin', de: 'Gleiche Nachbarn am Ende', en: 'Like neighbours in the end'},
+  diagonal: {es: 'Lo que piden', pt: 'O que pedem', fr: 'Ce qu’ils veulent', de: 'Was sie wollen', en: 'What they ask for'},
+});
+
+const View: FC<WorldProps> = (props) => {
+  const {g, worldT} = props;
+  const scene = param<string>(g, 'scene', 'barrio');
+  const tol = param(g, 'tolerance', 0.35);
+  const finalShare = (t: number) => Math.round((schelling(t).share[schelling(t).share.length - 1]) * 100);
+  const with_ = (extra: Record<string, number>, w?: number) => ({...props, worldT: w ?? props.worldT, g: {...g, params: {...g.params, ...extra}}});
+  if (scene === 'antes') {
+    return <Split left={<Base {...with_({}, 0)} />} right={<Base {...with_({}, 200)} />} titles={[tx('before'), tx('after')]}
+                  figures={[<Figure key="a" label={tx('sameNeighbours')} value={`${Math.round(schelling(tol).share[0] * 100)} %`} />,
+                            <Figure key="b" label={tx('sameNeighbours')} value={`${finalShare(tol)} %`} colour={C.red} sub={tx('wantsShare', {p: Math.round(tol * 100)})} />]} />;
+  }
+  if (scene === 'comparar') {
+    return <Split left={<Base {...with_({tolerance: 0.25})} />} right={<Base {...with_({tolerance: 0.5})} />}
+                  titles={[tx('wantsShare', {p: 25}), tx('wantsShare', {p: 50})]}
+                  figures={[<Figure key="a" label={tx('endsShare')} value={`${finalShare(0.25)} %`} colour={C.text} />,
+                            <Figure key="b" label={tx('endsShare')} value={`${finalShare(0.5)} %`} colour={C.red} />]} />;
+  }
+  if (scene === 'umbral') {
+    return (
+      <LineChart t={worldT} draw={3} x={[0.15, 0.75]} y={[0, 100]} title={tx('segCurve')} xLabel={tx('asked')} yLabel="%"
+                 xFmt={(v) => `${Math.round(v * 100)} %`} yFmt={(v) => `${v} %`} xTicks={[0.2, 0.3, 0.4, 0.5, 0.6, 0.7]} yTicks={[25, 50, 75, 100]}
+                 series={[{name: tx('result'), colour: C.red, pts: CURVES.seg as [number, number][]},
+                          {name: tx('diagonal'), colour: '#8fa0b8', pts: [[0.15, 15], [0.75, 75]]}]} />
+    );
+  }
+  return <Base {...props} />;
 };
 
 export const segregacion: World = {View, ambient: 'murmur'};

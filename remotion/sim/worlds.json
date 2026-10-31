@@ -1,7 +1,7 @@
 {
   "cruces": {
     "niche": "tráfico",
-    "describe": "SOLO para frases sobre cruces y rotondas (semáforos de un cruce, ceder el paso): un cruce con semáforos (izquierda) y una rotonda (derecha) con exactamente los mismos coches llegando",
+    "describe": "SOLO para frases sobre cruces y rotondas (semáforos de un cruce, ceder el paso): un cruce con semáforos (izquierda) y una rotonda (derecha) con exactamente los mismos coches llegando. Elige scene según la frase: comparar (el cruce con semáforos y la rotonda con los mismos coches, lado a lado) · trafico (la espera media según el tráfico: con poco tráfico la rotonda casi no hace esperar (0,5 s contra 7-8 s), con mucho ganan los semáforos (14 s contra 16 s y pasan 208 coches contra 159)) · verde (la espera en el semáforo según los segundos de verde: más verde, más espera: 6 s con 10 s de verde, 21 s con 60)",
     "focus": {
       "both": "pantalla partida",
       "left": "se amplía el semáforo",
@@ -17,6 +17,15 @@
       "paths": "flechas de las trayectorias: dónde se cruzan en el semáforo y cómo se incorporan en la rotonda"
     },
     "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "trafico",
+          "verde"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · trafico · verde"
+      },
       "demand": {
         "min": 0.05,
         "max": 0.3,
@@ -120,7 +129,7 @@
   },
   "autovia": {
     "niche": "tráfico",
-    "describe": "SOLO para frases sobre incorporarse cuando un carril se cierra (obras, «cremallera», incorporación temprana): una obra cierra un carril de autovía: arriba los conductores se incorporan pronto (una sola cola larga), abajo en cremallera (usan los dos carriles hasta el final y se alternan); los mismos coches",
+    "describe": "SOLO para frases sobre incorporarse cuando un carril se cierra (obras, «cremallera», incorporación temprana): una obra cierra un carril de autovía: arriba los conductores se incorporan pronto (una sola cola larga), abajo en cremallera (usan los dos carriles hasta el final y se alternan); los mismos coches. Elige scene según la frase: comparar (las dos formas de incorporarse lado a lado, con sus colas) · curva (el largo de la cola según el tráfico que llega: con cremallera, la mitad) · pasan (cuántos coches pasan la obra: con cremallera, más)",
     "focus": {
       "both": "las dos carreteras",
       "top": "se amplía la incorporación temprana",
@@ -132,6 +141,15 @@
       "results": "coches que han pasado y longitud de la cola"
     },
     "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "curva",
+          "pasan"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · curva · pasan"
+      },
       "demand": {
         "min": 0.3,
         "max": 0.8,
@@ -164,7 +182,7 @@
   },
   "contagio": {
     "niche": "epidemias y bulos",
-    "describe": "400 personas que van y vienen por un barrio visto desde arriba; una empieza contagiada (o creyéndose un bulo) y se transmite al cruzarse",
+    "describe": "400 personas que van y vienen por un barrio visto desde arriba; una empieza contagiada (o creyéndose un bulo) y se transmite al cruzarse. Elige scene según la frase: barrio (el barrio con la gente contagiándose al cruzarse, con sus contadores y la curva) · comparar (a la izquierda sin hacer nada, a la derecha que (que = cuarentena: los enfermos en casa; vacunas: 70 % vacunados): sin medidas se contagian 397 de 400, con cuarentena 2, con 70 % vacunados 48) · curva (aplanar la curva: contagiados a la vez día a día sin medidas, con 50 % vacunados y con cuarentena, con la línea de las camas del hospital) · vacunas (de los no vacunados, cuántos se contagian según cuánta gente está vacunada: 88 % con la mitad vacunada, 41 % con 70 %, casi nadie con 80 %: la inmunidad de grupo) · bulo (lo mismo con un bulo que la gente se cree y comparte)",
     "focus": {
       "town": "todo el barrio",
       "close": "de cerca, alrededor del paciente cero"
@@ -177,6 +195,17 @@
       "quarantine": "los contagiados se quedan en casa"
     },
     "params": {
+      "scene": {
+        "options": [
+          "barrio",
+          "comparar",
+          "curva",
+          "vacunas",
+          "bulo"
+        ],
+        "default": "barrio",
+        "describe": "qué escena: barrio · comparar · curva · vacunas · bulo"
+      },
       "contagion": {
         "min": 0.15,
         "max": 1.0,
@@ -218,6 +247,14 @@
         ],
         "default": "virus",
         "describe": "virus (contagiados) o bulo (gente que se lo cree)"
+      },
+      "que": {
+        "options": [
+          "cuarentena",
+          "vacunas"
+        ],
+        "default": "cuarentena",
+        "describe": "solo en comparar: lo que tiene el lado derecho"
       }
     }
   },
@@ -262,7 +299,7 @@
   },
   "incendio": {
     "niche": "desastres",
-    "describe": "un bosque visto desde arriba: empieza un fuego y se propaga de árbol en árbol con el viento",
+    "describe": "un bosque visto desde arriba: empieza un fuego y se propaga de árbol en árbol con el viento. Elige scene según la frase: bosque (el fuego propagándose desde que empieza) · umbral (cuánto bosque se quema según lo denso que está: por debajo del 55 % casi nada, por encima del 58 % casi todo; el punto de no retorno, la percolación) · densidad (lado a lado, bosque al 55 % y al 60 %: un 5 % más de árboles y se quema el 79 % en lugar del 1 %) · viento (sin viento y con viento fuerte, mismo bosque) · cortafuegos (sin y con cortafuegos: se quema el 94 % contra el 41 %; también limpiar el monte)",
     "focus": {
       "forest": "todo el bosque",
       "close": "de cerca, donde empieza"
@@ -273,6 +310,17 @@
       "firebreak": "marca los cortafuegos"
     },
     "params": {
+      "scene": {
+        "options": [
+          "bosque",
+          "umbral",
+          "densidad",
+          "viento",
+          "cortafuegos"
+        ],
+        "default": "bosque",
+        "describe": "qué escena: bosque · umbral · densidad · viento · cortafuegos"
+      },
       "density": {
         "min": 0.45,
         "max": 0.8,
@@ -313,7 +361,7 @@
   },
   "segregacion": {
     "niche": "sociedad",
-    "describe": "un barrio de casas de dos colores (modelo de Schelling): cada familia se muda si menos de cierta parte de sus vecinos son como ella",
+    "describe": "un barrio de casas de dos colores (modelo de Schelling): cada familia se muda si menos de cierta parte de sus vecinos son como ella. Elige scene según la frase: barrio (las familias mudándose ronda a ronda hasta separarse) · antes (el barrio mezclado al principio y el mismo después de las mudanzas) · comparar (familias que quieren un 25 % de vecinos iguales contra un 50 %: acaban con un 62 % y un 89 %) · umbral (lo que cada familia pide contra lo que sale: pidiendo un 30 % el barrio acaba con un 76 % de vecinos iguales; nadie quiere separarse y se separa)",
     "focus": {
       "town": "todo el barrio"
     },
@@ -322,6 +370,16 @@
       "share": "porcentaje medio de vecinos iguales"
     },
     "params": {
+      "scene": {
+        "options": [
+          "barrio",
+          "antes",
+          "comparar",
+          "umbral"
+        ],
+        "default": "barrio",
+        "describe": "qué escena: barrio · antes · comparar · umbral"
+      },
       "tolerance": {
         "min": 0.2,
         "max": 0.75,
@@ -484,7 +542,7 @@
   },
   "manada": {
     "niche": "animales",
-    "describe": "una sabana vista desde arriba: gacelas y leones; las gacelas en manada o dispersas, los leones persiguen a la más cercana",
+    "describe": "una sabana vista desde arriba: gacelas y leones; las gacelas en manada o dispersas, los leones persiguen a la más cercana. Elige scene según la frase: caza (los leones persiguiendo a las gacelas) · comparar (las mismas gacelas en manada contra cada una a lo suyo, 6 leones: cazan 8 contra 25 de 150) · curva (gacelas cazadas según cuántos leones hay, en manada y solas) · ojos (muchos ojos: la probabilidad de ver al león a tiempo según cuántas gacelas hay, si cada una vigila el 10 % del tiempo) · dilucion (el riesgo de cada gacela si el león caza una: 1 de cada N; el efecto dilución)",
     "focus": {
       "savanna": "toda la sabana",
       "close": "de cerca, una persecución"
@@ -494,6 +552,17 @@
       "herd": "marca la manada"
     },
     "params": {
+      "scene": {
+        "options": [
+          "caza",
+          "comparar",
+          "curva",
+          "ojos",
+          "dilucion"
+        ],
+        "default": "caza",
+        "describe": "qué escena: caza · comparar · curva · ojos · dilucion"
+      },
       "lions": {
         "min": 2,
         "max": 12,
