@@ -11,7 +11,8 @@
 //            a light on the ramp lets one in at a time and the road keeps moving (panel: cars an hour, stopped)
 import type {FC, ReactElement} from 'react';
 import {AbsoluteFill} from 'remotion';
-import {Car} from '../city';
+import {Car, CITY} from '../city';
+import {Fields, Roadside} from '../scenery';
 import {paint, Pointers, trail, type Anchor} from '../look';
 import {C, FONT, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
@@ -53,7 +54,6 @@ addWords({
   platoonNote: {es: 'Simulación · cada conductor reacciona {r} s tarde', pt: 'Simulação · cada condutor reage {r} s atrasado', fr: 'Simulation · chaque conducteur réagit avec {r} s de retard', de: 'Simulation · jeder reagiert {r} s zu spät', en: 'Simulation · every driver reacts {r} s late'},
 });
 
-const FIELD = '#1d2a22';
 const ROAD_Y = 560;
 const LANE = 38;
 
@@ -68,8 +68,8 @@ const Asphalt: FC<{lanes: number; y?: number; appear?: number}> = ({lanes, y = R
         <line key={k} x1={0} x2={1920} y1={top + (k + 1) * LANE} y2={top + (k + 1) * LANE} stroke="rgba(255,255,255,0.45)"
               strokeWidth={2.5} strokeDasharray="26 26" opacity={k === lanes - 2 ? appear : 1} />
       ))}
-      <line x1={0} x2={1920} y1={top} y2={top} stroke="rgba(255,255,255,0.7)" strokeWidth={2.5} />
-      <line x1={0} x2={1920} y1={top + lanes * LANE} y2={top + lanes * LANE} stroke="rgba(255,255,255,0.7)" strokeWidth={2.5} />
+      <line x1={0} x2={1920} y1={top + 3} y2={top + 3} stroke="rgba(255,255,255,0.8)" strokeWidth={3} />
+      <line x1={0} x2={1920} y1={top + lanes * LANE - 3} y2={top + lanes * LANE - 3} stroke="rgba(255,255,255,0.8)" strokeWidth={3} />
     </g>
   );
 };
@@ -149,6 +149,8 @@ const Platoon: FC<{g: WorldProps['g']; t: number; o: WorldProps['o']; on: number
   return (
     <svg width={1920} height={1080} style={{position: 'absolute'}}>
       <Defs />
+      <Fields x0={x0} m={m} />
+      <Roadside y={ROAD_Y} half={LANE / 2 + 6} x0={x0} m={m} seed="p" />
       <Asphalt lanes={1} />
       {Array.from(f.x).map((x, i) => (
         <g key={i}>
@@ -215,6 +217,7 @@ const RampRoad: FC<{metered: boolean; simT: number; y: number; o: WorldProps['o'
     <g>
       <path d={`M${start.x - ux * 400},${start.y - uy * 400} L${end.x + ux * 40},${end.y + uy * 40}`} stroke="#3a3e45" strokeWidth={LANE + 10} />
       <path d={`M${start.x - ux * 400},${start.y - uy * 400} L${end.x + ux * 40},${end.y + uy * 40}`} stroke="#2b2e34" strokeWidth={LANE - 2} />
+      <Roadside y={y} half={LANE / 2 + 6} x0={x0} m={m} seed={metered ? 'm' : 'f'} />
       <Asphalt lanes={1} y={y} />
       {Array.from({length: waiting}, (_, k) => {
         const d = 40 + k * 26;
@@ -245,7 +248,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
     const cue = g.cues?.brake;
     const t = cue === undefined ? worldT : PLATOON.brakeFrom - 0.6 + (g.at + local - cue);
     return (
-      <AbsoluteFill style={{background: `radial-gradient(ellipse at center, #26352b 0%, ${FIELD} 70%)`}}>
+      <AbsoluteFill style={{background: CITY.ground}}>
         <Platoon g={g} t={Math.max(0, Math.min(PLATOON.span, t))} o={o} on={on} />
         <Pointers marks={g.marks} local={real} at={platoonAnchors(Math.max(0, Math.min(PLATOON.span, t)))} />
         <Note>{tx('platoonNote', {r: PLATOON.react})}</Note>
@@ -257,7 +260,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
     const free = flowOf(false);
     const metered = flowOf(true);
     return (
-      <AbsoluteFill style={{background: `radial-gradient(ellipse at center, #26352b 0%, ${FIELD} 70%)`}}>
+      <AbsoluteFill style={{background: CITY.ground}}>
         <svg width={1920} height={1080} style={{position: 'absolute'}}>
           <Defs />
           <RampRoad metered={false} simT={t} y={300} o={o} />
@@ -410,9 +413,11 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
 
   const appear = Math.min(1, worldT / 1.5);
   return (
-    <AbsoluteFill style={{background: `radial-gradient(ellipse at center, #26352b 0%, ${FIELD} 70%)`}}>
+    <AbsoluteFill style={{background: CITY.ground}}>
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
         <Defs />
+        <Fields x0={x0} m={m} />
+        <Roadside y={ROAD_Y} half={(lanes * LANE) / 2 + 6} x0={x0} m={m} />
         <Asphalt lanes={lanes} appear={scene === 'carriles' ? appear : 1} />
         <Traffic f={f} L={L} x0={x0} span={span} y={yOf(0)} marks={follow ? {[you]: C.you} : {}} />
         {lanes >= 2 && <Traffic f={road('normal', 19).at(simT)} L={L} x0={x0} span={span} y={yOf(1)} />}

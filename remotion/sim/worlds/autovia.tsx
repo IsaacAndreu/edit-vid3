@@ -5,6 +5,7 @@ import type {FC} from 'react';
 import {AbsoluteFill} from 'remotion';
 import {Car, CITY} from '../city';
 import {paint, Pointers, trail} from '../look';
+import {Roadside} from '../scenery';
 import {C, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {Big, mulberry, Note, param, SideTitle, type World, type WorldProps} from '../world';
@@ -146,7 +147,7 @@ const Highway: FC<{s: Snap; top: number; scale: number; mark: number}> = ({s, to
   const q = queue(s);
   return (
     <g>
-      <rect x={0} y={top - lane * 1.4} width={1920} height={lane * 2.8} fill={CITY.grass} />
+      <Roadside y={top} half={lane + 4} x0={VIEW[0]} m={m} seed={`h${top > 540 ? 1 : 0}`} />
       <rect x={0} y={top - lane} width={px(CLOSE + 25)} height={lane * 2} fill={CITY.road} />
       <rect x={px(CLOSE + 25)} y={top - lane} width={1920} height={lane} fill={CITY.road} />
       <line x1={0} y1={top} x2={px(CLOSE)} y2={top} stroke="#f2f2f2" strokeWidth={3} strokeDasharray="22 22" />

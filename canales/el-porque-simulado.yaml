@@ -9,7 +9,7 @@
 visual:
   style: simulacion
   worlds: [anillo, carretera, autovia, cruces, colas, embarque, contagio, red, incendio, segregacion, manada]
-  theme: dark                      # un solo aspecto en todos los vídeos: fondo oscuro (día, noche o sepia por vídeo si hace falta)
+  theme: day                       # un solo aspecto en todos los vídeos, reconocible: de día (hierba, casas, árboles); dark, night o sepia si un vídeo lo pide
   # La guía del canal: cómo se convierte un guion en escenas (la lee la IA que elige cada escena). Para un vídeo
   # concreto, una lista de escenas propia va en materiales/<vídeo>/escenas.txt (o en «Nuevo vídeo»): manda sobre esto.
   guide: |
