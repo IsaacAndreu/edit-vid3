@@ -10,7 +10,8 @@ import {embarque} from './worlds/embarque';
 import {incendio} from './worlds/incendio';
 import {inundacion} from './worlds/inundacion';
 import {manada} from './worlds/manada';
+import {multitud} from './worlds/multitud';
 import {red} from './worlds/red';
 import {segregacion} from './worlds/segregacion';
 
-export const WORLDS: Record<string, World> = {cruces, anillo, autovia, carretera, contagio, red, incendio, inundacion, segregacion, colas, embarque, manada};
+export const WORLDS: Record<string, World> = {cruces, anillo, autovia, carretera, contagio, red, incendio, inundacion, segregacion, colas, embarque, multitud, manada};

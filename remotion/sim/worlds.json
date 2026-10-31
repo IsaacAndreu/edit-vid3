@@ -564,5 +564,36 @@
     "panels": [
       "panel"
     ]
+  },
+  "multitud": {
+    "niche": "multitudes",
+    "describe": "multitudes vistas desde arriba (modelo de fuerzas sociales, Helbing 2000): cada persona solo quiere llegar a su sitio, guarda distancia y empuja cuando toca a otra; los cuerpos apretados se ven en rojo. Elige scene: evacuacion (una sala se vacía por una puerta: se forma un arco delante; evacuaciones, conciertos, estadios, metro) · columna (la misma gente con prisa en la misma puerta, sin y con una columna delante: con columna el último sale antes, se rompe el arco) · prisa (con calma frente a con prisa: con prisa la gente se aplasta contra la puerta, aplastamientos y estampidas) · pasillo (un pasillo con gente en las dos direcciones: se forman carriles solos, nadie los organiza)",
+    "focus": {
+      "space": "el espacio"
+    },
+    "overlay": {
+      "panel": "el panel de la escena (han salido, el último sale a los, aplastados, carriles)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "evacuacion",
+          "columna",
+          "prisa",
+          "pasillo"
+        ],
+        "default": "evacuacion",
+        "describe": "qué escena: evacuacion · columna · prisa · pasillo"
+      }
+    },
+    "marks": {
+      "door": [
+        "la puerta",
+        "la salida"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
   }
 }
