@@ -176,3 +176,10 @@ def test_the_grid_world_has_its_scenes_and_follows_the_language():
     assert set(w["params"]["scene"]["options"]) == {"cascada", "reparto", "combado", "frecuencia", "inercia", "arena", "arranque", "isla"}
     assert w["params"]["pais"]["default"] == "auto" and {"iberia", "alemania", "brasil", "eeuu"} <= set(w["params"]["pais"]["options"])
     assert "apagon" in simulacion.worlds()["red"]["describe"]                            # the old map sends the LLM here
+
+
+def test_the_boarding_world_has_a_scene_for_each_part_of_the_script():
+    w = simulacion.worlds()["embarque"]
+    assert set(w["params"]["scene"]["options"]) == {"comparar", "carrera", "experimento", "pasillo", "asientos", "bloques", "maletas", "puerta"}
+    assert 0.0 in w["params"]["maletas"]["options"]                                    # rule three switched off
+    assert simulacion.clean({"world": "embarque", "params": {"method": "steffen"}}, "x", None)["params"]["method"] == "steffen"

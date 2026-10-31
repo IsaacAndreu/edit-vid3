@@ -419,27 +419,68 @@
   },
   "embarque": {
     "niche": "colas y multitudes",
-    "describe": "dos aviones embarcando a la vez vistos desde arriba: arriba de atrás hacia delante (lo habitual), abajo con el método indicado",
+    "describe": "el embarque de un avión visto desde arriba: la cabina abierta con sus asientos 3+3, el pasillo de un solo carril, los compartimentos de cada fila que se llenan de maletas, y los pasajeros entrando por la pasarela; el que se para a guardar la maleta lleva un anillo rojo y los que esperan detrás se ponen rojizos. Calibrado con el experimento de Steffen (2011): por bloques ≈ 7 min, Steffen ≈ 3,5 min. Elige scene según la frase: comparar (arriba de atrás hacia delante por bloques, abajo method; el mismo avión y la misma gente) · carrera (todos los métodos a la vez, un avión cada uno: bloques ~13:30, al azar ~11 min, ventanilla-centro-pasillo ~9:20, Steffen ~6 min, sin maletas ~5:40, con 180 pasajeros) · experimento (la réplica de 2011: 72 personas, 12 filas, bloques contra Steffen con cronómetro y los tiempos reales 6:54 y 3:36) · pasillo (primer plano del pasillo: uno guarda la maleta y toda la fila de detrás se para; cuántos están parados) · asientos (primer plano de una fila: llega tarde el de la ventanilla y se levantan el del pasillo y el del centro; al lado, entrando primero el de la ventanilla) · bloques (de atrás hacia delante: todos se paran en el mismo trozo del avión y el resto del pasillo está vacío; barras de dónde se para la gente; Bachmat) · maletas (maletas = cuánta gente lleva maleta de mano: los compartimentos se llenan y los últimos buscan hueco; con el dial de 0.3 a 0.9 el embarque pasa de fluir a atascarse) · puerta (hacer cola de pie antes de tiempo contra esperar sentado: minutos de pie y cuándo llega cada uno a su asiento)",
     "focus": {
-      "both": "los dos aviones",
-      "top": "se amplía el de atrás hacia delante",
-      "bottom": "se amplía el del otro método"
+      "plane": "el avión"
     },
     "overlay": {
-      "timer": "tiempo de embarque de cada avión",
-      "blocked": "pasajeros bloqueando el pasillo mientras guardan la maleta"
+      "panel": "el panel de la escena (tiempo de embarque, parados en el pasillo, compartimentos llenos…)",
+      "timer": "los cronómetros"
     },
     "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "carrera",
+          "experimento",
+          "pasillo",
+          "asientos",
+          "bloques",
+          "maletas",
+          "puerta"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · carrera · experimento · pasillo · asientos · bloques · maletas · puerta"
+      },
       "method": {
         "options": [
-          "random",
           "steffen",
-          "window"
+          "window",
+          "random",
+          "sinmaletas"
         ],
         "default": "steffen",
-        "describe": "random (sin orden), steffen (filas alternas, ventanilla primero), window (ventanilla, luego pasillo)"
+        "describe": "solo en comparar: el método del avión de abajo: steffen · window (ventanilla, centro, pasillo) · random (al azar) · sinmaletas (por bloques pero sin maletas de mano)"
+      },
+      "maletas": {
+        "options": [
+          0.0,
+          0.3,
+          0.6,
+          0.85,
+          0.95
+        ],
+        "default": 0.85,
+        "describe": "cuánta gente lleva maleta de mano (0 = nadie: la regla tres quitada)",
+        "label": {
+          "es": "con maleta de mano",
+          "en": "with a carry-on",
+          "pt": "com bagagem de mão",
+          "de": "mit Handgepäck"
+        },
+        "percent": true
       }
-    }
+    },
+    "marks": {
+      "bag": [
+        "su maleta",
+        "guardar la maleta",
+        "la maleta"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
   },
   "manada": {
     "niche": "animales",
