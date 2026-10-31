@@ -80,61 +80,137 @@ const layout = (f: ShopFrame, tills: number, left: number, width: number, single
   const cx = left + width / 2;
   const gap = Math.min(200, (width - 120) / tills);
   const tillX = (i: number) => cx + (i - (tills - 1) / 2) * gap;
-  const TILL_Y = 330;
+  const TILL_Y = 380;
   const spots: Spot[] = [];
-  f.paying.forEach((id, i) => id >= 0 && spots.push({id, x: tillX(i), y: TILL_Y + 40, paying: true}));
+  f.paying.forEach((id, i) => id >= 0 && spots.push({id, x: tillX(i), y: TILL_Y - 30, paying: true}));
   if (single) {
     f.lines[0].forEach((id, slot) => {
       const row = Math.floor(slot / 7);
       const col = slot % 7;
-      spots.push({id, x: cx + ((row % 2 ? 6 - col : col) - 3) * 62, y: TILL_Y + 190 + row * 70, paying: false});
+      spots.push({id, x: cx + ((row % 2 ? 6 - col : col) - 3) * 62, y: TILL_Y + 230 + row * 92, paying: false});
     });
   } else {
-    f.lines.forEach((line, i) => line.forEach((id, slot) => spots.push({id, x: tillX(i), y: TILL_Y + 112 + slot * 62, paying: false})));
+    f.lines.forEach((line, i) => line.forEach((id, slot) => spots.push({id, x: tillX(i), y: TILL_Y + 110 + slot * 92, paying: false})));
   }
   return {spots, tillX, TILL_Y, cx};
+};
+
+// a supermarket as people know it, flat: tiled floor, shelves full of products, checkouts with their belt, cashier and
+// bagging end; people from above (hair, shoulders) in quiet colours — the colour code stays for what matters: the
+// customer holding a till up gets a red ring, YOU are yellow
+const PRODUCTS = ['#d9534f', '#f0ad4e', '#5cb85c', '#5bc0de', '#e8e4dc', '#9b59b6', '#f7dc6f', '#e67e22', '#3498db', '#c0392b'];
+const SHIRTS = ['#8d99ae', '#adb5bd', '#6c7a89', '#a3917b', '#7f8c8d', '#b0a8b9', '#8a9a8c', '#9fa8b3'];
+const HAIR = ['#2b2118', '#4a3426', '#1d1d1f', '#8a6a46', '#c9b28a', '#5b5b5b'];
+
+export const Shopper: FC<{x: number; y: number; id: number; items: number; you?: boolean; slow?: boolean; paying?: boolean; scale?: number}> = (
+  {x, y, id, items, you = false, slow = false, paying = false, scale = 1}) => {
+  const k = scale;
+  const cart = items > 10;
+  const shirt = you ? C.you : SHIRTS[id % SHIRTS.length];
+  return (
+    <g transform={`translate(${x} ${y}) scale(${k})`}>
+      {!paying && (cart ? (
+        // a wire trolley ahead of them, its load showing
+        <g transform="translate(0 -68)">
+          <rect x={-17} y={-4} width={34} height={44} rx={4} fill="rgba(210,215,222,0.18)" stroke="#c3c9d2" strokeWidth={2} />
+          {[8, 18, 28].map((yy) => <line key={yy} x1={-17} x2={17} y1={yy} y2={yy} stroke="#c3c9d2" strokeWidth={1} opacity={0.6} />)}
+          {Array.from({length: Math.min(9, Math.ceil(items / 5))}, (_, j) => (
+            <rect key={j} x={-13 + (j % 3) * 9} y={36 - Math.floor(j / 3) * 11 - 8} width={8} height={9} rx={1.5} fill={PRODUCTS[(id + j) % PRODUCTS.length]} />
+          ))}
+        </g>
+      ) : (
+        // a red basket in hand
+        <g transform="translate(20 6)">
+          <rect x={-9} y={-7} width={18} height={14} rx={3} fill="#c0392b" stroke="#8e2a20" strokeWidth={1.5} />
+          {Array.from({length: Math.min(3, items)}, (_, j) => <rect key={j} x={-6 + j * 4} y={-4} width={4} height={6} fill={PRODUCTS[(id + j) % PRODUCTS.length]} />)}
+        </g>
+      ))}
+      {slow && paying && <circle r={34} fill="none" stroke={C.red} strokeWidth={4} opacity={0.9} />}
+      {you && <circle r={30} fill="none" stroke={C.you} strokeWidth={4} />}
+      <ellipse cx={0} cy={2} rx={19} ry={12} fill={shirt} stroke="rgba(0,0,0,0.35)" strokeWidth={2} />
+      <circle cx={0} cy={0} r={9.5} fill={HAIR[id % HAIR.length]} />
+      <circle cx={0} cy={3} r={6} fill="#e8c4a0" />
+    </g>
+  );
 };
 
 const Store: FC<{run: ShopRun; f: ShopFrame; left: number; width: number; single: boolean; look?: Look}> = (
   {run, f, left, width, single, look = {}}) => {
   const byId = new Map(run.people.map((p) => [p.id, p]));
   const {spots, tillX, TILL_Y, cx} = layout(f, run.tills, left, width, single);
+  const tile = 56;
   return (
     <svg width={1920} height={1080} style={{position: 'absolute', clipPath: `inset(0 ${1920 - left - width}px 0 ${left}px)`}}>
-      <rect x={left} y={0} width={width} height={1080} fill="#232934" />
-      {Array.from({length: 42}, (_, i) => <line key={i} x1={left + i * 48} y1={0} x2={left + i * 48} y2={1080} stroke="rgba(255,255,255,0.03)" />)}
-      {Array.from({length: 3}, (_, i) => (
-        <rect key={`s${i}`} x={left + 60} y={150 + i * 34} width={width - 120} height={18} rx={4} fill="#3a414e" />
+      {/* the floor */}
+      <rect x={left} y={0} width={width} height={1080} fill="#3b4048" />
+      {Array.from({length: Math.ceil(width / tile) + 1}, (_, i) => (
+        <line key={`fx${i}`} x1={left + i * tile} y1={0} x2={left + i * tile} y2={1080} stroke="rgba(255,255,255,0.05)" />
       ))}
-      {Array.from({length: run.tills}, (_, i) => (
-        <g key={`t${i}`}>
-          <rect x={tillX(i) - 50} y={TILL_Y - 34} width={100} height={48} rx={6} fill="#56606f" />
-          <rect x={tillX(i) - 40} y={TILL_Y - 25} width={60} height={30} rx={3} fill="#353b46" />
-          <circle cx={tillX(i) + 32} cy={TILL_Y - 10} r={9} fill={f.paying[i] >= 0 ? C.green : '#4a515d'} />
-          {look.expressTill && i === 0 && (
-            <text x={tillX(i)} y={TILL_Y - 48} textAnchor="middle" fill={C.accent} fontFamily={FONT} fontSize={22} fontWeight={800}>{tx('express')}</text>
-          )}
+      {Array.from({length: 20}, (_, i) => <line key={`fy${i}`} x1={left} y1={i * tile} x2={left + width} y2={i * tile} stroke="rgba(255,255,255,0.05)" />)}
+      {/* the shelves behind the tills */}
+      {[0].map((row) => (
+        <g key={`row${row}`}>
+          <rect x={left + 40} y={118 + row * 78} width={width - 80} height={44} rx={4} fill="#5d646f" />
+          {Array.from({length: Math.floor((width - 96) / 13)}, (_, j) => (
+            <rect key={j} x={left + 48 + j * 13} y={124 + row * 78 + ((j * 7 + row * 3) % 3) * 2} width={10} height={14 + ((j * 5 + row) % 3) * 4} rx={1.5}
+                  fill={PRODUCTS[(j * 3 + row * 5) % PRODUCTS.length]} opacity={0.85} />
+          ))}
+          {Array.from({length: Math.floor((width - 96) / 13)}, (_, j) => (
+            <rect key={`b${j}`} x={left + 48 + j * 13} y={146 + row * 78} width={10} height={10} rx={1.5}
+                  fill={PRODUCTS[(j * 7 + row * 2 + 4) % PRODUCTS.length]} opacity={0.75} />
+          ))}
         </g>
       ))}
-      {single && <rect x={cx - 230} y={TILL_Y + 150} width={460} height={5} rx={3} fill="#c9ccd2" opacity={0.25} />}
+      {/* the checkouts: belt, register, cashier, the lane number */}
+      {Array.from({length: run.tills}, (_, i) => {
+        const x = tillX(i) + 44;
+        const busy = f.paying[i] >= 0;
+        const payer = busy ? byId.get(f.paying[i]) : undefined;
+        const onBelt = payer ? Math.max(0, Math.min(8, Math.ceil((f.left[i] / Math.max(1, payer.service)) * Math.min(8, payer.items / 3 + 1)))) : 0;
+        const shift = (f.t * 18) % 16;
+        return (
+          <g key={`t${i}`}>
+            <rect x={x - 20} y={TILL_Y - 110} width={40} height={150} rx={6} fill="#7a828e" />
+            <rect x={x - 14} y={TILL_Y - 104} width={28} height={110} rx={3} fill="#22262d" />
+            {busy && Array.from({length: 7}, (_, j) => (
+              <line key={j} x1={x - 14} x2={x + 14} y1={TILL_Y - 100 + ((j * 16 + shift) % 110)} y2={TILL_Y - 100 + ((j * 16 + shift) % 110)} stroke="rgba(255,255,255,0.08)" />
+            ))}
+            {Array.from({length: onBelt}, (_, j) => (
+              <rect key={`it${j}`} x={x - 8 + (j % 2) * 4} y={TILL_Y - 2 - j * 12} width={12} height={10} rx={2} fill={PRODUCTS[(f.paying[i] + j) % PRODUCTS.length]} />
+            ))}
+            <rect x={x - 22} y={TILL_Y - 150} width={44} height={34} rx={5} fill="#4c535e" />
+            <rect x={x - 14} y={TILL_Y - 144} width={20} height={14} rx={2} fill={busy ? '#9fe3c0' : '#3a3f47'} />
+            <g transform={`translate(${x + 44} ${TILL_Y - 132})`}>
+              <ellipse cx={0} cy={2} rx={17} ry={11} fill="#2f6f9f" stroke="rgba(0,0,0,0.35)" strokeWidth={2} />
+              <circle cx={0} cy={0} r={9} fill={HAIR[(i + 2) % HAIR.length]} />
+              <circle cx={0} cy={3} r={5.5} fill="#e8c4a0" />
+            </g>
+            <rect x={x + 26} y={TILL_Y - 186} width={34} height={26} rx={5} fill={busy ? C.green : '#4c535e'} />
+            <text x={x + 43} y={TILL_Y - 166} textAnchor="middle" fill="#0b1020" fontFamily={FONT} fontSize={20} fontWeight={800}>{i + 1}</text>
+            {look.expressTill && i === 0 && (
+              <text x={x - 60} y={TILL_Y - 166} textAnchor="middle" fill={C.text} fontFamily={FONT} fontSize={24} fontWeight={800}>{tx('express')}</text>
+            )}
+          </g>
+        );
+      })}
+      {single && Array.from({length: 4}, (_, r) => (
+        // the belt barriers of a single line: posts and their tape
+        <g key={`bar${r}`}>
+          <line x1={cx - 230} x2={cx + 230} y1={TILL_Y + 140 + r * 92} y2={TILL_Y + 140 + r * 92} stroke="#c9b458" strokeWidth={3} opacity={0.6}
+                strokeDasharray={r % 2 ? '0 40 420' : '420 40'} />
+          {[-230, 0, 230].map((dx) => <circle key={dx} cx={cx + dx} cy={TILL_Y + 140 + r * 92} r={6} fill="#9aa3ad" />)}
+        </g>
+      ))}
       {look.ghost && (
-        <g opacity={0.55}>
-          <circle cx={look.ghost[0]} cy={look.ghost[1] - 8} r={19} fill="none" stroke={C.you} strokeWidth={3} strokeDasharray="6 5" />
-        </g>
+        <circle cx={look.ghost[0]} cy={look.ghost[1] - 8} r={24} fill="none" stroke={C.you} strokeWidth={3} strokeDasharray="6 5" opacity={0.7} />
       )}
       {spots.map(({id, x, y, paying}) => {
         const p = byId.get(id)!;
-        const cart = Math.min(1, p.items / 40);
-        const shirt = ['#e5484d', '#5b8def', '#30a46c', '#f5a623', '#8e7cf8', '#3dd6d0', '#e8e4dc', '#ff7ac6'][id % 8];
         const you = look.you === id;
         return (
           <g key={id}>
-            {!paying && <rect x={x - 12 - cart * 10} y={y + 10} width={24 + cart * 20} height={14 + cart * 14} rx={4}
-                              fill={p.items > 10 ? '#8f98a3' : '#b8864a'} stroke="#c9ccd2" strokeWidth={1.5} opacity={0.9} />}
-            <circle cx={x} cy={y - 8} r={18} fill={shirt} stroke={you ? C.you : '#12161f'} strokeWidth={you ? 5 : 3} />
-            <circle cx={x} cy={y - 8} r={7} fill="#f1d3b5" />
-            {p.slow && look.slowMark !== false && <circle cx={x + 22} cy={y - 26} r={7} fill="#ffd23f" />}
-            {you && <text x={x} y={y - 38} textAnchor="middle" fill={C.you} fontFamily={FONT} fontSize={26} fontWeight={800}>{tx('youWord').toUpperCase()}</text>}
+            <Shopper x={x} y={y - 8} id={id} items={p.items} you={you} slow={p.slow && look.slowMark === true} paying={paying} />
+            {you && <text x={x} y={y - 46} textAnchor="middle" fill={C.you} fontFamily={FONT} fontSize={28} fontWeight={800}>{tx('youWord').toUpperCase()}</text>}
           </g>
         );
       })}
@@ -238,17 +314,9 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
     const drawLine = (list: number[], x: number, done: number, total: number, label: string, colour: string) => (
       <g>
         <rect x={x - 60} y={260} width={120} height={56} rx={8} fill="#56606f" />
-        {list.slice(done).map((items, k) => {
-          const y = 360 + k * 110;
-          const cart = Math.min(1, items / 30);
-          return (
-            <g key={k}>
-              <rect x={x - 18 - cart * 22} y={y + 14} width={36 + cart * 44} height={20 + cart * 34} rx={6} fill={items > 10 ? '#8f98a3' : '#b8864a'} stroke="#c9ccd2" strokeWidth={2} />
-              <circle cx={x} cy={y} r={26} fill={['#5b8def', '#e5484d', '#30a46c', '#8e7cf8', '#3dd6d0'][k % 5]} stroke="#12161f" strokeWidth={3} />
-              <circle cx={x} cy={y} r={10} fill="#f1d3b5" />
-            </g>
-          );
-        })}
+        {list.slice(done).map((items, k) => (
+          <Shopper key={k} x={x} y={450 + k * 118} id={k + (x > 900 ? 3 : 0)} items={items} scale={1.6} />
+        ))}
         <text x={x} y={200} textAnchor="middle" fill={colour} fontFamily={FONT} fontSize={34} fontWeight={800}>{label.toUpperCase()}</text>
         <text x={x} y={240} textAnchor="middle" fill={C.text} fontFamily={FONT} fontSize={30} fontWeight={800}>
           {done >= list.length ? `✓ ${fmt(total)}` : tx('doneIn', {t: fmt(total)})}
@@ -258,7 +326,9 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
     body = (
       <>
         <svg width={1920} height={1080} style={{position: 'absolute'}}>
-          <rect width={1920} height={1080} fill="#232934" />
+          <rect width={1920} height={1080} fill="#3b4048" />
+          {Array.from({length: 35}, (_, i) => <line key={i} x1={i * 56} y1={0} x2={i * 56} y2={1080} stroke="rgba(255,255,255,0.05)" />)}
+          {Array.from({length: 20}, (_, i) => <line key={`y${i}`} x1={0} y1={i * 56} x2={1920} y2={i * 56} stroke="rgba(255,255,255,0.05)" />)}
           {drawLine(left, 620, A.done, A.total, tx('fullCarts'), C.green)}
           {drawLine(right, 1300, B.done, B.total, tx('baskets'), C.red)}
         </svg>
@@ -333,7 +403,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
     const over = Math.max(o('results'), o('panel'));
     body = (
       <>
-        <Store run={run} f={f} left={0} width={1920} single={false} look={{you: j.you, ghost: ghostSpot ? [ghostSpot.x, ghostSpot.y + 8] : undefined}} />
+        <Store run={run} f={f} left={0} width={1920} single={false} look={{you: j.you, slowMark: true, ghost: ghostSpot ? [ghostSpot.x, ghostSpot.y + 8] : undefined}} />
         {ghostSpot && (
           <div style={{position: 'absolute', left: ghostSpot.x - 160, top: ghostSpot.y + 30, width: 320, textAlign: 'center', fontFamily: FONT,
                        fontSize: 22, fontWeight: 800, color: C.you, opacity: 0.85, textTransform: 'uppercase'}}>{tx('ifStayed')}</div>
@@ -409,12 +479,13 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
         unlucky = p.id;
       }
     }
+    const slowSaid = (g.marks ?? []).some((m) => m.kind === 'slow' && real >= m.at - 0.2) || o('unlucky') > 0.3;
     marks.slow = fa.paying.map((id) => (id >= 0 && people[id].slow ? spotOf(fa, tills, 0, split, false, id) : null)).find(Boolean) ?? null;
     marks.line = {x: split + (1920 - split) / 2, y: 560};
     marks.you = o('unlucky') > 0.3 && unlucky >= 0 ? spotOf(fa, tills, 0, split, false, unlucky) : null;
     body = (
       <>
-        <Store run={many} f={fa} left={0} width={split} single={false} look={{you: o('unlucky') > 0.3 ? unlucky : undefined}} />
+        <Store run={many} f={fa} left={0} width={split} single={false} look={{you: o('unlucky') > 0.3 ? unlucky : undefined, slowMark: slowSaid}} />
         <Store run={one} f={one.at(t)} left={split} width={1920 - split} single />
         <div style={{position: 'absolute', left: split - 2, top: 0, width: 4, height: 1080, background: C.night}} />
         {g.focus === 'right' && <div style={{position: 'absolute', left: 0, top: 0, width: split, height: 1080, background: 'rgba(5,8,20,0.45)'}} />}
