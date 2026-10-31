@@ -4,6 +4,8 @@ import { CreditBadge } from "./components/CreditBadge";
 import { GridBackground } from "./components/GridBackground";
 import { Thumbnail, type ThumbnailVariant } from "./components/Thumbnail";
 import { GraphicScene } from "./components/graphics/GraphicScene";
+import { SimSounds } from "./components/graphics/SimScene";
+import type { SimGraphic } from "./graphics";
 import { ParallaxPhoto } from "./components/ParallaxPhoto";
 import type { Graphic } from "./graphics";
 import type { Media } from "./types";
@@ -86,6 +88,24 @@ const Showcase: FC<ShowcaseProps> = ({ scenes, brand }) => {
   );
 };
 
+/** The simulation's own sounds (street hum, clicks, ticks) of a simulation video, alone: rendered to a WAV that the
+ * render stage mixes under the voice (the video's picture is rendered silent). Props: the sim groups. */
+interface SimAudioProps {
+  groups: { from: number; durationInFrames: number; graphic: SimGraphic }[];
+  durationInFrames: number;
+  fps: number;
+  [key: string]: unknown;
+}
+const SimAudio: FC<SimAudioProps> = ({ groups, fps }) => (
+  <AbsoluteFill>
+    {groups.map((g, i) => (
+      <Sequence key={i} from={g.from} durationInFrames={g.durationInFrames} layout="none">
+        <SimSounds graphic={g.graphic} durationInFrames={g.durationInFrames} fps={fps} />
+      </Sequence>
+    ))}
+  </AbsoluteFill>
+);
+
 /** Props = work/<slug>/timeline.json; render with --public-dir=work/<slug>. */
 export const RemotionRoot: FC = () => (
   <>
@@ -103,6 +123,16 @@ export const RemotionRoot: FC = () => (
         width: props.width,
         height: props.height,
       })}
+    />
+    <Composition
+      id="SimAudio"
+      component={SimAudio}
+      defaultProps={{ groups: [], durationInFrames: 30, fps: 30 } as SimAudioProps}
+      durationInFrames={30}
+      fps={30}
+      width={320}
+      height={180}
+      calculateMetadata={({ props }) => ({ durationInFrames: Math.max(1, props.durationInFrames), fps: props.fps })}
     />
     <Composition
       id="Badges"

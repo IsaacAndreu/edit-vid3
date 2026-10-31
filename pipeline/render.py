@@ -742,6 +742,10 @@ class Renderer:
             chains.append(f"[{index}:a]{stereo},atrim=end={length:.3f},{fades}"
                           f"volume={clip.get('volume', 1.0)},adelay={delay}:all=1[c{n}]")
             mix.append(f"[c{n}]")
+        if audio.get("simTrack") and only in (None, "effects"):
+            index = add(work / audio["simTrack"])
+            chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f}[sim]")
+            mix.append("[sim]")
         for n, sfx in enumerate(audio.get("sfx", []) if only in (None, "effects") else []):
             index = add(work / sfx["src"])
             delay = round(sfx["from"] / self.fps * 1000)
@@ -780,6 +784,26 @@ class Renderer:
         return out
 
 
+def sim_track(r: "Renderer", timeline: dict[str, Any]) -> str | None:
+    """A simulation video's own sounds (SimScene's SimSounds) rendered alone by Remotion into a WAV next to the render,
+    relative to the work folder; None when the video has no simulation shots with sounds. Cached by its props."""
+
+    groups = [{"from": g["from"], "durationInFrames": g["durationInFrames"], "graphic": g["graphic"]}
+              for g in timeline["groups"] if (g.get("graphic") or {}).get("type") == "sim" and g["graphic"].get("sounds")]
+    if not groups:
+        return None
+    props = {"groups": groups, "durationInFrames": timeline["durationInFrames"], "fps": timeline["fps"]}
+    files = {f for g in groups for f in g["graphic"]["sounds"].values()}
+    out = r.dir / f"sim-audio-{_hash(VERSION, props, r._remotion_sig(), sorted(_file_sig(r.ctx.work_dir / f) for f in files))}.wav"
+    if not out.is_file():
+        t = time.monotonic()
+        tmp = r.dir / "sim-audio.tmp.wav"
+        r.remotion("SimAudio", props, tmp, ["--codec=wav", f"--concurrency={r.concurrency()}"], files)
+        tmp.replace(out)
+        print(f"   Sonido de la simulación: {time.monotonic() - t:.0f} s")
+    return str(out.relative_to(r.ctx.work_dir)).replace("\\", "/")
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "timeline.json", ctx.root / "remotion", ctx.root / "pipeline" / "render.py"]
 
@@ -798,6 +822,9 @@ def run(ctx: RunContext) -> None:
           f"Remotion {slow_frames} fotogramas ({len(slow)} tramos)"
           + (" · pantalla final aparte (en caché)" if any(s.kind == "endscreen" for s in segments) else ""))
 
+    track = sim_track(r, timeline)              # a simulation video: its street, clicks and ticks, under the voice
+    if track:
+        timeline["audio"]["simTrack"] = track
     # The sound does not depend on the picture: mixed and mastered meanwhile (mostly one core), not after it.
     audio_pool = ThreadPoolExecutor(max_workers=1)
     audio_job = audio_pool.submit(r.audio, timeline)

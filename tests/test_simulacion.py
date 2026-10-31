@@ -176,3 +176,14 @@ def test_depth_off_by_default_and_files():
     assert depth.add(ctx, timeline) is timeline
     assert depth.files({"src": "a.jpg"}) == set()
     assert depth.files({"src": "a.jpg", "cutout": "depth/x.png"}) == {"depth/x.png", "depth/x-plate.jpg"}
+
+
+def test_no_sim_track_without_simulation_sounds():
+    from types import SimpleNamespace
+
+    from pipeline.render import sim_track
+
+    timeline = {"groups": [{"from": 0, "durationInFrames": 30, "graphic": {"type": "chart"}},
+                           {"from": 30, "durationInFrames": 30, "graphic": {"type": "sim"}}],
+                "durationInFrames": 60, "fps": 30}
+    assert sim_track(SimpleNamespace(), timeline) is None          # no Remotion call when there is nothing to sound

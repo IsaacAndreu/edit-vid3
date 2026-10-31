@@ -15,8 +15,10 @@ import { WORLDS } from '../../sim/registry';
 import { clamp } from '../../sim/world';
 
 // --- sound: the street's hum under every shot of a world (continuing where the last shot left it), the world's clicks
-// (a light changing in sight…), a soft tick when a panel comes in and on the world's own events (a car stopping…)
-const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps: number }> = ({ graphic, durationInFrames, fps }) => {
+// (a light changing in sight…), a soft tick when a panel comes in and on the world's own events (a car stopping…).
+// Not played with the picture (the video's render is silent and its sound mixed apart): the SimAudio composition
+// renders these alone into a track that render.py mixes under the voice.
+export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps: number }> = ({ graphic, durationInFrames, fps }) => {
   const sounds = graphic.sounds;
   if (!sounds) return null;
   const length = durationInFrames / fps;
@@ -62,7 +64,6 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
       <AbsoluteFill style={{ transform: `scale(${punch})` }}>{body}</AbsoluteFill>
       {/* depth: the edges of every world a touch darker, the eye on the middle */}
       <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 58%, rgba(4,8,18,0.42) 100%)', pointerEvents: 'none' }} />
-      <SimSounds graphic={graphic} durationInFrames={durationInFrames} fps={fps} />
       {graphic.title && (
         <div style={{ position: 'absolute', left: 0, top: 96, width: 1920 }}>
           <Section text={graphic.title} o={on} f={frame} start={0} />

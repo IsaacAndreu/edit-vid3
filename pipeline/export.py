@@ -104,7 +104,7 @@ Al exportar desde Premiere/DaVinci: 1920x1080, {fps} fps, H.264, audio a -16 LUF
 
 
 def export(ctx: RunContext, zip_it: bool = True) -> Path:
-    from .render import OUTPUT, Renderer, media_seconds, plan_segments
+    from .render import OUTPUT, Renderer, media_seconds, plan_segments, sim_track
 
     timeline = ctx.read_json("timeline.json")
     renderer = Renderer(ctx)
@@ -127,6 +127,9 @@ def export(ctx: RunContext, zip_it: bool = True) -> Path:
         video.append({"path": f"media/{name}", "name": name, "start": segment.start, "frames": segment.frames})
 
     total = int(timeline["durationInFrames"])
+    track = sim_track(renderer, timeline)       # a simulation video's own sounds go with the effects
+    if track:
+        timeline["audio"]["simTrack"] = track
     audio = []
     for only, label in (("voice", "voz"), ("music", "musica"), ("effects", "efectos")):
         stem = renderer.audio(timeline, only)

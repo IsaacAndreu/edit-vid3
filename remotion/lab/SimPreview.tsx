@@ -4,7 +4,7 @@ import type {FC} from 'react';
 import {AbsoluteFill, Audio, Sequence, staticFile} from 'remotion';
 import '../theme';
 import type {SimGraphic} from '../graphics';
-import {SimScene} from '../components/graphics/SimScene';
+import {SimScene, SimSounds} from '../components/graphics/SimScene';
 
 export type SimPreviewProps = {audio: string; duration: number; groups: {from: number; durationInFrames: number; graphic: SimGraphic}[]};
 
@@ -14,6 +14,7 @@ export const SimPreview: FC<SimPreviewProps> = ({audio, groups}) => (
     {groups.map((g, i) => (
       <Sequence key={i} from={g.from} durationInFrames={g.durationInFrames}>
         <SimScene graphic={g.graphic} durationInFrames={g.durationInFrames} />
+        <SimSounds graphic={g.graphic} durationInFrames={g.durationInFrames} fps={30} />
       </Sequence>
     ))}
   </AbsoluteFill>
