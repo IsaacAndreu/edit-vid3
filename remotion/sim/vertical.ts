@@ -38,7 +38,8 @@ export const verticalOf = (g: SimGraphic): Vertical => {
     case 'metro':
       return scene(g, 'comparar') === 'comparar' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 560, scale: 1.2};
     case 'ascensores':
-      return scene(g, 'pico') === 'zonas' ? {mode: 'halves'} : {mode: 'crop', cx: 860, cy: 540, scale: 1.25};
+      return ['zonas', 'destino', 'reparto'].includes(scene(g, 'pico')) ? {mode: 'halves'} : ['juntos', 'botones'].includes(scene(g, 'pico'))
+        ? {mode: 'crop', cx: 760, cy: 540, scale: 1.0} : {mode: 'crop', cx: 960, cy: 540, scale: 1.1};
     case 'restaurante':
       return scene(g, 'comandas') === 'orden' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 540, scale: 1.2};
     case 'aparcamiento':

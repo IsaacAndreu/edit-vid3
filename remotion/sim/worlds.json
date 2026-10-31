@@ -639,7 +639,7 @@
   },
   "ascensores": {
     "niche": "colas y esperas",
-    "describe": "un edificio de oficinas de 12 plantas cortado de lado a las 9 de la mañana: la gente llega al vestíbulo, cada ascensor (10 personas) sale lleno o a los 8 s, para en cada planta que alguien pidió y baja sin parar; en cada cabina, cuánta gente lleva. Elige scene: pico (la hora punta: la cola de abajo crece porque cada viaje para en casi todas las plantas, ~7 paradas; por qué el ascensor siempre tarda) · zonas (los mismos ascensores y la misma gente: izquierda todos van a todas las plantas, derecha la mitad solo a las bajas y la mitad solo a las altas: menos paradas por viaje, la espera media baja de ~2:20 min a ~25 s con 4 ascensores)",
+    "describe": "un edificio de oficinas cortado de lado: plantas, huecos con sus cabinas subiendo y bajando (dentro, cuánta gente lleva), la gente esperando en cada planta con su flecha, y al lado un anillo con cada ascensor en su vuelta (si se juntan, sus puntos se juntan). Elige scene según la frase: pico (hora punta de la mañana, todos suben desde la planta baja: cada viaje para en casi todas las plantas, la cola de abajo crece; cada parada cuesta ~10 s) · juntos (todo el día, dos ascensores subiendo y bajando con gente en todas las plantas: empiezan separados y acaban yendo juntos, sin que nadie lo programe; el que se retrasa encuentra más gente) · autobuses (lo mismo en una línea de autobús circular: tres autobuses acaban en pelotón; Newell y Potts, 1964) · reparto (el mismo edificio: el más cercano va a por todos y se juntan, frente a el sistema que los mantiene repartidos o hace esperar a uno a propósito: espera media ~1:26 contra ~1:05) · curva (la espera media según cuánta gente llega: plana y de pronto se dispara; la línea de 30 s de un buen edificio) · botones (la mitad pulsa los dos botones: ascensores que paran para nadie, contadas; la espera sube de ~1:26 a ~1:51) · zonas (hora punta: todos a todas las plantas contra unos solo a las bajas y otros solo a las altas: espera 2:22 contra 24 s; exprés y transbordo de los rascacielos) · destino (hora punta con pantalla de destino: cada ascensor lleva a la gente de unas pocas plantas: 6,9 paradas por viaje contra 2,5; espera 22 s) · paternoster (las cabinas abiertas que nunca paran, en Alemania: nunca esperas, nunca se juntan) · otis (1854, Nueva York: Elisha Otis en una plataforma, cortan la cuerda y el freno de seguridad se clava en las guías)",
     "focus": {
       "building": "el edificio"
     },
@@ -650,10 +650,18 @@
       "scene": {
         "options": [
           "pico",
-          "zonas"
+          "juntos",
+          "autobuses",
+          "reparto",
+          "curva",
+          "botones",
+          "zonas",
+          "destino",
+          "paternoster",
+          "otis"
         ],
         "default": "pico",
-        "describe": "qué escena: pico · zonas"
+        "describe": "qué escena: pico · juntos · autobuses · reparto · curva · botones · zonas · destino · paternoster · otis"
       },
       "ascensores": {
         "min": 3,
@@ -671,8 +679,8 @@
     "marks": {
       "lobby": [
         "el vestibulo",
-        "la cola de abajo",
-        "la planta baja"
+        "la planta baja",
+        "la cola de abajo"
       ]
     },
     "panels": [

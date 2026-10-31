@@ -183,3 +183,8 @@ def test_the_boarding_world_has_a_scene_for_each_part_of_the_script():
     assert set(w["params"]["scene"]["options"]) == {"comparar", "carrera", "experimento", "pasillo", "asientos", "bloques", "maletas", "puerta"}
     assert 0.0 in w["params"]["maletas"]["options"]                                    # rule three switched off
     assert simulacion.clean({"world": "embarque", "params": {"method": "steffen"}}, "x", None)["params"]["method"] == "steffen"
+
+
+def test_the_lift_world_covers_bunching_buses_buttons_and_history():
+    w = simulacion.worlds()["ascensores"]
+    assert {"juntos", "autobuses", "reparto", "curva", "botones", "destino", "paternoster", "otis", "pico", "zonas"} == set(w["params"]["scene"]["options"])
