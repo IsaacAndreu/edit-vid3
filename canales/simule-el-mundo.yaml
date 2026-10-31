@@ -6,7 +6,7 @@
 
 visual:
   style: simulacion
-  worlds: [cruces, anillo, autovia, contagio, red, incendio, segregacion, colas, embarque, manada]
+  worlds: [cruces, anillo, autovia, carretera, contagio, red, incendio, segregacion, colas, embarque, manada]
   theme: day                       # day | night | sepia (el mapa de la ciudad; los demás mundos llevan su propio fondo)
 
 brand:

@@ -20,6 +20,13 @@ addWords({
   breaks: {es: 'Se rompe', pt: 'Rompe-se', fr: 'Ça casse', de: 'Kippt', en: 'It breaks'},
   thisRing: {es: 'Este anillo', pt: 'Este anel', fr: 'Cet anneau', de: 'Dieser Ring', en: 'This ring'},
   modeSuave: {es: ' · un coche conduce solo', pt: ' · um carro conduz sozinho', fr: ' · une voiture autonome', de: ' · ein Auto fährt selbst', en: ' · one car drives itself'},
+  carsN: {es: '{n} coches', pt: '{n} carros', fr: '{n} voitures', de: '{n} Autos', en: '{n} cars'},
+  ringSpec: {es: '230 m de vuelta · a {v} km/h', pt: '230 m de volta · a {v} km/h', fr: '230 m de tour · à {v} km/h', de: '230 m Runde · {v} km/h', en: '230 m round · at {v} km/h'},
+  noJamYet: {es: 'Aún sin atasco', pt: 'Ainda sem engarrafamento', fr: 'Pas encore de bouchon', de: 'Noch kein Stau', en: 'No jam yet'},
+  nStopped: {es: '{n} parados', pt: '{n} parados', fr: '{n} à l’arrêt', de: '{n} stehen', en: '{n} stopped'},
+  noWaves: {es: 'Sin ondas', pt: 'Sem ondas', fr: 'Plus de vagues', de: 'Keine Wellen', en: 'No waves'},
+  tapFades: {es: 'El frenazo se apaga', pt: 'A travagem apaga-se', fr: 'Le coup de frein s’éteint', de: 'Das Bremsen verpufft', en: 'The tap fades'},
+  tapGrows: {es: 'El mismo frenazo crece', pt: 'A mesma travagem cresce', fr: 'Le même coup de frein grandit', de: 'Dasselbe Bremsen wächst', en: 'The same tap grows'},
   modeCalma: {es: ' · sin despistes', pt: ' · sem distrações', fr: ' · sans distractions', de: ' · ohne Ablenkung', en: ' · no distractions'},
 });
 
@@ -38,18 +45,26 @@ const SpaceTime: FC<{r: Ring; simT: number; o: number}> = ({r, simT, o}) => {
   const W = 760;
   const H = 470;
   const span = Math.max(20, Math.min(simT, r.frames.length * SAMPLE));
-  const dots = [];
-  for (let s = 0; s <= simT; s += Math.max(0.5, span / 220)) {
-    const fr = r.at(s);
-    for (let i = 0; i < r.cars; i++) {
-      dots.push(<rect key={`${s}-${i}`} x={(s / span) * W} y={H - (fr.x[i] / RING.length) * H} width={W / 220 + 0.8} height={2.4}
-                      fill={speedColour(fr.v[i], r.startSpeed)} />);
+  // one line per car (position against time), coloured by its speed, broken where it goes round the ring; the car
+  // that braked first in yellow
+  const lines = [];
+  const step = Math.max(0.5, span / 220);
+  for (let i = 0; i < r.cars; i++) {
+    let prev: [number, number] | null = null;
+    for (let t = 0; t <= simT; t += step) {
+      const fr = r.at(t);
+      const p: [number, number] = [(t / span) * W, H - (fr.x[i] / RING.length) * H];
+      if (prev && Math.abs(p[1] - prev[1]) < H / 2) {
+        lines.push(<line key={`${i}-${t}`} x1={prev[0]} y1={prev[1]} x2={p[0]} y2={p[1]}
+                         stroke={i === PERTURB.car ? C.accent : speedColour(fr.v[i], r.startSpeed)} strokeWidth={i === PERTURB.car ? 3 : 1.6} />);
+      }
+      prev = p;
     }
   }
   return (
     <Panel o={o} style={{right: 64, top: 150, width: W + 44}}>
       <Label>{tx('ringChart')}</Label>
-      <svg width={W} height={H} style={{marginTop: 12, display: 'block', background: 'rgba(255,255,255,0.03)'}}>{dots}</svg>
+      <svg width={W} height={H} style={{marginTop: 12, display: 'block', background: 'rgba(255,255,255,0.03)'}}>{lines}</svg>
       <div style={{display: 'flex', justifyContent: 'space-between', marginTop: 8}}>
         <Label>{tx('time')} →</Label>
         <Label><span style={{color: '#ff5a46'}}>■</span> {tx('stopped')} <span style={{color: '#3ddc84', marginLeft: 12}}>■</span> {tx('normalSpeed')}</Label>
@@ -105,7 +120,120 @@ const modeOf = (g: WorldProps['g']): Mode => {
   return m === 'suave' || m === 'calma' ? m : 'normal';
 };
 
+// the stopped knot of the ring as angles (tail → front), or null
+const knot = (fr: {x: Float32Array; v: Float32Array}) => {
+  const L = RING.length;
+  const xs = Array.from(fr.x).filter((_, i) => fr.v[i] < 0.6).sort((a, b) => a - b);
+  if (xs.length < 2) return null;
+  const runs: number[][] = [];
+  for (const x of xs) {
+    const last = runs[runs.length - 1];
+    if (last && x - last[last.length - 1] < 14) last.push(x);
+    else runs.push([x]);
+  }
+  if (runs.length > 1 && xs[0] + L - xs[xs.length - 1] < 14) runs[0] = [...runs.pop()!.map((x) => x - L), ...runs[0]];
+  const big = runs.reduce((a, b) => (b.length > a.length ? b : a));
+  return big.length >= 2 ? {tail: angle(big[0] - 3), front: angle(big[big.length - 1] + 3)} : null;
+};
+
+type RingProps = {r: Ring; simT: number; cx: number; cy: number; s: number; show: (n: string) => number; centre: number; arc: number};
+/** The 230 m road with its cars; in the middle what it is and how it is going; a red arc over the stopped knot with an
+ * arrow pointing back the way the jam travels. */
+const RingRoad: FC<RingProps> = ({r, simT, cx, cy, s, show, centre, arc}) => {
+  const fr = r.at(simT);
+  const driving = r.mode === 'suave' && simT >= r.smoothAt;
+  const autoCar = Math.floor(r.cars / 2);
+  const now = r.stopped(simT);
+  const k = knot(fr);
+  const ra = (R + 9) * s;
+  const pt = (th: number, rr = ra) => `${cx + Math.cos(th) * rr},${cy + Math.sin(th) * rr}`;
+  const status = now ? tx('nStopped', {n: now}) : driving ? tx('noWaves') : tx('noJamYet');
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={(R + 5.5) * s} fill="#62656b" />
+      <circle cx={cx} cy={cy} r={(R + 3.6) * s} fill="#33363c" />
+      <circle cx={cx} cy={cy} r={(R - 3.6) * s} fill="#4a6e3f" />
+      {[R + 3.2, R - 3.2].map((rr) => <circle key={rr} cx={cx} cy={cy} r={rr * s} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={Math.max(1, s * 0.12)} />)}
+      {centre > 0 && (
+        <g opacity={centre}>
+          <circle cx={cx} cy={cy} r={(R - 6) * s} fill="rgba(8,12,22,0.55)" />
+          <text x={cx} y={cy - 6} textAnchor="middle" fill={C.text} fontFamily={FONT} fontSize={Math.max(30, s * 6.4)} fontWeight={800}>
+            {tx('carsN', {n: r.cars}).toUpperCase()}
+          </text>
+          <text x={cx} y={cy + s * 3.6} textAnchor="middle" fill={C.label} fontFamily={FONT} fontSize={Math.max(15, s * 2)} fontWeight={700} letterSpacing={1.2}>
+            {tx('ringSpec', {v: Math.round(r.startSpeed * 3.6)}).toUpperCase()}
+          </text>
+          <text x={cx} y={cy + s * 7.4} textAnchor="middle" fill={now ? C.red : driving ? C.green : C.text} fontFamily={FONT}
+                fontSize={Math.max(17, s * 2.4)} fontWeight={800} letterSpacing={1.2}>{status.toUpperCase()}</text>
+        </g>
+      )}
+      {k && arc > 0 && (() => {
+        let a = k.tail;
+        let b = k.front;
+        if (b < a) b += 2 * Math.PI;
+        const big = b - a > Math.PI ? 1 : 0;
+        const back = a - 0.22;                                         // the arrow: the jam goes backwards
+        return (
+          <g opacity={arc}>
+            <path d={`M${pt(a)} A${ra},${ra} 0 ${big} 1 ${pt(b)}`} fill="none" stroke={C.red} strokeWidth={Math.max(4, s * 0.7)} strokeLinecap="round" />
+            <path d={`M${pt(a)} A${ra},${ra} 0 0 0 ${pt(back)}`} fill="none" stroke={C.red} strokeWidth={Math.max(3, s * 0.45)} />
+            <path d={`M${pt(back, ra - s * 1.6)} L${pt(back - 0.06)} L${pt(back, ra + s * 1.6)} Z`} fill={C.red} />
+          </g>
+        );
+      })()}
+      {Array.from(fr.x).map((x, i) => {
+        const th = angle(x);
+        const braking = Math.min(1, Math.max(0, -fr.a[i] - 0.15) / 0.6) || (fr.v[i] < 0.6 ? 1 : 0);
+        const brakeMark = i === PERTURB.car && show('brake') > 0.5 && simT >= PERTURB.from - 2 && simT <= PERTURB.to + 6;
+        const mark = driving && i === autoCar ? C.green : brakeMark ? C.accent
+          : fr.v[i] < 0.6 && simT > r.firstStop && show('jam') > 0.5 ? C.red : undefined;
+        return <Car key={i} sx={cx + Math.cos(th) * R * s} sy={cy + Math.sin(th) * R * s} deg={(th * 180) / Math.PI + 90}
+                    s={s} color={BODY[i % BODY.length]} brake={braking} mark={mark} />;
+      })}
+      {driving && (() => {
+        const th = angle(fr.x[autoCar]);
+        const px = cx + Math.cos(th) * (R + 13) * s;
+        const py = cy + Math.sin(th) * (R + 13) * s;
+        return (
+          <g opacity={Math.max(0.75, show('auto'))}>
+            <rect x={px - 92} y={py - 20} width={184} height={40} rx={6} fill={C.panel} stroke={C.green} strokeWidth={2} />
+            <text x={px} y={py + 9} textAnchor="middle" fill={C.green} fontFamily={FONT} fontSize={24} fontWeight={800}>
+              {tx('selfDriving').toUpperCase()}
+            </text>
+          </g>
+        );
+      })()}
+    </g>
+  );
+};
+
+/** Two rings side by side, 12 and 23 cars, the same tap at the same moment: on the emptier one it fades, on the
+ * fuller one it grows into a jam (the tipping point). */
+const Compare: FC<{g: WorldProps['g']; local: number; on: number; o: WorldProps['o']}> = ({g, local, on, o}) => {
+  const sides = [ring(12, modeOf(g)), ring(23, modeOf(g))];
+  const show = (n: string) => (n === 'jam' ? Math.max(o('jam'), on * 0.6) : o(n));
+  return (
+    <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, #26352b 0%, #1d2a22 70%)'}}>
+      <svg width={1920} height={1080} style={{position: 'absolute'}}>
+        {sides.map((r, i) => {
+          const t = clockOf(g, r, g.at + local);
+          const cx = i ? 1400 : 520;
+          return (
+            <g key={i}>
+              <RingRoad r={r} simT={t} cx={cx} cy={520} s={7.2} show={show} centre={1} arc={on} />
+              <text x={cx} y={940} textAnchor="middle" fill={i ? C.red : C.green} fontFamily={FONT} fontSize={30} fontWeight={800} letterSpacing={1.4}
+                    opacity={on}>{tx(i ? 'tapGrows' : 'tapFades').toUpperCase()}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <Note>{tx('ringNote', {n: '12 · 23'})}</Note>
+    </AbsoluteFill>
+  );
+};
+
 const View: FC<WorldProps> = ({g, local, move, on, o}) => {
+  if (g.focus === 'compare') return <Compare g={g} local={local} on={on} o={o} />;
   const r = ring(param(g, 'cars', 22), modeOf(g));
   const simT = clockOf(g, r, g.at + local);
   const a = camera(g.prev);
@@ -114,41 +242,13 @@ const View: FC<WorldProps> = ({g, local, move, on, o}) => {
   const show = (name: string) =>
     name === 'chart' && g.focus === 'chart' && g.overlay !== 'flow' ? on
       : (name === 'speed' || name === 'jam') && g.overlay === 'auto' ? on : o(name);
-  const driving = r.mode === 'suave' && simT >= r.smoothAt;
-  const autoCar = Math.floor(r.cars / 2);
-  const fr = r.at(simT);
   const c = toScreen(cam, 0, 0);
   const now = r.stopped(simT);
   return (
     <AbsoluteFill style={{backgroundColor: C.night}}>
       <City cam={cam} clearing={58} ring={[R - 4, R + 6]} />
       <svg width={1920} height={1080} style={{position: 'absolute'}}>
-        <circle cx={c.sx} cy={c.sy} r={(R + 5.5) * cam.s} fill="#62656b" />
-        <circle cx={c.sx} cy={c.sy} r={(R + 3.6) * cam.s} fill="#33363c" />
-        <circle cx={c.sx} cy={c.sy} r={(R - 3.6) * cam.s} fill="#4a6e3f" />
-        {[R + 3.2, R - 3.2].map((rr) => <circle key={rr} cx={c.sx} cy={c.sy} r={rr * cam.s} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={Math.max(1, cam.s * 0.12)} />)}
-        {Array.from(fr.x).map((x, i) => {
-          const th = angle(x);
-          const braking = Math.min(1, Math.max(0, -fr.a[i] - 0.15) / 0.6) || (fr.v[i] < 0.6 ? 1 : 0);
-          const brakeMark = i === PERTURB.car && show('brake') > 0.5 && simT >= PERTURB.from - 2 && simT <= PERTURB.to + 6;
-          const mark = driving && i === autoCar ? C.green : brakeMark ? C.accent
-            : fr.v[i] < 0.6 && simT > r.firstStop && show('jam') > 0.5 ? C.red : undefined;
-          return <Car key={i} sx={c.sx + Math.cos(th) * R * cam.s} sy={c.sy + Math.sin(th) * R * cam.s} deg={(th * 180) / Math.PI + 90}
-                      s={cam.s} color={BODY[i % BODY.length]} brake={braking} mark={mark} />;
-        })}
-        {driving && (() => {
-          const th = angle(fr.x[autoCar]);
-          const px = c.sx + Math.cos(th) * (R + 13) * cam.s;
-          const py = c.sy + Math.sin(th) * (R + 13) * cam.s;
-          return (
-            <g opacity={Math.max(0.75, show('auto'))}>
-              <rect x={px - 92} y={py - 20} width={184} height={40} rx={6} fill={C.panel} stroke={C.green} strokeWidth={2} />
-              <text x={px} y={py + 9} textAnchor="middle" fill={C.green} fontFamily={FONT} fontSize={24} fontWeight={800}>
-                {tx('selfDriving').toUpperCase()}
-              </text>
-            </g>
-          );
-        })()}
+        <RingRoad r={r} simT={simT} cx={c.sx} cy={c.sy} s={cam.s} show={show} centre={g.focus === 'ring' ? 0.92 : 0} arc={g.focus === 'ring' ? 0.95 : 0} />
       </svg>
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(5,8,18,0.6) 100%)'}} />
       <Panel o={show('speed')} style={{right: 64, top: 52, width: 250}}>

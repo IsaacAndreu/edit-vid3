@@ -2,6 +2,7 @@
 import type {World} from './world';
 import {anillo} from './worlds/anillo';
 import {autovia} from './worlds/autovia';
+import {carretera} from './worlds/carretera';
 import {colas} from './worlds/colas';
 import {contagio} from './worlds/contagio';
 import {cruces} from './worlds/cruces';
@@ -11,4 +12,4 @@ import {manada} from './worlds/manada';
 import {red} from './worlds/red';
 import {segregacion} from './worlds/segregacion';
 
-export const WORLDS: Record<string, World> = {cruces, anillo, autovia, contagio, red, incendio, segregacion, colas, embarque, manada};
+export const WORLDS: Record<string, World> = {cruces, anillo, autovia, carretera, contagio, red, incendio, segregacion, colas, embarque, manada};

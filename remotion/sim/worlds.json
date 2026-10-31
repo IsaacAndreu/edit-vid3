@@ -36,7 +36,8 @@
     "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo; también: un coche que conduce solo y deshace la onda (Arizona, 2018), el mismo círculo sin despistes, y la curva flujo-densidad",
     "focus": {
       "ring": "el círculo",
-      "chart": "el círculo a un lado y la gráfica espacio-tiempo al otro"
+      "chart": "el círculo a un lado y la gráfica espacio-tiempo al otro",
+      "compare": "dos círculos a la vez, 12 y 23 coches, con el mismo frenazo: en el de 12 se apaga, en el de 23 crece (el punto de inflexión)"
     },
     "overlay": {
       "speed": "velocidad media",
@@ -294,6 +295,42 @@
         "default": 1,
         "describe": "1: las gacelas van en manada; 0: cada una a lo suyo"
       }
+    }
+  },
+  "carretera": {
+    "niche": "tráfico",
+    "describe": "una carretera recta vista desde arriba sobre fondo oscuro; cada escena explica una pieza del tráfico (elige scene): frenazo (8 coches numerados, el primero toca el freno y cada uno frena más fuerte que el de delante hasta que el último se para; who: acc = coches con control de crucero), onda (carretera llena: los coches van a la derecha y el atasco viaja hacia atrás; panel: por qué dura), carril (dos carriles, TÚ en uno: adelantas a 4 coches rápido y 4 coches tardan mucho en adelantarte: la ilusión del carril de al lado), hueco (TÚ dejas hueco y sigues rodando sin pararte; detrás quedan menos parados), limite (paneles que bajan el límite antes de las ondas: llegan despacio y se paran menos), carriles (se abre un tercer carril y vuelve a llenarse; panel +10 % carril, +10 % tráfico)",
+    "focus": {
+      "road": "la carretera"
+    },
+    "overlay": {
+      "labels": "los rótulos de la escena (flechas, el hueco, los números de cada coche, el carril nuevo…)",
+      "panel": "el panel de la escena (barras, tiempos, parados)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "frenazo",
+          "onda",
+          "carril",
+          "hueco",
+          "limite",
+          "carriles"
+        ],
+        "default": "onda",
+        "describe": "qué escena: frenazo · onda · carril · hueco · limite · carriles"
+      },
+      "who": {
+        "options": [
+          "personas",
+          "acc"
+        ],
+        "default": "personas",
+        "describe": "solo en frenazo: personas o coches con control de crucero adaptativo"
+      }
+    },
+    "cues": {
+      "brake": "en frenazo: la frase en la que el primer coche toca el freno"
     }
   }
 }
