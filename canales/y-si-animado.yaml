@@ -1,0 +1,45 @@
+# «¿Y si…? Animado» (español): películas animadas «¿y si…?» con monigotes, como Ifverse o IFOLOGY: una premisa
+# imposible («¿y si tus reflejos fueran 10 veces más rápidos?») seguida hasta el final con ciencia real, contada a
+# través de un personaje. Todo dibujado en código (pipeline/cine.py → CineScene.tsx): ni metraje ni imágenes de IA.
+# Se dobla al alemán en was-waere-wenn (su voz: estudio → Ajustes → Voces por canal → was-waere-wenn).
+
+video:
+  fps: 30
+
+visual:
+  style: cine
+  mode: y-si                       # y-si | disciplina | reglas
+  mark: cap                        # la marca del protagonista (siempre la misma): scar (cicatriz en X) | cap (gorra) | hood | scarf | none
+  mark_color: "#ffcc00"
+  accent: "#b6f23a"                # el color de las palabras clave y los contadores
+  captions: "no"                   # palabra (subtítulos palabra a palabra) | clave (solo las palabras clave) | "no"
+
+brand:
+  accent: "#b6f23a"
+  motion: clean
+
+align:
+  language: es
+
+timeline:
+  music_default: intriga
+  music_volume: 0.16
+  endscreen_seconds: 20
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'un canal de YouTube en español de películas animadas con monigotes «¿Y si…?»: una premisa imposible (¿y si fueras 10 veces más rápido?, ¿y si pudieras ver cuánto le queda a cada persona?, ¿y si el tiempo se parara un segundo?) seguida hasta el final con ciencia real y un giro, vídeos de 8-14 min'
+  niches: [qué pasaría si, superpoderes, ciencia, cuerpo humano, tiempo, espacio, psicología]
+  words: 1700
+
+dubbing:
+  enabled: true
+  languages: [de]
+  channels: {de: was-waere-wenn}
+  review: false
+
+shorts:
+  enabled: false

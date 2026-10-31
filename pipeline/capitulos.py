@@ -71,7 +71,9 @@ def ensure(ctx: RunContext) -> bool:
     from . import simulacion
 
     script_path = ctx.materials_dir / "guion.txt"
-    if simulacion.active(ctx):                # a simulation video has no chapter cards: it never stops the world
+    from .stickman import film
+
+    if simulacion.active(ctx) or film(ctx):    # a drawn video has no chapter cards: it never stops the world
         return False
     if not script_path.is_file() or not ctx.section("chapters").get("auto", True) or started(ctx):
         return False

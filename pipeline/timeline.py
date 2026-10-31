@@ -528,7 +528,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
 
     # a simulation video keeps its world on screen: the generic full-frame graphics stopped it (hora1: a «cronología»
     # with 1935 twice, the bars of three unrelated figures); its own panels show the figures and the charts
-    planned = [] if simulacion.active(ctx) and not ctx.section("graphics").get("over_simulation") \
+    from .stickman import film
+
+    planned = [] if (simulacion.active(ctx) or film(ctx)) and not ctx.section("graphics").get("over_simulation") \
         else graphics.plan(ctx, sents, words.durationSeconds, weak=weak, strong=strong)
     from .datacheck import filter_planned
 
@@ -677,9 +679,13 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                     graphic[side]["logo"] = logo(ctx, name) or (logo(ctx, name.split()[0]) if " " in name else None)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
-    from . import simulacion, stickman
+    from . import cine, mapas, simulacion, stickman
 
-    if stickman.active(ctx):                                   # every shot drawn: no borrowed footage, no chalkboards
+    if cine.active(ctx):                                       # stickman films: a lit set and a shot per line
+        added += [TimelineGroup.model_validate(g) for g in cine.groups(ctx, shots, fps, [*groups, *added], words)]
+    elif mapas.active(ctx):                                    # map explainers: one continuous camera over the map
+        added += [TimelineGroup.model_validate(g) for g in mapas.groups(ctx, shots, fps, [*groups, *added], words)]
+    elif stickman.active(ctx):                                   # every shot drawn: no borrowed footage, no chalkboards
         added += [TimelineGroup.model_validate(g) for g in stickman.groups(ctx, shots, fps, [*groups, *added])]
     elif simulacion.active(ctx):                               # every shot simulated, the voice choosing what shows
         added += [TimelineGroup.model_validate(g) for g in simulacion.groups(ctx, shots, fps, [*groups, *added])]
@@ -1448,12 +1454,31 @@ def run(ctx: RunContext) -> None:
         for group in groups:
             if group.kind == "graphic" and group.graphic and group.graphic.get("type") == "sim":
                 group.graphic["sounds"] = sim_sounds
+    from . import cine, mapas, sfx_synth
+
+    drawn_film = cine.active(ctx) or mapas.active(ctx)
+    if drawn_film:                       # stickman films and map explainers: one synthesized sound per event
+        first = True
+        level = float(cfg.get("drawn_sfx_volume", 1.0))
+        for group in groups:
+            g = group.graphic if group.kind == "graphic" else None
+            if not g or g.get("type") not in ("cine", "mapa"):
+                continue
+            cues = sfx_synth.cine_cues(g, fps, first) if g["type"] == "cine" else sfx_synth.mapa_cues(g, fps)
+            first = False
+            for name, at, volume in cues:
+                if 0 <= at < group.durationInFrames + fps:
+                    sfx.append(TimelineSfx.model_validate({"src": publish(sfx_synth.path(ctx.root, name)),
+                                                           "from": group.from_ + at, "volume": min(1.0, volume * level)}))
+        whooshes = []                    # their own swipes and whooshes, not the generic ones on every cut
     for kind, at in animation_cues(groups):
         src = pop if kind == "pop" else impact
         if src:
             sfx.append(TimelineSfx.model_validate({"src": src, "from": at, "volume": float(
                 cfg.get("pop_volume", 0.25) if kind == "pop" else cfg.get("impact_volume", 0.22))}))
 
+    if drawn_film:                       # the rules thriller's end card comes after the last word: the video holds it
+        total_frames = max(total_frames, max((g.from_ + g.durationInFrames for g in groups), default=0))
     timeline = Timeline(
         slug=ctx.slug, title=shots_file.title, fps=fps, width=int(video.get("width", 1920)),
         height=int(video.get("height", 1080)), durationInFrames=total_frames, shots=shots, groups=groups, labels=labels,

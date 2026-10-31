@@ -61,8 +61,6 @@ def localize(ctx: RunContext, lang: str) -> tuple[str, str] | None:
     """(audience, guide) to adapt a script to a language's viewers: the `localize:` of the channel the dub goes to
     (canales/<canal>.yaml), else, for a simulation channel, a plain one; None: a plain translation."""
 
-    from . import simulacion
-
     target = settings(ctx)["channels"].get(lang)
     guide = ""
     if target:
@@ -70,9 +68,18 @@ def localize(ctx: RunContext, lang: str) -> tuple[str, str] | None:
             guide = str(RunContext.create("_adapta", root=ctx.root, channel=target).config.get("localize") or "").strip()
         except Exception:
             guide = ""
-    if not guide and not simulacion.active(ctx):
+    if not guide and not _drawn(ctx):
         return None
     return AUDIENCES.get(lang, lang), guide
+
+
+def _drawn(ctx: RunContext) -> bool:
+    """Simulations, stickman films and maps: the same picture in every language, a native voice per language."""
+
+    from . import cine, mapas, simulacion
+
+    return simulacion.active(ctx) or cine.active(ctx) or mapas.active(ctx)
+
 
 NAMES = {"en": "English", "pt": "Portuguese (Brazil)", "fr": "French", "it": "Italian", "de": "German"}
 
@@ -93,10 +100,8 @@ def settings(ctx: RunContext) -> dict[str, Any]:
         out.update(enabled=True, languages=list(studio["languages"]), existing=bool(studio.get("existing", True)),
                    since=float(studio.get("since") or 0))
         out["voices"].update({l: v for l, v in (studio.get("voices") or {}).items() if v.get("voice_id")})
-    from . import simulacion
-
-    if simulacion.active(ctx):
-        # a simulation channel dubs only with a GenAIPro voice of that language: the voice of the channel it goes to
+    if _drawn(ctx):
+        # a simulation channel (or a stickman film or a map: drawn in code too) dubs only with a GenAIPro voice of that language: the voice of the channel it goes to
         # (simulated-why's for English…) or the studio's «Doblaje» voice for it — never the Spanish voice reading it
         for lang in list(out["languages"]):
             target = out["channels"].get(lang)

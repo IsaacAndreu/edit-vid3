@@ -51,12 +51,21 @@ def active(ctx: RunContext) -> bool:
     return str(ctx.section("visual").get("style") or "").lower() == "stickman"
 
 
+def film(ctx: RunContext) -> bool:
+    """A stickman film or a map explainer: drawn shot by shot like a simulation, never covered by chapter cards or
+    the generic graphics."""
+
+    from . import cine, mapas
+
+    return cine.active(ctx) or mapas.active(ctx)
+
+
 def drawn(ctx: RunContext) -> bool:
     """The whole video is drawn in code (stickman or simulation): no footage to search, download or measure."""
 
-    from . import simulacion
+    from . import cine, mapas, simulacion
 
-    return active(ctx) or simulacion.active(ctx)
+    return active(ctx) or simulacion.active(ctx) or cine.active(ctx) or mapas.active(ctx)
 
 
 def skip(ctx: RunContext, stage: str) -> None:

@@ -270,14 +270,18 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         else:
             # a Short (under ~2.5 min) or a simulation video shows no chapters: one intro is enough, the outline's
             # protagonist and events are still used (hora1-short1: 53 s cannot hold two chapters 45 s apart)
-            if not (simulacion.active(ctx) or words_file.durationSeconds < 150):
+            from .stickman import film
+
+            if not (simulacion.active(ctx) or film(ctx) or words_file.durationSeconds < 150):
                 raise RuntimeError(f"El planner no produjo capítulos válidos: {error}")
             print(f"   Sin capítulos ({'simulación' if simulacion.active(ctx) else 'vídeo corto'}): {str(error)[:80]}")
             chapters = []
         context = str(result.get("context") or "").strip()[:400]
     if not chapters or chapters[0].startWord != 0:
         chapters.insert(0, PlanChapter(title=words_file.title.upper()[:48] or "INTRO", startWord=0, fromScript=False, showTitle=False))
-    if simulacion.active(ctx):      # no chapter cards in a simulation video: the world stays on screen
+    from .stickman import film
+
+    if simulacion.active(ctx) or film(ctx):      # no chapter cards in a drawn video: the world stays on screen
         chapters = [c.model_copy(update={"showTitle": False}) for c in chapters]
     return chapters, context, result
 

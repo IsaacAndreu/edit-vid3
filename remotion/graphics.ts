@@ -340,6 +340,60 @@ export interface StickmanGraphic {
   palette?: 'color' | 'paper'; // visual.palette: colour (default) or black lines on paper
 }
 
+export interface CineActor {
+  pose: string; face: string; x: number; facing: 'left' | 'right'; label: string; size: number;
+  who: 'hero' | 'other' | 'double' | 'shadow'; // the hero carries his mark; a shadow is the threat (black, glowing eyes)
+}
+
+/** A shot of a «cine de monigotes» video (pipeline/cine.py): a set lit like a film, the shot, the camera move, the
+ * stickmen, and what goes on top (HUD, rule, title, counter, phone, choice, captions word by word, end card). */
+export interface CineGraphic {
+  type: 'cine';
+  mode: string;          // y-si | disciplina | reglas
+  set: string;
+  shot: string;          // wide | medium | close | pov-phone | peephole | over | above | silhouette
+  light: string;         // warm | cold | dark | red | dawn | day | neon
+  move?: string;         // still | push | pull | pan-left | pan-right | shake
+  actors?: CineActor[];
+  prop?: StickmanProp | null;
+  hero?: { mark: string; color: string };
+  hud?: { day?: string; clock?: string; place?: string } | null;
+  rule?: { n: number; text: string; at?: number; word?: string } | null;
+  title?: string;
+  titleAt?: number;
+  counter?: { label: string; value: string; color?: string } | null;
+  phone?: { from: string; messages: string[]; typing?: boolean } | null;
+  choice?: { question: string; a: string; b: string; comment: string } | null;
+  end?: { series: string; title: string; sub: string; follow: string } | null;
+  words?: { t: string; f: number; key?: boolean }[];
+  captions?: boolean;
+  accent?: string;
+  seed?: number;
+}
+
+/** A line of a map explainer (pipeline/mapas.py): the camera target (Web Mercator zoom), the previous one (the
+ * camera flies between them), the satellite layers near it, and what the marker and the paper props draw — each
+ * element with the frame of its word. */
+export interface MapaGraphic {
+  type: 'mapa';
+  lat: number; lon: number; zoom: number;
+  prev: { lat: number; lon: number; zoom: number };
+  sat?: { z: number; lat: number; lon: number; src: string }[];
+  credit?: string;
+  circle?: { lat: number; lon: number; word: string; at: number } | null;
+  tags?: { name: string; sub: string; lat: number; lon: number; at: number }[];
+  line?: { points: [number, number][]; label: string; count: string; dashed: boolean; at: number } | null;
+  props: { kind: string; top: string; big: string; sub: string; flip: { top: string; big: string; sub: string } | null; side: 'left' | 'right'; at: number }[];
+  strips?: { text: string; lat: number; lon: number; at: number }[];
+  stamp?: { text: string; at: number } | null;
+  split?: { lon: number; left: string; right: string } | null;
+  tracker?: { title: string; date: string; time: string; counter: string } | null;
+  path?: { points: [number, number][]; at: number } | null;
+  highlight?: { name: string; label: string }[];   // Natural Earth's English name, and the name on screen
+  end?: { label: string; wrong: string; right: string } | null;
+  seed?: number;
+}
+
 export interface BoardGraphic {
   type: 'board';
   center: string; // the name everything leads to, pinned in the middle
@@ -395,6 +449,8 @@ export type Graphic =
   | CompareGraphic
   | BoardGraphic
   | StickmanGraphic
+  | CineGraphic
+  | MapaGraphic
   | SimGraphic
   | PostGraphic
   | ChartGraphic

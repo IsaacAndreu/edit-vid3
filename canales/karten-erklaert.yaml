@@ -1,0 +1,18 @@
+# «Karten erklärt» (alemán): llega doblado desde mapas-explicados (mismo mapa, voz y rótulos en alemán).
+# Su voz: estudio → Ajustes → Voces por canal → karten-erklaert.
+
+base: mapas-explicados
+
+align:
+  language: de
+
+localize: |
+  Público de Alemania, Austria y Suiza. Kilómetros, euros; las fechas como allí (4. November 2006). Si viene a cuento,
+  un ejemplo de allí (el Bodensee sin frontera fijada, Büsingen, el enclave de Baarle). Tono claro y preciso.
+
+dubbing:
+  enabled: false
+
+ideas:
+  about: 'ein deutscher YouTube-Kanal mit erklärten Karten: Inseln, Grenzen, Routen und Linien auf der Karte mit einer überraschenden Tatsache, mit echten Satellitenbildern und Papierkarten'
+  niches: [Geografie, Grenzen, Inseln, Routen, Kuriositäten, Geschichte]

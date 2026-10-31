@@ -38,6 +38,8 @@ import { Earth3D } from './Earth3D';
 import { Bars3D } from './Bars3D';
 import { Board } from './Board';
 import { Stickman } from './Stickman';
+import { CineScene } from './CineScene';
+import { MapStory } from './MapStory';
 import { SimScene } from './SimScene';
 import { Post } from './Post';
 import { GraphicFrame } from './GraphicFrame';
@@ -55,7 +57,11 @@ const Fade: FC<{ durationInFrames: number; children: ReactNode }> = ({ durationI
 
 /** Full-screen animated graphic of any kind, brought in and out the channel's way (GraphicFrame). */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) =>
-  graphic.type === 'stickman' ? (
+  graphic.type === 'cine' ? (
+    <CineScene graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'mapa' ? (
+    <MapStory graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'stickman' ? (
     // a drawn scene per shot: hard cuts from one to the next, like footage
     <Stickman graphic={graphic} durationInFrames={durationInFrames} />
   ) : graphic.type === 'sim' ? (

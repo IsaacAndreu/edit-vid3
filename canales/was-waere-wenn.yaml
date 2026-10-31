@@ -1,0 +1,18 @@
+# «Was wäre wenn? Animiert» (alemán): llega doblado desde y-si-animado (mismo dibujo, voz y rótulos en alemán).
+# Su voz: estudio → Ajustes → Voces por canal → was-waere-wenn.
+
+base: y-si-animado
+
+align:
+  language: de
+
+localize: |
+  Público de Alemania, Austria y Suiza. Euros, kilómetros y grados Celsius; ejemplos cotidianos de allí (la
+  Deutsche Bahn, el Autobahn, el Supermarkt). Cifras con coma decimal. Tono claro, con asombro pero sin exagerar.
+
+dubbing:
+  enabled: false
+
+ideas:
+  about: 'ein deutscher YouTube-Kanal mit animierten Strichmännchen-Filmen «Was wäre wenn…?»: eine unmögliche Prämisse, mit echter Wissenschaft bis zum Ende erzählt, 8-14 Minuten'
+  niches: [Was wäre wenn, Superkräfte, Wissenschaft, menschlicher Körper, Zeit, Weltraum, Psychologie]

@@ -2235,7 +2235,7 @@ async function newChannelPage() {
 // the new-video form: channels grouped by how their videos are made, so each kind is found at a glance
 function channelOptions(d) {
   const kinds = d.channelKinds || {};
-  const groups = [["metraje", "🎬 Contenido de terceros (metraje)"], ["simulacion", "🧪 Simulación"], ["stickman", "✏️ Monigotes"]];
+  const groups = [["metraje", "🎬 Contenido de terceros (metraje)"], ["simulacion", "🧪 Simulación"], ["stickman", "✏️ Monigotes"], ["mapas", "🗺️ Mapas"]];
   const html = groups.map(([k, name]) => {
     const list = d.channels.filter((c) => (kinds[c] || "metraje") === k);
     return list.length ? `<optgroup label="${name}">${list.map((c) => `<option>${esc(c)}</option>`).join("")}</optgroup>` : "";

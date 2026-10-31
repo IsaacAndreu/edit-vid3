@@ -305,10 +305,52 @@ SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", 
 # a simulation shot (pipeline/simulacion.py): only what is read on screen is translated — never the names the
 # world draws from (world, focus, overlay, scene…); the panels translate themselves with the graphic's «lang»
 SIM_TEXTS = ("title", "list", "rules", "marks", "stat", "texts", "ask")
+# a stickman film (pipeline/cine.py) or a map explainer (pipeline/mapas.py): only the words on screen, never the
+# vocabulary the component draws from (set, shot, light, kind, side, a country's Natural Earth name…)
+DRAWN_TEXTS = {
+    "cine": {"rule": ("text", "word"), "title": None, "counter": ("label", "value"), "phone": ("from", "messages"),
+             "choice": ("question", "a", "b", "comment"), "end": ("series", "title", "follow"), "hud": ("day",)},
+    "mapa": {"circle": ("word",), "tags": ("name", "sub"), "line": ("label", "count"), "props": ("top", "big", "sub", "flip"),
+             "strips": ("text",), "stamp": ("text",), "split": ("left", "right"), "tracker": ("title", "date", "time", "counter"),
+             "highlight": ("label",), "end": ("label", "wrong", "right")},
+}
+
+
+def _drawn_paths(value: dict[str, Any], path: str) -> list[tuple[str, Any]]:
+    """(path, string) of what a stickman film's or a map's shot shows as text."""
+
+    out: list[tuple[str, Any]] = []
+    for key, fields in DRAWN_TEXTS[value["type"]].items():
+        item = value.get(key)
+        if not item:
+            continue
+        if fields is None:
+            out.append((f"{path}.{key}", item))
+            continue
+        for i, entry in enumerate(item if isinstance(item, list) else [item]):
+            base = f"{path}.{key}.{i}" if isinstance(item, list) else f"{path}.{key}"
+            for field in fields:
+                v = entry.get(field) if isinstance(entry, dict) else None
+                if isinstance(v, str):
+                    out.append((f"{base}.{field}", v))
+                elif isinstance(v, list):
+                    out += [(f"{base}.{field}.{k}", x) for k, x in enumerate(v) if isinstance(x, str)]
+                elif isinstance(v, dict):
+                    out += [(f"{base}.{field}.{k}", x) for k, x in v.items() if isinstance(x, str)]
+    for i, actor in enumerate(value.get("actors") or []):
+        if isinstance(actor, dict) and actor.get("label"):
+            out.append((f"{path}.actors.{i}.label", actor["label"]))
+    return out
 
 
 def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:
     """Every translatable string inside a graphic (titles, names, labels, notes, lines…)."""
+
+    if isinstance(value, dict) and value.get("type") in DRAWN_TEXTS:
+        for p, text in _drawn_paths(value, path):
+            if re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{2}", text):
+                out[p] = text
+        return
 
     if isinstance(value, dict) and value.get("type") == "sim":
         for key in SIM_TEXTS:
@@ -333,7 +375,23 @@ def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:
         out[path] = value
 
 
+def _set_path(value: Any, parts: list[str], text: str) -> None:
+    for part in parts[:-1]:
+        value = value[int(part)] if isinstance(value, list) else value[part]
+    last = parts[-1]
+    if isinstance(value, list):
+        value[int(last)] = text
+    else:
+        value[last] = text
+
+
 def _set_graphic_strings(value: Any, path: str, texts: dict[str, str]) -> Any:
+    if isinstance(value, dict) and value.get("type") in DRAWN_TEXTS:
+        out = copy.deepcopy(value)
+        for p, _ in _drawn_paths(value, path):
+            if p in texts:
+                _set_path(out, p[len(path) + 1:].split("."), texts[p])
+        return out
     if isinstance(value, dict) and value.get("type") == "sim":
         out = dict(value)
         for key in SIM_TEXTS:
@@ -384,6 +442,20 @@ def question_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> Non
         a, b = group["from"], group["from"] + group["durationInFrames"]
         spoken = [w for w in words if a <= at(w["start"]) < b]
         group["words"] = [{"text": w["text"], "from": max(0, at(w["start"]) - a)} for w in spoken]
+
+
+def drawn_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> None:
+    """A stickman film's captions go word by word: in the dub, the new narration's words."""
+
+    fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
+    gaps = timeline["audio"].get("voiceGaps", [])
+    for group in timeline["groups"]:
+        g = group.get("graphic") or {}
+        if g.get("type") != "cine" or "words" not in g:
+            continue
+        a, b = group["from"], group["from"] + group["durationInFrames"]
+        frames = [(vf + final_frame(round(w["start"] * fps), gaps), w["text"].strip()) for w in words]
+        g["words"] = [{"t": t, "f": f - a, "key": False} for f, t in frames if a <= f < b and t]
 
 
 def speech_spans(words: list[dict[str, Any]], fps: int, offset: int, gap: float = 0.5,
@@ -486,6 +558,7 @@ def run(ctx: RunContext) -> None:
 
     simulacion.retime_sim(old_timeline, timeline, lang)          # its clock follows the new voice, its panels speak it
     question_words(timeline, new_words["words"])
+    drawn_words(timeline, new_words["words"])
     timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0),
                                                pauses=timeline["audio"].get("voiceGaps", []))
     next_word, subscribe_word = ENDSCREEN.get(lang, ("NEXT STORY", "SUBSCRIBE"))

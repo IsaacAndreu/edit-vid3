@@ -12,12 +12,12 @@ const SCALE = 1.28; // the figures fill the frame like the reference explainers
 
 type Pt = [number, number];
 // angles in degrees: 0 = straight down, 90 = forward (the way the figure faces), -90 = backwards, 180 = up
-interface Pose { lean: number; head: number; arms: [number, number, number, number]; legs: [number, number, number, number]; drop: number }
+export interface Pose { lean: number; head: number; arms: [number, number, number, number]; legs: [number, number, number, number]; drop: number }
 
 const wave = (f: number, speed: number, amount: number, phase = 0) => Math.sin((f / speed) * Math.PI * 2 + phase) * amount;
 
 /** The joint angles of a pose at this frame: [front upper arm, front forearm, back upper arm, back forearm], legs the same. */
-const pose = (name: string, f: number): Pose => {
+export const pose = (name: string, f: number): Pose => {
   const breathe = wave(f, 60, 2);
   switch (name) {
     case 'walk': return { lean: 3, head: 0, arms: [wave(f, 24, 28), wave(f, 24, 28) + 15, -wave(f, 24, 28), -wave(f, 24, 28) + 15], legs: [wave(f, 24, 30, Math.PI), wave(f, 24, 30, Math.PI) - 8, -wave(f, 24, 30, Math.PI), -wave(f, 24, 30, Math.PI) - 8], drop: Math.abs(wave(f, 24, 6)) };
@@ -38,7 +38,7 @@ const pose = (name: string, f: number): Pose => {
   }
 };
 
-const towards = (from: Pt, angle: number, length: number, dir: number): Pt => {
+export const towards = (from: Pt, angle: number, length: number, dir: number): Pt => {
   const r = (angle * Math.PI) / 180;
   return [from[0] + Math.sin(r) * length * dir, from[1] + Math.cos(r) * length];
 };
@@ -117,7 +117,7 @@ const ICON_COLOR: Record<string, string> = {
 };
 const SHIRTS = ['#ff5a5f', '#2ec4b6', '#ffb400', '#7b61ff', '#3a86ff', '#ff7f11'];
 
-const Icon: FC<{ name: string; ink: string; colorful: boolean }> = ({ name, ink, colorful }) => {
+export const Icon: FC<{ name: string; ink: string; colorful: boolean }> = ({ name, ink, colorful }) => {
   const R = colorful ? ICON_COLOR[name] ?? RED : RED;
   const st = { stroke: ink, strokeWidth: 6, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const };
   const shapes: Record<string, ReactNode> = {

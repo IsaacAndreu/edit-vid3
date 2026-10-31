@@ -260,7 +260,9 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
     from .simulacion import writing as simulation_writing
 
-    shown = simulation_writing(ctx)               # a simulation channel: the script asks for what the worlds can show
+    from . import cine, mapas
+
+    shown = simulation_writing(ctx) or cine.writing(ctx) or mapas.writing(ctx)   # drawn channels: what they can show
     if shown:
         brief.append(shown)
     from .porque import lessons
