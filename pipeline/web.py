@@ -62,6 +62,9 @@ def channel_kinds(root: Path) -> dict[str, str]:
 
     out: dict[str, str] = {}
     for name in channels(root):
+        if _json_yaml(root / "canales" / f"{name}.yaml").get("oculto"):
+            out[name] = "oculto"                 # a channel put away (`oculto: true`): not offered for new videos
+            continue
         style = ""
         seen: set[str] = set()
         current = name

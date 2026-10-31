@@ -1,0 +1,12 @@
+# «O Porquê Simulado» (portugués): el canal de simulación general en este idioma. `base: el-porque-simulado` trae todo el molde
+# (mundos, aspecto, gráficos); aquí solo va lo propio: el idioma (voz, paneles, títulos y textos) y sus ideas.
+# Su voz: estudio → Ajustes → Voces por canal → porque-simulado-pt.
+
+base: el-porque-simulado
+
+align:
+  language: pt
+
+ideas:
+  about: 'a YouTube channel in portugués: coisas do dia a dia e do mundo explicadas com simulações vistas de cima (por que há engarrafamentos sem motivo, por que a fila do lado anda mais rápido, como se espalha um boato ou um incêndio), vídeos de ~10 min com uma experiência que se vê'
+  niches: [trânsito, filas, epidemias, desastres, sociedade, animais, ciência do cotidiano]

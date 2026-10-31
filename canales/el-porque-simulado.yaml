@@ -1,0 +1,28 @@
+# «El Porqué Simulado» (español): el canal de simulación general. Cualquier cosa cotidiana o del mundo explicada con
+# simulaciones dibujadas en código (tráfico, colas, epidemias, incendios, manadas, la red eléctrica…): ni YouTube ni
+# metraje de terceros. Uno por idioma con el mismo molde: simulated-why (inglés), porque-simulado-pt (portugués) y
+# simuliertes-warum (alemán) lo toman con `base: el-porque-simulado` y solo cambian el idioma.
+# Los canales por subnicho (hora-punta, cola-de-al-lado…) siguen ahí, ocultos (`oculto: true`), por si un día subnichas.
+# Úsalo con `canal: el-porque-simulado`. Cada frase del guion recibe una escena (pipeline/simulacion.py); mundos y
+# parámetros en remotion/sim/worlds.json. Lo que no se pone aquí sale de config.yaml.
+
+visual:
+  style: simulacion
+  worlds: [anillo, carretera, autovia, cruces, colas, embarque, contagio, red, incendio, segregacion, manada]
+  theme: dark                      # un solo aspecto en todos los vídeos: fondo oscuro (día, noche o sepia por vídeo si hace falta)
+
+brand:
+  accent: "#f5a623"
+
+align:
+  language: es
+
+graphics:
+  types: [chart, compare, timeline]   # solo con graphics.over_simulation: true; si no, todo lo enseña la simulación
+  extra_types: []
+
+ideas:
+  about: 'un canal de YouTube en español que explica cosas cotidianas y del mundo con simulaciones vistas desde arriba
+    (por qué hay atascos sin motivo, por qué la cola de al lado va más rápida, cómo se propaga un bulo o un incendio),
+    vídeos de ~10 min con un experimento que se ve'
+  niches: [tráfico, colas, epidemias, desastres, sociedad, animales, ciencia cotidiana]

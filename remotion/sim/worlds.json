@@ -265,31 +265,70 @@
   },
   "colas": {
     "niche": "colas y multitudes",
-    "describe": "un supermercado visto desde arriba: a la izquierda una cola por caja (cada cliente elige la más corta), a la derecha una sola cola que reparte a todas las cajas; los mismos clientes",
+    "describe": "un supermercado visto desde arriba (cada persona tarda ≈ 40 s en pagar y cada artículo ≈ 3 s; algunos clientes son lentos: un cupón, una tarjeta que falla). Elige scene: comparar (izquierda una cola por caja, derecha una sola cola que reparte a todas: misma gente; la cola única espera ~15 % menos de media y la espera más larga baja ~25 %) · eleccion (TÚ en una de 3 colas, o 5 con tills; panel: de cientos de veces, tu cola fue la más rápida 1 de cada 3, 1 de cada 5 con 5 cajas) · cabezas (2 personas con el carro lleno contra 5 con cesta: terminan antes los 2 carros; cuenta cabezas, no carros; Dan Meyer) · limite (una caja ocupada el 80, 90 o 95 % del tiempo con la curva de Kingman: la espera es 4, 9 y 19 veces el tiempo de cobro; la curva de clientes iguales va por debajo) · iguales (izquierda clientes distintos, derecha todos tardan lo mismo: la espera media baja ~20 %, las colas no desaparecen) · cambiar (TÚ te cambias a la cola que avanzó y la tuya arranca: tú, si te hubieras quedado, habrías pagado antes) · contar (la ley de Little: cuántos salen por minuto y cuántos tienes delante = tu espera) · rapida (una caja rápida de ≤ 10 artículos: los que llevan poco esperan ~20 % menos)",
     "focus": {
       "both": "los dos supermercados",
       "left": "se amplía el de varias colas",
       "right": "se amplía el de una sola cola"
     },
     "overlay": {
-      "wait": "espera media en cada uno",
-      "unlucky": "un cliente que eligió la cola lenta",
-      "results": "espera media y la espera más larga"
+      "panel": "el panel de la escena (espera media, cuántas veces ganó tu cola, la curva, tu espera…)",
+      "results": "en comparar: espera media y la más larga",
+      "unlucky": "en comparar: marca a un cliente que eligió la cola lenta"
     },
     "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "eleccion",
+          "cabezas",
+          "limite",
+          "iguales",
+          "cambiar",
+          "contar",
+          "rapida"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · eleccion · cabezas · limite · iguales · cambiar · contar · rapida"
+      },
       "tills": {
         "min": 3,
-        "max": 6,
+        "max": 5,
         "default": 4,
-        "describe": "cajas abiertas"
+        "describe": "cajas abiertas (en eleccion: 3 o 5)"
       },
-      "arrivals": {
-        "min": 0.2,
-        "max": 0.6,
-        "default": 0.38,
-        "describe": "clientes por segundo que llegan a pagar"
+      "ocupacion": {
+        "options": [
+          0.8,
+          0.9,
+          0.95
+        ],
+        "default": 0.9,
+        "describe": "solo en limite: lo ocupada que está la caja"
       }
-    }
+    },
+    "marks": {
+      "you": [
+        "tu cola",
+        "la tuya",
+        "te cambias",
+        "te pones"
+      ],
+      "slow": [
+        "un cliente lento",
+        "el cliente lento",
+        "ese cliente"
+      ],
+      "line": [
+        "una sola cola",
+        "una cola unica",
+        "cola unica"
+      ]
+    },
+    "panels": [
+      "panel",
+      "results"
+    ]
   },
   "embarque": {
     "niche": "colas y multitudes",

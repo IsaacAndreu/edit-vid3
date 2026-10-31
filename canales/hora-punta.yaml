@@ -4,6 +4,8 @@
 # Mundos y parámetros: remotion/sim/worlds.json. Para otro idioma, align.language (es/pt/fr/de/en) traduce los paneles.
 # Lo que no se pone aquí sale de config.yaml.
 
+oculto: true                       # subnicho en pausa: no sale en «Nuevo vídeo» (sus vídeos siguen funcionando); el canal general es el-porque-simulado
+
 visual:
   style: simulacion
   worlds: [cruces, anillo, autovia, carretera]

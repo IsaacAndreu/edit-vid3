@@ -274,3 +274,18 @@ def test_one_panel_at_a_time():
     mark = simulacion.clean({"world": "anillo", "focus": "ring", "overlay": "brake", "stat": {"label": "coches", "value": "22"}},
                             "Pusieron 22 coches en una pista.", None)
     assert mark["overlay"] == "brake"                                 # a mark on the road is not a panel
+
+
+def test_one_general_simulation_channel_per_language_and_the_niches_put_away():
+    from pathlib import Path
+
+    from pipeline.web import channel_kinds
+
+    root = Path(__file__).resolve().parent.parent
+    kinds = channel_kinds(root)
+    langs = {c: RunContext.create("x", root=root, channel=c).section("align").get("language")
+             for c in ("el-porque-simulado", "simulated-why", "porque-simulado-pt", "simuliertes-warum")}
+    assert langs == {"el-porque-simulado": "es", "simulated-why": "en", "porque-simulado-pt": "pt", "simuliertes-warum": "de"}
+    assert all(kinds[c] == "simulacion" for c in langs)
+    assert all(kinds[c] == "oculto" for c in ("hora-punta", "cola-de-al-lado", "simule-el-mundo"))
+    assert "colas" in RunContext.create("x", root=root, channel="simuliertes-warum").section("visual")["worlds"]

@@ -1,0 +1,12 @@
+# «Das Simulierte Warum» (alemán): el canal de simulación general en este idioma. `base: el-porque-simulado` trae todo el molde
+# (mundos, aspecto, gráficos); aquí solo va lo propio: el idioma (voz, paneles, títulos y textos) y sus ideas.
+# Su voz: estudio → Ajustes → Voces por canal → simuliertes-warum.
+
+base: el-porque-simulado
+
+align:
+  language: de
+
+ideas:
+  about: 'a YouTube channel in alemán: Alltägliches und die Welt mit Simulationen von oben erklärt (warum Staus aus dem Nichts entstehen, warum die andere Schlange schneller ist, wie sich ein Gerücht oder ein Feuer ausbreitet), ~10-Minuten-Videos mit einem sichtbaren Experiment'
+  niches: [Verkehr, Warteschlangen, Epidemien, Katastrophen, Gesellschaft, Tiere, Alltagswissenschaft]

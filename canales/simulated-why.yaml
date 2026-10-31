@@ -1,0 +1,12 @@
+# «The Simulated Why» (English): el canal de simulación general en este idioma. `base: el-porque-simulado` trae todo el molde
+# (mundos, aspecto, gráficos); aquí solo va lo propio: el idioma (voz, paneles, títulos y textos) y sus ideas.
+# Su voz: estudio → Ajustes → Voces por canal → simulated-why.
+
+base: el-porque-simulado
+
+align:
+  language: en
+
+ideas:
+  about: 'a YouTube channel in English: everyday things and the world explained with simulations seen from above (why jams appear out of nothing, why the other line moves faster, how a rumour or a fire spreads), ~10 min videos with an experiment you can watch'
+  niches: [traffic, queues, epidemics, disasters, society, animals, everyday science]
