@@ -10,7 +10,7 @@ import type { SimGraphic } from '../../graphics';
 import { countUp } from '../countUp';
 import { setTheme } from '../../sim/city';
 import { C, FONT, Label, Panel, Section, setAccent } from '../../sim/hud';
-import { addWords, setLang, tx } from '../../sim/i18n';
+import { addWords, num, setLang, tx } from '../../sim/i18n';
 import { Legend } from '../../sim/look';
 import { WORLDS } from '../../sim/registry';
 import { clamp } from '../../sim/world';
@@ -131,7 +131,7 @@ const Dial: FC<{ dial: NonNullable<SimGraphic['dial']>; real: number }> = ({ dia
   const value = dial.from + (dial.to - dial.from) * k;
   const span = Math.max(1e-9, dial.max - dial.min);
   const at = (v: number) => Math.max(0, Math.min(1, (v - dial.min) / span));
-  const text = (v: number) => (dial.percent ? `${Math.round(v * 100)} %` : Math.abs(v) >= 10 || Number.isInteger(dial.to) ? String(Math.round(v)) : v.toFixed(2));
+  const text = (v: number) => (dial.percent ? `${Math.round(v * 100)} %` : Math.abs(v) >= 10 || Number.isInteger(dial.to) ? num(Math.round(v)) : num(v, 2));
   const W = 420;
   return (
     <Panel o={interpolate(real, [0, 0.3], [0, 1], clamp)} style={{ right: 64, top: 52, width: W + 52 }}>

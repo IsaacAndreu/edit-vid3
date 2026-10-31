@@ -1348,6 +1348,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         raise ValueError("Idioma desconocido")
                     if "manual" in body:
                         return self._ok(doblaje.mark_manual(root, slug, lang, bool(body["manual"])))
+                    if body.get("approve"):                # the adapted script checked: the voice can be read
+                        return self._ok(doblaje.approve(root, slug, lang))
                     return self._ok(doblaje.set_script(root, slug, lang, str(body.get("script") or ""),
                                                        str(body.get("title") or "")))
                 if match := re.fullmatch(r"/api/experimentos/([^/]+)", path):     # {tags, retention30, retentionAvg, ctr}

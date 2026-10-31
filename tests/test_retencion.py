@@ -115,3 +115,22 @@ def test_a_dub_is_adapted_to_its_viewers(tmp_path, monkeypatch):
     assert "Alemania, Austria y Suiza" in seen["system"] and "Autobahn" in seen["system"] and "Ems" in seen["system"]
     assert "Autobahn" in (folder / "guion-de.txt").read_text("utf-8")
     assert "río Ems" in (folder / "adaptacion-de.md").read_text("utf-8")
+
+
+def test_the_voice_waits_for_the_review_of_the_adapted_script(tmp_path, monkeypatch):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "atasco2"
+    folder.mkdir(parents=True)
+    (root / "materiales" / "el-porque-simulado" / "config.yaml").write_text("canal: el-porque-simulado\n", "utf-8")
+    (folder / "guion.txt").write_text("Vas por la autovía. " * 30, "utf-8")
+    (folder / "guion-en.txt").write_text("You're on the freeway. " * 30, "utf-8")
+    calls = []
+    monkeypatch.setattr("pipeline.tts.generate", lambda *a, **k: calls.append(a) or {"chars": 10})
+    ctx = RunContext.create("atasco2", root=root)
+    assert doblaje.waiting_review(ctx, "en") and not doblaje.voice(ctx, "en") and not calls
+    status = {d["lang"]: d for d in doblaje.status(root, "atasco2")}
+    assert status["en"]["review"] is True
+    doblaje.approve(root, "atasco2", "en")
+    assert not doblaje.waiting_review(ctx, "en") and doblaje.voice(ctx, "en") and calls

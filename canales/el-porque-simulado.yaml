@@ -46,6 +46,8 @@ dubbing:                           # cada vídeo en español sale también en lo
   enabled: true                    # voz y rótulos en su idioma, sus propios Shorts); voces: Ajustes → Voces por canal
   languages: [en, pt, de]
   channels: {en: simulated-why, pt: porque-simulado-pt, de: simuliertes-warum}
+  review: true                     # la voz espera a que apruebes el guion adaptado (o pegues el corregido) en la página
+                                   # del vídeo: revisión nativa en los primeros vídeos; false cuando te fíes
 
 ideas:
   about: 'un canal de YouTube en español que explica cosas cotidianas y del mundo con simulaciones vistas desde arriba

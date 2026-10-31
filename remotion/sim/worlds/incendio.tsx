@@ -4,7 +4,7 @@
 import {useLayoutEffect, useRef, type FC} from 'react';
 import {AbsoluteFill} from 'remotion';
 import {C} from '../hud';
-import {addWords, tx} from '../i18n';
+import {addWords, tx, num} from '../i18n';
 import {Big, mulberry, Note, param, type World, type WorldProps} from '../world';
 
 addWords({
@@ -151,7 +151,7 @@ const View: FC<WorldProps> = ({g, worldT, move, o}) => {
         </svg>
       </div>
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(5,8,18,0.55) 100%)'}} />
-      <Big o={o('burned')} label={tx('burned')} value={Math.round(burned * 0.25).toLocaleString('es-ES')} color={C.accent}
+      <Big o={o('burned')} label={tx('burned')} value={num(Math.round(burned * 0.25))} color={C.accent}
            sub={`${tx('hectares')} · ${tx('burning')}: ${burning}`} style={{right: 48, top: 52, width: 340}} />
       <Note>{tx('fireNote', {d: Math.round(density * 100)})}</Note>
     </AbsoluteFill>

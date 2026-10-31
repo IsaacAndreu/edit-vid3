@@ -4,7 +4,7 @@
 import type {CSSProperties, FC} from 'react';
 import {AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame} from 'remotion';
 import '../theme';
-import {tx} from './i18n';
+import {tx, num} from './i18n';
 import {Car, CITY, City, kindOf, toScreen, type Cam} from './city';
 import {paint, trail} from './look';
 import {C, FONT, Label, Panel} from './hud';
@@ -321,8 +321,8 @@ export const CrucesView: FC<CrucesState> = ({simT, split, left, right, focus, o,
         <div style={{fontSize: 30, fontWeight: 800, textTransform: 'uppercase'}}>{tx('giveWay')}</div>
       </Panel>
 
-      <Big o={o('results')} label={tx('averageWait')} value={`${L.wait.toFixed(1)} s`} color={C.red} style={{left: 48, bottom: 70, width: 300}} />
-      <Big o={o('results')} label={tx('averageWait')} value={`${R.wait.toFixed(1)} s`} color={C.green} style={{left: split + 48, bottom: 70, width: 300}} />
+      <Big o={o('results')} label={tx('averageWait')} value={`${num(L.wait, 1)} s`} color={C.red} style={{left: 48, bottom: 70, width: 300}} />
+      <Big o={o('results')} label={tx('averageWait')} value={`${num(R.wait, 1)} s`} color={C.green} style={{left: split + 48, bottom: 70, width: 300}} />
       <Big o={o('results')} label={tx('passed')} value={String(L.passed)} style={{left: 380, bottom: 70, width: 200}} />
       <Big o={o('results')} label={tx('passed')} value={String(R.passed)} style={{left: split + 380, bottom: 70, width: 200}} />
 

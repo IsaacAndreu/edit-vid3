@@ -47,6 +47,8 @@ Reglas:
   cola de la izquierda»), ni las cifras que salen de ella, ni los estudios citados.
 - La misma estructura, gancho, giro y cierre; la duración casi igual (±10 %). Mantén las líneas «## TÍTULO».
 - Frases cortas, natural para leer en voz alta, sin notas ni acotaciones.
+- Números como se escriben allí (decimal con coma en alemán, francés y portugués: 3,5; en francés los miles con
+  espacio: 10 000). Una cifra que la voz pueda leer mal (decimales, años, porcentajes raros), escríbela en palabras.
 Devuelve SOLO JSON: {{"title": "título adaptado", "script": "el guion adaptado", "changes": ["cada adaptación que hiciste, en español"]}}
 """.strip()
 
@@ -182,12 +184,34 @@ def translate(ctx: RunContext, lang: str) -> bool:
     return True
 
 
+APPROVED = ".aprobado-{lang}"        # in the video's folder: the adapted script was checked (dubbing.review)
+
+
+def waiting_review(ctx: RunContext, lang: str) -> bool:
+    """`dubbing.review: true` (the first videos of a language): the voice waits until the adapted script is approved
+    on the video's page (or yours is pasted there) — a native check before it is read."""
+
+    folder = ctx.materials_dir
+    return bool(ctx.section("dubbing").get("review")) and not (folder / APPROVED.format(lang=lang)).is_file() \
+        and not (folder / OWN.format(lang=lang)).is_file()
+
+
+def approve(root: Path, slug: str, lang: str) -> dict[str, Any]:
+    from .context import find_video
+
+    folder = find_video(root, slug)
+    (folder / APPROVED.format(lang=lang)).write_text(time.strftime("%Y-%m-%dT%H:%M:%S"), encoding="utf-8")
+    return {"ok": True}
+
+
 def voice(ctx: RunContext, lang: str) -> bool:
     """voz-<lang>.mp3 read by GenAIPro from guion-<lang>.txt with the channel's voice for that language."""
 
     from . import tts
 
     folder = ctx.materials_dir
+    if waiting_review(ctx, lang):
+        return False
     target = folder / f"voz-{lang}.mp3"
     spec = (settings(ctx)["voices"] or {}).get(lang) or {}
     if target.is_file() or not spec.get("voice_id"):
@@ -246,6 +270,7 @@ def status(root: Path, slug: str) -> list[dict[str, Any]]:
                     "own": (folder / OWN.format(lang=lang)).is_file(), "voice": (folder / f"voz-{lang}.mp3").is_file(),
                     "voiceId": bool((cfg["voices"].get(lang) or {}).get("voice_id")),
                     "manual": (root / "out" / dubbed / MANUAL).is_file(),
+                    "review": waiting_review(ctx, lang) and script.is_file(),
                     "adapted": (folder / f"adaptacion-{lang}.md").read_text("utf-8") if (folder / f"adaptacion-{lang}.md").is_file() else "",
                     "done": is_done(root, dubbed), "error": (folder / "doblaje.error").read_text("utf-8")
                     if (folder / "doblaje.error").is_file() else ""})

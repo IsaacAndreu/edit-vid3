@@ -645,7 +645,8 @@ async function videoPage(slug) {
   const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
       `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
   const dubState = (d) => d.manual ? "✅ doblado por ti (la cola no lo hace)" : d.done ? `✅ hecho · <a href="#/video/${encodeURIComponent(d.slug)}">ver ${esc(d.slug)}</a>`
-    : d.voice ? "🎙️ voz lista: la cola hará el vídeo doblado" : d.script ? (d.own ? "📝 tu guion: falta la voz (se hace sola en unos minutos)" : "📝 traducido: falta la voz")
+    : d.voice ? "🎙️ voz lista: la cola hará el vídeo doblado" : d.review ? "👀 adaptado: espera tu revisión antes de grabar la voz"
+    : d.script ? (d.own ? "📝 tu guion: falta la voz (se hace sola en unos minutos)" : "📝 traducido: falta la voz")
     : "sin guion todavía (se traducirá solo, o pega el tuyo)";
   const dubs = (v.dubs || []).length ? `<h2>Doblaje</h2>${v.dubs.map((d) => `<details class="card" ${d.done || d.manual ? "" : "open"}>
       <summary><b>${esc(d.name)}</b> · <span class="small">${dubState(d)}</span>${d.voiceId ? "" : ' <span class="pill error">sin voz elegida para este idioma</span>'}</summary>
@@ -653,14 +654,18 @@ async function videoPage(slug) {
       ${d.adapted ? `<div class="small" style="margin:6px 0"><b>Adaptado a su público:</b><div class="md">${md(d.adapted.split("\n").slice(2).join("\n"), "")}</div></div>` : ""}
       ${d.done ? "" : `<div class="small muted" style="margin:6px 0">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
         <input id="dubt-${d.lang}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" style="margin-bottom:6px">
-        <textarea id="dubs-${d.lang}" rows="8" placeholder="Guion en ${esc(d.name)}…">${esc(d.own ? d.script : "")}</textarea>
-        <div class="row" style="margin-top:8px;gap:6px"><button class="main" onclick="dubScript('${d.lang}', this)">Usar mi guion y doblar</button>`}
+        <textarea id="dubs-${d.lang}" rows="${d.review ? 14 : 8}" placeholder="Guion en ${esc(d.name)}…">${esc(d.own || d.review ? d.script : "")}</textarea>
+        ${d.review ? `<div class="small muted" style="margin:6px 0">Revísalo (o pásaselo a un corrector nativo): si está bien, apruébalo; si lo corriges aquí, «Usar mi guion y doblar».</div>` : ""}
+        <div class="row" style="margin-top:8px;gap:6px">${d.review ? `<button class="main" onclick="dubApprove('${d.lang}', this)">Aprobar y grabar la voz</button>` : ""}
+        <button class="${d.review ? "" : "main"}" onclick="dubScript('${d.lang}', this)">Usar mi guion y doblar</button>`}
         <button onclick="dubManual('${d.lang}', ${!d.manual})">${d.manual ? "Deshacer «lo doblé yo»" : "Ya lo doblé yo"}</button>${d.done ? "" : "</div>"}</details>`).join("")}` : "";
   window.dubScript = async (lang, button) => {
     button.disabled = true;
     try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, script: $("#dubs-" + lang).value, title: $("#dubt-" + lang).value}); route(); }
     catch (e) { alert(e.message); button.disabled = false; }
   };
+  window.dubApprove = async (lang, button) => { button.disabled = true;
+    try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, approve: true}); route(); } catch (e) { alert(e.message); button.disabled = false; } };
   window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics],

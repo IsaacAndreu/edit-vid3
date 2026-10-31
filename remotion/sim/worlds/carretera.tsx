@@ -15,7 +15,7 @@ import {Car, CITY, kindOf} from '../city';
 import {Fields, Roadside} from '../scenery';
 import {paint, Pointers, trail, type Anchor} from '../look';
 import {C, FONT, Label, Panel} from '../hud';
-import {addWords, tx} from '../i18n';
+import {addWords, tx, num} from '../i18n';
 import {PLATOON, RAMP, ROAD, VARIANT, capacity, jamOf, laneTimes, platoon, ramp, road, type Frame} from '../road';
 import {Note, param, type World, type WorldProps} from '../world';
 
@@ -267,8 +267,8 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
           <RampRoad metered simT={t} y={700} o={o} />
         </svg>
         <Bars o={o('panel')} max={Math.max(free, metered)} style={{right: 64, bottom: 60}} rows={[
-          {label: `${tx('carsHour')} · ${tx('noMeter')}`, value: free, text: String(Math.round(free / 10) * 10), colour: C.red},
-          {label: `${tx('carsHour')} · ${tx('withMeter')}`, value: metered, text: String(Math.round(metered / 10) * 10), colour: C.green},
+          {label: `${tx('carsHour')} · ${tx('noMeter')}`, value: free, text: num(Math.round(free / 10) * 10), colour: C.red},
+          {label: `${tx('carsHour')} · ${tx('withMeter')}`, value: metered, text: num(Math.round(metered / 10) * 10), colour: C.green},
         ]} />
         <Pointers marks={g.marks} local={real} at={{jam: (() => {
           const r = ramp(false);
@@ -331,9 +331,9 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
       const top = capacity();
       const arriving = flow(jam.tail - 220, 200);
       panel = <Bars o={o('panel')} max={top} style={{left: '50%', bottom: 90, transform: 'translateX(-50%)'}} rows={[
-        {label: tx('outOfJam'), value: out, text: tx('perHourShort', {n: Math.round(out / 10) * 10}), colour: C.red},
-        {label: tx('clearRoad'), value: top, text: tx('perHourShort', {n: Math.round(top / 10) * 10}), colour: C.text},
-        {label: tx('arriving'), value: arriving, text: tx('perHourShort', {n: Math.round(arriving / 10) * 10}), colour: C.accent},
+        {label: tx('outOfJam'), value: out, text: tx('perHourShort', {n: num(Math.round(out / 10) * 10)}), colour: C.red},
+        {label: tx('clearRoad'), value: top, text: tx('perHourShort', {n: num(Math.round(top / 10) * 10)}), colour: C.text},
+        {label: tx('arriving'), value: arriving, text: tx('perHourShort', {n: num(Math.round(arriving / 10) * 10)}), colour: C.accent},
       ]} />;
     }
   }

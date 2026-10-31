@@ -7,7 +7,7 @@
 import {memo, type FC} from 'react';
 import {AbsoluteFill, interpolate} from 'remotion';
 import {C, Label, Panel} from '../hud';
-import {addWords, tx} from '../i18n';
+import {addWords, tx, num} from '../i18n';
 import {Pointers, type Anchor} from '../look';
 import {Big, clamp, mulberry, Note, param, SideTitle, type World, type WorldProps} from '../world';
 
@@ -240,7 +240,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
         </svg>
         <Panel o={panel} style={{right: 64, top: 52, width: 330}}>
           <Label>{tx('riverLevel')}</Label>
-          <div style={{fontSize: 52, fontWeight: 800, fontVariantNumeric: 'tabular-nums'}}>+{Math.max(0, L + 1).toFixed(1)} m</div>
+          <div style={{fontSize: 52, fontWeight: 800, fontVariantNumeric: 'tabular-nums'}}>+{num(Math.max(0, L + 1), 1)} m</div>
           <Label>{tx('flooded')}</Label>
           <div style={{fontSize: 52, fontWeight: 800, color: n ? C.red : C.text, fontVariantNumeric: 'tabular-nums'}}>
             {n} <span style={{fontSize: 26, color: C.label}}>/ {TOWN.houses.length}</span>

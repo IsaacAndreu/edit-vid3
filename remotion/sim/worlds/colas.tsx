@@ -11,7 +11,7 @@
 import type {FC, ReactElement} from 'react';
 import {AbsoluteFill, interpolate} from 'remotion';
 import {C, FONT, Label, Panel} from '../hud';
-import {addWords, tx} from '../i18n';
+import {addWords, tx, num} from '../i18n';
 import {Pointers, type Anchor} from '../look';
 import {SHOP, customers, kingman, longRun, lottery, runShop, waits, type Person, type ShopFrame, type ShopRun} from '../shop';
 import {Big, Note, param, SideTitle, splitAt, type World, type WorldProps} from '../world';
@@ -501,7 +501,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, move, o, on}) => 
       <>
         <Store run={run} f={f} left={0} width={1000} single={false} look={{you}} />
         <Panel o={Math.max(panelO, on * 0.95)} style={{right: 90, top: 260, width: 640}}>
-          {[[tx('outPerMinute'), out.toFixed(1)], [tx('ahead'), String(ahead)],
+          {[[tx('outPerMinute'), num(out, 1)], [tx('ahead'), String(ahead)],
             [tx('yourWait'), out > 0 ? `≈ ${fmt((ahead / out) * 60)}` : '—']].map(([a, b], k) => (
             <div key={a} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: k ? 14 : 0}}>
               <span style={{fontSize: 28, fontWeight: 700, textTransform: 'uppercase', color: k === 2 ? C.you : C.label}}>{a}</span>

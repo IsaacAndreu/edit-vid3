@@ -7,7 +7,7 @@ import type {FC} from 'react';
 import {AbsoluteFill, Easing, interpolate} from 'remotion';
 import {Car, CITY, City, kindOf, toScreen, type Cam} from '../city';
 import {C, FONT, Label, Panel} from '../hud';
-import {addWords, tx} from '../i18n';
+import {addWords, tx, num} from '../i18n';
 import {paint, Pointers, trail} from '../look';
 import {flowCurve, PERTURB, RING, SAMPLE, ring, type Mode, type Ring} from '../traffic';
 import {Note, param, type World, type WorldProps} from '../world';
@@ -103,7 +103,7 @@ const FlowChart: FC<{cars: number; o: number}> = ({cars, o}) => {
         </g>
         <line x1={X(peak.perKm)} x2={X(peak.perKm)} y1={0} y2={H} stroke="rgba(255,255,255,0.35)" strokeDasharray="6 6" />
         <text x={X(peak.perKm) - 10} y={Y(peak.perHour) - 16} textAnchor="end" fill={C.text} fontFamily={FONT} fontSize={24} fontWeight={800}>
-          {tx('peak')} · {Math.round(peak.perHour / 100) * 100} {tx('perHour')}
+          {tx('peak')} · {num(Math.round(peak.perHour / 100) * 100)} {tx('perHour')}
         </text>
         <text x={W - 10} y={30} textAnchor="end" fill={C.red} fontFamily={FONT} fontSize={24} fontWeight={800}>{tx('breaks').toUpperCase()} →</text>
         <circle cx={X(here.perKm)} cy={Y(here.perHour)} r={10} fill={C.accent} stroke="#0b1020" strokeWidth={3} opacity={o > 0.6 ? 1 : 0} />
@@ -286,7 +286,7 @@ const View: FC<WorldProps> = ({g, local, real = local, move, on, o}) => {
       <Panel o={show('speed')} style={{right: 64, top: 52, width: 270}}>
         <Label>{tx('meanSpeed')}</Label>
         <div style={{fontSize: 58, fontWeight: 800, color: C.accent, fontVariantNumeric: 'tabular-nums'}}>
-          {(r.meanSpeed(simT) * 3.6).toFixed(0)} <span style={{fontSize: 28}}>KM/H</span>
+          {num(r.meanSpeed(simT) * 3.6)} <span style={{fontSize: 28}}>KM/H</span>
         </div>
       </Panel>
       <Panel o={show('jam')} style={{right: 64, bottom: 80, width: 270}}>

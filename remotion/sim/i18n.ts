@@ -55,3 +55,9 @@ export const tx = (key: string, vars: Record<string, string | number> = {}): str
 /** More words for a world (each world file adds its own). */
 export const addWords = (words: Record<string, Record<Lang, string>>) => Object.assign(D, words);
 export type Words = Record<string, Record<Lang, string>>;
+
+const LOCALES: Record<Lang, string> = {es: 'es-ES', pt: 'pt-BR', fr: 'fr-FR', de: 'de-DE', en: 'en-US'};
+/** A number as it is written in the channel's language: 3,5 in Spanish, German, Portuguese and French; 3.5 in English;
+ * thousands 1.390 (de, pt), 1 390 (fr), 1,390 (en), 1390 (es: four figures are not grouped). */
+export const num = (value: number, digits = 0): string =>
+  new Intl.NumberFormat(LOCALES[LANG], {minimumFractionDigits: digits, maximumFractionDigits: digits}).format(value);
