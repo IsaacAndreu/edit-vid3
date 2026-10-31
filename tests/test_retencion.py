@@ -57,3 +57,37 @@ def test_topic_ideas_only_with_the_channels_worlds_and_one_a_day(tmp_path, monke
     assert [a["title"] for a in added] == ["Por qué el metro se colapsa", "Por qué el wifi va lento"]
     assert [a["date"] for a in added] == ["2026-11-02", "2026-11-03"] and "Mundos: multitud" in added[0]["note"]
     assert len(agenda.load(tmp_path)["ideas"]) == 2
+
+
+def _sim_root(tmp_path):
+    import json
+    import shutil
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    shutil.copy(root / "config.yaml", tmp_path / "config.yaml")
+    shutil.copytree(root / "canales", tmp_path / "canales")
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "_voces.json").write_text(json.dumps({
+        "el-porque-simulado": {"voice_id": "es-voice", "name": "Narrador ES"},
+        "simulated-why": {"voice_id": "en-voice", "name": "Narrator EN"}}), "utf-8")
+    return tmp_path
+
+
+def test_a_simulation_dubs_only_where_there_is_a_voice_of_that_language(tmp_path):
+    from pipeline import doblaje
+    from pipeline.web import create_video
+
+    root = _sim_root(tmp_path)
+    opts = {o["lang"]: o["voice"] for o in doblaje.options(root, "el-porque-simulado")}
+    assert opts == {"en": "Narrator EN", "pt": None, "de": None}          # never the Spanish voice reading German
+    ctx = RunContext.create("x", root=root, channel="el-porque-simulado")
+    cfg = doblaje.settings(ctx)
+    assert cfg["enabled"] and cfg["languages"] == ["en"] and cfg["voices"]["en"]["voice_id"] == "en-voice"
+    script = "Vas al súper con prisa y eliges la cola más corta. " * 10
+    create_video(root, {"name": "super1", "channel": "el-porque-simulado", "script": script, "dub": []})
+    none = RunContext.create("super1", root=root)
+    assert none.config.get("dub_languages") == [] and not doblaje.settings(none)["enabled"]
+    create_video(root, {"name": "super2", "channel": "el-porque-simulado", "script": script, "dub": ["en", "de"]})
+    chosen = doblaje.settings(RunContext.create("super2", root=root))
+    assert chosen["enabled"] and chosen["languages"] == ["en"]                # German ticked but it has no voice

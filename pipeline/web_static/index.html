@@ -525,6 +525,7 @@ async function newVideo() {
       <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
       <label>Lista de escenas <span class="muted">(opcional, canales de simulación: la escena de cada bloque del guion; el programa la sigue)</span></label>
       <textarea id="scenelist" style="min-height:120px" placeholder="Escena 1 · bloque 1 · ~30 s · tráfico&#10;Qué se ve: …&#10;Momento clave: …"></textarea>
+      <div id="dubbox"></div>
       <label>Voz <span class="muted">(mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
       <div class="row" style="margin-top:18px"><button id="hookbtn" onclick="checkHook()">Revisar el gancho (antes de grabar)</button><span id="hookmsg" class="small muted"></span></div>
       <div id="hookbox"></div>
@@ -535,6 +536,18 @@ async function newVideo() {
     </div>`;
   $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
   if (pre && pre.script) $("#script").value = pre.script;
+  // a simulation channel: the languages it can be dubbed to, each only if it has a GenAIPro voice
+  window.dubOptions = {};
+  api("/api/voices").then((v) => { window.dubOptions = v.dubOptions || {}; showDub(); }).catch(() => {});
+  window.showDub = () => {
+    const list = window.dubOptions[$("#channel").value] || [];
+    $("#dubbox").innerHTML = list.length ? `<label>Doblar a <span class="muted">(el mismo vídeo con su voz y sus rótulos en ese idioma, en su canal, con sus Shorts)</span></label>
+      <div class="row">${list.map((d) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0 14px 0 0">
+        <input type="checkbox" class="dublang" value="${esc(d.lang)}" ${d.voice ? "checked" : "disabled"} style="width:auto">
+        ${esc(d.name)} ${d.voice ? `<span class="small muted">· voz ${esc(d.voice)}${d.channel ? " · " + esc(d.channel) : ""}</span>`
+          : `<span class="small" style="color:var(--bad, #e5484d)">sin voz de GenAIPro: ponla en Ajustes → Voces (canal ${esc(d.channel || "—")})</span>`}</label>`).join("")}</div>` : "";
+  };
+  $("#channel").addEventListener("change", () => showDub());
   if (idea) {
     if (pre.channel && data.channels.includes(pre.channel)) $("#channel").value = pre.channel;
     if (idea.format) $("#format").value = idea.format;
@@ -602,7 +615,8 @@ async function createVideo() {
   $("#create").disabled = true; msg.textContent = "Creando…";
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
-      serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, scenes: $("#scenelist").value, idea: window.prefill ? window.prefill.idea : null});
+      serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, scenes: $("#scenelist").value,
+      ...((window.dubOptions || {})[$("#channel").value] ? {dub: [...document.querySelectorAll(".dublang:checked")].map((x) => x.value)} : {}), idea: window.prefill ? window.prefill.idea : null});
     window.prefill = null; try { sessionStorage.removeItem("prefill"); } catch (e) {}
     if (auto) { location.hash = "#/video/" + encodeURIComponent(made.slug); return; }   // GenAIPro makes the voice
     msg.textContent = "Subiendo la voz…"; $("#upbar").classList.remove("hide");

@@ -80,6 +80,15 @@ def channel_kinds(root: Path) -> dict[str, str]:
     return out
 
 
+def _dub_options(root: Path, channel: str) -> list[dict[str, Any]]:
+    try:
+        from .doblaje import options
+
+        return options(root, channel)
+    except Exception:
+        return []
+
+
 def set_channel(root: Path, slug: str, channel: str) -> dict[str, Any]:
     """«Cambiar de canal»: canal: in materiales/<vídeo>/config.yaml (the rest of that file stays). A finished video
     is not made again: it only changes where it is counted (statistics, spend, «Para subir»)."""
@@ -670,6 +679,10 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         lines += f"align:\n  language: {lang}\n"
     if lines:
         (folder / "config.yaml").write_text(lines, encoding="utf-8")
+    if isinstance(body.get("dub"), list):                  # the languages ticked for this video (a simulation channel)
+        dub = [str(l) for l in body["dub"] if str(l) in ("en", "pt", "de", "fr", "it")]
+        with (folder / "config.yaml").open("a", encoding="utf-8") as f:
+            f.write(f"dub_languages: [{', '.join(dub)}]\n")
     return {"slug": name, "folder": str(folder.relative_to(root))}
 
 
@@ -1126,7 +1139,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                      "dubbing": {c: tts.dubbing_for(root, c) for c in channels(root)},
                                      "dubLanguages": list(tts.DUB_LANGUAGES),
                                      # who speaks a new video with no mp3: its own voice or its base channel's
-                                     "speaks": {c: tts.voice_for(root, c) is not None for c in channels(root)}})
+                                     "speaks": {c: tts.voice_for(root, c) is not None for c in channels(root)},
+                                     # a simulation channel's dubbing: each language and the GenAIPro voice it would use
+                                     "dubOptions": {c: _dub_options(root, c) for c, k in channel_kinds(root).items() if k == "simulacion"}})
                 if path == "/api/voices/search":
                     from . import tts
 

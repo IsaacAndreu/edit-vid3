@@ -53,11 +53,62 @@ def settings(ctx: RunContext) -> dict[str, Any]:
         out.update(enabled=True, languages=list(studio["languages"]), existing=bool(studio.get("existing", True)),
                    since=float(studio.get("since") or 0))
         out["voices"].update({l: v for l, v in (studio.get("voices") or {}).items() if v.get("voice_id")})
+    from . import simulacion
+
+    if simulacion.active(ctx):
+        # a simulation channel dubs only with a GenAIPro voice of that language: the voice of the channel it goes to
+        # (simulated-why's for English…) or the studio's «Doblaje» voice for it — never the Spanish voice reading it
+        for lang in list(out["languages"]):
+            target = out["channels"].get(lang)
+            spec = dub_voice(ctx.root, target, (out["voices"].get(lang) or {}))
+            if spec:
+                out["voices"][lang] = spec
+            else:
+                out["voices"].pop(lang, None)
+        chosen = ctx.config.get("dub_languages")          # what «Nuevo vídeo» ticked for this video
+        if isinstance(chosen, list):
+            out["languages"] = [l for l in out["languages"] if l in [str(c) for c in chosen]]
+            out["enabled"] = out["enabled"] and bool(out["languages"])
+        out["languages"] = [l for l in out["languages"] if (out["voices"].get(l) or {}).get("voice_id")]
+        out["enabled"] = out["enabled"] and bool(out["languages"])
+        return out
     own = tts.voice_for(ctx.root, channel) if channel else None
     for lang in out["languages"]:
         if not (out["voices"].get(lang) or {}).get("voice_id") and own:
             out["voices"][lang] = {**own, "model_id": "eleven_multilingual_v2" if own.get("model_id") in
                                    ("eleven_turbo_v2_5", "eleven_flash_v2_5", None) else own["model_id"]}
+    return out
+
+
+def dub_voice(root: Path, target: str | None, given: dict[str, Any]) -> dict[str, Any] | None:
+    """The GenAIPro voice for a language: the target channel's own (not its base's: that one speaks Spanish), else
+    the one set for that language in «Doblaje»; None when there is none."""
+
+    from . import tts
+
+    if target:
+        own = tts.voices(root).get(target)
+        if own and own.get("voice_id"):
+            return own
+    return {**tts.DEFAULTS, **given} if given.get("voice_id") else None
+
+
+def options(root: Path, channel: str) -> list[dict[str, Any]]:
+    """For «Nuevo vídeo»: the languages a simulation channel can dub to, each with the voice it would use (or none)."""
+
+    ctx = RunContext.create("_doblaje", root=root, channel=channel)
+    cfg = ctx.section("dubbing")
+    channels = {str(k): str(v) for k, v in (cfg.get("channels") or {}).items() if v}
+    from . import tts
+
+    studio = tts.dubbing_for(root, channel)
+    langs = list(dict.fromkeys([*(str(l) for l in cfg.get("languages") or []), *(studio.get("languages") or [])]))
+    voices = {**dict(cfg.get("voices") or {}), **(studio.get("voices") or {})}
+    out = []
+    for lang in langs:
+        spec = dub_voice(root, channels.get(lang), voices.get(lang) or {})
+        out.append({"lang": lang, "name": NAMES.get(lang, lang), "channel": channels.get(lang),
+                    "voice": (spec or {}).get("name") or ((spec or {}).get("voice_id") or "")[:12] or None})
     return out
 
 
@@ -219,8 +270,8 @@ def prepare_all(root: Path, log: Any = print) -> int:
             ctx = RunContext.create(folder.name, root=root)
         except Exception:
             continue
-        if ctx.section("dub").get("of") or ctx.config.get("compilation"):   # dubbed copies and compilations: no
-            continue
+        if ctx.section("dub").get("of") or ctx.config.get("compilation") or ctx.section("shorts").get("of"):
+            continue                       # dubbed copies, compilations and Shorts (each dub makes its own): no
         cfg = settings(ctx)
         if not cfg["enabled"]:
             continue
