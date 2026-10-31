@@ -319,6 +319,8 @@ export interface SimGraphic {
   recap?: SimGraphic[];  // the closing summary: the key scenes of the video again, one per idea
   dial?: { label: string; from: number; to: number; min: number; max: number; percent?: boolean };   // a number turned
   ask?: string;         // «¿tú qué harías?»: the question the world stops on
+  texts?: string[];     // world explica: its words (a label, a year, the steps…)
+  nums?: number[];      // world explica: its figures (only ones the voice says)
   askHold?: number;     // seconds at the end of the shot: the world frozen with the question and a countdown
   teaser?: boolean;     // the opening: the video's strongest moment before the voice
   loopTo?: SimGraphic;  // a Short's last shot: it ends on its first scene (the loop)

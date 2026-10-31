@@ -304,7 +304,7 @@ SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", 
 
 # a simulation shot (pipeline/simulacion.py): only what is read on screen is translated — never the names the
 # world draws from (world, focus, overlay, scene…); the panels translate themselves with the graphic's «lang»
-SIM_TEXTS = ("title", "list", "rules", "marks", "stat")
+SIM_TEXTS = ("title", "list", "rules", "marks", "stat", "texts", "ask")
 
 
 def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:

@@ -11,6 +11,7 @@ import {colas} from './worlds/colas';
 import {contagio} from './worlds/contagio';
 import {cruces} from './worlds/cruces';
 import {embarque} from './worlds/embarque';
+import {explica} from './worlds/explica';
 import {incendio} from './worlds/incendio';
 import {inundacion} from './worlds/inundacion';
 import {manada} from './worlds/manada';
@@ -21,4 +22,4 @@ import {restaurante} from './worlds/restaurante';
 import {segregacion} from './worlds/segregacion';
 
 export const WORLDS: Record<string, World> = {cruces, anillo, autovia, carretera, contagio, red, incendio, inundacion, segregacion, colas, embarque, multitud, manada,
-  ascensores, aparcamiento, aeropuerto, metro, restaurante, apagon};
+  ascensores, aparcamiento, aeropuerto, metro, restaurante, apagon, explica};

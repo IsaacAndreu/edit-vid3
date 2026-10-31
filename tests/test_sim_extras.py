@@ -204,3 +204,14 @@ def test_the_script_check_says_what_each_block_shows_and_writes_the_scene_list(t
     assert fits == ["bien", "bien", "regular", "no"]                  # a scene that does not exist, a world that does not
     assert 40 < r["coverage"] < 80 and r["flagged"][0]["n"] == 4
     assert "embarque pasillo" in r["escenas"] and "ascensores otis" in r["escenas"]
+
+
+def test_the_wildcard_keeps_only_figures_the_voice_says_and_stays_short():
+    line = "En 1854, en Nueva York, Elisha Otis cortó la cuerda delante de 200 personas."
+    s = simulacion.clean({"world": "explica", "params": {"scene": "historia"},
+                          "texts": ["1854", "Elisha Otis", "corta la cuerda", "en 1999"], "nums": [200, 7]}, line, None)
+    assert s["texts"] == ["1854", "Elisha Otis", "corta la cuerda"] and s["nums"] == [200]   # 1999 and 7 were never said
+    found = {"a": {"world": "anillo", "focus": "ring", "params": {}}, "b": {"world": "explica", "focus": "center", "params": {}},
+             "c": {"world": "anillo", "focus": "ring", "params": {}}}
+    out = simulacion.steady(found, [("a", 0, 900), ("b", 900, 1080), ("c", 1080, 2000)], 30)
+    assert out["b"]["world"] == "explica"                                                   # 6 s, and it stays

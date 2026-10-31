@@ -76,6 +76,7 @@ Además, en cada plano:
 - "ask": SOLO cuando la frase le pregunta al espectador qué haría o qué va a pasar («¿qué cola eliges?», «¿frenas o
   dejas hueco?»): esa pregunta en 2-6 palabras; la simulación se para 3 segundos con ella en pantalla y luego enseña
   la respuesta. Como mucho dos en todo el vídeo, nunca en la primera frase; si no, "".
+- "texts" y "nums": SOLO con el mundo explica (sus palabras cortas y sus cifras, ver su descripción); si no, [] y [].
 - "replay": true SOLO en la frase del momento clave que merece verse otra vez (el frenazo que lo empieza todo, el
   primer coche que se para…): la imagen se congela con «PAUSA», se rebobina y se repite a cámara lenta. Como mucho
   dos en todo el vídeo; si no, false.
@@ -86,7 +87,7 @@ idea (la cámara no salta sin motivo), pero cada idea nueva del guion pide su es
 enseña): nunca más de 1-2 minutos con la misma escena ni 3 con el mismo mundo; el panel tiene que mostrar lo que dice la frase en ese momento; no inventes
 cifras ni fuentes: solo las que dice la frase. Escribe "title", "stat" y "list" en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "world": "...", "focus": "...", "overlay": "...", "params": {{}},
-"title": "", "stat": null, "source": "", "list": [], "rules": [], "ask": "", "replay": false}}]}}
+"title": "", "stat": null, "source": "", "list": [], "rules": [], "ask": "", "texts": [], "nums": [], "replay": false}}]}}
 """.strip()
 
 
@@ -152,6 +153,20 @@ def clean(scene: dict[str, Any], line: str, before: dict[str, Any] | None,
     out = {"type": "sim", "world": world, "focus": focus, "overlay": overlay, "params": params,
            "title": _words(scene.get("title"), 5).upper()[:40], "stat": stat, "source": source, "list": items,
            "rules": rules, "replay": scene.get("replay") is True}
+    if world == "explica":
+        # the wildcard's words, short; a figure (in a word or in nums) only if the line says it
+        said = set(re.findall(r"\d+(?:[.,]\d+)?", line))
+        texts = [_words(x, 8)[:60] for x in (scene.get("texts") or []) if str(x).strip()][:5]
+        out["texts"] = [x for x in texts if set(re.findall(r"\d+(?:[.,]\d+)?", x)) <= said]
+        nums = []
+        for x in scene.get("nums") or []:
+            try:
+                v = float(str(x).replace(",", "."))
+            except ValueError:
+                continue
+            if any(abs(v - float(d.replace(",", "."))) < 1e-9 for d in said):
+                nums.append(int(v) if v.is_integer() else v)
+        out["nums"] = nums[:2]
     if ask and "?" in line:               # «¿tú qué harías?»: only on a line that asks
         out["ask"] = f"¿{ask.upper()}?" if "¿" in line else f"{ask.upper()}?"
     return out
@@ -404,11 +419,17 @@ def steady(found: dict[str, dict[str, Any]], spans: list[tuple[str, int, int]], 
         current = runs()
         if len(current) < 2:
             break
-        short = next((r for r in current if (spans[r[-1]][2] - spans[r[0]][1]) / fps < least), None)
+        # the wildcard (explica) is short on purpose: a figure, a date between two experiments
+        short = next((r for r in current if out[spans[r[0]][0]]["world"] != "explica"
+                      and (spans[r[-1]][2] - spans[r[0]][1]) / fps < least), None)
         if short is None:
             break
         k = current.index(short)
-        host = current[k - 1][-1] if k else current[1][0]
+        hosts = [r for r in current if out[spans[r[0]][0]]["world"] != "explica" and r is not short]
+        if not hosts:
+            break
+        before = [r for r in hosts if r[-1] < short[0]]
+        host = before[-1][-1] if before else hosts[0][0]
         model = out[spans[host][0]]
         for i in short:
             scene = out[spans[i][0]]
@@ -584,7 +605,7 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
             runs.append([g])
     for n, run in enumerate(runs):
         seconds = (run[-1]["from"] + run[-1]["durationInFrames"] - run[0]["from"]) / fps
-        if len(runs) > 1 and seconds < least:
+        if len(runs) > 1 and seconds < least and run[0]["graphic"]["world"] != "explica":
             found.append(f"{stamp(run[0]['from'])} · «{run[0]['graphic']['world']}» solo {seconds:.0f} s en pantalla")
     found += monotony(sims, fps, ctx)
     for g in sims:
@@ -638,7 +659,7 @@ def monotony(sims: list[dict[str, Any]], fps: int, ctx: RunContext | None = None
     return out
 
 
-KEEP = ("world", "focus", "overlay", "params", "at", "since", "cues", "lang", "accent", "theme")
+KEEP = ("world", "focus", "overlay", "params", "at", "since", "cues", "lang", "accent", "theme", "texts", "nums")
 
 
 def recap_scenes(out: list[dict[str, Any]]) -> None:

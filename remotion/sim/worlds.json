@@ -942,5 +942,47 @@
     "panels": [
       "panel"
     ]
+  },
+  "explica": {
+    "niche": "comodín",
+    "describe": "el COMODÍN para lo que ningún otro mundo enseña (un dato suelto, un momento de la historia, una idea abstracta); úsalo solo en esas frases y vuelve al mundo de la historia en cuanto se pueda. Escribe sus palabras en \"texts\" (cortas) y sus cifras en \"nums\" (solo las que dice la frase). Elige scene: dato (una cifra grande: texts = [etiqueta, unidad, frase corta], nums = [la cifra]) · historia (una fecha y lo que pasó: texts = [año o fecha, quién o qué, qué pasó]; inventos, descubrimientos, quién lo estudió) · curva (una curva con su forma, forma = umbral|exponencial|lineal|campana|meseta: texts = [eje vertical, eje horizontal, nombre del punto de giro]; «a partir de cierto punto se dispara») · comparar (A contra B: texts = [A, B], nums = [valor A, valor B] si la frase los da) · pasos (una cadena de 3-5 causas que se encienden una tras otra: texts = los pasos; bucle = si cuando el último alimenta al primero, «se alimenta a sí mismo»)",
+    "focus": {
+      "center": "el centro"
+    },
+    "overlay": {
+      "none": "sin panel"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "dato",
+          "historia",
+          "curva",
+          "comparar",
+          "pasos"
+        ],
+        "default": "dato",
+        "describe": "qué escena: dato · historia · curva · comparar · pasos"
+      },
+      "forma": {
+        "options": [
+          "umbral",
+          "exponencial",
+          "lineal",
+          "campana",
+          "meseta"
+        ],
+        "default": "umbral",
+        "describe": "solo en curva: la forma"
+      },
+      "bucle": {
+        "options": [
+          "no",
+          "si"
+        ],
+        "default": "no",
+        "describe": "solo en pasos: si el último paso alimenta al primero"
+      }
+    }
   }
 }

@@ -30,6 +30,8 @@ export const verticalOf = (g: SimGraphic): Vertical => {
     }
     case 'aeropuerto':
       return {mode: 'halves'};
+    case 'explica':
+      return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
     case 'embarque':
       return scene(g, 'comparar') === 'puerta' ? {mode: 'halves'} : {mode: 'crop', cx: 960, cy: 540, scale: 1.0};
     case 'apagon':
