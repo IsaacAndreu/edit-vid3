@@ -124,7 +124,9 @@ const walking = (run: ShopRun, f: ShopFrame, left: number, width: number, single
 // customer holding a till up gets a red ring, YOU are yellow
 const PRODUCTS = ['#d9534f', '#f0ad4e', '#5cb85c', '#5bc0de', '#e8e4dc', '#9b59b6', '#f7dc6f', '#e67e22', '#3498db', '#c0392b'];
 const SHIRTS = ['#8d99ae', '#adb5bd', '#6c7a89', '#a3917b', '#7f8c8d', '#b0a8b9', '#8a9a8c', '#9fa8b3'];
-const HAIR = ['#2b2118', '#4a3426', '#1d1d1f', '#8a6a46', '#c9b28a', '#5b5b5b'];
+const HAIR = ['#2b2118', '#4a3426', '#1d1d1f', '#8a6a46', '#c9b28a', '#5b5b5b', '#a0522d'];
+const SKIN = ['#f1d3b5', '#e8c4a0', '#c99a6e', '#8d5a3b', '#d9a77a'];
+const CAPS = ['#2e4a7d', '#7d2e2e', '#3a5f3a', '#2b2b2b'];
 
 export const Shopper: FC<{x: number; y: number; id: number; items: number; you?: boolean; slow?: boolean; paying?: boolean; scale?: number;
   sway?: number; side?: boolean}> = ({x, y, id, items, you = false, slow = false, paying = false, scale = 1, sway = 0, side = false}) => {
@@ -156,8 +158,22 @@ export const Shopper: FC<{x: number; y: number; id: number; items: number; you?:
         <ellipse cx={0} cy={2} rx={19} ry={12} fill={shirt} stroke="rgba(0,0,0,0.35)" strokeWidth={2} />
         <ellipse cx={-14} cy={4 + sway * 3} rx={5} ry={6} fill={shirt} opacity={0.9} />
         <ellipse cx={14} cy={4 - sway * 3} rx={5} ry={6} fill={shirt} opacity={0.9} />
-        <circle cx={0} cy={0} r={9.5} fill={HAIR[id % HAIR.length]} />
-        <circle cx={0} cy={3} r={6} fill="#e8c4a0" />
+        {id % 5 === 3 && <ellipse cx={0} cy={-5} rx={11} ry={10} fill={HAIR[id % HAIR.length]} />}
+        <circle cx={0} cy={0} r={9.5} fill={id % 5 === 0 ? SKIN[id % SKIN.length] : HAIR[id % HAIR.length]} />
+        <circle cx={0} cy={3} r={6} fill={SKIN[id % SKIN.length]} />
+        {id % 6 === 1 && (
+          <g>
+            <circle cx={0} cy={-1} r={9.5} fill={CAPS[id % CAPS.length]} />
+            <rect x={-6} y={4} width={12} height={5} rx={2} fill={CAPS[id % CAPS.length]} opacity={0.85} />
+          </g>
+        )}
+        {id % 4 === 2 && !paying && (
+          // looking at the phone while waiting
+          <g>
+            <rect x={-5} y={10} width={10} height={14} rx={2} fill="#111418" />
+            <rect x={-3.5} y={11.5} width={7} height={10} rx={1} fill="#8fd3ff" opacity={0.85} />
+          </g>
+        )}
       </g>
     </g>
   );

@@ -11,7 +11,7 @@
 //            a light on the ramp lets one in at a time and the road keeps moving (panel: cars an hour, stopped)
 import type {FC, ReactElement} from 'react';
 import {AbsoluteFill} from 'remotion';
-import {Car, CITY} from '../city';
+import {Car, CITY, kindOf} from '../city';
 import {Fields, Roadside} from '../scenery';
 import {paint, Pointers, trail, type Anchor} from '../look';
 import {C, FONT, Label, Panel} from '../hud';
@@ -77,12 +77,12 @@ const Asphalt: FC<{lanes: number; y?: number; appear?: number}> = ({lanes, y = R
 const laneY = (lanes: number, lane: number, y = ROAD_Y) => y - (lanes * LANE) / 2 + LANE * (lane + 0.5);
 
 // one car with its brake glow (the red bloom that makes a wave visible from far away), coloured by its speed
-const RoadCar: FC<{sx: number; sy: number; s: number; v: number; a: number; top: number; mark?: string}> = ({sx, sy, s, v, a, top, mark}) => {
+const RoadCar: FC<{sx: number; sy: number; s: number; v: number; a: number; top: number; mark?: string; id?: number}> = ({sx, sy, s, v, a, top, mark, id = 0}) => {
   const brake = Math.min(1, Math.max(0, -a - 0.15) / 0.8) || (v < 0.6 ? 1 : 0);
   return (
     <g>
       {brake > 0.05 && <circle cx={sx - 2.2 * s} cy={sy} r={6 * s} fill="url(#glow)" opacity={brake} />}
-      <Car sx={sx} sy={sy} deg={0} s={s} color={paint(v, top)} brake={brake} mark={mark} trail={trail(v, top)} />
+      <Car sx={sx} sy={sy} deg={0} s={s} color={paint(v, top)} brake={brake} mark={mark} trail={trail(v, top)} kind={kindOf(id)} />
     </g>
   );
 };
@@ -104,7 +104,7 @@ const Traffic: FC<{f: Frame & {on?: Uint8Array}; L: number; x0: number; span: nu
       {Array.from(f.x).map((x, i) => {
         const d = ((x - x0) % L + L) % L;
         if (d > span + 10 || (f.on && !f.on[i])) return null;
-        return <RoadCar key={i} sx={d * m} sy={y} s={m * 1.05} v={f.v[i]} a={f.a[i]} top={TOP} mark={marks[i]} />;
+        return <RoadCar key={i} sx={d * m} sy={y} s={m * 1.05} v={f.v[i]} a={f.a[i]} top={TOP} mark={marks[i]} id={i} />;
       })}
     </g>
   );

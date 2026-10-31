@@ -5,7 +5,7 @@ import type {CSSProperties, FC} from 'react';
 import {AbsoluteFill, Audio, Easing, interpolate, staticFile, useCurrentFrame} from 'remotion';
 import '../theme';
 import {tx} from './i18n';
-import {Car, CITY, City, toScreen, type Cam} from './city';
+import {Car, CITY, City, kindOf, toScreen, type Cam} from './city';
 import {paint, trail} from './look';
 import {C, FONT, Label, Panel} from './hud';
 import {APPROACH, DEFAULTS, LANE, RING_R, STOP, perMinute, sample, signalAge, sim, type Params, type Snapshot} from './junction';
@@ -120,7 +120,7 @@ const Cars: FC<{cam: Cam; snap: Snapshot; mark?: (car: Snapshot['cars'][number])
       const {sx, sy} = toScreen(cam, car.x, car.y);
       const brake = car.waiting ? 1 : Math.min(1, Math.max(0, -car.a - 0.4) / 1.2);
       return <Car key={car.id} sx={sx} sy={sy} deg={(car.h * 180) / Math.PI} s={cam.s} color={paint(car.waiting ? 0 : car.v, 11)} brake={brake} mark={mark?.(car)}
-                  trail={trail(car.v, 11) * 0.7} />;
+                  trail={trail(car.v, 11) * 0.7} kind={kindOf(car.id)} />;
     })}
   </g>
 );

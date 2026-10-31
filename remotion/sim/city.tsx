@@ -186,11 +186,19 @@ const CityMap = memo((
 export const BODY = ['#e8e4dc', '#c9ccd2', '#2d3440', '#8a2d2d', '#3b5e8c', '#d9d2b0', '#4c4f56', '#9aa3ad'];
 
 /** `trail` (0 → 1): a short fading streak behind the car, longer the faster it goes. */
-export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: string; brake: number; mark?: string; trail?: number}> = (
-  {sx, sy, deg, s, color, brake, mark, trail = 0}) => {
-  const l = 4.4 * s;
-  const w = 1.9 * s;
+export type Kind = 'car' | 'small' | 'suv' | 'van';
+/** A vehicle's body for car number `i` (the same car keeps it): mostly cars, some small ones, SUVs and vans. */
+export const kindOf = (i: number): Kind => (i % 11 === 3 ? 'van' : i % 7 === 2 ? 'suv' : i % 5 === 1 ? 'small' : 'car');
+const SIZE: Record<Kind, [number, number]> = {car: [4.4, 1.9], small: [3.7, 1.75], suv: [4.7, 2.0], van: [5.1, 2.05]};
+
+/** `trail` (0 → 1): a short fading streak behind the car, longer the faster it goes; `kind`: the body. */
+export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: string; brake: number; mark?: string; trail?: number; kind?: Kind}> = (
+  {sx, sy, deg, s, color, brake, mark, trail = 0, kind = 'car'}) => {
+  const [L, W] = SIZE[kind];
+  const l = L * s;
+  const w = W * s;
   const tail = l * 1.9 * trail;
+  const glass = 'rgba(20,26,36,0.62)';
   return (
     <g transform={`translate(${sx} ${sy}) rotate(${deg})`}>
       {tail > 1 && (
@@ -201,9 +209,23 @@ export const Car: FC<{sx: number; sy: number; deg: number; s: number; color: str
       )}
       {mark && <circle r={l * 0.95} fill="none" stroke={mark} strokeWidth={Math.max(1.5, s * 0.25)} opacity={0.9} />}
       {CITY.night && <path d={`M${l * 0.45},${-w * 0.35} L${l * 2.6},${-w * 1.3} L${l * 2.6},${w * 1.3} L${l * 0.45},${w * 0.35} Z`} fill="#fff1b8" opacity={0.16} />}
-      <rect x={-l / 2 + s * 0.25} y={-w / 2 + s * 0.25} width={l} height={w} rx={s * 0.5} fill="rgba(0,0,0,0.35)" />
-      <rect x={-l / 2} y={-w / 2} width={l} height={w} rx={s * 0.5} fill={color} />
-      <rect x={-l * 0.12} y={-w / 2 + s * 0.2} width={l * 0.38} height={w - s * 0.4} rx={s * 0.25} fill="rgba(20,26,36,0.55)" />
+      <rect x={-l / 2 + s * 0.25} y={-w / 2 + s * 0.25} width={l} height={w} rx={s * (kind === 'van' ? 0.35 : 0.55)} fill="rgba(0,0,0,0.35)" />
+      <rect x={-l / 2} y={-w / 2} width={l} height={w} rx={s * (kind === 'van' ? 0.35 : 0.55)} fill={color} />
+      {kind === 'van' ? (
+        <>
+          <rect x={l / 2 - l * 0.24} y={-w / 2 + s * 0.18} width={l * 0.13} height={w - s * 0.36} rx={s * 0.15} fill={glass} />
+          <rect x={-l / 2 + s * 0.3} y={-w / 2 + s * 0.3} width={l * 0.62} height={w - s * 0.6} rx={s * 0.12} fill="rgba(255,255,255,0.14)" />
+        </>
+      ) : (
+        <>
+          <rect x={l * (kind === 'small' ? 0.08 : 0.12)} y={-w / 2 + s * 0.2} width={l * 0.16} height={w - s * 0.4} rx={s * 0.22} fill={glass} />
+          <rect x={-l * 0.2} y={-w / 2 + s * 0.28} width={l * 0.3} height={w - s * 0.56} rx={s * 0.18} fill="rgba(255,255,255,0.16)" />
+          <rect x={-l / 2 + l * 0.08} y={-w / 2 + s * 0.24} width={l * 0.1} height={w - s * 0.48} rx={s * 0.18} fill={glass} />
+          {kind === 'suv' && [-1, 1].map((k) => (
+            <line key={k} x1={-l * 0.2} x2={l * 0.1} y1={k * (w / 2 - s * 0.32)} y2={k * (w / 2 - s * 0.32)} stroke="rgba(0,0,0,0.35)" strokeWidth={s * 0.12} />
+          ))}
+        </>
+      )}
       <circle cx={l / 2 - s * 0.15} cy={-w / 2 + s * 0.35} r={s * 0.22} fill="#fff6cf" />
       <circle cx={l / 2 - s * 0.15} cy={w / 2 - s * 0.35} r={s * 0.22} fill="#fff6cf" />
       {brake > 0 && (

@@ -3,7 +3,7 @@
 // used to the end and the cars take turns at the cones (the zipper). Every car drives with the IDM.
 import type {FC} from 'react';
 import {AbsoluteFill} from 'remotion';
-import {Car, CITY} from '../city';
+import {Car, CITY, kindOf} from '../city';
 import {paint, Pointers, trail} from '../look';
 import {Roadside} from '../scenery';
 import {C, Label, Panel} from '../hud';
@@ -169,7 +169,7 @@ const Highway: FC<{s: Snap; top: number; scale: number; mark: number}> = ({s, to
       {Array.from(s.x).map((x, k) => {
         const braking = Math.min(1, Math.max(0, -s.a[k] - 0.3) / 1.5) || (s.v[k] < 1 ? 1 : 0);
         return <Car key={s.id[k]} sx={px(x)} sy={laneY(s.lane[k])} deg={0} s={m * 1.3 * Math.min(1.15, scale)} color={paint(s.v[k], 20)}
-                    brake={braking} trail={trail(s.v[k], 20)} />;
+                    brake={braking} trail={trail(s.v[k], 20)} kind={kindOf(s.id[k])} />;
       })}
     </g>
   );

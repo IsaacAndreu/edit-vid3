@@ -6,6 +6,9 @@
 # Úsalo con `canal: el-porque-simulado`. Cada frase del guion recibe una escena (pipeline/simulacion.py); mundos y
 # parámetros en remotion/sim/worlds.json. Lo que no se pone aquí sale de config.yaml.
 
+video:
+  fps: 60                          # animación suave (la guía del canal); el render tarda el doble que a 30
+
 visual:
   style: simulacion
   worlds: [anillo, carretera, autovia, cruces, colas, embarque, contagio, red, incendio, segregacion, manada]

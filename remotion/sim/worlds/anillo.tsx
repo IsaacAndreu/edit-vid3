@@ -5,7 +5,7 @@
 // diagram (cars an hour against cars per kilometre), this ring's point on it.
 import type {FC} from 'react';
 import {AbsoluteFill, Easing, interpolate} from 'remotion';
-import {Car, CITY, City, toScreen, type Cam} from '../city';
+import {Car, CITY, City, kindOf, toScreen, type Cam} from '../city';
 import {C, FONT, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {paint, Pointers, trail} from '../look';
@@ -191,7 +191,7 @@ const RingRoad: FC<RingProps> = ({r, simT, cx, cy, s, show, centre, arc}) => {
         const mark = driving && i === autoCar ? C.you : brakeMark ? C.you
           : fr.v[i] < 0.6 && simT > r.firstStop && show('jam') > 0.5 ? C.red : undefined;
         return <Car key={i} sx={cx + Math.cos(th) * R * s} sy={cy + Math.sin(th) * R * s} deg={(th * 180) / Math.PI + 90}
-                    s={s} color={paint(fr.v[i], r.startSpeed)} brake={braking} mark={mark} trail={0.8 * trail(fr.v[i], r.startSpeed)} />;
+                    s={s} color={paint(fr.v[i], r.startSpeed)} brake={braking} mark={mark} trail={0.8 * trail(fr.v[i], r.startSpeed)} kind={kindOf(i)} />;
       })}
       {driving && (() => {
         const th = angle(fr.x[autoCar]);
