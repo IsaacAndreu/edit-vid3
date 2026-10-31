@@ -234,3 +234,11 @@ def test_every_world_has_several_scenes():
             continue                                                              # the junctions keep their focuses; red is the old map
         options = (w["params"].get("scene") or {}).get("options") or []
         assert len(options) >= 3, name
+
+
+def test_the_background_sound_is_only_a_hint_by_default(tmp_path):
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion"}})
+    assert simulacion.look(ctx)["ambience"] == "entrada"
+    for value, mode in ((False, "no"), ("siempre", "siempre"), ("raro", "entrada")):
+        ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "simulacion", "ambient": value}})
+        assert simulacion.look(ctx)["ambience"] == mode

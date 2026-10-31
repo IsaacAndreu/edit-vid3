@@ -305,6 +305,7 @@ export interface SimGraphic {
   lang?: string;
   accent?: string;
   theme?: string;
+  ambience?: string;    // the background sound: entrada (a few seconds as a world comes in) · siempre · no
   sounds?: Record<string, string>;   // ambient, click, tick, murmur, rain, crowd, kitchen, beep, ding, impact (timeline.py)
   replay?: boolean;     // the key moment: freeze («PAUSA»), rewind, again at half speed
   enter?: boolean;      // this world comes on screen here (zoom in from the last one)

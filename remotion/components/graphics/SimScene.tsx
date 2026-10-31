@@ -42,7 +42,13 @@ export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps:
   const dings = (own.dings ?? []).filter((s) => hold <= 0 || s < holdFrom);
   const place = world?.ambient ?? 'ambient';
   const ambient = place === 'none' ? undefined : sounds[place] ?? sounds.ambient;
-  const level = place === 'rain' ? 0.24 : place === 'crowd' ? 0.32 : place === 'murmur' ? 0.4 : place === 'kitchen' ? 0.26 : 0.35;
+  // softer than it was (a synthetic hum is tiring under ten minutes of voice): a hint of the place, not a bed of noise
+  const level = (place === 'rain' ? 0.1 : place === 'crowd' ? 0.12 : place === 'murmur' ? 0.14 : place === 'kitchen' ? 0.1 : 0.13)
+    * (graphic.ambience === 'siempre' ? 0.8 : 1);
+  const mode = graphic.ambience ?? 'entrada';
+  // entrada: full for the first 3 s of the world on screen, gone by 6 s (the world's clock: continuous across its shots)
+  const envelope = (f: number) => (mode === 'siempre' ? 1 : interpolate(t0 + f / fps, [0, 0.4, 3, 6], [0, 1, 1, 0], clamp));
+  const heard = mode !== 'no' && (mode === 'siempre' || t0 < 6);
   const loop = 20 * fps;
   const at = (list: number[], src: string | undefined, key: string, volume: number, frames = 8) => src
     ? list.filter((s, i) => i === 0 || s - list[i - 1] > 0.12).map((s) => (
@@ -50,12 +56,12 @@ export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps:
     : null;
   return (
     <>
-      {ambient && <Audio src={staticFile(ambient)} loop volume={(f) => level * (hold > 0 && f / fps >= holdFrom ? 0.35 : 1)}
+      {ambient && heard && <Audio src={staticFile(ambient)} loop volume={(f) => level * envelope(f) * (hold > 0 && f / fps >= holdFrom ? 0.35 : 1)}
                          startFrom={Math.round(t0 * fps) % loop} />}
       {at(clicks, sounds.click, 'c', 0.32, 6)}
       {at(ticks.filter((s, i) => i === 0 || s - ticks[i - 1] > 0.25), sounds.tick, 't', 0.22, 6)}
-      {at(beeps, sounds.beep, 'b', 0.16, 6)}
-      {at(dings, sounds.ding, 'd', 0.3, Math.round(1.3 * fps))}
+      {at(mode === 'siempre' ? beeps : beeps.filter((b) => t0 + b < 6), sounds.beep, 'b', 0.08, 6)}
+      {at(dings, sounds.ding, 'd', 0.18, Math.round(1.3 * fps))}
       {at(hits, sounds.impact, 'h', 0.45, Math.round(1.1 * fps))}
       {at(figure.filter((s) => !hits.some((h) => Math.abs(h - s) < 0.4)), sounds.impact, 'f', 0.22, Math.round(1.1 * fps))}
     </>

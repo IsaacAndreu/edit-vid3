@@ -287,9 +287,13 @@ def sounds(ctx: RunContext, publish: Any) -> dict[str, str]:
 def look(ctx: RunContext) -> dict[str, str]:
     """The channel's language (the panels' words), accent colour and map theme, for every shot."""
 
+    ambience = str(ctx.section("visual").get("ambient", "entrada")).lower()
+    ambience = {"false": "no", "none": "no", "true": "siempre"}.get(ambience, ambience)
     return {"lang": str(ctx.section("align").get("language", "es"))[:2],
             "accent": str(ctx.section("brand").get("accent") or ""),
-            "theme": str(ctx.section("visual").get("theme") or "day")}
+            "theme": str(ctx.section("visual").get("theme") or "day"),
+            # the place's background sound: only a few seconds as each world comes in (entrada), always (siempre), or no
+            "ambience": ambience if ambience in ("no", "entrada", "siempre") else "entrada"}
 
 
 def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> list[dict[str, Any]]:
