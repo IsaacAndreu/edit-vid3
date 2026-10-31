@@ -34,6 +34,44 @@ fechas y unidades se escriben como se dicen en {language} (dinero en la moneda o
 Devuelve SOLO JSON: {"title": "título traducido", "script": "el guion traducido"}.
 """.strip()
 
+ADAPT_SYSTEM = """
+Eres guionista nativo de YouTube para este público: {audience}. Recibes el guion de un vídeo explicativo en español.
+NO lo traduzcas sin más: ADÁPTALO al {language} para que parezca hecho para ellos.
+{guide}
+Reglas:
+- Cambia los ejemplos cotidianos por los de allí (carreteras, tiendas, marcas, horarios, costumbres) y las monedas y
+  unidades por las suyas (convierte la cifra, no inventes una nueva).
+- Un caso local muy conocido que venga a cuento (un apagón, un atasco famoso, un estudio de allí) puede añadirse en
+  1-2 frases, SOLO si estás seguro de los hechos (año, lugar, qué pasó) y sin cifras dudosas; si dudas, no lo pongas.
+- Lo que se ve en pantalla es la misma simulación: no cambies lo que la voz describe de ella («este coche frena», «la
+  cola de la izquierda»), ni las cifras que salen de ella, ni los estudios citados.
+- La misma estructura, gancho, giro y cierre; la duración casi igual (±10 %). Mantén las líneas «## TÍTULO».
+- Frases cortas, natural para leer en voz alta, sin notas ni acotaciones.
+Devuelve SOLO JSON: {{"title": "título adaptado", "script": "el guion adaptado", "changes": ["cada adaptación que hiciste, en español"]}}
+""".strip()
+
+# who each language speaks to, unless the target channel says it (`localize:` in its profile)
+AUDIENCES = {"en": "Estados Unidos (y quien vea en inglés)", "pt": "Brasil", "de": "Alemania, Austria y Suiza",
+             "fr": "Francia (y la francofonía)", "it": "Italia"}
+
+
+def localize(ctx: RunContext, lang: str) -> tuple[str, str] | None:
+    """(audience, guide) to adapt a script to a language's viewers: the `localize:` of the channel the dub goes to
+    (canales/<canal>.yaml), else, for a simulation channel, a plain one; None: a plain translation."""
+
+    from . import simulacion
+
+    target = settings(ctx)["channels"].get(lang)
+    guide = ""
+    if target:
+        try:
+            guide = str(RunContext.create("_adapta", root=ctx.root, channel=target).config.get("localize") or "").strip()
+        except Exception:
+            guide = ""
+    if not guide and not simulacion.active(ctx):
+        return None
+    return AUDIENCES.get(lang, lang), guide
+
 NAMES = {"en": "English", "pt": "Portuguese (Brazil)", "fr": "French", "it": "Italian", "de": "German"}
 
 
@@ -125,8 +163,10 @@ def translate(ctx: RunContext, lang: str) -> bool:
     title_file = folder / "titulo.txt"
     title = title_file.read_text("utf-8").strip() if title_file.is_file() else ""
     language = NAMES.get(lang, lang)
-    result = complete_json(ctx, stage="doblaje", section="planner", max_tokens=12000,
-                           system=TRANSLATE_SYSTEM.replace("{language}", language),
+    local = localize(ctx, lang)
+    system = (ADAPT_SYSTEM.format(audience=local[0], language=language, guide=local[1]) if local
+              else TRANSLATE_SYSTEM.replace("{language}", language))
+    result = complete_json(ctx, stage="doblaje", section="planner", max_tokens=12000, system=system,
                            user=f"TÍTULO: {title or '(sin título)'}\n\nGUION:\n{script}")
     text = str(result.get("script") or "").strip()
     if len(text.split()) < 0.5 * len(script.split()):
@@ -134,6 +174,11 @@ def translate(ctx: RunContext, lang: str) -> bool:
     target.write_text(text + "\n", encoding="utf-8")
     if result.get("title"):
         (folder / f"titulo-{lang}.txt").write_text(str(result["title"]).strip() + "\n", encoding="utf-8")
+    changes = [str(c) for c in result.get("changes") or [] if str(c).strip()]
+    if local and changes:                  # what was adapted, to check before the voice is read (studio → Doblaje)
+        (folder / f"adaptacion-{lang}.md").write_text(f"# Adaptación al {language} ({local[0]})\n\n"
+                                                      + "\n".join(f"- {c}" for c in changes) + "\n", encoding="utf-8")
+        print(f"   Adaptado al {language}: " + " · ".join(changes[:4]))
     return True
 
 
@@ -201,6 +246,7 @@ def status(root: Path, slug: str) -> list[dict[str, Any]]:
                     "own": (folder / OWN.format(lang=lang)).is_file(), "voice": (folder / f"voz-{lang}.mp3").is_file(),
                     "voiceId": bool((cfg["voices"].get(lang) or {}).get("voice_id")),
                     "manual": (root / "out" / dubbed / MANUAL).is_file(),
+                    "adapted": (folder / f"adaptacion-{lang}.md").read_text("utf-8") if (folder / f"adaptacion-{lang}.md").is_file() else "",
                     "done": is_done(root, dubbed), "error": (folder / "doblaje.error").read_text("utf-8")
                     if (folder / "doblaje.error").is_file() else ""})
     return out

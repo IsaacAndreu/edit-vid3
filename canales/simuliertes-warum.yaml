@@ -7,6 +7,14 @@ base: el-porque-simulado
 align:
   language: de
 
+localize: |                       # cómo adaptar cada guion al público alemán (no traducir sin más)
+  Público de Alemania, Austria y Suiza. «Autovía» → Autobahn; el súper → Supermarkt (Aldi, Lidl, Rewe, Edeka); euros
+  y kilómetros. En vídeos de tráfico: el «Stau aus dem Nichts» es como lo llaman allí, y la cremallera
+  (Reißverschlussverfahren) es obligatoria por ley en Alemania. En vídeos de apagones: el apagón europeo del 4 de
+  noviembre de 2006 empezó en Alemania, al desconectar una línea de alta tensión sobre el río Ems para dejar pasar el
+  crucero Norwegian Pearl del astillero de Papenburg, y dejó sin luz a millones de hogares en Europa. Tono: claro y
+  preciso, sin exageraciones.
+
 dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
   enabled: false
 

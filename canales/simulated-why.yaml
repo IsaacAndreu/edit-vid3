@@ -7,6 +7,12 @@ base: el-porque-simulado
 align:
   language: en
 
+localize: |                       # cómo adaptar cada guion al público en inglés (sobre todo EE. UU.)
+  Público de Estados Unidos (y quien vea en inglés). «Autovía» → freeway/interstate; el súper → grocery store
+  (Walmart, Target, Costco); dólares, millas y mph. En vídeos de apagones: el gran apagón del noreste de agosto de
+  2003 (Estados Unidos y Canadá). En vídeos de tráfico: varios estados hacen campañas para que la gente use la
+  cremallera (zipper merge). Tono: directo y con energía, como un buen explicador de YouTube.
+
 dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
   enabled: false
 

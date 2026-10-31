@@ -91,3 +91,27 @@ def test_a_simulation_dubs_only_where_there_is_a_voice_of_that_language(tmp_path
     create_video(root, {"name": "super2", "channel": "el-porque-simulado", "script": script, "dub": ["en", "de"]})
     chosen = doblaje.settings(RunContext.create("super2", root=root))
     assert chosen["enabled"] and chosen["languages"] == ["en"]                # German ticked but it has no voice
+
+
+def test_a_dub_is_adapted_to_its_viewers(tmp_path, monkeypatch):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "atasco1"
+    folder.mkdir(parents=True)
+    (root / "materiales" / "el-porque-simulado" / "config.yaml").write_text("canal: el-porque-simulado\n", "utf-8")
+    script = "Vas por la autovía y todo se para. " * 20
+    (folder / "guion.txt").write_text(script, "utf-8")
+    seen = {}
+
+    def fake(ctx, **k):
+        seen.update(k)
+        return {"title": "Stau aus dem Nichts", "script": "Du fährst auf der Autobahn und alles steht. " * 20,
+                "changes": ["autovía → Autobahn", "añadido el apagón europeo de 2006 (río Ems)"]}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    ctx = RunContext.create("atasco1", root=root)
+    assert doblaje.translate(ctx, "de")
+    assert "Alemania, Austria y Suiza" in seen["system"] and "Autobahn" in seen["system"] and "Ems" in seen["system"]
+    assert "Autobahn" in (folder / "guion-de.txt").read_text("utf-8")
+    assert "río Ems" in (folder / "adaptacion-de.md").read_text("utf-8")

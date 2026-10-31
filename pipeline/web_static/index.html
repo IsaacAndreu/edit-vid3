@@ -650,6 +650,7 @@ async function videoPage(slug) {
   const dubs = (v.dubs || []).length ? `<h2>Doblaje</h2>${v.dubs.map((d) => `<details class="card" ${d.done || d.manual ? "" : "open"}>
       <summary><b>${esc(d.name)}</b> · <span class="small">${dubState(d)}</span>${d.voiceId ? "" : ' <span class="pill error">sin voz elegida para este idioma</span>'}</summary>
       ${d.error ? `<div class="notice bad small">${esc(d.error)}</div>` : ""}
+      ${d.adapted ? `<div class="small" style="margin:6px 0"><b>Adaptado a su público:</b><div class="md">${md(d.adapted.split("\n").slice(2).join("\n"), "")}</div></div>` : ""}
       ${d.done ? "" : `<div class="small muted" style="margin:6px 0">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
         <input id="dubt-${d.lang}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" style="margin-bottom:6px">
         <textarea id="dubs-${d.lang}" rows="8" placeholder="Guion en ${esc(d.name)}…">${esc(d.own ? d.script : "")}</textarea>

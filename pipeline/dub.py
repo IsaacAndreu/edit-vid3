@@ -36,6 +36,7 @@ from .context import RunContext
 from .llm import complete_json
 from .schemas import MAX_THIRD_PARTY_SECONDS, Timeline
 from .shorts import sentences
+from .doblaje import AUDIENCES
 
 STAGE = "dub"
 LANGUAGES = {
@@ -61,8 +62,8 @@ frases originales que puedas situar con seguridad.
 """.strip()
 
 TRANSLATE_SYSTEM = """
-Traduce al {language} los textos en pantalla de un documental deportivo. Mantén MAYÚSCULAS si el
-original las usa, nombres propios, cifras y la brevedad (mismo largo aproximado). Devuelve SOLO
+Traduce al {language} los textos en pantalla de un documental. Mantén MAYÚSCULAS si el
+original las usa, nombres propios, cifras y la brevedad (mismo largo aproximado).{local} Devuelve SOLO
 JSON: {{"texts": {{"id": "traducción", ...}}}} con los mismos ids.
 """.strip()
 
@@ -521,7 +522,10 @@ def run(ctx: RunContext) -> None:
     print(f"[5/6] Traduciendo textos en pantalla al {language}")
     texts = screen_texts(timeline)
     translated = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000,
-                               system=TRANSLATE_SYSTEM.format(language=language),
+                               system=TRANSLATE_SYSTEM.format(language=language, local=(
+                                   f" Adáptalos al público de {AUDIENCES.get(lang, lang)} como su narración (sus carreteras, "
+                                   f"tiendas, moneda y unidades): {str(ctx.config.get('localize') or '').strip()[:600]}"
+                                   if ctx.config.get("localize") else "")),
                                user=json.dumps(texts, ensure_ascii=False)).get("texts", {})
     apply_texts(timeline, {k: str(v) for k, v in translated.items() if k in texts and str(v).strip()})
     if not (ctx.materials_dir / "titulo.txt").is_file():

@@ -7,6 +7,12 @@ base: el-porque-simulado
 align:
   language: pt
 
+localize: |                       # cómo adaptar cada guion al público de Brasil
+  Público de Brasil. «Autovía» → rodovia o marginal (la Marginal Tietê en São Paulo es un atasco que todos conocen);
+  el súper → mercado/supermercado (Carrefour, Assaí, Pão de Açúcar); reales y kilómetros. En vídeos de apagones: el
+  apagón de noviembre de 2009, cuando la línea de Itaipú cayó y dejó sin luz a buena parte del país. Tono: cercano y
+  con ritmo, como se habla en Brasil.
+
 dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
   enabled: false
 
