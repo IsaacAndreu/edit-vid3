@@ -657,7 +657,9 @@ class YouTubeSource:
         if kind == "auth" or unreachable:
             if unreachable and time.monotonic() - getattr(self, "_mp_said", 0.0) > 300:
                 self._mp_said = time.monotonic()
-                print("   El proxy de metadatos no responde: esas peticiones salen por la vía de siempre")
+                why = ("rechaza el usuario o la contraseña, o no le queda saldo (407)" if "407" in lowered
+                       else "no responde")
+                print(f"   El proxy de metadatos {why}: esas peticiones salen por la vía de siempre")
             return "home"
         if refused and video:
             self._refuse(video)                 # refused from several residential IPs: that video, not a connection
