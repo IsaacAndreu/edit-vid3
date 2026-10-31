@@ -1,6 +1,8 @@
-// A country's power grid at night: substations (each feeding a city's lights) joined by lines. One piece fails on
-// the line that says so (cues.fail); its load moves to its neighbours, and any that goes over its capacity falls too,
-// step by step. With little reserve (margin) a single fault darkens most of the country; with enough, it stays put.
+// Cascading failures on a network (param kind): a country's power grid at night (substations feeding cities),
+// banks lending to each other (one goes bust, its debts hit those who lent to it) or a supply chain (factories and
+// warehouses: one stops, those it supplied run out). One piece fails on the line that says so (cues.fail); its load
+// moves to its neighbours, and any that goes over its capacity falls too, step by step. With little reserve
+// (margin) a single fault takes most of the network down; with enough, it stays put.
 import type {FC} from 'react';
 import {AbsoluteFill, interpolate} from 'remotion';
 import {C, Label, Panel} from '../hud';
@@ -14,6 +16,14 @@ addWords({
   fine: {es: 'holgada', pt: 'folgada', fr: 'faible', de: 'gering', en: 'light'},
   limit: {es: 'al límite', pt: 'no limite', fr: 'à la limite', de: 'am Limit', en: 'at the limit'},
   failsHere: {es: 'Aquí falla', pt: 'Aqui falha', fr: 'Ici, la panne', de: 'Hier fällt es aus', en: 'It fails here'},
+  banksDown: {es: 'Bancos en quiebra', pt: 'Bancos falidos', fr: 'Banques en faillite', de: 'Banken pleite', en: 'Banks bust'},
+  banksOf: {es: '{n} de {m} bancos', pt: '{n} de {m} bancos', fr: '{n} banques sur {m}', de: '{n} von {m} Banken', en: '{n} of {m} banks'},
+  bustHere: {es: 'Aquí quiebra el primero', pt: 'Aqui falha o primeiro', fr: 'Ici, la première faillite', de: 'Hier geht die erste pleite', en: 'The first one goes bust here'},
+  bankNote: {es: 'Simulación · {n} bancos que se prestan entre sí · si uno quiebra, sus deudas caen sobre los que le prestaron · colchón: {m} %', pt: 'Simulação · {n} bancos que emprestam entre si · se um falha, as dívidas caem sobre quem lhe emprestou · reserva: {m} %', fr: 'Simulation · {n} banques qui se prêtent · si une tombe, ses dettes retombent sur ses prêteurs · coussin : {m} %', de: 'Simulation · {n} Banken, die sich Geld leihen · geht eine pleite, treffen ihre Schulden die Gläubiger · Puffer: {m} %', en: 'Simulation · {n} banks lending to each other · when one goes bust its debts hit its lenders · buffer: {m} %'},
+  plantsDown: {es: 'Fábricas paradas', pt: 'Fábricas paradas', fr: 'Usines à l’arrêt', de: 'Stillstehende Fabriken', en: 'Plants stopped'},
+  plantsOf: {es: '{n} de {m} fábricas y almacenes', pt: '{n} de {m} fábricas e armazéns', fr: '{n} usines et entrepôts sur {m}', de: '{n} von {m} Werken und Lagern', en: '{n} of {m} plants and warehouses'},
+  stopsHere: {es: 'Aquí se para la primera', pt: 'Aqui para a primeira', fr: 'Ici, le premier arrêt', de: 'Hier steht das erste still', en: 'The first one stops here'},
+  supplyNote: {es: 'Simulación · {n} fábricas y almacenes que se abastecen entre sí · si una se para, a las que suministraba les falta · stock de reserva: {m} %', pt: 'Simulação · {n} fábricas e armazéns · se uma para, faltam peças às que abastecia · stock: {m} %', fr: 'Simulation · {n} usines et entrepôts · si une s’arrête, celles qu’elle fournissait manquent · stock : {m} %', de: 'Simulation · {n} Werke und Lager · steht eines, fehlt es den belieferten · Lagerreserve: {m} %', en: 'Simulation · {n} plants and warehouses · when one stops, those it supplied run short · spare stock: {m} %'},
   gridNote: {es: 'Simulación · {n} subestaciones · al caer una, su carga pasa a las vecinas · reserva de cada línea: {m} %', pt: 'Simulação · {n} subestações · quando uma cai, a carga passa às vizinhas · reserva: {m} %', fr: 'Simulation · {n} postes · quand un tombe, sa charge passe aux voisins · réserve : {m} %', de: 'Simulation · {n} Umspannwerke · fällt eines aus, geht seine Last an die Nachbarn · Reserve: {m} %', en: 'Simulation · {n} substations · when one falls its load moves to its neighbours · reserve: {m} %'},
 });
 
@@ -89,8 +99,38 @@ export const cascade = (margin: number): Cascade => {
 
 const total = GRID.nodes.reduce((s, n) => s + n.load, 0);
 
+type Skin = {bg: string; land: boolean; down: string; of: string; here: string; note: string; glow: string; icon: 'sub' | 'bank' | 'plant'};
+const SKINS: Record<string, Skin> = {
+  electricidad: {bg: '#060a14', land: true, down: 'blackout', of: 'substationsDown', here: 'failsHere', note: 'gridNote', glow: '#ffcf73', icon: 'sub'},
+  bancos: {bg: '#0a0d14', land: false, down: 'banksDown', of: 'banksOf', here: 'bustHere', note: 'bankNote', glow: '#e9c46a', icon: 'bank'},
+  suministro: {bg: '#0b1014', land: true, down: 'plantsDown', of: 'plantsOf', here: 'stopsHere', note: 'supplyNote', glow: '#8fd3ff', icon: 'plant'},
+};
+
+/** A node as the kind of network draws it: a substation, a bank (columns under a pediment), a factory (saw roof). */
+const Node: FC<{x: number; y: number; icon: Skin['icon']; fill: string}> = ({x, y, icon, fill}) => {
+  if (icon === 'bank') {
+    return (
+      <g transform={`translate(${x} ${y})`}>
+        <path d="M-13,-6 L0,-14 L13,-6 Z" fill={fill} />
+        {[-9, -3, 3, 9].map((cx) => <rect key={cx} x={cx - 1.5} y={-5} width={3} height={11} fill={fill} />)}
+        <rect x={-14} y={6} width={28} height={3} fill={fill} />
+      </g>
+    );
+  }
+  if (icon === 'plant') {
+    return (
+      <g transform={`translate(${x} ${y})`}>
+        <path d="M-14,9 L-14,-3 L-7,-9 L-7,-3 L0,-9 L0,-3 L7,-9 L7,-3 L14,-3 L14,9 Z" fill={fill} />
+        <rect x={9} y={-15} width={4} height={12} fill={fill} />
+      </g>
+    );
+  }
+  return <rect x={x - 6} y={y - 6} width={12} height={12} fill={fill} stroke="#060a14" strokeWidth={2} />;
+};
+
 const View: FC<WorldProps> = ({g, worldT, o}) => {
   const margin = param(g, 'margin', 0.2);
+  const skin = SKINS[param<string>(g, 'kind', 'electricidad')] ?? SKINS.electricidad;
   const c = cascade(margin);
   const failAt = (g.cues?.fail ?? g.since + 3) - g.since;            // seconds into this world
   const k = Math.floor((worldT - failAt) / STEP);                    // the wave of failures we are at (−1: none yet)
@@ -103,9 +143,9 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
   const flow = (worldT * 60) % 40;
   const first = GRID.nodes[GRID.first];
   return (
-    <AbsoluteFill style={{background: '#060a14'}}>
+    <AbsoluteFill style={{background: skin.bg}}>
       <svg width={W} height={H} style={{position: 'absolute'}}>
-        <polygon points={GRID.outline} fill="#0f1726" stroke="#2b3c5c" strokeWidth={3} />
+        {skin.land && <polygon points={GRID.outline} fill="#0f1726" stroke="#2b3c5c" strokeWidth={3} />}
         {GRID.edges.map(([a, b], n) => {
           const off = down.has(a) || down.has(b);
           const r = Math.max(ratio(a), ratio(b));
@@ -122,10 +162,10 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
           const glow = 14 + n.load * 18;
           return (
             <g key={i}>
-              {!off && <circle cx={n.x} cy={n.y} r={glow * 1.8} fill="#ffcf73" opacity={0.12} />}
-              {!off && <circle cx={n.x} cy={n.y} r={glow * 0.7} fill="#ffd98f" opacity={0.35} />}
+              {!off && <circle cx={n.x} cy={n.y} r={glow * 1.8} fill={skin.glow} opacity={0.12} />}
+              {!off && <circle cx={n.x} cy={n.y} r={glow * 0.7} fill={skin.glow} opacity={0.3} />}
               {flash > 0 && <circle cx={n.x} cy={n.y} r={glow * (1 + 2 * (1 - flash))} fill="none" stroke="#ff4b4b" strokeWidth={4} opacity={flash} />}
-              <rect x={n.x - 6} y={n.y - 6} width={12} height={12} fill={off ? '#3a4050' : showLoad > 0.3 ? heat(ratio(i)) : '#e8eef8'} stroke="#060a14" strokeWidth={2} />
+              <Node x={n.x} y={n.y} icon={skin.icon} fill={off ? '#c0392b' : showLoad > 0.3 ? heat(ratio(i)) : '#e8eef8'} />
             </g>
           );
         })}
@@ -133,12 +173,12 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
           <g opacity={o('fail')}>
             <circle cx={first.x} cy={first.y} r={40} fill="none" stroke={C.accent} strokeWidth={4} />
             <text x={first.x + 50} y={first.y - 30} fill={C.text} fontFamily='"Barlow Condensed", sans-serif' fontWeight={800} fontSize={30}
-                  style={{textTransform: 'uppercase'}}>{tx('failsHere')}</text>
+                  style={{textTransform: 'uppercase'}}>{tx(skin.here)}</text>
           </g>
         )}
       </svg>
-      <Big o={o('cascade')} label={tx('blackout')} value={`${Math.round(dark * 100)} %`} color={dark > 0.3 ? C.red : C.accent}
-           sub={tx('substationsDown', {n: down.size, m: GRID.nodes.length})} style={{right: 48, top: 52, width: 340}} />
+      <Big o={o('cascade')} label={tx(skin.down)} value={`${Math.round(dark * 100)} %`} color={dark > 0.3 ? C.red : C.text}
+           sub={tx(skin.of, {n: down.size, m: GRID.nodes.length})} style={{right: 48, top: 52, width: 360}} />
       <Panel o={showLoad} style={{right: 48, bottom: 70}}>
         <Label>{tx('lineLoad')}</Label>
         <div style={{display: 'flex', gap: 18, marginTop: 8, fontSize: 20, fontWeight: 700, textTransform: 'uppercase'}}>
@@ -147,7 +187,7 @@ const View: FC<WorldProps> = ({g, worldT, o}) => {
           ))}
         </div>
       </Panel>
-      <Note>{tx('gridNote', {n: GRID.nodes.length, m: Math.round(margin * 100)})}</Note>
+      <Note>{tx(skin.note, {n: GRID.nodes.length, m: Math.round(margin * 100)})}</Note>
     </AbsoluteFill>
   );
 };

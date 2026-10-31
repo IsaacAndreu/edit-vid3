@@ -222,8 +222,8 @@
     }
   },
   "red": {
-    "niche": "desastres",
-    "describe": "la red eléctrica de un país de noche (subestaciones y líneas, ciudades iluminadas): falla una pieza, su carga pasa a las vecinas y caen en cascada",
+    "niche": "desastres y crisis",
+    "describe": "una red en la que un fallo se contagia (elige kind): electricidad (la red eléctrica de un país de noche: subestaciones y ciudades iluminadas), bancos (bancos que se prestan entre sí: uno quiebra y sus deudas tumban a los que le prestaron; crisis financieras), suministro (fábricas y almacenes: una se para y a las que abastecía les faltan piezas; cadenas de suministro). Falla una pieza, su carga pasa a las vecinas y caen en cascada",
     "focus": {
       "map": "todo el país"
     },
@@ -245,6 +245,15 @@
           "de": "Netzreserve"
         },
         "percent": true
+      },
+      "kind": {
+        "options": [
+          "electricidad",
+          "bancos",
+          "suministro"
+        ],
+        "default": "electricidad",
+        "describe": "qué red: electricidad · bancos · suministro"
       }
     },
     "cues": {
@@ -521,6 +530,37 @@
       ]
     },
     "legend": "top",
+    "panels": [
+      "panel"
+    ]
+  },
+  "inundacion": {
+    "niche": "desastres",
+    "describe": "un pueblo junto a un río visto desde arriba cuando el río crece: el agua llena todo lo que está por debajo de su nivel y puede alcanzar desde el río (no salta colinas), las casas que se mojan se marcan en rojo. Elige scene: sube (el río crece y el pueblo se va inundando) · dique (izquierda sin dique, derecha con dique: aguanta seco más tiempo y luego se inunda de golpe) · esponja (izquierda todo asfaltado, derecha con parques y tierra que absorben: menos casas inundadas)",
+    "focus": {
+      "map": "el pueblo"
+    },
+    "overlay": {
+      "panel": "nivel del río y casas inundadas"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "sube",
+          "dique",
+          "esponja"
+        ],
+        "default": "sube",
+        "describe": "qué escena: sube · dique · esponja"
+      }
+    },
+    "marks": {
+      "house": [
+        "la primera casa",
+        "esa casa",
+        "las casas"
+      ]
+    },
     "panels": [
       "panel"
     ]
