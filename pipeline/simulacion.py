@@ -203,7 +203,10 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     spec = allowed(ctx)
     lines = [(s.id, " ".join(s.text.split())) for s in shots]
     cache = ctx.work_dir / "simulacion.json"
-    digest = key(VERSION, lines, spec, str(ctx.section("visual").get("guide") or ""), director_scenes(ctx), series_guide(ctx))
+    video = ctx.section("video")
+    tall = int(video.get("height", 1080)) > int(video.get("width", 1920))     # a Short chooses differently (moving scenes)
+    digest = key(VERSION, lines, spec, str(ctx.section("visual").get("guide") or ""), director_scenes(ctx), series_guide(ctx),
+                 "vertical" if tall else "")
     try:
         saved = json.loads(cache.read_text("utf-8"))
         if saved.get("key") == digest:
@@ -222,8 +225,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         system += ("\n\nLISTA DE ESCENAS DEL DIRECTOR para este guion (síguela: cada bloque del guion con la escena que pide, "
                    "traducida a los mundos, focos, paneles, parámetros y escenas que hay; lo que no exista, con lo más parecido):\n"
                    + director[:20000])
-    video = ctx.section("video")
-    if int(video.get("height", 1080)) > int(video.get("width", 1920)):    # a Short: the animation fills the phone
+    if tall:                                     # a Short: the animation fills the phone
         system += ("\n\nES UN SHORT VERTICAL: la animación ocupa toda la pantalla. Elige escenas del mundo en movimiento "
                    "(gente, coches, colas que se mueven), NO escenas de gráfico o de curvas, y casi sin paneles: "
                    "\"stat\" solo para la cifra clave del Short (una o dos en todo el Short), \"title\" siempre \"\" y "
