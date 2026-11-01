@@ -87,16 +87,17 @@ const onTop = (groups: Group[]): Group[] => [
 const SimVertical: FC<{ group: Group; width: number; height: number }> = ({ group, width, height }) => {
   const v = verticalOf(group.graphic as unknown as SimGraphic);
   if (v.mode === 'halves') {
-    const k = Math.min(width / 960, (height / 2 - 20) / 1080);
-    const w = 960 * k;
-    const h = 1080 * k;
-    const left = (width - w) / 2;
-    const top = (height - 2 * h - 24) / 2;
+    // each half covers its half of the phone, edge to edge (a little cut above and below), a thin line between them
+    const slot = height / 2;
+    const k = Math.max(width / 960, slot / 1080);
+    const dx = (960 * k - width) / 2;
+    const dy = (1080 * k - slot) / 2;
     return (
       <AbsoluteFill style={{ backgroundColor: '#0b1020' }}>
         {[0, 1].map((half) => (
-          <div key={half} style={{ position: 'absolute', left, top: top + half * (h + 24), width: w, height: h, overflow: 'hidden', borderRadius: 18 }}>
-            <div style={{ position: 'absolute', left: -half * 960 * k, top: 0, width: 1920, height: 1080, transform: `scale(${k})`, transformOrigin: 'top left' }}>
+          <div key={half} style={{ position: 'absolute', left: 0, top: half * slot, width, height: slot, overflow: 'hidden',
+                                   borderTop: half ? '4px solid #0b1020' : 'none' }}>
+            <div style={{ position: 'absolute', left: -half * 960 * k - dx, top: -dy, width: 1920, height: 1080, transform: `scale(${k})`, transformOrigin: 'top left' }}>
               <GroupContent group={group} />
             </div>
           </div>
@@ -104,13 +105,14 @@ const SimVertical: FC<{ group: Group; width: number; height: number }> = ({ grou
       </AbsoluteFill>
     );
   }
-  const k = v.scale;
+  // the whole height of the phone, centred on what matters (cx, cy): the animation, edge to edge
+  const k = Math.max(v.scale, height / 1080);
   const h = 1080 * k;
-  const top = Math.max(0, (height - h) / 2);
+  const top = Math.min(0, Math.max(height - h, height / 2 - v.cy * k));
   const x = Math.max(0, Math.min(1920 * k - width, v.cx * k - width / 2));
   return (
     <AbsoluteFill style={{ backgroundColor: '#0b1020' }}>
-      <div style={{ position: 'absolute', left: 0, top, width, height: h, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', left: 0, top, width, height: Math.max(h, height), overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: -x, top: 0, width: 1920, height: 1080, transform: `scale(${k})`, transformOrigin: 'top left' }}>
           <GroupContent group={group} />
         </div>

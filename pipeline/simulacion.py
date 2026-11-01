@@ -222,6 +222,12 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         system += ("\n\nLISTA DE ESCENAS DEL DIRECTOR para este guion (síguela: cada bloque del guion con la escena que pide, "
                    "traducida a los mundos, focos, paneles, parámetros y escenas que hay; lo que no exista, con lo más parecido):\n"
                    + director[:20000])
+    video = ctx.section("video")
+    if int(video.get("height", 1080)) > int(video.get("width", 1920)):    # a Short: the animation fills the phone
+        system += ("\n\nES UN SHORT VERTICAL: la animación ocupa toda la pantalla. Elige escenas del mundo en movimiento "
+                   "(gente, coches, colas que se mueven), NO escenas de gráfico o de curvas, y casi sin paneles: "
+                   "\"stat\" solo para la cifra clave del Short (una o dos en todo el Short), \"title\" siempre \"\" y "
+                   "\"overlay\" solo si muestra algo que se ve moverse.")
     out: dict[str, dict[str, Any]] = {}
     before: dict[str, Any] | None = None
     for start in range(0, len(lines), 40):
