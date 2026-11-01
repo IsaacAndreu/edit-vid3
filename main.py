@@ -219,7 +219,20 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
             if ctx.section("dub").get("of"):            # a dubbed version reuses the original's edit
                 from pipeline import dub
 
-                dub.run(ctx)
+                current = ctx.work_dir / "current.json"       # the studio and --cola-por-que: «haciéndose ahora»
+                ctx.work_dir.mkdir(parents=True, exist_ok=True)
+                current.write_text(json.dumps({"stage": "dub", "number": 1, "of": 1, "pid": os.getpid(),
+                                               "started": datetime.now().astimezone().isoformat(timespec="seconds")}),
+                                   encoding="utf-8")
+                try:
+                    dub.run(ctx)
+                finally:
+                    try:
+                        current.write_text(json.dumps({**json.loads(current.read_text("utf-8")),
+                                                       "ended": datetime.now().astimezone().isoformat(timespec="seconds")}),
+                                           encoding="utf-8")
+                    except (OSError, ValueError):
+                        pass
             else:
                 from pipeline import capitulos, tts
 
@@ -1041,7 +1054,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         if review:
             args.append("--review")
         tail: deque[str] = deque(maxlen=200)
-        with (logs / f"{slug}.log").open("w", encoding="utf-8") as log:
+        with (logs / f"{slug}.log").open("w", encoding="utf-8", buffering=1) as log:   # line by line: readable while it runs
             process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                        encoding="utf-8", errors="replace",
                                        env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1",

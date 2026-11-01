@@ -290,7 +290,8 @@
 <script>
 const STAGES = {factcheck: "Verificar datos", align: "Alinear la voz", planner: "Planificar planos", sourcing: "Buscar material",
   analysis: "Analizar clips", judge: "Elegir (juez)", ingest: "Descargar en HD", people: "Personas", fallback: "Rellenar huecos",
-  coldopen: "Apertura", timeline: "Montaje", qa: "Revisión", render: "Render", shorts: "Shorts", package: "Títulos y miniaturas"};
+  coldopen: "Apertura", timeline: "Montaje", qa: "Revisión", render: "Render", shorts: "Shorts", package: "Títulos y miniaturas",
+  dub: "Doblaje (montaje, render y Shorts)"};
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 let timer = null, data = null;
