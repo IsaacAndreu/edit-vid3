@@ -191,7 +191,7 @@ fallback:
   identity_scope: protagonist      # comprobar TODOS los planos de la historia del protagonista, no solo los que dicen su nombre (named = solo esos)
   gender_check: true               # en la historia de un hombre, fuera los clips donde claramente sale una mujer o una niña (y al revés)
   gender_reject: 0.85              # seguridad mínima de CLIP en 2 de 5 fotogramas
-  cold_open_confirm: true          # el arranque del vídeo solo con clips donde el rótulo dice su nombre o su cara coincide (face_accept)
+  cold_open_confirm: true          # los momentos con sonido original solo con clips donde el rótulo dice su nombre o su cara coincide (face_accept)
   face_accept: 0.36                # parecido (SFace) para dar por buena una cara
   face_reference_min: 90           # px mínimos de la cara del retrato para fiarse de él
   generate: true                   # último recurso: imagen generada
@@ -391,11 +391,6 @@ mychannel:                         # análisis de tu canal (estudio → Mi canal
   timezone: Europe/Madrid
   max_videos: 400
 
-apertura:                          # todo vídeo largo empieza con algo que se ve y se oye, nunca con la voz sobre relleno
-  enabled: true
-  seconds: 7                       # si el vídeo no pone timeline.cold_open_seconds; sin protagonista (listas, fallos)
-                                   # o sin clips suyos válidos: avance con los momentos más fuertes de todo el vídeo
-
 gancho:                            # revisión del principio del guion antes de grabar (--check y el estudio)
   payoff_seconds: 20               # lo que promete el título tiene que verse/contarse antes de este segundo
   words_per_second: 2.6            # ritmo de locución para estimar tiempos sin voz grabada
@@ -431,4 +426,3 @@ without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue a
   reference_min_videos: 3          # con menos, se compara con todos los canales; sin ninguno, los dos límites de abajo
   max_fallback_share: 0.35
   max_unfilled_share: 0
-  require_cold_open: true          # si el canal suele llevar cold open (sus clips con sonido salen de YouTube), sin él espera

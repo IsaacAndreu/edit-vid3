@@ -873,9 +873,8 @@ def scenes_preview(r: "Renderer", timeline: dict[str, Any]) -> Path | None:
         return None
     runs: list[list[dict[str, Any]]] = []
     for g in sims:
-        key = (g["graphic"]["world"], (g["graphic"].get("params") or {}).get("scene"), g["graphic"].get("teaser"))
-        if runs and (runs[-1][-1]["graphic"]["world"], (runs[-1][-1]["graphic"].get("params") or {}).get("scene"),
-                     runs[-1][-1]["graphic"].get("teaser")) == key:
+        key = (g["graphic"]["world"], (g["graphic"].get("params") or {}).get("scene"))
+        if runs and (runs[-1][-1]["graphic"]["world"], (runs[-1][-1]["graphic"].get("params") or {}).get("scene")) == key:
             runs[-1].append(g)
         else:
             runs.append([g])

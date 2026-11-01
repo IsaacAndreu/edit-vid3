@@ -30,7 +30,6 @@ render:
 timeline:
   captions: false                  # los subtítulos los pone la propia escena
   endscreen_seconds: 0
-  cold_open_seconds: 0
   music_default: tension
   music_volume: 0.18
   questions: false

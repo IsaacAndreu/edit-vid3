@@ -107,8 +107,7 @@ def markdown(r: dict[str, Any]) -> str:
         lines += ["## Problemas", ""] + [f"- {p}" for p in r["problems"]] + [""]
     if r["newOpening"]:
         lines += ["## Apertura propuesta (~15 s)", "", f"> {r['newOpening']}", "",
-                  "_Solo usa hechos que ya están en tu guion. Además, el vídeo arranca con un avance de los momentos "
-                  "más fuertes con su sonido original (apertura automática)._", ""]
+                  "_Solo usa hechos que ya están en tu guion: el vídeo empieza directamente con la voz._", ""]
     if r["tips"]:
         lines += ["## Cambios para los primeros 30 s", ""] + [f"- {t}" for t in r["tips"]] + [""]
     return "\n".join(lines)

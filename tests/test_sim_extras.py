@@ -1,4 +1,4 @@
-"""Simulation videos: the opening with the climax, «¿tú qué harías?», chapters in the description, each world's
+"""Simulation videos: «¿tú qué harías?», chapters in the description, each world's
 sound, Shorts that loop, the new worlds and the «¿Y si…?» series."""
 
 from __future__ import annotations
@@ -56,18 +56,8 @@ def test_the_world_and_the_voice_stop_on_the_question():
     assert [s.from_ for s in out.shots] == [0, 600, 1290]
 
 
-def test_the_opening_shows_the_strongest_moment_first():
-    tl = _timeline([{"world": "anillo"}, {"world": "carretera", "replay": True}, {"world": "colas", "list": ["A", "B"], "title": "RESUMEN"}])
-    key = simulacion.climax(tl.groups, 30)
-    assert key["world"] == "carretera" and 20 <= key["at"] <= 21 and key["overlay"] == "none"
-    out = simulacion.with_teaser(tl, 30, 5.0)
-    assert out.audio.voiceFrom == 150 and out.durationInFrames == tl.durationInFrames + 150
-    teaser = out.groups[0]
-    assert teaser.id == "sim-teaser" and teaser.from_ == 0 and teaser.graphic["teaser"] is True
-    assert out.shots[0].id == "teaser" and out.shots[1].from_ == 150
-    road = next(g for g in out.groups if g.id == "sim-s1")
-    assert road.graphic["at"] == 25.0 and road.graphic["since"] == 25.0      # everything five seconds later
-    assert teaser.graphic["at"] - teaser.graphic["since"] == key["at"] - key["since"]   # the same moment of that world
+def test_a_simulation_starts_with_the_voice_no_preview():
+    assert not hasattr(simulacion, "with_teaser") and not hasattr(simulacion, "TEASER_SECONDS")
 
 
 def test_chapters_in_the_description_at_each_experiment():

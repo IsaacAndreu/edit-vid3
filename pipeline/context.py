@@ -131,7 +131,7 @@ class RunContext:
         if local.is_file():
             base = deep_merge(base, load_config(local))
         ctx = cls(slug=slug, root=root, config=base)
-        # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {cold_open_seconds: 10}).
+        # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {moments: 0}).
         path = ctx.materials_dir / "config.yaml"
         override = load_config(path) if path.is_file() else {}
         group = ctx.materials_dir.parent / "config.yaml"           # materiales/<canal>/config.yaml, for all its videos

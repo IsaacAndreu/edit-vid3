@@ -323,7 +323,6 @@ export interface SimGraphic {
   texts?: string[];     // world explica: its words (a label, a year, the steps…)
   nums?: number[];      // world explica: its figures (only ones the voice says)
   askHold?: number;     // seconds at the end of the shot: the world frozen with the question and a countdown
-  teaser?: boolean;     // the opening: the video's strongest moment before the voice
   loopTo?: SimGraphic;  // a Short's last shot: it ends on its first scene (the loop)
 }
 

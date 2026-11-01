@@ -31,10 +31,9 @@ export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps:
   const ticks = [...(graphic.overlay !== 'none' || graphic.stat ? [0.35] : []), ...(own.ticks ?? []),
                  ...(hold > 0 ? [holdFrom + 0.4, holdFrom + 1.4, holdFrom + 2.4].filter((s) => s < length - 0.1) : [])]
     .filter((s) => hold <= 0 || s < holdFrom || s >= holdFrom + 0.3).sort((a, b) => a - b);
-  // a hit on the key moments: the replay's freeze, a rule switched off, the question, the opening and its cut
+  // a hit on the key moments: the replay's freeze, a rule switched off, the question
   const hits = [...(own.hits ?? []), ...(graphic.replay && length >= 5 ? [Math.min(1.5, length * 0.3)] : []),
-                ...(graphic.rulesOff && graphic.rulesOff.length > 0 ? [0.6] : []), ...(hold > 0 ? [holdFrom] : []),
-                ...(graphic.teaser ? [0.05, length - 0.12] : [])].filter((s) => s >= 0 && s < length).sort((a, b) => a - b);
+                ...(graphic.rulesOff && graphic.rulesOff.length > 0 ? [0.6] : []), ...(hold > 0 ? [holdFrom] : [])].filter((s) => s >= 0 && s < length).sort((a, b) => a - b);
   // a softer hit when a key figure lands (the panel's number the voice says)
   const figure = graphic.stat && graphic.statAt !== undefined && graphic.statAt >= 0 && graphic.statAt < length ? [graphic.statAt] : [];
   const clicks = (own.clicks ?? []).filter((s) => hold <= 0 || s < holdFrom);
@@ -76,7 +75,6 @@ addWords({
 });
 
 addWords({
-  teaser: {es: 'En este vídeo', pt: 'Neste vídeo', fr: 'Dans cette vidéo', de: 'In diesem Video', en: 'In this video'},
   youDecide: {es: '¿Tú qué harías?', pt: 'E você, o que faria?', fr: 'Et toi, tu ferais quoi ?', de: 'Was würdest du tun?', en: 'What would you do?'},
 });
 
@@ -198,27 +196,6 @@ const Dial: FC<{ dial: NonNullable<SimGraphic['dial']>; real: number }> = ({ dia
   );
 };
 
-/** The opening (graphic.teaser): the strongest moment of the video, framed as a preview — black bands, a tag, and a
- * white flash into the voice's hook. */
-const Teaser: FC<{ real: number; length: number }> = ({ real, length }) => {
-  const bands = interpolate(real, [0, 0.4, length - 0.3, length], [0, 1, 1, 0], clamp);
-  const flash = interpolate(real, [length - 0.25, length - 0.08, length], [0, 0.9, 0], clamp);
-  const tag = interpolate(real, [0.2, 0.6], [0, 1], clamp);
-  return (
-    <>
-      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 90 * bands, background: '#000' }} />
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 90 * bands, background: '#000' }} />
-      <div style={{ position: 'absolute', left: 64, top: 120, display: 'flex', alignItems: 'center', gap: 12, fontFamily: FONT, fontSize: 30,
-                    fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: C.text, opacity: tag,
-                    background: C.panel, border: `2px solid ${C.accent}`, borderRadius: 8, padding: '6px 18px' }}>
-        <span style={{ width: 14, height: 14, borderRadius: 7, background: C.red, opacity: 0.5 + 0.5 * Math.round((real * 2) % 1) }} />
-        {tx('teaser')}
-      </div>
-      {flash > 0 && <AbsoluteFill style={{ background: '#fff', opacity: flash }} />}
-    </>
-  );
-};
-
 /** «¿Tú qué harías?»: the world frozen, the question in the middle and a 3-2-1 that runs out before the answer. */
 const Ask: FC<{ question: string; real: number; hold: number; o: number }> = ({ question, real, hold, o }) => {
   const left = Math.max(1, Math.ceil(hold - real));
@@ -293,7 +270,7 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
   const back = loop ? interpolate(real, [length - 0.7, length], [0, 1], clamp) : 0;
   return (
     <AbsoluteFill>
-      <AbsoluteFill style={{ transform: `scale(${breath * zin * zout * (graphic.teaser ? 1.06 : 1)})` }}>{body}</AbsoluteFill>
+      <AbsoluteFill style={{ transform: `scale(${breath * zin * zout})` }}>{body}</AbsoluteFill>
       {loop && back > 0 && (
         // a Short ends on its first scene: watched again, it does not jump
         <AbsoluteFill style={{ opacity: back }}>
@@ -337,7 +314,6 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
           <span style={{ color: C.label }}>{tx('source')}:</span> {graphic.source}
         </div>
       )}
-      {graphic.teaser && <Teaser real={real} length={length} />}
       {asking > 0 && graphic.ask && <Ask question={graphic.ask} real={real - holdFrom} hold={hold} o={asking} />}
       {graphic.recap && graphic.recap.length > 0 && graphic.list.length > 0 && <Recap graphic={graphic} real={real} length={length} />}
       {graphic.list.length > 0 && !(graphic.recap && graphic.recap.length > 0) && (

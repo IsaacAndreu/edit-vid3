@@ -299,10 +299,6 @@ timeline:
   endscreen_seconds: 0
 render:
   hybrid: false                   # todo con Remotion (el montaje rápido con ffmpeg es solo horizontal)
-apertura:
-  enabled: false
-without_youtube:
-  require_cold_open: false
 shorts:
   enabled: false
 """

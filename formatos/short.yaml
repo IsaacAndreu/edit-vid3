@@ -22,7 +22,6 @@ ajustes:
     captions: true                 # subtítulos grandes, de 3 en 3 palabras
     caption_words: 3
     endscreen_seconds: 0
-    cold_open_seconds: 0
   graphics: {max: 2}
   people: {enabled: false}         # las tarjetas de persona están pensadas para 16:9
   shorts: {enabled: false}

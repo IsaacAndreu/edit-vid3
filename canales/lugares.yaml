@@ -34,9 +34,6 @@ pacing:                            # documental de sobremesa: planos largos que 
   hook_shot_seconds: 3.0
   chapter_pause: 2.0
 
-apertura:
-  enabled: false                   # el vídeo ya empieza con imágenes: «Imagina…» sobre paisaje, sin avance
-
 graphics:
   seconds_per_graphic: 150
   cover_weak: true

@@ -11,7 +11,7 @@ pause on, such a video runs in «modo sin YouTube» (EDITVID_SIN_YOUTUBE=1 for t
   work/<slug>/media/ keeps its shot (the judge keeps that choice, the ingest deletes nothing).
 - only the shots without material look elsewhere (library, images, archive, Pexels…), with the usual thresholds.
 - before the edit (after coldopen) `gate` measures the coverage against the channel's finished videos: shots that
-  ended in the fallback, shots nothing covered, the cold open. Worse than usual → the video waits for YouTube
+  ended in the fallback, shots nothing covered. Worse than usual → the video waits for YouTube
   (`WaitingForYouTube`, work/<slug>/sin_youtube.json) and the queue goes on with the next one; it is not tried again
   while the pause lasts unless its materials change.
 - when YouTube is back the video resumes: the stages done without YouTube are marked (withoutYouTube in .stages/)
@@ -256,7 +256,6 @@ def gate(ctx: Any) -> dict[str, Any]:
     """After coldopen, without YouTube: on to the edit only if the material is no worse than the channel's usual."""
 
     from . import stickman
-    from .coldopen import opening_seconds
 
     if stickman.drawn(ctx):                      # drawn in code: no footage to measure
         return {}
@@ -267,7 +266,6 @@ def gate(ctx: Any) -> dict[str, Any]:
     margin = float(cfg.get("fallback_margin", 0.05))
     max_fallback = ref["toFallback"] + margin if ref.get("videos") else float(cfg.get("max_fallback_share", 0.35))
     max_unfilled = ref["unfilled"] if ref.get("videos") else float(cfg.get("max_unfilled_share", 0.0))
-    usual_cold = (ref.get("coldOpen", 0) >= 0.5) if ref.get("videos") else opening_seconds(ctx) > 0
     problems = []
     if found["youtubeRequests"]:
         problems.append(f"{found['youtubeRequests']} peticiones a YouTube durante la pausa (debían ser 0)")
@@ -280,12 +278,10 @@ def gate(ctx: Any) -> dict[str, Any]:
     if found["unfilledShare"] > max_unfilled + 1e-9:
         problems.append(f"{len(found['unfilled'])} planos sin nada que los cubra ({found['unfilledShare']:.0%}; "
                         f"lo normal: {max_unfilled:.0%})")
-    if usual_cold and not found["coldOpenClips"] and cfg.get("require_cold_open", True):
-        problems.append("sin cold open (sus clips con sonido salen de YouTube)")
     status = "pendiente" if problems else "hecho sin YouTube"
     state = _read(ctx.work_dir / STATE) or {}
     state.update(status=status, at=time.time(), sig=signature(ctx.root, ctx.slug), coverage=found, reference=ref,
-                 limits={"toFallback": round(max_fallback, 3), "unfilled": round(max_unfilled, 3), "coldOpen": usual_cold},
+                 limits={"toFallback": round(max_fallback, 3), "unfilled": round(max_unfilled, 3)},
                  problems=problems)
     _write(ctx.work_dir / STATE, state)
     report = _markdown(ctx.slug, state)
@@ -307,11 +303,11 @@ def _markdown(slug: str, state: dict[str, Any]) -> str:
              + (" (" + ", ".join(f"{k} {v}" for k, v in c["sources"].items() if k != "clip ya descargado") + ")" if c["sources"] else ""),
              f"- Sin cubrir: {len(c['unfilled'])}" + (f" ({', '.join(c['unfilled'][:20])})" if c["unfilled"] else ""),
              f"- Al relleno: {c.get('toFallback', 0):.0%} · límite {state['limits']['toFallback']:.0%}",
-             f"- Cold open: {c['coldOpenClips']} clips · momentos con sonido original: {c['moments']}",
+             f"- Momentos con sonido original: {c['moments']}",
              f"- Peticiones a YouTube en esta ejecución: {c['youtubeRequests']}",
              f"- Clips que ya había: {c['clipsKept']} de {c['clipsBefore']} siguen en su sitio",
              f"- Referencia: {ref['scope']}" + (f" ({ref['videos']} vídeos hechos con YouTube: relleno {ref['toFallback']:.0%}, "
-                                               f"sin cubrir {ref['unfilled']:.0%}, cold open en {ref['coldOpen']:.0%})"
+                                               f"sin cubrir {ref['unfilled']:.0%})"
                                                if ref.get("videos") else "")]
     if state["problems"]:
         lines += ["", "Espera a YouTube porque:", *[f"- {p}" for p in state["problems"]]]

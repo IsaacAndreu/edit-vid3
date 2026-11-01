@@ -282,7 +282,7 @@ def test_the_gate_holds_a_video_worse_than_usual_and_says_why(tmp_path):
     with pytest.raises(sin_youtube.WaitingForYouTube) as error:
         sin_youtube.gate(ctx)
     state = json.loads((ctx.work_dir / sin_youtube.STATE).read_text())
-    assert state["status"] == "pendiente" and len(state["problems"]) == 3     # fallback, uncovered, cold open
+    assert state["status"] == "pendiente" and len(state["problems"]) == 2     # fallback, uncovered (no cold open any more)
     assert "relleno" in str(error.value)
     assert sin_youtube.waiting(tmp_path, "new")
     (tmp_path / "materiales" / "new" / "biblioteca.txt").write_text("nuevo")   # its materials change: tried again
@@ -292,7 +292,7 @@ def test_the_gate_holds_a_video_worse_than_usual_and_says_why(tmp_path):
 def test_the_gate_counts_clips_kept_and_any_youtube_request_of_the_run(tmp_path):
     _channel(tmp_path, ["new"])
     _video(tmp_path, "new", shots=4, fallback=0, done=False)
-    ctx = RunContext.create("new", root=tmp_path, config={"without_youtube": {"require_cold_open": False}})
+    ctx = RunContext.create("new", root=tmp_path)
     media = ctx.work_dir / "media"
     media.mkdir()
     (media / "s001.mp4").write_bytes(b"x")

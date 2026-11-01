@@ -264,48 +264,6 @@ def with_quotes(timeline: Timeline, quotes: list[Any], ctx: RunContext, fps: int
     return timeline.model_copy(update={"groups": sorted(groups, key=lambda g: g.from_)})
 
 
-def with_cold_open(timeline: Timeline, clips: list[tuple[str, float, str, int, int]], fps: int,
-                   volume: float = 1.0) -> Timeline:
-    """Put the cold-open clips (src, seconds, credit, width, height) first, with their original
-    sound, and push everything narrated — shots, overlays, SFX, speech and the voice — after them."""
-
-    if not clips:
-        return timeline
-    cold: list[TimelineShot] = []
-    sounds: list[TimelineClipAudio] = []
-    cursor = 0
-    for i, (src, seconds, credit, width, height) in enumerate(clips, start=1):
-        frames = max(1, min(round(seconds * fps), int(MAX_THIRD_PARTY_SECONDS * fps)))
-        cold.append(TimelineShot.model_validate({
-            "id": f"c{i:02d}", "type": "broll", "from": cursor, "durationInFrames": frames, "text": "",
-            "media": {"src": src, "kind": "video", "source": "youtube", "credit": credit, "layout": "card",
-                      "width": width, "height": height},
-            "coldOpen": True,
-        }))
-        sounds.append(TimelineClipAudio.model_validate({"src": src, "from": cursor, "durationInFrames": frames,
-                                                         "volume": volume}))
-        cursor += frames
-    offset = cursor
-
-    def moved(item):
-        return item.model_copy(update={"from_": item.from_ + offset})
-
-    audio = timeline.audio.model_copy(update={
-        "voiceFrom": timeline.audio.voiceFrom + offset,
-        "clips": [*sounds, *[moved(c) for c in timeline.audio.clips]],
-        "speech": [(a + offset, b + offset) for a, b in timeline.audio.speech],
-        "sfx": [moved(x) for x in timeline.audio.sfx],
-    })
-    return Timeline.model_validate({
-        **timeline.model_dump(by_alias=True),
-        "durationInFrames": timeline.durationInFrames + offset,
-        "shots": [s.model_dump(by_alias=True) for s in [*cold, *[moved(x) for x in timeline.shots]]],
-        "groups": [moved(g).model_dump(by_alias=True) for g in timeline.groups],
-        "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
-        "audio": audio.model_dump(by_alias=True),
-    })
-
-
 def _size(path: Path) -> tuple[int | None, int | None]:
     try:
         info = probe(path)
@@ -1504,22 +1462,8 @@ def run(ctx: RunContext) -> None:
         timeline = simulacion.with_asks(timeline, fps, float(ctx.section("visual").get("ask_seconds", simulacion.ASK_SECONDS)))
         # a breath at each change of scene: the picture changes, then the voice goes on
         timeline = simulacion.with_breaths(timeline, fps, float(ctx.section("visual").get("breath_seconds", simulacion.BREATH_SECONDS)))
-    # half a second of silence as each chapter begins (pacing.chapter_pause), before the cold open shifts frames
+    # half a second of silence as each chapter begins (pacing.chapter_pause)
     timeline = with_chapter_pauses(timeline, float(ctx.section("pacing").get("chapter_pause", 0.5)), fps)
-    if opening:
-        clips = opening.clips
-        timeline = with_cold_open(timeline, [
-            (str((ctx.root / c.path).relative_to(ctx.work_dir)), c.durationSeconds, c.credit, c.width, c.height)
-            for c in clips
-        ], fps, float(cfg.get("cold_open_volume", 1.0)))
-        # the opening question stays on screen from the very first frame, over the cold open too
-        timeline = timeline.model_copy(update={"groups": [
-            g.model_copy(update={"from_": 0, "durationInFrames": g.durationInFrames + g.from_}) if g.id == "q-open" else g
-            for g in timeline.groups]})
-    if simulacion.active(ctx) and timeline.width > timeline.height and ctx.section("apertura").get("enabled", True) is not False \
-            and ctx.section("visual").get("teaser", True) is not False:
-        # the opening: the strongest moment of the simulation first, then the voice's hook
-        timeline = simulacion.with_teaser(timeline, fps, float(ctx.section("visual").get("teaser_seconds", simulacion.TEASER_SECONDS)))
     timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
     from . import depth
 

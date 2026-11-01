@@ -252,7 +252,6 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
 REPLAYS = 2
 ASKS = 2
 ASK_SECONDS = 3.0     # «¿tú qué harías?»: the world stops this long with the question, the voice too
-TEASER_SECONDS = 5.0  # the opening: the strongest moment of the video before the voice's hook
 MIN_WORLD = 12.0      # seconds: a world stays at least this long (hora1 jumped ring → merge → crossroads in 10 s)
 RECAP = 0.85          # the summary list only in the last 15 % of the lines
 
@@ -599,8 +598,7 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
             if p["kind"] == "frozen":
                 end = p["end"] if p["end"] is not None else timeline["durationInFrames"] / fps
                 found.append(f"{stamp(p['start'] * fps)} · {end - p['start']:.0f} s sin movimiento")
-    sims = [g for g in timeline.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"
-            and not g["graphic"].get("teaser")]                    # the opening is short on purpose
+    sims = [g for g in timeline.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"]
     runs: list[list[dict[str, Any]]] = []
     for g in sims:
         if runs and runs[-1][-1]["graphic"]["world"] == g["graphic"]["world"]:
@@ -650,7 +648,7 @@ def monotony(sims: list[dict[str, Any]], fps: int, ctx: RunContext | None = None
         start = None
         for k, group in enumerate(sims):
             g = group["graphic"]
-            if g.get("teaser") or g.get("list"):
+            if g.get("list"):
                 continue
             if start is None or key(sims[start]["graphic"]) != key(g):
                 start = k
@@ -804,8 +802,6 @@ def _shift_graphic(g: dict[str, Any], seconds: float, after: float = -1.0) -> di
             out["cues"] = {k: round(float(v) + seconds, 3) for k, v in g["cues"].items()}
     if g.get("recap"):
         out["recap"] = [_shift_graphic(r, seconds, after) for r in g["recap"]]
-    if g.get("teaser"):
-        out["teaser"] = _shift_graphic(g["teaser"], seconds, after)
     return out
 
 
@@ -891,83 +887,6 @@ def _hold(timeline: Any, ids: list[str], frames: int, fps: int, freeze: bool) ->
     return timeline
 
 
-def climax(groups: list[Any], fps: int) -> dict[str, Any] | None:
-    """The strongest moment of the video, for its opening: the replayed moment, a rule switched off, a figure, else
-    the longest experiment — late in its shot (the jam formed, the crowd pressed), not the closing recap. A sim graphic
-    whose clock (at) is that moment."""
-
-    def parts(group: Any) -> tuple[int, int, dict[str, Any]]:
-        if hasattr(group, "from_"):
-            return group.from_, group.durationInFrames, group.graphic or {}
-        return group["from"], group["durationInFrames"], group.get("graphic") or {}
-
-    sims = [parts(g) for g in groups if parts(g)[2].get("type") == "sim" and not parts(g)[2].get("list")]
-    if not sims:
-        return None
-    end = max(a + n for a, n, _ in sims)
-    runs: dict[tuple[str, float], int] = {}
-    for a, n, g in sims:
-        runs[(g["world"], g["since"])] = runs.get((g["world"], g["since"]), 0) + n
-
-    def weight(item: tuple[int, int, dict[str, Any]]) -> tuple[int, int, int]:
-        a, n, g = item
-        early = 1 if a < 0.15 * end else 0                   # the opening's own world is no surprise
-        key = 3 if g.get("replay") else 2 if g.get("rulesOff") else 1 if g.get("stat") else 0
-        return (key - early, runs[(g["world"], g["since"])], n)
-
-    a, n, g = max(sims, key=weight)
-    seconds = n / fps
-    if g.get("replay"):                                       # the frozen moment itself, from just before it
-        moment = a / fps + max(0.0, min(1.5, seconds * 0.3) - 1.0)
-    else:
-        moment = a / fps + max(0.0, seconds * 0.75 - TEASER_SECONDS)
-    keep = {k: g[k] for k in KEEP if k in g}
-    return {**keep, "type": "sim", "at": round(moment, 3), "prev": g["focus"], "title": "", "stat": None, "source": "",
-            "list": [], "overlay": "none", "enter": True, "exit": True, "sounds": g.get("sounds")}
-
-
-def with_teaser(timeline: Any, fps: int, seconds: float = TEASER_SECONDS) -> Any:
-    """The opening: the video's strongest moment (climax) for `seconds` before anything else, then the voice's hook.
-    Everything — shots, panels, sounds, the voice — moves after it; the world's clocks with it."""
-
-    from .schemas import Timeline
-
-    key = climax(timeline.groups, fps)
-    frames = round(seconds * fps)
-    if key is None or frames <= 0:
-        return timeline
-    teaser_shot = {"id": "teaser", "type": "broll", "from": 0, "durationInFrames": frames, "text": ""}
-
-    def moved(item: Any) -> Any:
-        update: dict[str, Any] = {"from_": item.from_ + frames}
-        graphic = getattr(item, "graphic", None)
-        if isinstance(graphic, dict) and graphic.get("type") == "sim":
-            update["graphic"] = _shift_graphic(graphic, seconds)
-        return item.model_copy(update=update)
-
-    shifted = _shift_graphic(key, seconds)
-    group = {"id": "sim-teaser", "kind": "graphic", "from": 0, "durationInFrames": frames,
-             "graphic": {**shifted, "since": round(shifted["since"], 3), "teaser": True}}
-    audio = timeline.audio.model_copy(update={
-        "voiceFrom": timeline.audio.voiceFrom + frames,
-        "clips": [c.model_copy(update={"from_": c.from_ + frames}) for c in timeline.audio.clips],
-        "speech": [(a + frames, b + frames) for a, b in timeline.audio.speech],
-        "sfx": [x.model_copy(update={"from_": x.from_ + frames}) for x in timeline.audio.sfx],
-        "musicParts": [p.model_copy(update={"from_": p.from_ + frames}) if hasattr(p, "from_") else p
-                       for p in timeline.audio.musicParts],
-    })
-    return Timeline.model_validate({
-        **timeline.model_dump(by_alias=True),
-        "durationInFrames": timeline.durationInFrames + frames,
-        "shots": [teaser_shot, *[moved(s).model_dump(by_alias=True) for s in timeline.shots]],
-        "groups": [group, *[moved(g).model_dump(by_alias=True) for g in timeline.groups]],
-        "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
-        "captions": [moved(c).model_dump(by_alias=True) if hasattr(c, "from_") else c.model_dump(by_alias=True)
-                     for c in timeline.captions],
-        "audio": audio.model_dump(by_alias=True),
-    })
-
-
 def chapters(timeline: Any, intro: str = "Intro") -> list[tuple[float, str]]:
     """YouTube chapters of a simulation video (in the description, no cards on screen): a mark where each experiment
     starts (a world, or the same world with new parameters) with a section title, named by that title; the first at
@@ -979,7 +898,7 @@ def chapters(timeline: Any, intro: str = "Intro") -> list[tuple[float, str]]:
     run: tuple[str, float] | None = None
     for group in sorted(groups, key=lambda g: g.from_ if hasattr(g, "from_") else g["from"]):
         g = (group.graphic if hasattr(group, "graphic") else group.get("graphic")) or {}
-        if g.get("type") != "sim" or g.get("teaser"):
+        if g.get("type") != "sim":
             continue
         a = (group.from_ if hasattr(group, "from_") else group["from"]) / fps
         current = (g["world"], g["since"])

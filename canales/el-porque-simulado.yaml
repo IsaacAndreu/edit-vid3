@@ -59,7 +59,6 @@ ideas:
 series:
   y-si:                            # «¿Y si todos los coches fueran autónomos?»: un mundo, un dial, una pregunta
     visual:
-      teaser: true
       serie: |
         ESTE VÍDEO ES DE LA SERIE «¿Y SI…?»: UNA pregunta, UN mundo y UN dial (un parámetro de ese mundo que se gira).
         - El título y la primera frase son la pregunta: «¿Y si <el cambio>?» (¿y si todos los coches fueran autónomos?,

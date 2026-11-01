@@ -45,5 +45,5 @@ series:
   short:                           # en materiales/<vídeo>/config.yaml: `serie: short` → un Short vertical de 30-45 s
     video: {width: 1080, height: 1920}
     render: {hybrid: false}
-    timeline: {endscreen_seconds: 0, cold_open_seconds: 0, captions: true, caption_words: 3}
+    timeline: {endscreen_seconds: 0, captions: true, caption_words: 3}
     ideas: {words: 110}
