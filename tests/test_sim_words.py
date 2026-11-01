@@ -35,3 +35,20 @@ def test_a_datacard_without_footage_still_becomes_a_valid_simulation_shot():
     shot = {"id": "s001", "type": "datacard", "startWord": 0, "endWord": 3, "start": 0, "end": 2, "text": "22 coches en círculo",
             "chapter": 0, "panel": {"title": "x"}}
     assert Shot.model_validate(drawn_shot(shot)).type == "broll"
+
+
+def test_a_short_gets_its_hook_on_top_and_the_full_video_line_at_the_end(tmp_path):
+    from types import SimpleNamespace
+
+    from pipeline.timeline import short_texts
+
+    folder = tmp_path / "sim2-short3"
+    folder.mkdir()
+    (folder / "titulo.txt").write_text("La curva de Kingman\n", encoding="utf-8")
+    sections = {"shorts": {"of": "sim2"}, "align": {"language": "de"}}
+    ctx = SimpleNamespace(section=lambda name: sections.get(name, {}), materials_dir=folder)
+    tall = SimpleNamespace(width=1080, height=1920)
+    assert short_texts(ctx, tall) == {"hook": "La curva de Kingman", "cta": "Ganzes Video auf meinem Kanal"}
+    sections["shorts"]["hook"] = "¿Por qué colapsa?"
+    assert short_texts(ctx, tall)["hook"] == "¿Por qué colapsa?"
+    assert short_texts(ctx, SimpleNamespace(width=1920, height=1080)) == {}       # not in the long video

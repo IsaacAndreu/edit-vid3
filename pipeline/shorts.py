@@ -287,6 +287,8 @@ Eres guionista de YouTube Shorts. Te paso el guion de un vídeo largo. Escribe {
 - usa SOLO datos, cifras, nombres y fechas que están en el guion: no inventes nada;
 - sin títulos ni líneas «## », sin acotaciones: solo el texto que se lee.
 {drawn}Devuelve SOLO JSON: {{"shorts": [{{"script": "…", "title": "título del Short, máx. 80 caracteres",
+  "hook": "el texto grande arriba durante los primeros 5 segundos: 3-7 palabras, máx. 45 caracteres, en {language}; una
+  promesa o una pregunta que no repite la primera frase (p. ej. «¿Por qué tu cola es la más lenta?»)",
   "description": "1-2 frases + 3 hashtags"}}]}}
 """.strip()
 
@@ -339,6 +341,7 @@ def write_new(ctx: RunContext) -> list[dict[str, Any]]:
             print(f"   Short descartado: {words} palabras")
             continue
         out.append({"script": text, "title": " ".join(str(item.get("title") or "").split())[:100],
+                    "hook": " ".join(str(item.get("hook") or "").split())[:60],
                     "description": str(item.get("description") or "").strip()[:500]})
     return out[:count]
 
@@ -367,7 +370,8 @@ def make_new(ctx: RunContext) -> None:
             continue
         config = ctx.root / created["folder"] / "config.yaml"
         before = config.read_text("utf-8") if config.is_file() else ""
-        extra = SHORT_CONFIG.replace("shorts:\n  enabled: false\n", f"shorts:\n  enabled: false\n  of: {ctx.slug}\n")
+        extra = SHORT_CONFIG.replace("shorts:\n  enabled: false\n", f"shorts:\n  enabled: false\n  of: {ctx.slug}\n"
+                                     + (f"  hook: {json.dumps(item['hook'], ensure_ascii=False)}\n" if item.get("hook") else ""))
         if drawn:                                  # a drawn Short: 60 fps (short, so the render stays quick)
             extra = extra.replace("  height: 1920\n", "  height: 1920\n  fps: 60\n")
         config.write_text(before + extra, encoding="utf-8")

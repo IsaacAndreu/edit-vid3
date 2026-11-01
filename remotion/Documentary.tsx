@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { AbsoluteFill, Sequence, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, interpolate, Sequence, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import { ArchiveFootage } from './components/ArchiveFootage';
 import { AudioBed } from './components/AudioBed';
 import { BRoll } from './components/BRoll';
@@ -148,8 +148,9 @@ const CaptionChunk: FC<{ caption: Caption }> = ({ caption }) => {
   return (
     <div
       style={{
-        position: 'absolute', left: 60, right: 60, top: '70%', display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
-        gap: '0 22px', transform: `scale(${0.85 + 0.15 * pop})`,
+        // in the middle of the frame: above YouTube's buttons and title at the bottom, over the seam of two halves
+        position: 'absolute', left: 60, right: 60, top: '50%', display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
+        gap: '0 22px', transform: `translateY(-50%) scale(${0.85 + 0.15 * pop})`,
       }}
     >
       {caption.words.map((w, i) => (
@@ -168,11 +169,30 @@ const CaptionChunk: FC<{ caption: Caption }> = ({ caption }) => {
   );
 };
 
+/** A Short's banner on top: its hook for the first seconds, «full video on my channel» for the last ones. */
+const ShortBanner: FC<{ text: string; frames: number; cta?: boolean }> = ({ text, frames, cta }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const pop = spring({ frame, fps, config: { damping: 13, stiffness: 200 }, durationInFrames: 12 });
+  const out = interpolate(frame, [frames - 8, frames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  return (
+    <div style={{ position: 'absolute', left: 50, right: 50, top: 150, display: 'flex', justifyContent: 'center',
+                  opacity: out, transform: `translateY(${(1 - pop) * -40}px) scale(${0.9 + 0.1 * pop})` }}>
+      <div style={{ background: cta ? theme.accent : '#fff', color: '#0b0b0b', borderRadius: 22, padding: '18px 30px',
+                    fontFamily, fontWeight: 900, fontSize: cta ? 64 : 70, lineHeight: 1.08, textAlign: 'center',
+                    textTransform: 'uppercase', boxShadow: '0 18px 50px rgba(0,0,0,0.55)', maxWidth: 980 }}>
+        {cta ? `▶ ${text}` : text}
+      </div>
+    </div>
+  );
+};
+
 /**
  * Native vertical short (height > width): footage fills the tall frame, every data group (graphics, stats,
  * panels, questions) plays in a 16:9 window in the upper middle, and big captions follow the voice.
  */
-const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, locale, width, height }) => {
+const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, locale, width, height, short, durationInFrames, fps }) => {
+  const banner = Math.min(5 * fps, Math.floor(durationInFrames / 3));     // 5 s, a third of a very short one at most
   const scale = width / 1920;
   const windowTop = Math.round(height * 0.36 - (1080 * scale) / 2);
   return (
@@ -223,6 +243,16 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           <CaptionChunk caption={caption} />
         </Sequence>
       ))}
+      {short?.hook ? (
+        <Sequence from={0} durationInFrames={banner} name="hook">
+          <ShortBanner text={short.hook} frames={banner} />
+        </Sequence>
+      ) : null}
+      {short?.cta ? (
+        <Sequence from={durationInFrames - banner} durationInFrames={banner} name="full video">
+          <ShortBanner text={short.cta} frames={banner} cta />
+        </Sequence>
+      ) : null}
       {shots
         .filter((shot) => shot.media?.credit)
         .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.graphic?.type !== 'quote'

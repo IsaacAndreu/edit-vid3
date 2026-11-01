@@ -721,6 +721,7 @@ class Timeline(_Strict):
     locale: dict[str, str] = Field(default_factory=dict)     # dubbed versions: {"chapter": "CHAPTER", "source": "Source"}
     endscreenFrames: int = Field(default=0, ge=0)            # the end screen after the narration
     brand: dict[str, str] = Field(default_factory=dict)      # channel colours (config.yaml brand:), see remotion/theme.ts
+    short: dict[str, str] = Field(default_factory=dict)      # a Short: {"hook": top text 5 s, "cta": «full video…» last 5 s}
 
     @model_validator(mode="after")
     def _consistent(self) -> "Timeline":

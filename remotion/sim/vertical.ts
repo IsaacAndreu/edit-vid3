@@ -45,7 +45,7 @@ export const verticalOf = (g: SimGraphic): Vertical => {
       return g.focus === 'compare' ? {mode: 'halves'} : {mode: 'crop', cx: g.focus === 'chart' ? 700 : 960, cy: 540, scale: 1.1};
     case 'colas': {
       const s = scene(g, 'comparar');
-      if (['comparar', 'iguales', 'rapida'].includes(s)) return {mode: 'halves'};
+      if (['comparar', 'iguales', 'rapida', 'limite'].includes(s)) return {mode: 'halves'};   // limite: the till on top, Kingman's curve below
       return {mode: 'crop', cx: s === 'eleccion' ? 760 : s === 'contar' ? 700 : s === 'limite' ? 960 : 960, cy: 520, scale: 1.25};
     }
     case 'inundacion':

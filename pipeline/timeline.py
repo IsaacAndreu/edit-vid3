@@ -695,6 +695,25 @@ def voice_frame(timeline: Timeline, seconds: float) -> int:
     return timeline.audio.voiceFrom + t + sum(b for a, b in timeline.audio.voiceGaps if a <= t)
 
 
+FULL_VIDEO = {"es": "Vídeo completo en mi canal", "en": "Full video on my channel", "pt": "Vídeo completo no meu canal",
+              "de": "Ganzes Video auf meinem Kanal", "fr": "Vidéo complète sur ma chaîne", "it": "Video completo sul mio canale"}
+
+
+def short_texts(ctx: RunContext, timeline: Timeline) -> dict[str, str]:
+    """A Short made from a long video (shorts.of): a hook on top for its first 5 s (shorts.hook, else its title) and
+    «Full video on my channel» for its last 5 s (shorts.cta to change it, "" for none)."""
+
+    cfg = ctx.section("shorts")
+    if not cfg.get("of") or timeline.height <= timeline.width:
+        return {}
+    hook = str(cfg.get("hook") or "").strip()
+    if not hook and (ctx.materials_dir / "titulo.txt").is_file():
+        hook = next(iter((ctx.materials_dir / "titulo.txt").read_text("utf-8").strip().splitlines()), "")
+    lang = str(ctx.section("align").get("language", "es"))[:2]
+    cta = str(cfg["cta"]) if "cta" in cfg else FULL_VIDEO.get(lang, FULL_VIDEO["en"])
+    return {k: v for k, v in {"hook": " ".join(hook.split())[:70], "cta": cta.strip()}.items() if v}
+
+
 def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[TimelineCaption]:
     """Big captions for native shorts: chunks of up to `most` words (a sentence end or a pause closes one),
     placed where the voice says them — after the cold open and any pause inserted in the voice."""
@@ -1472,6 +1491,8 @@ def run(ctx: RunContext) -> None:
         simulacion.sync(timeline.groups, words.words, lambda seconds: voice_frame(timeline, seconds), fps)
     if cfg.get("captions"):
         timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
+    if (short := short_texts(ctx, timeline)):
+        timeline = timeline.model_copy(update={"short": short})
     bites = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).bites if (ctx.work_dir / "coldopen.json").is_file() else []
     if bites:   # the shots' own sound under the voice, in sync with their picture
         volume = float(cfg.get("bite_volume", 0.6))
