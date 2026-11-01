@@ -61,7 +61,9 @@ def test_turned_on_in_the_studio_with_the_channel_voice_and_only_new_videos_if_a
 
     folder = _done_video(tmp_path, "format: historia\n")
     tts.set_voice(tmp_path, "negocios", {"voice_id": "ES1", "model_id": "eleven_flash_v2_5"})
-    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **kw: {"title": "T", "script": "A multa da Booking aqui. " * 40})
+    german = "Die Strafe von Booking ist nicht klein und der Kunde hat es auch nicht gewusst. " * 20
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **kw: {
+        "title": "T", "script": german if "alemán" in kw["system"] else "A multa da Booking aqui. " * 40})
     spoken = []
 
     def fake_generate(token, text, voice, target, session=None, log=print):

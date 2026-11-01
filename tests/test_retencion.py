@@ -175,3 +175,72 @@ def test_by_default_the_dub_goes_on_without_waiting(tmp_path):
 
     root = _sim_root(tmp_path)
     assert not doblaje.waiting_review(RunContext.create("x", root=root, channel="el-porque-simulado"), "en")
+
+
+SPANISH = ("Cuando vas en el metro y llega el tren, todo el mundo quiere entrar a la vez por la misma puerta. "
+           "Pero la gente que sale también tiene prisa, y en la puerta se forma un tapón que nadie ha querido. ") * 3
+GERMAN = ("Wenn du in der U-Bahn stehst und der Zug kommt, will jeder gleichzeitig durch dieselbe Tür. Aber die Leute, "
+          "die aussteigen, haben es auch eilig, und an der Tür entsteht ein Stau, den niemand wollte. ") * 3
+MIXED = ("Cuando vas en la U-Bahn y llega el tren, todo el mundo mira el Handy y quiere entrar a la vez por la misma puerta. "
+         "Pero la gente que sale de la Ampel también tiene prisa, y en la puerta se forma un Stau que nadie ha querido. ") * 3
+
+
+def test_the_language_of_a_script_is_told_by_its_little_words():
+    from pipeline.doblaje import language_of
+
+    assert language_of(SPANISH) == "es" and language_of(GERMAN) == "de" and language_of(MIXED) == "es"
+    assert language_of("Hola") == ""
+
+
+def test_a_dub_adapted_in_spanish_is_asked_again_and_never_accepted(tmp_path, monkeypatch):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "metro1"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text(SPANISH, "utf-8")
+    ctx = RunContext.create("metro1", root=root)
+    answers = iter([{"title": "X", "script": MIXED}, {"title": "U-Bahn", "script": GERMAN}])
+    asked = []
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda *a, **k: asked.append(k["system"]) or next(answers))
+    assert doblaje.translate(ctx, "de")
+    assert (folder / "guion-de.txt").read_text("utf-8").startswith("Wenn du") and "alemán" in asked[0]
+    assert "ENTERO" in asked[1]
+    (folder / "guion-de.txt").unlink()
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda *a, **k: {"title": "X", "script": MIXED})
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        doblaje.translate(ctx, "de")
+    assert not (folder / "guion-de.txt").exists()
+
+
+def test_a_dub_spoken_in_spanish_is_put_aside_and_made_again(tmp_path):
+    import json
+
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "sim6"
+    folder.mkdir(parents=True)
+    for name, text in (("guion.txt", SPANISH), ("guion-de.txt", MIXED), ("voz-de.mp3", "x"), ("titulo-de.txt", "X")):
+        (folder / name).write_text(text, "utf-8")
+    dub = root / "materiales" / "simuliertes-warum" / "sim6-de"
+    dub.mkdir(parents=True)
+    (dub / "voz.mp3").write_text("x")
+    (dub / "guion.txt").write_text(MIXED, "utf-8")
+    out = root / "out" / "sim6-de"
+    out.mkdir(parents=True)
+    (out / "video-final.mp4").write_text("x")
+    assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 1
+    assert not (folder / "guion-de.txt").exists() and not (folder / "voz-de.mp3").exists() and (folder / "guion.txt").exists()
+    assert not (dub / "voz.mp3").exists() and not (out / "video-final.mp4").exists() and (out / doblaje.WRONG).exists()
+    # a good German one, or one already on YouTube, stays
+    (folder / "guion-de.txt").write_text(GERMAN, "utf-8")
+    assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 0
+    other = root / "materiales" / "el-porque-simulado" / "sim7"
+    other.mkdir(parents=True)
+    (other / "guion-de.txt").write_text(MIXED, "utf-8")
+    (root / "out" / "sim7-de").mkdir()
+    (root / "out" / "sim7-de" / "publicado.json").write_text(json.dumps({"at": "x"}))
+    assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 0 and (other / "guion-de.txt").exists()

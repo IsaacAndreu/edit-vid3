@@ -51,6 +51,7 @@ ENDSCREEN = {
 LINKED = ("media", "media_fallback", "people", "coldopen", "audio", "spotlight")
 COPIED = ("shots.json", "selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
 MAX_SLOWMO = 1.5
+TEXT_BATCH = 60                     # on-screen texts translated per call
 MIN_SHOT_FRAMES = 12
 
 MATCH_SYSTEM = """
@@ -536,6 +537,13 @@ def run(ctx: RunContext) -> None:
     old_timeline = original.read_json("timeline.json")
     old_words = original.read_json("words.json")
 
+    from .doblaje import IN_SPANISH, language_of
+
+    script = ctx.materials_dir / "guion.txt"
+    found = language_of(script.read_text("utf-8")) if script.is_file() else ""
+    if found and found != lang[:2]:              # never a «German» video spoken in Spanish
+        raise RuntimeError(f"el guion de {ctx.slug} está en {IN_SPANISH.get(found, found)}, no en {IN_SPANISH.get(lang, lang)}: "
+                           "se rehace solo (la cola lo adapta y lo graba otra vez)")
     print(f"[1/6] Voz en {language}: transcripción y alineado")
     if not (ctx.materials_dir / "guion.txt").is_file():
         _script_from_voice(ctx)
@@ -594,12 +602,17 @@ def run(ctx: RunContext) -> None:
 
     print(f"[5/6] Traduciendo textos en pantalla al {language}")
     texts = screen_texts(timeline)
-    translated = complete_json(ctx, stage=STAGE, section="planner", max_tokens=6000,
-                               system=TRANSLATE_SYSTEM.format(language=language, local=(
-                                   f" Adáptalos al público de {AUDIENCES.get(lang, lang)} como su narración (sus carreteras, "
-                                   f"tiendas, moneda y unidades): {str(ctx.config.get('localize') or '').strip()[:600]}"
-                                   if ctx.config.get("localize") else "")),
-                               user=json.dumps(texts, ensure_ascii=False)).get("texts", {})
+    system = TRANSLATE_SYSTEM.format(language=language, local=(
+        f" Adáptalos al público de {AUDIENCES.get(lang, lang)} como su narración (sus carreteras, "
+        f"tiendas, moneda y unidades): {str(ctx.config.get('localize') or '').strip()[:600]}"
+        if ctx.config.get("localize") else ""))
+    # in batches: a simulation has hundreds of labels and one answer got cut (deepseek-flash, max_tokens=6000)
+    translated: dict[str, Any] = {}
+    items = list(texts.items())
+    for start in range(0, len(items), TEXT_BATCH):
+        batch = dict(items[start:start + TEXT_BATCH])
+        translated.update(complete_json(ctx, stage=STAGE, section="planner", max_tokens=8000, system=system,
+                                        user=json.dumps(batch, ensure_ascii=False)).get("texts", {}))
     apply_texts(timeline, {k: str(v) for k, v in translated.items() if k in texts and str(v).strip()})
     if not (ctx.materials_dir / "titulo.txt").is_file():
         (ctx.materials_dir / "titulo.txt").write_text(timeline["title"] + "\n", encoding="utf-8")

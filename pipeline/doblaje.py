@@ -31,12 +31,15 @@ Eres traductor y guionista de documentales de YouTube. Traduce el guion al {lang
 nativa: natural, con el mismo ritmo, gancho y tono, frases cortas, sin notas ni acotaciones. Mantén las líneas
 «## TÍTULO» como líneas de capítulo (traduce el título, en MAYÚSCULAS). Los nombres propios se quedan; las cifras,
 fechas y unidades se escriben como se dicen en {language} (dinero en la moneda original). Traduce también el título.
+ESCRIBE EL GUION ENTERO EN {language}: ni una sola frase en español (la leerá una voz nativa de ese idioma).
 Devuelve SOLO JSON: {"title": "título traducido", "script": "el guion traducido"}.
 """.strip()
 
 ADAPT_SYSTEM = """
 Eres guionista nativo de YouTube para este público: {audience}. Recibes el guion de un vídeo explicativo en español.
-NO lo traduzcas sin más: ADÁPTALO al {language} para que parezca hecho para ellos.
+NO lo traduzcas sin más: ADÁPTALO al {language} para que parezca hecho para ellos. El guion que devuelves está ENTERO
+en {language} (lo lee una voz nativa): ni una frase en español, no un guion en español con palabras sueltas en
+{language}. Solo la lista de cambios va en español.
 {guide}
 Reglas:
 - Cambia los ejemplos cotidianos por los de allí (carreteras, tiendas, marcas, horarios, costumbres) y las monedas y
@@ -79,6 +82,34 @@ def _drawn(ctx: RunContext) -> bool:
     from . import cine, mapas, simulacion
 
     return simulacion.active(ctx) or cine.active(ctx) or mapas.active(ctx)
+
+
+# the language as the prompts (in Spanish) name it
+IN_SPANISH = {"en": "inglés", "pt": "portugués de Brasil", "fr": "francés", "it": "italiano", "de": "alemán", "es": "español"}
+# the commonest short words of each language: enough to tell a script's language
+STOPWORDS = {
+    "es": "el la los las de del que y en un una es por con para no se lo su al como más pero sus le ya o este porque esta entre cuando muy sin sobre también",
+    "de": "der die das und ist nicht ein eine zu den mit sich des auf für von dem im auch es an werden aus er hat dass sie nach wird bei noch wie",
+    "en": "the and of to a in is that it for was on are with as his they be at one have this from by but not what all were when we",
+    "pt": "o a os as de do da que e em um uma é para com não se no na por mais mas como dos das ao seu sua ou quando muito também",
+    "fr": "le la les de des du et est un une que qui en pour pas ne se sur au avec dans ce il plus par mais ou sont aussi comme",
+    "it": "il lo la i gli le di del della che e è un una per non con si in al dei come ma più anche sono questo nel alla",
+}
+_WORDS = {k: set(v.split()) for k, v in STOPWORDS.items()}
+
+
+def language_of(text: str) -> str:
+    """The language a script is written in (by its short common words); '' if too short to tell."""
+
+    import re
+
+    words = re.findall(r"[a-záéíóúàèìòùâêôãõçäöüßñ]+", text.lower())
+    if len(words) < 30:
+        return ""
+    scores = sorted(((sum(1 for w in words if w in common), lang) for lang, common in _WORDS.items()), reverse=True)
+    (best, lang), (second, _) = scores[0], scores[1]
+    # sure only with enough little words and a clear winner (Spanish and Portuguese share many)
+    return lang if best >= max(5, 0.08 * len(words)) and best >= 1.25 * second else ""
 
 
 NAMES = {"en": "English", "pt": "Portuguese (Brazil)", "fr": "French", "it": "Italian", "de": "German"}
@@ -208,13 +239,25 @@ def translate(ctx: RunContext, lang: str) -> bool:
     script = (folder / "guion.txt").read_text("utf-8")
     title_file = folder / "titulo.txt"
     title = title_file.read_text("utf-8").strip() if title_file.is_file() else ""
-    language = NAMES.get(lang, lang)
+    language = IN_SPANISH.get(lang, NAMES.get(lang, lang))
     local = localize(ctx, lang)
     system = (ADAPT_SYSTEM.format(audience=local[0], language=language, guide=local[1]) if local
               else TRANSLATE_SYSTEM.replace("{language}", language))
-    result = complete_json(ctx, stage="doblaje", section="planner", max_tokens=12000, system=system,
-                           user=f"TÍTULO: {title or '(sin título)'}\n\nGUION:\n{script}")
-    text = str(result.get("script") or "").strip()
+    result: dict[str, Any] = {}
+    text = ""
+    for attempt in range(2):
+        # a script «adapted» in Spanish with a few words of the other language (sim3 into German: Handy, U-Bahn,
+        # Ampeln in Spanish sentences) is read by the native voice as Spanish: never accepted
+        extra = "" if not attempt else (f"\n\nATENCIÓN: la vez anterior devolviste el guion en español. Escríbelo ENTERO en "
+                                        f"{language}, frase por frase.")
+        result = complete_json(ctx, stage="doblaje", section="planner", max_tokens=12000, system=system + extra,
+                               user=f"TÍTULO: {title or '(sin título)'}\n\nGUION:\n{script}", use_cache=attempt == 0)
+        text = str(result.get("script") or "").strip()
+        if language_of(text) in ("", lang[:2]):
+            break
+        print(f"   La adaptación al {language} salió en {IN_SPANISH.get(language_of(text), language_of(text))}: otra vez")
+    else:
+        raise RuntimeError(f"la adaptación al {language} no salió en {language} (dos intentos)")
     if len(text.split()) < 0.5 * len(script.split()):
         raise RuntimeError(f"la traducción al {language} salió demasiado corta")
     target.write_text(text + "\n", encoding="utf-8")
@@ -265,6 +308,10 @@ def voice(ctx: RunContext, lang: str) -> bool:
         return False
     try:
         text = tts.narration_text((folder / f"guion-{lang}.txt").read_text("utf-8"))
+        found = language_of(text)
+        if found and found != lang[:2]:
+            raise RuntimeError(f"guion-{lang}.txt está en {IN_SPANISH.get(found, found)}, no en {IN_SPANISH.get(lang, lang)}: "
+                               "no se graba (pega el bueno en la página del vídeo, o bórralo y se adapta de nuevo)")
         print(f"Doblaje {ctx.slug} → {lang}: voz con GenAIPro ({len(text)} caracteres)")
         result = tts.generate(ctx.env("GENAIPRO_API_KEY", required=False), text, {**tts.DEFAULTS, **spec}, target)
         try:
@@ -381,6 +428,55 @@ def mark_manual(root: Path, slug: str, lang: str, done: bool = True) -> dict[str
     return {"ok": True}
 
 
+WRONG = "video-final.voz-equivocada.mp4"   # in out/<slug>-<lang>/: a dub that came out with the voice in Spanish
+
+
+def repair_wrong_language(root: Path, log: Any = print) -> int:
+    """Dubs whose «translated» script is not in their language (a Spanish script with a few German words: the native
+    voice read Spanish): the script, title and voice go, and the dubbed video is put aside so the queue makes it
+    again — unless it is already on YouTube (then only a warning). Your own scripts are never touched."""
+
+    import json as _json
+
+    from .context import find_video, video_folders
+    from .housekeeping import published
+
+    fixed = 0
+    for folder in video_folders(root):
+        for script in folder.glob("guion-*.txt"):
+            lang = script.stem.split("-", 1)[1]
+            if lang not in NAMES or (folder / OWN.format(lang=lang)).is_file():
+                continue
+            try:
+                found = language_of(script.read_text("utf-8"))
+            except OSError:
+                continue
+            if not found or found == lang[:2]:
+                continue
+            dubbed = f"{folder.name}-{lang}"
+            if published(root, dubbed):
+                log(f"Doblaje {dubbed}: la voz salió en {IN_SPANISH.get(found, found)} y ya está en YouTube: rehazlo a mano "
+                    "(bórralo de YouTube, «No, aún no está subido» y vuelve a doblarlo)")
+                continue
+            for name in (f"guion-{lang}.txt", f"titulo-{lang}.txt", f"voz-{lang}.mp3", f"voz-{lang}.palabras.json",
+                         f"adaptacion-{lang}.md", APPROVED.format(lang=lang), "doblaje.error"):
+                (folder / name).unlink(missing_ok=True)
+            target = find_video(root, dubbed)
+            if target.is_dir():
+                for name in ("voz.mp3", "voz.palabras.json", "guion.txt", "titulo.txt"):
+                    (target / name).unlink(missing_ok=True)
+            final = root / "out" / dubbed / "video-final.mp4"
+            if final.is_file():
+                final.replace(final.with_name(WRONG))
+                (root / "out" / dubbed / "rehecho.json").write_text(_json.dumps(
+                    {"why": f"la voz salió en {IN_SPANISH.get(found, found)}", "at": time.strftime("%Y-%m-%dT%H:%M:%S")}),
+                    encoding="utf-8")
+            log(f"Doblaje {dubbed}: el guion estaba en {IN_SPANISH.get(found, found)}, no en {IN_SPANISH.get(lang, lang)}: "
+                "se adapta, se graba y se hace otra vez")
+            fixed += 1
+    return fixed
+
+
 def prepare_all(root: Path, log: Any = print) -> int:
     """The voice thread's turn for dubs: finished videos of channels with dubbing on get their translated script and
     voice; the queue then makes the dubbed video. Returns how many voices it made."""
@@ -389,6 +485,10 @@ def prepare_all(root: Path, log: Any = print) -> int:
     from .housekeeping import is_done
 
     made = 0
+    try:
+        repair_wrong_language(root, log)
+    except Exception as error:                  # never stops the dubbing of the rest
+        log(f"Revisión de idioma de los doblajes: {type(error).__name__}: {str(error)[:200]}")
     materials = root / "materiales"
     for folder in video_folders(root):
         if any(part.startswith(("_", ".")) for part in folder.relative_to(materials).parts):
