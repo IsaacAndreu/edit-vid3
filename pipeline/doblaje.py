@@ -431,6 +431,36 @@ def mark_manual(root: Path, slug: str, lang: str, done: bool = True) -> dict[str
 WRONG = "video-final.voz-equivocada.mp4"   # in out/<slug>-<lang>/: a dub that came out with the voice in Spanish
 
 
+def _aside_shorts(root: Path, dubbed: str, before: float, log: Any) -> None:
+    """The Shorts of a dub written from its wrong-language script (sim6-de-short1 «El tapón de la puerta del metro»),
+    made before `before`: put aside in materiales/_descartados/; the redone dub makes its own."""
+
+    import shutil
+
+    from .context import video_folders
+    from .housekeeping import published
+
+    for short in [f for f in video_folders(root) if f.name.startswith(f"{dubbed}-short")]:
+        if published(root, short.name):
+            log(f"{short.name}: salió de un doblaje con la voz equivocada y ya está en YouTube: revísalo")
+            continue
+        try:
+            made = short / "guion.txt" if (short / "guion.txt").is_file() else short   # written once, when it was made
+            if made.stat().st_mtime >= before:           # made from the redone dub: it stays
+                continue
+        except OSError:
+            continue
+        aside = root / "materiales" / "_descartados" / short.name
+        aside.parent.mkdir(parents=True, exist_ok=True)
+        if aside.exists():
+            shutil.rmtree(aside)
+        short.replace(aside)
+        final = root / "out" / short.name / "video-final.mp4"
+        if final.is_file():
+            final.replace(final.with_name(WRONG))
+        log(f"{short.name}: apartado (salió del guion equivocado de {dubbed}); se hará otro con el doblaje bueno")
+
+
 def repair_wrong_language(root: Path, log: Any = print) -> int:
     """Dubs whose «translated» script is not in their language (a Spanish script with a few German words: the native
     voice read Spanish): the script, title and voice go, and the dubbed video is put aside so the queue makes it
@@ -442,6 +472,9 @@ def repair_wrong_language(root: Path, log: Any = print) -> int:
     from .housekeeping import published
 
     fixed = 0
+    # a dub already put aside (by an earlier version of this, without its Shorts): the Shorts made before it go too
+    for out in (root / "out").glob("*/" + WRONG) if (root / "out").is_dir() else []:
+        _aside_shorts(root, out.parent.name, out.stat().st_mtime, log)
     for folder in video_folders(root):
         for script in folder.glob("guion-*.txt"):
             lang = script.stem.split("-", 1)[1]
@@ -471,8 +504,9 @@ def repair_wrong_language(root: Path, log: Any = print) -> int:
                 (root / "out" / dubbed / "rehecho.json").write_text(_json.dumps(
                     {"why": f"la voz salió en {IN_SPANISH.get(found, found)}", "at": time.strftime("%Y-%m-%dT%H:%M:%S")}),
                     encoding="utf-8")
+            _aside_shorts(root, dubbed, time.time(), log)
             log(f"Doblaje {dubbed}: el guion estaba en {IN_SPANISH.get(found, found)}, no en {IN_SPANISH.get(lang, lang)}: "
-                "se adapta, se graba y se hace otra vez")
+                "se adapta, se graba y se hace otra vez (sus Shorts, apartados en materiales/_descartados/)")
             fixed += 1
     return fixed
 

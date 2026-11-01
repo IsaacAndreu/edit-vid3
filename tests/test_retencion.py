@@ -232,7 +232,11 @@ def test_a_dub_spoken_in_spanish_is_put_aside_and_made_again(tmp_path):
     out = root / "out" / "sim6-de"
     out.mkdir(parents=True)
     (out / "video-final.mp4").write_text("x")
+    short = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
+    short.mkdir(parents=True)
+    (short / "guion.txt").write_text("El tapón de la puerta del metro. " * 10, "utf-8")
     assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 1
+    assert not short.exists() and (root / "materiales" / "_descartados" / "sim6-de-short1" / "guion.txt").exists()
     assert not (folder / "guion-de.txt").exists() and not (folder / "voz-de.mp3").exists() and (folder / "guion.txt").exists()
     assert not (dub / "voz.mp3").exists() and not (out / "video-final.mp4").exists() and (out / doblaje.WRONG).exists()
     # a good German one, or one already on YouTube, stays
@@ -244,3 +248,24 @@ def test_a_dub_spoken_in_spanish_is_put_aside_and_made_again(tmp_path):
     (root / "out" / "sim7-de").mkdir()
     (root / "out" / "sim7-de" / "publicado.json").write_text(json.dumps({"at": "x"}))
     assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 0 and (other / "guion-de.txt").exists()
+
+
+def test_the_shorts_of_a_dub_put_aside_earlier_go_too_but_not_the_new_ones(tmp_path):
+    import os
+    import time
+
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    out = root / "out" / "sim6-de"
+    out.mkdir(parents=True)
+    (out / doblaje.WRONG).write_text("x")
+    old = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
+    old.mkdir(parents=True)
+    (old / "guion.txt").write_text("El tapón de la puerta del metro. " * 10, "utf-8")
+    os.utime(old / "guion.txt", (time.time() - 3600, time.time() - 3600))
+    new = root / "materiales" / "simuliertes-warum" / "sim6-de-short2"
+    new.mkdir(parents=True)
+    (new / "guion.txt").write_text(GERMAN, "utf-8")
+    doblaje.repair_wrong_language(root, log=lambda *a: None)
+    assert not old.exists() and new.exists()
