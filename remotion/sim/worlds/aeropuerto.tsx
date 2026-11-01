@@ -15,6 +15,7 @@ import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world
 import {Shopper} from './colas';
 import {Figure, LineChart, Split} from '../scenes';
 import CURVES from '../curves.json';
+import {CHECKPOINT_SCENES} from './control';
 
 addWords({
   linePerLane: {es: 'Una cola por control', pt: 'Uma fila por controle', fr: 'Une file par poste', de: 'Eine Schlange pro Spur', en: 'A line per lane'},
@@ -159,6 +160,8 @@ addWords({
 
 const View: FC<WorldProps> = (props) => {
   const {g, worldT} = props;
+  const Station = CHECKPOINT_SCENES[param<string>(g, 'scene', 'filas')];
+  if (Station) return <Station {...props} />;
   if (param<string>(g, 'scene', 'filas') === 'curva') {
     return <LineChart t={worldT} draw={3} x={[3, 6]} y={[0, 180]} title={tx('lanesCurve')} xLabel={tx('lanesAxis')} yLabel={tx('averageWaitShort')}
                       yFmt={(v) => `${v} s`} xTicks={[3, 4, 5, 6]} yTicks={[60, 120, 180]} hline={{y: 175, label: tx('overflow')}}

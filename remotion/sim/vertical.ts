@@ -54,8 +54,12 @@ export const verticalOf = (g: SimGraphic): Vertical => {
       const s = scene(g, 'evacuacion');
       return s === 'evacuacion' ? {mode: 'crop', cx: 1260, cy: 540, scale: 1.35} : {mode: 'halves'};
     }
-    case 'aeropuerto':
+    case 'aeropuerto': {
+      const s = scene(g, 'filas');
+      if (s === 'cadena') return {mode: 'halves'};                     // the line and the table on top, the scanner below
+      if (['normas', 'manana', 'curva'].includes(s)) return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
       return {mode: 'halves'};
+    }
     case 'explica':
       return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
     case 'embarque':

@@ -944,7 +944,7 @@
   },
   "aeropuerto": {
     "niche": "colas y esperas",
-    "describe": "el control de seguridad de un aeropuerto visto desde arriba: carriles con su arco y su cinta de rayos X, un agente en cada uno; cada pasajero ≈ 30 s + 8 s por bandeja y 3 de cada 10 no vienen preparados (+40-120 s: los líquidos, el portátil, el cinturón, el arco que pita; anillo rojo). Siempre en dos mitades. Elige scene: filas (izquierda una cola por control, derecha una sola cola en zigzag que reparte a todos: la misma gente; espera media ~86 s contra ~75 s y la más larga baja) · preparados (como llega la gente contra todos preparados antes de la cinta: la espera media cae de ~75 s a ~5 s) · carriles (con carriles controles y con uno más: cerca del límite un control más lo cambia todo, ~75 s → ~13 s con 4 → 5) · curva (la espera media según los controles abiertos: con 3 la cola no para de crecer, con 4 ~76 s, con 5 ~13 s, con 6 ~4 s)",
+    "describe": "el control de seguridad de un aeropuerto visto desde arriba: carriles con su arco y su cinta de rayos X, un agente en cada uno; cada pasajero ≈ 30 s + 8 s por bandeja y 3 de cada 10 no vienen preparados (+40-120 s: los líquidos, el portátil, el cinturón, el arco que pita; anillo rojo). Elige scene: filas (izquierda una cola por control, derecha una sola cola en zigzag que reparte a todos: la misma gente; espera media ~86 s contra ~75 s y la más larga baja) · preparados (como llega la gente contra todos preparados antes de la cinta: la espera media cae de ~75 s a ~5 s) · carriles (con carriles controles y con uno más: cerca del límite un control más lo cambia todo, ~75 s → ~13 s con 4 → 5) · curva (la espera media según los controles abiertos: con 3 la cola no para de crecer, con 4 ~76 s, con 5 ~13 s, con 6 ~4 s) · cadena (UN carril del control visto desde arriba, estación por estación: la cola, la mesa de bandejas donde cada uno se prepara, la cinta y el escáner de rayos X (200 bandejas/h ≈ 105 personas/h, a ritmo fijo), el arco y la recogida al final de la cinta. Arriba lo que deja pasar cada estación: la mesa ~81 personas/h en rojo (el cuello de botella, el Herbie) y el escáner parado ~28 % del tiempo «esperando bandejas»; sobre la cabeza lo que retrasa (la botella, el portátil, la hebilla, el bolso); el que pita vuelve atrás y sus bandejas, en rojo, ocupan el final de la cinta. Colores: azul viajeros frecuentes, naranja ocasionales, verde familias. mesa: 1 (todos en el mismo trozo de mesa, uno detrás de otro) | 4 (carril automatizado: cuatro se preparan a la vez y entra antes el que acaba antes)) · paralelo (los mismos pasajeros: izquierda uno a uno en la mesa (la cola crece: ~13 min de espera al cabo de una hora, pasan ~74/h), derecha cuatro puestos a la vez (casi sin espera, pasan ~98/h y el escáner trabaja sin pausas)) · pistas (cuatro carriles: izquierda todos mezclados, derecha separados por tipo de viajero con las señales de las pistas de esquí (rombo negro expertos, cuadrado azul ocasionales, círculo verde familias), como probaron aeropuertos de EE. UU. en 2008: los expertos pasan de ~14 s de espera a ~3 s; OJO: en la simulación la espera media de todos sube (13 s → 41 s) si los carriles no se reparten según cuánta gente hay de cada tipo) · normas (por qué el control se hizo más lento: 2001, el 11-S y la TSA; agosto de 2006, el plan de los explosivos líquidos en el Reino Unido; noviembre de 2006, la norma europea de los 100 ml en bolsa transparente; y una bandeja que se va llenando de cosas que sacar) · manana (gráfica: la espera en el control a lo largo de la mañana, de 5:00 a 11:00, con oleadas de vuelos: la cola sube con cada oleada y tarda mucho en bajar))",
     "focus": {
       "both": "los dos controles"
     },
@@ -957,10 +957,15 @@
           "filas",
           "preparados",
           "carriles",
-          "curva"
+          "curva",
+          "cadena",
+          "paralelo",
+          "pistas",
+          "normas",
+          "manana"
         ],
         "default": "filas",
-        "describe": "qué escena: filas · preparados · carriles · curva"
+        "describe": "qué escena: filas · preparados · carriles · curva · cadena · paralelo · pistas · normas · manana"
       },
       "carriles": {
         "min": 3,
@@ -973,6 +978,14 @@
           "pt": "controles abertos",
           "de": "offene Spuren"
         }
+      },
+      "mesa": {
+        "options": [
+          1,
+          4
+        ],
+        "default": 1,
+        "describe": "solo en cadena: 1 puesto en la mesa (uno a uno) o 4 (carril automatizado)"
       }
     },
     "marks": {

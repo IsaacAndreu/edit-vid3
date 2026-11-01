@@ -59,3 +59,10 @@ def test_the_dinner_scenes_are_offered_for_the_restaurant():
     spec = json.loads((ROOT / "sim" / "worlds.json").read_text(encoding="utf-8"))["restaurante"]
     for scene in ["pedir", "terraza", "pista"]:
         assert scene in spec["params"]["scene"]["options"] and f"{scene} (" in spec["describe"]
+
+
+def test_the_security_lane_scenes_are_offered_for_the_airport():
+    import json
+    spec = json.loads((ROOT / "sim" / "worlds.json").read_text(encoding="utf-8"))["aeropuerto"]
+    for scene in ["cadena", "paralelo", "pistas", "normas", "manana"]:
+        assert scene in spec["params"]["scene"]["options"] and f"{scene} (" in spec["describe"]
