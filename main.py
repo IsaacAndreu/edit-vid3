@@ -595,11 +595,28 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
 
         waiting = [slug for slug in pending_slugs(root) if slug not in skip] + [
             slug for slug, _ in dub.pending(root)]
+        def refill() -> list[str]:
+            """The queue as it is now (a free line takes it while the round goes on)."""
+
+            if (root / "out" / "_pausa").is_file():
+                return []
+            try:
+                now = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
+            except ValueError:
+                now = {}
+            held = {slug for slug, info in now.items()
+                    if info.get("sig") == _materials_signature(root, slug) and time.time() - info.get("at", 0) < retry}
+            fresh = [slug for slug in pending_slugs(root) if slug not in held]
+            from pipeline import dub as _dub
+
+            return fresh + [_dub.prepare(root, slug, lang) for slug, lang in _dub.pending(root)
+                            if _dub.dub_slug(slug, lang) not in fresh]
+
         if waiting:
             idle_since = None
             LAST_RESULTS.clear()
             try:
-                run_queue(force=set(), until=None, review=False, root=root, skip=skip,
+                run_queue(force=set(), until=None, review=False, root=root, skip=skip, refill=refill,
                           new_code=(lambda: _git_update(root, running_code)) if running_code else None)
             except Stopped:                          # systemctl stop / «Parar» in the studio: end now
                 raise
@@ -707,7 +724,8 @@ LAST_RESULTS: list[tuple[str, str, float, str]] = []      # the last queue's (sl
 
 
 def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT,
-              check: bool = True, skip: set[str] | None = None, new_code: Callable[[], bool] | None = None) -> int:
+              check: bool = True, skip: set[str] | None = None, new_code: Callable[[], bool] | None = None,
+              refill: Callable[[], list[str]] | None = None) -> int:
     """Process every pending video; never stop the night because one video failed. Returns failures."""
 
     lock = root / QUEUE_LOCK
@@ -748,8 +766,10 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             slugs = slugs[:limit]
         print(f"Cola: {len(slugs)} vídeo(s) pendiente(s): {', '.join(slugs) or '—'}")
         workers = parallel_videos(root)
-        if workers > 1 and len(slugs) > 1:
-            results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root)
+        if workers > 1 and (len(slugs) > 1 or refill is not None):
+            # with `refill` (the watcher) a free line takes what becomes pending meanwhile, instead of waiting for
+            # the whole round (sim videos sat for hours behind one third-party video)
+            results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root, refill=refill)
             slugs = []
         from pipeline import ytpause
 
@@ -864,6 +884,30 @@ def footage_at_once(root: Path) -> int:
     return max(1, int(cfg.get("footage_at_once", 1)))
 
 
+REFILL_EVERY = 60                     # s: how often a free line looks for videos that became pending
+
+
+def shorts_at_once(root: Path) -> int:
+    """An extra line only for Shorts (queue.shorts_at_once, 1): short and light, made while the other two go on."""
+
+    try:
+        cfg = RunContext.create("_cola", root=root).section("queue")
+    except ConfigError:
+        return 0
+    return max(0, int(cfg.get("shorts_at_once", 1)))
+
+
+def is_short_video(root: Path, slug: str) -> bool:
+    from pipeline.context import find_video
+    from pipeline.web import _channel_of, is_short
+
+    try:
+        folder = find_video(root, slug)
+        return is_short(root, folder, _channel_of(root, folder))
+    except Exception:
+        return False
+
+
 def is_drawn(root: Path, slug: str) -> bool:
     """The video is drawn in code (simulation, stick figures): no footage to search or download."""
 
@@ -876,7 +920,7 @@ def is_drawn(root: Path, slug: str) -> bool:
 
 
 def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
-                 root: Path) -> list[tuple[str, str, float, str]]:
+                 root: Path, refill: Callable[[], list[str]] | None = None) -> list[tuple[str, str, float, str]]:
     """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
     while one video downloads from YouTube, another one analyses or renders. Each video's lines are
     prefixed with its name and kept in out/_cola/<video>.log."""
@@ -920,22 +964,56 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             _write_report(root, results)
 
     # third-party footage videos at once (queue.footage_at_once, 1): the other lines are for videos drawn in code
-    # (simulation, stick figures), which need neither YouTube nor the footage analysis
+    # (simulation, stick figures), which need neither YouTube nor the footage analysis; and one more line only for
+    # Shorts (queue.shorts_at_once, 1)
     footage_max = footage_at_once(root)
+    short_lines = shorts_at_once(root)
     kinds = {slug: is_drawn(root, slug) for slug in slugs}
+    shorts = {slug: is_short_video(root, slug) for slug in slugs}
     footage_running = [0]
+    active = [0]
+    started = set(slugs)
+    last_refill = [time.monotonic()]
 
-    def worker() -> None:
+    def top_up() -> None:
+        """What became pending since the round started (a failed video whose wait is over, a new one, a dub)."""
+
+        if refill is None or time.monotonic() - last_refill[0] < REFILL_EVERY:
+            return
+        last_refill[0] = time.monotonic()
+        try:
+            fresh = [s for s in refill() if s not in started]
+        except Exception as error:               # never stops the round
+            print(f"Cola: no se pudo mirar si hay vídeos nuevos ({type(error).__name__}: {str(error)[:120]})")
+            return
+        for s in fresh:
+            drawn, short = is_drawn(root, s), is_short_video(root, s)
+            with lock:
+                if s in started:
+                    continue
+                started.add(s)
+                kinds[s], shorts[s] = drawn, short
+                pending.append(s)
+            print(f"Cola: entra {s} (pendiente desde que empezó la ronda)")
+
+    def worker(only_shorts: bool) -> None:
         while True:
             with lock:
-                if not pending:
-                    return
-                slug = next((s for s in pending if kinds[s] or footage_running[0] < footage_max), None)
+                slug = next((s for s in pending if (shorts[s] if only_shorts else True)
+                             and (kinds[s] or footage_running[0] < footage_max)), None)
                 if slug is not None:
                     pending.remove(slug)
+                    active[0] += 1
                     if not kinds[slug]:
                         footage_running[0] += 1
-            if slug is None:                     # only footage left and its line is busy: wait for it
+                finished = not pending and active[0] == 0
+            if slug is None:
+                if finished and refill is None:
+                    return
+                top_up()
+                with lock:
+                    if not pending and active[0] == 0:
+                        return                   # nothing running, nothing new: the round ends
                 time.sleep(5)
                 continue
             try:
@@ -946,13 +1024,16 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                     continue
                 run(slug)
             finally:
-                if not kinds[slug]:
-                    with lock:
+                with lock:
+                    active[0] -= 1
+                    if not kinds[slug]:
                         footage_running[0] -= 1
 
     print(f"Cola en paralelo: {workers} vídeos a la vez (red y CPU por turnos), de ellos {footage_max} como mucho con "
-          "metraje de terceros; el resto, dibujados (simulación, monigotes) · registros en out/_cola/")
-    threads = [threading.Thread(target=worker, daemon=True) for _ in range(workers)]
+          f"metraje de terceros; el resto, dibujados (simulación, monigotes)"
+          + (f" · y {short_lines} línea(s) más solo para Shorts" if short_lines else "") + " · registros en out/_cola/")
+    threads = [threading.Thread(target=worker, args=(False,), daemon=True) for _ in range(workers)] + \
+        [threading.Thread(target=worker, args=(True,), daemon=True) for _ in range(short_lines)]
     for thread in threads:
         thread.start()
         time.sleep(2)
