@@ -356,7 +356,7 @@ export const Cruces: FC<CrucesProps> = ({audio, scenes}) => {
     const s = scenes.find((x) => x.overlay === name);
     if (!s) return 0;
     const end = name === 'results' || name === 'conflicts' ? (scenes[scenes.indexOf(s) + 1]?.start ?? s.end + 3) - 0.1 : s.end + 0.3;
-    return interpolate(t, [s.start - 0.1, s.start + 0.35, end - 0.3, end], [0, 1, 1, 0], clamp);
+    return interpolate(t, [s.start - 0.1, s.start + 0.35, Math.max(s.start + 0.36, end - 0.3), Math.max(s.start + 0.37, end)], [0, 1, 1, 0], clamp);
   };
   const c = scenes.find((x) => x.overlay === 'conflicts');
   return (

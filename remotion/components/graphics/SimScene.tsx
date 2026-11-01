@@ -15,6 +15,10 @@ import { Legend } from '../../sim/look';
 import { WORLDS } from '../../sim/registry';
 import { clamp } from '../../sim/world';
 
+// an interpolate() range must rise strictly: a very short shot (a Short's 1.8 s) could make «end - 0.25» fall before
+// «start + 0.35» (sim4-de-short2 failed with [1.23, 1.58, 1.52, 1.77])
+const rising = (xs: number[]) => xs.reduce<number[]>((out, x, i) => [...out, i ? Math.max(x, out[i - 1] + 0.001) : x], []);
+
 // --- sound: the street's hum under every shot of a world (continuing where the last shot left it), the world's clicks
 // (a light changing in sight…), a soft tick when a panel comes in and on the world's own events (a car stopping…).
 // Not played with the picture (the video's render is silent and its sound mixed apart): the SimAudio composition
@@ -56,7 +60,7 @@ export const SimSounds: FC<{ graphic: SimGraphic; durationInFrames: number; fps:
   return (
     <>
       {ambient && heard && <Audio src={staticFile(ambient)} loop volume={(f) => level * envelope(f) * (hold > 0 && f / fps >= holdFrom ? 0.35 : 1)}
-                         startFrom={Math.round(t0 * fps) % loop} />}
+                         startFrom={((Math.round(t0 * fps) % loop) + loop) % loop} />}
       {at(clicks, sounds.click, 'c', 0.32, 6)}
       {at(ticks.filter((s, i) => i === 0 || s - ticks[i - 1] > 0.25), sounds.tick, 't', 0.22, 6)}
       {at(mode === 'siempre' ? beeps : beeps.filter((b) => t0 + b < 6), sounds.beep, 'b', 0.08, 6)}
@@ -93,7 +97,7 @@ const Recap: FC<{ graphic: SimGraphic; real: number; length: number }> = ({ grap
   const clip = clips[i % clips.length];
   const world = WORLDS[clip.world] ?? WORLDS.cruces;
   const fast = inSeg * 2.2;                                   // «montaje rápido»: the scene runs at double speed
-  const fade = interpolate(inSeg, [0, 0.25, seg - 0.25, seg], [0, 1, 1, 0], clamp);
+  const fade = interpolate(inSeg, rising([0, 0.25, seg - 0.25, seg]), [0, 1, 1, 0], clamp);
   const on = (name: string) => (clip.overlay === name ? 1 : 0);
   return (
     <AbsoluteFill style={{ background: C.night }}>
@@ -246,7 +250,7 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
   const local = hold > 0 ? Math.min(played, holdFrom) : played;   // «¿tú qué harías?»: the world stops on the question
   const worldT = graphic.at + local - graphic.since;          // seconds since this world came on screen
   const move = interpolate(real, [0, 0.8], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
-  const on = interpolate(real, [0, 0.35, length - 0.25, length], [0, 1, 1, 0.85], clamp);
+  const on = interpolate(real, rising([0, 0.35, length - 0.25, length]), [0, 1, 1, 0.85], clamp);
   const o = (name: string) => (graphic.overlay === name ? on : 0);
   setLang(graphic.lang);
   setAccent(graphic.accent);
@@ -263,7 +267,7 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
   const dim = Math.max(enter ? interpolate(real, [0, 0.4], [0.55, 0], clamp) : 0,
                        graphic.exit ? interpolate(real, [length - 0.35, length], [0, 0.45], clamp) : 0);
   const statOn = graphic.statAt !== undefined
-    ? interpolate(real, [graphic.statAt - 0.1, graphic.statAt + 0.25, length - 0.25, length], [0, 1, 1, 0.85], clamp) : on;
+    ? interpolate(real, rising([graphic.statAt - 0.1, graphic.statAt + 0.25, length - 0.25, length]), [0, 1, 1, 0.85], clamp) : on;
   const statFrom = graphic.statAt ?? 0.2;
   const asking = hold > 0 ? interpolate(real, [holdFrom, holdFrom + 0.3], [0, 1], clamp) : 0;
   const loop = graphic.loopTo;

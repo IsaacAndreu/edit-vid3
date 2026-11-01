@@ -862,6 +862,10 @@ def drawn_shot(shot: dict[str, Any]) -> dict[str, Any]:
     the 22/230/30 bars); the simulation shows the figure in its own panel instead (simulacion.py: "stat")."""
 
     plain = {k: v for k, v in shot.items() if k not in ("stat", "panel", "panelId", "chapterTitle", "label")}
+    if not isinstance(plain.get("broll"), dict):          # a datacard had no footage: a broll shot needs one (never searched)
+        words = " ".join(str(shot.get("text") or "simulation").split()[:8]) or "simulation"
+        plain["broll"] = {"visualIntent": "simulation drawn in code", "queries": ["simulation", "animation", "diagram"],
+                          "queriesLocal": [words[:80]]}
     return {**plain, "type": "broll"}
 
 

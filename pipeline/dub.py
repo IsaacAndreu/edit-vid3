@@ -576,6 +576,12 @@ def run(ctx: RunContext) -> None:
     for folder in LINKED:
         if (original.work_dir / folder).is_dir():
             _link_tree(original.work_dir / folder, ctx.work_dir / folder)
+    from . import stickman
+
+    manifest = ctx.work_dir / "media" / "_ingest.json"
+    if not manifest.is_file() and stickman.drawn(original):     # drawn in code: no clips (hora1-de: media/ was cleaned)
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps({"slug": ctx.slug, "media": []}), encoding="utf-8")
     for name in COPIED:   # paths inside point at work/<original>/: make them point at this copy
         if (original.work_dir / name).is_file():
             text = (original.work_dir / name).read_text("utf-8")

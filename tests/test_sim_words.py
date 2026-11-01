@@ -25,3 +25,13 @@ def test_the_epidemic_scenes_are_offered_to_the_scriptwriter():
         assert scene in options and f"{scene} (" in spec["describe"]
     tsx = (ROOT / "sim" / "worlds" / "epidemia.tsx").read_text(encoding="utf-8")
     assert all(f"{s}:" in tsx.split("EPIDEMIC_SCENES")[-1] for s in ["arbol", "doble", "oculto", "palancas", "caminos", "inmunidad"])
+
+
+def test_a_datacard_without_footage_still_becomes_a_valid_simulation_shot():
+    # sim2, sim5, sim7-short2 failed with «1 validation error for Shot»: a broll shot needs a broll
+    from pipeline.planner import drawn_shot
+    from pipeline.schemas import Shot
+
+    shot = {"id": "s001", "type": "datacard", "startWord": 0, "endWord": 3, "start": 0, "end": 2, "text": "22 coches en círculo",
+            "chapter": 0, "panel": {"title": "x"}}
+    assert Shot.model_validate(drawn_shot(shot)).type == "broll"

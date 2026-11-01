@@ -144,6 +144,16 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
         # a script in Spanish on a channel in another language (the Shorts of a «German» dub written in Spanish):
         # its native voice would read Spanish
         if language_of(script.read_text("utf-8", errors="replace")) == "es":
+            parent = str(ctx.section("shorts").get("of") or "")
+            if parent:                                    # a Short cut from the wrong script: aside, its video makes another
+                aside = root / "materiales" / "_descartados" / slug
+                aside.parent.mkdir(parents=True, exist_ok=True)
+                if aside.exists():
+                    shutil.rmtree(aside)
+                ctx.materials_dir.replace(aside)
+                print(f"{slug}: su guion está en español y su canal es en {IN_SPANISH.get(lang, lang)}: apartado en "
+                      f"materiales/_descartados/ (al rehacerse {parent} saldrá otro en su idioma)")
+                return
             raise RuntimeError(f"el guion de {slug} está en español y su canal es en {IN_SPANISH.get(lang, lang)}: "
                                "no se hace (escribe el guion en ese idioma o cámbialo de canal)")
     with _one_process(ctx):                               # never two runs of one video at once

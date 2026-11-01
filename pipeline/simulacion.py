@@ -722,6 +722,7 @@ def retime_sim(old: dict[str, Any], new: dict[str, Any], lang: str) -> None:
 
     def fix(graphic: dict[str, Any]) -> dict[str, Any]:
         out = {**graphic, "lang": lang, "at": when(graphic["at"]), "since": when(graphic["since"])}
+        out["since"] = min(out["since"], out["at"])         # a world never starts after its shot (sim3-de: startFrom -486)
         if graphic.get("cues"):
             out["cues"] = {k: when(v) for k, v in graphic["cues"].items()}
         if graphic.get("recap"):
