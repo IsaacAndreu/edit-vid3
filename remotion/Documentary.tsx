@@ -106,7 +106,7 @@ const SimVertical: FC<{ group: Group; width: number; height: number }> = ({ grou
     );
   }
   // the whole height of the phone, centred on what matters (cx, cy): the animation, edge to edge
-  const k = Math.max(v.scale, height / 1080);
+  const k = v.scale < 1 ? v.scale : Math.max(v.scale, height / 1080);      // a chart (scale < 1) stays whole
   const h = 1080 * k;
   const top = Math.min(0, Math.max(height - h, height / 2 - v.cy * k));
   const x = Math.max(0, Math.min(1920 * k - width, v.cx * k - width / 2));

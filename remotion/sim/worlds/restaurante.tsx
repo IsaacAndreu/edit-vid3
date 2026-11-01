@@ -15,6 +15,7 @@ import {Big, Note, param, SideTitle, type World, type WorldProps} from '../world
 import {Figure, LineChart, Split} from '../scenes';
 import CURVES from '../curves.json';
 import {LINE_SCENES} from './linekitchen';
+import {DINNER_SCENES} from './cenar';
 
 addWords({
   ticketTime: {es: 'De la comanda al plato', pt: 'Do pedido ao prato', fr: 'De la commande à l’assiette', de: 'Von der Bestellung zum Teller', en: 'From order to plate'},
@@ -163,7 +164,7 @@ addWords({
 
 const View: FC<WorldProps> = (props) => {
   const {g, worldT} = props;
-  const Scene = LINE_SCENES[param<string>(g, 'scene', 'comandas')];
+  const Scene = LINE_SCENES[param<string>(g, 'scene', 'comandas')] ?? DINNER_SCENES[param<string>(g, 'scene', 'comandas')];
   if (Scene) return <Scene {...props} />;
   if (param<string>(g, 'scene', 'comandas') === 'curva') {
     const rows = CURVES.kitchen as number[][];

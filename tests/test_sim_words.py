@@ -52,3 +52,10 @@ def test_a_short_gets_its_hook_on_top_and_the_full_video_line_at_the_end(tmp_pat
     sections["shorts"]["hook"] = "¿Por qué colapsa?"
     assert short_texts(ctx, tall)["hook"] == "¿Por qué colapsa?"
     assert short_texts(ctx, SimpleNamespace(width=1920, height=1080)) == {}       # not in the long video
+
+
+def test_the_dinner_scenes_are_offered_for_the_restaurant():
+    import json
+    spec = json.loads((ROOT / "sim" / "worlds.json").read_text(encoding="utf-8"))["restaurante"]
+    for scene in ["pedir", "terraza", "pista"]:
+        assert scene in spec["params"]["scene"]["options"] and f"{scene} (" in spec["describe"]

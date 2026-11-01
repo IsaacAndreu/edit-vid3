@@ -70,7 +70,7 @@ export const verticalOf = (g: SimGraphic): Vertical => {
         ? {mode: 'crop', cx: 760, cy: 540, scale: 1.0} : {mode: 'crop', cx: 960, cy: 540, scale: 1.1};
     case 'restaurante': {
       const s = scene(g, 'cocina');
-      if (['orden', 'comparar', 'sentar', 'cocina'].includes(s)) return {mode: 'halves'};
+      if (['orden', 'comparar', 'sentar', 'cocina', 'pedir', 'terraza'].includes(s)) return {mode: 'halves'};
       if (['mesas', 'noche'].includes(s)) return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
       return {mode: 'crop', cx: 960, cy: 540, scale: s === 'herbie' ? 1.0 : 1.2};
     }
