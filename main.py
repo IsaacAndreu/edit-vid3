@@ -302,6 +302,17 @@ def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
     except Exception:
         retry = 6 * 3600
     order = {slug: i for i, slug in enumerate(pending_slugs(root))}
+    # this round so far (out/_cola.md): a video already tried waits for the round to end, then retry_hours
+    tried: dict[str, str] = {}
+    try:
+        for row in (root / QUEUE_REPORT).read_text("utf-8").splitlines():
+            cells = [c.strip() for c in row.strip("|").split("|")]
+            if len(cells) >= 4 and cells[1] not in ("Estado", "---", "OK"):
+                tried[cells[0]] = f"{cells[1]}: {cells[3][:160]}"
+    except OSError:
+        pass
+    from pipeline.web import _json, running
+
     lines = []
     for d in video_folders(root):
         if any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts):
@@ -325,10 +336,14 @@ def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
         elif info.get("sig") == _materials_signature(root, d.name) and time.time() - info.get("at", 0) < retry:
             again = datetime.fromtimestamp(info.get("at", 0) + retry)
             why = f"falló ({info.get('status', 'error')}): se reintenta a las {again:%H:%M} o con «Reintentar»"
+        elif running(_json(root / "work" / d.name / "current.json")):
+            why = "HACIÉNDOSE AHORA"
+        elif d.name in tried:
+            why = f"ya probado en esta ronda y falló ({tried[d.name]}): vuelve tras la ronda (o «Reintentar»)"
         else:
             why = f"EN COLA, puesto {order[d.name] + 1}"
         lines.append(f"{d.name} [{kind}]: {why}")
-    return sorted(lines, key=lambda line: ("EN COLA" not in line, line))
+    return sorted(lines, key=lambda line: ("HACIÉNDOSE" not in line, "EN COLA" not in line, line))
 
 
 def _queue_cfg(root: Path) -> dict:
