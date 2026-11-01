@@ -1023,6 +1023,10 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                     print(f"{slug}: quitado de la cola, se salta")
                     continue
                 run(slug)
+            except Exception as error:           # a line never dies: the others would wait for it for ever
+                with lock:
+                    results.append((slug, "ERROR", 0.0, f"{type(error).__name__}: {error}"))
+                print(f"✗ {slug}: no se pudo lanzar ({type(error).__name__}: {str(error)[:200]})")
             finally:
                 with lock:
                     active[0] -= 1
