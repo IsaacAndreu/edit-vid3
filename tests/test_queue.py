@@ -349,17 +349,20 @@ def test_a_stage_that_stops_is_not_shown_as_still_running(tmp_path, monkeypatch)
     assert current["stage"] == stage.name and current["ended"] and web.running(current) is None
 
 
-def test_an_easy_short_goes_first(tmp_path, monkeypatch):
+def test_shorts_go_last_unless_asked_and_then_an_easy_one_goes_first(tmp_path, monkeypatch):
     import time as _time
 
-    _materials(tmp_path, "long1")
-    _time.sleep(0.01)
+    _materials(tmp_path, "long2")
     _materials(tmp_path, "long1-short1")
     (tmp_path / "materiales" / "long1-short1" / "config.yaml").write_text("shorts:\n  enabled: false\n  of: long1\n", "utf-8")
+    _time.sleep(0.01)
+    _materials(tmp_path, "long1")
     monkeypatch.setattr(main, "is_drawn", lambda root, slug: True)
+    monkeypatch.setattr(main, "is_short_video", lambda root, slug: "-short" in slug)
+    assert main.pending_slugs(tmp_path)[-1] == "long1-short1"          # queue.shorts_last (default): after every long one
+    (tmp_path / "materiales" / "long2").rename(tmp_path / "materiales" / "_long2")
+    monkeypatch.setattr(main, "_queue_cfg", lambda root: {"shorts_last": False})
     assert main.pending_slugs(tmp_path) == ["long1-short1", "long1"]
-    monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)     # a footage Short: no jump
-    assert main.pending_slugs(tmp_path) == ["long1", "long1-short1"]
 
 
 def test_simulation_videos_go_before_footage_ones(tmp_path, monkeypatch):

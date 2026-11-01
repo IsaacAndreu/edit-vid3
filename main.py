@@ -298,11 +298,15 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
         first = {d.name: rank.get(_channel_of(root, d), len(rank)) for d in ready}
     else:
         first = {}
-    easy = {d.name for d in ready if easy_short(root, d)}  # a Short drawn in code: minutes, so it never waits
+    # queue.shorts_last (true): the Shorts after every long video, made only when nothing else is waiting; false: a
+    # Short drawn in code (minutes) goes before everything
+    last = bool(_queue_cfg(root).get("shorts_last", True))
+    shorts_set = {d.name for d in ready if last and is_short_video(root, d.name)}
+    easy = {d.name for d in ready if not last and easy_short(root, d)}
     # queue.drawn_first: the videos drawn in code (simulation, stick figures) before the footage ones
     drawn_first = bool(_queue_cfg(root).get("drawn_first", True))
     drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
-    return [d.name for d in sorted(ready, key=lambda d: (d.name not in easy, d.name not in drawn, first.get(d.name, 0),
+    return [d.name for d in sorted(ready, key=lambda d: (d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
                                                          due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
 
 
@@ -993,7 +997,7 @@ def shorts_at_once(root: Path) -> int:
         cfg = RunContext.create("_cola", root=root).section("queue")
     except ConfigError:
         return 0
-    return max(0, int(cfg.get("shorts_at_once", 1)))
+    return max(0, int(cfg.get("shorts_at_once", 0)))
 
 
 def is_short_video(root: Path, slug: str) -> bool:
@@ -1160,8 +1164,11 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     def worker(only_shorts: bool) -> None:
         while True:
             with lock:
-                slug = next((s for s in pending if (shorts[s] if only_shorts else True)
-                             and (kinds[s] or footage_running[0] < footage_max)), None)
+                fits = [s for s in pending if (shorts[s] if only_shorts else True) and (kinds[s] or footage_running[0] < footage_max)]
+                # queue.shorts_last: a long video that came in meanwhile still goes before the Shorts
+                if not only_shorts and _queue_cfg(root).get("shorts_last", True):
+                    fits.sort(key=lambda s: shorts[s])
+                slug = fits[0] if fits else None
                 if slug is not None:
                     pending.remove(slug)
                     active[0] += 1
