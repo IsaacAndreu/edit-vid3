@@ -440,7 +440,9 @@ def _aside_shorts(root: Path, dubbed: str, before: float, log: Any) -> None:
     from .context import video_folders
     from .housekeeping import published
 
-    for short in [f for f in video_folders(root) if f.name.startswith(f"{dubbed}-short")]:
+    materials = root / "materiales"
+    for short in [f for f in video_folders(root) if f.name.startswith(f"{dubbed}-short")
+                  and not any(part.startswith(("_", ".")) for part in f.relative_to(materials).parts)]:
         if published(root, short.name):
             log(f"{short.name}: salió de un doblaje con la voz equivocada y ya está en YouTube: revísalo")
             continue
@@ -474,7 +476,9 @@ def repair_wrong_language(root: Path, log: Any = print) -> int:
     fixed = 0
     # a dub already put aside (by an earlier version of this, without its Shorts): the Shorts made before it go too
     for out in (root / "out").glob("*/" + WRONG) if (root / "out").is_dir() else []:
-        _aside_shorts(root, out.parent.name, out.stat().st_mtime, log)
+        # when it was put aside: rehecho.json (the renamed video keeps the date of its render, before its Shorts)
+        stamp = out.parent / "rehecho.json"
+        _aside_shorts(root, out.parent.name, stamp.stat().st_mtime if stamp.is_file() else time.time(), log)
     for folder in video_folders(root):
         for script in folder.glob("guion-*.txt"):
             lang = script.stem.split("-", 1)[1]

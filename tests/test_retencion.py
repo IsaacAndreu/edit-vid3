@@ -260,6 +260,8 @@ def test_the_shorts_of_a_dub_put_aside_earlier_go_too_but_not_the_new_ones(tmp_p
     out = root / "out" / "sim6-de"
     out.mkdir(parents=True)
     (out / doblaje.WRONG).write_text("x")
+    os.utime(out / doblaje.WRONG, (time.time() - 7200, time.time() - 7200))      # keeps the date of its render
+    (out / "rehecho.json").write_text("{}")                                       # put aside now
     old = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
     old.mkdir(parents=True)
     (old / "guion.txt").write_text("El tapón de la puerta del metro. " * 10, "utf-8")
@@ -269,3 +271,17 @@ def test_the_shorts_of_a_dub_put_aside_earlier_go_too_but_not_the_new_ones(tmp_p
     (new / "guion.txt").write_text(GERMAN, "utf-8")
     doblaje.repair_wrong_language(root, log=lambda *a: None)
     assert not old.exists() and new.exists()
+
+
+def test_a_spanish_script_on_a_german_channel_is_never_made(tmp_path):
+    import pytest
+
+    import main
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text(SPANISH, "utf-8")
+    (folder / "config.yaml").write_text("canal: simuliertes-warum\n", "utf-8")
+    with pytest.raises(RuntimeError, match="español"):
+        main.run_one("sim6-de-short1", force=set(), until=None, review=False, root=root)

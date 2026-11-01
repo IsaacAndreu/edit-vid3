@@ -134,6 +134,16 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
     from pipeline import budget
 
     budget.check(root, ctx.config)                       # budget.daily_usd: today's spending at the limit → wait
+    script = ctx.materials_dir / "guion.txt"
+    lang = str(ctx.section("align").get("language", "es"))[:2]
+    if lang != "es" and script.is_file():
+        from pipeline.doblaje import IN_SPANISH, language_of
+
+        # a script in Spanish on a channel in another language (the Shorts of a «German» dub written in Spanish):
+        # its native voice would read Spanish
+        if language_of(script.read_text("utf-8", errors="replace")) == "es":
+            raise RuntimeError(f"el guion de {slug} está en español y su canal es en {IN_SPANISH.get(lang, lang)}: "
+                               "no se hace (escribe el guion en ese idioma o cámbialo de canal)")
     with _one_process(ctx):                               # never two runs of one video at once
         from pipeline import formats
 
