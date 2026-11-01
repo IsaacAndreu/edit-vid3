@@ -422,6 +422,32 @@ def rotate_published(root: Path, config: dict[str, Any], now: float | None = Non
     return freed / 1e9
 
 
+_CHORES = {"running": False}
+
+
+def published_chores_in_background(root: Path) -> bool:
+    """published_chores in a thread of its own: a video's clean-up extracts a frame of every shot first (for
+    «Clips marcados»), over a minute each, and the queue waited for all of them before starting any video (the
+    watcher looked stuck: «haciendo la cola», nothing being made). One at a time; False if one is already going."""
+
+    import threading
+
+    if _CHORES["running"]:
+        return False
+    _CHORES["running"] = True
+
+    def run() -> None:
+        try:
+            published_chores(root)
+        except Exception as error:                 # never stops anything
+            print(f"(Limpieza de vídeos subidos: {type(error).__name__}: {str(error)[:120]})")
+        finally:
+            _CHORES["running"] = False
+
+    threading.Thread(target=run, name="limpieza-subidos", daemon=True).start()
+    return True
+
+
 def published_chores(root: Path) -> None:
     """For the watcher and the queue: find the uploads on your channel, then free the space of the old ones."""
 

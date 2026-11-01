@@ -645,7 +645,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
 
             if time.time() - getattr(watch, "chores_at", 0) > 6 * 3600:    # every few hours, while idle
                 watch.chores_at = time.time()                              # type: ignore[attr-defined]
-                housekeeping.published_chores(root)
+                housekeeping.published_chores_in_background(root)
         from pipeline import tts
         from pipeline.context import video_folders
 
@@ -748,7 +748,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
 
             try:
                 housekeeping.old_cache(RunContext.create("_cola", root=root))   # cleanup.cache_days (a server's disk)
-                housekeeping.published_chores(root)          # uploaded videos: their heavy files go
+                housekeeping.published_chores_in_background(root)   # uploaded videos' heavy files: meanwhile
             except Exception as error:   # never stops the night
                 print(f"(Limpieza de caché no hecha: {str(error)[:100]})")
             problems = preflight(root)
