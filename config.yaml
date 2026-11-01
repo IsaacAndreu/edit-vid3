@@ -146,6 +146,9 @@ judge:
   min_accept: 0.22                 # por debajo, la opción no se usa (→ fallback)
   candidates: 3                    # opciones que ve el juez por hoja
   rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
+  # rounds_rest: 1                 # fuera del gancho, como mucho una hoja (ahorra la 2.ª llamada); sin poner = rounds
+  # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
+  # usd_per_mtok_rest: {input: …, output: …}        # los precios de model_rest (para que el gasto de API salga bien)
   parallel: 8
   source_bonus: {youtube: 0.02}    # prioridad: metraje de terceros antes que fotos
   max_phash_distance: 6            # fragmentos más parecidos que esto cuentan como repetidos

@@ -360,6 +360,8 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
                hook: bool = False, subject: str = "", sources: str = "", around: str = "") -> dict[str, Any]:
     cfg = ctx.section("judge")
     model = str(cfg.get("model", "gpt-5-mini"))
+    if not hook and cfg.get("model_rest"):   # judge.model_rest: a cheaper model outside the hook (the hook keeps `model`)
+        model = str(cfg["model_rest"])
     if str(cfg.get("provider", "openai")) != "openai":
         raise ValueError("judge.provider: solo 'openai' está implementado (modelo con visión).")
     ok, encoded = cv2.imencode(".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -367,15 +369,18 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         raise RuntimeError("No se pudo codificar la hoja de contactos.")
     image_bytes = encoded.tobytes()
     prompt = f"{shot_brief(shot, topic, hook, subject, around)}\nCandidates on the sheet: {', '.join(letters)}."
-    if cfg.get("note"):                      # the channel's own rule (canales/<canal>.yaml → judge.note)
-        prompt += f"\nChannel rule: {' '.join(str(cfg['note']).split())}"
     if sources:
         prompt += f"\nSource of each candidate:\n{sources}"
+    # what is the same for every shot of the channel goes in the instructions, in front: OpenAI then reads that
+    # prefix from its cache (a tenth of the price) instead of billing it again on each of the ~280 calls of a video
+    instructions = JUDGE_INSTRUCTIONS
+    if cfg.get("note"):                      # the channel's own rule (canales/<canal>.yaml → judge.note)
+        instructions += f"\n\nChannel rule: {' '.join(str(cfg['note']).split())}"
     taught = _lessons(ctx)
     if taught:
-        prompt += ("\nThe editor's past corrections on this channel (learn the standard, not the clips):\n" + taught)
+        instructions += ("\n\nThe editor's past corrections on this channel (learn the standard, not the clips):\n" + taught)
     cache_key = hashlib.sha256(
-        json.dumps([model, JUDGE_INSTRUCTIONS, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
+        json.dumps([model, instructions, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
         + image_bytes
     ).hexdigest()[:32]
 
@@ -385,7 +390,8 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"))
         response = client.responses.create(
             model=model,
-            instructions=JUDGE_INSTRUCTIONS,
+            instructions=instructions,
+            prompt_cache_key=f"judge:{ctx.channel or 'default'}",
             reasoning={"effort": str(cfg.get("reasoning_effort", "low"))},
             input=[{
                 "role": "user",
@@ -397,11 +403,14 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
             }],
             text={"format": {"type": "json_schema", "name": "shot_verdict", "strict": True, "schema": VERDICT_SCHEMA}},
         )
-        prices = cfg.get("usd_per_mtok", {})
+        prices = (cfg.get("usd_per_mtok_rest") if model != str(cfg.get("model", "gpt-5-mini")) else None) or cfg.get("usd_per_mtok", {})
         usage = response.usage
-        usd = (usage.input_tokens * float(prices.get("input", 0.25)) + usage.output_tokens * float(prices.get("output", 2.0))) / 1e6
+        cached = int(getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", 0) or 0)
+        fresh = usage.input_tokens - cached
+        usd = (fresh * float(prices.get("input", 0.25)) + cached * float(prices.get("input_cache_hit", float(prices.get("input", 0.25)) / 10))
+               + usage.output_tokens * float(prices.get("output", 2.0))) / 1e6
         record_cost(ctx, stage=STAGE, provider="openai", operation=model, usd=usd,
-                    details={"shot": shot.id, "inputTokens": usage.input_tokens, "outputTokens": usage.output_tokens})
+                    details={"shot": shot.id, "inputTokens": usage.input_tokens, "cachedTokens": cached, "outputTokens": usage.output_tokens})
         return json.loads(response.output_text)
 
     return usable(cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce), letters)
@@ -547,7 +556,9 @@ def run(ctx: RunContext) -> None:
         seen: list[Option] = []
         accepted: list[Option] = []
         verdict: dict[str, Any] = {}
-        for round_number in range(rounds):
+        hook = shot.start < hook_seconds
+        # judge.rounds_rest: outside the hook, how many sheets at most (1: if the first three fail, straight to fallback)
+        for round_number in range(rounds if hook else int(cfg.get("rounds_rest", rounds))):
             options = plans[shot.id][round_number * shown : (round_number + 1) * shown]
             if not options:
                 break
