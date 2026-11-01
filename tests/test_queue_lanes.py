@@ -30,6 +30,7 @@ def test_footage_videos_never_run_two_at_once_and_drawn_ones_take_the_other_line
 
     monkeypatch.setattr("subprocess.Popen", FakeProcess)
     monkeypatch.setattr(main, "is_drawn", lambda root, slug: slug in drawn)
+    monkeypatch.setattr(main, "needs_youtube", lambda root, slug: True)
     monkeypatch.setattr(main, "footage_at_once", lambda root: 1)
     monkeypatch.setattr(main, "waits_for_youtube", lambda root, slug: False)
     monkeypatch.setattr(main, "on_hold", lambda root, slug: False)
@@ -69,6 +70,7 @@ def test_a_free_line_takes_what_becomes_pending_and_shorts_have_a_line_of_their_
     later = iter([[], ["sim1", "sim1-short1", "sim2-short1"]])
     monkeypatch.setattr("subprocess.Popen", FakeProcess)
     monkeypatch.setattr(main, "is_drawn", lambda root, slug: slug in drawn)
+    monkeypatch.setattr(main, "needs_youtube", lambda root, slug: True)
     monkeypatch.setattr(main, "is_short_video", lambda root, slug: slug in shorts)
     monkeypatch.setattr(main, "footage_at_once", lambda root: 1)
     monkeypatch.setattr(main, "shorts_at_once", lambda root: 1)
@@ -84,3 +86,9 @@ def test_a_free_line_takes_what_becomes_pending_and_shorts_have_a_line_of_their_
     assert sorted(r[0] for r in results) == ["foot1", "sim1", "sim1-short1", "sim2-short1"]
     assert any({"foot1", "sim1"} <= s for s in together)               # the sim did not wait for the round
     assert any(len(s) == 3 for s in together)                          # a Short on its own line beside the other two
+
+
+def test_a_dub_or_a_footage_video_with_its_clips_ready_does_not_take_the_footage_line(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)
+    monkeypatch.setattr(main, "needs_youtube", lambda root, slug: slug != "foot1-de")
+    assert main.is_light(tmp_path, "foot1-de") and not main.is_light(tmp_path, "foot2")

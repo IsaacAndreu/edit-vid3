@@ -83,6 +83,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
     parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
+    target.add_argument("--cola-por-que", action="store_true",
+                        help="Lista los vídeos sin hacer y por qué cada uno entra o no en la cola ahora.")
     target.add_argument("--vigilar", nargs="?", const=5.0, type=float, metavar="MIN",
                         help="Servidor: hace los vídeos de materiales/ en cuanto aparecen, mirando cada MIN minutos "
                              "(5); no repite en bucle uno que falló; se actualiza con git pull.")
@@ -279,6 +281,54 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
     return [d.name for d in sorted(ready, key=lambda d: (d.name not in easy, d.name not in drawn, first.get(d.name, 0),
                                                          due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
+
+
+def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
+    """Every video not made yet and why it is (or is not) in the queue now: «why is no simulation being made?»."""
+
+    import json
+
+    from pipeline import tts
+    from pipeline.context import video_folders
+    from pipeline.housekeeping import is_done
+
+    materials = root / "materiales"
+    try:
+        state = json.loads((root / WATCH_STATE).read_text("utf-8")) if (root / WATCH_STATE).is_file() else {}
+    except ValueError:
+        state = {}
+    try:
+        retry = float(RunContext.create("_vigilar", root=root).section("watch").get("retry_hours", 6)) * 3600
+    except Exception:
+        retry = 6 * 3600
+    order = {slug: i for i, slug in enumerate(pending_slugs(root))}
+    lines = []
+    for d in video_folders(root):
+        if any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts):
+            continue
+        if is_done(root, d.name) and not (d / REDO).is_file():
+            continue
+        kind = ("Short " if is_short_video(root, d.name) else "") + ("dibujado" if is_drawn(root, d.name) else "con metraje")
+        info = state.get(d.name) or {}
+        if not (d / "guion.txt").is_file():
+            why = "sin guion.txt"
+        elif not (d / "voz.mp3").is_file() and not tts.has_auto_voice(root, d):
+            why = "sin voz.mp3 (y su canal no tiene voz automática)"
+        elif not (d / "voz.mp3").is_file() and tts.generating(d):
+            why = "la voz se está generando"
+        elif (d / HOLD).is_file():
+            why = "quitado de la cola (en pausa)"
+        elif quota_wait(d):
+            why = "espera la cuota de la API"
+        elif d.name not in order:
+            why = "no entra (otro vídeo con el mismo nombre)"
+        elif info.get("sig") == _materials_signature(root, d.name) and time.time() - info.get("at", 0) < retry:
+            again = datetime.fromtimestamp(info.get("at", 0) + retry)
+            why = f"falló ({info.get('status', 'error')}): se reintenta a las {again:%H:%M} o con «Reintentar»"
+        else:
+            why = f"EN COLA, puesto {order[d.name] + 1}"
+        lines.append(f"{d.name} [{kind}]: {why}")
+    return sorted(lines, key=lambda line: ("EN COLA" not in line, line))
 
 
 def _queue_cfg(root: Path) -> dict:
@@ -894,6 +944,7 @@ def footage_at_once(root: Path) -> int:
     return max(1, int(cfg.get("footage_at_once", 1)))
 
 
+IDLE_NOTE_EVERY = 600                 # s: how often a free line says why nothing goes in
 REFILL_EVERY = 60                     # s: how often a free line looks for videos that became pending
 
 
@@ -926,6 +977,18 @@ def is_drawn(root: Path, slug: str) -> bool:
     try:
         return stickman.drawn(RunContext.create(slug, root=root))
     except Exception:                    # an unreadable config: treated as footage (the careful side)
+        return False
+
+
+def is_light(root: Path, slug: str) -> bool:
+    """Needs no line for third-party footage: drawn in code, a dub (same clips, retimed) or a footage video whose
+    clips are already searched, analysed and downloaded (only the render and what follows are left)."""
+
+    if is_drawn(root, slug):
+        return True
+    try:
+        return not needs_youtube(root, slug)
+    except Exception:                    # unreadable: the careful side
         return False
 
 
@@ -978,7 +1041,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     # Shorts (queue.shorts_at_once, 1)
     footage_max = footage_at_once(root)
     short_lines = shorts_at_once(root)
-    kinds = {slug: is_drawn(root, slug) for slug in slugs}
+    kinds = {slug: is_light(root, slug) for slug in slugs}
     shorts = {slug: is_short_video(root, slug) for slug in slugs}
     footage_running = [0]
     active = [0]
@@ -997,7 +1060,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             print(f"Cola: no se pudo mirar si hay vídeos nuevos ({type(error).__name__}: {str(error)[:120]})")
             return
         for s in fresh:
-            drawn, short = is_drawn(root, s), is_short_video(root, s)
+            drawn, short = is_light(root, s), is_short_video(root, s)
             with lock:
                 if s in started:
                     continue
@@ -1005,6 +1068,28 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 kinds[s], shorts[s] = drawn, short
                 pending.append(s)
             print(f"Cola: entra {s} (pendiente desde que empezó la ronda)")
+
+    last_note = [time.monotonic()]
+
+    def idle_note(only_shorts: bool) -> None:
+        """A line for drawn videos free while a footage one runs: say once in a while why nothing goes in."""
+
+        if only_shorts or refill is None or time.monotonic() - last_note[0] < IDLE_NOTE_EVERY:
+            return
+        with lock:
+            if not footage_running[0]:
+                return
+            last_note[0] = time.monotonic()
+            waiting = list(pending)
+        if waiting:
+            print(f"Cola: línea libre, pero lo que queda ({', '.join(waiting[:5])}) es metraje de terceros y ya hay uno")
+            return
+        try:
+            out = [line for line in queue_reasons(root) if "dibujado" in line and "EN COLA" not in line]
+        except Exception:
+            out = []
+        print("Cola: línea de dibujados libre: no hay ninguna simulación pendiente"
+              + (" · " + " · ".join(out[:6]) if out else ""))
 
     def worker(only_shorts: bool) -> None:
         while True:
@@ -1021,6 +1106,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 if finished and refill is None:
                     return
                 top_up()
+                idle_note(only_shorts)
                 with lock:
                     if not pending and active[0] == 0:
                         return                   # nothing running, nothing new: the round ends
@@ -1214,6 +1300,9 @@ def main() -> None:
 
         path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
         print(f"Ideas en {path}")
+        return
+    if args.cola_por_que:
+        print("\n".join(queue_reasons(PROJECT_ROOT)) or "No hay vídeos sin hacer.")
         return
     if args.vigilar is not None:
         watch(args.vigilar)
