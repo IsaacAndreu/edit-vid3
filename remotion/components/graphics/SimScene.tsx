@@ -239,6 +239,9 @@ export const replayTime = (local: number, length: number): [number, '' | 'pause'
   return [interpolate(local, [slowEnd, length], [slow, length], clamp), ''];
 };
 
+const GRAIN = `url("data:image/svg+xml;utf8,${encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>")}")`;
+
 export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -272,9 +275,16 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
   const asking = hold > 0 ? interpolate(real, [holdFrom, holdFrom + 0.3], [0, 1], clamp) : 0;
   const loop = graphic.loopTo;
   const back = loop ? interpolate(real, [length - 0.7, length], [0, 1], clamp) : 0;
+  // micro ↔ macro: a long shot slowly pushes in on the action, the next one pulls back out (Primer, braintruffle)
+  const inward = Math.round(graphic.at * 4) % 2 === 0;
+  const glide = length > 4 ? Easing.inOut(Easing.quad)(Math.min(1, real / length)) : 0;
+  const push = inward ? 1 + 0.07 * glide : 1.07 - 0.07 * glide;
+  // a new world builds itself: a circle opening from the middle (the first time it comes on screen)
+  const reveal = enter ? interpolate(real, [0, 0.75], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }) : 1;
   return (
     <AbsoluteFill>
-      <AbsoluteFill style={{ transform: `scale(${breath * zin * zout})` }}>{body}</AbsoluteFill>
+      <AbsoluteFill style={{ transform: `scale(${breath * zin * zout * push})`,
+                             clipPath: reveal < 1 ? `circle(${Math.round(reveal * 120)}% at 50% 50%)` : undefined }}>{body}</AbsoluteFill>
       {loop && back > 0 && (
         // a Short ends on its first scene: watched again, it does not jump
         <AbsoluteFill style={{ opacity: back }}>
@@ -293,6 +303,9 @@ export const SimScene: FC<{ graphic: SimGraphic; durationInFrames: number }> = (
           </div>
         </>
       )}
+      {/* film grain: a little noise that moves with the frames, so the drawing feels filmed rather than rendered */}
+      <AbsoluteFill style={{ backgroundImage: GRAIN, backgroundSize: '256px 256px', opacity: 0.07, mixBlendMode: 'overlay', pointerEvents: 'none',
+                             backgroundPosition: `${(frame * 97) % 256}px ${(frame * 57) % 256}px` }} />
       {/* depth: the edges of every world a touch darker, the eye on the middle */}
       <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 58%, rgba(4,8,18,0.42) 100%)', pointerEvents: 'none' }} />
       {graphic.title && (

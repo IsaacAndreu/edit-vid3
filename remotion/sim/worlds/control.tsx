@@ -138,7 +138,9 @@ export const Lane: FC<{run: LaneRun; t: number; small?: boolean}> = ({run, t}) =
         const [x, y, where] = at;
         const progress = where === 'table' ? (t - p.prepStart) / p.prep : 0;
         return (
-          <g key={p.id} transform={`translate(${x} ${y})`}>
+          <g key={p.id} transform={`translate(${x} ${y}) scale(${where === 'walk' && t - p.prepEnd < 0.8 ? 1 + 0.35 * Math.sin(Math.PI * (t - p.prepEnd) / 0.8) : 1})`}>
+            <ellipse cx={6} cy={9} rx={30} ry={20} fill="rgba(0,0,0,0.2)" />
+            {where === 'walk' && t - p.prepEnd < 1.2 && <circle r={34 + (t - p.prepEnd) * 40} fill="none" stroke={C.green} strokeWidth={5} opacity={1 - (t - p.prepEnd) / 1.2} />}
             {where === 'table' && <circle r={44} fill="none" stroke="rgba(0,0,0,0.15)" strokeWidth={8} />}
             {where === 'table' && <circle r={44} fill="none" stroke={progress > 1 ? C.green : '#e8590c'} strokeWidth={8}
                                           strokeDasharray={`${Math.min(1, progress) * 276} 276`} transform="rotate(-90)" />}

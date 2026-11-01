@@ -99,3 +99,17 @@ export const Figure: FC<{label: string; value: string; colour?: string; sub?: st
     {sub && <Label>{sub}</Label>}
   </Panel>
 );
+
+/** Four runs of the same world side by side, one parameter changed in each (Primer: R 0.8 · 1 · 1.5 · 3). */
+export const Quad: FC<{views: ReactElement[]; titles: string[]; colours?: string[]; bg?: string}> = ({views, titles, colours = [], bg = '#0b1020'}) => (
+  <AbsoluteFill style={{background: bg}}>
+    {views.slice(0, 4).map((view, i) => (
+      <div key={i} style={{position: 'absolute', left: (i % 2) * 960 + 10, top: Math.floor(i / 2) * 540 + 10, width: 940, height: 520, overflow: 'hidden',
+                           borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.5)'}}>
+        <div style={{position: 'absolute', left: 0, top: 0, width: 1920, height: 1080, transform: 'scale(0.4896)', transformOrigin: 'top left'}}>{view}</div>
+        <div style={{position: 'absolute', left: 18, top: 14, fontFamily: FONT, fontSize: 40, fontWeight: 800, color: colours[i] ?? C.text,
+                     textTransform: 'uppercase', background: 'rgba(11,16,32,0.78)', padding: '4px 14px', borderRadius: 8}}>{titles[i]}</div>
+      </div>
+    ))}
+  </AbsoluteFill>
+);

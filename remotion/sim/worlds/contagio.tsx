@@ -7,10 +7,12 @@ import {epidemic, I, PEOPLE, R, S, stepAt, STEPS_PER_DAY, V, ZERO, ZERO_AT} from
 import {C, Label, Panel} from '../hud';
 import {addWords, tx} from '../i18n';
 import {Note, param, Spark, type World, type WorldProps} from '../world';
-import {Figure, LineChart, Split} from '../scenes';
+import {Figure, LineChart, Quad, Split} from '../scenes';
 import CURVES from '../curves.json';
 import {OfficeCompare, OfficeScene, SnowMap, Superspreaders} from './oficina';
-import {EPIDEMIC_SCENES} from './epidemia';
+import {EPIDEMIC_SCENES, Tree} from './epidemia';
+
+addWords({contagionWord: {es: 'Contagio', pt: 'Contágio', fr: 'Contagion', de: 'Ansteckung', en: 'Contagion'}});
 
 addWords({
   healthy: {es: 'Sanos', pt: 'Saudáveis', fr: 'Sains', de: 'Gesund', en: 'Healthy'},
@@ -55,6 +57,10 @@ const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
   const days = Math.floor(step / STEPS_PER_DAY);
   const daily = Array.from({length: days + 1}, (_, d) => e.counts[Math.min(step, d * STEPS_PER_DAY)][I]);
   const z = toScreen(cam, zx, zy);
+  // the focus: with patient zero pointed at, everyone not yet touched by it goes grey and faint; its trail in yellow
+  const focusZero = o('zero') > 0.5;
+  const trail = o('zero') > 0
+    ? Array.from({length: 45}, (_, i) => e.x[Math.max(0, step - i)]).map((xs) => toScreen(cam, xs[2 * ZERO], xs[2 * ZERO + 1])) : [];
   const names = hoax ? ['unaware', 'believers', 'debunked', 'immune'] : ['healthy', 'infected', 'recovered', 'vaccinated'];
   return (
     <AbsoluteFill style={{backgroundColor: C.night}}>
@@ -65,16 +71,25 @@ const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
           const {sx, sy} = toScreen(cam, x[2 * k], x[2 * k + 1]);
           if (sx < -10 || sx > 1930 || sy < -10 || sy > 1090) return null;
           const s = st[k];
+          // caught a moment ago: a ring going out and a quick swell (the contagion is seen as it happens)
+          let age = -1;
+          if (s === I && !hoax) for (let j = 1; j <= 20; j++) if (e.state[Math.max(0, step - j)][k] !== I) { age = j / 20; break; }
+          const faded = focusZero && k !== ZERO && s !== I;
           const home = stays && s === I && Math.hypot(x[2 * k] - e.home[2 * k], x[2 * k + 1] - e.home[2 * k + 1]) < 0.01 && step > ZERO_AT + STEPS_PER_DAY;
           return (
-            <g key={k}>
+            <g key={k} opacity={faded ? 0.3 : 1}>
+              {age >= 0 && <circle cx={sx} cy={sy} r={r * (1.5 + age * 5)} fill="none" stroke={colour[I]} strokeWidth={3} opacity={1 - age} />}
               {s === I && <circle cx={sx} cy={sy} r={r * 2.4} fill={colour[I]} opacity={0.25} />}
               {s === V && o('vaccine') > 0.3 && <circle cx={sx} cy={sy} r={r * 1.9} fill="none" stroke={colour[V]} strokeWidth={2} opacity={o('vaccine')} />}
               {home && o('quarantine') > 0.3 && <rect x={sx - r * 2} y={sy - r * 2} width={r * 4} height={r * 4} fill="none" stroke="#ffffff" strokeWidth={1.5} opacity={0.8} />}
-              <circle cx={sx} cy={sy} r={r} fill={colour[s]} stroke="#0b1020" strokeWidth={1} />
+              <circle cx={sx + r * 0.35} cy={sy + r * 0.5} r={r} fill="rgba(0,0,0,0.35)" />
+              <circle cx={sx} cy={sy} r={r * (age >= 0 ? 1 + 0.6 * Math.sin(Math.PI * age) : 1)} fill={faded ? '#7a8294' : colour[s]} stroke="#0b1020" strokeWidth={1} />
             </g>
           );
         })}
+        {trail.slice(1).map((pt, i) => (
+          <line key={`zt${i}`} x1={trail[i].sx} y1={trail[i].sy} x2={pt.sx} y2={pt.sy} stroke={C.you} strokeWidth={Math.max(1, r * 1.1 - i * 0.12)}
+                strokeLinecap="round" opacity={o('zero') * 0.8 * (1 - i / trail.length)} />))}
         {o('zero') > 0 && (
           <g opacity={o('zero')}>
             <circle cx={z.sx} cy={z.sy} r={r * 5} fill="none" stroke={C.accent} strokeWidth={3} />
@@ -147,6 +162,17 @@ const View: FC<WorldProps> = (props) => {
   if (scene === 'oficinas') return <OfficeCompare {...props} />;
   if (scene === 'snow') return <SnowMap {...props} />;
   if (scene === 'super') return <Superspreaders {...props} />;
+  if (scene === 'cuatro') {
+    // four runs, one thing changed in each: R (four trees) or how contagious it is (four towns)
+    const by = param<string>(g, 'cuatro', 'r');
+    const values = by === 'contagio' ? [0.2, 0.35, 0.5, 0.8] : [0.8, 1, 1.5, 3];
+    const views = values.map((v) => {
+      const gg = {...g, params: {...g.params, ...(by === 'contagio' ? {contagion: v, scene: 'barrio'} : {r: v, scene: 'arbol'})}};
+      return by === 'contagio' ? <Base key={v} {...props} worldT={props.worldT * 5} g={gg} o={(n: string) => (n === 'counts' ? 1 : 0)} /> : <Tree key={v} {...props} g={gg} />;   // the towns: a month in a few seconds
+    });
+    const label = (v: number) => (by === 'contagio' ? `${tx('contagionWord')} ${Math.round(v * 100)} %` : `R = ${String(v).replace('.', ',')}`);
+    return <Quad views={views} titles={values.map(label)} colours={values.map((v) => ((by === 'contagio' ? v >= 0.35 : v > 1) ? C.red : C.green))} />;
+  }
   const Epidemic = EPIDEMIC_SCENES[scene];
   if (Epidemic) return <Epidemic {...props} />;
   const epi = CURVES.epi as Record<string, number[]>;

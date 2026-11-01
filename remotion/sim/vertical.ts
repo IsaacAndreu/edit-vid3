@@ -21,6 +21,7 @@ export const verticalOf = (g: SimGraphic): Vertical => {
     if (sc === 'snow') return {mode: 'crop', cx: 900, cy: 540, scale: 0.9};
     if (sc === 'super') return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
     if (sc === 'oculto') return {mode: 'halves'};
+    if (sc === 'cuatro') return {mode: 'halves'};                      // two panels on top, two below
     if (['arbol', 'doble', 'palancas', 'caminos', 'inmunidad'].includes(sc)) return {mode: 'crop', cx: 960, cy: 540, scale: 0.56};
   }
   if (SHARED.includes(g.world)) {

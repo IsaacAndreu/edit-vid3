@@ -163,11 +163,17 @@ const Floor: FC<{windowOpen: boolean; t: number; air: Float32Array; showAir: num
   );
 };
 
-const Person: FC<{x: number; y: number; k: number; state: number; t: number; you: boolean; zero: boolean; showRing: boolean}> = ({x, y, k, state, t, you, zero, showRing}) => {
+const Person: FC<{x: number; y: number; k: number; state: number; t: number; you: boolean; zero: boolean; showRing: boolean;
+  fresh?: number; faded?: boolean}> = ({x, y, k, state, t, you, zero, showRing, fresh = -1, faded = false}) => {
   const ill = state === ILL;
   const pulse = 0.5 + 0.5 * Math.sin(t * 5 + k);
+  // just caught it: a pop (a quick swell) and a ring going out — the moment of the contagion is seen
+  const pop = fresh >= 0 && fresh < 1 ? 1 + 0.45 * Math.sin(Math.PI * fresh) : 1;
   return (
-    <g transform={`translate(${x} ${y})`}>
+    <g transform={`translate(${x} ${y})`} opacity={faded ? 0.32 : 1} filter={faded ? 'url(#greyed)' : undefined}>
+      <ellipse cx={5} cy={8} rx={22} ry={15} fill="rgba(0,0,0,0.22)" />
+      {fresh >= 0 && fresh < 1.4 && <circle r={20 + fresh * 60} fill="none" stroke="#ff3b30" strokeWidth={5} opacity={Math.max(0, 1 - fresh / 1.4)} />}
+      <g transform={`scale(${pop})`}>
       {ill && <circle r={34 + 6 * pulse} fill="#ff3b30" opacity={0.28} />}
       {state === OVER && showRing && <circle r={22} fill="none" stroke="#3ddc84" strokeWidth={3} opacity={0.8} />}
       <ellipse rx={20} ry={13} fill={SHIRTS[k % SHIRTS.length]} stroke="rgba(0,0,0,0.45)" strokeWidth={2} />
@@ -177,14 +183,15 @@ const Person: FC<{x: number; y: number; k: number; state: number; t: number; you
         const a = ((t * 3 + i * 1.3) % 1);
         return <circle key={i} cx={16 + a * 50 * Math.cos(i)} cy={-6 + a * 40 * Math.sin(i * 2)} r={3 + a * 3} fill="#ff8787" opacity={0.7 * (1 - a)} />;
       })}
+      </g>
       {you && <g><circle r={28} fill="none" stroke={C.you} strokeWidth={5} />
         <text y={-36} textAnchor="middle" fill={C.you} stroke="#000" strokeWidth={5} paintOrder="stroke" fontFamily={FONT} fontSize={28} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('you')}</text></g>}
     </g>
   );
 };
 
-export const Office: FC<{p: OfficeParams; step: number; t: number; showAir: number; showNet: number; showYou: number; showZero: number; labels?: boolean}> = (
-  {p, step, t, showAir, showNet, showYou, showZero}) => {
+export const Office: FC<{p: OfficeParams; step: number; t: number; showAir: number; showNet: number; showYou: number; showZero: number; labels?: boolean;
+  pace?: number}> = ({p, step, t, showAir, showNet, showYou, showZero, pace = 6}) => {
   const run = runOffice(p);
   const s = Math.max(0, Math.min(run.steps - 1, step));
   const x = run.x[s];
@@ -194,9 +201,17 @@ export const Office: FC<{p: OfficeParams; step: number; t: number; showAir: numb
   const chain = new Set<typeof run.links[number]>();
   for (let k = run.you, guard = 0; k !== ZERO && parent.has(k) && guard < PEOPLE; guard++) { const l = parent.get(k)!; chain.add(l); k = l.from; }
   const lit = showNet > 0 && run.you >= 0;                // the network always shows the yellow path to «you»
+  // the focus: with the network on, everyone outside the chain to «you» goes grey and faint (braintruffle, Primer)
+  const inChain = new Set<number>([run.you, ZERO, ...[...chain].flatMap((l) => [l.from, l.to])]);
+  const focus = lit && showNet > 0.5;
+  // «you»: where they walked in the last half hour, a fading yellow trail
+  const trail = (showYou > 0.5 || lit) && run.you >= 0
+    ? Array.from({length: 40}, (_, i) => run.x[Math.max(0, s - i)]).map((xs) => [xs[2 * run.you], xs[2 * run.you + 1]])
+        .filter(([px]) => px >= 140) : [];
   return (
     <svg width={1920} height={1080} style={{position: 'absolute'}}>
-      <defs><linearGradient id="daylight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fff8e1" stopOpacity={0.9} /><stop offset="100%" stopColor="#fff8e1" stopOpacity={0} /></linearGradient></defs>
+      <defs><linearGradient id="daylight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fff8e1" stopOpacity={0.9} /><stop offset="100%" stopColor="#fff8e1" stopOpacity={0} /></linearGradient>
+        <filter id="greyed"><feColorMatrix type="saturate" values="0" /></filter></defs>
       <Floor windowOpen={p.window > 0} t={t} air={run.air[s]} showAir={showAir} />
       {/* who infected whom: the network nobody sees */}
       {showNet > 0 && run.links.filter((l) => l.step <= s).map((l, i) => {
@@ -220,9 +235,14 @@ export const Office: FC<{p: OfficeParams; step: number; t: number; showAir: numb
         const px = x[2 * k];
         const py = x[2 * k + 1];
         if (px < 140 && Math.abs(py - PLAN.lift.y) < 10) return null;          // out of the building
+        const caught = run.infectedAt[k];
         return <Person key={k} x={px} y={py} k={k} state={st[k] === EXPOSED ? SUS : st[k]} t={t} you={(showYou > 0.5 || showNet > 0.5) && k === run.you}
-                       zero={k === ZERO} showRing={showAir > 0 || showNet > 0} />;
+                       zero={k === ZERO} showRing={showAir > 0 || showNet > 0} faded={focus && !inChain.has(k)}
+                       fresh={caught >= 0 && caught <= s ? (s - caught) / pace : -1} />;
       })}
+      {trail.length > 4 && trail.slice(3).map(([px, py], i) => (
+        <line key={`tr${i}`} x1={trail[i + 2][0]} y1={trail[i + 2][1]} x2={px} y2={py} stroke={C.you} strokeWidth={8 - i * 0.15} strokeLinecap="round"
+              opacity={0.75 * (1 - i / trail.length)} />))}
       {showZero > 0 && (() => {
         const zx = x[2 * ZERO];
         const zy = x[2 * ZERO + 1];
@@ -250,7 +270,7 @@ export const OfficeScene: FC<WorldProps> = ({g, worldT, o, on, local, real = loc
   const panel = Math.max(o('counts'), on * 0.9);
   return (
     <AbsoluteFill style={{background: C.night}}>
-      <Office p={p} step={s} t={worldT} showAir={o('aire')} showNet={o('red')} showYou={o('tu')} showZero={o('zero')} />
+      <Office p={p} step={s} t={worldT} showAir={o('aire')} showNet={o('red')} showYou={o('tu')} showZero={o('zero')} pace={speed} />
       <Panel o={1} style={{left: 280, top: 70, padding: '10px 20px'}}>
         <div style={{fontSize: 40, fontWeight: 800, textTransform: 'uppercase', fontVariantNumeric: 'tabular-nums'}}>
           {tx(DAYS_[clock.weekday])} {clock.hh}:{String(clock.mm).padStart(2, '0')}</div>
