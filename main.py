@@ -1059,6 +1059,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             else "ERROR"
         with lock:
             results.append((slug, status, time.monotonic() - started, detail))
+            if status == "ERROR":
+                failed_at[slug] = time.time()
             _write_report(root, results)
 
     # third-party footage videos at once (queue.footage_at_once, 1): the other lines are for videos drawn in code
@@ -1073,6 +1075,31 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     started = set(slugs)
     last_refill = [time.monotonic()]
 
+    failed_at: dict[str, float] = {}
+
+    def retried() -> list[str]:
+        """«Reintentar» in the studio on a video that already failed in this round: it goes in again now."""
+
+        from pipeline.web import RETRY_DIR
+
+        folder = root / RETRY_DIR
+        if not folder.is_dir():
+            return []
+        asked = {p.name: p.stat().st_mtime for p in folder.iterdir() if p.is_file()}
+        every = asked.pop("_todos", 0.0)
+        again = []
+        with lock:
+            for s, when in list(failed_at.items()):
+                if max(asked.get(s, 0.0), every) > when:
+                    failed_at.pop(s)
+                    started.discard(s)
+                    again.append(s)
+        for p in folder.iterdir():
+            p.unlink(missing_ok=True)
+        if again:
+            print(f"Cola: «Reintentar» → vuelven ahora {', '.join(again)}")
+        return again
+
     def top_up() -> None:
         """What became pending since the round started (a failed video whose wait is over, a new one, a dub)."""
 
@@ -1084,6 +1111,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         except Exception as error:               # never stops the round
             print(f"Cola: no se pudo mirar si hay vídeos nuevos ({type(error).__name__}: {str(error)[:120]})")
             return
+        fresh += retried()
         for s in fresh:
             drawn, short = is_light(root, s), is_short_video(root, s)
             with lock:

@@ -92,3 +92,38 @@ def test_a_dub_or_a_footage_video_with_its_clips_ready_does_not_take_the_footage
     monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)
     monkeypatch.setattr(main, "needs_youtube", lambda root, slug: slug != "foot1-de")
     assert main.is_light(tmp_path, "foot1-de") and not main.is_light(tmp_path, "foot2")
+
+
+def test_retry_in_the_studio_puts_a_video_that_failed_in_this_round_back_in(monkeypatch, tmp_path):
+    nap = time.sleep
+    runs = []
+
+    class FakeProcess:
+        def __init__(self, args, **kwargs):
+            self.slug = args[args.index("--slug") + 1]
+            runs.append(self.slug)
+            self.stdout = iter(())
+
+        def wait(self):
+            nap(0.2)
+            if self.slug == "sim1" and runs.count("sim1") == 1:
+                from pipeline.web import ask_retry
+                ask_retry(tmp_path, "sim1")          # failed; «Reintentar» pressed right after (a later mtime)
+                return 1
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakeProcess)
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: True)
+    monkeypatch.setattr(main, "is_short_video", lambda root, slug: False)
+    monkeypatch.setattr(main, "shorts_at_once", lambda root: 0)
+    monkeypatch.setattr(main, "REFILL_EVERY", 0)
+    monkeypatch.setattr(main, "waits_for_youtube", lambda root, slug: False)
+    monkeypatch.setattr(main, "on_hold", lambda root, slug: False)
+    monkeypatch.setattr(main, "_write_report", lambda root, results: None)
+    monkeypatch.setattr(main.time, "sleep", lambda s: nap(min(s, 0.05)))
+    real_time = main.time.time
+    monkeypatch.setattr(main.time, "time", lambda: real_time() - 5)    # the failure is noted before the click
+
+    results = main.run_parallel(["sim1", "foot1"], 2, force=set(), until=None, review=False, root=tmp_path,
+                                refill=lambda: [])
+    assert runs.count("sim1") == 2 and ("sim1", "OK") in [(r[0], r[1]) for r in results]

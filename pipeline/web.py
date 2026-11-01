@@ -439,6 +439,7 @@ def update_code(root: Path) -> dict[str, Any]:
         return {"ok": True, "changed": False, "message": f"Ya estaba al día: {now.get('what', '')}"}
     if watcher_alive(root):
         (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+        ask_retry(root, "_todos")
     threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
     return {"ok": True, "changed": True, "message": f"Código nuevo: {now.get('what', '')}. El estudio se reinicia "
             "(unos segundos) y la cola lo coge antes de su próximo vídeo."
@@ -765,6 +766,15 @@ def watcher_alive(root: Path) -> bool:
     return beat.is_file() and time.time() - beat.stat().st_mtime < 15 * 60 and not (root / "out" / "_pausa").is_file()
 
 
+RETRY_DIR = "out/_reintentar"          # «Reintentar» while a round goes on: main.run_parallel takes it again then
+
+
+def ask_retry(root: Path, slug: str) -> None:
+    folder = root / RETRY_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / slug).write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+
+
 def retry(root: Path, slug: str) -> dict[str, Any]:
     """«Reintentar» / «Hacer ahora»: with the watcher running, it takes the video on its next round; without it,
     the studio starts the video itself in the background (it survives closing the SSH window)."""
@@ -778,6 +788,7 @@ def retry(root: Path, slug: str) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=1), encoding="utf-8")
     if watcher_alive(root):
+        ask_retry(root, slug)
         return {"ok": True, "message": "El vigilante lo vuelve a intentar en su próxima vuelta (unos minutos)."}
     background(root, f"video-{slug}", ["--slug", slug])
     return {"ok": True, "started": True, "message": "En marcha desde el estudio: sigue avanzando aunque cierres todo."}
@@ -798,6 +809,7 @@ def retry_all(root: Path) -> dict[str, Any]:
     path.write_text("{}", encoding="utf-8")
     if watcher_alive(root):
         (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+        ask_retry(root, "_todos")
         return {"ok": True, "count": count, "message": f"{count} vídeo(s) de vuelta a la cola: el vigilante empieza ya."}
     if _lock_alive(root / "work" / ".cola.lock"):
         return {"ok": True, "count": count, "message": "Hay una cola en marcha: los hará al acabar la actual."}
@@ -847,6 +859,7 @@ def redo(root: Path, slug: str, stages: list[str]) -> dict[str, Any]:
         state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
     if watcher_alive(root):
         (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+        ask_retry(root, "_todos")
     return {"ok": True, "message": f"En la cola para rehacerse desde «{chosen[0]}». El vídeo actual sigue hasta que salga el nuevo."}
 
 
@@ -860,6 +873,7 @@ def hold(root: Path, slug: str, on: bool = True) -> dict[str, Any]:
     marker.unlink(missing_ok=True)
     if watcher_alive(root):
         (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+        ask_retry(root, "_todos")
     return {"ok": True, "message": "De vuelta en la cola."}
 
 
