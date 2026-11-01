@@ -223,9 +223,9 @@ const Base: FC<WorldProps> = ({g, worldT, local, real = local, move, o}) => {
 addWords({
   queueCurve: {es: 'Largo de la cola según el tráfico', pt: 'Comprimento da fila conforme o trânsito', fr: 'Longueur de la file selon le trafic', de: 'Staulänge je nach Verkehr', en: 'Queue length by traffic'},
   throughCurve: {es: 'Coches que pasan la obra', pt: 'Carros que passam a obra', fr: 'Voitures qui passent les travaux', de: 'Autos durch die Baustelle', en: 'Cars through the roadworks'},
-  arriving: {es: 'coches que llegan por segundo', pt: 'carros que chegam por segundo', fr: 'voitures par seconde', de: 'Autos pro Sekunde', en: 'cars arriving a second'},
+  arrivingPerSecond: {es: 'coches que llegan por segundo', pt: 'carros que chegam por segundo', fr: 'voitures par seconde', de: 'Autos pro Sekunde', en: 'cars arriving a second'},
   metres: {es: 'metros', pt: 'metros', fr: 'mètres', de: 'Meter', en: 'metres'},
-  earlyMerge: {es: 'Incorporarse pronto', pt: 'Entrar cedo', fr: 'S’insérer tôt', de: 'Früh einfädeln', en: 'Merging early'},
+  mergingEarly: {es: 'Incorporarse pronto', pt: 'Entrar cedo', fr: 'S’insérer tôt', de: 'Früh einfädeln', en: 'Merging early'},
   zipperMerge: {es: 'Cremallera', pt: 'Fecho éclair', fr: 'Fermeture éclair', de: 'Reißverschluss', en: 'Zipper'},
 });
 
@@ -236,9 +236,9 @@ const View: FC<WorldProps> = (props) => {
   if (scene === 'curva' || scene === 'pasan') {
     const through = scene === 'pasan';
     return <LineChart t={worldT} draw={3} x={[0.3, 0.75]} y={through ? [0, 60] : [0, 480]} title={through ? tx('throughCurve') : tx('queueCurve')}
-                      xLabel={tx('arriving')} yLabel={through ? 'coches' : tx('metres')} xFmt={(v) => v.toFixed(2).replace('.', ',')}
+                      xLabel={tx('arrivingPerSecond')} yLabel={through ? 'coches' : tx('metres')} xFmt={(v) => v.toFixed(2).replace('.', ',')}
                       xTicks={[0.3, 0.4, 0.5, 0.6, 0.7]} yTicks={through ? [20, 40, 60] : [100, 200, 300, 400]}
-                      series={[{name: tx('earlyMerge'), colour: C.red, pts: rows.map((r) => [r[0], through ? r[4] : r[2]] as [number, number])},
+                      series={[{name: tx('mergingEarly'), colour: C.red, pts: rows.map((r) => [r[0], through ? r[4] : r[2]] as [number, number])},
                                {name: tx('zipperMerge'), colour: C.green, pts: rows.map((r) => [r[0], through ? r[3] : r[1]] as [number, number])}]} />;
   }
   return <Base {...props} />;

@@ -10,7 +10,7 @@ import {addWords, tx} from './i18n';
 addWords({
   fast: {es: 'Va bien', pt: 'Anda bem', fr: 'Roule bien', de: 'Fließt', en: 'Moving'},
   slow: {es: 'Lento', pt: 'Lento', fr: 'Lent', de: 'Langsam', en: 'Slow'},
-  standing: {es: 'Parado', pt: 'Parado', fr: 'À l’arrêt', de: 'Steht', en: 'Stopped'},
+  stoppedLegend: {es: 'Parado', pt: 'Parado', fr: 'À l’arrêt', de: 'Steht', en: 'Stopped'},
 });
 
 export const PAINT = {fast: '#3ddc84', neutral: '#d4d9e2', slow: '#ff9b8f', stopped: '#ff3b3b', you: '#ffd23f'};
@@ -52,7 +52,7 @@ export const Legend: FC<{local: number; at?: string}> = ({local, at = 'top'}) =>
                  textTransform: 'uppercase', opacity: o, ...place}}>
       {item(PAINT.fast, tx('fast'))}
       {item(PAINT.slow, tx('slow'))}
-      {item(PAINT.stopped, tx('standing'))}
+      {item(PAINT.stopped, tx('stoppedLegend'))}
     </div>
   );
 };

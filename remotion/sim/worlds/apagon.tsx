@@ -63,7 +63,7 @@ addWords({
   plantsTrip: {es: 'Saltan las protecciones: se desconectan centrales', pt: 'Disparam as proteções: centrais desligam-se', fr: 'Les protections sautent : des centrales décrochent', de: 'Schutz löst aus: Kraftwerke gehen vom Netz', en: 'Protections trip: plants disconnect'},
   shedding: {es: 'Deslastre: se cortan barrios a propósito', pt: 'Deslastre: cortam-se bairros de propósito', fr: 'Délestage : on coupe des quartiers exprès', de: 'Lastabwurf: Viertel werden absichtlich getrennt', en: 'Load shedding: districts cut on purpose'},
   blackoutAll: {es: 'Apagón', pt: 'Apagão', fr: 'Black-out', de: 'Blackout', en: 'Blackout'},
-  recovered: {es: 'Se recupera', pt: 'Recupera', fr: 'Ça tient', de: 'Erholt sich', en: 'Recovers'},
+  gridRecovers: {es: 'Se recupera', pt: 'Recupera', fr: 'Ça tient', de: 'Erholt sich', en: 'Recovers'},
   spinning: {es: 'Turbinas que giran', pt: 'Turbinas que giram', fr: 'Des turbines qui tournent', de: 'Drehende Turbinen', en: 'Spinning turbines'},
   panels: {es: 'Paneles solares', pt: 'Painéis solares', fr: 'Panneaux solaires', de: 'Solarpaneele', en: 'Solar panels'},
   holds: {es: 'Aguanta', pt: 'Aguenta', fr: 'Ça tient', de: 'Hält', en: 'Holds'},

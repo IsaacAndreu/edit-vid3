@@ -122,6 +122,23 @@ const Floor: FC<{windowOpen: boolean; t: number; air: Float32Array; showAir: num
         const y = m.y + 10 + ((t * 40 + i * 50) % 300);
         return <path key={i} d={`M ${m.x + 160 + i * 38} ${y} q 10 20 0 40`} stroke="#e7f5ff" strokeWidth={4} fill="none" opacity={0.6 * (1 - (y - m.y) / 320)} />;
       })}
+      {showAir > 0 && Array.from({length: 46}, (_, i) => {
+        // the breath in the room: with the window shut it hangs there, with it open it drifts up and out
+        const r1 = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+        const r2 = Math.abs(Math.sin(i * 78.233) * 12543.123) % 1;
+        const load = Math.min(1, air[1] / 80);
+        let px = m.x + 30 + r1 * (m.w - 60) + Math.sin(t * 0.9 + i) * 18;
+        let py = m.y + 30 + r2 * (m.h - 60) + Math.cos(t * 0.7 + i * 2) * 14;
+        let fade = 1;
+        if (windowOpen) {
+          const a = (t * 0.22 + r1 * 0.7 + r2 * 0.3) % 1;               // 0 in the room … 1 well outside
+          const wx = m.x + 160 + r1 * 220;
+          px = px + (wx - px) * Math.min(1, a * 1.6);
+          py = py + (m.y - 120 - py) * a;
+          fade = a > 0.75 ? (1 - a) / 0.25 : 1;
+        }
+        return <circle key={`air${i}`} cx={px} cy={py} r={5} fill={load > 0.15 ? '#ff6b6b' : '#e7f5ff'} opacity={showAir * fade * (0.35 + 0.5 * load)} />;
+      })}
       <text x={m.x + 20} y={m.y + 40} fill="#eef3f8" fontFamily={FONT} fontSize={28} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('meetingRoom')}</text>
       <text x={m.x + 20} y={m.y + m.h - 18} fill={windowOpen ? '#a5f3c0' : '#ffc9c9'} fontFamily={FONT} fontSize={24} fontWeight={800} style={{textTransform: 'uppercase'}}>
         {tx(windowOpen ? 'windowOpen' : 'windowShut')}</text>
@@ -160,8 +177,8 @@ const Person: FC<{x: number; y: number; k: number; state: number; t: number; you
         const a = ((t * 3 + i * 1.3) % 1);
         return <circle key={i} cx={16 + a * 50 * Math.cos(i)} cy={-6 + a * 40 * Math.sin(i * 2)} r={3 + a * 3} fill="#ff8787" opacity={0.7 * (1 - a)} />;
       })}
-      {you && <g><circle r={28} fill="none" stroke={C.accent} strokeWidth={4} />
-        <text y={-36} textAnchor="middle" fill={C.accent} fontFamily={FONT} fontSize={28} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('you')}</text></g>}
+      {you && <g><circle r={28} fill="none" stroke={C.you} strokeWidth={5} />
+        <text y={-36} textAnchor="middle" fill={C.you} stroke="#000" strokeWidth={5} paintOrder="stroke" fontFamily={FONT} fontSize={28} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('you')}</text></g>}
     </g>
   );
 };
@@ -172,6 +189,11 @@ export const Office: FC<{p: OfficeParams; step: number; t: number; showAir: numb
   const s = Math.max(0, Math.min(run.steps - 1, step));
   const x = run.x[s];
   const st = run.state[s];
+  // the chain from patient zero to «you», followed back link by link
+  const parent = new Map(run.links.map((l) => [l.to, l]));
+  const chain = new Set<typeof run.links[number]>();
+  for (let k = run.you, guard = 0; k !== ZERO && parent.has(k) && guard < PEOPLE; guard++) { const l = parent.get(k)!; chain.add(l); k = l.from; }
+  const lit = showNet > 0 && run.you >= 0;                // the network always shows the yellow path to «you»
   return (
     <svg width={1920} height={1080} style={{position: 'absolute'}}>
       <defs><linearGradient id="daylight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fff8e1" stopOpacity={0.9} /><stop offset="100%" stopColor="#fff8e1" stopOpacity={0} /></linearGradient></defs>
@@ -181,15 +203,24 @@ export const Office: FC<{p: OfficeParams; step: number; t: number; showAir: numb
         const a = [x[2 * l.from], x[2 * l.from + 1]];
         const b = [DESKS[l.to].x, DESKS[l.to].y];
         const age = Math.min(1, (s - l.step) / 60);
+        const onChain = lit && chain.has(l);
+        if (onChain) return null;
         return <path key={i} d={`M ${a[0]} ${a[1]} Q ${(a[0] + b[0]) / 2} ${Math.min(a[1], b[1]) - 60} ${b[0]} ${b[1]}`} stroke="#ff6b6b" strokeWidth={3}
-                     fill="none" strokeDasharray="8 6" opacity={showNet * (0.35 + 0.5 * (1 - age))} />;
+                     fill="none" strokeDasharray="8 6" opacity={showNet * (lit ? 0.25 : 0.35 + 0.5 * (1 - age))} />;
+      })}
+      {lit && [...chain].filter((l) => l.step <= s).map((l, i) => {
+        // drawn desk to desk so the yellow path reads as one line from patient zero to you
+        const a = [DESKS[l.from].x, DESKS[l.from].y];
+        const b = [DESKS[l.to].x, DESKS[l.to].y];
+        return <path key={`c${i}`} d={`M ${a[0]} ${a[1]} Q ${(a[0] + b[0]) / 2} ${Math.min(a[1], b[1]) - 60} ${b[0]} ${b[1]}`} stroke={C.you} strokeWidth={7}
+                     fill="none" strokeLinecap="round" opacity={showNet} />;
       })}
       {Array.from({length: PEOPLE}, (_, k) => {
         if (st[k] === AWAY) return null;
         const px = x[2 * k];
         const py = x[2 * k + 1];
         if (px < 140 && Math.abs(py - PLAN.lift.y) < 10) return null;          // out of the building
-        return <Person key={k} x={px} y={py} k={k} state={st[k] === EXPOSED ? SUS : st[k]} t={t} you={showYou > 0.5 && k === run.you}
+        return <Person key={k} x={px} y={py} k={k} state={st[k] === EXPOSED ? SUS : st[k]} t={t} you={(showYou > 0.5 || showNet > 0.5) && k === run.you}
                        zero={k === ZERO} showRing={showAir > 0 || showNet > 0} />;
       })}
       {showZero > 0 && (() => {
@@ -296,6 +327,13 @@ export const SnowMap: FC<WorldProps> = ({g, worldT, local, real = local}) => {
         ))}
         {marks}
         <g transform={`translate(${PUMP.x} ${PUMP.y})`}>
+          {day <= HANDLE_DAY && <g><line x1={14} y1={-6} x2={70} y2={-44} stroke="#fbf6ea" strokeWidth={18} strokeLinecap="round" />
+            <line x1={14} y1={-6} x2={70} y2={-44} stroke="#3b2d22" strokeWidth={11} strokeLinecap="round" />
+            <circle cx={70} cy={-44} r={10} fill="#3b2d22" /></g>}
+          {day > HANDLE_DAY && <g opacity={Math.max(0, 1 - (day - HANDLE_DAY) / 4)}>
+            <line x1={14} y1={-6 + (day - HANDLE_DAY) * 18} x2={70} y2={-44 + (day - HANDLE_DAY) * 22} stroke="#3b2d22" strokeWidth={11} strokeLinecap="round" />
+            <text x={60} y={30} fill="#1d4ed8" fontFamily={FONT} fontSize={26} fontWeight={800} stroke="#efe4c8" strokeWidth={6} paintOrder="stroke"
+                  style={{textTransform: 'uppercase'}}>{tx('handle')}</text></g>}
           <circle r={18} fill="#1d4ed8" stroke="#fff" strokeWidth={4} />
           <text y={-32} textAnchor="middle" fill="#1d4ed8" fontFamily={FONT} fontSize={30} fontWeight={800} stroke="#efe4c8" strokeWidth={6} paintOrder="stroke"
                 style={{textTransform: 'uppercase'}}>{tx('pump')}</text>
@@ -307,11 +345,12 @@ export const SnowMap: FC<WorldProps> = ({g, worldT, local, real = local}) => {
           <text x={0} y={-60} fill="#3b2d22" fontFamily={FONT} fontSize={22} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('perDay')}</text>
           {SNOW.slice(0, day).map((v, i) => <rect key={i} x={i * 7.6} y={300 - v * 2} width={6} height={v * 2} fill={i >= HANDLE_DAY ? '#6b7280' : '#111'} />)}
           {day > HANDLE_DAY && <g><line x1={HANDLE_DAY * 7.6} x2={HANDLE_DAY * 7.6} y1={0} y2={300} stroke="#1d4ed8" strokeWidth={3} strokeDasharray="6 5" />
-            <text x={HANDLE_DAY * 7.6 + 6} y={20} fill="#1d4ed8" fontFamily={FONT} fontSize={20} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('handle')}</text></g>}
+            <text x={160} y={326} textAnchor="middle" fill="#1d4ed8" fontFamily={FONT} fontSize={18} fontWeight={800} style={{textTransform: 'uppercase'}}>{tx('handle')}</text></g>}
         </g>
       </svg>
       <Panel o={1} style={{left: 48, top: 40}}>
         <div style={{fontSize: 38, fontWeight: 800, textTransform: 'uppercase'}}>{tx('soho')}</div>
+        <Label>John Snow</Label>
         <Label>{tx('deaths')}: {num(total)}</Label>
       </Panel>
       <Pointers marks={g.marks} local={real} at={{bomba: PUMP}} />

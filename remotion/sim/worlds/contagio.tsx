@@ -10,6 +10,7 @@ import {Note, param, Spark, type World, type WorldProps} from '../world';
 import {Figure, LineChart, Split} from '../scenes';
 import CURVES from '../curves.json';
 import {OfficeCompare, OfficeScene, SnowMap, Superspreaders} from './oficina';
+import {EPIDEMIC_SCENES} from './epidemia';
 
 addWords({
   healthy: {es: 'Sanos', pt: 'Saudáveis', fr: 'Sains', de: 'Gesund', en: 'Healthy'},
@@ -146,6 +147,8 @@ const View: FC<WorldProps> = (props) => {
   if (scene === 'oficinas') return <OfficeCompare {...props} />;
   if (scene === 'snow') return <SnowMap {...props} />;
   if (scene === 'super') return <Superspreaders {...props} />;
+  const Epidemic = EPIDEMIC_SCENES[scene];
+  if (Epidemic) return <Epidemic {...props} />;
   const epi = CURVES.epi as Record<string, number[]>;
   const ever = (k: string) => epi[k].reduce((a, b) => a + b, 0) > 0 ? Math.max(...epi[k]) : 0;
   const total = (p: Record<string, number>) => { const e = epidemic({contagion: 0.5, vaccinated: 0, quarantine: 0, ...p}); const c = e.counts[e.counts.length - 1]; return PEOPLE - c[S] - c[V]; };

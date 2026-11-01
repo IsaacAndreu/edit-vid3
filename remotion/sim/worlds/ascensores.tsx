@@ -35,7 +35,7 @@ addWords({
   uselessStops: {es: 'Paradas para nadie', pt: 'Paragens para ninguém', fr: 'Arrêts pour personne', de: 'Halte für niemanden', en: 'Stops for nobody'},
   uselessHere: {es: 'Parada inútil', pt: 'Paragem inútil', fr: 'Arrêt inutile', de: 'Unnötiger Halt', en: 'Useless stop'},
   bothButtons: {es: 'La mitad pulsa los dos botones', pt: 'Metade carrega nos dois botões', fr: 'La moitié appuie sur les deux boutons', de: 'Die Hälfte drückt beide Knöpfe', en: 'Half press both buttons'},
-  waitCurve: {es: 'Espera media según cuánta gente llega', pt: 'Espera média conforme quantos chegam', fr: 'Attente moyenne selon l’affluence', de: 'Mittlere Wartezeit je nach Andrang', en: 'Mean wait by how many people come'},
+  liftWaitCurve: {es: 'Espera media según cuánta gente llega', pt: 'Espera média conforme quantos chegam', fr: 'Attente moyenne selon l’affluence', de: 'Mittlere Wartezeit je nach Andrang', en: 'Mean wait by how many people come'},
   perMinute: {es: '{n} personas por minuto', pt: '{n} pessoas por minuto', fr: '{n} personnes par minute', de: '{n} Personen pro Minute', en: '{n} people a minute'},
   goodOffice: {es: 'Un buen edificio: 30 s', pt: 'Um bom edifício: 30 s', fr: 'Un bon immeuble : 30 s', de: 'Gutes Bürohaus: 30 s', en: 'A good building: 30 s'},
   buttons: {es: 'Botones de siempre', pt: 'Botões de sempre', fr: 'Boutons classiques', de: 'Normale Knöpfe', en: 'Usual buttons'},
@@ -398,7 +398,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, o, on}) => {
       <>
         <AbsoluteFill style={{background: '#121a2a'}} />
         <Panel o={on} style={{left: '50%', top: 130, transform: 'translateX(-50%)', width: W + 140, padding: '24px 40px'}}>
-          <Label>{tx('waitCurve')}</Label>
+          <Label>{tx('liftWaitCurve')}</Label>
           <svg width={W} height={H + 60} viewBox={`-120 0 ${W + 120} ${H + 60}`} style={{display: 'block', marginTop: 16, overflow: 'visible'}}>
             <line x1={0} x2={W} y1={Y(30)} y2={Y(30)} stroke={C.green} strokeWidth={3} strokeDasharray="10 8" />
             <text x={10} y={Y(30) - 12} fill={C.green} fontFamily={FONT} fontSize={28} fontWeight={800}>{tx('goodOffice').toUpperCase()}</text>

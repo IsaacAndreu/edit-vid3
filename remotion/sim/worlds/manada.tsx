@@ -10,10 +10,10 @@ import {Figure, LineChart, Split} from '../scenes';
 import CURVES from '../curves.json';
 
 addWords({
-  caught: {es: 'Gacelas cazadas', pt: 'Gazelas caçadas', fr: 'Gazelles attrapées', de: 'Gefangene Gazellen', en: 'Gazelles caught'},
+  gazellesCaught: {es: 'Gacelas cazadas', pt: 'Gazelas caçadas', fr: 'Gazelles attrapées', de: 'Gefangene Gazellen', en: 'Gazelles caught'},
   herdLabel: {es: 'La manada', pt: 'A manada', fr: 'Le troupeau', de: 'Die Herde', en: 'The herd'},
   savannaNote: {es: 'Simulación · {g} gacelas, {l} leones · {h}', pt: 'Simulação · {g} gazelas, {l} leões · {h}', fr: 'Simulation · {g} gazelles, {l} lions · {h}', de: 'Simulation · {g} Gazellen, {l} Löwen · {h}', en: 'Simulation · {g} gazelles, {l} lions · {h}'},
-  inHerd: {es: 'en manada', pt: 'em manada', fr: 'en troupeau', de: 'in der Herde', en: 'in a herd'},
+  inHerdLower: {es: 'en manada', pt: 'em manada', fr: 'en troupeau', de: 'in der Herde', en: 'in a herd'},
   scattered: {es: 'cada una a lo suyo', pt: 'cada uma por si', fr: 'chacune pour soi', de: 'jede für sich', en: 'each on its own'},
 });
 
@@ -255,15 +255,15 @@ const Base: FC<WorldProps> = ({g, worldT, move, o}) => {
         </svg>
       </div>
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(30,20,5,0.45) 100%)'}} />
-      <Big o={o('caught')} label={tx('caught')} value={`${h.caught[f]}`} color={C.red} sub={`/ ${GAZELLES}`} style={{right: 48, top: 52}} />
-      <Note>{tx('savannaNote', {g: GAZELLES, l: lions, h: tx(herd ? 'inHerd' : 'scattered')})}</Note>
+      <Big o={o('gazellesCaught')} label={tx('gazellesCaught')} value={`${h.caught[f]}`} color={C.red} sub={`/ ${GAZELLES}`} style={{right: 48, top: 52}} />
+      <Note>{tx('savannaNote', {g: GAZELLES, l: lions, h: tx(herd ? 'inHerdLower' : 'scattered')})}</Note>
     </AbsoluteFill>
   );
 };
 
 // a tick at every catch while the count is on
 const sounds = (g: WorldProps['g'], length: number) => {
-  if (g.overlay !== 'caught') return {};
+  if (g.overlay !== 'gazellesCaught') return {};
   const h = hunt(Math.round(param(g, 'lions', 6)), param(g, 'herd', 1));
   const f0 = Math.round((g.at - g.since) * 30);
   const ticks: number[] = [];

@@ -18,8 +18,8 @@ addWords({
   selfDriving: {es: 'Conduce solo', pt: 'Conduz sozinho', fr: 'Conduite autonome', de: 'Fährt selbst', en: 'Drives itself'},
   flowChart: {es: 'Coches por hora según cuántos hay en la carretera', pt: 'Carros por hora conforme quantos há na estrada', fr: 'Voitures par heure selon leur nombre sur la route', de: 'Autos pro Stunde je nach Verkehrsdichte', en: 'Cars an hour by how many are on the road'},
   perKm: {es: 'coches por km', pt: 'carros por km', fr: 'voitures par km', de: 'Autos pro km', en: 'cars per km'},
-  perHour: {es: 'coches/hora', pt: 'carros/hora', fr: 'voitures/heure', de: 'Autos/Stunde', en: 'cars/hour'},
-  peak: {es: 'Máximo', pt: 'Máximo', fr: 'Maximum', de: 'Maximum', en: 'Peak'},
+  carsPerHour: {es: 'coches/hora', pt: 'carros/hora', fr: 'voitures/heure', de: 'Autos/Stunde', en: 'cars/hour'},
+  peakFlow: {es: 'Máximo', pt: 'Máximo', fr: 'Maximum', de: 'Maximum', en: 'Peak'},
   breaks: {es: 'Se rompe', pt: 'Rompe-se', fr: 'Ça casse', de: 'Kippt', en: 'It breaks'},
   thisRing: {es: 'Este anillo', pt: 'Este anel', fr: 'Cet anneau', de: 'Dieser Ring', en: 'This ring'},
   modeSuave: {es: ' · un coche conduce solo', pt: ' · um carro conduz sozinho', fr: ' · une voiture autonome', de: ' · ein Auto fährt selbst', en: ' · one car drives itself'},
@@ -105,7 +105,7 @@ const FlowChart: FC<{cars: number; o: number}> = ({cars, o}) => {
         </g>
         <line x1={X(peak.perKm)} x2={X(peak.perKm)} y1={0} y2={H} stroke="rgba(255,255,255,0.35)" strokeDasharray="6 6" />
         <text x={X(peak.perKm) - 10} y={Y(peak.perHour) - 16} textAnchor="end" fill={C.text} fontFamily={FONT} fontSize={24} fontWeight={800}>
-          {tx('peak')} · {num(Math.round(peak.perHour / 100) * 100)} {tx('perHour')}
+          {tx('peakFlow')} · {num(Math.round(peak.perHour / 100) * 100)} {tx('carsPerHour')}
         </text>
         <text x={W - 10} y={30} textAnchor="end" fill={C.red} fontFamily={FONT} fontSize={24} fontWeight={800}>{tx('breaks').toUpperCase()} →</text>
         <circle cx={X(here.perKm)} cy={Y(here.perHour)} r={10} fill={C.accent} stroke="#0b1020" strokeWidth={3} opacity={o > 0.6 ? 1 : 0} />

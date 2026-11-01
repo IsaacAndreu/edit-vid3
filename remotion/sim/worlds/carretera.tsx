@@ -30,14 +30,13 @@ addWords({
   clearRoad: {es: 'Lo que lleva una carretera libre', pt: 'O que leva uma estrada livre', fr: 'Ce que porte une route dégagée', de: 'Was eine freie Straße schafft', en: 'What a clear road carries'},
   arriving: {es: 'Lo que está llegando', pt: 'O que está a chegar', fr: 'Ce qui arrive', de: 'Was gerade ankommt', en: 'What is arriving'},
   perHourShort: {es: '{n}/h', pt: '{n}/h', fr: '{n}/h', de: '{n}/h', en: '{n}/h'},
-  you: {es: 'Tú', pt: 'Tu', fr: 'Vous', de: 'Du', en: 'You'},
+  youDriving: {es: 'Tú', pt: 'Tu', fr: 'Vous', de: 'Du', en: 'You'},
   passFour: {es: 'Adelantas a 4 coches', pt: 'Ultrapassas 4 carros', fr: 'Vous doublez 4 voitures', de: 'Du überholst 4 Autos', en: 'You pass four cars'},
   passedFour: {es: '4 coches te adelantan', pt: '4 carros ultrapassam-te', fr: '4 voitures vous doublent', de: '4 Autos überholen dich', en: 'Four cars pass you'},
   sameSpeed: {es: 'Los dos carriles, la misma velocidad media', pt: 'As duas faixas, a mesma velocidade média', fr: 'Les deux voies, même vitesse moyenne', de: 'Beide Spuren, gleiches Durchschnittstempo', en: 'Both lanes, the same average speed'},
   theGap: {es: 'El hueco', pt: 'O espaço', fr: 'L’espace', de: 'Die Lücke', en: 'The gap'},
   stillRolling: {es: '{v} km/h · sigue rodando', pt: '{v} km/h · continua a andar', fr: '{v} km/h · roule encore', de: '{v} km/h · rollt weiter', en: '{v} km/h · still rolling'},
   nStoppedRoad: {es: '{n} parados', pt: '{n} parados', fr: '{n} à l’arrêt', de: '{n} stehen', en: '{n} stopped'},
-  stoppedBehind: {es: 'Parados ahora', pt: 'Parados agora', fr: 'À l’arrêt', de: 'Stehen gerade', en: 'Stopped now'},
   withoutGap: {es: 'sin dejar hueco: {n}', pt: 'sem deixar espaço: {n}', fr: 'sans espace : {n}', de: 'ohne Lücke: {n}', en: 'without the gap: {n}'},
   arriveSlowly: {es: 'Llegan despacio', pt: 'Chegam devagar', fr: 'Ils arrivent lentement', de: 'Sie kommen langsam an', en: 'Arriving slowly'},
   withoutSigns: {es: 'Sin paneles', pt: 'Sem painéis', fr: 'Sans panneaux', de: 'Ohne Anzeigen', en: 'Without the signs'},
@@ -45,7 +44,7 @@ addWords({
   newLane: {es: 'El carril nuevo', pt: 'A faixa nova', fr: 'La nouvelle voie', de: 'Die neue Spur', en: 'The new lane'},
   laneKm: {es: 'Kilómetros de carril', pt: 'Quilómetros de faixa', fr: 'Kilomètres de voie', de: 'Spurkilometer', en: 'Lane kilometres'},
   kmDriven: {es: 'Kilómetros recorridos', pt: 'Quilómetros percorridos', fr: 'Kilomètres parcourus', de: 'Gefahrene Kilometer', en: 'Kilometres driven'},
-  roadNote: {es: 'Simulación con el modelo de conductor inteligente (IDM) · {n} coches por km', pt: 'Simulação com o modelo do condutor inteligente (IDM) · {n} carros por km', fr: 'Simulation avec le modèle du conducteur intelligent (IDM) · {n} voitures par km', de: 'Simulation mit dem Intelligent Driver Model (IDM) · {n} Autos pro km', en: 'Simulation with the Intelligent Driver Model (IDM) · {n} cars per km'},
+  idmNote: {es: 'Simulación con el modelo de conductor inteligente (IDM) · {n} coches por km', pt: 'Simulação com o modelo do condutor inteligente (IDM) · {n} carros por km', fr: 'Simulation avec le modèle du conducteur intelligent (IDM) · {n} voitures par km', de: 'Simulation mit dem Intelligent Driver Model (IDM) · {n} Autos pro km', en: 'Simulation with the Intelligent Driver Model (IDM) · {n} cars per km'},
   noMeter: {es: 'Sin semáforo en la entrada', pt: 'Sem semáforo na entrada', fr: 'Sans feu à l’entrée', de: 'Ohne Ampel an der Auffahrt', en: 'No light on the ramp'},
   withMeter: {es: 'Con semáforo en la entrada', pt: 'Com semáforo na entrada', fr: 'Avec feu à l’entrée', de: 'Mit Ampel an der Auffahrt', en: 'A light on the ramp'},
   carsHour: {es: 'Coches que pasan por hora', pt: 'Carros que passam por hora', fr: 'Voitures par heure', de: 'Autos pro Stunde', en: 'Cars through an hour'},
@@ -366,14 +365,14 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
             <Caption text={tx('theGap')} x={sx(f.x[you]) + (gap * m) / 2} y={ys - 50} colour={C.you} />
           </g>
         )}
-        <Caption text={driving ? `${tx('you')} · ${tx('stillRolling', {v: Math.round(f.v[you] * 3.6)})}` : tx('you')} x={sx(f.x[you])} y={ys + 72}
+        <Caption text={driving ? `${tx('youDriving')} · ${tx('stillRolling', {v: Math.round(f.v[you] * 3.6)})}` : tx('youDriving')} x={sx(f.x[you])} y={ys + 72}
                  colour={C.you} />
       </g>
     );
     const without = road('normal').stopped(simT);
     panel = (
       <Panel o={o('panel')} style={{right: 64, top: 60, width: 330}}>
-        <Label>{tx('stoppedBehind')}</Label>
+        <Label>{tx('stoppedNow')}</Label>
         <div style={{fontSize: 56, fontWeight: 800, color: C.green, fontVariantNumeric: 'tabular-nums'}}>{r.stopped(simT)}</div>
         <Label color={C.red}>{tx('withoutGap', {n: without})}</Label>
       </Panel>
@@ -438,7 +437,7 @@ const View: FC<WorldProps> = ({g, worldT, local, real = local, on, o}) => {
         return {car: follow ? youAt : jam ? {x: sx(jam.tail) - 30 * m * 0.2, y: yOf(0)} : null, jam: jamAt,
                 gap: follow && ahead >= 0 ? {x: sx(f.x[you]) + (gap * m) / 2, y: yOf(0)} : null};
       })()} />
-      <Note>{tx('roadNote', {n: Math.round(ROAD.cars / (L / 1000))})}</Note>
+      <Note>{tx('idmNote', {n: Math.round(ROAD.cars / (L / 1000))})}</Note>
     </AbsoluteFill>
   );
 };
