@@ -16,6 +16,7 @@ selection + ingest + fallback. Each file has one writer, so re-running any stage
 from __future__ import annotations
 
 import base64
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -113,6 +114,13 @@ def run(ctx: RunContext) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     story = ShotsFile.model_validate(ctx.read_json("shots.json"))
     shots = {s.id: s for s in story.shots if needs_footage(s)}
+    # a story about real people — one protagonist, or several (a ranking of scandals: Chiles, Nemov, Hamm…): never
+    # anonymous stock nor a generated picture of what happened; with nothing real left the shot becomes a card
+    try:
+        named = (json.loads((ctx.work_dir / "people.json").read_text("utf-8")) or {}).get("people") or []
+    except (OSError, ValueError):
+        named = []
+    real_people = bool(story.subject) or bool(named)
     selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
     ingest = IngestFile.model_validate_json((ctx.work_dir / "media" / MANIFEST).read_text("utf-8"))
     done = {m.shotId for m in ingest.media}
@@ -498,7 +506,7 @@ def run(ctx: RunContext) -> None:
         # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
         # them is left at all: anonymous stock is exactly what that format avoids.
         if (item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False)
-                and (not story.subject or cfg.get("pexels_for_person", True))):
+                and (not real_people or cfg.get("pexels_for_person", True))):
             with models_lock:
                 if clip is None:
                     clip, _ = make_models(ctx)
@@ -578,7 +586,7 @@ def run(ctx: RunContext) -> None:
             item = vet_and_materialise(options, pool_candidates, "protagonist-filler", vet=bool(shot.broll.moment))
 
         # 3. Generated image — the last resort, never for a video about a real person.
-        if item is None and cfg.get("generate", True) and not story.subject:
+        if item is None and cfg.get("generate", True) and not real_people:
             try:
                 item = _generate(ctx, shot, reason, digest, out_dir, lut, cfg)
             except Exception as error:
