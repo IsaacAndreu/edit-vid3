@@ -1162,6 +1162,9 @@ STAT_LANDS = 18   # frame the Stat counter reaches its figure (remotion/componen
 
 # Frames at which the Remotion components land their big moments (keep in sync with the .tsx files).
 SCORE_LANDS = 40       # Score.tsx: the total
+PLAZO_START = 14        # Plazo.tsx: the clock starts running…
+PLAZO_RUN = 120         # …and takes this many frames to reach the end of its dial
+CAMBIO_SWAP = 34        # Cambio.tsx: the old score is struck out and the new one lands
 PRESS_STEP = 16        # Press.tsx: one clipping every 16 frames
 ARTICLE_CIRCLE, ARTICLE_STEP = 34, 16      # remotion/components/graphics/Article.tsx
 RULE_STAMP = 44        # RulePage.tsx: the stamp hits the page
@@ -1218,6 +1221,12 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
         return [("pop", 4), ("pop", 12)]
     if kind == "spotlight":
         return [("impact", 1)]
+    if kind == "plazo":           # a tick as the clock passes each mark, a hit when it crosses the limit
+        span = max([float(graphic.get("limit") or 0)] + [float(m["seconds"]) for m in graphic.get("marks") or []]) * 1.08
+        at = lambda sec: round(PLAZO_START + (float(sec) / max(1.0, span)) * PLAZO_RUN)   # noqa: E731
+        return [("pop", at(m["seconds"])) for m in graphic.get("marks") or []] + [("impact", at(graphic.get("limit") or 0))]
+    if kind == "cambio":
+        return [("pop", 6), ("impact", CAMBIO_SWAP)]
     if kind == "podium":
         n = len(graphic.get("places") or [])
         return [("pop", PODIUM_RISE[p["place"]]) for p in graphic.get("places") or [] if p["place"] != 1][: n] \

@@ -28,7 +28,7 @@ from .sourcing.common import tokens
 STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
-         "strobe", "replay", "standings", "podium", "race", "card", "scale", "receipt", "tier", "iceberg", "cita",
+         "strobe", "replay", "standings", "podium", "race", "card", "plazo", "cambio", "scale", "receipt", "tier", "iceberg", "cita",
          "search", "marker", "lens", "scroll", "news", "poster", "board", "post")
 # The paper graphics (a search engine, a highlighted phrase over a newspaper, a magnifying glass, a parchment, a
 # news item with the person, a red-sun poster, an evidence board with red string, a social media post): every channel
@@ -50,17 +50,17 @@ REFERENCES = {
 # Fixed words drawn on the graphics, in the narration's language (a dub translates them again).
 WORDS = {
     "es": {"stamp": "PROHIBIDO", "rulebook": "REGLAMENTO", "d": "DIFICULTAD", "e": "EJECUCIÓN", "pen": "PENALIZACIÓN",
-           "total": "NOTA", "since": "DESDE", "replay": "REPETICIÓN"},
+           "total": "NOTA", "since": "DESDE", "replay": "REPETICIÓN", "limit": "LÍMITE"},
     "en": {"stamp": "BANNED", "rulebook": "RULEBOOK", "d": "DIFFICULTY", "e": "EXECUTION", "pen": "PENALTY",
-           "total": "SCORE", "since": "SINCE", "replay": "REPLAY"},
+           "total": "SCORE", "since": "SINCE", "replay": "REPLAY", "limit": "LIMIT"},
     "pt": {"stamp": "PROIBIDO", "rulebook": "REGULAMENTO", "d": "DIFICULDADE", "e": "EXECUÇÃO", "pen": "PENALIDADE",
-           "total": "NOTA", "since": "DESDE", "replay": "REPLAY"},
+           "total": "NOTA", "since": "DESDE", "replay": "REPLAY", "limit": "LIMITE"},
     "fr": {"stamp": "INTERDIT", "rulebook": "RÈGLEMENT", "d": "DIFFICULTÉ", "e": "EXÉCUTION", "pen": "PÉNALITÉ",
-           "total": "NOTE", "since": "DEPUIS", "replay": "RALENTI"},
+           "total": "NOTE", "since": "DEPUIS", "replay": "RALENTI", "limit": "LIMITE"},
     "it": {"stamp": "VIETATO", "rulebook": "REGOLAMENTO", "d": "DIFFICOLTÀ", "e": "ESECUZIONE", "pen": "PENALITÀ",
-           "total": "PUNTEGGIO", "since": "DAL", "replay": "REPLAY"},
+           "total": "PUNTEGGIO", "since": "DAL", "replay": "REPLAY", "limit": "LIMITE"},
     "de": {"stamp": "VERBOTEN", "rulebook": "REGELWERK", "d": "SCHWIERIGKEIT", "e": "AUSFÜHRUNG", "pen": "ABZUG",
-           "total": "WERTUNG", "since": "SEIT", "replay": "WIEDERHOLUNG"},
+           "total": "WERTUNG", "since": "SEIT", "replay": "WIEDERHOLUNG", "limit": "FRIST"},
 }
 
 
@@ -123,6 +123,14 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   a cámara lenta. data: {{"name": "etiqueta de máx. 4 palabras del guion (p. ej. 'el doble mortal') o null"}}
 - "standings": se dicen las notas/marcas de al menos 3 participantes de una misma prueba (una final).
   data: {{"title": "…" o null, "rows": [{{"name": "…", "score": "nota como se dice"}}]}} en el orden en que se dicen
+- "plazo": un plazo o un tiempo límite que decide algo y se dicen al menos dos momentos en segundos (el límite y cuándo
+  pasó algo: «un minuto para reclamar… a los 47 segundos… un minuto y cuatro segundos»; «12 milésimas»). Un cronómetro
+  que corre, con la línea del límite y cada momento marcado. data: {{"title": "qué se mide, máx. 6 palabras del guion",
+  "limit": segundos del límite (60), "marks": [{{"seconds": 47, "label": "máx. 5 palabras del guion"}}] (1-3)}}
+- "cambio": una nota o un puesto que CAMBIA (una reclamación, una revisión, una descalificación: «13,666… quinta…
+  nueva nota 13,766… tercera»). data: {{"name": "persona o equipo", "before": "nota o puesto de antes como se dice",
+  "after": "nota o puesto de después", "from_place": "puesto antes (quinta) o null", "to_place": "puesto después o null",
+  "reason": "por qué cambió, máx. 6 palabras del guion, o null"}}
 - "podium": se dice quién quedó 1.º, 2.º y 3.º (o al menos 1.º y 2.º) de una prueba. data: {{"title": "prueba como se
   dice" o null, "places": [{{"place": 1, "name": "…", "note": "nota/marca dicha o null"}}]}}
 - "race": la evolución de una cifra de varios países/personas a lo largo de al menos 3 años/fechas dichos (medallas por
@@ -442,6 +450,30 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             return None
         return {"type": "standings", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
                 "rows": [{"name": str(r["name"]), "score": str(r["score"])} for r in rows[:8]]}
+    if kind == "plazo":
+        def spoken_seconds(sec: float) -> bool:      # «47 segundos», or «un minuto y cuatro segundos» for 64
+            whole = int(round(sec))
+            minutes, rest = divmod(whole, 60)
+            return said(whole, text) or (minutes >= 1 and (rest == 0 or said(rest, text)) and "minuto" in text.lower())
+        limit = _num(data.get("limit"))
+        marks = [m for m in data.get("marks", []) if isinstance(m, dict) and _num(m.get("seconds")) is not None
+                 and 0 < _num(m["seconds"]) < 3600 and spoken_seconds(_num(m["seconds"]))][:3]
+        if limit is None or not 0 < limit < 3600 or not spoken_seconds(limit) or not marks:
+            return None
+        return {"type": "plazo", "limitWord": fixed_words(ctx).get("limit", "LIMIT"), "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
+                "limit": limit, "marks": [{"seconds": _num(m["seconds"]),
+                                           "label": str(m["label"]) if m.get("label") and len(str(m["label"]).split()) <= 6
+                                           and said_words(m["label"], text, 0.6) else None} for m in sorted(marks, key=lambda m: _num(m["seconds"]))]}
+    if kind == "cambio":
+        name, before, after = str(data.get("name") or ""), str(data.get("before") or ""), str(data.get("after") or "")
+        if not name or not before or not after or before == after or not said_words(name, text, 0.5) \
+                or not said(before, text) or not said(after, text) or not said_words(before, text, 0.8) or not said_words(after, text, 0.8):
+            return None
+        place = lambda key: (str(data[key]) if data.get(key) and said_words(data[key], text) else None)   # noqa: E731
+        return {"type": "cambio", "name": name, "before": before, "after": after, "fromPlace": place("from_place"),
+                "toPlace": place("to_place"),
+                "reason": data.get("reason") if data.get("reason") and len(str(data["reason"]).split()) <= 7
+                and said_words(data["reason"], text, 0.6) else None}
     if kind == "podium":
         places = {}
         for item in data.get("places", []):

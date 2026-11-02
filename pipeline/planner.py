@@ -485,6 +485,11 @@ Tipos:
   'Tutberidze Valieva kiss and cry Beijing 2022').
   Un récord, una nota o una medalla de una competición concreta es un momento: esa actuación o ese podio
   ('Kostornaya short program world record Grand Prix Final Turin 2019'), nunca otra actuación de la persona.
+- ELEMENTOS CON NOMBRE (un salto, una suelta, una salida, un elemento de gimnasia o patinaje que se nombra: Amanar,
+  Produnova, Kovacs, Miyachi, Yurchenko doble carpado, cuádruple axel…): TODAS sus búsquedas llevan el nombre del
+  elemento en inglés y, si se dice, quien lo hizo o lo inventó ('Produnova vault Dipa Karmakar Rio 2016', 'Yurchenko
+  double pike Simone Biles', 'Kovacs release high bar'); "entities" lleva el nombre del elemento. Las frases que siguen
+  explicando ese elemento heredan su nombre: nunca una búsqueda genérica del aparato ('vault gymnastics').
 
 El b-roll se queda SIEMPRE en el mundo del vídeo (el TÍTULO y el CONTEXTO VISUAL):
 - Comparaciones y metáforas NO se ilustran al pie de la letra: "no es como abrir un

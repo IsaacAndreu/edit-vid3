@@ -22,6 +22,8 @@ import { Standings } from './Standings';
 import { Strobe } from './Strobe';
 import { PlayerCard } from './PlayerCard';
 import { Podium } from './Podium';
+import { Plazo } from './Plazo';
+import { Cambio } from './Cambio';
 import { Race } from './Race';
 import { Scale } from './Scale';
 import { Iceberg } from './Iceberg';
@@ -148,6 +150,10 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <Standings graphic={graphic} durationInFrames={durationInFrames} />;
     case 'podium':
       return <Podium graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'plazo':
+      return <Plazo graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'cambio':
+      return <Cambio graphic={graphic} durationInFrames={durationInFrames} />;
     case 'race':
       return <Race graphic={graphic} durationInFrames={durationInFrames} />;
     case 'card':

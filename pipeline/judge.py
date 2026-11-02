@@ -94,6 +94,11 @@ strange history of the backflip», «8 deli meat brands to avoid») are re-edits
 original source (the manufacturer, the federation, the broadcaster, the news) whenever it is among the candidates.
 The source video titles listed under the sheet are hints
 (they can be clickbait or compilations): trust what the frames show first.
+A NAMED SKILL OR ELEMENT (a gymnastics vault, release, dismount or element: Amanar, Cheng, Produnova, Yurchenko double
+pike, Kovacs, Miyachi, Nabieva, a quad axel, a triple-double…) cannot be told apart in three frames: there the
+titles decide. Prefer a candidate whose title names THAT skill or the athlete who made it; reject one whose title names
+a DIFFERENT skill of the same apparatus (an «Amanar» or a «Cheng» for a Produnova shot), since viewers who know
+the sport spot it at once.
 When the shot is marked HOOK (the first seconds of the video), be strict: accept only striking,
 good-quality footage that is unmistakably about the topic; reject amateur, dull or generic shots.
 Prefer real footage of the exact named entity over generic footage, and moving footage over

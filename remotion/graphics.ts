@@ -416,7 +416,27 @@ export interface PosterGraphic {
   media?: Media | null; // the person's cutout, in black and white, a red bar over the eyes
 }
 
+export interface PlazoGraphic {
+  type: 'plazo';
+  title?: string | null;
+  limit: number; // seconds
+  limitWord?: string;
+  marks: { seconds: number; label?: string | null }[];
+}
+
+export interface CambioGraphic {
+  type: 'cambio';
+  name: string;
+  before: string;
+  after: string;
+  fromPlace?: string | null;
+  toPlace?: string | null;
+  reason?: string | null;
+}
+
 export type Graphic =
+  | PlazoGraphic
+  | CambioGraphic
   | SearchGraphic
   | MarkerGraphic
   | LensGraphic

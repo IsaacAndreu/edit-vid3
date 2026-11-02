@@ -25,7 +25,7 @@ from .llm import complete_json
 STAGE = "datacheck"
 OUTPUT = "datacheck.json"
 REPORT = "datos-graficos.md"
-DATA_TYPES = {"podium", "standings", "score", "card", "race", "scale", "chart", "compare", "specs", "timeline",
+DATA_TYPES = {"podium", "standings", "score", "plazo", "cambio", "card", "race", "scale", "chart", "compare", "specs", "timeline",
               "rank", "receipt", "lens", "news", "scroll"}
 
 JUDGE_SYSTEM = """
