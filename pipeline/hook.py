@@ -41,7 +41,13 @@ Devuelve SOLO JSON:
  "new_opening": "una apertura alternativa de 2-4 frases (~15 s de voz) que empiece POR el momento más fuerte o por la
                  promesa del título y deje una pregunta abierta. Usa SOLO hechos que ya están en el guion: ni cifras,
                  ni nombres, ni fechas nuevas.",
- "tips": ["1-3 cambios concretos para los primeros 30 s"]}
+ "tips": ["1-3 cambios concretos para los primeros 30 s"],
+ "topic_fit": "bien | dudoso | mal — SOLO si te paso LECCIONES DEL CANAL: si el tema, el ángulo y el título se parecen a lo
+               que funcionó en el canal o a lo que fracasó (si no hay lecciones, \"\")",
+ "topic_why": "por qué, citando la lección y su cifra (p. ej. «los vídeos de reglas y sanciones rinden 0.4x-0.6x»)",
+ "titles": ["3 títulos alternativos con el patrón que SÍ funciona en el canal según las lecciones, usando solo hechos y
+            nombres que están en el guion; si no hay lecciones, []"],
+ "length_note": "si las lecciones dan una duración que funciona y el guion se aleja (te paso sus minutos), dilo; si no, \"\""}
 """.strip()
 
 
@@ -65,8 +71,16 @@ def review(ctx: RunContext, title: str, script: str, sents: list[dict[str, Any]]
     if len(sents) < 4:
         raise ValueError("El guion es demasiado corto para revisar el gancho")
     listing = "\n".join(f"[{s['n']}] ({s['start']:.0f}s) {s['text']}" for s in sents[:220])
-    result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=2500, system=SYSTEM,
-                           user=f"TÍTULO: {title}\n\nGUION:\n{listing}")
+    # what this channel's own uploads taught (pipeline/porque.py): the topic and the title judged against them too —
+    # the scripts written elsewhere never saw them (atletismo: «trampas/escándalos 0.09x-0.61x, récord con nombre 1.41x»)
+    from .porque import lessons
+
+    learned = lessons(ctx.root, ctx.channel or "", int(cfg.get("lessons", 8))) if ctx.channel else []
+    minutes = round(len(script.split()) / float(cfg.get("words_per_second", 2.6)) / 60, 1)
+    extra = ("\n\nLECCIONES DEL CANAL (de sus vídeos subidos; ✓ funcionó, ✗ no):\n" + "\n".join(f"- {x}" for x in learned)
+             + f"\n\nDURACIÓN DEL GUION: ~{minutes} min") if learned else ""
+    result = complete_json(ctx, stage=STAGE, section="planner", max_tokens=3500, system=SYSTEM,
+                           user=f"TÍTULO: {title}\n\nGUION:\n{listing}{extra}")
 
     def at(n: Any) -> float | None:
         try:
@@ -93,6 +107,9 @@ def review(ctx: RunContext, title: str, script: str, sents: list[dict[str, Any]]
         "problems": [str(p) for p in result.get("problems") or []][:4],
         "newOpening": str(result.get("new_opening") or ""), "tips": [str(t) for t in result.get("tips") or []][:3],
         "opening": " ".join(s["text"] for s in sents[:4]),
+        "topicFit": str(result.get("topic_fit") or "") if learned else "", "topicWhy": str(result.get("topic_why") or "") if learned else "",
+        "titles": [str(t) for t in result.get("titles") or []][:3] if learned else [],
+        "lengthNote": str(result.get("length_note") or "") if learned else "", "minutes": minutes,
     }
 
 
@@ -110,6 +127,13 @@ def markdown(r: dict[str, Any]) -> str:
                   "_Solo usa hechos que ya están en tu guion: el vídeo empieza directamente con la voz._", ""]
     if r["tips"]:
         lines += ["## Cambios para los primeros 30 s", ""] + [f"- {t}" for t in r["tips"]] + [""]
+    if r.get("topicFit"):
+        icon = {"bien": "✅", "dudoso": "🟡", "mal": "🔴"}.get(r["topicFit"], "•")
+        lines += ["## El tema y el título frente a lo que funciona en el canal", "", f"{icon} {r['topicWhy']}", ""]
+        if r.get("lengthNote"):
+            lines += [f"- Duración (~{r['minutes']} min): {r['lengthNote']}", ""]
+        if r.get("titles"):
+            lines += ["**Títulos con el patrón que funciona:**", ""] + [f"- {t}" for t in r["titles"]] + [""]
     return "\n".join(lines)
 
 

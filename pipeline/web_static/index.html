@@ -583,7 +583,10 @@ async function checkHook() {
       ${r.problems.length ? `<ul class="small">${r.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
       ${r.newOpening ? `<div class="small" style="margin-top:8px"><b>Apertura propuesta (~15 s):</b></div><blockquote id="newopen" style="margin:6px 0;padding-left:10px;border-left:3px solid var(--accent)">${esc(r.newOpening)}</blockquote>
         <div class="row"><button onclick="useOpening()">Poner esta apertura al principio del guion</button><button onclick="navigator.clipboard.writeText(document.getElementById('newopen').innerText)">Copiar</button></div>` : ""}
-      ${r.tips.length ? `<ul class="small">${r.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
+      ${r.tips.length ? `<ul class="small">${r.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+      ${r.topicFit ? `<div class="small" style="margin-top:10px"><b>${({bien: "✅", dudoso: "🟡", mal: "🔴"})[r.topicFit] || "•"} El tema y el título frente a lo que funciona en tu canal:</b> ${esc(r.topicWhy)}</div>
+        ${r.lengthNote ? `<div class="small"><b>Duración (~${r.minutes} min):</b> ${esc(r.lengthNote)}</div>` : ""}
+        ${r.titles.length ? `<div class="small" style="margin-top:6px"><b>Títulos con el patrón que funciona:</b></div><ul class="small">${r.titles.map((t) => `<li>${esc(t)} <button onclick="$('#title').value=this.parentElement.firstChild.textContent.trim()">Usar</button></li>`).join("")}</ul>` : ""}` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
   $("#hookbtn").disabled = false;
 }
