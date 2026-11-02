@@ -472,16 +472,33 @@ class Bot:
             except (requests.RequestException, ValueError, KeyError):
                 self.state["offset"] = 0
         self.send("🤖 Bot en marcha. /estado, /gasto, /videos, /errores… (parte cada hora)")
+        last_chores = 0.0
+        refused = ""
         while True:
+            started = time.monotonic()
             try:
                 data = self.http.get(f"{self.base}/getUpdates", timeout=60,
                                      params={"timeout": 50, "offset": int(self.state.get("offset") or 0)}).json()
-                for update in data.get("result", []):
+                if not data.get("ok", True):
+                    # Telegram said no (another copy of the bot polling, a webhook set, a bad token): it answers at
+                    # once, so without a pause this loop span a whole core for days (43 h at 90 %)
+                    why = str(data.get("description") or data.get("error_code") or "?")
+                    if why != refused:
+                        print(f"Telegram rechaza getUpdates: {why[:160]} (reintento cada 30 s)")
+                        refused = why
+                    time.sleep(30)
+                else:
+                    refused = ""
+                for update in data.get("result", []) or []:
                     self.state["offset"] = int(update["update_id"]) + 1
                     self.handle(update)
             except (requests.RequestException, ValueError):
                 time.sleep(15)
-            try:
-                self.chores()
-            except Exception as error:                   # never stops the bot
-                print(f"Bot: {type(error).__name__}: {str(error)[:160]}")
+            if time.monotonic() - last_chores >= 60:         # the checks (stuck videos, disk, calendar): once a minute
+                last_chores = time.monotonic()
+                try:
+                    self.chores()
+                except Exception as error:                   # never stops the bot
+                    print(f"Bot: {type(error).__name__}: {str(error)[:160]}")
+            if time.monotonic() - started < 1:               # an answer that came back at once: never a busy loop
+                time.sleep(1)

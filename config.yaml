@@ -330,13 +330,13 @@ speed:                             # solo cuánto trabajo va a la vez: cambiarlo
   fallback_parallel: 8             # planos que el relleno busca a la vez (descargas y juez en paralelo); con poca RAM, 4
 
 queue:                             # cola nocturna (python main.py --all)
-  parallel_videos: 2               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
-  footage_at_once: 1               # de esos, como mucho 1 con metraje de terceros: la otra línea es para los dibujados
+  parallel_videos: 3               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
+  footage_at_once: 2               # de esos, como mucho 2 con metraje de terceros: la otra línea es para los dibujados
   shorts_at_once: 0                # líneas más solo para Shorts además de esas (0: ninguna)
   shorts_last: true                # los Shorts, lo último: solo cuando no queda ningún vídeo largo por hacer
   drawn_first: true                # los vídeos de simulación y monigotes antes que los de metraje (false: por orden)
                                    # (simulación, monigotes); si solo quedan de terceros, esperan su turno
-  # slots: {red: 1, cpu: 1}        # cuántos vídeos a la vez en cada turno (red: buscar/descargar · cpu: analizar,
+  slots: {red: 2, cpu: 2}          # cuántos vídeos a la vez en cada turno (red: buscar/descargar · cpu: analizar,
   #                                  rellenar, renderizar). En una máquina grande (64 GB, 16 núcleos): {red: 3, cpu: 2}
   #                                  con parallel_videos: 5. El render reparte los núcleos entre los turnos de cpu.
 
