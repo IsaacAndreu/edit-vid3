@@ -336,7 +336,7 @@ queue:                             # cola nocturna (python main.py --all)
   shorts_last: true                # los Shorts, lo último: solo cuando no queda ningún vídeo largo por hacer
   drawn_first: true                # los vídeos de simulación y monigotes antes que los de metraje (false: por orden)
                                    # (simulación, monigotes); si solo quedan de terceros, esperan su turno
-  slots: {red: 2, cpu: 2}          # cuántos vídeos a la vez en cada turno (red: buscar/descargar · cpu: analizar,
+  slots: {red: 1, cpu: 2}          # cuántos vídeos a la vez en cada turno (red 2 dobló los 429 y «no eres un bot»: gim1.0, 2,4 min por plano) (red: buscar/descargar · cpu: analizar,
   #                                  rellenar, renderizar). En una máquina grande (64 GB, 16 núcleos): {red: 3, cpu: 2}
   #                                  con parallel_videos: 5. El render reparte los núcleos entre los turnos de cpu.
 
