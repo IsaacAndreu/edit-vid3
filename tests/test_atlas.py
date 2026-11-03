@@ -74,3 +74,14 @@ def test_description_cites_the_checked_facts(tmp_path: Path):
     text = publish.fact_sources(ctx, 1000)
     assert text == "Sources\nThe A350 is certified for 370-minute ETOPS: https://example.org/a350"
     assert publish.compact_credits([], 1000).strip().count("\n") == 0        # no third-party sources: the heading alone
+
+
+def test_the_camera_fits_what_is_drawn_and_a_line_in_the_same_place_keeps_it():
+    scene = atlas.clean({"camera": {"lat": -45, "lon": 100, "zoom": 2},
+                         "routes": [{"from": [-31.9, 115.8], "to": [-34.6, -58.4], "at": "cuerda"}]}, None)
+    fitted = atlas.fit_camera(scene)
+    assert fitted["camera"]["lat"] < -70 and fitted["camera"]["zoom"] <= 1.3          # looks down at the pole, pulled out
+    nxt = atlas.carry(atlas.clean({"camera": dict(fitted["camera"])}, fitted), fitted)
+    assert nxt["routes"] and nxt["routes"][0]["kept"]
+    moved = atlas.carry(atlas.clean({"camera": {"lat": 50, "lon": 0, "zoom": 2}}, fitted), fitted)
+    assert not moved["routes"]

@@ -16,13 +16,14 @@ to a WORD of its line, so a new voice re-times the whole film. Nothing is downlo
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 1
+VERSION = 2
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note")
@@ -58,6 +59,10 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   lado a otro), "line": {{"value": 3, "label": "SEGURO ≈ 3 KM"}}, "cruise": 11}} o {{"kind": "thermo", "title": "",
   "unit": "°C", "min": -90, "max": 0, "value": -47, "label": "JET A-1"}}
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
+Reglas: la cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos sitios lejanos: mira a su punto medio con
+zoom 1-1,5; una ruta que pasa cerca de un polo: mira al polo); si la frase cita un documento, una ley o a alguien, pon la
+cita en una "card" de tipo "quote" con su fuente; si niega o confirma algo con rotundidad («no está prohibido», «nadie
+sobrevivió»), pon un "stamp"; si la frase da un año con un suceso, una "card" de tipo "date".
 "at" es SIEMPRE una palabra LITERAL de esa frase. Usa SOLO datos, cifras, nombres y fechas del guion. Máx. 3 elementos
 nuevos por frase; lo anterior se queda si la frase sigue en el mismo sitio (repítelo). Textos en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "view": "globe", "camera": {{..}}, "dark": false, "points": [], "routes": [],
@@ -141,6 +146,8 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     prev_cam = (previous or {}).get("camera") or {"lat": 20.0, "lon": 0.0, "zoom": 1.0}
     cam = scene.get("camera") if isinstance(scene.get("camera"), dict) else {}
     point = _point(cam) if cam else None
+    if point == (0.0, 0.0) and previous:        # «0, 0» is the model's blank, not the Gulf of Guinea: stay put
+        point = None
     camera = {"lat": round(point[0], 4), "lon": round(point[1], 4), "zoom": round(_float(cam.get("zoom"), 1, 6, prev_cam["zoom"]), 2)} \
         if point else dict(prev_cam)
     view = str(scene.get("view") or "globe")
@@ -225,6 +232,61 @@ def _chart(chart: Any) -> dict[str, Any] | None:
     return out
 
 
+def _xyz(lat: float, lon: float) -> tuple[float, float, float]:
+    a, b = math.radians(lat), math.radians(lon)
+    return math.cos(a) * math.cos(b), math.cos(a) * math.sin(b), math.sin(a)
+
+
+def _angle(p: tuple[float, float], q: tuple[float, float]) -> float:
+    x = sum(i * j for i, j in zip(_xyz(*p), _xyz(*q)))
+    return math.degrees(math.acos(max(-1.0, min(1.0, x))))
+
+
+def fit_camera(scene: dict[str, Any]) -> dict[str, Any]:
+    """Everything drawn on the visible side of the globe: when a point, a route's end or its middle, or a ring's
+    centre is more than 65° from where the camera looks, the camera moves to their mean and pulls out to fit them."""
+
+    marks: list[tuple[float, float]] = [(p["lat"], p["lon"]) for p in scene.get("points") or []]
+    for r in scene.get("routes") or []:
+        a, b = tuple(r["from"]), tuple(r["to"])
+        marks += [a, b]
+        va, vb = _xyz(*a), _xyz(*b)
+        mid = [x + y for x, y in zip(va, vb)]
+        norm = math.sqrt(sum(m * m for m in mid))
+        if norm > 1e-6:
+            marks.append((math.degrees(math.asin(mid[2] / norm)), math.degrees(math.atan2(mid[1], mid[0]))))
+    marks += [(r["lat"], r["lon"]) for r in scene.get("rings") or []]
+    if scene.get("zone"):
+        marks.append((-90.0 if scene["zone"]["lat"] < 0 else 90.0, 0.0))
+    if not marks:
+        return scene
+    cam = scene["camera"]
+    centre = (cam["lat"], cam["lon"])
+    if max(_angle(centre, m) for m in marks) <= 65:
+        return scene
+    total = [sum(_xyz(*m)[i] for m in marks) for i in range(3)]
+    norm = math.sqrt(sum(t * t for t in total))
+    if norm < 1e-6:
+        return scene
+    lat, lon = math.degrees(math.asin(total[2] / norm)), math.degrees(math.atan2(total[1], total[0]))
+    spread = max(_angle((lat, lon), m) for m in marks)
+    zoom = 1.0 if spread > 55 else 1.3 if spread > 40 else 1.7 if spread > 25 else cam["zoom"]
+    return {**scene, "camera": {"lat": round(lat, 4), "lon": round(lon, 4), "zoom": min(cam["zoom"], zoom)}}
+
+
+def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    """A line that stays where the last one was (same camera, nothing new drawn) keeps the last line's dots, routes and
+    rings on the globe, already drawn (the LLM often forgets to repeat them)."""
+
+    if not previous or scene.get("view") != "globe" or previous.get("view") != "globe" or scene["camera"] != previous["camera"]:
+        return scene
+    if any(scene.get(k) for k in ("points", "routes", "rings")):
+        return scene
+    kept = {k: [{**x, "at": "", "kept": True} for x in previous.get(k) or []] for k in ("points", "routes", "rings")}
+    zone = scene.get("zone") or ({**previous["zone"], "at": "", "kept": True} if previous.get("zone") else None)
+    return {**scene, **kept, "zone": zone}
+
+
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     from .llm import complete_json
 
@@ -255,7 +317,8 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     previous = None
     for n, (shot_id, _) in enumerate(lines, 1):
-        previous = clean(found.get(n) or {}, previous)
+        scene = fit_camera(clean(found.get(n) or {}, previous))
+        previous = carry(scene, previous)
         out[shot_id] = previous
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
@@ -330,12 +393,14 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             line_words = [(f - a, t) for f, t in spoken if a <= f < b]
             stagger = 0
             for name in ("zone", "card", "stamp", "headline", "icon"):
-                if g.get(name):
+                if g.get(name) and g[name].get("kept"):
+                    g[name]["at"] = -2 * fps                     # already on the globe from the last line
+                elif g.get(name):
                     g[name]["at"] = _frame_of(g[name].get("at", ""), line_words, round(span * 0.2) + stagger)
                     stagger += round(0.35 * fps)
             for name in ("points", "routes", "rings"):
                 for i, item in enumerate(g.get(name) or []):
-                    item["at"] = _frame_of(item.get("at", ""), line_words, round(span * 0.15) + i * round(0.25 * fps))
+                    item["at"] = -2 * fps if item.get("kept") else _frame_of(item.get("at", ""), line_words, round(span * 0.15) + i * round(0.25 * fps))
         g["prev"] = (prev or g)["camera"]
         g["chapters"] = chapters
         g["chapter"] = current

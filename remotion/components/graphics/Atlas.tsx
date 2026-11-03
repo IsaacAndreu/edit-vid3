@@ -380,7 +380,7 @@ const Chart: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         {c.bars.map((b, i) => {
           const k = ease(clamp((frame - fps * (0.3 + 0.9 * i)) / (fps * 1.0)));
           const width = 1300 * ((b.value ?? 0) / max) * k;
-          const shown = (b.value ?? 0) * k;
+          const shown = Number.isInteger(b.value ?? 0) ? Math.round((b.value ?? 0) * k) : (b.value ?? 0) * k;
           return (
             <div key={i} style={{ position: 'absolute', left: 160, top: H / 2 - (c.bars!.length * 130) / 2 + 40 + i * 130, opacity: clamp((frame - fps * (0.2 + 0.9 * i)) / 6) }}>
               <div style={{ fontFamily: MONO, fontSize: 17, letterSpacing: 2, color: p.soft, textTransform: 'uppercase' }}>{b.label}</div>
