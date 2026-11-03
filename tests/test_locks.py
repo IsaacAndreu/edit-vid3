@@ -11,7 +11,7 @@ def test_turns_only_in_the_queue_and_one_at_a_time(tmp_path, monkeypatch):
     order = []
 
     def second():
-        with locks.turn(tmp_path, "analysis", "B", poll=0.05):
+        with locks.turn(tmp_path, "align", "B", poll=0.05):
             order.append("B")
 
     with locks.turn(tmp_path, "render", "A"):
@@ -38,6 +38,7 @@ def test_the_fill_in_never_overlaps_a_render():
     from pipeline.locks import GROUPS
 
     assert GROUPS["fallback"] == GROUPS["render"] == "cpu" and GROUPS["sourcing"] == "red"
+    assert "analysis" not in GROUPS          # it mostly waits for YouTube: no CPU place held meanwhile
 
 
 def test_a_bigger_machine_gives_a_group_more_places(tmp_path, monkeypatch):
