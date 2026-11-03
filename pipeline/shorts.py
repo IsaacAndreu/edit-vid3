@@ -43,7 +43,7 @@ documental en frases numeradas con sus tiempos. Elige los {count} mejores moment
 - las frases marcadas con ★ tienen en pantalla un gráfico o un momento original con su sonido: prefiere los
   tramos que tengan alguna, son los más vistosos en vertical.
 Devuelve SOLO JSON: {{"shorts": [{{"from": 12, "to": 19,
-  "hook": "texto de arriba en pantalla, 3-7 palabras, en el idioma de la narración, sin inventar datos",
+  "hook": "texto de arriba en pantalla, 3-7 palabras, en el idioma de la narración, sin inventar datos; la palabra clave (una sola) entre *asteriscos*",
   "title": "título del Short en el idioma de la narración, máx. 80 caracteres",
   "description": "1-2 frases + 3 hashtags"}}]}}
 """.strip()
@@ -105,6 +105,46 @@ def _ass_text(text: str) -> str:
     return text.replace("\\", "").replace("{", "(").replace("}", ")")
 
 
+STOP = {"para", "como", "pero", "porque", "cuando", "donde", "este", "esta", "with", "that", "this", "from", "what",
+        "have", "they", "were", "your", "mais", "você", "sobre", "eine", "einer", "nicht", "dass"}
+
+
+def key_word(words: list[str]) -> int:
+    """The word to set apart (the same rule as Documentary.tsx keyWord): the one between *asterisks*, else a figure,
+    else the longest word that is not a filler; -1 for none."""
+
+    if len(words) < 2:              # one word: nothing to set it apart from
+        return -1
+    for i, w in enumerate(words):
+        if re.fullmatch(r"\*.+\*[.,!?…:;]?", w):
+            return i
+    for i, w in enumerate(words):
+        if re.search(r"\d", w):
+            return i
+    best = -1
+    for i, w in enumerate(words):
+        bare = re.sub(r"[^\w]|\d|_", "", w)
+        if len(bare) >= 4 and bare.lower() not in STOP and (best < 0 or len(bare) > len(re.sub(r"[^\w]|\d|_", "", words[best]))):
+            best = i
+    return best
+
+
+def hook_ass(hook: str) -> str:
+    """The hook for libass: upper case, the key word in DM Serif Display italic and the accent colour."""
+
+    words = hook.split()
+    key = key_word(words)
+    out = []
+    for i, w in enumerate(words):
+        text = _ass_text(w.replace("*", ""))
+        out.append("{\\fnDM Serif Display\\i1\\b0\\c&H00D4FF&}" + text + "{\\r}" if i == key else text.upper())
+    return " ".join(out)
+
+
+def plain_hook(hook: str) -> str:
+    return " ".join(hook.replace("*", "").split())
+
+
 def ass(words: list[dict[str, Any]], hook: str, offset: float, total: float, font: str = "Inter") -> str:
     """ASS subtitles: the hook on top the whole time; captions of ≤3 words with the spoken one in yellow."""
 
@@ -119,7 +159,7 @@ def ass(words: list[dict[str, Any]], hook: str, offset: float, total: float, fon
              f"Style: Hook,{font},84,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,7,2,8,70,70,260,1",
              f"Style: Cap,{font},96,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,8,3,2,60,60,430,1",
              "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-             f"Dialogue: 0,{ts(0)},{ts(total)},Hook,,0,0,0,,{_ass_text(hook.upper())}"]
+             f"Dialogue: 0,{ts(0)},{ts(total)},Hook,,0,0,0,,{hook_ass(hook)}"]
     chunks, current = [], []
     for word in words:
         current.append(word)
@@ -150,6 +190,14 @@ def font_dir(ctx: RunContext) -> Path:
         font = TTFont(ctx.root / "node_modules/@fontsource/inter/files/inter-latin-900-normal.woff")
         font.flavor = None
         font.save(ttf)
+    serif = target / "DMSerifDisplay-Italic.ttf"      # the hook's key word
+    source = ctx.root / "node_modules/@fontsource/dm-serif-display/files/dm-serif-display-latin-400-italic.woff"
+    if not serif.is_file() and source.is_file():
+        from fontTools.ttLib import TTFont
+
+        font = TTFont(source)
+        font.flavor = None
+        font.save(serif)
     return target
 
 
@@ -219,6 +267,12 @@ def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict
     a = max(0, round(start * fps))
     b = min(timeline["durationInFrames"], a + round(length * fps))
     props = vertical_props(timeline, a, b, captions)
+    kinetic = str(ctx.section("shorts").get("hook_style", "kinetic")) != "box"
+    if kinetic and hook:          # drawn by Remotion: the hook for the first 5 s, «full video…» the last 5 s
+        from .timeline import FULL_VIDEO
+
+        lang = str(ctx.section("align").get("language", "es"))[:2]
+        props["short"] = {"hook": hook, "cta": FULL_VIDEO.get(lang, FULL_VIDEO["en"]), "style": "kinetic"}
     public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
     public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
     public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
@@ -228,7 +282,7 @@ def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict
                                                   "--crf=18"], public)
     work = out.parent / "_tmp"
     work.mkdir(parents=True, exist_ok=True)
-    (work / "hook.ass").write_text(ass([], hook, 0.0, length), encoding="utf-8")
+    (work / "hook.ass").write_text(ass([], "" if kinetic else hook, 0.0, length), encoding="utf-8")
     fonts = font_dir(ctx)
     (work / "fonts").mkdir(exist_ok=True)
     for f in fonts.glob("*.ttf"):
@@ -288,7 +342,8 @@ Eres guionista de YouTube Shorts. Te paso el guion de un vídeo largo. Escribe {
 - sin títulos ni líneas «## », sin acotaciones: solo el texto que se lee.
 {drawn}Devuelve SOLO JSON: {{"shorts": [{{"script": "…", "title": "título del Short, máx. 80 caracteres",
   "hook": "el texto grande arriba durante los primeros 5 segundos: 3-7 palabras, máx. 45 caracteres, en {language}; una
-  promesa o una pregunta que no repite la primera frase (p. ej. «¿Por qué tu cola es la más lenta?»)",
+  promesa o una pregunta que no repite la primera frase (p. ej. «¿Por qué tu cola es la más *lenta*?»); la palabra clave,
+  una sola, entre *asteriscos* (sale en otra letra y color)",
   "description": "1-2 frases + 3 hashtags"}}]}}
 """.strip()
 
@@ -371,7 +426,7 @@ def make_new(ctx: RunContext) -> None:
         config = ctx.root / created["folder"] / "config.yaml"
         before = config.read_text("utf-8") if config.is_file() else ""
         extra = SHORT_CONFIG.replace("shorts:\n  enabled: false\n", f"shorts:\n  enabled: false\n  of: {ctx.slug}\n"
-                                     + (f"  hook: {json.dumps(item['hook'], ensure_ascii=False)}\n" if item.get("hook") else ""))
+                                     + (f"  hook: {json.dumps(plain_hook(item['hook']), ensure_ascii=False)}\n" if item.get("hook") else ""))
         if drawn:                                  # a drawn Short: 60 fps (short, so the render stays quick)
             extra = extra.replace("  height: 1920\n", "  height: 1920\n  fps: 60\n")
         config.write_text(before + extra, encoding="utf-8")
@@ -438,7 +493,7 @@ def run(ctx: RunContext) -> None:
                 print(f"   short-{n}: vertical con Remotion no disponible ({str(error)[:120]}); va con fondo desenfocado")
         if not made:
             render_short(ctx, ctx.out_dir / "video-final.mp4", start, length, subtitles, target)
-        print(f"   short-{n}.mp4 · {length:.0f} s · {item.get('hook', '')}")
+        print(f"   short-{n}.mp4 · {length:.0f} s · {plain_hook(str(item.get('hook') or ''))}")
         notes += [f"short-{n}.mp4 ({length:.0f} s)", f"TÍTULO: {item.get('title', '')}",
                   f"DESCRIPCIÓN: {item.get('description', '')}", ""]
     tmp = out_dir / "_tmp"

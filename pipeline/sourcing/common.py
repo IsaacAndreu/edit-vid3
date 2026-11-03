@@ -262,7 +262,13 @@ ALWAYS_BLOCKED_TERMS = ("asmr", "nursery rhymes", "kids music", "canciones infan
                         "mayday: air disaster", "air crash investigation", "seconds from disaster",
                         # dates illustrated with calendar videos (negocio7, pati4: a Telugu calendar, «National Felt Hat Day»)
                         "telugu calendar", "panchangam", "national day calendar",
-                        "official trailer", "tráiler oficial", "lyrics video", "lyric video")
+                        "official trailer", "tráiler oficial", "lyrics video", "lyric video",
+                        # another creator reacting to the footage, or a podcast: a face talking over it, found only after
+                        # downloading and analysing it; the title says it before a single request (never «reaction» alone:
+                        # «Simone Biles reaction» is usually her own, the shot we want)
+                        "reacts to", "reacting to", "reaction to", "first time reacting", "my reaction", "react to",
+                        "podcast", "reacciona a", "reaccionando a", "reacción a", "mi reacción", "reaccionamos",
+                        "reagindo a", "reagindo à", "reage a", "reage à", "minha reação", "reagiert auf", "reaktion auf")
 ALWAYS_BLOCKED_CHANNELS = ("the office", "joblo", "movieclips", "kiboomers", "cocomelon", "super simple songs",
                            "edm nation", "rancho humilde", "netflix", "hbo max", "disney plus", "warner bros",
                            # TV shows, films and celebrities: Content ID and off-topic (pati4, negocio7)

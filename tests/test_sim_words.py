@@ -48,7 +48,8 @@ def test_a_short_gets_its_hook_on_top_and_the_full_video_line_at_the_end(tmp_pat
     sections = {"shorts": {"of": "sim2"}, "align": {"language": "de"}}
     ctx = SimpleNamespace(section=lambda name: sections.get(name, {}), materials_dir=folder)
     tall = SimpleNamespace(width=1080, height=1920)
-    assert short_texts(ctx, tall) == {"hook": "La curva de Kingman", "cta": "Ganzes Video auf meinem Kanal"}
+    assert short_texts(ctx, tall) == {"hook": "La curva de Kingman", "cta": "Ganzes Video auf meinem Kanal",
+                                     "style": "kinetic"}
     sections["shorts"]["hook"] = "¿Por qué colapsa?"
     assert short_texts(ctx, tall)["hook"] == "¿Por qué colapsa?"
     assert short_texts(ctx, SimpleNamespace(width=1920, height=1080)) == {}       # not in the long video

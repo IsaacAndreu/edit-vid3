@@ -121,7 +121,7 @@ export interface TimelineProps {
   audio: AudioSpec;
   locale?: { chapter?: string; source?: string; next?: string; subscribe?: string };
   brand?: Brand | null;
-  short?: { hook?: string; cta?: string }; // a Short: the hook on top for 5 s, «full video on my channel» the last 5 s
+  short?: { hook?: string; cta?: string; style?: 'kinetic' | 'box' }; // a Short: the hook on top for 5 s, «full video on my channel» the last 5 s
   transitions?: Transition[];
   shakes?: Shake[];
   [key: string]: unknown;

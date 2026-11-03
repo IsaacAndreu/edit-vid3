@@ -14,6 +14,7 @@ import barlow800 from '@fontsource/barlow-condensed/files/barlow-condensed-latin
 import barlow700i from '@fontsource/barlow-condensed/files/barlow-condensed-latin-700-italic.woff2';
 import barlow800i from '@fontsource/barlow-condensed/files/barlow-condensed-latin-800-italic.woff2';
 import dmSerif400 from '@fontsource/dm-serif-display/files/dm-serif-display-latin-400-normal.woff2';
+import dmSerif400i from '@fontsource/dm-serif-display/files/dm-serif-display-latin-400-italic.woff2';
 import mono500 from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2';
 import mono700 from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2';
 import grotesk500 from '@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2';
@@ -53,6 +54,7 @@ for (const [family, url, weight, style] of [
   ['Barlow Condensed', barlow700i, '700', 'italic'],
   ['Barlow Condensed', barlow800i, '800', 'italic'],
   ['DM Serif Display', dmSerif400, '400', 'normal'],
+  ['DM Serif Display', dmSerif400i, '400', 'italic'],
   ['JetBrains Mono', mono500, '500', 'normal'],
   ['JetBrains Mono', mono700, '700', 'normal'],
   ['Space Grotesk', grotesk500, '500', 'normal'],

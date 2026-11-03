@@ -171,6 +171,68 @@ const CaptionChunk: FC<{ caption: Caption }> = ({ caption }) => {
   );
 };
 
+const STOP = new Set(['para', 'como', 'pero', 'porque', 'cuando', 'donde', 'este', 'esta', 'with', 'that', 'this',
+  'from', 'what', 'have', 'they', 'were', 'your', 'mais', 'você', 'para', 'sobre', 'eine', 'einer', 'nicht', 'dass']);
+
+/** The word to set apart: the one between *asterisks*, else a figure, else the longest word that is not a filler. */
+export const keyWord = (words: string[]): number => {
+  if (words.length < 2) return -1;
+  const marked = words.findIndex((w) => /^\*.+\*[.,!?…:;]?$/.test(w));
+  if (marked >= 0) return marked;
+  const figure = words.findIndex((w) => /\d/.test(w));
+  if (figure >= 0) return figure;
+  let best = -1;
+  words.forEach((w, i) => {
+    const bare = w.replace(/[^\p{L}]/gu, '');
+    if (bare.length >= 4 && !STOP.has(bare.toLowerCase()) && (best < 0 || bare.length > words[best].replace(/[^\p{L}]/gu, '').length)) best = i;
+  });
+  return best;
+};
+
+/**
+ * The hook as kinetic type (shorts.hook_style: kinetic): big bold words that come in one after another, with the key
+ * word in a serif italic of the accent colour — legible over any footage thanks to a soft dark veil on top.
+ */
+const KineticBanner: FC<{ text: string; frames: number; cta?: boolean }> = ({ text, frames, cta }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const words = text.split(/\s+/).filter(Boolean);
+  const key = keyWord(words);
+  const out = interpolate(frame, [frames - 8, frames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const step = Math.max(2, Math.min(5, Math.floor((frames * 0.35) / Math.max(1, words.length))));
+  return (
+    <AbsoluteFill style={{ opacity: out, pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 760,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0) 100%)' }} />
+      <div style={{ position: 'absolute', left: 60, right: 60, top: 170, display: 'flex', flexWrap: 'wrap',
+                    justifyContent: 'center', columnGap: 22, rowGap: 0, textAlign: 'center' }}>
+        {cta ? (
+          <span style={{ fontSize: 70, marginRight: 4, color: theme.accent, transform: `scale(${spring({ frame, fps, durationInFrames: 12 })})` }}>▶</span>
+        ) : null}
+        {words.map((raw, i) => {
+          const local = frame - i * step;
+          const pop = spring({ frame: local, fps, config: { damping: 14, stiffness: 190 }, durationInFrames: 14 });
+          const isKey = i === key;
+          const word = raw.replace(/\*/g, '');
+          return (
+            <span key={i} style={{
+              display: 'inline-block', opacity: Math.min(1, Math.max(0, local / 4)),
+              transform: `translateY(${(1 - pop) * 34}px) scale(${0.92 + 0.08 * pop})`,
+              filter: `blur(${Math.max(0, (1 - pop) * 6)}px)`,
+              fontFamily: isKey ? "'DM Serif Display', serif" : fontFamily,
+              fontStyle: isKey ? 'italic' : 'normal', fontWeight: isKey ? 400 : 900,
+              fontSize: isKey ? 104 : 88, lineHeight: 1.1, letterSpacing: isKey ? 0 : -1,
+              color: isKey ? theme.accent : '#fff', textShadow: '0 6px 28px rgba(0,0,0,0.75), 0 2px 4px rgba(0,0,0,0.6)',
+            }}>
+              {word}
+            </span>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 /** A Short's banner on top: its hook for the first seconds, «full video on my channel» for the last ones. */
 const ShortBanner: FC<{ text: string; frames: number; cta?: boolean }> = ({ text, frames, cta }) => {
   const frame = useCurrentFrame();
@@ -183,7 +245,7 @@ const ShortBanner: FC<{ text: string; frames: number; cta?: boolean }> = ({ text
       <div style={{ background: cta ? theme.accent : '#fff', color: '#0b0b0b', borderRadius: 22, padding: '18px 30px',
                     fontFamily, fontWeight: 900, fontSize: cta ? 64 : 70, lineHeight: 1.08, textAlign: 'center',
                     textTransform: 'uppercase', boxShadow: '0 18px 50px rgba(0,0,0,0.55)', maxWidth: 980 }}>
-        {cta ? `▶ ${text}` : text}
+        {cta ? `▶ ${text.replace(/\*/g, '')}` : text.replace(/\*/g, '')}
       </div>
     </div>
   );
@@ -247,12 +309,12 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
       ))}
       {short?.hook ? (
         <Sequence from={0} durationInFrames={banner} name="hook">
-          <ShortBanner text={short.hook} frames={banner} />
+          {short.style === 'box' ? <ShortBanner text={short.hook} frames={banner} /> : <KineticBanner text={short.hook} frames={banner} />}
         </Sequence>
       ) : null}
       {short?.cta ? (
         <Sequence from={durationInFrames - banner} durationInFrames={banner} name="full video">
-          <ShortBanner text={short.cta} frames={banner} cta />
+          {short.style === 'box' ? <ShortBanner text={short.cta} frames={banner} cta /> : <KineticBanner text={short.cta} frames={banner} cta />}
         </Sequence>
       ) : null}
       {shots

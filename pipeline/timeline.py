@@ -711,7 +711,9 @@ def short_texts(ctx: RunContext, timeline: Timeline) -> dict[str, str]:
         hook = next(iter((ctx.materials_dir / "titulo.txt").read_text("utf-8").strip().splitlines()), "")
     lang = str(ctx.section("align").get("language", "es"))[:2]
     cta = str(cfg["cta"]) if "cta" in cfg else FULL_VIDEO.get(lang, FULL_VIDEO["en"])
-    return {k: v for k, v in {"hook": " ".join(hook.split())[:70], "cta": cta.strip()}.items() if v}
+    style = "box" if str(cfg.get("hook_style", "kinetic")) == "box" else "kinetic"   # kinetic: words in one by one, the key one in serif italic
+    texts = {k: v for k, v in {"hook": " ".join(hook.split())[:70], "cta": cta.strip()}.items() if v}
+    return {**texts, "style": style} if texts else {}
 
 
 def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[TimelineCaption]:

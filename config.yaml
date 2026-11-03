@@ -281,6 +281,7 @@ graphics:                          # gráficos animados elegidos del guion (mapa
   banned_seconds: 5.5              # tarjeta de cada elemento en los vídeos de prohibidos
 
 shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
+  # hook_style: kinetic            # (por defecto) texto del gancho palabra a palabra, la clave en cursiva serif de color; box = el cartel blanco de antes
   enabled: true                    # 3 Shorts de cada vídeo terminado, de sus momentos más fuertes (false = solo con
                                    # python main.py --shorts <vídeo>). style: native (vertical con Remotion: metraje a
                                    # pantalla completa, gráficos en ventana, subtítulos) | blur (16:9 sobre fondo desenfocado)
@@ -386,6 +387,9 @@ radar:                             # radar de competencia diario (estudio → Co
   days: 30                         # vídeos de los últimos N días
   min_ratio: 2.0                   # al menos 2x las visitas normales de su canal
   min_views: 5000
+  alert_score: 60                  # aviso «🔥 Explota en tu tema» por Telegram/correo: puntuación viral 60+ (≈10x su canal)…
+  alert_days: 3                    # …de como mucho 3 días…
+  alerts_per_day: 2                # …y 2 avisos al día como máximo (nunca el mismo dos veces)
   queries: 3                       # búsquedas del nicho (lab.queries) por canal (~200 unidades de API cada una)
   videos_per_competitor: 30
   keep: 20                         # vídeos que se guardan por canal

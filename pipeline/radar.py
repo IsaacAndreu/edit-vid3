@@ -123,10 +123,25 @@ def _seen_before(root: Path, today: str) -> set[str]:
     return seen
 
 
+def viral_score(video: dict[str, Any]) -> int:
+    """0-100, easy to read at a glance: how far above its own channel a video is (2x → 15, 10x → 50, 100x → 100,
+    on a log scale) and +10 while it is a week old or less (it is still climbing). The same formula as the studio's
+    viralScore()."""
+
+    import math
+
+    ratio = float(video.get("ratio") or 0)
+    if ratio <= 1:
+        return 0
+    fresh = 10 if float(video.get("ageDays") if video.get("ageDays") is not None else 99) <= 7 else 0
+    return max(0, min(100, round(50 * math.log10(ratio)) + fresh))
+
+
 def _slim(video: dict[str, Any], why: str) -> dict[str, Any]:
     keep = ("id", "title", "channel", "channelHandle", "views", "ratio", "subscribers", "thumbnail", "url", "published",
             "duration", "ageDays", "viewsPerDay")
-    return {**{k: video.get(k) for k in keep}, "why": why}
+    slim = {**{k: video.get(k) for k in keep}, "why": why}
+    return {**slim, "viral": viral_score(slim)}
 
 
 def channel_radar(ctx: RunContext, api: Any, cfg: dict[str, Any]) -> dict[str, Any]:
@@ -311,8 +326,50 @@ def run(root: Path, *, force: bool = False) -> Path:
     return target
 
 
+ALERTED = "avisados.json"      # in out/_radar/: what was already alerted (never twice) and how many today
+
+
+def explosions(root: Path, report: dict[str, Any], cfg: dict[str, Any], today: str | None = None) -> list[dict[str, Any]]:
+    """Videos of your niches blowing up right now: viral ≥ `radar.alert_score` (60: ~10x its channel and a few days
+    old) and at most `radar.alert_days` (3) old, never alerted before, at most `radar.alerts_per_day` (2) a day —
+    only what is worth stopping for. The ones returned are recorded as alerted."""
+
+    today = today or date.today().isoformat()
+    path = root / FOLDER / ALERTED
+    seen = _read(path) or {}
+    sent_today = int((seen.get("_days") or {}).get(today, 0))
+    room = max(0, int(cfg.get("alerts_per_day", 2)) - sent_today)
+    if room <= 0:
+        return []
+    hits = []
+    for name, info in (report.get("channels") or {}).items():
+        for v in info.get("top", []):
+            score = v.get("viral", viral_score(v))
+            age = v.get("ageDays")
+            if (v.get("id") and v["id"] not in seen and score >= int(cfg.get("alert_score", 60))
+                    and age is not None and float(age) <= float(cfg.get("alert_days", 3))):
+                hits.append({**v, "viral": score, "profile": name})
+    hits = sorted({v["id"]: v for v in hits}.values(), key=lambda v: -v["viral"])[:room]
+    if hits:
+        for v in hits:
+            seen[v["id"]] = today
+        seen["_days"] = {**{d: n for d, n in (seen.get("_days") or {}).items() if d >= today[:8]}, today: sent_today + len(hits)}
+        _write(path, seen)
+    return hits
+
+
 def _notify(ctx: RunContext, report: dict[str, Any]) -> None:
     from . import notify
+
+    for v in explosions(ctx.root, report, ctx.section("radar")):
+        try:
+            notify.send(ctx, f"🔥 Explota en tu tema · viral {v['viral']}",
+                        f"{v['title']} ({v['channel']})\n"
+                        f"x{v['ratio']} lo normal de su canal · {v['views']:,} visitas · hace {v['ageDays']} días\n".replace(",", ".")
+                        + f"{v.get('url') or ''}\nCanal: {v['profile']} · ideas como esta en el Radar del estudio "
+                        + notify.studio_link(ctx, "competencia"))
+        except Exception:
+            pass
 
     lines = []
     if report.get("rising"):
