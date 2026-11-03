@@ -82,6 +82,32 @@ def compact_credits(rows: list[dict[str, Any]], budget: int) -> str:
     return text if len(text) <= budget else text[: max(0, budget - 40)].rsplit(",", 1)[0] + " y otros."
 
 
+def fact_sources(ctx: RunContext, budget: int) -> str:
+    """«Fuentes» / «Sources»: every claim the fact check confirmed with a link, «claim: url», within `budget`."""
+
+    try:
+        claims = json.loads((ctx.work_dir / "factcheck.json").read_text("utf-8")).get("claims", [])
+    except (OSError, ValueError):
+        return ""
+    lines, seen = [], set()
+    for c in claims:
+        url = str(c.get("source") or "").strip()
+        if c.get("verdict") != "ok" or not url.startswith("http") or url in seen:
+            continue
+        seen.add(url)
+        claim = " ".join(str(c.get("claim") or "").split())
+        lines.append(f"{claim[:90]}{'…' if len(claim) > 90 else ''}: {url}")
+    if not lines:
+        return ""
+    head = "Sources" if str(ctx.section("align").get("language", "es"))[:2] == "en" else "Fuentes"
+    text = head
+    for line in lines:
+        if len(text) + len(line) + 1 > budget:
+            break
+        text += "\n" + line
+    return text if text != head else ""
+
+
 def _srt_time(seconds: float) -> str:
     ms = max(0, round(seconds * 1000))
     return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
@@ -147,7 +173,16 @@ def write(ctx: RunContext, timeline: Timeline, rows: list[dict[str, Any]]) -> No
     if chapters:
         body += ["", *chapters]
     used = len("\n".join(body)) + 4
-    body += ["", compact_credits(rows, DESCRIPTION_LIMIT - used)]
+    from . import atlas
+
+    if atlas.active(ctx):            # an atlas deep dive cites its facts, one link each (the fact check's sources)
+        sources = fact_sources(ctx, DESCRIPTION_LIMIT - used - 200)
+        if sources:
+            body += ["", sources]
+            used = len("\n".join(body)) + 4
+    credits = compact_credits(rows, DESCRIPTION_LIMIT - used)
+    if credits.strip().count("\n"):  # a drawn video has no third-party sources: no empty heading
+        body += ["", credits]
     lines = ["TÍTULO", title, "", "DESCRIPCIÓN", *body, "", "ETIQUETAS"]
     tags = [str(t).strip() for t in extra.get("tags", []) if str(t).strip()]
     lines.append(", ".join(dict.fromkeys(tags))[:490])

@@ -76,7 +76,7 @@ def channel_kinds(root: Path) -> dict[str, str]:
                 break
             current = str(data.get("base") or "")
         out[name] = ("simulacion" if style in ("simulacion", "simulación", "simulation")
-                     else "stickman" if style in ("stickman", "cine") else "mapas" if style == "mapas" else "metraje")
+                     else "stickman" if style in ("stickman", "cine") else "mapas" if style in ("mapas", "atlas") else "metraje")
     return out
 
 

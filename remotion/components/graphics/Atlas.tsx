@@ -5,6 +5,8 @@ import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world50 from 'world-atlas/countries-50m.json';
 import land50 from 'world-atlas/land-50m.json';
+import land110 from 'world-atlas/land-110m.json';
+import world110 from 'world-atlas/countries-110m.json';
 import type { AtlasGraphic } from '../../graphics';
 import { theme } from '../../theme';
 import { Grain, Vignette } from './Paper';
@@ -28,6 +30,9 @@ const LAND = COUNTRIES.filter((c) => !ICE.has(c.properties.name));
 const ICY = COUNTRIES.filter((c) => ICE.has(c.properties.name));
 // one merged landmass (no borders, like a relief map); the shelf only around the big ones (no halo dots on every islet)
 const LAND_FC = feature(land50 as never, (land50 as never as { objects: { land: never } }).objects.land) as unknown as GeoPermissibleObjects;
+// the whole globe on screen: Natural Earth 1:110m is plenty (and ~10x fewer points to project every frame)
+const LAND_FC_110 = feature(land110 as never, (land110 as never as { objects: { land: never } }).objects.land) as unknown as GeoPermissibleObjects;
+const ICE_110 = { type: 'FeatureCollection', features: (feature(world110 as never, (world110 as never as { objects: { countries: never } }).objects.countries) as never as { features: Feature[] }).features.filter((c) => ICE.has(c.properties.name)) } as unknown as GeoPermissibleObjects;
 const BIG = LAND.filter((c) => geoArea(c as never) > 0.0006);
 const LAND_ALL = { type: 'FeatureCollection', features: [...BIG, ...ICY] } as unknown as GeoPermissibleObjects;
 const ICE_FC = { type: 'FeatureCollection', features: ICY } as unknown as GeoPermissibleObjects;
@@ -91,6 +96,8 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   const since = (at: number) => frame - at;
   const shelf = Math.max(5, R * 0.028);
   const highlighted = new Set((g.highlight ?? []).map((h) => h.name));
+  const fine = R > 760;                      // close in: the 1:50m coast
+  const shelfPath = path(fine ? LAND_ALL : LAND_FC_110) ?? '';
 
   return (
     <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
@@ -99,21 +106,21 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           <stop offset="0%" stopColor={p.oceanIn} />
           <stop offset="100%" stopColor={p.oceanOut} />
         </radialGradient>
-        <filter id="shelf" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation={shelf * 0.55} /></filter>
-        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18" /></filter>
+                <radialGradient id="shadowg"><stop offset="90%" stopColor="rgba(0,0,0,0.22)" /><stop offset="100%" stopColor="rgba(0,0,0,0)" /></radialGradient>
         <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="10" stroke={red} strokeWidth="2" opacity="0.35" />
         </pattern>
         <clipPath id="disc"><circle cx={cx} cy={cy} r={R} /></clipPath>
       </defs>
-      <circle cx={cx + 10} cy={cy + 16} r={R} fill="rgba(0,0,0,0.22)" filter="url(#shadow)" />
+      <circle cx={cx + 8} cy={cy + 14} r={R * 1.04} fill="url(#shadowg)" />
       <circle cx={cx} cy={cy} r={R} fill="url(#ocean)" />
       <g clipPath="url(#disc)">
         <path d={path(GRATICULE as never) ?? ''} fill="none" stroke={p.grid} strokeWidth={1} />
         {/* the continental shelf: a pale halo along every coast, like a relief map's shallow water */}
-        <path d={path(LAND_ALL) ?? ''} fill={p.shelf} stroke={p.shelf} strokeWidth={shelf * 2} strokeLinejoin="round" filter="url(#shelf)" opacity={0.6} />
-        <path d={path(LAND_FC) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} strokeLinejoin="round" />
-        <path d={path(ICE_FC) ?? ''} fill={p.ice} stroke={p.coast} strokeWidth={0.6} strokeLinejoin="round" />
+        <path d={shelfPath} fill="none" stroke={p.shelf} strokeWidth={shelf * 2.4} strokeLinejoin="round" opacity={0.28} />
+        <path d={shelfPath} fill="none" stroke={p.shelf} strokeWidth={shelf * 1.1} strokeLinejoin="round" opacity={0.45} />
+        <path d={path(fine ? LAND_FC : LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} strokeLinejoin="round" />
+        <path d={path(fine ? ICE_FC : ICE_110) ?? ''} fill={p.ice} stroke={p.coast} strokeWidth={0.6} strokeLinejoin="round" />
         {COUNTRIES.filter((c) => highlighted.has(c.properties.name)).map((c, i) => (
           <path key={i} d={path(c as never) ?? ''} fill={red} opacity={0.32} stroke={red} strokeWidth={1.4} />
         ))}

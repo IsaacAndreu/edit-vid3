@@ -58,3 +58,19 @@ def test_writing_guide_per_language(tmp_path: Path):
     es = RunContext.create("t", root=tmp_path, config={"visual": {"style": "atlas"}, "align": {"language": "es"}})
     en = RunContext.create("t", root=tmp_path, config={"visual": {"style": "atlas"}, "align": {"language": "en"}})
     assert "cinco razones" in atlas.writing(es) and "five reasons" in atlas.writing(en)
+
+
+def test_description_cites_the_checked_facts(tmp_path: Path):
+    import json
+
+    from pipeline import publish
+
+    ctx = RunContext.create("t", root=tmp_path, config={"visual": {"style": "atlas"}, "align": {"language": "en"}})
+    ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.work_dir / "factcheck.json").write_text(json.dumps({"claims": [
+        {"claim": "The A350 is certified for 370-minute ETOPS", "verdict": "ok", "source": "https://example.org/a350"},
+        {"claim": "Unsure thing", "verdict": "unverified", "source": "https://example.org/x"},
+        {"claim": "Duplicate", "verdict": "ok", "source": "https://example.org/a350"}]}))
+    text = publish.fact_sources(ctx, 1000)
+    assert text == "Sources\nThe A350 is certified for 370-minute ETOPS: https://example.org/a350"
+    assert publish.compact_credits([], 1000).strip().count("\n") == 0        # no third-party sources: the heading alone
