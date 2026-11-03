@@ -288,11 +288,17 @@ def load_learned(root: Path) -> list[str]:
     return names
 
 
+def lesson_entries(root: Path, video_channel: str) -> list[dict[str, Any]]:
+    """The corrections that can become a lesson for the judge on this channel."""
+
+    return [e for e in _with_channels(root) if e.get("videoChannel") == video_channel and e.get("text")
+            and e.get("verdict") in ("correcta", "incorrecta") and e.get("reason") != "habia_mejor"]
+
+
 def lessons(root: Path, video_channel: str, limit: int = 10) -> str:
     """Your corrections on this channel's videos, as short examples for the judge (newest first, mostly mistakes)."""
 
-    entries = [e for e in _with_channels(root) if e.get("videoChannel") == video_channel and e.get("text")
-               and e.get("verdict") in ("correcta", "incorrecta") and e.get("reason") != "habia_mejor"]
+    entries = lesson_entries(root, video_channel)
     entries.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
     wrong = [e for e in entries if e["verdict"] == "incorrecta"][: max(1, limit * 2 // 3)]
     right = [e for e in entries if e["verdict"] == "correcta"][: limit - len(wrong)]

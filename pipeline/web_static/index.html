@@ -1047,6 +1047,17 @@ async function allVideosPage() {
           : v.archived ? "archivado" : esc(v.status)}</div></div>`).join("") || '<div class="muted" style="padding:12px 0">Ninguno con estos filtros.</div>'}</div>`;
 }
 
+async function doctorCard(refresh) {
+  const d = await api("/api/doctor" + (refresh ? "?refresh=1" : "")).catch(() => null), box = $("#doctor");
+  if (!d || !box) return;
+  const icon = {ok: "✅", aviso: "⚠️", error: "❌"}, bad = d.rows.filter((r) => r.level !== "ok");
+  box.innerHTML = `<div class="card" style="border-left:3px solid ${bad.some((r) => r.level === "error") ? "var(--bad)" : bad.length ? "#f2cc60" : "#3fb950"}">
+    <div class="row" style="justify-content:space-between"><b>Chequeo ${bad.length ? `· ${bad.length} aviso(s)` : "· todo listo"}</b>
+    <button onclick="doctorCard(true)">↻ Revisar ahora</button></div>
+    ${(bad.length ? bad : d.rows).map((r) => `<div class="small">${icon[r.level]} <b>${esc(r.area)}</b>: ${esc(r.text)}</div>`).join("")}
+    <div class="small muted">${new Date(d.at * 1000).toLocaleTimeString("es-ES")} · sin peticiones a YouTube ni a las IAs</div></div>`;
+}
+
 async function serverPage() {
   const s = await api("/api/servidor");
   const m = s.machine || {}, a = s.api, p = s.proxy, b = s.backup;
@@ -1054,6 +1065,7 @@ async function serverPage() {
   const kinds = {haciendo: "haciendo", turno: "", cuota: "", youtube: "error", cola: "", error: "error", falta: "", pausa: ""};
   $("#app").innerHTML = `<h1>Estado del servidor</h1>
     <div class="small muted" style="margin:-4px 0 12px">Se actualiza solo cada 15 s · ${esc(s.at)}</div>
+    <div id="doctor"></div>
     <h2>Máquina</h2>
     <div class="kpis">
       <div class="kpi"><div class="k">RAM</div><div class="v">${fmt(m.ramUsed)} / ${fmt(m.ramTotal)} GB</div>
@@ -1100,6 +1112,7 @@ async function serverPage() {
         : '<span class="muted">Aún no hay ninguna (se hace sola cada semana).</span>'}
       <div class="row" style="gap:8px;margin-top:8px">${b ? '<a class="btn" href="/api/copia">⬇️ Descargar</a>' : ""}
         <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`;
+  doctorCard();
   schedule(serverPage, 15000);
 }
 

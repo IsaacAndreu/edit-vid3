@@ -1156,6 +1156,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import gasto
 
                     return self._ok({**gasto.report(root), "allChannels": channels(root)})
+                if path == "/api/doctor":                  # python main.py --doctor, every 10 min at most
+                    from . import chequeo
+
+                    return self._ok(chequeo.cached(root, 0 if urllib.parse.parse_qs(url.query).get("refresh") else 600))
                 if path == "/api/servidor":                # «Estado del servidor» (pipeline/servidor.py)
                     from . import copia, servidor
 

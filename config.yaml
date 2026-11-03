@@ -150,6 +150,7 @@ judge:
   rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
   rounds_rest: 1                   # fuera del gancho, como mucho una hoja (ahorra la 2.ª llamada); sin poner = rounds.
                                    # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
+  lessons_refresh: 10              # las lecciones de «Errores» se renuevan cada 10 correcciones nuevas (si no, cada etiqueta invalida la caché del juez)
   # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
   # usd_per_mtok_rest: {input: …, output: …}        # los precios de model_rest (para que el gasto de API salga bien)
   parallel: 8

@@ -92,7 +92,7 @@ SPEED_KEYS = frozenset({
     "metadata_proxy_usd_per_gb",
     "metadata_proxy_retries", "query_merge", "max_details_per_shot",
     # the judge outside the hook (judge.py): only for the shots judged from now on, never a reason to judge again
-    "rounds_rest", "model_rest", "usd_per_mtok_rest",
+    "rounds_rest", "model_rest", "usd_per_mtok_rest", "lessons_refresh",
 })
 
 

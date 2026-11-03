@@ -421,6 +421,35 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     return usable(cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce), letters)
 
 
+LESSONS_DIR = "_lecciones"     # in cache/judge/: the lessons each channel's judge is using now
+
+
+def frozen_lessons(ctx: RunContext) -> str:
+    """The lessons, renewed only every `judge.lessons_refresh` (10) new corrections. They are part of the judge's
+    prompt, so of its cache key too: renewed on every new «Errores» label, each one made every shot judged again pay
+    its call again. Frozen, the same shot and sheet hit the cache until enough corrections have piled up to matter."""
+
+    from . import feedback
+
+    cfg = ctx.section("judge")
+    channel = ctx.channel or ""
+    count = len(feedback.lesson_entries(ctx.root, channel))
+    path = ctx.cache_dir / "judge" / LESSONS_DIR / f"{hashlib.sha1(channel.encode()).hexdigest()[:12]}.json"
+    try:
+        stored = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        stored = None
+    refresh = max(1, int(cfg.get("lessons_refresh", 10)))
+    if stored is not None and 0 <= count - int(stored.get("count", 0)) < refresh:
+        return str(stored.get("text") or "")
+    text = feedback.lessons(ctx.root, channel, int(cfg.get("lessons", 10)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"channel": channel, "count": count, "text": text}, ensure_ascii=False), encoding="utf-8")
+    if stored is not None:
+        print(f"   Juez: lecciones renovadas ({count - int(stored.get('count', 0))} correcciones nuevas)")
+    return text
+
+
 def _lessons(ctx: RunContext) -> str:
     """Your «Errores» corrections on this channel (pipeline/feedback.py), once per video."""
 
@@ -431,7 +460,7 @@ def _lessons(ctx: RunContext) -> str:
         from . import feedback
 
         try:
-            cached = feedback.lessons(ctx.root, ctx.channel or "", int(ctx.section("judge").get("lessons", 10)))
+            cached = frozen_lessons(ctx)
         except Exception:
             cached = ""
         try:

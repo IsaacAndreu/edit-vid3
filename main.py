@@ -83,6 +83,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
     parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
+    target.add_argument("--doctor", action="store_true",
+                        help="Revisa en segundos claves, herramientas, disco, proxy, cuota y servicios, sin hacer "
+                             "peticiones: lo que haría fallar un vídeo a mitad.")
+    target.add_argument("--actualizar", nargs="?", const=3.0, type=float, metavar="HORAS",
+                        help="Actualiza el servidor sin cortar nada: espera (como mucho HORAS, 3) a que ningún vídeo "
+                             "de terceros esté buscando o descargando, git pull, instala dependencias solo si "
+                             "cambiaron y reinicia los servicios.")
     target.add_argument("--tiempos", nargs="?", const=30.0, type=float, metavar="DÍAS",
                         help="Dónde se va el tiempo: minutos de cada etapa de los vídeos terminados en los últimos "
                              "DÍAS (30) → out/_tiempos.md.")
@@ -573,6 +580,21 @@ def _git_update(root: Path, running: str) -> bool:
     return bool(running) and bool(now) and now != running
 
 
+def while_updating(root: Path, slugs: list[str]) -> list[str]:
+    """`--actualizar` is waiting for a gap (pipeline/actualizar.py): no third-party video starts meanwhile."""
+
+    from pipeline import actualizar
+
+    if not actualizar.updating(root):
+        return slugs
+    kept = [slug for slug in slugs if is_drawn(root, slug)]
+    held = len(slugs) - len(kept)
+    if held and held != getattr(while_updating, "said", 0):
+        print(f"Actualización esperando hueco: {held} vídeo(s) de terceros esperan a después")
+    while_updating.said = held                     # type: ignore[attr-defined]
+    return kept
+
+
 def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
     """A server that makes videos all the time: whenever materiales/ has pending videos, the queue runs; otherwise
     it looks again every `every_minutes`. A video that failed is not retried until its files change or
@@ -700,6 +722,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
 
         waiting = [slug for slug in pending_slugs(root) if slug not in skip] + [
             slug for slug, _ in dub.pending(root)]
+        waiting = while_updating(root, waiting)
         def refill() -> list[str]:
             """The queue as it is now (a free line takes it while the round goes on)."""
 
@@ -714,8 +737,8 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             fresh = [slug for slug in pending_slugs(root) if slug not in held]
             from pipeline import dub as _dub
 
-            return fresh + [_dub.prepare(root, slug, lang) for slug, lang in _dub.pending(root)
-                            if _dub.dub_slug(slug, lang) not in fresh]
+            return while_updating(root, fresh + [_dub.prepare(root, slug, lang) for slug, lang in _dub.pending(root)
+                                                 if _dub.dub_slug(slug, lang) not in fresh])
 
         if waiting:
             idle_since = None
@@ -1387,6 +1410,14 @@ def main() -> None:
     if args.cola_por_que:
         print("\n".join(queue_reasons(PROJECT_ROOT)) or "No hay vídeos sin hacer.")
         return
+    if args.doctor:
+        from pipeline import chequeo
+
+        raise SystemExit(chequeo.main(PROJECT_ROOT))
+    if args.actualizar is not None:
+        from pipeline import actualizar
+
+        raise SystemExit(actualizar.main(PROJECT_ROOT, args.actualizar))
     if args.tiempos is not None:
         from pipeline import tiempos
 
