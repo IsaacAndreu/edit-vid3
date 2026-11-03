@@ -79,9 +79,9 @@ def localize(ctx: RunContext, lang: str) -> tuple[str, str] | None:
 def _drawn(ctx: RunContext) -> bool:
     """Simulations, stickman films and maps: the same picture in every language, a native voice per language."""
 
-    from . import cine, mapas, simulacion
+    from . import atlas, cine, mapas, simulacion
 
-    return simulacion.active(ctx) or cine.active(ctx) or mapas.active(ctx)
+    return simulacion.active(ctx) or cine.active(ctx) or mapas.active(ctx) or atlas.active(ctx)
 
 
 # the language as the prompts (in Spanish) name it

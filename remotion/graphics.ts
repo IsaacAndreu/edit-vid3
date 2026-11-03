@@ -393,6 +393,34 @@ export interface MapaGraphic {
   seed?: number;
 }
 
+/** A line of an atlas deep dive (pipeline/atlas.py): the globe's camera and the previous one (it turns between
+ * them), or a chart / line drawing / chapter title instead; every element with the frame of its word. */
+export interface AtlasGraphic {
+  type: 'atlas';
+  view: 'globe' | 'chart' | 'icon' | 'title';
+  camera: { lat: number; lon: number; zoom: number };
+  prev?: { lat: number; lon: number; zoom: number };
+  dark?: boolean;
+  points?: { name: string; lat: number; lon: number; at: number }[];
+  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; at: number }[];
+  rings?: { lat: number; lon: number; km: number; label: string; at: number }[];
+  zone?: { lat: number; label: string; at: number } | null;
+  highlight?: { name: string; label: string }[];
+  card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note'; big: string; title: string; lines: string[]; source: string; side: 'left' | 'right'; at: number } | null;
+  stamp?: { text: string; at: number } | null;
+  headline?: { text: string; at: number } | null;
+  chart?: { kind: 'bars' | 'profile' | 'thermo'; title: string; unit: string;
+            bars?: { label: string; value: number | null; unit: string }[];
+            points?: number[]; line?: { value: number | null; label: string } | null; cruise?: number | null;
+            value?: number; min?: number; max?: number; label?: string } | null;
+  icon?: { name: string; label: string; at: number } | null;
+  title?: { number: string; text: string };
+  chapters?: string[];
+  chapter?: number;
+  brand?: string;
+  seed?: number;
+}
+
 export interface BoardGraphic {
   type: 'board';
   center: string; // the name everything leads to, pinned in the middle
@@ -435,6 +463,7 @@ export interface CambioGraphic {
 }
 
 export type Graphic =
+  | AtlasGraphic
   | PlazoGraphic
   | CambioGraphic
   | SearchGraphic

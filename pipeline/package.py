@@ -119,10 +119,10 @@ def background_frames(ctx: RunContext, timeline: Timeline, count: int = 3, out_d
 
     width, height = size
     out_dir = out_dir or ctx.work_dir / "thumbs"
-    from . import cine, mapas
+    from . import atlas, cine, mapas
 
-    if cine.active(ctx) or mapas.active(ctx):   # drawn films: their strongest shots
-        moments = (cine if cine.active(ctx) else mapas).moments(timeline.groups, timeline.fps, count)
+    if cine.active(ctx) or mapas.active(ctx) or atlas.active(ctx):   # drawn films: their strongest shots
+        moments = (cine if cine.active(ctx) else mapas if mapas.active(ctx) else atlas).moments(timeline.groups, timeline.fps, count)
         return _video_frames(ctx, moments, out_dir, size, "fotograma" if spread else "bg",
                              ctx.work_dir if not spread else out_dir.parent)
     if simulacion.active(ctx):                  # no footage: the simulation at its most telling moments

@@ -283,7 +283,7 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
           <>
           {group.graphic?.type === 'sim' ? (
             <SimVertical group={group} width={width} height={height} />
-          ) : group.graphic?.type === 'cine' || group.graphic?.type === 'mapa' ? (
+          ) : group.graphic?.type === 'cine' || group.graphic?.type === 'mapa' || group.graphic?.type === 'atlas' ? (
             // drawn for the tall frame itself (pipeline/cine.py, pipeline/mapas.py): full screen
             <GroupContent group={group} />
           ) : (

@@ -73,7 +73,10 @@ def ensure(ctx: RunContext) -> bool:
     script_path = ctx.materials_dir / "guion.txt"
     from .stickman import film
 
-    if simulacion.active(ctx) or film(ctx):    # a drawn video has no chapter cards: it never stops the world
+    from . import atlas
+
+    # a drawn video has no chapter cards: it never stops the world (an atlas does: its five reasons are chapters)
+    if (simulacion.active(ctx) or film(ctx)) and not atlas.active(ctx):
         return False
     if not script_path.is_file() or not ctx.section("chapters").get("auto", True) or started(ctx):
         return False

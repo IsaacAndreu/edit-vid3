@@ -314,6 +314,9 @@ DRAWN_TEXTS = {
     "mapa": {"circle": ("word",), "tags": ("name", "sub"), "line": ("label", "count"), "props": ("top", "big", "sub", "flip"),
              "strips": ("text",), "stamp": ("text",), "split": ("left", "right"), "tracker": ("title", "date", "time", "counter"),
              "highlight": ("label",), "end": ("label", "wrong", "right")},
+    "atlas": {"points": ("name",), "routes": ("label",), "rings": ("label",), "zone": ("label",), "highlight": ("label",),
+              "card": ("big", "title", "lines", "source"), "stamp": ("text",), "headline": ("text",),
+              "chart": ("title", "label"), "icon": ("label",), "title": ("text",)},
 }
 
 

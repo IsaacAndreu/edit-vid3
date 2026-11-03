@@ -41,6 +41,7 @@ import { Bars3D } from './Bars3D';
 import { Board } from './Board';
 import { Stickman } from './Stickman';
 import { CineScene } from './CineScene';
+import { Atlas } from './Atlas';
 import { MapStory } from './MapStory';
 import { SimScene } from './SimScene';
 import { Post } from './Post';
@@ -61,6 +62,8 @@ const Fade: FC<{ durationInFrames: number; children: ReactNode }> = ({ durationI
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) =>
   graphic.type === 'cine' ? (
     <CineScene graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'atlas' ? (
+    <Atlas graphic={graphic} durationInFrames={durationInFrames} />
   ) : graphic.type === 'mapa' ? (
     <MapStory graphic={graphic} durationInFrames={durationInFrames} />
   ) : graphic.type === 'stickman' ? (

@@ -637,9 +637,11 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                     graphic[side]["logo"] = logo(ctx, name) or (logo(ctx, name.split()[0]) if " " in name else None)
         added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
                                                    "durationInFrames": b - a, "graphic": graphic}))
-    from . import cine, mapas, simulacion, stickman
+    from . import atlas, cine, mapas, simulacion, stickman
 
-    if cine.active(ctx):                                       # stickman films: a lit set and a shot per line
+    if atlas.active(ctx):                                      # atlas deep dives: one globe turning line by line
+        added += [TimelineGroup.model_validate(g) for g in atlas.groups(ctx, shots, fps, [*groups, *added], words)]
+    elif cine.active(ctx):                                       # stickman films: a lit set and a shot per line
         added += [TimelineGroup.model_validate(g) for g in cine.groups(ctx, shots, fps, [*groups, *added], words)]
     elif mapas.active(ctx):                                    # map explainers: one continuous camera over the map
         added += [TimelineGroup.model_validate(g) for g in mapas.groups(ctx, shots, fps, [*groups, *added], words)]
@@ -1442,17 +1444,18 @@ def run(ctx: RunContext) -> None:
         for group in groups:
             if group.kind == "graphic" and group.graphic and group.graphic.get("type") == "sim":
                 group.graphic["sounds"] = sim_sounds
-    from . import cine, mapas, sfx_synth
+    from . import atlas, cine, mapas, sfx_synth
 
-    drawn_film = cine.active(ctx) or mapas.active(ctx)
+    drawn_film = cine.active(ctx) or mapas.active(ctx) or atlas.active(ctx)
     if drawn_film:                       # stickman films and map explainers: one synthesized sound per event
         first = True
         level = float(cfg.get("drawn_sfx_volume", 1.0))
         for group in groups:
             g = group.graphic if group.kind == "graphic" else None
-            if not g or g.get("type") not in ("cine", "mapa"):
+            if not g or g.get("type") not in ("cine", "mapa", "atlas"):
                 continue
-            cues = sfx_synth.cine_cues(g, fps, first) if g["type"] == "cine" else sfx_synth.mapa_cues(g, fps)
+            cues = sfx_synth.cine_cues(g, fps, first) if g["type"] == "cine" else \
+                atlas.cues(g, fps) if g["type"] == "atlas" else sfx_synth.mapa_cues(g, fps)
             first = False
             for name, at, volume in cues:
                 if 0 <= at < group.durationInFrames + fps:
