@@ -86,6 +86,8 @@ sourcing:
     # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
+    query_merge: 0.8           # búsquedas casi iguales de dos planos (80 % de palabras en común, mismo año) → una sola
+    max_details_per_shot: 6    # vídeos como mucho a los que se piden detalles por plano; con 6 sin 3 válidos, al plano dibujado/alternativo
     force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
     # (sin HLS se baja el vídeo entero a trozos y se corta aquí: whole_fallback, whole_max_minutes 30, whole_max_mb 600;
     #  no se escriben aquí para no rehacer las búsquedas de los vídeos a medias)
@@ -146,7 +148,8 @@ judge:
   min_accept: 0.22                 # por debajo, la opción no se usa (→ fallback)
   candidates: 3                    # opciones que ve el juez por hoja
   rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
-  # rounds_rest: 1                 # fuera del gancho, como mucho una hoja (ahorra la 2.ª llamada); sin poner = rounds
+  rounds_rest: 1                   # fuera del gancho, como mucho una hoja (ahorra la 2.ª llamada); sin poner = rounds.
+                                   # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
   # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
   # usd_per_mtok_rest: {input: …, output: …}        # los precios de model_rest (para que el gasto de API salga bien)
   parallel: 8

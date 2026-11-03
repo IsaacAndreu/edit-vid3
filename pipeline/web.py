@@ -1317,6 +1317,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok({"pilot": registry.get(slug), "others": sorted(set(registry) - {slug}),
                                      "references": [v for v in piloto.finished(root) if v != slug],
                                      "report": _json(root / "out" / slug / "piloto.json")})
+                if path == "/api/tiempos":                 # where the hours go, stage by stage (pipeline/tiempos.py)
+                    from . import tiempos
+
+                    return self._ok({"markdown": tiempos.markdown(tiempos.report(root))})
                 if path == "/api/scenebench":              # the last per-shot vs scene search comparison
                     from . import scenebench
 

@@ -83,6 +83,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
     parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
     parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
+    target.add_argument("--tiempos", nargs="?", const=30.0, type=float, metavar="DÍAS",
+                        help="Dónde se va el tiempo: minutos de cada etapa de los vídeos terminados en los últimos "
+                             "DÍAS (30) → out/_tiempos.md.")
     target.add_argument("--cola-por-que", action="store_true",
                         help="Lista los vídeos sin hacer y por qué cada uno entra o no en la cola ahora.")
     target.add_argument("--vigilar", nargs="?", const=5.0, type=float, metavar="MIN",
@@ -1230,7 +1233,9 @@ def _error_line(tail: list[str], code: int) -> str:
 
 def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> None:
     lines = [f"# Cola · {datetime.now():%Y-%m-%d %H:%M}", "",
-             "| Vídeo | Estado | Tiempo | Detalle | Lo primero a mejorar |", "|---|---|---|---|---|"]
+             "| Vídeo | Estado | Tiempo | Etapa más lenta | Detalle | Lo primero a mejorar |", "|---|---|---|---|---|---|"]
+    from pipeline import tiempos
+
     for slug, status, seconds, detail in results:
         where = f"out/{slug}/video-final.mp4" if status == "OK" else detail.replace("|", "/")[:300]
         diag = root / "work" / slug / "diag.json"
@@ -1239,10 +1244,15 @@ def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> Non
         except (OSError, ValueError):
             tips = []
         tip = (tips[0].replace("|", "/")[:160] + f" (+{len(tips) - 1} en out/{slug}/diagnostico.md)") if tips else "—"
-        lines.append(f"| {slug} | {status} | {seconds / 60:.0f} min | {where} | {tip} |")
+        lines.append(f"| {slug} | {status} | {seconds / 60:.0f} min | {tiempos.slowest(root / 'work' / slug)} | {where} | {tip} |")
+    lines += ["", f"Dónde se va el tiempo de todos los vídeos: {tiempos.REPORT} (python main.py --tiempos)"]
     report = root / QUEUE_REPORT
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        tiempos.write(root)
+    except Exception as error:          # a report never stops the queue
+        print(f"   (informe de tiempos: {error})")
 
 
 class Stopped(SystemExit):
@@ -1376,6 +1386,11 @@ def main() -> None:
         return
     if args.cola_por_que:
         print("\n".join(queue_reasons(PROJECT_ROOT)) or "No hay vídeos sin hacer.")
+        return
+    if args.tiempos is not None:
+        from pipeline import tiempos
+
+        print(tiempos.write(PROJECT_ROOT, args.tiempos))
         return
     if args.vigilar is not None:
         watch(args.vigilar)

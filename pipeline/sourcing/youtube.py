@@ -1428,7 +1428,30 @@ class YouTubeSource:
         ]
         if self.api is not None:   # API quota: the event search + one more (~30k units a video instead of ~46k)
             queries = queries[: int(self.cfg.get("api_queries_per_shot", 2))]
-        return queries
+        return list(dict.fromkeys(self.merged(q) for q in queries))
+
+    def merged(self, query: str) -> str:
+        """The same search said another way («Simone Biles Amanar vault Rio 2016» / «… vault 2016 Rio Olympics»):
+        the one an earlier shot of this video already asked, so the cache answers instead of YouTube
+        (`query_merge`: how alike the words must be, 0 = off). Never across a different year or number."""
+
+        limit = float(self.cfg.get("query_merge", 0.8) or 0)
+        if limit <= 0:
+            return query
+        words = tokens(query)
+        book = self.__dict__.setdefault("_query_book", [])
+        lock = self.__dict__.setdefault("_query_lock", threading.Lock())
+        with lock:
+            for other, other_words in book:
+                if other == query:
+                    return query
+                differ = words ^ other_words
+                if words and other_words and not any(any(ch.isdigit() for ch in w) for w in differ) \
+                        and len(words & other_words) / len(words | other_words) >= limit:
+                    self.__dict__["merged_queries"] = self.__dict__.get("merged_queries", 0) + 1
+                    return other
+            book.append((query, words))
+        return query
 
     def search_pool(self, queries: list[str], notes: list[str]) -> tuple[list[list[str]], dict[str, dict[str, Any]]]:
         """Every query's results that pass the search filters: (ids per query, entry per id)."""
@@ -1497,14 +1520,23 @@ class YouTubeSource:
                 scores[video_id] = scores.get(video_id, 0.0) + 0.3
 
         wanted = int(self.cfg.get("videos_per_shot", 3))
+        # a hard shot (most results fail the filters: short, low resolution, refused) stops after a few videos'
+        # details instead of asking for all of them: each one is a request YouTube may answer «are you a bot»
+        tries = int(self.cfg.get("max_details_per_shot", 6) or 0) or len(entries)
         result: list[Candidate] = []
-        for video_id in sorted(entries, key=lambda v: -scores.get(v, 0.0)):
+        for asked, video_id in enumerate(sorted(entries, key=lambda v: -scores.get(v, 0.0))):
             if len(result) >= wanted:
+                break
+            if asked >= tries:
+                notes.append(f"{GAVE_UP}: {asked} vídeos mirados, {len(result)} válidos")
                 break
             found = self.candidate(video_id, entries[video_id], scores.get(video_id, 0.0), notes)
             if found is not None:
                 result.append(found)
         return result
+
+
+GAVE_UP = "plano difícil, se deja de buscar"
 
 
 def _parse_rate(value: str) -> int:

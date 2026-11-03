@@ -26,7 +26,7 @@ from .archive import ArchiveSource, historical
 from .images import ImageSources
 from .scenes import (finalists, group_scenes, options_per_shot, rank_pool, scene_queries, scene_settings,
                      share_out)
-from .youtube import YouTubeSource
+from .youtube import GAVE_UP, YouTubeSource
 
 
 STAGE = "sourcing"
@@ -72,9 +72,14 @@ def broader(broll: Any) -> Any:
     return broll.model_copy(update={"queries": english or broll.queries, "queriesLocal": local or broll.queriesLocal})
 
 
+# how much to ask YouTube, not what: writing them never searches again a shot already searched
+NO_RESEARCH = frozenset({"query_merge", "max_details_per_shot"})
+
+
 def _spec_hash(shot: Shot, cfg: dict[str, Any]) -> str:
     # the scene search's knobs are not part of a shot's own search: writing them never re-searches a video
-    youtube = {k: v for k, v in (cfg.get("youtube") or {}).items() if not str(k).startswith(("scene_", "api_scene_"))}
+    youtube = {k: v for k, v in (cfg.get("youtube") or {}).items()
+               if not str(k).startswith(("scene_", "api_scene_")) and k not in NO_RESEARCH}
     return key(shot.broll.model_dump() if shot.broll else None, {**cfg, "youtube": youtube} if "youtube" in cfg else cfg)
 
 
@@ -395,6 +400,8 @@ def run(ctx: RunContext) -> None:
             signature = [[s.id for s in scene], queries, scene_settings(yt_cfg, len(scene)), options_per_shot(yt_cfg)]
             hashes = {s.id: key(_spec_hash(s, cfg), signature) for s in scene}
             done = [found or existing(s, hashes[s.id]) for found, s in zip(done, scene)]
+        # searched shot by shot before the scene search was turned on (a video half way): kept, not searched again
+        done = [found or existing(s, _spec_hash(s, cfg)) for found, s in zip(done, scene)]
         if all(done):
             for result in done:
                 if precompute is not None:
@@ -524,7 +531,9 @@ def run(ctx: RunContext) -> None:
         else:
             results = list(pool.map(process, shots))
         blocked = any("bloquea" in n for r in results for n in r.notes)
+        # a shot that already gave up (GAVE_UP: its videos kept failing the filters) goes to the fallback directly
         retry = [i for i, r in enumerate(results) if not r.candidates and WIDENED not in r.notes
+                 and not any(n.startswith(GAVE_UP) for n in r.notes)
                  and shots[i].broll is not None and not hypothetical(shots[i])]
         if retry and not blocked and cfg.get("widen_empty", True):
             print(f"   {len(retry)} planos sin candidatos: segunda búsqueda más amplia…")
@@ -534,6 +543,8 @@ def run(ctx: RunContext) -> None:
         youtube.close()
         if youtube.stats:
             print(f"   Tiempos YouTube: {youtube.stats_line()}")
+        if getattr(youtube, "merged_queries", 0):
+            print(f"   Búsquedas casi iguales unidas: {youtube.merged_queries} (las respondió la caché)")
     if precompute is not None:
         precompute.finish()
 

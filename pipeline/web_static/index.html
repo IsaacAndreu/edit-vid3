@@ -924,6 +924,7 @@ async function stats(refresh = false) {
   const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
   const bench = await api("/api/ytbench").catch(() => ({}));
   const scenesBench = await api("/api/scenebench").catch(() => ({}));
+  const times_ = await api("/api/tiempos").catch(() => ({}));
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
   const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
   const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
@@ -978,6 +979,7 @@ async function stats(refresh = false) {
 
     ${benchCard(bench)}
     ${sceneCard(scenesBench)}
+    ${times_.markdown ? `<h2>⏱ Dónde se va el tiempo</h2><div class="card">${md(times_.markdown.replace(/^# .*\n/, ""))}</div>` : ""}
     <details style="margin-top:24px"><summary class="small muted" style="cursor:pointer">Técnico: descargas de YouTube y gasto de API por día</summary>
     ${y ? `<div class="grid" style="margin-top:10px">
       <div class="card"><div class="muted small">Peticiones (7 días)</div><div class="stat">${y.requests}</div><div class="small muted">${y.ok} bien · ${y.failed} fallidas</div></div>
