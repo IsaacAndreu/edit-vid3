@@ -13,6 +13,7 @@ brand:
   name: Atlas
   accent: "#B8322A"
   motion: clean
+  endStyle: paper                  # la pantalla final en papel, como el resto del vídeo
 
 align:
   language: en

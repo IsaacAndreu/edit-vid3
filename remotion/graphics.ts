@@ -403,6 +403,7 @@ export interface AtlasGraphic {
   dark?: boolean;
   points?: { name: string; lat: number; lon: number; at: number }[];
   routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; at: number }[];
+  tags?: { text: string; lat: number | null; lon: number | null; at: number }[];   // the line's figure on a paper tag
   rings?: { lat: number; lon: number; km: number; label: string; at: number }[];
   zone?: { lat: number; label: string; at: number } | null;
   highlight?: { name: string; label: string; group?: number }[];

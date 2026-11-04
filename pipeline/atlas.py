@@ -23,7 +23,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 2
+VERSION = 3
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -58,6 +58,9 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   o {{"kind": "profile", "title": "ALTITUD", "unit": "km", "points": [0, 1.5, 3, 4, 3.5, 2, 0] (alturas del terreno de un
   lado a otro), "line": {{"value": 3, "label": "SEGURO ≈ 3 KM"}}, "cruise": 11}} o {{"kind": "thermo", "title": "",
   "unit": "°C", "min": -90, "max": 0, "value": -47, "label": "JET A-1"}}
+- "tags": [{{"text": "14:42", "lat", "lon", "at": "palabra"}}] la cifra, la hora o el año que dice la frase, en DÍGITOS
+  aunque la frase lo diga en palabras («las dos y cuarenta y dos» → "14:42"), como etiqueta de papel junto al sitio del que
+  habla (máx. 3)
 - "night": {{"date": "2026-06-21", "from": "21:30", "to": "22:30", "tz": "Europe/Madrid", "at": "palabra"}} la noche REAL
   sobre el globo (la sombra se calcula con la posición del sol): "from"/"to" en hora local de "tz"; si se mueven, la línea
   día-noche avanza durante la frase. Úsalo SIEMPRE que la frase hable de cuándo amanece, anochece o es de noche en un sitio
@@ -68,7 +71,9 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   "A CORUÑA"]; de tipo "choice" (la pregunta «¿Tú qué harías?»): "title": la pregunta, "lines": las 2 opciones,
   "source": "1" o "2" si la frase revela la respuesta, si no ""
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
-Reglas: la cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos sitios lejanos: mira a su punto medio con
+Reglas: CADA frase añade al menos UNA cosa nueva en pantalla (un punto, una ruta, un círculo, un tag con su cifra, una
+tarjeta…): nunca un globo sin nada nuevo. Zoom 1-2 casi siempre (el globo entero); 3 solo si la frase nombra una ciudad o
+región. La cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos sitios lejanos: mira a su punto medio con
 zoom 1-1,5; una ruta que pasa cerca de un polo: mira al polo); si la frase cita un documento, una ley o a alguien, pon la
 cita en una "card" de tipo "quote" con su fuente; si niega o confirma algo con rotundidad («no está prohibido», «nadie
 sobrevivió»), pon un "stamp"; si la frase da un año con un suceso, una "card" de tipo "date".
@@ -159,9 +164,19 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
         point = None
     camera = {"lat": round(point[0], 4), "lon": round(point[1], 4), "zoom": round(_float(cam.get("zoom"), 1, 6, prev_cam["zoom"]), 2)} \
         if point else dict(prev_cam)
+    # the whole globe most of the time (the reference never crops it under the chapter bar): up to 2, and closer only
+    # for a line that names a city or a region (3.2 at most)
+    named = bool(scene.get("points") or scene.get("tags"))
+    if not named and previous and (previous.get("points") or previous.get("tags")) and \
+            _angle((camera["lat"], camera["lon"]), (prev_cam["lat"], prev_cam["lon"])) < 4:
+        named = True                        # still at the place the last line named: its close view stays
+    camera["zoom"] = min(camera["zoom"], 3.2 if named else 2.0)
     view = str(scene.get("view") or "globe")
     out: dict[str, Any] = {"type": "atlas", "view": view if view in ("globe", "chart", "icon") else "globe",
                            "camera": camera, "dark": bool(scene.get("dark"))}
+    out["tags"] = [{"text": _text(t.get("text"), 4, False, 26), "lat": _point(t)[0] if _point(t) else None,
+                    "lon": _point(t)[1] if _point(t) else None, "at": _at(t.get("at"))}
+                   for t in (scene.get("tags") or [])[:3] if isinstance(t, dict) and str(t.get("text") or "").strip()]
     out["points"] = [{"name": _text(p.get("name"), 3, True, 28), "lat": _point(p)[0], "lon": _point(p)[1], "at": _at(p.get("at"))}
                      for p in (scene.get("points") or [])[:6] if isinstance(p, dict) and _point(p) and str(p.get("name") or "").strip()]
     routes = []
@@ -334,17 +349,68 @@ def fit_camera(scene: dict[str, Any]) -> dict[str, Any]:
     return {**scene, "camera": {"lat": round(lat, 4), "lon": round(lon, 4), "zoom": min(cam["zoom"], zoom)}}
 
 
-def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
-    """A line that stays where the last one was (same camera, nothing new drawn) keeps the last line's dots, routes and
-    rings on the globe, already drawn (the LLM often forgets to repeat them)."""
+LIMITS = {"points": 8, "routes": 8, "rings": 6}
 
-    if not previous or scene.get("view") != "globe" or previous.get("view") != "globe" or scene["camera"] != previous["camera"]:
+
+def _same_place(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    return _angle((a["lat"], a["lon"]), (b["lat"], b["lon"])) < 4 and abs(a["zoom"] - b["zoom"]) < 0.3
+
+
+def _key(kind: str, item: dict[str, Any]) -> Any:
+    if kind == "points":
+        return item.get("name")
+    if kind == "routes":
+        return (tuple(round(x) for x in item["from"]), tuple(round(x) for x in item["to"]))
+    return (round(item["lat"]), round(item["lon"]))
+
+
+def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    """A line that stays where the last one was (about the same camera) keeps what is already drawn there, and adds its
+    own on top: the dots, routes and rings pile up instead of vanishing and coming back at each cut (the LLM rarely
+    repeats them). The zone and the night stay too. A new place starts clean."""
+
+    if not previous or scene.get("view") != "globe" or previous.get("view") != "globe" \
+            or not _same_place(scene["camera"], previous["camera"]):
         return scene
-    if any(scene.get(k) for k in ("points", "routes", "rings")):
+    out = dict(scene)
+    out["camera"] = dict(previous["camera"])            # the same place: no tiny turn of the globe between lines
+    for kind, limit in LIMITS.items():
+        new = list(scene.get(kind) or [])
+        seen = {_key(kind, x) for x in new}
+        kept = [{**x, "at": "", "kept": True} for x in previous.get(kind) or [] if _key(kind, x) not in seen]
+        out[kind] = (kept + new)[-limit:]
+    for name in ("zone", "night", "meridians"):
+        if not scene.get(name) and previous.get(name):
+            out[name] = {**previous[name], "at": "", "kept": True}
+    if not scene.get("highlight") and previous.get("highlight"):
+        out["highlight"] = previous["highlight"]
+    return out
+
+
+FIGURE = re.compile(r"\b(\d{1,2}[:.]\d{2}|1[5-9]\d{2}|20\d{2}|\d+(?:[.,]\d+)?\s?(?:%|km|kilómetros|kilometres|miles|millas|"
+                    r"grados|degrees|°|minutos|minutes|horas|hours|metros|metres|meters|m\b))", re.I)
+
+
+def auto_tag(scene: dict[str, Any], text: str, previous: dict[str, Any] | None) -> dict[str, Any]:
+    """A line that draws nothing new but says a figure («14:42», «30 grados», «1940»): that figure as a paper tag, by the
+    last place named (or the middle of the globe), at its word — never a globe with nothing new on it."""
+
+    if scene.get("view") != "globe":
         return scene
-    kept = {k: [{**x, "at": "", "kept": True} for x in previous.get(k) or []] for k in ("points", "routes", "rings")}
-    zone = scene.get("zone") or ({**previous["zone"], "at": "", "kept": True} if previous.get("zone") else None)
-    return {**scene, **kept, "zone": zone}
+    new = [k for k in ("points", "routes", "rings", "tags") if any(not x.get("kept") for x in scene.get(k) or [])]
+    if new or any(scene.get(k) and not scene[k].get("kept") for k in ("card", "stamp", "headline", "zone", "night", "meridians")):
+        return scene
+    found = FIGURE.search(text)
+    if not found:
+        return scene
+    figure = found.group(1)
+    points = [p for p in scene.get("points") or [] if p.get("lat") is not None]
+    said = text.casefold()
+    # the place the line names, else the last one drawn
+    place = next((p for p in points if str(p.get("name") or "").casefold() in said), points[-1] if points else None)
+    first = figure.split()[0]
+    return {**scene, "tags": [{"text": figure, "lat": place["lat"] if place else None, "lon": place["lon"] if place else None,
+                               "at": first}]}
 
 
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
@@ -378,7 +444,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     previous = None
     for n, (shot_id, _) in enumerate(lines, 1):
         scene = fit_camera(clean(found.get(n) or {}, previous))
-        previous = carry(scene, previous)
+        previous = auto_tag(carry(scene, previous), lines[n - 1][1], previous)
         out[shot_id] = previous
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
@@ -458,7 +524,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
                 elif g.get(name):
                     g[name]["at"] = _frame_of(g[name].get("at", ""), line_words, round(span * 0.2) + stagger)
                     stagger += round(0.35 * fps)
-            for name in ("points", "routes", "rings"):
+            for name in ("points", "routes", "rings", "tags"):
                 for i, item in enumerate(g.get(name) or []):
                     item["at"] = -2 * fps if item.get("kept") else _frame_of(item.get("at", ""), line_words, round(span * 0.15) + i * round(0.25 * fps))
         g["prev"] = (prev or g)["camera"]

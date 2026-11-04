@@ -133,6 +133,8 @@ const DEFAULTS = {
   // speck of dust or a scratch; key lines written word by word in a serif, the key word in keyword colour)
   finish: 'none',
   keyword: '#e0282e',
+  // endStyle: 'grid' (the dark channel canvas) | 'paper' (the atlas page: serif, ink frames, grain)
+  endStyle: 'grid',
 };
 
 export type Brand = Partial<typeof DEFAULTS>;

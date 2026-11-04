@@ -244,6 +244,24 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           </g>
         );
       })}
+      {(g.tags ?? []).map((t, i) => {
+        // the figure the line says («14:42», «1940»): a paper tag pinned by its place, or high on the globe
+        const local = since(t.at);
+        if (local < 0) return null;
+        const placed = t.lat !== null && t.lon !== null && visible(t.lat, t.lon);
+        const [px, py] = placed ? (projection([t.lon as number, t.lat as number]) ?? [cx, cy]) : [cx + (i - 0.5) * 260, cy - R * 0.55];
+        const pop = spring({ frame: local, fps, config: { damping: 12, stiffness: 200 }, durationInFrames: 14 });
+        const w = Math.max(120, t.text.length * 26 + 40);
+        const x = Math.max(40, Math.min(W - w - 40, px + (placed ? 26 : -w / 2)));
+        const y = Math.max(110, py - (placed ? 92 : 30));
+        return (
+          <g key={`tag${i}`} opacity={clamp(local / 5)} transform={`translate(${x + w / 2}, ${y + 30}) scale(${0.85 + 0.15 * pop}) translate(${-(x + w / 2)}, ${-(y + 30)})`}>
+            {placed ? <line x1={px} y1={py} x2={x + 18} y2={y + 60} stroke={PALETTES.paper.ink} strokeWidth={1.6} /> : null}
+            <rect x={x} y={y} width={w} height={60} fill={PALETTES.paper.card} stroke={PALETTES.paper.ink} strokeWidth={1.5} />
+            <text x={x + w / 2} y={y + 42} textAnchor="middle" fontFamily={SERIF} fontSize={40} fill={PALETTES.paper.ink}>{t.text}</text>
+          </g>
+        );
+      })}
       {(g.highlight ?? []).filter((h) => h.label).map((h, i) => {
         const c = COUNTRIES.find((x) => x.properties.name === h.name);
         if (!c) return null;

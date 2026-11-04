@@ -14,7 +14,7 @@ def test_clean_keeps_only_the_vocabulary_and_falls_back_to_the_globe():
                          "rings": [{"lat": -54.8, "lon": -68.3, "km": 99999, "label": "Ushuaia"}],
                          "card": {"kind": "quote", "title": "Tratado", "lines": ["cita"], "at": "dice"},
                          "chart": {"kind": "bars", "bars": [{"label": "787", "value": "330"}]}}, None)
-    assert scene["camera"] == {"lat": -90.0, "lon": 0.0, "zoom": 6.0}
+    assert scene["camera"] == {"lat": -90.0, "lon": 0.0, "zoom": 2.0}          # the whole globe unless a place is named
     assert len(scene["routes"]) == 1 and scene["rings"][0]["km"] == 6000 and scene["rings"][0]["label"] == "USHUAIA"
     assert scene["view"] == "chart" and scene["chart"]["bars"][0]["value"] == 330
     bad = atlas.clean({"view": "icon", "icon": {"name": "unicornio"}}, scene)
@@ -122,3 +122,19 @@ def test_the_real_night_and_the_new_cards():
     assert scene["night"]["clock"] == ["21:20", "22:25"] and scene["night"]["from"][1] > scene["night"]["to"][1]   # the sun moves west
     assert scene["meridians"]["step"] == 15 and scene["highlight"][0]["group"] == 1
     assert scene["card"]["title"].endswith("¿A qué hora te sientas?")
+
+
+def test_lines_in_the_same_place_pile_up_and_a_bare_figure_becomes_a_tag():
+    a = atlas.clean({"camera": {"lat": 45, "lon": 0, "zoom": 2},
+                     "points": [{"name": "Vigo", "lat": 42.2, "lon": -8.7, "at": "Vigo"}]}, None)
+    b = atlas.carry(atlas.clean({"camera": {"lat": 45.5, "lon": 0.5, "zoom": 2},
+                                 "points": [{"name": "Madrid", "lat": 40.4, "lon": -3.7, "at": "Madrid"}]}, a), a)
+    assert [p["name"] for p in b["points"]] == ["VIGO", "MADRID"] and b["points"][0]["kept"] and b["camera"] == a["camera"]
+    c = atlas.auto_tag(atlas.carry(atlas.clean({"camera": a["camera"]}, b), b), "En Vigo, a las 14:42.", b)
+    assert c["tags"] == [{"text": "14:42", "lat": 42.2, "lon": -8.7, "at": "14:42"}]       # by Vigo, the place it names
+    assert atlas.auto_tag(c, "Nada que contar.", b) == c
+    close = atlas.clean({"camera": {"lat": 42, "lon": -4, "zoom": 3}, "points": [{"name": "Vigo", "lat": 42.2, "lon": -8.7}]}, None)
+    again = atlas.carry(atlas.clean({"camera": close["camera"]}, close), close)
+    assert again["camera"]["zoom"] == 3 and again["points"]          # the same close view, its dot kept
+    far = atlas.carry(atlas.clean({"camera": {"lat": -40, "lon": 140, "zoom": 1.5}}, b), b)
+    assert far["points"] == []
