@@ -342,6 +342,11 @@ def run(ctx: RunContext) -> None:
     # shot of that event (pati1.2 sent the same Midori Ito clips to the judge for fifteen Sochi shots)
     turned_down: dict[str, set[str]] = {}
     turned_lock = threading.Lock()
+    # a source whose fragments keep failing the identity or content check (another athlete's name on screen, a man in a
+    # woman's story): after `fallback.source_strikes` (2) such failures it is out for the rest of the video, before the
+    # judge and the download (gym4.0 checked the same team-final video ~25 times: «GUYING, CHOU, not CHUSOVITINA»)
+    strikes: dict[str, int] = {}
+    max_strikes = int(cfg.get("source_strikes", 2))
 
     def resolve(shot_id: str, reason: str) -> tuple[FallbackItem | None, list[str]]:
         nonlocal clip
@@ -368,6 +373,7 @@ def run(ctx: RunContext) -> None:
                        and not overused(o.candidateId, used,
                                         per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
                        and f"{o.candidateId}@{o.start}" not in dead
+                       and not (max_strikes and strikes.get(o.candidateId, 0) >= max_strikes)
                        and not (vet and event_key and f"{o.candidateId}@{o.start}" in turned_down.get(event_key, ()))]
             if not options:
                 return None
@@ -407,6 +413,10 @@ def run(ctx: RunContext) -> None:
                     why = wrong_person(shot_id, ctx.root / media.path, media.kind)
                 if why:
                     tried.append(f"{c.id}: {why}")
+                    with turned_lock:
+                        strikes[c.id] = strikes.get(c.id, 0) + 1
+                        if max_strikes and strikes[c.id] == max_strikes:
+                            print(f"   {c.id}: descartado para el resto del vídeo ({why[:80]})")
                     continue
                 with claim:                    # another shot may have taken the same picture meanwhile
                     if looks_used(ctx.root / media.path, media.kind):

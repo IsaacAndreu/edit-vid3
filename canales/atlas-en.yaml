@@ -32,6 +32,11 @@ ideas:
   about: 'an English YouTube channel of map deep dives on a globe: why something in the world is the way it is (routes no airline flies, borders, seas, climates, the most remote place), five reasons per video, every fact sourced, 8-10 min videos'
   niches: [geography, aviation, routes, borders, oceans, map curiosities]
   words: 1200
+  # canales del mismo formato: el radar trae cada día sus vídeos que más superan a su canal → ideas para el piloto
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions", "@PolyMatter"]
+
+lab:
+  queries: ["why do planes avoid", "why nobody lives in", "strangest border in the world", "why this map looks"]
 
 dubbing:
   enabled: false

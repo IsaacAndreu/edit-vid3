@@ -214,3 +214,46 @@ def summary(ctx: RunContext) -> str:
     wrong = sum(1 for c in claims if c["verdict"] == "wrong")
     unverified = sum(1 for c in claims if c["verdict"] == "unverified")
     return f"Verificación del guion: ❌ {wrong} a corregir · ⚠️ {unverified} sin confirmar (verificacion.md)"
+
+
+# --- the gate before the voice -------------------------------------------------------------------------------------
+
+ACCEPTED = ".datos-ok"          # in the video's folder: you checked the «wrong» ones yourself, record the voice anyway
+
+
+def blocks_voice(ctx: RunContext) -> bool:
+    """`factcheck.block_voice` (on by default in atlas channels, whose whole video is its facts)."""
+
+    from . import atlas
+
+    value = ctx.section("factcheck").get("block_voice")
+    return bool(atlas.active(ctx) if value is None else value)
+
+
+def gate(ctx: RunContext) -> list[dict[str, Any]]:
+    """Before GenAIPro records the narration: the script checked (once per version of guion.txt, the result kept in
+    work/<slug>/factcheck.json and out/<slug>/verificacion.md) and the claims found WRONG returned — a wrong date found
+    after recording means paying the voice again. «Unverified» never blocks; a check that could not run never blocks."""
+
+    import hashlib
+
+    script = ctx.materials_dir / "guion.txt"
+    if not script.is_file() or (ctx.materials_dir / ACCEPTED).is_file():
+        return []
+    digest = hashlib.sha256(script.read_bytes()).hexdigest()[:16]
+    path = ctx.work_dir / OUTPUT
+    try:
+        result = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        result = None
+    if not result or result.get("scriptHash") != digest:
+        try:
+            result = check(ctx)
+        except Exception as error:
+            print(f"   Verificación antes de la voz no disponible ({type(error).__name__}): la voz se graba igual")
+            return []
+        result["scriptHash"] = digest
+        ctx.write_json(OUTPUT, result)
+        ctx.out_dir.mkdir(parents=True, exist_ok=True)
+        (ctx.out_dir / REPORT).write_text(report(result), encoding="utf-8")
+    return [c for c in result.get("claims", []) if c.get("verdict") == "wrong"]

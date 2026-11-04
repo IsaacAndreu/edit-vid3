@@ -85,3 +85,24 @@ def test_the_camera_fits_what_is_drawn_and_a_line_in_the_same_place_keeps_it():
     assert nxt["routes"] and nxt["routes"][0]["kept"]
     moved = atlas.carry(atlas.clean({"camera": {"lat": 50, "lon": 0, "zoom": 2}}, fitted), fitted)
     assert not moved["routes"]
+
+
+def test_autopilot_asks_an_atlas_channel_for_a_question_in_five_reasons(monkeypatch, tmp_path: Path):
+    from pipeline import autopilot, llm
+
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "config.yaml").write_text("align: {language: es}\n")
+    (tmp_path / "canales" / "atlas-es.yaml").write_text("visual: {style: atlas}\nideas: {about: mapas}\n")
+    seen = {}
+
+    def fake(ctx, **kw):
+        seen.update(kw)
+        return {"title": "¿Por qué nadie vive aquí?"}
+
+    monkeypatch.setattr(llm, "complete_json", fake)
+    import pipeline.porque as porque
+    import pipeline.repeticion as repeticion
+    monkeypatch.setattr(porque, "lessons", lambda root, ch: [])
+    monkeypatch.setattr(repeticion, "recent_titles", lambda root, ch: [])
+    idea = autopilot.idea_from(tmp_path, "atlas-es", {"title": "Why planes avoid Antarctica", "channel": "X", "views": 1, "ratio": 50})
+    assert idea["title"] and "cinco razones" in seen["system"] and "PREGUNTA" in seen["system"]

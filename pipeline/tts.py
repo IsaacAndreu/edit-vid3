@@ -566,6 +566,12 @@ def ensure(ctx: Any, wait: bool = True) -> bool:
     try:
         if voice_file.is_file():                 # made while we waited for the lock
             return False
+        from . import factcheck
+
+        if factcheck.blocks_voice(ctx):          # an atlas: its facts checked before paying the narration
+            wrong = factcheck.gate(ctx)
+            if wrong:
+                raise WrongFacts(ctx, wrong)
         made = _make(ctx, voice, script, voice_file)
         (ctx.materials_dir / FAILED).unlink(missing_ok=True)
         return made
@@ -575,6 +581,17 @@ def ensure(ctx: Any, wait: bool = True) -> bool:
         raise
     finally:
         lock.unlink(missing_ok=True)
+
+
+class WrongFacts(RuntimeError):
+    """The fact check found claims of the script wrong: the narration waits for the script to be fixed (or for
+    materiales/<vídeo>/.datos-ok, when you checked them yourself)."""
+
+    def __init__(self, ctx: Any, wrong: list[dict[str, Any]]):
+        lines = "\n".join(f"• «{(c.get('quote') or c.get('claim') or '')[:120]}»"
+                          + (f" → {str(c['correction'])[:120]}" if c.get("correction") else "") for c in wrong[:6])
+        super().__init__(f"{len(wrong)} dato(s) del guion parecen incorrectos; la voz espera a que corrijas guion.txt "
+                         f"(o crea materiales/{ctx.slug}/.datos-ok si ya lo comprobaste):\n{lines}")
 
 
 def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bool:

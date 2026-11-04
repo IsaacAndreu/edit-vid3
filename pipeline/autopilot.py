@@ -32,6 +32,19 @@ No afirmes cifras, fechas ni declaraciones que no puedas sostener: lo que haya q
 """.strip()
 
 
+# an atlas channel (pipeline/atlas.py): the idea is a QUESTION about the world that a globe can answer, in five reasons
+ATLAS_IDEA = """
+ESTE CANAL ES DE MAPAS SOBRE UN GLOBO: la idea tiene que ser una PREGUNTA sobre el mundo que se responde ENSEÑANDO un
+mapa («¿Por qué los aviones evitan la Antártida?», «¿Por qué nadie vive en el centro de Australia?»): algo que el
+espectador ve raro en el globo (una ruta que nadie hace, una frontera, un vacío, una línea). El "title" es esa pregunta o
+su versión afirmativa con misterio («El atajo sobre la Antártida que ninguna aerolínea toma»). El "hook" incluye un
+experimento que el espectador puede hacer en un globo, con su cifra, y la explicación fácil negada («y no, no está
+prohibido»). El "outline" son EXACTAMENTE: el gancho; cinco razones (cada una «Razón N: título de 2-4 palabras — el dato
+clave con su cifra y su fuente probable»), la primera sorprendente y la última una historia real con fecha; el giro «y
+aun así…»; el cierre que repite las cinco. Todo dato dudoso va en "research".
+""".strip()
+
+
 def _read(root: Path) -> dict[str, Any]:
     try:
         return json.loads((root / STATE).read_text("utf-8"))
@@ -137,7 +150,10 @@ def idea_from(root: Path, channel: str, video: dict[str, Any]) -> dict[str, Any]
     ctx = RunContext.create("_piloto", root=root, channel=channel)
     recent = recent_titles(root, channel)
     about = str(ctx.section("ideas").get("about") or channel)
-    result = complete_json(ctx, stage="piloto", section="planner", system=IDEA_SYSTEM.replace("{about}", about),
+    from . import atlas
+
+    system = IDEA_SYSTEM.replace("{about}", about) + ("\n" + ATLAS_IDEA if atlas.active(ctx) else "")
+    result = complete_json(ctx, stage="piloto", section="planner", system=system,
                            max_tokens=1500, use_cache=False,
                            user=(f"VÍDEO QUE FUNCIONA: «{video.get('title')}» ({video.get('channel')}), "
                                  f"{video.get('views')} visitas, x{video.get('ratio')} lo normal de su canal.\n"

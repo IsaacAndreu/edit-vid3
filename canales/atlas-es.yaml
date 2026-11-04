@@ -32,6 +32,11 @@ ideas:
   about: 'un canal de YouTube en español de explicaciones con mapas sobre un globo: por qué algo del mundo es como es (rutas que nadie vuela, fronteras, mares, climas, el sitio más remoto), con cinco razones por vídeo, datos con fuente, vídeos de 8-10 min'
   niches: [geografía, aviación, rutas, fronteras, océanos, curiosidades del mapa]
   words: 1200
+  # canales del mismo formato: el radar trae cada día sus vídeos que más superan a su canal → ideas para el piloto
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions", "@PolyMatter"]
+
+lab:
+  queries: ["por qué los aviones no vuelan", "por qué nadie vive en", "frontera más extraña del mundo", "por qué este mapa"]
 
 dubbing:
   enabled: true

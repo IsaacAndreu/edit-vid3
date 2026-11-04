@@ -1,11 +1,12 @@
 import type { FC, ReactNode } from 'react';
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoArea, geoCircle, geoDistance, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
+import { geoCircle, geoDistance, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world50 from 'world-atlas/countries-50m.json';
 import land50 from 'world-atlas/land-50m.json';
 import land110 from 'world-atlas/land-110m.json';
+import bathymetry from '../../data/bathymetry.json';
 import world110 from 'world-atlas/countries-110m.json';
 import type { AtlasGraphic } from '../../graphics';
 import { theme } from '../../theme';
@@ -28,20 +29,22 @@ const COUNTRIES = (feature(world50 as never, (world50 as never as { objects: { c
 const ICE = new Set(['Antarctica', 'Greenland']);
 const LAND = COUNTRIES.filter((c) => !ICE.has(c.properties.name));
 const ICY = COUNTRIES.filter((c) => ICE.has(c.properties.name));
-// one merged landmass (no borders, like a relief map); the shelf only around the big ones (no halo dots on every islet)
+// one merged landmass (no borders, like a relief map)
 const LAND_FC = feature(land50 as never, (land50 as never as { objects: { land: never } }).objects.land) as unknown as GeoPermissibleObjects;
 // the whole globe on screen: Natural Earth 1:110m is plenty (and ~10x fewer points to project every frame)
 const LAND_FC_110 = feature(land110 as never, (land110 as never as { objects: { land: never } }).objects.land) as unknown as GeoPermissibleObjects;
 const ICE_110 = { type: 'FeatureCollection', features: (feature(world110 as never, (world110 as never as { objects: { countries: never } }).objects.countries) as never as { features: Feature[] }).features.filter((c) => ICE.has(c.properties.name)) } as unknown as GeoPermissibleObjects;
-const BIG = LAND.filter((c) => geoArea(c as never) > 0.0006);
-const LAND_ALL = { type: 'FeatureCollection', features: [...BIG, ...ICY] } as unknown as GeoPermissibleObjects;
 const ICE_FC = { type: 'FeatureCollection', features: ICY } as unknown as GeoPermissibleObjects;
 const GRATICULE = geoGraticule10();
+// Natural Earth's bathymetry (scripts/build_bathymetry.py): the sea deeper than 200 / 2,000 / 4,000 / 6,000 m
+const DEPTHS = (bathymetry as unknown as { features: { properties: { depth: number } }[] }).features as unknown as (GeoPermissibleObjects & { properties: { depth: number } })[];
 
 const PALETTES = {
-  paper: { page: '#ECE4D1', pageEdge: '#D9CFB8', ink: '#1E2833', soft: '#6B6355', oceanIn: '#B9CFDD', oceanOut: '#86A8C0',
+  paper: { page: '#ECE4D1', pageEdge: '#D9CFB8', ink: '#1E2833', soft: '#6B6355', oceanIn: '#D6E4EA', oceanOut: '#C3D6E0',
+           depths: ['#BFD3DF', '#A9C4D5', '#93B4C9', '#82A6BE'],
            shelf: '#D3E2EA', land: '#E3D4B1', coast: '#8C7A5A', ice: '#F6F4EE', grid: 'rgba(30,40,51,0.07)', rim: '#1E2833', card: '#F4EEDF' },
-  dark: { page: '#2A323B', pageEdge: '#1D232A', ink: '#E9E3D6', soft: '#9AA3AC', oceanIn: '#3E566B', oceanOut: '#2C4152',
+  dark: { page: '#2A323B', pageEdge: '#1D232A', ink: '#E9E3D6', soft: '#9AA3AC', oceanIn: '#4A6377', oceanOut: '#41596C',
+          depths: ['#3F576B', '#364D60', '#2E4456', '#283C4D'],
           shelf: '#4C667B', land: '#8E9FAE', coast: '#B7C3CD', ice: '#EEF2F5', grid: 'rgba(233,227,214,0.06)', rim: '#9FB0BE', card: '#F4EEDF' },
 };
 type Palette = typeof PALETTES.paper;
@@ -94,10 +97,8 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   const ink = p.ink;
   const red = accent;
   const since = (at: number) => frame - at;
-  const shelf = Math.max(5, R * 0.028);
   const highlighted = new Set((g.highlight ?? []).map((h) => h.name));
   const fine = R > 760;                      // close in: the 1:50m coast
-  const shelfPath = path(fine ? LAND_ALL : LAND_FC_110) ?? '';
 
   return (
     <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
@@ -116,9 +117,8 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
       <circle cx={cx} cy={cy} r={R} fill="url(#ocean)" />
       <g clipPath="url(#disc)">
         <path d={path(GRATICULE as never) ?? ''} fill="none" stroke={p.grid} strokeWidth={1} />
-        {/* the continental shelf: a pale halo along every coast, like a relief map's shallow water */}
-        <path d={shelfPath} fill="none" stroke={p.shelf} strokeWidth={shelf * 2.4} strokeLinejoin="round" opacity={0.28} />
-        <path d={shelfPath} fill="none" stroke={p.shelf} strokeWidth={shelf * 1.1} strokeLinejoin="round" opacity={0.45} />
+        {/* the ocean floor: each depth band darker, like a relief map (the shallow shelf stays pale along the coasts) */}
+        {DEPTHS.map((d, i) => <path key={`depth${i}`} d={path(d) ?? ''} fill={p.depths[i] ?? p.depths[p.depths.length - 1]} />)}
         <path d={path(fine ? LAND_FC : LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} strokeLinejoin="round" />
         <path d={path(fine ? ICE_FC : ICE_110) ?? ''} fill={p.ice} stroke={p.coast} strokeWidth={0.6} strokeLinejoin="round" />
         {COUNTRIES.filter((c) => highlighted.has(c.properties.name)).map((c, i) => (
