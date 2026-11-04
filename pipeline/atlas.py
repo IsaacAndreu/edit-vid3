@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 6
+VERSION = 7
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -70,7 +70,8 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   que se comparan)
 - "night": {{"date": "2026-06-21", "from": "21:30", "to": "22:30", "tz": "Europe/Madrid", "at": "palabra"}} la noche REAL
   sobre el globo (la sombra se calcula con la posición del sol): "from"/"to" en hora local de "tz"; si se mueven, la línea
-  día-noche avanza durante la frase. Úsalo SIEMPRE que la frase hable de cuándo amanece, anochece o es de noche en un sitio
+  día-noche avanza durante la frase. Úsalo SIEMPRE que la frase hable de cuándo amanece, anochece o es de noche en un sitio.
+  La noche se queda sola en las frases siguientes: no la repitas; cuando el guion ya no hable de ella, "night": {{"off": true}}
 - "meridians": {{"step": 15, "labels": true, "at": "palabra"}} los meridianos cada N grados (husos horarios, «15 grados por
   hora»), o null
 - en "highlight" puedes añadir "group": 0-3 para tintar países por grupos (husos horarios: 0 = UTC+0, 1 = UTC+1…)
@@ -223,7 +224,8 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
                          "group": int(_float(h.get("group"), 0, 3, 0))}
                         for h in (scene.get("highlight") or [])[:12] if isinstance(h, dict) and str(h.get("name") or "").strip()]
     night = scene.get("night") if isinstance(scene.get("night"), dict) else None
-    out["night"] = _night(night) if night else None
+    out["night"] = _night(night) if night and not night.get("off") else None
+    out["nightOff"] = bool(night and night.get("off"))
     out["countries"] = [{"name": str(c.get("name")).strip(), "label": _text(c.get("label"), 3, True, 26), "at": _at(c.get("at"))}
                         for c in (scene.get("countries") or [])[:2]
                         if isinstance(c, dict) and str(c.get("name") or "").strip() in flag_codes()]
@@ -324,7 +326,8 @@ def _night(night: dict[str, Any]) -> dict[str, Any] | None:
         return None
     end = at(night.get("to")) or start
     return {"from": subsolar(start), "to": subsolar(end), "clock": [start.astimezone(zone).strftime("%H:%M"),
-            end.astimezone(zone).strftime("%H:%M")], "at": _at(night.get("at"))}
+            end.astimezone(zone).strftime("%H:%M")], "at": _at(night.get("at")),
+            "spec": [str(night.get("date")), str(night.get("from") or night.get("time")), str(night.get("to")), str(night.get("tz"))]}
 
 
 _FLAGS: dict[str, str] | None = None
@@ -443,6 +446,7 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     own on top: the dots, routes and rings pile up instead of vanishing and coming back at each cut (the LLM rarely
     repeats them). The zone and the night stay too. A new place starts clean."""
 
+    scene = carry_night(scene, previous)
     if not previous or scene.get("view") != "globe" or previous.get("view") != "globe" \
             or not _same_place(scene["camera"], previous["camera"]):
         return scene
@@ -453,12 +457,36 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
         seen = {_key(kind, x) for x in new}
         kept = [{**x, "at": "", "kept": True} for x in previous.get(kind) or [] if _key(kind, x) not in seen]
         out[kind] = (kept + new)[-limit:]
-    for name in ("zone", "night", "meridians"):
+    for name in ("zone", "meridians"):
         if not scene.get(name) and previous.get(name):
             out[name] = {**previous[name], "at": "", "kept": True}
     if not scene.get("highlight") and previous.get("highlight"):
         out["highlight"] = previous["highlight"]
     return out
+
+
+NIGHT_LINES = 10      # how many lines a night stays on its own
+
+
+def carry_night(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    """The night is not redrawn line by line (it came and went every 2-3 s, its sun jumping back to the first hour):
+    once on, it stays — the sun where the last line left it — while the camera stays within 50° of it, for up to
+    NIGHT_LINES lines, until a line sets another night or switches it off ("night": {"off": true})."""
+
+    if scene.get("nightOff") or not previous or not previous.get("night"):
+        return scene
+    if scene.get("night") and scene["night"].get("spec") != previous["night"].get("spec"):
+        return scene                              # another night: it starts its own sweep
+    # (the same night written again by the LLM continues where it was, instead of sweeping again from the start)
+    if scene.get("view") not in ("globe", "sat") or previous.get("view") not in ("globe", "sat"):
+        return scene
+    night = previous["night"]
+    streak = int(night.get("streak", 0)) + 1
+    cam, before = scene["camera"], previous["camera"]
+    if streak > NIGHT_LINES or _angle((cam["lat"], cam["lon"]), (before["lat"], before["lon"])) > 50:
+        return scene
+    return {**scene, "night": {**night, "from": night["to"], "clock": [night["clock"][1], night["clock"][1]],
+                               "at": "", "kept": True, "streak": streak}}
 
 
 FIGURE = re.compile(r"\b(\d{1,2}[:.]\d{2}|1[5-9]\d{2}|20\d{2}|\d+(?:[.,]\d+)?\s?(?:%|km|kilómetros|kilometres|miles|millas|"

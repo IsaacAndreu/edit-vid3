@@ -173,3 +173,16 @@ def test_a_named_country_gets_its_flag():
     assert atlas.flag_codes()["Spain"] == "es" and atlas.flag_codes()["Poland"] == "pl"
     scene = atlas.clean({"countries": [{"name": "Spain", "label": "España", "at": "España"}, {"name": "Atlantis"}]}, None)
     assert scene["countries"] == [{"name": "Spain", "label": "ESPAÑA", "at": "España"}]        # unknown names dropped
+
+
+def test_the_night_stays_and_its_sun_never_jumps_back():
+    night = {"date": "2026-06-21", "from": "21:20", "to": "22:25", "tz": "Europe/Madrid"}
+    a = atlas.clean({"camera": {"lat": 47, "lon": 6, "zoom": 1.8}, "night": night}, None)
+    b = atlas.carry(atlas.clean({"camera": {"lat": 45, "lon": 0, "zoom": 1.4}}, a), a)          # moved a bit, no night given
+    assert b["night"]["kept"] and b["night"]["from"] == a["night"]["to"] == b["night"]["to"]
+    c = atlas.carry(atlas.clean({"camera": {"lat": 45, "lon": 0, "zoom": 1.4}, "night": night}, b), b)   # the same night again
+    assert c["night"]["from"] == a["night"]["to"]
+    off = atlas.carry(atlas.clean({"camera": {"lat": 45, "lon": 0, "zoom": 1.4}, "night": {"off": True}}, c), c)
+    assert off["night"] is None
+    far = atlas.carry(atlas.clean({"camera": {"lat": -30, "lon": 140, "zoom": 1.4}}, c), c)
+    assert far["night"] is None                                                                     # another part of the world
