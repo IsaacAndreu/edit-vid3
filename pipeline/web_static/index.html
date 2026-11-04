@@ -350,11 +350,24 @@ const chColor = (name) => name ? `hsl(${hue(name)} 70% 58%)` : "var(--muted)";
 let homeKind = (() => { try { return localStorage.getItem("inicio:tipo") || ""; } catch (e) { return ""; } })();   // "" | videos | shorts
 window.pickKind = (k) => { homeKind = k; try { localStorage.setItem("inicio:tipo", k); } catch (e) {} drawHome(); };
 // the same block twice: the long videos, then the Shorts (each with its own count)
+// «Para subir» and «En cola» can hide their Shorts (remembered in this browser): one line with how many and «Mostrar»
+let hiddenShorts = (() => { try { return JSON.parse(localStorage.getItem("inicio:ocultarShorts") || "{}"); } catch (e) { return {}; } })();
+window.toggleShorts = (key) => { hiddenShorts[key] = !hiddenShorts[key];
+  try { localStorage.setItem("inicio:ocultarShorts", JSON.stringify(hiddenShorts)); } catch (e) {} drawHome(); };
 function splitBlock(title, list, opts = {}) {
   if (homeKind) return block(title, list, opts);
   const longs = list.filter((v) => !v.short), shorts = list.filter((v) => v.short);
-  if (!shorts.length || !longs.length) return block(`${title}${shorts.length ? " · 📱 Shorts" : ""}`, list, opts);
-  return block(`${title} · 🎬 Vídeos`, longs, opts) + block(`${title} · 📱 Shorts`, shorts, {...opts, id: opts.id ? opts.id + "-s" : ""});
+  const key = opts.hideShorts;
+  if (key && shorts.length && hiddenShorts[key]) {
+    const line = `<div class="block"><div class="bh"><b>${title} · 📱 Shorts<span class="count">${shorts.length}</span></b>
+      <span class="small"><span class="muted">ocultos</span> <button onclick="toggleShorts('${key}')">Mostrar</button></span></div></div>`;
+    return (longs.length ? block(longs.length && shorts.length ? `${title} · 🎬 Vídeos` : title, longs, opts) : "") + line;
+  }
+  const hide = key ? ` <button onclick="event.preventDefault();event.stopPropagation();toggleShorts('${key}')">Ocultar</button>` : "";
+  if (!shorts.length || !longs.length) return block(`${title}${shorts.length ? " · 📱 Shorts" : ""}`, list,
+    shorts.length && key ? {...opts, more: (opts.more || "") + hide} : opts);
+  return block(`${title} · 🎬 Vídeos`, longs, opts)
+    + block(`${title} · 📱 Shorts`, shorts, {...opts, id: opts.id ? opts.id + "-s" : "", more: key ? hide.trim() : opts.more});
 }
 let homeChannel = (() => { try { return localStorage.getItem("inicio:canal") || ""; } catch (e) { return ""; } })();
 
@@ -449,8 +462,8 @@ function drawHome() {               // the channel buttons redraw from what is a
     <div class="chiprow">${[["", "Todo"], ["videos", "🎬 Vídeos"], ["shorts", "📱 Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}
       <span class="muted">${all.filter((v) => (!homeChannel || v.channel === homeChannel) && (!k || (k === "shorts" ? v.short : !v.short))).length}</span></button>`).join("")}</div>
     ${splitBlock("▶ Haciéndose ahora", by("haciendo"), {cls: "now", id: "h-now"})}
-    ${splitBlock("📤 Para subir", toUpload, {more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
-    ${splitBlock("⏳ En cola", queue, {more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
+    ${splitBlock("📤 Para subir", toUpload, {hideShorts: "subir", more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
+    ${splitBlock("⏳ En cola", queue, {hideShorts: "cola", more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
       right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API " + esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
         : v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
     ${splitBlock("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
