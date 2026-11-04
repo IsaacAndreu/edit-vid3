@@ -99,7 +99,7 @@ def fact_sources(ctx: RunContext, budget: int) -> str:
         lines.append(f"{claim[:90]}{'…' if len(claim) > 90 else ''}: {url}")
     if not lines:
         return ""
-    head = "Sources" if str(ctx.section("align").get("language", "es"))[:2] == "en" else "Fuentes"
+    head = {"en": "Sources", "pt": "Fontes"}.get(str(ctx.section("align").get("language", "es"))[:2], "Fuentes")
     text = head
     for line in lines:
         if len(text) + len(line) + 1 > budget:

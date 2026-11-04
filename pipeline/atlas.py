@@ -137,6 +137,18 @@ WRITING = {
            "is a true story with its exact date and time; 5) halfway, ONE sentence: «If you like seeing the world through "
            "maps like this, subscribe»; 6) the twist «and yet, sometimes…»; 7) the close repeats the five reasons in one "
            "line each and returns to the hook's image. Every fact checkable: mark [CHECK] anything unsure."),
+    "pt": ("ESTE CANAL SÃO MAPAS EXPLICADOS SOBRE UM GLOBO, SEM FILMAGEM: rotas, círculos de alcance, cartões de papel e "
+           "algum gráfico. Estrutura (8-10 min, ~1.200 palavras, frases de 5-12 palavras): 1) o gancho olhando o mapa (um "
+           "contraste: «lá em cima, centenas de voos; aqui embaixo, quase nada»), a pergunta do título, um experimento que "
+           "o espectador pode fazer («pegue um mapa e coloque o dedo no Brasil») com seu número, e a explicação fácil "
+           "negada («e não, não é proibido» + a citação literal da fonte); 2) a promessa: «São cinco motivos. O primeiro "
+           "não tem nada a ver com X. E o último custou N vidas»; 3) CINCO motivos, SEM títulos «## » (o vídeo nunca para "
+           "num título): cada um anunciado pela voz («Motivo número um: não há ninguém para quem voar») e feito de: o dado "
+           "ou a regra com seu número, o mapa que o demonstra, a nuance «na prática…»; ligue cada motivo ao seguinte "
+           "(«mas mesmo que…, esbarraria no segundo problema»); 4) o último motivo é uma história real com data exata; "
+           "5) no meio, UMA frase: «Se você gosta de ver o mundo através de mapas como este, se inscreva»; 6) a virada «e "
+           "mesmo assim, às vezes…»; 7) o fechamento repete os cinco motivos numa linha cada e volta à imagem do gancho. "
+           "Português do Brasil. Cada dado verificável: marque [CONFERIR] o que não for seguro."),
 }
 
 
@@ -613,7 +625,8 @@ def _as_written(ctx: RunContext, title: str) -> str:
 
 
 SAT_CREDIT = {"es": "Imagen: Sentinel-2 cloudless de EOX (CC BY 4.0), datos Copernicus Sentinel modificados",
-              "en": "Imagery: Sentinel-2 cloudless by EOX (CC BY 4.0), contains modified Copernicus Sentinel data"}
+              "en": "Imagery: Sentinel-2 cloudless by EOX (CC BY 4.0), contains modified Copernicus Sentinel data",
+              "pt": "Imagem: Sentinel-2 cloudless da EOX (CC BY 4.0), dados Copernicus Sentinel modificados"}
 
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 
