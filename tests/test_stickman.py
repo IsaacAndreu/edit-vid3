@@ -33,3 +33,21 @@ def test_the_footage_stages_leave_valid_empty_results(tmp_path):
         stickman.skip(ctx, stage)
     for module in (sourcing, analysis, judge, ingest, people, fallback, coldopen):
         assert module.validate(ctx) is not False
+
+
+def test_a_drawn_video_skips_the_footage_stages_without_waiting_for_the_network_turn(tmp_path, monkeypatch):
+    from pipeline import runner
+
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "atlas"}})
+    skipped = []
+
+    def no_turn(*_args, **_kwargs):
+        raise AssertionError("a drawn video queued for the network turn")
+
+    monkeypatch.setattr(runner, "turn", no_turn)
+    monkeypatch.setattr(stickman, "skip", lambda _ctx, name: skipped.append(name))
+    stage = runner.Stage("sourcing", lambda c: [c.work_dir / "x.json"], lambda c: [], lambda c: None)
+    monkeypatch.setattr(runner, "STAGES", [stage])
+    monkeypatch.setattr(runner, "STAGE_NAMES", ["sourcing"])
+    runner.run_stages(ctx, force={"sourcing"})
+    assert skipped == ["sourcing"]

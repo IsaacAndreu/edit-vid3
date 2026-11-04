@@ -9,6 +9,8 @@ stages that read its output.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 import hashlib
 import json
 import os
@@ -204,13 +206,16 @@ def run_stages(
                                encoding="utf-8")
             from .housekeeping import Sampler
 
+            from . import stickman
+
+            skipped = stage.name in stickman.SKIP and stickman.drawn(ctx)    # drawn in code: no footage
             try:
-                with turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):     # two videos at once in the queue: one on the network, one on the CPU
+                # a drawn video skips these stages without queueing for the network turn (atlas1pt waited behind
+                # other videos' searches with «esperando turno de red» for a stage it never runs)
+                with nullcontext() if skipped else turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):
                     started = time.monotonic()
                     with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
-                        from . import stickman
-
-                        if stage.name in stickman.SKIP and stickman.drawn(ctx):    # drawn in code: no footage
+                        if skipped:
                             stickman.skip(ctx, stage.name)
                         else:
                             stage.run(ctx)
