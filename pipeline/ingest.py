@@ -40,6 +40,17 @@ OUTPUT = "media"
 MANIFEST = "_ingest.json"
 FPS = 30
 VIDEO_SIZE = (1920, 1080)
+
+
+def cap_height(fmt: str, max_height: Any) -> str:
+    """`ingest.max_height` (720): every height<=N of the yt-dlp format lowered to it. Half the MB per clip and
+    faster downloads; the clip is scaled to 1920x1080 as before. Not part of the stage's fingerprint
+    (runner.SPEED_KEYS): clips already downloaded stay as they are, never downloaded again for it."""
+
+    if not max_height:
+        return fmt
+    limit = int(max_height)
+    return re.sub(r"height<=(\d+)", lambda m: f"height<={min(int(m.group(1)), limit)}", fmt)
 IMAGE_SIZE = (2304, 1296)
 # Sources narrower than this (4:3, square, vertical phone video) are not cropped to 16:9: they keep
 # their frame and the timeline shows them as a framed card over the channel background.
@@ -221,7 +232,8 @@ class Materialiser:
             else:
                 hd = self.youtube.download_range(
                     video_id, start, start + duration + 0.5,  # margin: a stream copy may stop a hair early
-                    fmt=str(cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
+                    fmt=cap_height(str(cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
+                                   cfg.get("max_height")),
                     prefix="hd",
                 )
             file_start = float(hd.stem.split("_")[1])

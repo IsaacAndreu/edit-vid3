@@ -161,6 +161,7 @@ judge:
 
 ingest:
   format: "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]"   # HD del tramo elegido
+  max_height: 720                  # baja los tramos a 720p (la mitad de MB, más rápido); se escalan a 1080 igual. null = 1080
   lut: assets/lut.cube             # LUT común; si no existe, se omite
   crf: 18                          # calidad x264 (menor = mejor)
   preset: veryfast

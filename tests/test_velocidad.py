@@ -55,3 +55,13 @@ def test_time_report_names_the_slowest_stage(tmp_path: Path):
     assert tiempos.slowest(work).startswith("buscar material 2 h 00 min (75")
     text = tiempos.write(tmp_path)
     assert "60 s por plano" in text and "Terceros · 1 vídeos" in text and (tmp_path / tiempos.REPORT).is_file()
+
+
+def test_ingest_max_height_lowers_the_format_and_is_not_in_the_fingerprint():
+    from pipeline.ingest import cap_height
+    from pipeline.runner import _without_speed
+
+    fmt = "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]"
+    assert cap_height(fmt, 720) == "bv*[height<=720][vcodec^=avc1]/bv*[height<=720]/b[height<=720]"
+    assert cap_height(fmt, None) == fmt and cap_height("b[height<=480]", 720) == "b[height<=480]"
+    assert _without_speed({"format": fmt, "max_height": 720}) == _without_speed({"format": fmt})

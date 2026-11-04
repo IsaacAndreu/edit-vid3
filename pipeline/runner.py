@@ -91,6 +91,7 @@ SPEED_KEYS = frozenset({
     "bot_breaker_minutes", "bot_breaker_share", "range_stall_seconds", "region", "metadata_proxy", "metadata_proxy_light", "metadata_proxy_mb_per_request",
     "metadata_proxy_usd_per_gb",
     "metadata_proxy_retries", "query_merge", "max_details_per_shot",
+    "max_height",       # ingest: the HD clips already downloaded are not downloaded again at the new height
     # the judge outside the hook (judge.py): only for the shots judged from now on, never a reason to judge again
     "rounds_rest", "model_rest", "usd_per_mtok_rest", "lessons_refresh",
 })
