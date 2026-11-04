@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
 import re
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
+
+from .youtube_cache import CachedInfo, ClipLibrary, InfoCache
+from .youtube_proxy import ProxyConfig, new_session_id, scrub_proxy_env
+from .youtube_traffic import TrafficMeter
 
 
 @dataclass(frozen=True)
@@ -34,16 +40,45 @@ class YouTubeCandidate:
     subtitles: tuple[SubtitleCue, ...] = ()
 
 
+@dataclass(frozen=True)
+class StoryboardFrame:
+    """One thumbnail of the seek-bar storyboard: a crop inside a mosaic image."""
+
+    time_seconds: float
+    fragment_url: str
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class YouTubeClientError(RuntimeError):
     """Actionable failure from YouTube discovery or clip preparation."""
 
 
 class YouTubeClient:
-    """Bounded, unauthenticated YouTube search and short-clip downloader."""
+    """Bounded, unauthenticated YouTube search and short-clip downloader.
+
+    Network discipline, from most to least traffic saved:
+
+    * yt-dlp extracts a video's info dict (page + player + JS challenges) once
+      per video id. The sanitized dict is stored on disk and re-fed with
+      ``process_ie_result(info, download=True)`` for subtitles and every clip,
+      exactly like ``--load-info-json``, while its media URLs stay valid.
+    * Searches run ``extract_flat`` so results are not individually extracted.
+    * Clips are capped at 720p/30fps and the smallest encoding at that size.
+    * Prepared clips go to a shared library keyed by (video, range) so any run
+      can reuse them; metadata and media traffic can use different proxies with
+      a sticky session; local ffmpeg/ffprobe never inherit proxy variables.
+    * Every byte that goes through each proxy role is counted in ``traffic``.
+    """
 
     MAX_SEARCH_RESULTS = 5
     MAX_CLIP_SECONDS = 5.0
     MIN_VIDEO_SECONDS = 5.0
+    DEFAULT_MAX_HEIGHT = 720
+    DEFAULT_MAX_FPS = 30
+    INFO_EXPIRY_MARGIN_SECONDS = 15 * 60
     _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
     _TAG_RE = re.compile(r"<[^>]*>")
 
@@ -52,14 +87,40 @@ class YouTubeClient:
         *,
         max_duration_seconds: float = 1800,
         socket_timeout_seconds: float = 20,
+        proxies: ProxyConfig | None = None,
+        cache_dir: Path | None = None,
+        clip_library_dir: Path | None = None,
+        max_height: int = DEFAULT_MAX_HEIGHT,
+        max_fps: int = DEFAULT_MAX_FPS,
+        info_expiry_margin_seconds: float = INFO_EXPIRY_MARGIN_SECONDS,
+        traffic: TrafficMeter | None = None,
     ) -> None:
         if not math.isfinite(max_duration_seconds) or max_duration_seconds <= 0:
             raise ValueError("max_duration_seconds must be a finite positive number.")
         if not math.isfinite(socket_timeout_seconds) or socket_timeout_seconds <= 0:
             raise ValueError("socket_timeout_seconds must be a finite positive number.")
+        if isinstance(max_height, bool) or not isinstance(max_height, int) or max_height < 144:
+            raise ValueError("max_height must be an integer of at least 144 pixels.")
+        if isinstance(max_fps, bool) or not isinstance(max_fps, int) or max_fps < 1:
+            raise ValueError("max_fps must be a positive integer.")
         self.max_duration_seconds = float(max_duration_seconds)
         self.socket_timeout_seconds = float(socket_timeout_seconds)
+        self.max_height = max_height
+        self.max_fps = max_fps
+        self.proxies = proxies or ProxyConfig()
+        self.traffic = traffic or TrafficMeter()
+        self.session_id = new_session_id()
+        self._temp_cache: tempfile.TemporaryDirectory[str] | None = None
+        if cache_dir is None:
+            self._temp_cache = tempfile.TemporaryDirectory(prefix="edit20-youtube-cache-")
+            cache_dir = Path(self._temp_cache.name)
+        self.cache_dir = Path(cache_dir)
+        self.info_cache = InfoCache(self.cache_dir / "youtube-info", margin_seconds=info_expiry_margin_seconds)
+        self.clip_library = ClipLibrary(Path(clip_library_dir) if clip_library_dir else self.cache_dir / "youtube-clips")
         self._subtitle_cache: dict[str, tuple[SubtitleCue, ...]] = {}
+        self._ydls: dict[str, Any] = {}
+
+    # ------------------------------------------------------------------ search
 
     def search(self, query: str, *, limit: int = 5) -> list[YouTubeCandidate]:
         if not isinstance(query, str) or not query.strip():
@@ -68,9 +129,11 @@ class YouTubeClient:
             raise ValueError(f"limit must be an integer between 1 and {self.MAX_SEARCH_RESULTS}.")
 
         query = query.strip()
-        options = self._base_options()
         try:
-            ydl = self._create_ydl(options)
+            ydl = self._ydl("metadata")
+            # Flat extraction: the search response already carries id, title,
+            # duration, uploader and live status; the full page is fetched once
+            # per video later (and cached) instead of once per search result.
             info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
         except YouTubeClientError:
             raise
@@ -114,6 +177,8 @@ class YouTubeClient:
                 break
         return candidates
 
+    # ---------------------------------------------------------------- download
+
     def download_clip(
         self,
         candidate: YouTubeCandidate,
@@ -151,31 +216,36 @@ class YouTubeClient:
         output_path = destination / f"youtube_{digest}.mp4"
         manifest_path = output_path.with_suffix(".json")
 
-        options = {
-            **self._base_options(),
-            "skip_download": False,
-            "format": "bestvideo[height<=720]",
-            "outtmpl": str(Path("source.%(ext)s")),
-            "download_ranges": self._download_range_callback(start_seconds, capped_end),
-            "force_keyframes_at_cuts": True,
-            "noplaylist": True,
-            "nopart": True,
-        }
         try:
+            library_hit = self.clip_library.find(
+                candidate.video_id,
+                start_seconds,
+                capped_end,
+                required_height=self.max_height,
+            )
+            if library_hit is not None:
+                shutil.copy2(library_hit.path, output_path)
+                self._validate_output_duration(output_path, allowed_duration)
+                self.traffic.clip_library_hits += 1
+                self._write_provenance_manifest(
+                    manifest_path,
+                    candidate,
+                    requested_start=start_seconds,
+                    requested_end=end_seconds,
+                    clip_start=start_seconds,
+                    clip_end=capped_end,
+                    source_height=library_hit.source_height,
+                    reused_from_library=True,
+                )
+                return output_path
+
             with tempfile.TemporaryDirectory(prefix="edit20-youtube-", dir=destination) as temp_dir:
-                options["outtmpl"] = str(Path(temp_dir) / "source.%(ext)s")
-                ydl = self._create_ydl(options)
-                ydl.download([candidate.url])
-                source_files = [
-                    path
-                    for path in Path(temp_dir).glob("source.*")
-                    if path.is_file() and path.suffix.lower() not in {".part", ".ytdl"}
-                ]
-                if not source_files:
-                    raise YouTubeClientError(
-                        "yt-dlp returned no video file. Check that the public video is still available."
-                    )
-                source_path = source_files[0]
+                source_path, source_height = self._download_range(
+                    candidate,
+                    Path(temp_dir),
+                    start_seconds,
+                    capped_end,
+                )
                 self._transcode_clip(source_path, output_path, allowed_duration)
                 self._validate_output_duration(output_path, allowed_duration)
                 self._write_provenance_manifest(
@@ -185,7 +255,21 @@ class YouTubeClient:
                     requested_end=end_seconds,
                     clip_start=start_seconds,
                     clip_end=capped_end,
+                    source_height=source_height,
+                    reused_from_library=False,
                 )
+                try:
+                    self.clip_library.store(
+                        candidate.video_id,
+                        start_seconds,
+                        capped_end,
+                        output_path,
+                        source_height=source_height,
+                        max_height_requested=self.max_height,
+                        extra={"url": candidate.url, "title": candidate.title},
+                    )
+                except OSError:
+                    pass  # The library is a cache; never fail the job for it.
         except YouTubeClientError:
             output_path.unlink(missing_ok=True)
             manifest_path.unlink(missing_ok=True)
@@ -210,40 +294,333 @@ class YouTubeClient:
             ) from exc
         return output_path
 
-    @staticmethod
-    def _write_provenance_manifest(
-        path: Path,
+    def _download_range(
+        self,
         candidate: YouTubeCandidate,
-        *,
-        requested_start: float,
-        requested_end: float,
-        clip_start: float,
-        clip_end: float,
-    ) -> None:
-        manifest = {
-            "source": "youtube",
-            "video_id": candidate.video_id,
-            "url": candidate.url,
-            "title": candidate.title,
-            "uploader": candidate.uploader,
-            "query": candidate.query,
-            "requested_range_seconds": {"start": requested_start, "end": requested_end},
-            "clip_range_seconds": {"start": clip_start, "end": clip_end},
-        }
-        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temp_dir: Path,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> tuple[Path, int | None]:
+        """Fetch only [start, end) of the video, reusing the cached info dict when valid.
 
-    def _base_options(self) -> dict[str, Any]:
-        return {
+        A cached dict costs zero metadata requests. If its URLs no longer work
+        (expired or bound to another exit IP) the entry is dropped and the clip is
+        fetched the ordinary way, which also refreshes the cache. That fallback
+        is one extraction, the same price as never having had a cache.
+        """
+
+        cached = self.info_cache.load(candidate.video_id)
+        if cached is not None:
+            try:
+                result = self._run_download(
+                    lambda ydl: ydl.process_ie_result(copy.deepcopy(cached.info), download=True),
+                    temp_dir,
+                    start_seconds,
+                    end_seconds,
+                )
+                self.traffic.info_reuses += 1
+                return self._collect_source(temp_dir, result)
+            except Exception:
+                self.info_cache.invalidate(candidate.video_id)
+                self.traffic.info_refreshes += 1
+                for stale in temp_dir.glob("source.*"):
+                    stale.unlink(missing_ok=True)
+
+        try:
+            result = self._run_download(
+                lambda ydl: ydl.extract_info(candidate.url, download=True),
+                temp_dir,
+                start_seconds,
+                end_seconds,
+            )
+        except Exception:
+            # A failing exit IP should not poison the next clip: rotate the session.
+            self._rotate_session()
+            raise
+        self.traffic.extractions += 1
+        if isinstance(result, dict) and result.get("id") == candidate.video_id:
+            try:
+                self.info_cache.store(
+                    result["id"],
+                    result,
+                    proxy_role="download",
+                    session_id=self.session_id,
+                    subtitle_cues=None,
+                )
+            except (OSError, ValueError):
+                pass
+        return self._collect_source(temp_dir, result)
+
+    def _run_download(
+        self,
+        action: Callable[[Any], Any],
+        temp_dir: Path,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> Any:
+        ydl = self._ydl("download")
+        ydl.params["outtmpl"] = {"default": str(temp_dir / "source.%(ext)s")}
+        ydl.params["download_ranges"] = self._download_range_callback(start_seconds, end_seconds)
+        return action(ydl)
+
+    def _collect_source(self, temp_dir: Path, result: Any) -> tuple[Path, int | None]:
+        source_files = [
+            path
+            for path in temp_dir.glob("source.*")
+            if path.is_file() and path.suffix.lower() not in {".part", ".ytdl"}
+        ]
+        if not source_files:
+            raise YouTubeClientError(
+                "yt-dlp returned no video file. Check that the public video is still available."
+            )
+        source_path = source_files[0]
+        self.traffic.clip_downloads += 1
+        self.traffic.record("download", source_path.stat().st_size)
+        return source_path, self._downloaded_height(result)
+
+    @staticmethod
+    def _downloaded_height(result: Any) -> int | None:
+        if not isinstance(result, dict):
+            return None
+        downloads = result.get("requested_downloads")
+        candidates: list[Any] = []
+        if isinstance(downloads, list):
+            candidates.extend(item.get("height") for item in downloads if isinstance(item, dict))
+        candidates.append(result.get("height"))
+        for value in candidates:
+            try:
+                if value is not None:
+                    return int(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _rotate_session(self) -> None:
+        self.session_id = new_session_id()
+        self._ydls.pop("download", None)
+        if self.proxies.shares_exit_ip:
+            self._ydls.pop("metadata", None)
+
+    # ------------------------------------------------------------ storyboards
+
+    def storyboard_frames(
+        self,
+        candidate: YouTubeCandidate,
+        start_seconds: float,
+        end_seconds: float,
+        *,
+        max_frames: int = 4,
+    ) -> list[StoryboardFrame]:
+        """Seek-bar thumbnails covering [start, end] from the cached info dict.
+
+        Returns an empty list when the video has no storyboard or no cached
+        info; callers then fall back to downloading the clip for preview.
+        """
+
+        if max_frames < 1:
+            raise ValueError("max_frames must be at least 1.")
+        if not self._VIDEO_ID_RE.fullmatch(candidate.video_id):
+            return []
+        cached = self.info_cache.load(candidate.video_id)
+        if cached is None:
+            return []
+        storyboard = self._best_storyboard(cached.info)
+        if storyboard is None:
+            return []
+        duration = self._finite_number(cached.info.get("duration")) or candidate.duration_seconds
+        if duration is None or duration <= 0:
+            return []
+        fps = self._finite_number(storyboard.get("fps"))
+        rows = self._optional_int(storyboard.get("rows"))
+        columns = self._optional_int(storyboard.get("columns"))
+        width = self._optional_int(storyboard.get("width"))
+        height = self._optional_int(storyboard.get("height"))
+        fragments = [
+            fragment.get("url")
+            for fragment in storyboard.get("fragments") or []
+            if isinstance(fragment, dict) and isinstance(fragment.get("url"), str)
+        ]
+        if not fps or fps <= 0 or not rows or not columns or not width or not height or not fragments:
+            return []
+        per_fragment = rows * columns
+        total_frames = per_fragment * len(fragments)
+        end_seconds = min(end_seconds, duration)
+        if end_seconds <= start_seconds:
+            return []
+        indices: list[int] = []
+        for position in range(max_frames):
+            moment = start_seconds + (end_seconds - start_seconds) * (position + 0.5) / max_frames
+            index = min(total_frames - 1, max(0, int(moment * fps)))
+            if index not in indices:
+                indices.append(index)
+        if len(indices) < 2:
+            # Coarse storyboards (one frame every several seconds) may cover the
+            # whole clip with one thumbnail; add neighbours for context.
+            for neighbour in (indices[0] - 1, indices[0] + 1):
+                if 0 <= neighbour < total_frames and neighbour not in indices:
+                    indices.append(neighbour)
+            indices.sort()
+        frames: list[StoryboardFrame] = []
+        for index in indices:
+            fragment_index, within = divmod(index, per_fragment)
+            row, column = divmod(within, columns)
+            url = fragments[fragment_index]
+            try:
+                self._validate_storyboard_url(url)
+            except YouTubeClientError:
+                return []
+            frames.append(
+                StoryboardFrame(
+                    time_seconds=index / fps,
+                    fragment_url=url,
+                    x=column * width,
+                    y=row * height,
+                    width=width,
+                    height=height,
+                )
+            )
+        return frames
+
+    def storyboard_sheet(
+        self,
+        candidate: YouTubeCandidate,
+        start_seconds: float,
+        end_seconds: float,
+        output_path: Path,
+        *,
+        max_frames: int = 4,
+    ) -> Path | None:
+        """Build a contact sheet from storyboard thumbnails without touching the proxy.
+
+        Storyboard mosaics live on the i.ytimg.com CDN and are fetched directly.
+        Returns ``None`` when the video has no usable storyboard.
+        """
+
+        frames = self.storyboard_frames(candidate, start_seconds, end_seconds, max_frames=max_frames)
+        if not frames:
+            return None
+        try:
+            with tempfile.TemporaryDirectory(prefix="edit20-storyboard-") as temp_dir:
+                mosaics: dict[str, Path] = {}
+                for frame in frames:
+                    if frame.fragment_url in mosaics:
+                        continue
+                    mosaic_path = Path(temp_dir) / f"mosaic-{len(mosaics):02d}.jpg"
+                    mosaic_path.write_bytes(self._fetch_direct(frame.fragment_url))
+                    mosaics[frame.fragment_url] = mosaic_path
+                from ..candidate_analyzer import create_storyboard_contact_sheet
+
+                create_storyboard_contact_sheet(
+                    [(mosaics[frame.fragment_url], frame.x, frame.y, frame.width, frame.height) for frame in frames],
+                    output_path,
+                )
+        except Exception:
+            return None
+        self.traffic.storyboard_previews += 1
+        return output_path
+
+    def _fetch_direct(self, url: str) -> bytes:
+        """GET a CDN resource bypassing every proxy (explicit and environment)."""
+
+        import requests
+
+        session = requests.Session()
+        session.trust_env = False
+        response = session.get(url, timeout=self.socket_timeout_seconds)
+        response.raise_for_status()
+        content = response.content
+        self.traffic.record("direct", len(content))
+        return content
+
+    @staticmethod
+    def _best_storyboard(info: dict[str, Any]) -> dict[str, Any] | None:
+        best: dict[str, Any] | None = None
+        best_area = -1
+        for fmt in info.get("formats") or []:
+            if not isinstance(fmt, dict):
+                continue
+            if fmt.get("format_note") != "storyboard" and fmt.get("protocol") != "mhtml":
+                continue
+            try:
+                area = int(fmt.get("width") or 0) * int(fmt.get("height") or 0)
+            except (TypeError, ValueError):
+                continue
+            if area > best_area:
+                best, best_area = fmt, area
+        return best
+
+    @staticmethod
+    def _validate_storyboard_url(url: str) -> None:
+        try:
+            parsed = urlsplit(url)
+        except ValueError as exc:
+            raise YouTubeClientError("Malformed storyboard URL.") from exc
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or not (host == "ytimg.com" or host.endswith(".ytimg.com")):
+            raise YouTubeClientError("Storyboards must come from the ytimg.com CDN.")
+
+    # ------------------------------------------------------------- yt-dlp glue
+
+    def _ydl(self, role: str) -> Any:
+        """One YoutubeDL per proxy role for the whole run.
+
+        Re-creating the object per call used to re-download the player JS
+        (needed for the signature timestamp and JS challenges) every time.
+        """
+
+        ydl = self._ydls.get(role)
+        if ydl is None:
+            options = self._metadata_options() if role == "metadata" else self._download_options()
+            ydl = self._create_ydl(options)
+            if not hasattr(ydl, "params"):
+                ydl.params = options
+            self.traffic.wrap_ydl(ydl, role)
+            self._ydls[role] = ydl
+        return ydl
+
+    def _base_options(self, role: str) -> dict[str, Any]:
+        options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
             "skip_download": True,
             "noplaylist": True,
             "socket_timeout": self.socket_timeout_seconds,
-            "cachedir": False,
+            # Persist signature functions and the JS-challenge solver's player
+            # cache between runs instead of re-fetching the player per call.
+            "cachedir": str(self.cache_dir / "yt-dlp"),
             "usenetrc": False,
             "cookiefile": None,
             "cookiesfrombrowser": None,
+            "writethumbnail": False,
+        }
+        proxy = self.proxies.for_role(role, self.session_id)
+        if proxy is not None:
+            options["proxy"] = proxy
+        return options
+
+    def _metadata_options(self) -> dict[str, Any]:
+        return {
+            **self._base_options("metadata"),
+            "extract_flat": "in_playlist",
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": ["es", "es-419", "en", "en-US"],
+            "subtitlesformat": "vtt/json3/best",
+        }
+
+    def _download_options(self) -> dict[str, Any]:
+        cap = f"[height<={self.max_height}]"
+        return {
+            **self._base_options("download"),
+            "skip_download": False,
+            # Resolution first, then frame rate up to the output's 30 fps, then
+            # the smallest encoding of that size: a 720p60 or high-bitrate VP9
+            # stream buys nothing after the clip is re-encoded at 1280x720/30.
+            "format": f"bestvideo{cap}[fps<={self.max_fps}]/bestvideo{cap}/best{cap}",
+            "format_sort": ["res", "fps", "+size", "+br"],
+            "force_keyframes_at_cuts": True,
+            "nopart": True,
         }
 
     @staticmethod
@@ -266,6 +643,8 @@ class YouTubeClient:
                 "Upgrade yt-dlp and retry."
             ) from exc
         return download_range_func(None, [(start_seconds, end_seconds)])
+
+    # --------------------------------------------------------------- metadata
 
     def _candidate_from_info(self, info: dict[str, Any], query: str) -> YouTubeCandidate | None:
         video_id = info.get("id")
@@ -292,6 +671,11 @@ class YouTubeClient:
             except YouTubeClientError:
                 return None
         canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+        thumbnail = self._optional_string(info.get("thumbnail"))
+        if thumbnail is None:
+            thumbnails = info.get("thumbnails")
+            if isinstance(thumbnails, list) and thumbnails and isinstance(thumbnails[-1], dict):
+                thumbnail = self._optional_string(thumbnails[-1].get("url"))
         return YouTubeCandidate(
             video_id=video_id,
             url=canonical_url,
@@ -300,56 +684,114 @@ class YouTubeClient:
             description=str(info.get("description") or ""),
             duration_seconds=duration,
             view_count=self._optional_int(info.get("view_count")),
-            thumbnail_url=self._optional_string(info.get("thumbnail")),
+            thumbnail_url=thumbnail,
             query=query,
         )
 
     def _retrieve_subtitles(self, url: str, video_id: str) -> tuple[SubtitleCue, ...]:
+        """Captions for ``video_id`` using at most one yt-dlp extraction per video.
+
+        Order of preference: cues already stored next to the cached info dict
+        (no network), subtitle files fetched from the cached info dict's URLs
+        (no page/player requests), and finally a full extraction that is then
+        cached for the downloads that follow.
+        """
+
         try:
-            with tempfile.TemporaryDirectory(prefix="edit20-youtube-subs-") as temp_dir:
-                options = {
-                    **self._base_options(),
-                    "skip_download": True,
-                    "writesubtitles": True,
-                    "writeautomaticsub": True,
-                    "subtitleslangs": ["es", "es-419", "en", "en-US"],
-                    "subtitlesformat": "vtt/json3/best",
-                    "outtmpl": str(Path(temp_dir) / "%(id)s.%(ext)s"),
-                }
-                ydl = self._create_ydl(options)
-                # yt-dlp's skip_download prevents media retrieval; only available captions are written.
-                ydl.download([url])
-                subtitle_files = [
-                    path
-                    for path in Path(temp_dir).iterdir()
-                    if path.is_file() and path.suffix.lower() in {".vtt", ".json3"}
-                    and path.name.startswith(f"{video_id}.")
-                ]
-                subtitle_files.sort(key=lambda path: self._subtitle_language_rank(path, video_id))
-                for path in subtitle_files:
-                    try:
-                        text = path.read_text(encoding="utf-8-sig")
-                    except (OSError, UnicodeError):
-                        continue
-                    if path.suffix.lower() == ".vtt":
-                        cues = self._parse_vtt(text)
-                    else:
-                        cues = self._parse_json3(text)
-                    if cues:
-                        unique = {
-                            (cue.start_seconds, cue.end_seconds, cue.text): cue
-                            for cue in cues
-                            if cue.text
-                        }
-                        return tuple(sorted(unique.values(), key=lambda cue: (cue.start_seconds, cue.end_seconds)))
-                return ()
+            cached = self.info_cache.load(video_id)
+            if cached is not None and cached.subtitle_cues is not None:
+                self.traffic.info_reuses += 1
+                return self._cues_from_json(cached.subtitle_cues)
+            if cached is not None:
+                try:
+                    cues = self._subtitles_from_info(cached.info, video_id)
+                except Exception:
+                    self.info_cache.invalidate(video_id)
+                    self.traffic.info_refreshes += 1
+                else:
+                    self.traffic.info_reuses += 1
+                    self.info_cache.update_subtitle_cues(video_id, self._cues_to_json(cues))
+                    return cues
+            entry = self._extract_with_subtitles(url, video_id)
+            return self._cues_from_json(entry.subtitle_cues or [])
         except Exception:
             # Captions are optional and must never make otherwise valid search results disappear.
             return ()
 
+    def _extract_with_subtitles(self, url: str, video_id: str) -> CachedInfo:
+        ydl = self._ydl("metadata")
+        with tempfile.TemporaryDirectory(prefix="edit20-youtube-subs-") as temp_dir:
+            ydl.params["outtmpl"] = {"default": str(Path(temp_dir) / "%(id)s.%(ext)s")}
+            # skip_download is set, so yt-dlp writes only the captions it finds.
+            info = ydl.extract_info(url, download=True)
+            cues = self._parse_subtitle_files(Path(temp_dir), video_id)
+        self.traffic.extractions += 1
+        if not isinstance(info, dict) or info.get("id") != video_id:
+            raise YouTubeClientError("yt-dlp returned metadata for a different video.")
+        return self.info_cache.store(
+            video_id,
+            info,
+            proxy_role="metadata",
+            session_id=self.session_id,
+            subtitle_cues=self._cues_to_json(cues),
+        )
+
+    def _subtitles_from_info(self, info: dict[str, Any], video_id: str) -> tuple[SubtitleCue, ...]:
+        ydl = self._ydl("metadata")
+        with tempfile.TemporaryDirectory(prefix="edit20-youtube-subs-") as temp_dir:
+            ydl.params["outtmpl"] = {"default": str(Path(temp_dir) / "%(id)s.%(ext)s")}
+            ydl.process_ie_result(copy.deepcopy(info), download=True)
+            return self._parse_subtitle_files(Path(temp_dir), video_id)
+
+    def _parse_subtitle_files(self, directory: Path, video_id: str) -> tuple[SubtitleCue, ...]:
+        subtitle_files = [
+            path
+            for path in directory.iterdir()
+            if path.is_file() and path.suffix.lower() in {".vtt", ".json3"}
+            and path.name.startswith(f"{video_id}.")
+        ]
+        subtitle_files.sort(key=lambda path: self._subtitle_language_rank(path, video_id))
+        for path in subtitle_files:
+            try:
+                text = path.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError):
+                continue
+            if path.suffix.lower() == ".vtt":
+                cues = self._parse_vtt(text)
+            else:
+                cues = self._parse_json3(text)
+            if cues:
+                unique = {
+                    (cue.start_seconds, cue.end_seconds, cue.text): cue
+                    for cue in cues
+                    if cue.text
+                }
+                return tuple(sorted(unique.values(), key=lambda cue: (cue.start_seconds, cue.end_seconds)))
+        return ()
+
+    @staticmethod
+    def _cues_to_json(cues: tuple[SubtitleCue, ...]) -> list[dict[str, Any]]:
+        return [{"s": cue.start_seconds, "e": cue.end_seconds, "t": cue.text} for cue in cues]
+
+    @staticmethod
+    def _cues_from_json(items: list[dict[str, Any]]) -> tuple[SubtitleCue, ...]:
+        cues: list[SubtitleCue] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                start = float(item["s"])
+                end = float(item["e"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            text = str(item.get("t") or "")
+            if math.isfinite(start) and math.isfinite(end) and end > start and text:
+                cues.append(SubtitleCue(start, end, text))
+        return tuple(cues)
+
     @classmethod
     def _parse_vtt(cls, content: str) -> list[SubtitleCue]:
-        lines = content.lstrip("\ufeff").splitlines()
+        lines = content.lstrip("﻿").splitlines()
         cues: list[SubtitleCue] = []
         index = 0
         while index < len(lines):
@@ -459,6 +901,34 @@ class YouTubeClient:
             if resource_id != expected_video_id:
                 raise YouTubeClientError("The candidate URL does not match its YouTube video ID.")
 
+    # ------------------------------------------------------------- local media
+
+    @staticmethod
+    def _write_provenance_manifest(
+        path: Path,
+        candidate: YouTubeCandidate,
+        *,
+        requested_start: float,
+        requested_end: float,
+        clip_start: float,
+        clip_end: float,
+        source_height: int | None = None,
+        reused_from_library: bool = False,
+    ) -> None:
+        manifest = {
+            "source": "youtube",
+            "video_id": candidate.video_id,
+            "url": candidate.url,
+            "title": candidate.title,
+            "uploader": candidate.uploader,
+            "query": candidate.query,
+            "requested_range_seconds": {"start": requested_start, "end": requested_end},
+            "clip_range_seconds": {"start": clip_start, "end": clip_end},
+            "source_height": source_height,
+            "reused_from_library": reused_from_library,
+        }
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
     @staticmethod
     def _transcode_clip(source: Path, destination: Path, duration_seconds: float) -> None:
         command = [
@@ -491,6 +961,7 @@ class YouTubeClient:
             capture_output=True,
             text=True,
             timeout=180,
+            env=scrub_proxy_env(),
         )
         if result.returncode != 0:
             raise YouTubeClientError(
@@ -517,6 +988,7 @@ class YouTubeClient:
             capture_output=True,
             text=True,
             timeout=30,
+            env=scrub_proxy_env(),
         )
         if result.returncode != 0:
             raise YouTubeClientError("ffprobe could not validate the downloaded clip.")

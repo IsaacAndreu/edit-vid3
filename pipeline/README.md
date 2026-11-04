@@ -5,7 +5,10 @@ The pipeline is intentionally split into small stages:
 - `config.py` — `.env` loading and startup validation.
 - `clients/deepseek_client.py` — OpenAI SDK pointed at DeepSeek, JSON mode, thinking disabled.
 - `clients/pexels_client.py` — Pexels photo/video candidate search, cache, pacing, bounded 429 retries, metadata and per-run URL de-duplication.
-- `clients/youtube_client.py` — public YouTube search/metadata/subtitles and bounded clip downloads through yt-dlp; clip output is capped at five seconds.
+- `clients/youtube_client.py` — public YouTube search/metadata/subtitles and bounded clip downloads through yt-dlp; clip output is capped at five seconds. One yt-dlp extraction per video id (info dict cached on disk and replayed like `--load-info-json`), flat searches, 720p/30fps cap, clip library, storyboard previews and per-role proxies with sticky sessions.
+- `clients/youtube_proxy.py` — `YOUTUBE_PROXY`/`YOUTUBE_METADATA_PROXY` handling, `-time-30-session-<id>` sticky sessions and the proxy-free environment for local ffmpeg/ffprobe.
+- `clients/youtube_cache.py` — info-dict cache (valid until the `expire` parameter of the media URLs minus 15 min) and the shared clip library keyed by (video, range, resolution).
+- `clients/youtube_traffic.py` — per-job byte counter per proxy role, printed at the end of the media stage and saved as `third-party/traffic.json`.
 - `candidate_analyzer.py` — subtitle-timed segment relevance scoring, contact-sheet extraction and opt-in DeepSeek multimodal visual judging.
 - `third_party_media.py` — searches distinct candidates, selects the best visual segment and retains a contact sheet for audit.
 - `media_ranker.py` — deterministic candidate ranking using query specificity, available alt text, resolution and clip duration.
@@ -67,3 +70,35 @@ deno --version
 ffmpeg -version
 ffprobe -version
 ```
+
+## Tráfico del proxy residencial
+
+El proxy se paga por GB, así que el cliente de YouTube sigue estas reglas:
+
+1. **Una extracción de yt-dlp por vídeo.** La búsqueda usa `extract_flat`, y la
+   página/reproductor de cada vídeo se extrae una sola vez. El info dict
+   saneado se guarda en `.cache/youtube-info/<id>.json` junto con los
+   subtítulos ya parseados, y se reutiliza con `process_ie_result(info,
+   download=True)` para cada trozo mientras las URL no estén a menos de 15 min
+   de su `expire`. Si la reproducción falla (URL caducada o atada a otra IP), se
+   borra la entrada y se descarga de la forma normal, renovando la caché: nunca
+   cuesta más que una extracción.
+2. **720p/30 fps como máximo** (`YOUTUBE_MAX_HEIGHT`), eligiendo la codificación
+   más pequeña a esa resolución. El clip final se reescala a 1280 px, así que
+   nada por encima aporta calidad visible.
+3. **Solo pasa por el proxy lo que lo necesita.** `YOUTUBE_PROXY` lleva los
+   bytes de vídeo (googlevideo, incluido el ffmpeg que lanza yt-dlp);
+   `YOUTUBE_METADATA_PROXY` los metadatos. Los storyboards (i.ytimg.com) van
+   directos y los ffmpeg/ffprobe locales no heredan `http_proxy`/`HTTPS_PROXY`.
+4. **Biblioteca de clips** en `.cache/youtube-clips/` por (vídeo, rango): otro
+   proyecto que pida el mismo trozo a igual o menor resolución no descarga nada.
+5. **Sesión fija** por ejecución: el usuario del proxy recibe el sufijo
+   `-time-30-session-<id>` para que la IP no cambie a mitad de un vídeo; si una
+   descarga nueva falla, se rota la sesión.
+6. **Storyboards antes de descargar.** Los finalistas se ordenan con las
+   miniaturas de la barra de progreso y solo se descarga el ganador, que se
+   verifica con frames reales; si no supera el umbral se prueba el siguiente.
+7. **Medición.** Al terminar la etapa de medios se imprime cuánto pasó por cada
+   proxy, cuántas extracciones se hicieron y cuántas veces se reutilizó la info
+   o la biblioteca; el detalle queda en `third-party/traffic.json`.
+

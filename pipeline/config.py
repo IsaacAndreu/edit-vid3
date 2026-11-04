@@ -25,6 +25,16 @@ class Settings:
     pexels_api_key: str
     openai_api_key: str
     deepseek_vision_model: str
+    # Optional. Residential proxy for YouTube media bytes (googlevideo.com),
+    # used by yt-dlp and the ffmpeg range download it drives.
+    youtube_proxy: str | None = None
+    # Optional. Proxy for YouTube metadata (search, video page/player, subtitles).
+    # Falls back to youtube_proxy so media URLs stay bound to the fetching IP.
+    youtube_metadata_proxy: str | None = None
+    # Shared on-disk cache: yt-dlp player data, info dicts per video id and the
+    # clip library reused across runs.
+    youtube_cache_dir: Path = PROJECT_ROOT / ".cache"
+    youtube_max_height: int = 720
 
     @property
     def deepseek_base_url(self) -> str:
@@ -45,6 +55,11 @@ def load_settings(env_file: Path | None = None) -> Settings:
         "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "").strip(),
     }
     vision_model = os.getenv("DEEPSEEK_VISION_MODEL", "deepseek-flash").strip()
+    youtube_proxy = os.getenv("YOUTUBE_PROXY", "").strip() or None
+    youtube_metadata_proxy = os.getenv("YOUTUBE_METADATA_PROXY", "").strip() or None
+    cache_dir_value = os.getenv("YOUTUBE_CACHE_DIR", "").strip()
+    youtube_cache_dir = Path(cache_dir_value).expanduser() if cache_dir_value else PROJECT_ROOT / ".cache"
+    max_height_value = os.getenv("YOUTUBE_MAX_HEIGHT", "720").strip()
 
     missing = [name for name, value in values.items() if not value]
     if missing:
@@ -64,6 +79,12 @@ def load_settings(env_file: Path | None = None) -> Settings:
         raise ConfigError("LLM_MODEL no puede estar vacío.")
     if not vision_model:
         raise ConfigError("DEEPSEEK_VISION_MODEL no puede estar vacío.")
+    try:
+        youtube_max_height = int(max_height_value)
+    except ValueError as error:
+        raise ConfigError("YOUTUBE_MAX_HEIGHT debe ser un entero (por ejemplo 720).") from error
+    if youtube_max_height < 144:
+        raise ConfigError("YOUTUBE_MAX_HEIGHT debe ser al menos 144.")
 
     return Settings(
         project_root=PROJECT_ROOT,
@@ -73,4 +94,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         pexels_api_key=values["PEXELS_API_KEY"],
         openai_api_key=values["OPENAI_API_KEY"],
         deepseek_vision_model=vision_model,
+        youtube_proxy=youtube_proxy,
+        youtube_metadata_proxy=youtube_metadata_proxy,
+        youtube_cache_dir=youtube_cache_dir,
+        youtube_max_height=youtube_max_height,
     )

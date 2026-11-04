@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from .media_ranker import select_best_asset
 from .third_party_media import SelectedThirdPartyClip, public_asset_url, select_third_party_clip
 from .candidate_analyzer import DeepSeekVisualJudge
 from .clients.youtube_client import YouTubeClient, YouTubeClientError
+from .clients.youtube_proxy import ProxyConfig
 from .types import SceneDraft
 
 
@@ -270,7 +272,14 @@ def fetch_media(
     visual_judge: DeepSeekVisualJudge | None = None
     if third_party_enabled:
         try:
-            youtube = YouTubeClient()
+            youtube = YouTubeClient(
+                proxies=ProxyConfig.from_values(
+                    download=settings.youtube_proxy,
+                    metadata=settings.youtube_metadata_proxy,
+                ),
+                cache_dir=settings.youtube_cache_dir,
+                max_height=settings.youtube_max_height,
+            )
             visual_judge = DeepSeekVisualJudge(
                 settings.llm_api_key,
                 model=settings.deepseek_vision_model,
@@ -281,6 +290,10 @@ def fetch_media(
 
     if youtube is not None and visual_judge is not None:
         print("   Fuente visual: YouTube/terceros primero; Pexels y GPT Image como fallback.")
+        print(
+            f"   Proxy YouTube: {youtube.proxies.describe()}; caché compartida: {youtube.cache_dir}; "
+            f"tope {youtube.max_height}p/{youtube.max_fps}fps"
+        )
     else:
         print("   Fuente visual: Pexels primero (YouTube/terceros desactivado o no disponible).")
 
@@ -444,4 +457,22 @@ def fetch_media(
 
         resolved.append(scene)
 
+    if youtube is not None:
+        _report_youtube_traffic(youtube, assets_dir)
     return resolved
+
+
+def _report_youtube_traffic(youtube: YouTubeClient, assets_dir: Path) -> None:
+    """Print and persist what the YouTube proxies carried during this job."""
+
+    for line in youtube.traffic.summary_lines():
+        print(f"   {line}")
+    report_path = assets_dir / "third-party" / "traffic.json"
+    try:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(youtube.traffic.as_dict(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as error:
+        print(f"Aviso: no se pudo guardar el informe de tráfico: {error}")

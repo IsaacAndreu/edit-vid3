@@ -5,7 +5,6 @@ from pathlib import Path
 
 from .candidate_analyzer import DeepSeekVisualJudge, ScoredSegment, create_contact_sheet, score_candidate_segments
 from .clients.youtube_client import YouTubeCandidate, YouTubeClient
-from .config import Settings
 
 
 @dataclass(frozen=True)
@@ -51,8 +50,17 @@ def select_third_party_clip(
     used_video_ids: set[str],
     search_results_per_query: int = 4,
     max_candidates_for_vision: int = 3,
+    preview_with_storyboards: bool = True,
+    min_visual_score: float = 0.55,
 ) -> SelectedThirdPartyClip | None:
-    """Search, shortlist by subtitle timing, then ask vision to verify real frames."""
+    """Search, shortlist by subtitle timing, then ask vision to verify real frames.
+
+    With ``preview_with_storyboards`` the finalists are first ranked from their
+    seek-bar storyboard thumbnails (CDN images, no media download) and only the
+    winner is downloaded and verified on real frames; the next finalist is tried
+    when the verification fails. Videos without storyboards keep the previous
+    behaviour of downloading every finalist.
+    """
 
     if not visual_intent.strip() and not keywords:
         return None
@@ -95,6 +103,131 @@ def select_third_party_clip(
 
     clip_dir = assets_dir / "third-party" / "clips"
     sheet_dir = assets_dir / "third-party" / "contact-sheets"
+
+    judge_intent = visual_intent.strip()
+    if selection_guidance.strip():
+        judge_intent = f"{judge_intent}\n\nAdditional visual criteria: {selection_guidance.strip()}"
+
+    order = list(range(len(finalists)))
+    preview_scores: dict[int, float] = {}
+    if preview_with_storyboards and len(finalists) > 1:
+        order, preview_scores = _rank_by_storyboard_preview(finalists, youtube, judge, judge_intent, sheet_dir)
+
+    if not preview_scores:
+        return _download_all_and_judge(
+            finalists, youtube, judge, judge_intent, clip_dir, sheet_dir, used_video_ids, min_visual_score
+        )
+
+    # Storyboards already ranked the finalists without downloading anything.
+    # Download the best one only; verify it on real frames and move to the next
+    # finalist when the verification fails.
+    for position in order:
+        segment = finalists[position]
+        try:
+            clip_path = youtube.download_clip(
+                segment.candidate,
+                segment.start_seconds,
+                segment.end_seconds,
+                clip_dir,
+                max_clip_seconds=5.0,
+            )
+            sheet_path = sheet_dir / f"candidate-{position + 1:02d}-{clip_path.stem}.jpg"
+            create_contact_sheet(clip_path, sheet_path, frame_count=4)
+        except Exception as error:
+            print(f"Aviso: no se pudo preparar clip {segment.candidate.video_id}: {error}")
+            continue
+        try:
+            judgments = judge.judge(judge_intent, [segment], [sheet_path])
+        except Exception as error:
+            print(f"Aviso: evaluación visual DeepSeek fallida; se usa el fallback de media: {error}")
+            return None
+        if not judgments:
+            continue
+        _, visual_score, reason = judgments[0]
+        visual_score = float(visual_score)
+        if visual_score < min_visual_score:
+            print(
+                f"Aviso: clip {segment.candidate.video_id} descartado tras verificar frames reales "
+                f"({visual_score:.2f}); se prueba el siguiente finalista."
+            )
+            continue
+        used_video_ids.add(segment.candidate.video_id)
+        return SelectedThirdPartyClip(
+            path=clip_path,
+            candidate=segment.candidate,
+            start_seconds=segment.start_seconds,
+            end_seconds=segment.end_seconds,
+            transcript_excerpt=segment.transcript_excerpt,
+            relevance_score=segment.relevance_score,
+            visual_score=visual_score,
+            reason=str(reason),
+        )
+    print("Aviso: ningún clip de terceros superó relevancia visual suficiente.")
+    return None
+
+
+def _rank_by_storyboard_preview(
+    finalists: list[ScoredSegment],
+    youtube: YouTubeClient,
+    judge: DeepSeekVisualJudge,
+    judge_intent: str,
+    sheet_dir: Path,
+) -> tuple[list[int], dict[int, float]]:
+    """Order finalists by a vision pass over seek-bar storyboards (no media download).
+
+    Returns the original order and no scores when any finalist lacks a
+    storyboard or the judge fails, so the caller falls back to downloading.
+    """
+
+    storyboard_sheet = getattr(youtube, "storyboard_sheet", None)
+    if storyboard_sheet is None:
+        return list(range(len(finalists))), {}
+    sheets: list[Path] = []
+    for index, segment in enumerate(finalists, start=1):
+        preview_path = sheet_dir / f"preview-{index:02d}-{segment.candidate.video_id}.jpg"
+        try:
+            sheet = storyboard_sheet(
+                segment.candidate,
+                segment.start_seconds,
+                segment.end_seconds,
+                preview_path,
+            )
+        except Exception:
+            sheet = None
+        if sheet is None:
+            return list(range(len(finalists))), {}
+        sheets.append(Path(sheet))
+    preview_intent = (
+        f"{judge_intent}\n\nThese contact sheets are low-resolution seek-bar storyboard thumbnails "
+        "sampled inside each candidate's time range; rank the candidates by how likely the real "
+        "footage matches the intent."
+    )
+    try:
+        judgments = judge.judge(preview_intent, finalists, sheets)
+    except Exception as error:
+        print(f"Aviso: previsualización por storyboards fallida; se descargan los finalistas: {error}")
+        return list(range(len(finalists))), {}
+    scores = {
+        int(index): float(score)
+        for index, score, _reason in judgments
+        if 0 <= int(index) < len(finalists)
+    }
+    if len(scores) != len(finalists):
+        return list(range(len(finalists))), {}
+    order = sorted(range(len(finalists)), key=lambda index: (-scores[index], index))
+    return order, scores
+
+
+def _download_all_and_judge(
+    finalists: list[ScoredSegment],
+    youtube: YouTubeClient,
+    judge: DeepSeekVisualJudge,
+    judge_intent: str,
+    clip_dir: Path,
+    sheet_dir: Path,
+    used_video_ids: set[str],
+    min_visual_score: float,
+) -> SelectedThirdPartyClip | None:
     downloaded: list[ScoredSegment] = []
     downloaded_paths: list[Path] = []
     contact_sheets: list[Path] = []
@@ -120,9 +253,6 @@ def select_third_party_clip(
         return None
 
     try:
-        judge_intent = visual_intent.strip()
-        if selection_guidance.strip():
-            judge_intent = f"{judge_intent}\n\nAdditional visual criteria: {selection_guidance.strip()}"
         judgments = judge.judge(judge_intent, downloaded, contact_sheets)
     except Exception as error:
         # A transcript-only score is not enough to declare the visual relevant.
@@ -138,7 +268,7 @@ def select_third_party_clip(
         return None
 
     selected_index, visual_score, reason = max(choices, key=lambda item: item[1])
-    if visual_score < 0.55:
+    if visual_score < min_visual_score:
         print(f"Aviso: ningún clip de terceros superó relevancia visual suficiente ({visual_score:.2f}).")
         return None
 

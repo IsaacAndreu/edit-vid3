@@ -126,5 +126,152 @@ class ThirdPartyMediaSelectionTests(unittest.TestCase):
         self.assertEqual(len(youtube.download_calls), 1)
 
 
+class StoryboardYouTube(FakeYouTube):
+    """FakeYouTube that also offers seek-bar storyboards for some videos."""
+
+    def __init__(self, candidates: list[YouTubeCandidate], *, without_storyboard: set[str] | None = None) -> None:
+        super().__init__(candidates)
+        self.without_storyboard = without_storyboard or set()
+        self.storyboard_calls: list[str] = []
+
+    def storyboard_sheet(
+        self,
+        candidate: YouTubeCandidate,
+        _start: float,
+        _end: float,
+        output_path: Path,
+    ) -> Path | None:
+        self.storyboard_calls.append(candidate.video_id)
+        if candidate.video_id in self.without_storyboard:
+            return None
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"preview")
+        return output_path
+
+
+class SequenceJudge:
+    """Returns one prepared judgment list per call, in order."""
+
+    def __init__(self, rounds: list[list[tuple[int, float, str]]]) -> None:
+        self.rounds = rounds
+        self.calls: list[tuple[str, list[str], list[Path]]] = []
+
+    def judge(self, intent: str, candidates: list[ScoredSegment], sheets: list[Path]) -> list[tuple[int, float, str]]:
+        self.calls.append((intent, [segment.candidate.video_id for segment in candidates], list(sheets)))
+        return self.rounds.pop(0)
+
+
+def three_segments(candidates: list[YouTubeCandidate]) -> list[ScoredSegment]:
+    return [
+        ScoredSegment(candidate, 10.0 + index, 14.0 + index, 0.8 - index * 0.1, "robot assembly")
+        for index, candidate in enumerate(candidates)
+    ]
+
+
+class StoryboardPreviewTests(unittest.TestCase):
+    def test_preview_ranks_with_storyboards_and_downloads_only_the_winner(self) -> None:
+        candidates = [make_candidate(index) for index in range(1, 4)]
+        youtube = StoryboardYouTube(candidates)
+        judge = SequenceJudge(
+            [
+                [(0, 0.4, "train"), (1, 0.9, "robots"), (2, 0.6, "factory")],  # storyboard preview
+                [(0, 0.88, "robot assembly line confirmed")],  # verification on real frames
+            ]
+        )
+        segments = three_segments(candidates)
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "pipeline.third_party_media.score_candidate_segments", side_effect=[[segment] for segment in segments]
+        ), patch("pipeline.third_party_media.create_contact_sheet", side_effect=lambda _clip, path, **_kw: path):
+            used_ids: set[str] = set()
+            selected = select_third_party_clip(
+                visual_intent="robots assembling cars",
+                keywords=["robot factory"],
+                youtube=youtube,  # type: ignore[arg-type]
+                judge=judge,  # type: ignore[arg-type]
+                assets_dir=Path(temp_dir),
+                used_video_ids=used_ids,
+            )
+
+        assert selected is not None
+        self.assertEqual(selected.candidate.video_id, candidates[1].video_id)
+        self.assertEqual(selected.visual_score, 0.88)
+        self.assertEqual(len(youtube.download_calls), 1, "only the storyboard winner is downloaded")
+        self.assertEqual(youtube.download_calls[0][0], candidates[1].video_id)
+        self.assertEqual(len(youtube.storyboard_calls), 3)
+        self.assertEqual(len(judge.calls), 2)
+        self.assertIn("storyboard", judge.calls[0][0])
+        self.assertEqual(judge.calls[1][1], [candidates[1].video_id])
+        self.assertEqual(used_ids, {candidates[1].video_id})
+
+    def test_failed_verification_moves_to_next_finalist(self) -> None:
+        candidates = [make_candidate(index) for index in range(1, 4)]
+        youtube = StoryboardYouTube(candidates)
+        judge = SequenceJudge(
+            [
+                [(0, 0.9, "looks right"), (1, 0.7, "maybe"), (2, 0.2, "no")],
+                [(0, 0.3, "actually a talking head")],  # winner rejected on real frames
+                [(0, 0.7, "robots visible")],  # runner-up accepted
+            ]
+        )
+        segments = three_segments(candidates)
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "pipeline.third_party_media.score_candidate_segments", side_effect=[[segment] for segment in segments]
+        ), patch("pipeline.third_party_media.create_contact_sheet", side_effect=lambda _clip, path, **_kw: path):
+            selected = select_third_party_clip(
+                visual_intent="robots assembling cars",
+                keywords=["robot factory"],
+                youtube=youtube,  # type: ignore[arg-type]
+                judge=judge,  # type: ignore[arg-type]
+                assets_dir=Path(temp_dir),
+                used_video_ids=set(),
+            )
+
+        assert selected is not None
+        self.assertEqual(selected.candidate.video_id, candidates[1].video_id)
+        self.assertEqual([call[0] for call in youtube.download_calls], [candidates[0].video_id, candidates[1].video_id])
+
+    def test_missing_storyboard_falls_back_to_downloading_every_finalist(self) -> None:
+        candidates = [make_candidate(index) for index in range(1, 4)]
+        youtube = StoryboardYouTube(candidates, without_storyboard={candidates[2].video_id})
+        judge = SequenceJudge([[(0, 0.6, "train"), (1, 0.93, "robots"), (2, 0.7, "factory")]])
+        segments = three_segments(candidates)
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "pipeline.third_party_media.score_candidate_segments", side_effect=[[segment] for segment in segments]
+        ), patch("pipeline.third_party_media.create_contact_sheet", side_effect=lambda _clip, path, **_kw: path):
+            selected = select_third_party_clip(
+                visual_intent="robots assembling cars",
+                keywords=["robot factory"],
+                youtube=youtube,  # type: ignore[arg-type]
+                judge=judge,  # type: ignore[arg-type]
+                assets_dir=Path(temp_dir),
+                used_video_ids=set(),
+            )
+
+        assert selected is not None
+        self.assertEqual(selected.candidate.video_id, candidates[1].video_id)
+        self.assertEqual(len(youtube.download_calls), 3)
+        self.assertEqual(len(judge.calls), 1)
+
+    def test_preview_can_be_disabled(self) -> None:
+        candidates = [make_candidate(index) for index in range(1, 3)]
+        youtube = StoryboardYouTube(candidates)
+        judge = SequenceJudge([[(0, 0.6, "train"), (1, 0.93, "robots")]])
+        segments = three_segments(candidates)
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "pipeline.third_party_media.score_candidate_segments", side_effect=[[segment] for segment in segments]
+        ), patch("pipeline.third_party_media.create_contact_sheet", side_effect=lambda _clip, path, **_kw: path):
+            select_third_party_clip(
+                visual_intent="robots assembling cars",
+                keywords=["robot factory"],
+                youtube=youtube,  # type: ignore[arg-type]
+                judge=judge,  # type: ignore[arg-type]
+                assets_dir=Path(temp_dir),
+                used_video_ids=set(),
+                preview_with_storyboards=False,
+            )
+        self.assertEqual(youtube.storyboard_calls, [])
+        self.assertEqual(len(youtube.download_calls), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

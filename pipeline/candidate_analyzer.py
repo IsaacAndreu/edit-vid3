@@ -12,6 +12,7 @@ from pathlib import Path
 import requests
 
 from .clients.youtube_client import YouTubeCandidate
+from .clients.youtube_proxy import scrub_proxy_env
 
 
 @dataclass(frozen=True)
@@ -202,6 +203,7 @@ def create_contact_sheet(
             capture_output=True,
             text=True,
             check=False,
+            env=scrub_proxy_env(),
         )
     except FileNotFoundError as exc:
         raise RuntimeError("ffprobe was not found; install ffmpeg/ffprobe and add it to PATH.") from exc
@@ -234,6 +236,7 @@ def create_contact_sheet(
             capture_output=True,
             text=True,
             check=False,
+            env=scrub_proxy_env(),
         )
     except FileNotFoundError as exc:
         raise RuntimeError("ffmpeg was not found; install ffmpeg and add it to PATH.") from exc
@@ -242,6 +245,66 @@ def create_contact_sheet(
         raise RuntimeError(f"ffmpeg could not create the contact sheet. {detail}".strip())
     if not output_path.is_file():
         raise RuntimeError(f"ffmpeg completed without creating the contact sheet: {output_path}")
+    return output_path
+
+
+def create_storyboard_contact_sheet(
+    crops: list[tuple[Path, int, int, int, int]],
+    output_path: Path,
+) -> Path:
+    """Tile storyboard thumbnails (crops of mosaic images) into one contact sheet.
+
+    Each crop is ``(mosaic_path, x, y, width, height)``. Everything happens in a
+    single local ffmpeg run, so no network and no proxy are involved.
+    """
+
+    output_path = Path(output_path)
+    if not crops:
+        raise ValueError("At least one storyboard crop is required.")
+    inputs: list[Path] = []
+    input_index: dict[Path, int] = {}
+    filters: list[str] = []
+    labels: list[str] = []
+    for position, (mosaic_path, x, y, width, height) in enumerate(crops):
+        mosaic_path = Path(mosaic_path)
+        if not mosaic_path.is_file():
+            raise FileNotFoundError(f"Storyboard mosaic not found: {mosaic_path}")
+        if width <= 0 or height <= 0 or x < 0 or y < 0:
+            raise ValueError("Storyboard crops need non-negative offsets and positive sizes.")
+        if mosaic_path not in input_index:
+            input_index[mosaic_path] = len(inputs)
+            inputs.append(mosaic_path)
+        label = f"f{position}"
+        filters.append(f"[{input_index[mosaic_path]}:v]crop={width}:{height}:{x}:{y}[{label}]")
+        labels.append(f"[{label}]")
+    frame_count = len(crops)
+    columns = math.ceil(math.sqrt(frame_count))
+    rows = math.ceil(frame_count / columns)
+    filters.append(
+        "".join(labels)
+        + f"concat=n={frame_count}:v=1:a=0,scale=320:-2:flags=lanczos,"
+        + f"tile={columns}x{rows}:nb_frames={frame_count}:padding=2:margin=2[out]"
+    )
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    for mosaic_path in inputs:
+        command += ["-i", str(mosaic_path)]
+    command += ["-filter_complex", ";".join(filters), "-map", "[out]", "-frames:v", "1", str(output_path)]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=scrub_proxy_env(),
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg was not found; install ffmpeg and add it to PATH.") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()[:500]
+        raise RuntimeError(f"ffmpeg could not create the storyboard contact sheet. {detail}".strip())
+    if not output_path.is_file():
+        raise RuntimeError(f"ffmpeg completed without creating the storyboard sheet: {output_path}")
     return output_path
 
 
