@@ -13,10 +13,12 @@ def test_clean_keeps_only_the_vocabulary_and_falls_back_to_the_globe():
                                     {"from": "x", "to": [1, 2]}],
                          "rings": [{"lat": -54.8, "lon": -68.3, "km": 99999, "label": "Ushuaia"}],
                          "card": {"kind": "quote", "title": "Tratado", "lines": ["cita"], "at": "dice"},
-                         "chart": {"kind": "bars", "bars": [{"label": "787", "value": "330"}]}}, None)
-    assert scene["camera"] == {"lat": -90.0, "lon": 0.0, "zoom": 2.0}          # the whole globe unless a place is named
+                         "chart": {"kind": "bars", "bars": [{"label": "Defecto", "value": 60}, {"label": "787", "value": "330"}]}}, None)
+    assert scene["camera"] == {"lat": -90.0, "lon": 0.0, "zoom": 1.8}          # the whole globe unless a place is named
     assert len(scene["routes"]) == 1 and scene["rings"][0]["km"] == 6000 and scene["rings"][0]["label"] == "USHUAIA"
-    assert scene["view"] == "chart" and scene["chart"]["bars"][0]["value"] == 330
+    assert scene["view"] == "chart" and scene["chart"]["bars"][1]["value"] == 330
+    one = atlas.clean({"view": "chart", "chart": {"kind": "bars", "title": "SUEÑO", "bars": [{"label": "1 h más", "value": 19, "unit": "min"}]}}, None)
+    assert one["view"] == "globe" and one["counter"]["value"] == 19 and one["counter"]["unit"] == "min"   # one bar: a counter
     bad = atlas.clean({"view": "icon", "icon": {"name": "unicornio"}}, scene)
     assert bad["view"] == "globe" and bad["camera"] == scene["camera"]          # no valid icon: the globe, same camera
 
@@ -135,7 +137,7 @@ def test_lines_in_the_same_place_pile_up_and_a_bare_figure_becomes_a_tag():
     assert atlas.auto_tag(c, "Nada que contar.", b) == c
     close = atlas.clean({"camera": {"lat": 42, "lon": -4, "zoom": 3}, "points": [{"name": "Vigo", "lat": 42.2, "lon": -8.7}]}, None)
     again = atlas.carry(atlas.clean({"camera": close["camera"]}, close), close)
-    assert again["camera"]["zoom"] == 3 and again["points"]          # the same close view, its dot kept
+    assert again["camera"]["zoom"] == 2.6 and again["points"]          # the same close view, its dot kept
     far = atlas.carry(atlas.clean({"camera": {"lat": -40, "lon": 140, "zoom": 1.5}}, b), b)
     assert far["points"] == []
 
@@ -154,3 +156,14 @@ def test_the_new_views_and_elements():
                          "night": {"date": "2026-12-21", "from": "18:30", "tz": "Europe/Madrid"}}, None)
     assert [r["mover"] for r in scene["routes"]] == ["plane", "dot"] and scene["counter"]["value"] == 5770
     assert scene["night"]["lights"] is True
+
+
+def test_two_satellite_dives_when_the_llm_chose_none():
+    scenes = {f"s{i}": atlas.clean({"camera": {"lat": 40, "lon": 0, "zoom": 1.5}}, None) for i in range(30)}
+    for i in (5, 7, 16, 25):
+        scenes[f"s{i}"] = atlas.clean({"camera": {"lat": 42, "lon": -8, "zoom": 2},
+                                        "points": [{"name": f"Sitio {i}", "lat": 42.2, "lon": -8.7, "at": "Vigo"}]}, None)
+    atlas.ensure_satellites(scenes, 2)
+    dives = [k for k, g in scenes.items() if g["view"] == "sat"]
+    assert len(dives) == 2 and "s7" not in dives                       # never two within 8 lines
+    assert scenes[dives[0]]["sat"]["zoom"] == 11 and scenes[dives[0]]["sat"]["label"].startswith("SITIO")

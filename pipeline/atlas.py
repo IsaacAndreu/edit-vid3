@@ -23,7 +23,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 4
+VERSION = 5
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -75,7 +75,9 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
 - view "sat" (la frase habla de un sitio concreto que se ve desde el cielo: un puerto, una isla, un aeropuerto, una
   ciudad): "sat": {{"lat", "lon", "zoom": 9-13 (9 = una isla grande o una bahía, 11 = una ciudad o un puerto, 13 = un
   aeropuerto o un edificio), "label": "PUERTO DE ROTTERDAM", "at": "palabra"}}: el globo baja hasta la foto real de satélite.
-  Úsalo 2-4 veces por vídeo, en los momentos fuertes
+  OBLIGATORIO: 2-4 escenas "sat" por vídeo, en los sitios concretos que nombra el guion (una ciudad, un puerto, un
+  observatorio, una isla), en los momentos fuertes
+- si el guion compara tamaños o dice que un mapa engaña, usa "size" o "flat" al menos una vez
 - view "flat" («el mapa plano te engaña»): "flat": {{"from": [lat, lon], "to": [lat, lon], "straight": "LO QUE SUGIERE EL
   MAPA", "curve": "EL CAMINO MÁS CORTO", "at": "palabra"}}: el globo se desenrolla en un mapa plano con la línea recta, y
   aparece la curva real
@@ -187,7 +189,9 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     if not named and previous and (previous.get("points") or previous.get("tags")) and \
             _angle((camera["lat"], camera["lon"]), (prev_cam["lat"], prev_cam["lon"])) < 4:
         named = True                        # still at the place the last line named: its close view stays
-    camera["zoom"] = min(camera["zoom"], 3.2 if named else 2.0)
+    # (a globe bigger than ~2.6 is cut at the top under the chapter bar and at the bottom: never, except the satellite
+    # dive, which sets its own camera below)
+    camera["zoom"] = min(camera["zoom"], 2.6 if named else 1.8)
     view = str(scene.get("view") or "globe")
     out: dict[str, Any] = {"type": "atlas", "view": view if view in VIEWS else "globe",
                            "camera": camera, "dark": bool(scene.get("dark"))}
@@ -235,6 +239,12 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     out["headline"] = {"text": _text(headline.get("text"), 12, False, 80), "at": _at(headline.get("at"))} \
         if headline and str(headline.get("text") or "").strip() else None
     out["chart"] = _chart(scene.get("chart")) if out["view"] == "chart" else None
+    if out["chart"] and out["chart"]["kind"] == "bars" and len(out["chart"]["bars"]) < 2:
+        # one bar compares nothing: its figure counts up on the globe instead
+        bar = out["chart"]["bars"][0]
+        scene = {**scene, "counter": {"value": bar["value"], "unit": bar["unit"] or out["chart"]["unit"],
+                                      "label": bar["label"] or out["chart"]["title"], "at": (scene.get("chart") or {}).get("at")}}
+        out["chart"], out["view"] = None, "globe"
     icon = scene.get("icon") if isinstance(scene.get("icon"), dict) else None
     out["icon"] = {"name": icon["name"], "label": _text(icon.get("label"), 4, True, 28), "at": _at(icon.get("at"))} \
         if out["view"] == "icon" and icon and icon.get("name") in ICONS else None
@@ -454,6 +464,34 @@ def auto_tag(scene: dict[str, Any], text: str, previous: dict[str, Any] | None) 
                                "at": first}]}
 
 
+def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> None:
+    """The dive to the real satellite photo is the format's strongest moment: when the LLM chose none, the lines that
+    name exactly one new place (not in the hook's first lines, at least 8 lines apart) become dives, `wanted` of them
+    (visual.satellites, 2)."""
+
+    ids = list(scenes)
+    if wanted <= 0 or any(scenes[i].get("view") == "sat" for i in ids):
+        return
+    chosen: list[int] = []
+    for n, shot_id in enumerate(ids):
+        g = scenes[shot_id]
+        new = [p for p in g.get("points") or [] if not p.get("kept")]
+        if n < 3 or g.get("view") != "globe" or len(new) != 1 or g.get("card") or g.get("night"):
+            continue
+        if chosen and n - chosen[-1] < 8:
+            continue
+        chosen.append(n)
+    if len(chosen) > wanted:                       # spread over the video
+        step = len(chosen) / wanted
+        chosen = [chosen[int(k * step)] for k in range(wanted)]
+    for n in chosen:
+        g = scenes[ids[n]]
+        place = next(p for p in g["points"] if not p.get("kept"))
+        g["view"] = "sat"
+        g["sat"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 11, "label": place["name"], "at": place.get("at", "")}
+        g["camera"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 3.2}
+
+
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     from .llm import complete_json
 
@@ -487,6 +525,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         scene = fit_camera(clean(found.get(n) or {}, previous))
         previous = auto_tag(carry(scene, previous), lines[n - 1][1], previous)
         out[shot_id] = previous
+    ensure_satellites(out, int(ctx.section("visual").get("satellites", 2)))
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
     return out
