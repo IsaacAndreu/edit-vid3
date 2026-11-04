@@ -39,7 +39,7 @@ def test_groups_time_elements_to_their_words_and_carry_the_chapters(monkeypatch,
     out = atlas.groups(ctx, shots, 30, [], words)
     assert [g["graphic"]["view"] for g in out] == ["globe", "title", "globe"]
     assert out[0]["graphic"]["points"][0]["at"] == 45                  # the frame of «Perth»
-    assert out[1]["graphic"]["title"] == {"number": "I", "text": "Nadie a quien *volar*"}
+    assert out[1]["graphic"]["title"] == {"number": "I", "text": "Nadie a quien *volar*"}   # (if a chapter shot ever comes)
     assert out[2]["graphic"]["chapter"] == 1 and out[2]["graphic"]["chapters"] == ["Nadie a quien *volar*"]
     assert out[2]["graphic"]["prev"] == out[0]["graphic"]["camera"]    # the globe turns from the last globe shot
     assert out[0]["graphic"]["brand"] == "Atlas"

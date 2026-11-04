@@ -279,11 +279,11 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         context = str(result.get("context") or "").strip()[:400]
     if not chapters or chapters[0].startWord != 0:
         chapters.insert(0, PlanChapter(title=words_file.title.upper()[:48] or "INTRO", startWord=0, fromScript=False, showTitle=False))
-    from . import atlas
     from .stickman import film
 
-    # no chapter cards in a drawn video: the world stays on screen — except an atlas, whose chapters are its I-V
-    if (simulacion.active(ctx) or film(ctx)) and not atlas.active(ctx):
+    # no chapter cards in a drawn video (simulations, stick figures, maps, atlas): the world stays on screen, never a
+    # title card with its silent pause — anticlimactic
+    if simulacion.active(ctx) or film(ctx):
         chapters = [c.model_copy(update={"showTitle": False}) for c in chapters]
     return chapters, context, result
 

@@ -265,6 +265,12 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     shown = simulation_writing(ctx) or cine.writing(ctx) or mapas.writing(ctx) or atlas.writing(ctx)   # drawn channels: what they can show
     if shown:
         brief.append(shown)
+    from .stickman import drawn
+
+    drawn_video = drawn(ctx)
+    if drawn_video:                              # simulations, stick figures, maps, atlas: never a chapter card
+        brief.append("SIN CAPÍTULOS: no escribas ninguna línea «## ». El vídeo nunca se para en un rótulo: las partes "
+                     "se enlazan con la propia voz.")
     from .porque import lessons
 
     learned = lessons(root, channel)
@@ -276,6 +282,8 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     result = complete_json(ctx, stage="guiones", section="planner", system=DRAFT_SYSTEM, user="\n\n".join(brief),
                            max_tokens=max(9000, int(words * 2.4)), use_cache=False)       # long documentaries too
     script = str(result.get("script") or "").strip()
+    if drawn_video:                              # and if the model wrote them anyway, they go
+        script = "\n".join(line for line in script.splitlines() if not line.strip().startswith("## ")).strip()
     if len(script.split()) < 200:
         raise RuntimeError("El borrador ha salido demasiado corto; vuelve a probar")
     return {"title": str(result.get("title") or title).strip(), "script": script + "\n", "words": len(script.split()),
