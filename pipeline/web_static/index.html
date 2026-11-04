@@ -699,7 +699,7 @@ async function videoPage(slug) {
     try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, on}); route(); } catch (e) { alert(e.message); button.disabled = false; } };
   window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
-  const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics],
+  const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics], rhythm: ["Ritmo", v.rhythm],
                 retention: ["Retención", null], audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
   window.uploadRetention = async () => {
     const file = $("#retfile").files[0], msg = $("#retmsg");

@@ -93,6 +93,9 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--tiempos", nargs="?", const=30.0, type=float, metavar="DÍAS",
                         help="Dónde se va el tiempo: minutos de cada etapa de los vídeos terminados en los últimos "
                              "DÍAS (30) → out/_tiempos.md.")
+    target.add_argument("--ritmo", metavar="SLUG",
+                        help="Tramos sin nada nuevo en pantalla y silencios de un vídeo ya renderizado → "
+                             "out/SLUG/qa/ritmo.md (se hace solo tras cada render).")
     target.add_argument("--cola-por-que", action="store_true",
                         help="Lista los vídeos sin hacer y por qué cada uno entra o no en la cola ahora.")
     target.add_argument("--vigilar", nargs="?", const=5.0, type=float, metavar="MIN",
@@ -1418,6 +1421,13 @@ def main() -> None:
         from pipeline import actualizar
 
         raise SystemExit(actualizar.main(PROJECT_ROOT, args.actualizar))
+    if args.ritmo:
+        from pipeline import ritmo
+
+        found = ritmo.run(RunContext.create(args.ritmo, root=PROJECT_ROOT))
+        print(f"Sin out/{args.ritmo}/video-final.mp4 (o ritmo.enabled: false)" if found is None else
+              (PROJECT_ROOT / "out" / args.ritmo / "qa" / "ritmo.md").read_text("utf-8"))
+        return
     if args.tiempos is not None:
         from pipeline import tiempos
 

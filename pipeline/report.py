@@ -54,7 +54,12 @@ def card(ctx: RunContext) -> dict[str, Any]:
         problems.append(f"{len(wrong)} dato(s) del guion a corregir")
     if len(weak) > int(cfg.get("max_weak", 15)):
         problems.append(f"{len(weak)} planos flojos")
-    return {"person": person, "protagonist": on_screen / total, "stock": stock, "weak": weak, "wrong": wrong,
+    rhythm = ""
+    if (ctx.out_dir / "qa" / "ritmo.json").is_file():
+        from . import ritmo
+
+        rhythm = ritmo.summary(json.loads((ctx.out_dir / "qa" / "ritmo.json").read_text("utf-8")))
+    return {"rhythm": rhythm, "person": person, "protagonist": on_screen / total, "stock": stock, "weak": weak, "wrong": wrong,
             "problems": problems}
 
 
@@ -68,6 +73,8 @@ def text(result: dict[str, Any], limit: int = 8) -> str:
     lines += [f"   – {w}" for w in result["weak"][:limit]]
     if len(result["weak"]) > limit:
         lines.append(f"   – … y {len(result['weak']) - limit} más (qa/report.md)")
+    if result.get("rhythm"):
+        lines.append(f"• Ritmo: {result['rhythm']}")
     if result["wrong"]:
         lines.append(f"• Datos marcados ❌ en la verificación: {len(result['wrong'])}")
     lines += [f"   – «{(c.get('quote') or c.get('claim') or '')[:110]}» → {(c.get('correction') or '?')[:160]}"

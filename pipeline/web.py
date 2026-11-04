@@ -536,7 +536,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "stages": stages,
         "log": log.read_text("utf-8", errors="replace")[-12000:] if log.is_file() else "",
         "diagnosis": read("diagnostico.md"), "factcheck": read("verificacion.md"), "youtubeTxt": read("youtube.txt"),
-        "graphics": read("graficos.md"), "hook": read("gancho.md"), "retention": read("retencion.md"), "audit": audit_text(root, slug),
+        "graphics": read("graficos.md"), "hook": read("gancho.md"), "retention": read("retencion.md"), "rhythm": read("qa/ritmo.md"), "audit": audit_text(root, slug),
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
         "scenesPreview": "vista-previa.jpg" if "vista-previa.jpg" in files else "",
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],

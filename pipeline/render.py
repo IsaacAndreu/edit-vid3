@@ -1056,6 +1056,14 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
                   f"{len(warnings)} avisos (out/{ctx.slug}/qa/simulacion.md) · " + " · ".join(warnings[:4])))
         except Exception as error:      # a check: never costs the video
             print(f"   Control de la simulación no disponible: {str(error)[:120]}")
+    try:                                 # stretches with nothing new on screen, pauses in the voice
+        from . import ritmo
+
+        found = ritmo.run(ctx, final)
+        if found is not None:
+            print("   Ritmo: " + ritmo.summary(found))
+    except Exception as error:          # a check: never costs the video
+        print(f"   Control de ritmo no disponible: {str(error)[:120]}")
     _prune(r.dir / "segments", {f.name for f in files})
     for old in r.dir.glob("remotion-*.mp4"):
         if old != condensed_path:

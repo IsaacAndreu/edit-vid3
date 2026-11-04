@@ -267,6 +267,15 @@ def run(ctx: RunContext) -> None:
         shutil.move(str(frame), target)
         thumbs.append(target)
     shutil.rmtree(frames_dir, ignore_errors=True)
+    try:                                     # best first in the notice; the files keep their names
+        from . import saliencia
+
+        ranked = saliencia.rank(thumbs)
+        (out_dir / "puntuacion.md").write_text(saliencia.markdown("Miniaturas, de la mejor a la peor", ranked), "utf-8")
+        thumbs = [out_dir / r["file"] for r in ranked] + [t for t in thumbs if t.name not in {r["file"] for r in ranked}]
+        print("   Miniaturas por puntos: " + " · ".join(f"{r['file']} {r['score']}" for r in ranked))
+    except Exception as error:              # a help, never a reason to fail the video
+        print(f"   Puntuación de miniaturas no disponible: {str(error)[:120]}")
     write_titles(ctx.out_dir / "youtube.txt", titles)
     print(f"   {len(thumbs)} miniaturas · títulos: " + " | ".join(titles))
     _finish(ctx, timeline, titles, thumbs)
@@ -288,6 +297,15 @@ def material_for_thumbnail(ctx: RunContext, timeline: Timeline, texts: list[str]
     except Exception as error:               # stills are a help, never a reason to fail the video
         print(f"   Fotogramas para la miniatura no disponibles: {str(error)[:120]}")
         stills = []
+    try:                                     # fotograma-1 = the one that reads best small (puntuacion.md)
+        from . import saliencia
+
+        ranked = saliencia.order_stills(out_dir)
+        if ranked:
+            print(f"   Mejor fotograma para la miniatura: {ranked[0]['was']} ({ranked[0]['score']} puntos, "
+                  f"{saliencia.why(ranked[0])}) → fotograma-1.jpg")
+    except Exception as error:              # a help, never a reason to fail the video
+        print(f"   Puntuación de fotogramas no disponible: {str(error)[:120]}")
     if cutout and (ctx.work_dir / cutout).is_file():
         shutil.copy2(ctx.work_dir / cutout, out_dir / ("recorte" + Path(cutout).suffix))
     youtube = ctx.out_dir / "youtube.txt"
