@@ -81,7 +81,9 @@ const cameraAt = (g: AtlasGraphic, f: number, fps: number) => {
   const dip = Math.max(0, Math.min(a.zoom, b.zoom) - 1) * clamp(far / 0.6) * Math.sin(Math.PI * t);
   const [lon, lat] = turn(t);
   const zoom = lerp(a.zoom, b.zoom, t) - dip + 0.05 * clamp((f - T) / (fps * 10));
-  return { lon: lon + 0.25 * Math.max(0, f - T) / fps, lat, zoom };
+  // never exactly at a pole or a round number: the globe's horizon would lie exactly on the equator or a meridian,
+  // where the map data has edges, and d3-geo then flips which side is inside from one frame to the next (flicker)
+  return { lon: lon + 0.0731 + 0.25 * Math.max(0, f - T) / fps, lat: Math.max(-88.7, Math.min(88.7, lat + 0.0573)), zoom };
 };
 
 const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accent }) => {
