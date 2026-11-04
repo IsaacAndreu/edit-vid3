@@ -352,7 +352,9 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
       </Sequence>
     ))}
     {shots
-      .filter((shot) => shot.type === 'chapter' && shot.chapterTitle)
+      // an atlas draws its own chapter card (the paper «I — El mapa»): the generic one would cover it
+      .filter((shot) => shot.type === 'chapter' && shot.chapterTitle
+        && !groups.some((g) => g.graphic?.type === 'atlas' && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
       .map((shot) => (
         <Sequence key={`chapter-${shot.id}`} from={shot.from} durationInFrames={shot.chapterFrames || shot.durationInFrames}>
           <Chapter title={shot.chapterTitle as string} number={shot.chapterNumber} word={locale?.chapter}

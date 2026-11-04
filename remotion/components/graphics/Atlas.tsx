@@ -43,10 +43,10 @@ const DEPTHS = (bathymetry as unknown as { features: { properties: { depth: numb
 const PALETTES = {
   paper: { page: '#ECE4D1', pageEdge: '#D9CFB8', ink: '#1E2833', soft: '#6B6355', oceanIn: '#D6E4EA', oceanOut: '#C3D6E0',
            depths: ['#BFD3DF', '#A9C4D5', '#93B4C9', '#82A6BE'],
-           shelf: '#D3E2EA', land: '#E3D4B1', coast: '#8C7A5A', ice: '#F6F4EE', grid: 'rgba(30,40,51,0.07)', rim: '#1E2833', card: '#F4EEDF' },
+           shelf: '#D3E2EA', land: '#E3D4B1', coast: '#8C7A5A', ice: '#F6F4EE', grid: 'rgba(30,40,51,0.07)', rim: '#1E2833', card: '#F4EEDF', halo: '#F4EEDF' },
   dark: { page: '#2A323B', pageEdge: '#1D232A', ink: '#E9E3D6', soft: '#9AA3AC', oceanIn: '#4A6377', oceanOut: '#41596C',
           depths: ['#3F576B', '#364D60', '#2E4456', '#283C4D'],
-          shelf: '#4C667B', land: '#8E9FAE', coast: '#B7C3CD', ice: '#EEF2F5', grid: 'rgba(233,227,214,0.06)', rim: '#9FB0BE', card: '#F4EEDF' },
+          shelf: '#4C667B', land: '#8E9FAE', coast: '#B7C3CD', ice: '#EEF2F5', grid: 'rgba(233,227,214,0.06)', rim: '#9FB0BE', card: '#F4EEDF', halo: '#1B232C' },
 };
 type Palette = typeof PALETTES.paper;
 
@@ -213,7 +213,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         return (
           <g key={`rl${i}`} opacity={clamp(local / 8)}>
             <rect x={x - 70} y={y - 44} width={140} height={34} rx={3} fill={p.card} stroke={ink} strokeWidth={1} />
-            <text x={x} y={y - 21} textAnchor="middle" fontFamily={MONO} fontSize={18} fontWeight={700} fill={ink}>{r.label}</text>
+            <text x={x} y={y - 21} textAnchor="middle" fontFamily={MONO} fontSize={18} fontWeight={700} fill={PALETTES.paper.ink}>{r.label}</text>
           </g>
         );
       })}
@@ -225,7 +225,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           <g key={`ringl${i}`} opacity={clamp(local / 8)}>
             <circle cx={x} cy={y} r={5} fill={ink} />
             <text x={x} y={y - 14} textAnchor="middle" fontFamily={MONO} fontSize={17} fontWeight={700} fill={ink}
-                  stroke={p.card} strokeWidth={5} paintOrder="stroke">{r.label}</text>
+                  stroke={p.halo} strokeWidth={5} paintOrder="stroke">{r.label}</text>
           </g>
         );
       })}
@@ -239,7 +239,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           <g key={`pt${i}`}>
             <circle cx={x} cy={y} r={8 * pop} fill={ink} stroke={p.card} strokeWidth={2.5} />
             <text x={x + (right ? 16 : -16)} y={y + 6} textAnchor={right ? 'start' : 'end'} fontFamily={MONO} fontSize={19}
-                  fontWeight={700} letterSpacing={1} fill={ink} opacity={clamp(local / 6)} stroke={p.card} strokeWidth={6}
+                  fontWeight={700} letterSpacing={1} fill={ink} opacity={clamp(local / 6)} stroke={p.halo} strokeWidth={6}
                   paintOrder="stroke">{pt.name}</text>
           </g>
         );
@@ -251,7 +251,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         if (!visible(centre[1], centre[0])) return null;
         const [x, y] = projection(centre) ?? [0, 0];
         return <text key={`hl${i}`} x={x} y={y} textAnchor="middle" fontFamily={MONO} fontSize={18} fontWeight={700} fill={ink}
-                     stroke={p.card} strokeWidth={5} paintOrder="stroke">{h.label}</text>;
+                     stroke={p.halo} strokeWidth={5} paintOrder="stroke">{h.label}</text>;
       })}
       {g.meridians?.labels ? (() => {
         const out = [];
@@ -262,7 +262,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           const [x, y] = projection(at) ?? [0, 0];
           const hours = Math.round(lon / 15);
           out.push(<text key={`ml${lon}`} x={x} y={y} textAnchor="middle" fontFamily={MONO} fontSize={16} fill={ink}
-                         opacity={clamp(since(g.meridians.at) / 20) * 0.85} stroke={p.card} strokeWidth={4} paintOrder="stroke">
+                         opacity={clamp(since(g.meridians.at) / 20) * 0.85} stroke={p.halo} strokeWidth={4} paintOrder="stroke">
             {lon === 0 ? '0°' : `${Math.abs(lon)}°${lon > 0 ? 'E' : 'O'}`}{g.meridians.step === 15 ? ` · ${hours >= 0 ? '+' : '−'}${Math.abs(hours)} h` : ''}</text>);
         }
         return <g>{out}</g>;

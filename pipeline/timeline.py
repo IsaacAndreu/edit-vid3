@@ -1386,6 +1386,14 @@ def run(ctx: RunContext) -> None:
     groups += question_groups(words, shots, groups, fps, total_frames, cfg,
                               spanish=str(ctx.section("align").get("language", "es")) == "es")
     groups.sort(key=lambda g: g.from_)
+    from . import atlas as _atlas
+
+    if _atlas.active(ctx):      # an atlas shows its figures on the globe or a paper card, never the generic stat/panel
+        dropped = {g.id for g in groups if g.kind in ("stat", "datacard", "split")}
+        groups = [g for g in groups if g.id not in dropped]
+        for shot in shots:
+            if shot.groupId in dropped:
+                shot.groupId = None
     person_cards(ctx, shots_file, shots, groups, fps)
     labels = place_labels(shots_file, shots, groups, fps, cfg)
     groups, labels = with_graphics(ctx, words, shots, groups, labels, fps, total_frames)
