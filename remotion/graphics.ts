@@ -397,17 +397,21 @@ export interface MapaGraphic {
  * them), or a chart / line drawing / chapter title instead; every element with the frame of its word. */
 export interface AtlasGraphic {
   type: 'atlas';
-  view: 'globe' | 'chart' | 'icon' | 'title';
+  view: 'globe' | 'chart' | 'icon' | 'title' | 'sat' | 'flat' | 'size';
   camera: { lat: number; lon: number; zoom: number };
   prev?: { lat: number; lon: number; zoom: number };
   dark?: boolean;
+  sat?: { lat: number; lon: number; zoom: number; label: string; at: number; credit?: string; layers?: { src: string; z: number }[] } | null;
+  flat?: { from: [number, number]; to: [number, number]; straight: string; curve: string; at: number } | null;
+  size?: { country: string; to: [number, number]; compare: string; label: string; at: number } | null;
+  counter?: { value: number; unit: string; label: string; at: number } | null;
   points?: { name: string; lat: number; lon: number; at: number }[];
-  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; at: number }[];
+  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; mover?: string; at: number }[];
   tags?: { text: string; lat: number | null; lon: number | null; at: number }[];   // the line's figure on a paper tag
   rings?: { lat: number; lon: number; km: number; label: string; at: number }[];
   zone?: { lat: number; label: string; at: number } | null;
   highlight?: { name: string; label: string; group?: number }[];
-  night?: { from: [number, number]; to: [number, number]; clock: [string, string]; at: number } | null;  // subsolar points
+  night?: { from: [number, number]; to: [number, number]; clock: [string, string]; at: number; lights?: boolean } | null;  // subsolar points
   meridians?: { step: number; labels: boolean; at: number } | null;
   card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note' | 'clocks' | 'choice'; big: string; title: string; lines: string[]; source: string; side: 'left' | 'right'; at: number } | null;
   stamp?: { text: string; at: number } | null;

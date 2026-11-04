@@ -1,6 +1,6 @@
 import type { FC, ReactNode } from 'react';
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoCentroid, geoCircle, geoDistance, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
+import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { geoCentroid, geoCircle, geoDistance, geoEquirectangular, geoMercator, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world50 from 'world-atlas/countries-50m.json';
@@ -8,6 +8,7 @@ import land50 from 'world-atlas/land-50m.json';
 import land110 from 'world-atlas/land-110m.json';
 import bathymetry from '../../data/bathymetry.json';
 import GRAIN from '../../data/grain.png';
+import cities from '../../data/cities.json';
 import world110 from 'world-atlas/countries-110m.json';
 import type { AtlasGraphic } from '../../graphics';
 import { theme } from '../../theme';
@@ -37,6 +38,7 @@ const LAND_FC_110 = feature(land110 as never, (land110 as never as { objects: { 
 const ICE_110 = { type: 'FeatureCollection', features: (feature(world110 as never, (world110 as never as { objects: { countries: never } }).objects.countries) as never as { features: Feature[] }).features.filter((c) => ICE.has(c.properties.name)) } as unknown as GeoPermissibleObjects;
 const ICE_FC = { type: 'FeatureCollection', features: ICY } as unknown as GeoPermissibleObjects;
 const GRATICULE = geoGraticule10();
+const CITIES = cities as unknown as [number, number, number][];   // [lon, lat, size 1-4] (scripts/build_cities.py)
 // Natural Earth's bathymetry (scripts/build_bathymetry.py): the sea deeper than 200 / 2,000 / 4,000 / 6,000 m
 const DEPTHS = (bathymetry as unknown as { features: { properties: { depth: number } }[] }).features as unknown as (GeoPermissibleObjects & { properties: { depth: number } })[];
 
@@ -72,7 +74,7 @@ const KeyTitle: FC<{ text: string; size: number; color: string; accent: string; 
 
 /** The camera at frame f: the globe turns from the previous centre to this one (cubic in-out), pulling out on the way
  * when both are close-ups far apart, then drifts very slowly. */
-const cameraAt = (g: AtlasGraphic, f: number, fps: number) => {
+const cameraAt = (g: AtlasGraphic, f: number, fps: number, duration = 0) => {
   const a = g.prev ?? g.camera;
   const b = g.camera;
   const turn = geoInterpolate([a.lon, a.lat], [b.lon, b.lat]);
@@ -81,7 +83,10 @@ const cameraAt = (g: AtlasGraphic, f: number, fps: number) => {
   const t = ease(clamp(f / T));
   const dip = Math.max(0, Math.min(a.zoom, b.zoom) - 1) * clamp(far / 0.6) * Math.sin(Math.PI * t);
   const [lon, lat] = turn(t);
-  const zoom = lerp(a.zoom, b.zoom, t) - dip + 0.05 * clamp((f - T) / (fps * 10));
+  // the satellite dive: once there, the globe keeps falling toward the place until the photo takes over
+  // (to ~zoom 12.5 by the photo's fade: the globe's scale then matches the satellite's widest layer)
+  const dive = g.view === 'sat' && duration ? 9.3 * Math.pow(clamp((f - T) / Math.max(1, duration * 0.5 - T)), 2.2) : 0;
+  const zoom = lerp(a.zoom, b.zoom, t) - dip + 0.05 * clamp((f - T) / (fps * 10)) + dive;
   // never exactly at a pole or a round number: the globe's horizon would lie exactly on the equator or a meridian,
   // where the map data has edges, and d3-geo then flips which side is inside from one frame to the next (flicker)
   return { lon: lon + 0.0731 + 0.25 * Math.max(0, f - T) / fps, lat: Math.max(-88.7, Math.min(88.7, lat + 0.0573)), zoom };
@@ -90,7 +95,7 @@ const cameraAt = (g: AtlasGraphic, f: number, fps: number) => {
 const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accent }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
-  const cam = cameraAt(g, frame, fps);
+  const cam = cameraAt(g, frame, fps, durationInFrames);
   const R = 350 * Math.pow(1.42, cam.zoom - 1);
   const cx = W / 2;
   const cy = H / 2 + 30;
@@ -154,12 +159,22 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           const sun: [number, number] = [n.from[1] + dl * t, lerp(n.from[0], n.to[0], t)];
           const anti: [number, number] = [sun[0] + 180, -sun[1]];
           const shade = p === PALETTES.dark ? '#050A10' : '#0E1B2B';
+          // the cities light up where it is night (more the darker it is), the biggest the brightest
+          const lights = n.lights === false ? [] : CITIES.map(([lon, lat, size], j) => {
+            if (!visible(lat, lon)) return null;
+            const dark = (Math.PI / 2 - geoDistance([lon, lat], anti)) / ((12 * Math.PI) / 180);   // 0 at the terminator
+            if (dark <= 0) return null;
+            const [x, y] = projection([lon, lat]) ?? [0, 0];
+            const r0 = (0.9 + size * 0.75) * Math.sqrt(R / 350);
+            return <circle key={`city${j}`} cx={x} cy={y} r={r0} fill="#FFD884" opacity={Math.min(1, dark) * (0.45 + 0.13 * size)} />;
+          });
           return (
             <g opacity={appear}>
               {[90, 84, 78, 72].map((radius, i) => (
                 <path key={`night${radius}`} d={path(geoCircle().center(anti).radius(radius).precision(2)() as never) ?? ''}
                       fill={shade} opacity={i === 0 ? 0.36 : 0.15} />
               ))}
+              <g style={{ filter: 'drop-shadow(0 0 3px rgba(255,200,110,0.9))' }}>{lights}</g>
             </g>
           );
         })() : null}
@@ -199,6 +214,32 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
                   stroke={many ? (p === PALETTES.dark ? '#E8B64C' : '#C9962E') : red}
                   strokeWidth={many ? 2.4 : 4.2} strokeOpacity={many ? 0.85 : 1}
                   strokeDasharray={r.dashed ? '14 10' : undefined} strokeLinecap="round" />
+          );
+        })}
+        {(g.routes ?? []).filter((r) => r.mover).map((r, i) => {
+          // a plane, a ship or a dot travels the route leaving a bright trail; the "many" ones loop all the time
+          const local = since(r.at);
+          if (local < 0) return null;
+          const many = r.style === 'many';
+          const arc = geoInterpolate([r.from[1], r.from[0]], [r.to[1], r.to[0]]);
+          const u = many ? ((frame / fps) * 0.22 + i * 0.37) % 1 : clamp((local - fps * 1.3) / (fps * 3.2));
+          if (!many && u <= 0) return null;
+          const here = arc(u) as [number, number];
+          if (!visible(here[1], here[0])) return null;
+          const [x, y] = projection(here) ?? [0, 0];
+          const [x2, y2] = projection(arc(Math.min(1, u + 0.01)) as [number, number]) ?? [x + 1, y];
+          const angle = (Math.atan2(y2 - y, x2 - x) * 180) / Math.PI;
+          const tail = { type: 'LineString', coordinates: Array.from({ length: 9 }, (_, j) => arc(Math.max(0, u - 0.08 * (1 - j / 8)))) };
+          const color = many ? (p === PALETTES.dark ? '#FFE6A8' : '#9A6A12') : p === PALETTES.dark ? '#FFFFFF' : ink;
+          return (
+            <g key={`mover${i}`}>
+              <path d={path(tail as never) ?? ''} fill="none" stroke={color} strokeWidth={many ? 2.6 : 3.4} strokeOpacity={0.55} strokeLinecap="round" />
+              {r.mover === 'dot' || many ? <circle cx={x} cy={y} r={many ? 3.2 : 6} fill={color} /> : (
+                <g transform={`translate(${x}, ${y}) rotate(${angle + 90}) scale(1.5) translate(-12, -12)`}>
+                  <path d={r.mover === 'ship' ? SHIP : ICON_PATHS.plane} fill={color} stroke={p.halo} strokeWidth={0.6} />
+                </g>
+              )}
+            </g>
           );
         })}
       </g>
@@ -603,6 +644,8 @@ const Chart: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   return null;
 };
 
+const SHIP = 'M12 2l3 5v11l-3 4-3-4V7z';   // a hull seen from above, bow first
+
 /** Line drawings (24-unit grid), drawn stroke by stroke. */
 const ICON_PATHS: Record<string, string> = {
   plane: 'M12 2c.8 0 1.3.9 1.3 2v5.2l8.2 4.6v2.1l-8.2-2.5v4.4l2.4 1.8v1.7L12 20.4l-3.7.9v-1.7l2.4-1.8v-4.4l-8.2 2.5v-2.1l8.2-4.6V4c0-1.1.5-2 1.3-2z',
@@ -656,15 +699,197 @@ const IconView: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, a
   );
 };
 
-export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({ graphic: g }) => {
+/** 6500 → «6.500» (es-ES leaves four digits ungrouped; a counter reads better with the dot) */
+const thousands = (n: number) => String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.').replace(/^/, n < 0 ? '−' : '');
+
+/** «6.500 km», «257 personas»: a paper box whose figure counts up from zero while the voice says it. */
+const Counter: FC<{ g: AtlasGraphic; accent: string }> = ({ g, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const c = g.counter;
+  if (!c) return null;
+  const local = frame - c.at;
+  if (local < 0) return null;
+  const k = ease(clamp(local / (fps * 1.6)));
+  const shown = Math.round(c.value * k);
+  const ink = PALETTES.paper.ink;
+  return (
+    <div style={{ position: 'absolute', left: 64, top: 110, background: PALETTES.paper.card, border: `1.5px solid ${ink}`,
+                  boxShadow: '0 12px 34px rgba(0,0,0,0.22)', padding: '16px 26px', opacity: clamp(local / 6), minWidth: 260 }}>
+      {c.label ? <div style={{ fontFamily: MONO, fontSize: 15, letterSpacing: 2, color: '#5E584C' }}>{c.label}</div> : null}
+      <div style={{ fontFamily: SERIF, fontSize: 64, color: ink, lineHeight: 1.05 }}>
+        {thousands(shown)}<span style={{ fontSize: 34, color: accent, marginLeft: 10 }}>{c.unit}</span>
+      </div>
+    </div>
+  );
+};
+
+/** The dive: the globe falls toward the place and the real satellite photo takes over, still zooming in. */
+const SatPhoto: FC<{ g: AtlasGraphic; durationInFrames: number }> = ({ g, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  const sat = g.sat;
+  if (!sat?.layers?.length) return null;
+  const start = durationInFrames * 0.42;
+  const fade = clamp((frame - start) / (durationInFrames * 0.14));
+  if (fade <= 0) return null;
+  const layers = [...sat.layers].sort((a, b) => a.z - b.z);
+  const k = clamp((frame - start) / Math.max(1, durationInFrames - start));
+  // one continuous push: the wide layer grows to 4x, where the close one (two zoom levels in, 4x the detail) matches it
+  // exactly and takes over, still growing
+  const Z = Math.pow(4, k * 1.15);
+  const swap = layers.length > 1 ? clamp((Z - 3.0) / 1.0) : 0;
+  const scaleWide = Z;
+  const scaleClose = Z / 4;
+  const ink = PALETTES.paper.ink;
+  return (
+    <AbsoluteFill style={{ opacity: fade }}>
+      <Img src={staticFile(layers[0].src)} style={{ position: 'absolute', inset: 0, width: W, height: H, objectFit: 'cover',
+                                                    transform: `scale(${scaleWide})` }} />
+      {layers.length > 1 ? (
+        <Img src={staticFile(layers[layers.length - 1].src)} style={{ position: 'absolute', inset: 0, width: W, height: H, objectFit: 'cover',
+                                                                      opacity: swap, transform: `scale(${scaleClose})` }} />
+      ) : null}
+      {sat.label ? (
+        <div style={{ position: 'absolute', left: '50%', top: H / 2 + 40, transform: 'translateX(-50%)', background: PALETTES.paper.card,
+                      border: `1.5px solid ${ink}`, padding: '10px 22px', fontFamily: MONO, fontWeight: 700, fontSize: 24, letterSpacing: 3,
+                      color: ink, opacity: clamp((frame - start - 20) / 8), boxShadow: '0 10px 28px rgba(0,0,0,0.35)' }}>{sat.label}</div>
+      ) : null}
+      {sat.credit ? (
+        <div style={{ position: 'absolute', left: 30, bottom: 22, fontFamily: MONO, fontSize: 13, color: 'rgba(255,255,255,0.8)',
+                      textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{sat.credit}</div>
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
+/** «The flat map lies»: the globe unrolls into a flat map (orthographic → equirectangular, one continuous blend), the
+ * straight line the flat map suggests, then the real shortest path (the great circle), curved on the flat map. */
+const FlatMap: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = g.flat;
+  if (!f) return null;
+  // the globe goes as the flat map unrolls from the middle out to both sides (a true blend of the two projections
+  // tore the map into strips half way)
+  const t = ease(clamp(frame / (fps * 1.6)));
+  const a: [number, number] = [f.from[1], f.from[0]];
+  const b: [number, number] = [f.to[1], f.to[0]];
+  const mid = geoInterpolate(a, b)(0.5) as [number, number];
+  const globe = geoOrthographic().scale(350 * (1 - 0.25 * t)).translate([W / 2, H / 2 + 30]).rotate([-mid[0], -mid[1]]).precision(1.6);
+  const gpath = geoPath(globe);
+  const projection = geoEquirectangular().scale(290).translate([W / 2, H / 2 + 30]).rotate([-mid[0], 0]).precision(1.5);
+  const path = geoPath(projection);
+  const ink = p.ink;
+  const [ax, ay] = projection(a) ?? [0, 0];
+  const [bx, by] = projection(b) ?? [0, 0];
+  const straight = clamp((frame - fps * 2.0) / (fps * 1.0));
+  const curve = clamp((frame - fps * 3.4) / (fps * 1.4));
+  const arc = geoInterpolate(a, b);
+  const line = { type: 'LineString', coordinates: Array.from({ length: 73 }, (_, j) => arc(Math.min(ease(curve), j / 72))) };
+  return (
+    <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
+      <defs><clipPath id="unroll"><rect x={W / 2 - (W / 2) * t} y={0} width={W * t} height={H} /></clipPath></defs>
+      {t < 1 ? (
+        <g opacity={1 - t}>
+          <circle cx={W / 2} cy={H / 2 + 30} r={350 * (1 - 0.25 * t)} fill={p.oceanOut} stroke={p.rim} strokeWidth={2} />
+          <path d={gpath(LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} />
+          <path d={gpath(ICE_110) ?? ''} fill={p.ice} />
+        </g>
+      ) : null}
+      <g clipPath="url(#unroll)">
+      <path d={path({ type: 'Sphere' } as never) ?? ''} fill={p.oceanOut} stroke={p.rim} strokeWidth={2} />
+      <path d={path(GRATICULE as never) ?? ''} fill="none" stroke={p.grid} strokeWidth={1} />
+      <path d={path(LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} />
+      <path d={path(ICE_110) ?? ''} fill={p.ice} stroke={p.coast} strokeWidth={0.6} />
+      </g>
+      {straight > 0 ? (
+        <g>
+          <line x1={ax} y1={ay} x2={lerp(ax, bx, ease(straight))} y2={lerp(ay, by, ease(straight))} stroke={ink} strokeWidth={3}
+                strokeDasharray="12 9" />
+          {f.straight ? <text x={(ax + bx) / 2} y={(ay + by) / 2 - 18} textAnchor="middle" fontFamily={MONO} fontSize={19} fontWeight={700}
+                              fill={ink} stroke={p.halo} strokeWidth={5} paintOrder="stroke" opacity={straight}>{f.straight}</text> : null}
+        </g>
+      ) : null}
+      {curve > 0 ? <path d={path(line as never) ?? ''} fill="none" stroke={accent} strokeWidth={4.5} strokeLinecap="round" /> : null}
+      {curve > 0.95 && f.curve ? (() => {
+        const [mx, my] = projection(arc(0.5) as [number, number]) ?? [0, 0];
+        return <text x={mx} y={my + 34} textAnchor="middle" fontFamily={MONO} fontSize={19} fontWeight={700} fill={accent}
+                     stroke={p.halo} strokeWidth={5} paintOrder="stroke">{f.curve}</text>;
+      })() : null}
+      {[[ax, ay], [bx, by]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={7} fill={ink} stroke={p.card} strokeWidth={2.5} opacity={t > 0.9 ? 1 : 0} />)}
+    </svg>
+  );
+};
+
+/** Rotate a geometry on the sphere so `from` lands on `to` (the country keeps its true size and shape). */
+const rotateOnSphere = (geometry: unknown, from: [number, number], to: [number, number]): unknown => {
+  const v = (lon: number, lat: number) => {
+    const a = (lat * Math.PI) / 180, b = (lon * Math.PI) / 180;
+    return [Math.cos(a) * Math.cos(b), Math.cos(a) * Math.sin(b), Math.sin(a)];
+  };
+  const p0 = v(from[0], from[1]), p1 = v(to[0], to[1]);
+  const axis = [p0[1] * p1[2] - p0[2] * p1[1], p0[2] * p1[0] - p0[0] * p1[2], p0[0] * p1[1] - p0[1] * p1[0]];
+  const len = Math.hypot(...axis);
+  if (len < 1e-9) return geometry;
+  const k = axis.map((x) => x / len);
+  const angle = Math.acos(Math.max(-1, Math.min(1, p0[0] * p1[0] + p0[1] * p1[1] + p0[2] * p1[2])));
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const turn = ([lon, lat]: number[]) => {
+    const q = v(lon, lat);
+    const dot = k[0] * q[0] + k[1] * q[1] + k[2] * q[2];
+    const cross = [k[1] * q[2] - k[2] * q[1], k[2] * q[0] - k[0] * q[2], k[0] * q[1] - k[1] * q[0]];
+    const r = q.map((x, i) => x * cos + cross[i] * sin + k[i] * dot * (1 - cos));
+    return [(Math.atan2(r[1], r[0]) * 180) / Math.PI, (Math.asin(Math.max(-1, Math.min(1, r[2]))) * 180) / Math.PI];
+  };
+  const walk = (value: unknown): unknown => Array.isArray(value) && typeof value[0] === 'number' ? turn(value as number[])
+    : Array.isArray(value) ? value.map(walk) : value;
+  const geo = geometry as { type: string; coordinates: unknown };
+  return { ...geo, coordinates: walk(geo.coordinates) };
+};
+
+/** The true size: a country dragged across a flat (Mercator) map, shrinking or growing to its real size as it moves. */
+const TrueSize: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const sz = g.size;
+  const country = sz ? COUNTRIES.find((c) => c.properties.name === sz.country) : undefined;
+  if (!sz || !country) return null;
+  const projection = geoMercator().scale(285).translate([W / 2, H / 2 + 120]).center([10, 20]).precision(1);
+  const path = geoPath(projection);
+  const start = geoCentroid(country as never) as [number, number];
+  const dest: [number, number] = [sz.to[1], sz.to[0]];
+  const t = ease(clamp((frame - fps * 0.8) / (fps * 2.6)));
+  const now = geoInterpolate(start, dest)(t) as [number, number];
+  const moved = { ...country, geometry: rotateOnSphere(country.geometry, start, now) };
+  const compare = sz.compare ? COUNTRIES.find((c) => c.properties.name === sz.compare) : undefined;
+  const ink = p.ink;
+  return (
+    <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
+      <rect x={0} y={0} width={W} height={H} fill={p.oceanIn} opacity={0.55} />
+      <path d={path(LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} />
+      {compare ? <path d={path(compare as never) ?? ''} fill="#2F6E8F" opacity={0.45} stroke="#2F6E8F" strokeWidth={1.5} /> : null}
+      <path d={path(country as never) ?? ''} fill="none" stroke={ink} strokeWidth={1.5} strokeDasharray="6 6" opacity={0.6} />
+      <path d={path(moved as never) ?? ''} fill={accent} opacity={0.72} stroke={accent} strokeWidth={2} />
+      {sz.label && t > 0.98 ? (
+        <text x={W / 2} y={H - 70} textAnchor="middle" fontFamily={MONO} fontSize={26} fontWeight={700} letterSpacing={3} fill={ink}
+              stroke={p.halo} strokeWidth={6} paintOrder="stroke">{sz.label}</text>
+      ) : null}
+    </svg>
+  );
+};
+
+export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({ graphic: g, durationInFrames }) => {
   const p = g.dark ? PALETTES.dark : PALETTES.paper;
   const accent = g.dark ? '#E2A33B' : theme.accent;
   const memo = { p, accent };
   return (
     <AbsoluteFill style={{ background: `radial-gradient(ellipse 75% 70% at 50% 45%, ${p.page} 55%, ${p.pageEdge} 100%)` }}>
       {g.view === 'title' ? <TitleCard g={g} {...memo} /> : g.view === 'chart' ? <Chart g={g} {...memo} />
-        : g.view === 'icon' ? <IconView g={g} {...memo} /> : <Globe g={g} {...memo} />}
+        : g.view === 'icon' ? <IconView g={g} {...memo} /> : g.view === 'flat' ? <FlatMap g={g} {...memo} />
+        : g.view === 'size' ? <TrueSize g={g} {...memo} /> : <Globe g={g} {...memo} />}
+      {g.view === 'sat' ? <SatPhoto g={g} durationInFrames={durationInFrames} /> : null}
       {g.view === 'globe' ? <><Card g={g} {...memo} /><Stamp g={g} accent={accent} /><Headline g={g} {...memo} /></> : null}
+      {g.view !== 'title' ? <Counter g={g} accent={accent} /> : null}
       <Header g={g} {...memo} />
       {/* paper grain from a fixed tile: the SVG noise filter was recomputed on every frame (a quarter of the render) */}
       <AbsoluteFill style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '256px 256px', opacity: g.dark ? 0.1 : 0.16,

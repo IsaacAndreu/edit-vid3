@@ -23,11 +23,13 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 3
+VERSION = 4
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
 CHARTS = ("bars", "profile", "thermo")
+VIEWS = ("globe", "chart", "icon", "sat", "flat", "size")
+MOVERS = ("plane", "ship", "dot")
 
 SYSTEM = """
 Eres el director de arte de un canal de mapas explicados dibujados en código: una página de papel con un GLOBO
@@ -70,6 +72,21 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
 - "card" de tipo "clocks": dos relojes iguales lado a lado, "big": "22:00" (la hora que marcan), "lines": ["VARSOVIA",
   "A CORUÑA"]; de tipo "choice" (la pregunta «¿Tú qué harías?»): "title": la pregunta, "lines": las 2 opciones,
   "source": "1" o "2" si la frase revela la respuesta, si no ""
+- view "sat" (la frase habla de un sitio concreto que se ve desde el cielo: un puerto, una isla, un aeropuerto, una
+  ciudad): "sat": {{"lat", "lon", "zoom": 9-13 (9 = una isla grande o una bahía, 11 = una ciudad o un puerto, 13 = un
+  aeropuerto o un edificio), "label": "PUERTO DE ROTTERDAM", "at": "palabra"}}: el globo baja hasta la foto real de satélite.
+  Úsalo 2-4 veces por vídeo, en los momentos fuertes
+- view "flat" («el mapa plano te engaña»): "flat": {{"from": [lat, lon], "to": [lat, lon], "straight": "LO QUE SUGIERE EL
+  MAPA", "curve": "EL CAMINO MÁS CORTO", "at": "palabra"}}: el globo se desenrolla en un mapa plano con la línea recta, y
+  aparece la curva real
+- view "size" (el tamaño real de los países): "size": {{"country": "Greenland" (nombre inglés de Natural Earth), "to":
+  [lat, lon] adonde se arrastra, "compare": "Algeria" o "", "label": "GROENLANDIA ≈ ARGELIA", "at": "palabra"}}: el país
+  se arrastra por el mapa y encoge o crece con su tamaño real
+- en cada ruta "mover": "plane" | "ship" | "dot" (un avión, un barco o un punto la recorre dejando estela; las rutas
+  "many" llevan puntos solas)
+- "counter": {{"value": 6500, "unit": "km", "label": "DISTANCIA", "at": "palabra"}} un contador que sube hasta la cifra
+  mientras la voz la dice (distancias, personas, vuelos, años), o null
+- en "night", "lights": true enciende las ciudades en el lado de noche
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
 Reglas: CADA frase añade al menos UNA cosa nueva en pantalla (un punto, una ruta, un círculo, un tag con su cifra, una
 tarjeta…): nunca un globo sin nada nuevo. Zoom 1-2 casi siempre (el globo entero); 3 solo si la frase nombra una ciudad o
@@ -77,7 +94,7 @@ región. La cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos s
 zoom 1-1,5; una ruta que pasa cerca de un polo: mira al polo); si la frase cita un documento, una ley o a alguien, pon la
 cita en una "card" de tipo "quote" con su fuente; si niega o confirma algo con rotundidad («no está prohibido», «nadie
 sobrevivió»), pon un "stamp"; si la frase da un año con un suceso, una "card" de tipo "date".
-"at" es SIEMPRE una palabra LITERAL de esa frase. Usa SOLO datos, cifras, nombres y fechas del guion. Máx. 3 elementos
+Un "counter" o un "sat" valen como «algo nuevo». "at" es SIEMPRE una palabra LITERAL de esa frase. Usa SOLO datos, cifras, nombres y fechas del guion. Máx. 3 elementos
 nuevos por frase; lo anterior se queda si la frase sigue en el mismo sitio (repítelo). Textos en el idioma del guion.
 Devuelve SOLO JSON: {{"scenes": [{{"n": 1, "view": "globe", "camera": {{..}}, "dark": false, "points": [], "routes": [],
 "rings": [], "zone": null, "highlight": [], "card": null, "stamp": null, "headline": null, "chart": null, "icon": null}}]}}
@@ -172,7 +189,7 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
         named = True                        # still at the place the last line named: its close view stays
     camera["zoom"] = min(camera["zoom"], 3.2 if named else 2.0)
     view = str(scene.get("view") or "globe")
-    out: dict[str, Any] = {"type": "atlas", "view": view if view in ("globe", "chart", "icon") else "globe",
+    out: dict[str, Any] = {"type": "atlas", "view": view if view in VIEWS else "globe",
                            "camera": camera, "dark": bool(scene.get("dark"))}
     out["tags"] = [{"text": _text(t.get("text"), 4, False, 26), "lat": _point(t)[0] if _point(t) else None,
                     "lon": _point(t)[1] if _point(t) else None, "at": _at(t.get("at"))}
@@ -180,10 +197,11 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     out["points"] = [{"name": _text(p.get("name"), 3, True, 28), "lat": _point(p)[0], "lon": _point(p)[1], "at": _at(p.get("at"))}
                      for p in (scene.get("points") or [])[:6] if isinstance(p, dict) and _point(p) and str(p.get("name") or "").strip()]
     routes = []
-    for r in (scene.get("routes") or [])[:8]:
+    for r in (scene.get("routes") or [])[:12]:
         if isinstance(r, dict) and _point(r.get("from")) and _point(r.get("to")):
             routes.append({"from": list(_point(r["from"])), "to": list(_point(r["to"])), "label": _text(r.get("label"), 3, False, 24),
                            "dashed": bool(r.get("dashed")), "style": "many" if r.get("style") == "many" else "main",
+                           "mover": r.get("mover") if r.get("mover") in MOVERS else ("dot" if r.get("style") == "many" else ""),
                            "at": _at(r.get("at"))})
     out["routes"] = routes
     out["rings"] = [{"lat": _point(r)[0], "lon": _point(r)[1], "km": _float(r.get("km"), 50, 6000, 1000),
@@ -220,8 +238,31 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     icon = scene.get("icon") if isinstance(scene.get("icon"), dict) else None
     out["icon"] = {"name": icon["name"], "label": _text(icon.get("label"), 4, True, 28), "at": _at(icon.get("at"))} \
         if out["view"] == "icon" and icon and icon.get("name") in ICONS else None
-    if out["view"] == "chart" and not out["chart"] or out["view"] == "icon" and not out["icon"]:
+    counter = scene.get("counter") if isinstance(scene.get("counter"), dict) else None
+    out["counter"] = {"value": _float(counter.get("value"), -1e12, 1e12, 0), "unit": _text(counter.get("unit"), 2, False, 14),
+                      "label": _text(counter.get("label"), 6, True, 40), "at": _at(counter.get("at"))} \
+        if counter and _num(counter.get("value")) is not None else None
+    if out["night"] is not None:
+        out["night"]["lights"] = bool((night or {}).get("lights", True))
+    sat = scene.get("sat") if isinstance(scene.get("sat"), dict) else None
+    out["sat"] = {"lat": _point(sat)[0], "lon": _point(sat)[1], "zoom": int(_float(sat.get("zoom"), 8, 13, 11)),
+                  "label": _text(sat.get("label"), 4, True, 30), "at": _at(sat.get("at"))} \
+        if out["view"] == "sat" and sat and _point(sat) else None
+    flat = scene.get("flat") if isinstance(scene.get("flat"), dict) else None
+    out["flat"] = {"from": list(_point(flat.get("from"))), "to": list(_point(flat.get("to"))),
+                   "straight": _text(flat.get("straight"), 5, True, 36), "curve": _text(flat.get("curve"), 5, True, 36),
+                   "at": _at(flat.get("at"))} \
+        if out["view"] == "flat" and flat and _point(flat.get("from")) and _point(flat.get("to")) else None
+    size = scene.get("size") if isinstance(scene.get("size"), dict) else None
+    out["size"] = {"country": str(size.get("country")).strip(), "to": list(_point(size.get("to"))),
+                   "compare": str(size.get("compare") or "").strip(), "label": _text(size.get("label"), 6, True, 40),
+                   "at": _at(size.get("at"))} \
+        if out["view"] == "size" and size and str(size.get("country") or "").strip() and _point(size.get("to")) else None
+    if out["view"] == "chart" and not out["chart"] or out["view"] == "icon" and not out["icon"] \
+            or out["view"] in ("sat", "flat", "size") and not out[out["view"]]:
         out["view"] = "globe"                     # nothing valid to show instead: the globe stays
+    if out["view"] == "sat":                  # the globe dives to the place: the camera ends there
+        out["camera"] = {"lat": out["sat"]["lat"], "lon": out["sat"]["lon"], "zoom": 3.2}
     return out
 
 
@@ -349,7 +390,7 @@ def fit_camera(scene: dict[str, Any]) -> dict[str, Any]:
     return {**scene, "camera": {"lat": round(lat, 4), "lon": round(lon, 4), "zoom": min(cam["zoom"], zoom)}}
 
 
-LIMITS = {"points": 8, "routes": 8, "rings": 6}
+LIMITS = {"points": 8, "routes": 12, "rings": 6}
 
 
 def _same_place(a: dict[str, Any], b: dict[str, Any]) -> bool:
@@ -398,7 +439,7 @@ def auto_tag(scene: dict[str, Any], text: str, previous: dict[str, Any] | None) 
     if scene.get("view") != "globe":
         return scene
     new = [k for k in ("points", "routes", "rings", "tags") if any(not x.get("kept") for x in scene.get(k) or [])]
-    if new or any(scene.get(k) and not scene[k].get("kept") for k in ("card", "stamp", "headline", "zone", "night", "meridians")):
+    if new or any(scene.get(k) and not scene[k].get("kept") for k in ("card", "stamp", "headline", "zone", "night", "meridians", "counter")):
         return scene
     found = FIGURE.search(text)
     if not found:
@@ -481,6 +522,9 @@ def _as_written(ctx: RunContext, title: str) -> str:
     return title[:1] + title[1:].lower() if title.isupper() else title
 
 
+SAT_CREDIT = {"es": "Imagen: Sentinel-2 cloudless de EOX (CC BY 4.0), datos Copernicus Sentinel modificados",
+              "en": "Imagery: Sentinel-2 cloudless by EOX (CC BY 4.0), contains modified Copernicus Sentinel data"}
+
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 
 
@@ -518,7 +562,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             g = json.loads(json.dumps(found.get(shot.id) or clean({}, prev)))
             line_words = [(f - a, t) for f, t in spoken if a <= f < b]
             stagger = 0
-            for name in ("zone", "card", "stamp", "headline", "icon", "night", "meridians"):
+            for name in ("zone", "card", "stamp", "headline", "icon", "night", "meridians", "counter", "sat", "flat", "size"):
                 if g.get(name) and g[name].get("kept"):
                     g[name]["at"] = -2 * fps                     # already on the globe from the last line
                 elif g.get(name):
@@ -527,6 +571,26 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             for name in ("points", "routes", "rings", "tags"):
                 for i, item in enumerate(g.get(name) or []):
                     item["at"] = -2 * fps if item.get("kept") else _frame_of(item.get("at", ""), line_words, round(span * 0.15) + i * round(0.25 * fps))
+        if g.get("view") == "sat" and g.get("sat"):
+            from .mapas import satellite_layers
+
+            try:
+                layers = satellite_layers(ctx, g["sat"]["lat"], g["sat"]["lon"], g["sat"]["zoom"])
+            except Exception as error:
+                print(f"   Atlas: satélite no disponible ({str(error)[:80]}): se queda el globo")
+                layers = []
+            if layers:
+                # the photo as it is (the map explainer's land-over-navy-sea cut paints green land as sea): the raw layer
+                def raw(src: str) -> str:
+                    candidate = src[:-4] + "-raw.jpg" if src.endswith(".jpg") else src
+                    return candidate if (ctx.work_dir / candidate).is_file() else src
+
+                g["sat"]["layers"] = [{"kind": "image", "src": raw(x["src"]), "z": x["z"], "source": "satellite"} for x in layers]
+                g["sat"]["credit"] = SAT_CREDIT.get(str(ctx.section("align").get("language", "es"))[:2], SAT_CREDIT["en"])
+            else:
+                g["view"] = "globe"
+                g["points"] = [*(g.get("points") or []), {"name": g["sat"]["label"] or "", "lat": g["sat"]["lat"],
+                                                          "lon": g["sat"]["lon"], "at": g["sat"]["at"]}]
         g["prev"] = (prev or g)["camera"]
         g["chapters"] = chapters
         g["chapter"] = current
@@ -569,6 +633,10 @@ def cues(g: dict[str, Any], fps: int) -> list[tuple[str, int, float]]:
         out.append(("stamp", int(g["stamp"].get("at") or 0) + 6, 0.7))
     if g.get("card"):
         out.append(("paper", int(g["card"].get("at") or 0), 0.4))
+    if g.get("view") in ("sat", "flat", "size"):
+        out.append(("whoosh-down" if g["view"] == "sat" else "swipe", 0, 0.35))
+    if g.get("counter"):
+        out.append(("data", int(g["counter"].get("at") or 0), 0.25))
     if g.get("view") == "title":
         out.append(("swipe", 0, 0.3))
     if g.get("view") == "chart":

@@ -138,3 +138,19 @@ def test_lines_in_the_same_place_pile_up_and_a_bare_figure_becomes_a_tag():
     assert again["camera"]["zoom"] == 3 and again["points"]          # the same close view, its dot kept
     far = atlas.carry(atlas.clean({"camera": {"lat": -40, "lon": 140, "zoom": 1.5}}, b), b)
     assert far["points"] == []
+
+
+def test_the_new_views_and_elements():
+    sat = atlas.clean({"view": "sat", "sat": {"lat": 51.95, "lon": 4.12, "zoom": 20, "label": "Puerto de Róterdam"}}, None)
+    assert sat["view"] == "sat" and sat["sat"]["zoom"] == 13 and sat["camera"]["lat"] == 51.95
+    flat = atlas.clean({"view": "flat", "flat": {"from": [-31.9, 115.8], "to": [-34.6, -58.4], "straight": "lo que sugiere"}}, None)
+    assert flat["view"] == "flat" and flat["flat"]["straight"] == "LO QUE SUGIERE"
+    size = atlas.clean({"view": "size", "size": {"country": "Greenland", "to": [2, 20], "compare": "Algeria"}}, None)
+    assert size["view"] == "size" and size["size"]["to"] == [2.0, 20.0]
+    assert atlas.clean({"view": "size", "size": {"country": "Greenland"}}, None)["view"] == "globe"     # nowhere to drag it
+    scene = atlas.clean({"routes": [{"from": [40.4, -3.7], "to": [40.7, -74], "mover": "plane"},
+                                    {"from": [51.5, 0], "to": [35.7, 139.7], "style": "many"}],
+                         "counter": {"value": "5770", "unit": "km"},
+                         "night": {"date": "2026-12-21", "from": "18:30", "tz": "Europe/Madrid"}}, None)
+    assert [r["mover"] for r in scene["routes"]] == ["plane", "dot"] and scene["counter"]["value"] == 5770
+    assert scene["night"]["lights"] is True
