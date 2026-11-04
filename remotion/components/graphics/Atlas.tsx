@@ -7,10 +7,11 @@ import world50 from 'world-atlas/countries-50m.json';
 import land50 from 'world-atlas/land-50m.json';
 import land110 from 'world-atlas/land-110m.json';
 import bathymetry from '../../data/bathymetry.json';
+import GRAIN from '../../data/grain.png';
 import world110 from 'world-atlas/countries-110m.json';
 import type { AtlasGraphic } from '../../graphics';
 import { theme } from '../../theme';
-import { Grain, Vignette } from './Paper';
+import { Vignette } from './Paper';
 
 /**
  * Atlas deep dive (pipeline/atlas.py): a paper page with an orthographic globe that turns from one line's camera to
@@ -93,7 +94,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   const R = 350 * Math.pow(1.42, cam.zoom - 1);
   const cx = W / 2;
   const cy = H / 2 + 30;
-  const projection = geoOrthographic().scale(R).translate([cx, cy]).rotate([-cam.lon, -cam.lat]).clipAngle(90).precision(0.6);
+  const projection = geoOrthographic().scale(R).translate([cx, cy]).rotate([-cam.lon, -cam.lat]).clipAngle(90).precision(R > 760 ? 0.6 : 1.6);   // the whole globe: coarser resampling, the same picture
   const path = geoPath(projection);
   const visible = (lat: number, lon: number) => geoDistance([lon, lat], [cam.lon, cam.lat]) < Math.PI / 2 - 0.02;
   const ink = p.ink;
@@ -647,7 +648,9 @@ export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({
         : g.view === 'icon' ? <IconView g={g} {...memo} /> : <Globe g={g} {...memo} />}
       {g.view === 'globe' ? <><Card g={g} {...memo} /><Stamp g={g} accent={accent} /><Headline g={g} {...memo} /></> : null}
       <Header g={g} {...memo} />
-      <Grain opacity={g.dark ? 0.12 : 0.2} id={`atlas-grain-${g.seed ?? 0}`} />
+      {/* paper grain from a fixed tile: the SVG noise filter was recomputed on every frame (a quarter of the render) */}
+      <AbsoluteFill style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '256px 256px', opacity: g.dark ? 0.1 : 0.16,
+                             mixBlendMode: 'multiply', pointerEvents: 'none' }} />
       <Vignette strength={g.dark ? 0.45 : 0.22} color={g.dark ? '0,0,0' : '90,70,40'} />
     </AbsoluteFill>
   );
