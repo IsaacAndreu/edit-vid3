@@ -26,7 +26,7 @@ from .sourcing.common import key
 VERSION = 2
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
-CARDS = ("date", "quote", "list", "checks", "note")
+CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
 CHARTS = ("bars", "profile", "thermo")
 
 SYSTEM = """
@@ -58,6 +58,15 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   o {{"kind": "profile", "title": "ALTITUD", "unit": "km", "points": [0, 1.5, 3, 4, 3.5, 2, 0] (alturas del terreno de un
   lado a otro), "line": {{"value": 3, "label": "SEGURO ≈ 3 KM"}}, "cruise": 11}} o {{"kind": "thermo", "title": "",
   "unit": "°C", "min": -90, "max": 0, "value": -47, "label": "JET A-1"}}
+- "night": {{"date": "2026-06-21", "from": "21:30", "to": "22:30", "tz": "Europe/Madrid", "at": "palabra"}} la noche REAL
+  sobre el globo (la sombra se calcula con la posición del sol): "from"/"to" en hora local de "tz"; si se mueven, la línea
+  día-noche avanza durante la frase. Úsalo SIEMPRE que la frase hable de cuándo amanece, anochece o es de noche en un sitio
+- "meridians": {{"step": 15, "labels": true, "at": "palabra"}} los meridianos cada N grados (husos horarios, «15 grados por
+  hora»), o null
+- en "highlight" puedes añadir "group": 0-3 para tintar países por grupos (husos horarios: 0 = UTC+0, 1 = UTC+1…)
+- "card" de tipo "clocks": dos relojes iguales lado a lado, "big": "22:00" (la hora que marcan), "lines": ["VARSOVIA",
+  "A CORUÑA"]; de tipo "choice" (la pregunta «¿Tú qué harías?»): "title": la pregunta, "lines": las 2 opciones,
+  "source": "1" o "2" si la frase revela la respuesta, si no ""
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
 Reglas: la cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos sitios lejanos: mira a su punto medio con
 zoom 1-1,5; una ruta que pasa cerca de un polo: mira al polo); si la frase cita un documento, una ley o a alguien, pon la
@@ -168,11 +177,19 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     zone = scene.get("zone") if isinstance(scene.get("zone"), dict) else None
     out["zone"] = {"lat": _float(zone.get("lat"), -89, 89, -60), "label": _text(zone.get("label"), 4, False, 32),
                    "at": _at(zone.get("at"))} if zone and zone.get("lat") is not None else None
-    out["highlight"] = [{"name": str(h.get("name")).strip(), "label": _text(h.get("label"), 3, True, 24)}
-                        for h in (scene.get("highlight") or [])[:6] if isinstance(h, dict) and str(h.get("name") or "").strip()]
+    out["highlight"] = [{"name": str(h.get("name")).strip(), "label": _text(h.get("label"), 3, True, 24),
+                         "group": int(_float(h.get("group"), 0, 3, 0))}
+                        for h in (scene.get("highlight") or [])[:12] if isinstance(h, dict) and str(h.get("name") or "").strip()]
+    night = scene.get("night") if isinstance(scene.get("night"), dict) else None
+    out["night"] = _night(night) if night else None
+    meridians = scene.get("meridians") if isinstance(scene.get("meridians"), dict) else None
+    out["meridians"] = {"step": int(_float(meridians.get("step"), 5, 45, 15)), "labels": bool(meridians.get("labels", True)),
+                        "at": _at(meridians.get("at"))} if meridians else None
     card = scene.get("card") if isinstance(scene.get("card"), dict) else None
     if card and str(card.get("kind")) in CARDS and (card.get("title") or card.get("lines") or card.get("big")):
-        out["card"] = {"kind": card["kind"], "big": _text(card.get("big"), 2, False, 14), "title": _text(card.get("title"), 8, False, 60),
+        long = card["kind"] == "choice"         # «¿Tú qué harías?»: the whole question
+        out["card"] = {"kind": card["kind"], "big": _text(card.get("big"), 2, False, 14),
+                       "title": _text(card.get("title"), 24 if long else 8, False, 140 if long else 60),
                        "lines": [_text(x, 14, False, 90) for x in (card.get("lines") or [])[:4] if str(x or "").strip()],
                        "source": _text(card.get("source"), 8, False, 60), "side": "left" if card.get("side") == "left" else "right",
                        "at": _at(card.get("at"))}
@@ -191,6 +208,49 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     if out["view"] == "chart" and not out["chart"] or out["view"] == "icon" and not out["icon"]:
         out["view"] = "globe"                     # nothing valid to show instead: the globe stays
     return out
+
+
+def subsolar(when_utc: Any) -> tuple[float, float]:
+    """Where the sun is overhead at a UTC moment (lat, lon), NOAA's approximation (within a few arc-minutes): the
+    centre of the lit hemisphere; the night is everything more than 90° from it."""
+
+    day = when_utc.timetuple().tm_yday
+    hours = when_utc.hour + when_utc.minute / 60 + when_utc.second / 3600
+    g = 2 * math.pi / 365 * (day - 1 + (hours - 12) / 24)
+    decl = (0.006918 - 0.399912 * math.cos(g) + 0.070257 * math.sin(g) - 0.006758 * math.cos(2 * g)
+            + 0.000907 * math.sin(2 * g) - 0.002697 * math.cos(3 * g) + 0.00148 * math.sin(3 * g))
+    eot = 229.18 * (0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g) - 0.014615 * math.cos(2 * g)
+                    - 0.040849 * math.sin(2 * g))                       # minutes
+    lon = -15 * (hours - 12 + eot / 60)
+    lon = (lon + 180) % 360 - 180
+    return round(math.degrees(decl), 3), round(lon, 3)
+
+
+def _night(night: dict[str, Any]) -> dict[str, Any] | None:
+    """{"date", "from", "to", "tz"} → the sun's position at both moments (the terminator sweeps between them)."""
+
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(str(night.get("tz") or "Europe/Madrid"))
+        day = datetime.strptime(str(night.get("date") or "2026-06-21")[:10], "%Y-%m-%d")
+    except Exception:
+        return None
+
+    def at(clock: Any) -> Any:
+        try:
+            h, m = (int(x) for x in str(clock).split(":")[:2])
+        except (TypeError, ValueError):
+            return None
+        return day.replace(hour=h % 24, minute=m % 60, tzinfo=zone).astimezone(timezone.utc)
+
+    start = at(night.get("from") or night.get("time") or "21:00")
+    if start is None:
+        return None
+    end = at(night.get("to")) or start
+    return {"from": subsolar(start), "to": subsolar(end), "clock": [start.astimezone(zone).strftime("%H:%M"),
+            end.astimezone(zone).strftime("%H:%M")], "at": _at(night.get("at"))}
 
 
 def _num(value: Any) -> float | None:
@@ -392,7 +452,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             g = json.loads(json.dumps(found.get(shot.id) or clean({}, prev)))
             line_words = [(f - a, t) for f, t in spoken if a <= f < b]
             stagger = 0
-            for name in ("zone", "card", "stamp", "headline", "icon"):
+            for name in ("zone", "card", "stamp", "headline", "icon", "night", "meridians"):
                 if g.get(name) and g[name].get("kept"):
                     g[name]["at"] = -2 * fps                     # already on the globe from the last line
                 elif g.get(name):

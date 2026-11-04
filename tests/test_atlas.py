@@ -106,3 +106,19 @@ def test_autopilot_asks_an_atlas_channel_for_a_question_in_five_reasons(monkeypa
     monkeypatch.setattr(repeticion, "recent_titles", lambda root, ch: [])
     idea = autopilot.idea_from(tmp_path, "atlas-es", {"title": "Why planes avoid Antarctica", "channel": "X", "views": 1, "ratio": 50})
     assert idea["title"] and "cinco razones" in seen["system"] and "PREGUNTA" in seen["system"]
+
+
+def test_the_real_night_and_the_new_cards():
+    from datetime import datetime, timezone
+
+    lat, lon = atlas.subsolar(datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc))
+    assert abs(lat - 23.44) < 0.1 and abs(lon) < 1                    # solstice noon: over the tropic, at Greenwich
+    scene = atlas.clean({"camera": {"lat": 47, "lon": 6, "zoom": 2.6},
+                         "night": {"date": "2026-06-21", "from": "21:20", "to": "22:25", "tz": "Europe/Madrid", "at": "noche"},
+                         "meridians": {"step": 15},
+                         "highlight": [{"name": "Spain", "label": "UTC+1", "group": 1}],
+                         "card": {"kind": "choice", "title": "Vives en Vigo y quieres comer con el sol en lo más alto. ¿A qué hora te sientas?",
+                                  "lines": ["A las 13:00", "A las 14:40"], "source": "2"}}, None)
+    assert scene["night"]["clock"] == ["21:20", "22:25"] and scene["night"]["from"][1] > scene["night"]["to"][1]   # the sun moves west
+    assert scene["meridians"]["step"] == 15 and scene["highlight"][0]["group"] == 1
+    assert scene["card"]["title"].endswith("¿A qué hora te sientas?")

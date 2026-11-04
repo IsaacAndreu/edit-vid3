@@ -405,8 +405,10 @@ export interface AtlasGraphic {
   routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; at: number }[];
   rings?: { lat: number; lon: number; km: number; label: string; at: number }[];
   zone?: { lat: number; label: string; at: number } | null;
-  highlight?: { name: string; label: string }[];
-  card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note'; big: string; title: string; lines: string[]; source: string; side: 'left' | 'right'; at: number } | null;
+  highlight?: { name: string; label: string; group?: number }[];
+  night?: { from: [number, number]; to: [number, number]; clock: [string, string]; at: number } | null;  // subsolar points
+  meridians?: { step: number; labels: boolean; at: number } | null;
+  card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note' | 'clocks' | 'choice'; big: string; title: string; lines: string[]; source: string; side: 'left' | 'right'; at: number } | null;
   stamp?: { text: string; at: number } | null;
   headline?: { text: string; at: number } | null;
   chart?: { kind: 'bars' | 'profile' | 'thermo'; title: string; unit: string;

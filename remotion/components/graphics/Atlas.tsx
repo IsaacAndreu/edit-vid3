@@ -1,6 +1,6 @@
 import type { FC, ReactNode } from 'react';
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoCircle, geoDistance, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
+import { geoCentroid, geoCircle, geoDistance, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world50 from 'world-atlas/countries-50m.json';
@@ -88,7 +88,7 @@ const cameraAt = (g: AtlasGraphic, f: number, fps: number) => {
 
 const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accent }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig();
   const cam = cameraAt(g, frame, fps);
   const R = 350 * Math.pow(1.42, cam.zoom - 1);
   const cx = W / 2;
@@ -123,9 +123,45 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         {DEPTHS.map((d, i) => <path key={`depth${i}`} d={path(d) ?? ''} fill={p.depths[i] ?? p.depths[p.depths.length - 1]} />)}
         <path d={path(fine ? LAND_FC : LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} strokeLinejoin="round" />
         <path d={path(fine ? ICE_FC : ICE_110) ?? ''} fill={p.ice} stroke={p.coast} strokeWidth={0.6} strokeLinejoin="round" />
-        {COUNTRIES.filter((c) => highlighted.has(c.properties.name)).map((c, i) => (
-          <path key={i} d={path(c as never) ?? ''} fill={red} opacity={0.32} stroke={red} strokeWidth={1.4} />
-        ))}
+        {COUNTRIES.filter((c) => highlighted.has(c.properties.name)).map((c, i) => {
+          const group = (g.highlight ?? []).find((h) => h.name === c.properties.name)?.group ?? 0;
+          const tint = [red, '#2F6E8F', '#5E8A4F', '#C9962E'][group] ?? red;
+          return <path key={i} d={path(c as never) ?? ''} fill={tint} opacity={0.34} stroke={tint} strokeWidth={1.4} />;
+        })}
+        {g.meridians ? (() => {
+          const m = g.meridians;
+          const k = ease(clamp(since(m.at) / (fps * 1.2)));
+          if (k <= 0) return null;
+          const lines = [];
+          for (let lon = -180; lon < 180; lon += m.step) {
+            const line = { type: 'LineString', coordinates: Array.from({ length: 37 }, (_, j) => [lon + 0.01, -89 + (178 * j * k) / 36]) };
+            lines.push(<path key={`mer${lon}`} d={path(line as never) ?? ''} fill="none" stroke={ink} strokeWidth={1.3} strokeOpacity={0.45} strokeDasharray="6 6" />);
+          }
+          return <g>{lines}</g>;
+        })() : null}
+        {g.night ? (() => {
+          // the real night: everything more than 90° from the sun, darker through civil, nautical and astronomical
+          // twilight; the sun's point moves from `from` to `to` over the shot (the terminator sweeps)
+          const n = g.night;
+          const local = since(n.at);
+          const appear = clamp(local / (fps * 0.6));
+          if (appear <= 0) return null;
+          const t = ease(clamp(local / Math.max(1, durationInFrames - n.at)));
+          let dl = n.to[1] - n.from[1];
+          if (dl > 180) dl -= 360;
+          if (dl < -180) dl += 360;
+          const sun: [number, number] = [n.from[1] + dl * t, lerp(n.from[0], n.to[0], t)];
+          const anti: [number, number] = [sun[0] + 180, -sun[1]];
+          const shade = p === PALETTES.dark ? '#050A10' : '#0E1B2B';
+          return (
+            <g opacity={appear}>
+              {[90, 84, 78, 72].map((radius, i) => (
+                <path key={`night${radius}`} d={path(geoCircle().center(anti).radius(radius).precision(2)() as never) ?? ''}
+                      fill={shade} opacity={i === 0 ? 0.36 : 0.15} />
+              ))}
+            </g>
+          );
+        })() : null}
         {g.zone ? (() => {
           const z = g.zone;
           const pole: [number, number] = [0, z.lat < 0 ? -90 : 90];
@@ -207,7 +243,57 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           </g>
         );
       })}
+      {(g.highlight ?? []).filter((h) => h.label).map((h, i) => {
+        const c = COUNTRIES.find((x) => x.properties.name === h.name);
+        if (!c) return null;
+        const centre = geoCentroid(c as never) as [number, number];
+        if (!visible(centre[1], centre[0])) return null;
+        const [x, y] = projection(centre) ?? [0, 0];
+        return <text key={`hl${i}`} x={x} y={y} textAnchor="middle" fontFamily={MONO} fontSize={18} fontWeight={700} fill={ink}
+                     stroke={p.card} strokeWidth={5} paintOrder="stroke">{h.label}</text>;
+      })}
+      {g.meridians?.labels ? (() => {
+        const out = [];
+        for (let lon = -180; lon < 180; lon += g.meridians.step) {
+          // labels near the camera's latitude (not by a pole, where they all meet), only for the meridians in front
+          const at: [number, number] = [lon, Math.max(-50, Math.min(50, cam.lat - 18))];
+          if (!visible(at[1], at[0]) || geoDistance(at, [cam.lon, cam.lat]) > 1.0) continue;
+          const [x, y] = projection(at) ?? [0, 0];
+          const hours = Math.round(lon / 15);
+          out.push(<text key={`ml${lon}`} x={x} y={y} textAnchor="middle" fontFamily={MONO} fontSize={16} fill={ink}
+                         opacity={clamp(since(g.meridians.at) / 20) * 0.85} stroke={p.card} strokeWidth={4} paintOrder="stroke">
+            {lon === 0 ? '0°' : `${Math.abs(lon)}°${lon > 0 ? 'E' : 'O'}`}{g.meridians.step === 15 ? ` · ${hours >= 0 ? '+' : '−'}${Math.abs(hours)} h` : ''}</text>);
+        }
+        return <g>{out}</g>;
+      })() : null}
     </svg>
+  );
+};
+
+/** Two identical clocks: «22:00» in Varsovia and A Coruña. */
+const Clock: FC<{ time: string; label: string; size: number; ink: string; accent: string }> = ({ time, label, size, ink, accent }) => {
+  const [h, m] = time.split(':').map((x) => parseInt(x, 10) || 0);
+  const ha = ((h % 12) + m / 60) * 30;
+  const ma = m * 6;
+  const hand = (angle: number, length: number, width: number, color: string) => (
+    <line x1={0} y1={0} x2={length * Math.sin((angle * Math.PI) / 180)} y2={-length * Math.cos((angle * Math.PI) / 180)}
+          stroke={color} strokeWidth={width} strokeLinecap="round" />
+  );
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <svg width={size} height={size} viewBox="-50 -50 100 100">
+        <circle r={46} fill="#FBF7EC" stroke={ink} strokeWidth={2.5} />
+        {Array.from({ length: 12 }, (_, i) => (
+          <line key={i} x1={0} y1={-40} x2={0} y2={i % 3 === 0 ? -33 : -36} stroke={ink} strokeWidth={i % 3 === 0 ? 2.5 : 1.2}
+                transform={`rotate(${i * 30})`} />
+        ))}
+        {hand(ha, 22, 4.5, ink)}
+        {hand(ma, 33, 2.8, ink)}
+        <circle r={3} fill={accent} />
+      </svg>
+      <div style={{ fontFamily: SERIF, fontSize: 34, marginTop: 4 }}>{time}</div>
+      <div style={{ fontFamily: MONO, fontSize: 15, letterSpacing: 2, color: '#5E584C' }}>{label}</div>
+    </div>
   );
 };
 
@@ -246,6 +332,35 @@ const Card: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accen
         <div style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 31, lineHeight: 1.3, textAlign: 'center', marginTop: 18 }}>
           “{c.lines.join(' ')}”
         </div>
+      </>
+    );
+  } else if (c.kind === 'clocks') {
+    body = (
+      <>
+        {c.title ? <div style={{ ...small, textAlign: 'center', marginBottom: 10 }}>{c.title}</div> : null}
+        <div style={{ display: 'flex', justifyContent: 'space-around', gap: 18 }}>
+          {(c.lines.length ? c.lines : ['', '']).slice(0, 2).map((label, i) => (
+            <Clock key={i} time={c.big || '22:00'} label={label} size={150} ink={ink} accent={accent} />
+          ))}
+        </div>
+      </>
+    );
+  } else if (c.kind === 'choice') {
+    // «¿Tú qué harías?»: the question, two options, and — when the line reveals it — the right one lit
+    const answer = parseInt(c.source, 10);
+    body = (
+      <>
+        <div style={{ ...small, color: accent }}>¿Tú qué harías?</div>
+        <div style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1.25, marginTop: 8 }}>{c.title}</div>
+        {c.lines.slice(0, 2).map((option, i) => {
+          const lit = answer === i + 1 && local > fps * 1.2;
+          return (
+            <div key={i} style={{ marginTop: 12, padding: '10px 16px', border: `2px solid ${lit ? accent : ink}`, fontFamily: SERIF, fontSize: 26,
+                                  background: lit ? 'rgba(184,50,42,0.10)' : 'transparent', opacity: clamp((local - 6 - i * 6) / 6) }}>
+              <span style={{ fontFamily: MONO, fontSize: 18, marginRight: 12 }}>{'AB'[i]}</span>{option}{lit ? ' ✓' : ''}
+            </div>
+          );
+        })}
       </>
     );
   } else if (c.kind === 'checks') {
