@@ -405,6 +405,7 @@ export interface AtlasGraphic {
   flat?: { from: [number, number]; to: [number, number]; straight: string; curve: string; at: number } | null;
   size?: { country: string; to: [number, number]; compare: string; label: string; at: number } | null;
   counter?: { value: number; unit: string; label: string; at: number } | null;
+  countries?: { name: string; label: string; at: number; flag?: { src: string } }[];   // silhouette filled with its flag
   points?: { name: string; lat: number; lon: number; at: number }[];
   routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; mover?: string; at: number }[];
   tags?: { text: string; lat: number | null; lon: number | null; at: number }[];   // the line's figure on a paper tag

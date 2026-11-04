@@ -167,3 +167,9 @@ def test_two_satellite_dives_when_the_llm_chose_none():
     dives = [k for k, g in scenes.items() if g["view"] == "sat"]
     assert len(dives) == 2 and "s7" not in dives                       # never two within 8 lines
     assert scenes[dives[0]]["sat"]["zoom"] == 11 and scenes[dives[0]]["sat"]["label"].startswith("SITIO")
+
+
+def test_a_named_country_gets_its_flag():
+    assert atlas.flag_codes()["Spain"] == "es" and atlas.flag_codes()["Poland"] == "pl"
+    scene = atlas.clean({"countries": [{"name": "Spain", "label": "España", "at": "España"}, {"name": "Atlantis"}]}, None)
+    assert scene["countries"] == [{"name": "Spain", "label": "ESPAÑA", "at": "España"}]        # unknown names dropped

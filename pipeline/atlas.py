@@ -17,13 +17,15 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import re
+from pathlib import Path
 from typing import Any
 
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 5
+VERSION = 6
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -63,6 +65,9 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
 - "tags": [{{"text": "14:42", "lat", "lon", "at": "palabra"}}] la cifra, la hora o el año que dice la frase, en DÍGITOS
   aunque la frase lo diga en palabras («las dos y cuarenta y dos» → "14:42"), como etiqueta de papel junto al sitio del que
   habla (máx. 3)
+- "countries": [{{"name": "Spain" (inglés, como en Natural Earth), "label": "ESPAÑA", "at": "palabra"}}] cuando la frase
+  NOMBRA un país (sobre todo la primera vez): sale su silueta rellena con su bandera, en una tarjeta (máx. 2: dos países
+  que se comparan)
 - "night": {{"date": "2026-06-21", "from": "21:30", "to": "22:30", "tz": "Europe/Madrid", "at": "palabra"}} la noche REAL
   sobre el globo (la sombra se calcula con la posición del sol): "from"/"to" en hora local de "tz"; si se mueven, la línea
   día-noche avanza durante la frase. Úsalo SIEMPRE que la frase hable de cuándo amanece, anochece o es de noche en un sitio
@@ -219,6 +224,9 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
                         for h in (scene.get("highlight") or [])[:12] if isinstance(h, dict) and str(h.get("name") or "").strip()]
     night = scene.get("night") if isinstance(scene.get("night"), dict) else None
     out["night"] = _night(night) if night else None
+    out["countries"] = [{"name": str(c.get("name")).strip(), "label": _text(c.get("label"), 3, True, 26), "at": _at(c.get("at"))}
+                        for c in (scene.get("countries") or [])[:2]
+                        if isinstance(c, dict) and str(c.get("name") or "").strip() in flag_codes()]
     meridians = scene.get("meridians") if isinstance(scene.get("meridians"), dict) else None
     out["meridians"] = {"step": int(_float(meridians.get("step"), 5, 45, 15)), "labels": bool(meridians.get("labels", True)),
                         "at": _at(meridians.get("at"))} if meridians else None
@@ -317,6 +325,21 @@ def _night(night: dict[str, Any]) -> dict[str, Any] | None:
     end = at(night.get("to")) or start
     return {"from": subsolar(start), "to": subsolar(end), "clock": [start.astimezone(zone).strftime("%H:%M"),
             end.astimezone(zone).strftime("%H:%M")], "at": _at(night.get("at"))}
+
+
+_FLAGS: dict[str, str] | None = None
+
+
+def flag_codes() -> dict[str, str]:
+    """Natural Earth country name → the ISO code of its flag (assets/flags/countries.json, flag-icons, MIT)."""
+
+    global _FLAGS
+    if _FLAGS is None:
+        try:
+            _FLAGS = json.loads((Path(__file__).resolve().parents[1] / "assets" / "flags" / "countries.json").read_text("utf-8"))
+        except (OSError, ValueError):
+            _FLAGS = {}
+    return _FLAGS
 
 
 def _num(value: Any) -> float | None:
@@ -610,6 +633,21 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             for name in ("points", "routes", "rings", "tags"):
                 for i, item in enumerate(g.get(name) or []):
                     item["at"] = -2 * fps if item.get("kept") else _frame_of(item.get("at", ""), line_words, round(span * 0.15) + i * round(0.25 * fps))
+        for c in g.get("countries") or []:            # its flag in the video's files, and the country tinted on the globe
+            code = flag_codes().get(c["name"])
+            source = ctx.root / "assets" / "flags" / "4x3" / f"{code}.svg"
+            if code and source.is_file():
+                target = ctx.work_dir / "graphics" / "flags" / f"{code}.svg"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if not target.is_file():
+                    shutil.copyfile(source, target)
+                c["flag"] = {"kind": "image", "src": f"graphics/flags/{code}.svg", "source": "flag"}
+            if c.get("kept"):
+                c["at"] = -2 * fps
+            elif isinstance(c.get("at"), str):
+                c["at"] = _frame_of(c["at"], line_words if shot.type != "chapter" else [], round(span * 0.2))
+            if not any(h.get("name") == c["name"] for h in g.get("highlight") or []):
+                g["highlight"] = [*(g.get("highlight") or []), {"name": c["name"], "label": "", "group": 0}]
         if g.get("view") == "sat" and g.get("sat"):
             from .mapas import satellite_layers
 

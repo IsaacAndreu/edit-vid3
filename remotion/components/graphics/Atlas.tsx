@@ -1,6 +1,6 @@
 import type { FC, ReactNode } from 'react';
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { geoCentroid, geoCircle, geoDistance, geoEquirectangular, geoMercator, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
+import { geoArea, geoCentroid, geoCircle, geoDistance, geoEquirectangular, geoMercator, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
 import { feature } from 'topojson-client';
 import world50 from 'world-atlas/countries-50m.json';
@@ -702,6 +702,56 @@ const IconView: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, a
 /** 6500 → «6.500» (es-ES leaves four digits ungrouped; a counter reads better with the dot) */
 const thousands = (n: number) => String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.').replace(/^/, n < 0 ? '−' : '');
 
+/** The country's largest landmass (Spain without the Canaries, France without Guiana): what the silhouette shows. */
+const mainland = (c: Feature): unknown => {
+  const geo = c.geometry as { type: string; coordinates: unknown[] };
+  if (geo.type !== 'MultiPolygon') return c;
+  let best = geo.coordinates[0];
+  let area = -1;
+  for (const poly of geo.coordinates) {
+    const a = geoArea({ type: 'Polygon', coordinates: poly } as never);
+    if (a > area) { area = a; best = poly; }
+  }
+  return { type: 'Feature', properties: c.properties, geometry: { type: 'Polygon', coordinates: best } };
+};
+
+/** A country named by the voice: its silhouette, filled with its flag, on a paper card that pops in at its word. */
+const CountryFlags: FC<{ g: AtlasGraphic }> = ({ g }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const list = (g.countries ?? []).filter((c) => c.flag);
+  if (!list.length) return null;
+  const left = g.card?.side !== 'left';
+  const ink = PALETTES.paper.ink;
+  return (
+    <div style={{ position: 'absolute', [left ? 'left' : 'right']: 70, top: 150, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {list.map((c, i) => {
+        const local = frame - c.at;
+        if (local < 0) return null;
+        const country = COUNTRIES.find((x) => x.properties.name === c.name);
+        if (!country) return null;
+        const shape = mainland(country);
+        const box: [[number, number], [number, number]] = [[14, 14], [306, 226]];
+        const projection = geoMercator().fitExtent(box, shape as never);
+        const d = geoPath(projection)(shape as never) ?? '';
+        const pop = spring({ frame: local, fps, config: { damping: 13, stiffness: 170 }, durationInFrames: 16 });
+        const id = `flagclip-${g.seed ?? 0}-${i}`;
+        return (
+          <div key={i} style={{ background: PALETTES.paper.card, border: `1.5px solid ${ink}`, boxShadow: '0 14px 38px rgba(0,0,0,0.28)',
+                                padding: '10px 12px 12px', opacity: clamp(local / 5), transform: `translateY(${(1 - pop) * 24}px) rotate(${(1 - pop) * (left ? -3 : 3)}deg)` }}>
+            <svg width={320} height={240}>
+              <defs><clipPath id={id}><path d={d} /></clipPath></defs>
+              <image href={staticFile(c.flag!.src)} x={14} y={14} width={292} height={212} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${id})`} />
+              <path d={d} fill="none" stroke={ink} strokeWidth={2} strokeLinejoin="round" />
+            </svg>
+            <div style={{ fontFamily: MONO, fontWeight: 700, fontSize: 20, letterSpacing: 3, color: ink, textAlign: 'center' }}>{c.label || c.name.toUpperCase()}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 /** «6.500 km», «257 personas»: a paper box whose figure counts up from zero while the voice says it. */
 const Counter: FC<{ g: AtlasGraphic; accent: string }> = ({ g, accent }) => {
   const frame = useCurrentFrame();
@@ -890,6 +940,7 @@ export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({
       {g.view === 'sat' ? <SatPhoto g={g} durationInFrames={durationInFrames} /> : null}
       {g.view === 'globe' ? <><Card g={g} {...memo} /><Stamp g={g} accent={accent} /><Headline g={g} {...memo} /></> : null}
       {g.view !== 'title' ? <Counter g={g} accent={accent} /> : null}
+      {g.view === 'globe' ? <CountryFlags g={g} /> : null}
       <Header g={g} {...memo} />
       {/* paper grain from a fixed tile: the SVG noise filter was recomputed on every frame (a quarter of the render) */}
       <AbsoluteFill style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '256px 256px', opacity: g.dark ? 0.1 : 0.16,
