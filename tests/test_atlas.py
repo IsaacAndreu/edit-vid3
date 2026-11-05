@@ -287,3 +287,15 @@ def test_one_dot_per_place_and_no_bare_numbers():
     assert [p["name"] for p in later["points"]] == ["ESTREITO DE MCMURDO"]          # not two names on one dot
     polar = atlas.drift({"lat": -78, "lon": 166, "zoom": 1.5}, 2)
     assert 10 < atlas._angle((polar["lat"], polar["lon"]), (-78, 166)) <= atlas.DRIFT_MAX + 1e-6   # moves near a pole too
+
+
+def test_no_dive_where_the_satellite_has_no_picture():
+    mcmurdo = atlas.clean({"view": "sat", "sat": {"lat": -77.85, "lon": 166.67, "zoom": 11, "label": "McMurdo"}}, None)
+    assert mcmurdo["view"] == "globe" and mcmurdo["points"][-1]["name"] == "MCMURDO"
+    scenes = {f"s{i}": atlas.clean({"camera": {"lat": -60, "lon": 170, "zoom": 1.5}}, None) for i in range(30)}
+    scenes["s5"] = atlas.clean({"camera": {"lat": -70, "lon": 170, "zoom": 2},
+                                "points": [{"name": "Vostok", "lat": -78.46, "lon": 106.84}]}, None)
+    scenes["s15"] = atlas.clean({"camera": {"lat": -36, "lon": 174, "zoom": 2},
+                                 "points": [{"name": "Auckland", "lat": -36.85, "lon": 174.76}]}, None)
+    atlas.ensure_satellites(scenes, 2)
+    assert scenes["s15"]["view"] == "sat" and scenes["s5"]["view"] == "globe"

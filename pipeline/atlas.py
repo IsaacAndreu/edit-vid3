@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 10
+VERSION = 11
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -301,6 +301,10 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     if out["view"] == "chart" and not out["chart"] or out["view"] == "icon" and not out["icon"] \
             or out["view"] in ("sat", "flat", "size") and not out[out["view"]]:
         out["view"] = "globe"                     # nothing valid to show instead: the globe stays
+    if out["view"] == "sat" and not has_photo(out["sat"]["lat"]):    # nothing to see there (atlas2pt: McMurdo)
+        out["points"] = [*out["points"], {"name": out["sat"]["label"], "lat": out["sat"]["lat"], "lon": out["sat"]["lon"],
+                                          "at": out["sat"]["at"]}][-6:] if out["sat"]["label"] else out["points"]
+        out["view"], out["sat"] = "globe", None
     if out["view"] == "sat":                  # the globe dives to the place: the camera ends there
         out["camera"] = {"lat": out["sat"]["lat"], "lon": out["sat"]["lon"], "zoom": 3.2}
     return out
@@ -601,21 +605,31 @@ def auto_tag(scene: dict[str, Any], text: str, previous: dict[str, Any] | None) 
                                "at": first}]}
 
 
+PHOTO_LATS = (-60.0, 75.0)    # Sentinel-2 cloudless has no picture south of here (Antarctica's tiles are blank) or north
+
+
+def has_photo(lat: float) -> bool:
+    return PHOTO_LATS[0] <= lat <= PHOTO_LATS[1]
+
+
 def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> None:
     """The dive to the real satellite photo is the format's strongest moment: when the LLM chose none, the lines that
     name exactly one new place (not in the hook's first lines, at least 8 lines apart) become dives, `wanted` of them
     (visual.satellites, 2)."""
 
     ids = list(scenes)
-    if wanted <= 0 or any(scenes[i].get("view") == "sat" for i in ids):
+    have = [n for n, i in enumerate(ids) if scenes[i].get("view") == "sat"]
+    wanted -= len(have)
+    if wanted <= 0:
         return
     chosen: list[int] = []
     for n, shot_id in enumerate(ids):
         g = scenes[shot_id]
-        new = [p for p in g.get("points") or [] if not p.get("kept")]
-        if n < 3 or g.get("view") != "globe" or len(new) != 1 or g.get("card") or g.get("night"):
+        new = [p for p in g.get("points") or [] if not p.get("kept") and has_photo(p["lat"])]
+        if n < 3 or g.get("view") != "globe" or len(new) != 1 or (g.get("card") and not g["card"].get("kept")) \
+                or (g.get("night") and not g["night"].get("kept")):
             continue
-        if chosen and n - chosen[-1] < 8:
+        if any(abs(n - m) < 8 for m in chosen + have):
             continue
         chosen.append(n)
     if len(chosen) > wanted:                       # spread over the video
@@ -623,7 +637,7 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
         chosen = [chosen[int(k * step)] for k in range(wanted)]
     for n in chosen:
         g = scenes[ids[n]]
-        place = next(p for p in g["points"] if not p.get("kept"))
+        place = next(p for p in g["points"] if not p.get("kept") and has_photo(p["lat"]))
         g["view"] = "sat"
         g["sat"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 11, "label": place["name"], "at": place.get("at", "")}
         g["camera"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 3.2}
@@ -863,6 +877,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
                 g["sat"]["layers"] = [{"kind": "image", "src": raw(x["src"]), "z": x["z"], "source": "satellite"} for x in layers]
                 g["sat"]["credit"] = SAT_CREDIT.get(str(ctx.section("align").get("language", "es"))[:2], SAT_CREDIT["en"])
             else:
+                print(f"   Atlas: sin foto de satélite para {g['sat']['label'] or 'un sitio'}: se queda el globo")
                 g["view"] = "globe"
                 g["points"] = [*(g.get("points") or []), {"name": g["sat"]["label"] or "", "lat": g["sat"]["lat"],
                                                           "lon": g["sat"]["lon"], "at": g["sat"]["at"]}]
@@ -876,6 +891,9 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             prev = g
         elif prev is None:
             prev = g
+    dives = [g["graphic"]["sat"]["label"] for g in out if g["graphic"].get("view") == "sat"]
+    print(f"   Atlas: {len(dives)} bajada(s) al satélite" + (f": {', '.join(d or '?' for d in dives)}" if dives else
+          " (ningún sitio del guion con foto: la Antártida y el Ártico no tienen)"))
     return out
 
 
