@@ -7,6 +7,9 @@ sourcing:
     pot_provider_url: http://127.0.0.1:4416
     player_client: [default, web_safari]   # se añade mweb solo con el PO Token
     concurrency: 3
+    # proxy residencial de pago (docs/VPS.md 3f): usuario y clave en la URL, nunca en git; el programa añade la sesión fija
+    # proxy: http://USUARIO:CLAVE@resi-bridge-eu.rainproxy.io:1111
+    # proxy_usd_per_gb: 0.62
 
 render:
   encoder: x264                # la VPS no tiene gráfica NVIDIA

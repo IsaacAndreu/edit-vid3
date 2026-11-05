@@ -27,7 +27,7 @@ from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
-from .proxy_sessions import ProxySessions, is_residential, mask_proxy, with_sticky_session
+from .proxy_sessions import ProxySessions, is_residential, with_sticky_session
 
 
 _BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
