@@ -17,3 +17,8 @@ config.local.yaml
 
 .venv/
 deno.lock
+
+# Vídeos de ejemplo quitados del repositorio (98a9c88); en local pueden seguir existiendo
+materiales/CarlosYulo/
+materiales/FallosGimnasia/
+materiales/Video1/
