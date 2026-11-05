@@ -27,6 +27,7 @@ from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
+from .proxy_sessions import ProxySessions, is_residential, with_sticky_session
 
 
 _BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
@@ -50,9 +51,30 @@ def error_kind(message: str) -> str:
         return "429"
     if "video unavailable" in low or "not available" in low:
         return "unavailable"
+    if "timed out" in low or "timeout" in low:
+        return "timeout"
     return "other"
 _RATE_MARKERS = ("http error 429", "too many requests")
+
+
+def error_detail(message: str, limit: int = 200) -> str:
+    """An error's words for the request log: one line, proxy credentials masked (//****@), video ids kept."""
+
+    text = re.sub(r"//[^/@\s]+@", "//****@", " ".join(str(message).split()))
+    text = re.sub(r"^(ERROR:\s*)+", "", text)
+    return text[:limit]
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+_PROXY_ENV = ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+
+
+def local_env() -> dict[str, str]:
+    """The environment for ffmpeg/ffprobe working on files already on disk: without proxy variables, so a globally
+    exported HTTPS_PROXY can never route (or bill) a local cut through the residential proxy. The ffmpeg that
+    yt-dlp drives for a range is another matter: yt-dlp hands it the proxy itself, session included."""
+
+    return {k: v for k, v in os.environ.items() if k not in _PROXY_ENV}
 
 
 def proxy_list(env: str | None, many: Any, one: Any) -> list[str]:
@@ -143,6 +165,7 @@ _WARNINGS = (
 )
 WARNING_COUNTS: dict[str, int] = {}
 _warning_lock = threading.Lock()
+_POT_WARNED = False          # the PO Token provider missing with a residential proxy: said once per process
 
 
 def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> str:
@@ -156,6 +179,47 @@ def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> st
         return f"b{limit}[protocol^=m3u8][acodec!=none][vcodec^=avc1]/b{limit}[protocol^=m3u8][acodec!=none]"
     parts = [alt.split("+")[0] for alt in fmt.split("/") if alt.strip()]
     return "/".join(f"{alt}[protocol^=m3u8]" for alt in dict.fromkeys(parts))
+
+
+def cap_height(fmt: str, max_height: Any) -> str:
+    """Every height<=N of a yt-dlp format lowered to `max_height` (720): the clip is scaled to 1920x1080 anyway and
+    nothing above 720p is visible after it. None/0 = as requested."""
+
+    if not max_height:
+        return fmt
+    limit = int(max_height)
+    return re.sub(r"height<=(\d+)", lambda m: f"height<={min(int(m.group(1)), limit)}", fmt)
+
+
+def cap_fps(fmt: str, max_fps: Any) -> str:
+    """Each video alternative first at `max_fps` (30) or less, then as it was: a 720p60 stream is twice the bytes of
+    the 720p30 one and the clip is rendered at 30 fps. The resolution still wins over the frame rate (720p60 before
+    480p30). Audio-only alternatives are left alone."""
+
+    if not max_fps:
+        return fmt
+    out: list[str] = []
+    for alt in (a.strip() for a in fmt.split("/") if a.strip()):
+        parts = alt.split("+")
+        video = parts[0]
+        if video.startswith("ba") or "acodec!=none" in video or "fps" in video or "[vcodec=none]" in video:
+            out.append(alt)
+            continue
+        capped = "+".join([f"{video}[fps<={int(max_fps)}]", *parts[1:]])
+        out.extend([capped, alt])
+    return "/".join(dict.fromkeys(out))
+
+
+def requested_height(fmt: str) -> int | None:
+    """The largest height<=N a format asks for (None without one)."""
+
+    heights = [int(h) for h in re.findall(r"height<=(\d+)", fmt)]
+    return max(heights) if heights else None
+
+
+# Which other ranges already on disk can stand in for a request: an HD range serves the 360p analysis of the same
+# seconds, and one with sound serves a silent request (ffmpeg maps the video only)
+RANGE_FAMILY = {"a360": ("a360", "hd", "hdav"), "hd": ("hd", "hdav"), "hdav": ("hdav",), "au": ("au",)}
 
 
 def whole_format(fmt: str) -> str:
@@ -246,6 +310,12 @@ class YouTubeSource:
         # Downloads keep going out the usual way: stream URLs belong to the IP that asked for them, so a video to be
         # downloaded is extracted again that way first (_fresh_full_info), and the proxy's paid GB are only JSON.
         self.metadata_proxy = str(os.environ.get("YOUTUBE_METADATA_PROXY") or config.get("metadata_proxy") or "").strip()
+        # A paid residential proxy (a user in its URL) changes IP on every connection unless the username carries the
+        # provider's session suffix: one session per video (proxy_session_minutes, 30) so its metadata, storyboard
+        # and ranges all leave from the IP its stream URLs belong to. Home proxies (no user) are one fixed IP: untouched.
+        self.sessions = ProxySessions(cache_dir / "videos", minutes=float(config.get("proxy_session_minutes", 30)),
+                                      max_rotations=int(config.get("proxy_session_rotations", 2)))
+        self.residential = any(is_residential(p) for p in self.proxies)
         # «modo sin YouTube» (pipeline/sin_youtube.py, while the queue's YouTube pause lasts): what is on disk is still
         # read, but nothing goes out — every request stops here before the network, with this reason
         from ..sin_youtube import REASON, active
@@ -306,6 +376,9 @@ class YouTubeSource:
                 session.proxies = {"http": way, "https": way}
             self._sessions.append(session)
         self.http = self._sessions[0]
+        self._direct = requests.Session()            # the CDN (i.ytimg.com) without any proxy, explicit or inherited
+        self._direct.trust_env = False
+        self._direct.headers["User-Agent"] = USER_AGENT
         options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": False,     # warnings go to _QuietLogger: the ones that explain slowness are shown once
@@ -323,8 +396,15 @@ class YouTubeSource:
         self.proxy = proxy
         if config.get("force_ipv4") and not proxy:
             options["source_address"] = "0.0.0.0"   # YouTube over IPv6 crawls with some providers
-        if config.get("player_client"):
-            options["extractor_args"] = {"youtube": {"player_client": list(config["player_client"])}}
+        # Each player client is its own player request (and connection) per extraction, so through a residential
+        # proxy (paid per GB and per connection) `player_client_residential` can name fewer. Not web_safari alone:
+        # on 2026-11-05 every extraction with it failed «Requested format is not available» (no usable video
+        # format came back), so the default is the same list as everywhere (`player_client`).
+        chosen = config.get("player_client_residential") if self.residential else None
+        chosen = chosen or config.get("player_client")
+        self._configured_clients = [str(c) for c in (chosen or [])]
+        if self._configured_clients:
+            options["extractor_args"] = {"youtube": {"player_client": list(self._configured_clients)}}
         if config.get("cookies_from_browser"):
             options["cookiesfrombrowser"] = (str(config["cookies_from_browser"]),)
         if config.get("rate_limit"):
@@ -348,8 +428,11 @@ class YouTubeSource:
         mode = str(self.cfg.get("po_token", "auto")).lower()
         if mode in ("off", "false", "no"):
             return False
-        if self.proxy and mode != "force":       # through home: YouTube sees the home IP, which needs no PO Token
-            return False                         # (and the provider would make it here, for the server's IP)
+        if self.proxy and not self.residential and mode != "force":
+            return False       # through home: YouTube sees the home IP, which needs no PO Token (and the provider
+            #                    would make it here, for the server's IP). A residential proxy's IPs do need it: the
+            #                    plugin hands the proxy (with its sticky session) to the provider, so the token is
+            #                    minted for that exit IP, and talks to the provider itself without any proxy.
         url = str(self.cfg.get("pot_provider_url", "http://127.0.0.1:4416")).rstrip("/")
         try:
             plugin = importlib.util.find_spec("yt_dlp_plugins.extractor.getpot_bgutil_http") is not None
@@ -364,7 +447,9 @@ class YouTubeSource:
             except requests.RequestException:
                 server = False
         if not (plugin and server):
-            if mode in ("on", "true", "yes"):
+            global _POT_WARNED
+            if mode in ("on", "true", "yes") or (self.residential and not _POT_WARNED):
+                _POT_WARNED = True             # with a residential proxy it is what most avoids «are you a bot»: said once
                 print(f"   AVISO PO Token: {'falta el plugin bgutil-ytdlp-pot-provider' if not plugin else 'el servidor no responde en ' + url}"
                       " (docs/VPS.md); sigo sin PO Token")
             return False
@@ -380,9 +465,11 @@ class YouTubeSource:
         return True
 
     def _metric(self, action: str, *, ok: bool, seconds: float, error: str = "", attempt: int = 0,
-                cookies: bool = False, size: int | None = None, span: tuple[float, float] | None = None) -> None:
+                cookies: bool = False, size: int | None = None, span: tuple[float, float] | None = None,
+                detail: str = "") -> None:
         """One line per request to YouTube in work/<slug>/youtube_downloads.jsonl: what was asked, how it went,
-        with or without an account, client and PO Token (python main.py --youtube-stats sums them up)."""
+        with or without an account, client and PO Token (python main.py --youtube-stats sums them up). `detail` is
+        the error's own words (proxy credentials masked), so «otros» can be told apart later."""
 
         if self.metrics_path is None:
             return
@@ -392,10 +479,21 @@ class YouTubeSource:
                                "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
                                "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
                                "seconds": round(seconds, 2), "wait": round(getattr(self._local, "waited", 0.0), 2)}
+        if detail and not ok:
+            row["detail"] = error_detail(detail)
         if getattr(self._local, "via_metadata_proxy", False):
             row["proxy"] = "metadatos"
-        elif len(self.proxies) > 1:
+        elif self.proxies:
             row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
+        session = self._session_in_use()
+        if session:
+            row["session"] = session
+        if self._through_proxy():
+            # what the proxy carried for this request: yt-dlp's own responses, or the range's file (moved by ffmpeg)
+            row["proxy_bytes"] = int(size or 0) if action.startswith("archivo") else int(getattr(self._local, "proxy_bytes", 0) or 0)
+        reused = getattr(self._local, "info_reused", None)
+        if reused is not None and (action.startswith("archivo") or action.startswith("download") or action == "captions"):
+            row["info_reused"] = bool(reused)
         if span is not None:             # the source seconds of a clip: overlapping downloads can be found later
             row["start"], row["end"] = round(span[0], 2), round(span[1], 2)
         if size is not None:
@@ -476,7 +574,7 @@ class YouTubeSource:
 
         options = {**self.base_options, **(extra or {})}
         if getattr(self._local, "via_metadata_proxy", False):
-            options["proxy"] = self.metadata_proxy          # a new residential IP per request: no account, ever
+            options["proxy"] = self._proxy_for(self.metadata_proxy)   # no account through it, ever
             options.pop("cookiefile", None)
             options.pop("cookiesfrombrowser", None)
             if self.cfg.get("metadata_proxy_light", False) and not getattr(self._local, "mp_heavy", False):
@@ -485,13 +583,78 @@ class YouTubeSource:
                 args = dict(options.get("extractor_args") or {})
                 args["youtube"] = {**(args.get("youtube") or {}), "player_skip": ["webpage"]}
                 options["extractor_args"] = args
-            return yt_dlp.YoutubeDL(options)
-        if len(self.proxies) > 1:
-            options["proxy"] = self.proxies[getattr(self._local, "way", 0) or 0]
+            return self._metered(yt_dlp.YoutubeDL(options), True)
+        if self.proxies:
+            options["proxy"] = self._proxy_for(self.proxies[getattr(self._local, "way", 0) or 0])
         cookie_file = self._cookie_file()
         if cookie_file:
             options["cookiefile"] = cookie_file
-        return yt_dlp.YoutubeDL(options)
+        return self._metered(yt_dlp.YoutubeDL(options), bool(options.get("proxy")))
+
+    def _metered(self, ydl: Any, through_proxy: bool) -> Any:
+        """Count the bytes of every HTTP response this YoutubeDL opens through a proxy (the page, the player API,
+        the player JS, manifests, subtitles: all of yt-dlp's own requests go through `urlopen`) into the current
+        request's `proxy_bytes`. Content-Length when the server sends it, else the body read (decompressed, an
+        upper bound). What ffmpeg moves for a range is not seen here: the range's file size is counted instead."""
+
+        if not through_proxy:
+            return ydl
+        original = ydl.urlopen
+        local = self._local
+
+        def add(amount: int) -> None:
+            local.proxy_bytes = getattr(local, "proxy_bytes", 0) + max(0, int(amount))
+
+        def counting(request: Any) -> Any:
+            response = original(request)
+            length = None
+            try:
+                length = int(response.headers.get("Content-Length"))
+            except (TypeError, ValueError, AttributeError):
+                length = None
+            if length is not None:
+                add(length)
+                return response
+            read = response.read
+
+            def counting_read(amt: int | None = None) -> bytes:
+                data = read(amt)
+                add(len(data))
+                return data
+
+            try:
+                response.read = counting_read
+            except AttributeError:
+                pass
+            return response
+
+        ydl.urlopen = counting
+        return ydl
+
+    def _through_proxy(self) -> bool:
+        """Does the current request leave through a proxy (any kind), or directly from the server?"""
+
+        return bool(getattr(self._local, "via_metadata_proxy", False)) or bool(self.proxies)
+
+    def _session_key(self) -> str:
+        """Whose sticky session a request uses: the video it is about, or the shared one for searches."""
+
+        return getattr(self._local, "video_id", None) or "search"
+
+    def _proxy_for(self, proxy: str) -> str:
+        """`proxy` as yt-dlp (and the ffmpeg it drives) or requests must use it: a residential one gets this video's
+        sticky session in its username; a home proxy (no user) is returned as it is."""
+
+        if not is_residential(proxy):
+            return proxy
+        return with_sticky_session(proxy, self.sessions.session_id(self._session_key()))
+
+    def _session_in_use(self) -> str | None:
+        """The sticky session id the current request leaves with (None through a home proxy or directly)."""
+
+        via_metadata = getattr(self._local, "via_metadata_proxy", False)
+        proxy = self.metadata_proxy if via_metadata else (self.proxies[getattr(self._local, "way", 0) or 0] if self.proxies else "")
+        return self.sessions.session_id(self._session_key()) if is_residential(proxy) else None
 
     def _calm_down(self) -> None:
         """Back to `concurrency` requests at a time: the extra slots are taken and never given back."""
@@ -521,6 +684,7 @@ class YouTubeSource:
             tries += 1
             began = queued = time.monotonic()
             self._local.waited = 0.0
+            self._local.proxy_bytes = 0
             try:
                 with self._slots:
                     way = self._local.way = self._pick_way(tried_ways)
@@ -556,7 +720,7 @@ class YouTubeSource:
                 lowered = message.casefold()
                 kind = error_kind(message)
                 self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
-                             cookies=self._local.account is not None)
+                             cookies=self._local.account is not None, detail=message)
                 way = getattr(self._local, "way", 0) or 0
                 if through:
                     retry = self._metadata_proxy_failed(kind, lowered, tries)
@@ -568,7 +732,7 @@ class YouTubeSource:
                         continue
                 # A request that hangs until it times out: is it YouTube being slow, or the proxy program stopped
                 # (home PC asleep, proxy window closed)? One look at its port says which.
-                if self.proxies and kind == "other" and ("timed out" in lowered or "timeout" in lowered) \
+                if self.proxies and kind in ("other", "timeout") and ("timed out" in lowered or "timeout" in lowered) \
                         and not proxy_reachable(self.proxies[way]):
                     lowered += " proxy connection refused"
                 if self.proxies and _proxy_down(lowered) and len(tried_ways) >= len(self.proxies) - 1:
@@ -581,6 +745,22 @@ class YouTubeSource:
                         self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
                         tried_ways.add(way)
                         continue
+                if kind in ("bot", "429") and self._local.account is None and is_residential((self.proxies or [""])[way]):
+                    # A residential proxy: «are you a bot» or 429 is this exit IP, not the line — the next connection
+                    # can be another IP. A new sticky session for this video (a few times at most) instead of a two-hour
+                    # quarantine of the whole proxy; after that it is the video, and it is dropped like before.
+                    if self._rotate_after(kind, action, tries):
+                        continue
+                    video = getattr(self._local, "video_id", None) if action != "search" else None
+                    rotations = self.sessions.max_rotations + 1
+                    if kind == "bot":
+                        if video is not None:
+                            self._refuse(video)
+                            print(f"   YouTube pide «no eres un bot» para el vídeo {video} desde {rotations} IPs del proxy: se descarta")
+                        raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» desde {rotations} IPs del proxy "
+                                           "residencial; se descarta esta petición") from None
+                    raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429) en {rotations} sesiones del proxy "
+                                      "residencial; se descarta esta petición") from None
                 if kind == "auth" and self.cookies_mode == "fallback" and self._sets and not with_account:
                     with_account = True          # this video needs an account: try it once with one
                     continue
@@ -640,6 +820,27 @@ class YouTubeSource:
                                       "cuarentena") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
 
+    def _rotate_after(self, kind: str, action: str, tries: int) -> bool:
+        """A new sticky session (exit IP) for the current video or the shared search session after «are you a bot»
+        or a 429 (with a pause, rate_backoff × try); False when this video already rotated its share."""
+
+        key = self._session_key()
+        fresh = self.sessions.rotate(key)
+        if fresh is None:
+            return False
+        if kind == "429":
+            pause = min(120.0, float(self.cfg.get("rate_backoff", 20)) * max(1, tries))
+            time.sleep(pause)
+            self._count("espera por límite", pause)
+        now = time.monotonic()
+        if now - getattr(self, "_rotation_said", 0.0) > 120:
+            self._rotation_said = now
+            what = "pide «no eres un bot»" if kind == "bot" else "responde 429"
+            whose = f"el vídeo {key}" if key != "search" else "las búsquedas"
+            print(f"   YouTube {what} a una IP del proxy residencial ({action}): sesión nueva para {whose} "
+                  f"(sesiones rotadas en esta ejecución: {self.sessions.rotated})")
+        return True
+
     def _metadata_proxy_failed(self, kind: str, lowered: str, tries: int) -> str:
         """A metadata request through the residential proxy failed: «again» (the next request leaves from another IP),
         «home» (the usual way, as before the proxy: it does not answer, or the video needs an account) or «drop»."""
@@ -653,7 +854,10 @@ class YouTubeSource:
             self._local.mp_heavy = True         # without the watch page it did not work: again, with it
             return "again"
         if (refused or unreachable) and tries <= retries:
-            return "again"
+            # a residential metadata proxy with sticky sessions: «again» must mean another IP, so the session rotates
+            # (bounded per video); with none left, this video is refused from several IPs below
+            if not (refused and is_residential(self.metadata_proxy)) or self.sessions.rotate(self._session_key()) is not None:
+                return "again"
         if kind == "auth" or unreachable:
             if unreachable and time.monotonic() - getattr(self, "_mp_said", 0.0) > 300:
                 self._mp_said = time.monotonic()
@@ -817,15 +1021,52 @@ class YouTubeSource:
         if self.blocked or self._all_in_quarantine():
             raise SourceUnavailable(self.blocked or "YouTube: todas las conexiones en cuarentena")
         way = self._pick_way()
-        if not any(host in url for host in _FREE_HOSTS):
+        free = any(host in url for host in _FREE_HOSTS)
+        if not free:
             self._budget_take(way, REQUEST_UNITS["get"])
+        if free and is_residential((self.proxies or [""])[way]):
+            # storyboard thumbnails are not bound to an IP: paid GB for nothing — direct, the proxy only if that fails
+            try:
+                response = self._direct.get(url, timeout=timeout)
+                if response.status_code < 500:
+                    return response
+            except requests.RequestException:
+                pass
+        self._local.way = way
+        began = time.monotonic()
         try:
-            return self._sessions[way].get(url, timeout=timeout)
-        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
+            response = self._session_get(way, url, timeout)
+        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError) as error:
             if len(self._sessions) == 1:
+                if is_residential((self.proxies or [""])[way]):
+                    self._metric("get", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)),
+                                 detail=str(error))
                 raise
             self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
-            return self._sessions[self._pick_way({way})].get(url, timeout=timeout)
+            way = self._local.way = self._pick_way({way})
+            response = self._session_get(way, url, timeout)
+        if is_residential((self.proxies or [""])[way]):      # paid per GB: every GET through it is in the log
+            self._local.proxy_bytes = len(response.content or b"")
+            self._metric("get", ok=response.status_code < 400, seconds=time.monotonic() - began,
+                         error="" if response.status_code < 400 else ("429" if response.status_code == 429 else
+                                                                       "403" if response.status_code == 403 else "other"))
+        return response
+
+    def _session_get(self, way: int, url: str, timeout: float) -> requests.Response:
+        proxies = self._requests_proxies(way)
+        if proxies is None:                   # home proxy or direct: the session's own settings, as always
+            return self._sessions[way].get(url, timeout=timeout)
+        return self._sessions[way].get(url, timeout=timeout, proxies=proxies)
+
+    def _requests_proxies(self, way: int) -> dict[str, str] | None:
+        """Per-request proxies for `requests`: the way's proxy with this video's sticky session when residential;
+        None keeps the session's own (fixed) proxy, or none at all."""
+
+        proxy = self.proxies[way] if self.proxies else ""
+        if not is_residential(proxy):
+            return None
+        sticky = self._proxy_for(proxy)
+        return {"http": sticky, "https": sticky}
 
     def _blocked_everywhere(self) -> None:
         self._remember_block()
@@ -897,6 +1138,7 @@ class YouTubeSource:
             else:
                 target = f"ytsearch{limit}:{query}"
                 extra = {"extract_flat": "in_playlist", "skip_download": True}
+            self._local.video_id = None             # a search is nobody's video: the shared sticky session
             info = self._call("search", lambda: self._extract(target, extra))
             keep = ("id", "title", "channel", "uploader", "duration", "url", "live_status", "view_count")
             return [{k: entry.get(k) for k in keep} for entry in (info or {}).get("entries") or [] if isinstance(entry, dict)]
@@ -997,17 +1239,21 @@ class YouTubeSource:
                 path.unlink(missing_ok=True)
 
         def produce() -> dict[str, Any]:
-            # through the metadata proxy, unless this extraction is for a download (its stream URLs must be ours)
-            self._local.via_metadata_proxy = bool(self.metadata_proxy) and not getattr(self._local, "for_download", False)
+            # Through the metadata proxy, unless this extraction is for a download (its stream URLs must be ours) or
+            # the usual way is itself a residential proxy with sticky sessions: then one extraction, by this video's
+            # session, serves the metadata AND every range of the video (no second, «ours», extraction later).
+            self._local.via_metadata_proxy = bool(self.metadata_proxy) and not getattr(self._local, "for_download", False) \
+                and not self.residential
             try:
                 data = self._call(
                     "metadata",
                     lambda: self._extract(f"https://www.youtube.com/watch?v={video_id}", {"skip_download": True}),
                 )
                 via = "metadata_proxy" if self._local.via_metadata_proxy else ""
+                session = self._session_in_use()
             finally:
                 self._local.via_metadata_proxy = self._local.mp_heavy = False
-            self._save_full_info(video_id, data, via)
+            self._save_full_info(video_id, data, via, session)
             formats = data.get("formats") or []
             heights = [f.get("height") or 0 for f in formats if f.get("vcodec") not in (None, "none")]
             boards = [f for f in formats if str(f.get("format_id", "")).startswith("sb") and f.get("fragments")]
@@ -1122,12 +1368,14 @@ class YouTubeSource:
     # --- downloads without re-extraction ------------------------------------------------
 
     def _clients(self) -> list[str]:
-        return [str(c) for c in (self.cfg.get("player_client") or [])]
+        """The player clients the info dicts are stamped with (re-extracted when they change)."""
+
+        return list(self._configured_clients)
 
     def _full_info_path(self, video_id: str) -> Path:
         return self.cache_dir / "videos" / video_id / "ytdlp-info.json"
 
-    def _save_full_info(self, video_id: str, data: dict[str, Any], via: str = "") -> None:
+    def _save_full_info(self, video_id: str, data: dict[str, Any], via: str = "", session: str | None = None) -> None:
         """yt-dlp's own info dict (minus bulky fields) so downloads can skip the ~4 s extraction."""
 
         import json
@@ -1135,6 +1383,7 @@ class YouTubeSource:
         slim = {k: v for k, v in data.items() if k not in ("automatic_captions", "subtitles", "thumbnails", "heatmap")}
         slim["_edit_vid3_clients"] = self._clients()     # re-extract when the player clients change
         slim["_edit_vid3_via"] = via                     # metadata_proxy: its stream URLs are another IP's
+        slim["_edit_vid3_session"] = session             # residential proxy: the sticky session (IP) they belong to
         path = self._full_info_path(video_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
@@ -1143,10 +1392,16 @@ class YouTubeSource:
         tmp.replace(path)
 
     def _fresh_full_info(self, video_id: str) -> Path:
-        """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed)."""
+        """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed).
+
+        Valid: extracted the way the download leaves (never the metadata proxy), by the same player clients, with
+        every stream URL at least `info_expiry_margin_minutes` (15) from its `expire`, and — through a residential
+        proxy — by this video's sticky session while it is still alive (the IP the URLs are bound to). Otherwise one
+        extraction, the same price as before, and the result is cached for the next ranges of the video."""
 
         import json
 
+        self._local.info_reused = False
         path = self._full_info_path(video_id)
         if path.is_file():
             try:
@@ -1157,8 +1412,12 @@ class YouTubeSource:
                     # stream URLs carry ?expire=…, HLS manifests /expire/…/
                     for found in [re.search(r"[/?&]expire[/=](\d+)", f["url"])] if found
                 ]
-                if expiries and min(expiries) - time.time() > 600 and data.get("_edit_vid3_clients") == self._clients() \
-                        and not data.get("_edit_vid3_via"):
+                margin = 60 * float(self.cfg.get("info_expiry_margin_minutes", 15))
+                ours = not data.get("_edit_vid3_via") and (
+                    not self.residential or self.sessions.matches(video_id, data.get("_edit_vid3_session")))
+                if expiries and min(expiries) - time.time() > margin and data.get("_edit_vid3_clients") == self._clients() \
+                        and ours:
+                    self._local.info_reused = True
                     return path
             except (OSError, ValueError, KeyError):
                 pass
@@ -1175,6 +1434,7 @@ class YouTubeSource:
         """See _download_range; also records the file's size and speed in the metrics."""
 
         self._local.video_id = video_id
+        self._local.info_reused = None
         began = time.monotonic()
         before = getattr(self._local, "fetched", 0)
         try:
@@ -1182,7 +1442,7 @@ class YouTubeSource:
         except Exception as error:
             if not (self.offline and str(error) == self.offline):      # never asked: not a failed download
                 self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began,
-                             error=error_kind(str(error)), span=(start, end))
+                             error=error_kind(str(error)), span=(start, end), detail=str(error))
             raise
         if getattr(self._local, "fetched", 0) != before:      # downloaded now, not taken from the cache
             size = path.stat().st_size if path.is_file() else 0
@@ -1202,13 +1462,13 @@ class YouTubeSource:
 
         target_dir = self.cache_dir / "videos" / video_id
         suffix = ".m4a" if audio_only else ".mp4"       # audio_only: just the sound of the range (sound bites)
-        for existing in target_dir.glob(f"{prefix}_*{suffix}"):
-            try:
-                _, a, b = existing.stem.split("_")
-                if float(a) <= start + 1e-3 and float(b) >= end - 1e-3:
-                    return existing
-            except ValueError:
-                continue
+        if not audio_only:
+            # 720p/30fps at most (sourcing.youtube.max_height/max_fps): the final 1920x1080 at 30 fps shows no more
+            fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
+        wanted = requested_height(fmt)
+        existing = self._library_range(target_dir, prefix, suffix, start, end, wanted)
+        if existing is not None:
+            return existing
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
@@ -1244,6 +1504,62 @@ class YouTubeSource:
             if whole is not None:
                 return self._cut(whole, video_id, start, end, prefix, audio)
         return self._fetch_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path, exact=False)
+
+    def _library_range(self, target_dir: Path, prefix: str, suffix: str, start: float, end: float,
+                       wanted: int | None) -> Path | None:
+        """A range already on disk that covers [start, end]: of this prefix, or a richer one of the same video
+        (RANGE_FAMILY), as long as it is at least as tall as asked for — or was downloaded under the same or a higher
+        cap, so the source has no more to give. Legacy ranges without a sidecar count as before. The cache is shared
+        by every video of the machine: a range another project already paid for never crosses the proxy again."""
+
+        candidates: list[tuple[int, Path]] = []
+        for rank, family in enumerate(RANGE_FAMILY.get(prefix, (prefix,))):
+            for existing in target_dir.glob(f"{family}_*{suffix}"):
+                try:
+                    _, a, b = existing.stem.split("_")
+                    if not (float(a) <= start + 1e-3 and float(b) >= end - 1e-3):
+                        continue
+                except ValueError:
+                    continue
+                side = self._range_sidecar(existing)
+                height, cap = side.get("height"), side.get("cap")
+                tall_enough = wanted is None or height is None or int(height) >= wanted or (cap is not None and int(cap) >= wanted)
+                if tall_enough:
+                    candidates.append((rank, existing))
+        return min(candidates, key=lambda c: (c[0], c[1].name))[1] if candidates else None
+
+    @staticmethod
+    def _range_sidecar(path: Path) -> dict[str, Any]:
+        import json
+
+        try:
+            data = json.loads(path.with_suffix(path.suffix + ".json").read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def _write_range_sidecar(path: Path, *, height: int | None, cap: int | None) -> None:
+        """<range>.mp4.json: the source height of the range and the cap it was asked with (the library's key)."""
+
+        import json
+
+        try:
+            path.with_suffix(path.suffix + ".json").write_text(json.dumps({"height": height, "cap": cap}), encoding="utf-8")
+        except OSError:
+            pass
+
+    @staticmethod
+    def _probe_height(path: Path) -> int | None:
+        import json
+        import subprocess
+
+        try:
+            probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height",
+                                    "-of", "json", str(path)], capture_output=True, text=True, env=local_env())
+            return int((json.loads(probe.stdout or "{}").get("streams") or [{}])[0].get("height") or 0) or None
+        except (OSError, ValueError, TypeError, IndexError):
+            return None
 
     def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:
         """The whole source, fetched by yt-dlp itself in 10 MB pieces (each one a separate request, which YouTube
@@ -1300,8 +1616,9 @@ class YouTubeSource:
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
              "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)],
-            check=True,
+            check=True, env=local_env(),
         )
+        self._write_range_sidecar(target, height=self._probe_height(target), cap=self.cfg.get("max_height", 720))
         return target
 
     def _fetch_range(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
@@ -1323,28 +1640,28 @@ class YouTubeSource:
             "download_ranges": download_range_func(None, [(start, end)]),
             "force_keyframes_at_cuts": exact,             # exact: the file starts right at `start`
         }
-        # ffmpeg (which yt-dlp uses for ranges) waits forever on a connection that stops answering: a proxy PC that
-        # went to sleep mid-download hung instrum4 for 5 hours at 180/191. 60 s without data: that piece fails instead
-        args: dict[str, list[str]] = {"ffmpeg_i": ["-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
-        if not exact:
-            args["ffmpeg_o"] = ["-copyts"]
-        options["external_downloader_args"] = args
         info_file = str(info_path)
 
         def fetch() -> None:
-            with self._ydl(options) as ydl:
+            with self._ydl({**options, "external_downloader_args": self._ffmpeg_args(exact)}) as ydl:
                 ydl.download_with_info_file(info_file)
 
         def attempt() -> tuple[Path, dict[str, Any]] | None:
-            self._call("download (HLS)" if exact else "download", fetch)
+            try:
+                self._call("download (HLS)" if exact else "download", fetch)
+            except RuntimeError as error:
+                if "ffmpeg exited with code" not in str(error):
+                    raise
+                # yt-dlp reports only the exit code (ffmpeg runs with -loglevel quiet): ask ffmpeg itself why
+                raise RuntimeError(f"{error} — ffmpeg dice: {self._ffmpeg_diagnosis(info_file, fmt)}") from None
             produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*")
                         if p.suffix in (".mp4", ".webm", ".mkv", ".m4a", ".opus", ".weba", ".ts")]
             if not produced:
                 return None
             probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time:format=duration",
+                ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time,height:format=duration",
                  "-of", "json", str(produced[0])],
-                capture_output=True, text=True,
+                capture_output=True, text=True, env=local_env(),
             )
             try:
                 info = json.loads(probe.stdout or "{}")
@@ -1370,10 +1687,68 @@ class YouTubeSource:
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", f"0:{stream}",
              *(["-map", "0:a:0?"] if audio and not audio_only else []),
              "-c", "copy", "-avoid_negative_ts", "make_zero", str(target)],
-            check=True,
+            check=True, env=local_env(),
         )
         produced[0].unlink(missing_ok=True)
+        if not audio_only:
+            height = info["streams"][0].get("height")
+            self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
         return target
+
+    def _ffmpeg_args(self, exact: bool) -> dict[str, list[str]]:
+        """Input/output arguments for the ffmpeg yt-dlp drives for a range (built when the request runs, so they
+        carry the way out it was given).
+
+        -rw_timeout: ffmpeg waits forever on a connection that stops answering (a proxy PC asleep mid-download hung
+        instrum4 for 5 hours at 180/191); range_stall_seconds (60) without data and the piece fails instead.
+        -http_proxy: yt-dlp hands ffmpeg the proxy only through the http_proxy environment variable, and ffmpeg
+        ignores that variable for https:// (libavformat/http.c: `use_proxy = 0` for https; only the -http_proxy
+        option reaches the TLS layer). So every googlevideo range left straight from this server, from an IP the
+        stream URLs were not bound to: 403, «ffmpeg exited with code 8». The option carries the proxy, sticky
+        session included; the HLS demuxer passes it on to every segment request."""
+
+        # -loglevel error (after yt-dlp's -loglevel quiet; the last one wins): ffmpeg's errors reach the service log
+        args: dict[str, list[str]] = {"ffmpeg_i": ["-loglevel", "error", "-nostats",
+                                                   "-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
+        proxy = self.proxies[getattr(self._local, "way", 0) or 0] if self.proxies else ""
+        if proxy:
+            args["ffmpeg_i"] += ["-http_proxy", self._proxy_for(proxy)]
+        if not exact:
+            args["ffmpeg_o"] = ["-copyts"]
+        return args
+
+    def _ffmpeg_diagnosis(self, info_file: str, fmt: str) -> str:
+        """ffmpeg's own words for a range that died with just an exit code: open the stream yt-dlp chose for half
+        a second, with the same proxy (option and environment) and headers, and keep the error line. One small extra
+        request, only after a failure, so «ffmpeg exited with code 8» stops hiding a 403, a DNS error or a bad proxy."""
+
+        import json
+        import subprocess
+
+        try:
+            data = json.loads(Path(info_file).read_text(encoding="utf-8"))
+            with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
+                chosen = ydl.process_ie_result(dict(data), download=False)
+            piece = (chosen.get("requested_formats") or [chosen])[0]
+            url = piece.get("url")
+            if not url:
+                return "el formato elegido no tiene URL"
+            headers = piece.get("http_headers") or chosen.get("http_headers") or {}
+            inputs = self._ffmpeg_args(exact=True)["ffmpeg_i"]
+            command = ["ffmpeg", "-hide_banner", "-nostdin", *inputs]
+            if headers:
+                command += ["-headers", "".join(f"{k}: {v}\r\n" for k, v in headers.items())]
+            command += ["-i", url, "-t", "0.5", "-f", "null", "-"]
+            env = local_env()
+            if "-http_proxy" in inputs:                       # as yt-dlp hands it to ffmpeg: in the environment too
+                env["http_proxy"] = env["HTTP_PROXY"] = inputs[inputs.index("-http_proxy") + 1]
+            done = subprocess.run(command, capture_output=True, text=True, timeout=90, env=env)
+            text = " ".join((done.stderr or "").split())[-300:]
+            if done.returncode == 0:
+                return "la misma URL abre bien ahora (¿enlace caducado o IP distinta en el intento?)"
+            return text or f"salió con código {done.returncode} sin mensaje"
+        except Exception as error:
+            return f"no se pudo diagnosticar ({type(error).__name__}: {str(error)[:80]})"
 
     def subtitle_file(self, video_id: str, language: str = "en") -> Path | None:
         """The video's subtitles in `language` as WebVTT (uploaded ones, else YouTube's automatic ones), cached."""

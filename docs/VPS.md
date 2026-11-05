@@ -160,8 +160,35 @@ saltarse un bloqueo de otra conexión. Si no lo tienes, quita ese proxy de `prox
    sobre los dos). Comprueba cada uno: `curl -x http://100.x.y.z:8899 -sI https://www.youtube.com | head -1`.
    `python main.py --youtube-stats` añade la tabla «Por proxy».
 
-Con proxy no se usa PO Token (YouTube ve la IP de casa, que no lo necesita). Gasta de tu conexión ~1-2 GB por vídeo
-(baja de YouTube y sube al servidor). Si el PC está apagado, la cola no arranca y te avisa por Telegram.
+Con proxy de casa no se usa PO Token (YouTube ve la IP de casa, que no lo necesita). Gasta de tu conexión ~1-2 GB por
+vídeo (baja de YouTube y sube al servidor). Si el PC está apagado, la cola no arranca y te avisa por Telegram.
+
+## 3f. Proxy residencial de pago (Rainproxy)
+
+Un proxy residencial comercial se configura igual (`proxy:` o `YOUTUBE_PROXY`), con el usuario y la clave en la URL:
+`http://USUARIO:CLAVE@resi-bridge-eu.rainproxy.io:1111`. Siempre en `config.local.yaml` o en el entorno, nunca en git;
+en los registros sale enmascarado (`//****@`). El programa lo reconoce por el usuario y cambia estas reglas:
+
+- **Sesión fija por vídeo.** El proveedor cambia de IP en cada conexión salvo que el usuario lleve
+  `-time-30-session-<id>`; el programa añade ese sufijo con un id por vídeo (`cache/videos/<id>/.sesion.json`,
+  compartido por etapas y procesos), así que metadatos, miniaturas, subtítulos y tramos de un vídeo salen por la
+  misma IP durante 30 min (`proxy_session_minutes`). Sin esto, yt-dlp extraía por una IP y ffmpeg bajaba cada
+  segmento HLS por otra: 403 tras 403 (91.000 conexiones con un 1 % de éxito en una semana).
+- **Una sola extracción por vídeo y sesión.** Los metadatos salen ya por la sesión del vídeo y el info dict guardado
+  (`ytdlp-info.json`) sirve a todos sus tramos mientras la sesión viva y las URLs no caduquen en menos de
+  `info_expiry_margin_minutes` (15). `metadata_proxy` solo se usa con proxies de casa.
+- **«No eres un bot» o 429** rotan la sesión del vídeo (`proxy_session_rotations`: 2) en vez de poner el proxy en
+  cuarentena dos horas; agotadas, el vídeo se descarta como antes. La cuarentena queda para los proxies de casa.
+- **PO Token activo** (el plugin bgutil pasa el proxy con su sesión al servidor local, sin proxy, y el token se hace
+  para esa IP). Los clientes de yt-dlp son los de `player_client`; `player_client_residential` permite reducirlos,
+  pero `web_safari` solo no sirve: el 05/11 todas las extracciones fallaron «Requested format is not available».
+- **Nada local por el proxy:** ffmpeg/ffprobe sobre archivos del disco corren sin variables de proxy; las miniaturas
+  del storyboard (i.ytimg.com) van directas y solo por el proxy si eso falla.
+- **Tramos a 720p/30 fps** (`max_height`, `max_fps`) y biblioteca por (vídeo, rango, resolución): un tramo ya bajado
+  por otro vídeo, o uno más rico que cubra esos segundos, no vuelve a pasar por el proxy.
+- **Medición:** cada fila de `youtube_downloads.jsonl` lleva sesión y `proxy_bytes`; `python main.py --youtube-stats`
+  añade la tabla «Proxy» (éxito %, 403/bot/429/timeout, conexiones, GB, GB por vídeo terminado y coste a
+  `proxy_usd_per_gb`, 0.62 $/GB por defecto). Metas: ≥ 90 % de éxito y GB por vídeo terminado a la mitad.
 
 ## 4. Métricas (lo que decide)
 

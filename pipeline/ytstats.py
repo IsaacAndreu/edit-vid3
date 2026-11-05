@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any
 
 ERRORS = {"403": "403 (rechazo)", "bot": "«no eres un bot»", "429": "429 (demasiadas)", "auth": "necesita cuenta",
-          "unavailable": "vídeo no disponible", "other": "otros"}
+          "unavailable": "vídeo no disponible", "timeout": "timeout", "other": "otros"}
+DEFAULT_USD_PER_GB = 0.62        # sourcing.youtube.proxy_usd_per_gb: what the residential proxy charges per GB
 
 
 def read(path: Path, since: float = 0.0) -> list[dict[str, Any]]:
@@ -91,6 +92,88 @@ def lines(s: dict[str, Any]) -> list[str]:
     return out
 
 
+def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str],
+                  usd_per_gb: float = DEFAULT_USD_PER_GB) -> list[dict[str, Any]]:
+    """What each proxy carried: requests (≈ connections) and how many YouTube answered, the errors by kind, the GB
+    (proxy_bytes of every row: yt-dlp's responses plus the ranges ffmpeg moved), the GB per finished video and what
+    that cost at `usd_per_gb`. Only rows that name their proxy (written since the sticky sessions) count."""
+
+    by_proxy: dict[str, dict[str, Any]] = {}
+    for slug, rows in per_video.items():
+        for row in rows:
+            name = str(row.get("proxy") or "")
+            if not name:
+                continue
+            entry = by_proxy.setdefault(name, {"proxy": name, "requests": 0, "ok": 0, "errors": {}, "bytes": 0,
+                                               "videos": set(), "finished": set(), "sessions": set(), "details": {}})
+            if row.get("session"):
+                entry["sessions"].add(row["session"])
+            entry["videos"].add(slug)
+            if slug in finished:
+                entry["finished"].add(slug)
+            entry["bytes"] += int(row.get("proxy_bytes") or 0)
+            if str(row.get("action", "")).startswith("archivo "):
+                continue                                      # the file row repeats a download request
+            entry["requests"] += 1
+            if row.get("ok"):
+                entry["ok"] += 1
+            else:
+                kind = row.get("error") or "other"
+                entry["errors"][kind] = entry["errors"].get(kind, 0) + 1
+                if row.get("detail"):
+                    text = str(row["detail"])[:120]
+                    entry["details"][text] = entry["details"].get(text, 0) + 1
+    out = []
+    for name, entry in sorted(by_proxy.items()):
+        gb = entry["bytes"] / 1e9
+        done = len(entry["finished"])
+        out.append({
+            "proxy": name,
+            "requests": entry["requests"],
+            "ok_share": round(100 * entry["ok"] / entry["requests"], 1) if entry["requests"] else 0.0,
+            "errors": entry["errors"],
+            "sessions": len(entry["sessions"]),
+            "gb": round(gb, 3),
+            "videos": len(entry["videos"]),
+            "finished": done,
+            "gb_per_finished": round(gb / done, 3) if done else None,
+            "usd": round(gb * usd_per_gb, 2),
+            "usd_per_gb": usd_per_gb,
+            "details": sorted(entry["details"].items(), key=lambda kv: -kv[1])[:5],
+        })
+    return out
+
+
+def proxy_lines(table: list[dict[str, Any]]) -> list[str]:
+    if not table:
+        return []
+    out = ["## Proxy", "",
+           f"Coste estimado a {table[0]['usd_per_gb']:.2f} $/GB (sourcing.youtube.proxy_usd_per_gb). «Peticiones» ≈ conexiones.", "",
+           "| Proxy | Peticiones | Éxito | 403 | Bot | 429 | Timeout | Otros | Sesiones | GB | Vídeos terminados | GB por vídeo | $ |",
+           "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for t in table:
+        e = t["errors"]
+        per_video = f"{t['gb_per_finished']:.3f}" if t["gb_per_finished"] is not None else "—"
+        out.append(f"| {t['proxy']} | {t['requests']} | {t['ok_share']:.1f} % | {e.get('403', 0)} | {e.get('bot', 0)} | "
+                   f"{e.get('429', 0)} | {e.get('timeout', 0)} | {e.get('other', 0) + e.get('unavailable', 0) + e.get('auth', 0)} | "
+                   f"{t['sessions']} | {t['gb']:.3f} | {t['finished']}/{t['videos']} | {per_video} | {t['usd']:.2f} |")
+    for t in table:
+        if t.get("details"):
+            out += ["", f"Errores más frecuentes por {t['proxy']}:", ""]
+            out += [f"- {n}× {text}" for text, n in t["details"]]
+    return out
+
+
+def _usd_per_gb(root: Path) -> float:
+    try:
+        from .context import RunContext
+
+        cfg = RunContext.create("_ytstats", root=root).section("sourcing").get("youtube") or {}
+        return float(cfg.get("proxy_usd_per_gb", DEFAULT_USD_PER_GB))
+    except Exception:
+        return DEFAULT_USD_PER_GB
+
+
 def report(root: Path, days: float = 7.0) -> Path:
     """Every video's requests of the last `days`, together and per video → out/_youtube_stats.md."""
 
@@ -105,6 +188,15 @@ def report(root: Path, days: float = 7.0) -> Path:
         e = s["errors"]
         text.append(f"| {slug} | {s['requests']} | {s['failed']} | {e.get('403', 0)} | {e.get('bot', 0)} | {e.get('429', 0)} | "
                      f"{s['files_ok']}/{s['files']} | {s['mbps']} | {s['with_cookies']} |")
+    try:
+        from .housekeeping import is_done
+
+        finished = {slug for slug in per_video if is_done(root, slug)}
+    except Exception:
+        finished = set()
+    proxies = proxy_summary(per_video, finished, _usd_per_gb(root))
+    if proxies:
+        text += ["", *proxy_lines(proxies)]
     ways = sorted({str(r["proxy"]) for r in everything if r.get("proxy")})
     if ways:                                       # several proxies: how each way out is doing
         text += ["", "## Por proxy", "", "| Proxy | Peticiones | Fallidas | Bot | Archivos | MB/s | s por archivo |",

@@ -230,6 +230,12 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     source.metrics_path = ctx.work_dir / "youtube_downloads.jsonl"
     caller = inspect.stack()[1].filename
     source.stage = Path(caller).parent.name if Path(caller).stem == "__init__" else Path(caller).stem
+    from .proxy_sessions import is_residential, mask_proxy
+
+    for way in [*source.proxies, source.metadata_proxy]:
+        if is_residential(way):            # the password never reaches the log
+            print(f"   YouTube: proxy residencial {mask_proxy(way)} · sesión fija de "
+                  f"{float(yt_cfg.get('proxy_session_minutes', 30)):.0f} min por vídeo")
     if source.pot:
         print(f"   YouTube: PO Token Provider activo · clientes {', '.join(source.clients)}")
     if yt_cfg.get("api_search", True):

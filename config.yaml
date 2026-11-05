@@ -85,6 +85,20 @@ sourcing:
     # del storyboard, de i.ytimg.com, no cuentan). Al llegar al límite lo dice en el registro y espera.
     # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
+    # Proxy residencial de pago (usuario en la URL, p. ej. http://USUARIO:CLAVE@resi-bridge-eu.rainproxy.io:1111, en
+    # config.local.yaml o YOUTUBE_PROXY): cobra por GB y cambia de IP en cada conexión salvo con el sufijo de sesión
+    # "-time-30-session-<id>", que el programa añade al usuario con un id por vídeo. Con él: una sola extracción por
+    # vídeo y sesión (el info dict guardado sirve a todos los tramos), «no eres un bot» o 429 rotan la sesión en vez
+    # de poner el proxy en cuarentena, PO Token activo, miniaturas del storyboard
+    # directas y tabla «Proxy» en --youtube-stats. Los proxies de casa (sin usuario) no cambian.
+    proxy_session_minutes: 30          # lo que el proveedor mantiene la IP por sesión (sufijo -time-30)
+    proxy_session_rotations: 2         # sesiones nuevas por vídeo ante «no eres un bot»/429 antes de descartarlo
+    info_expiry_margin_minutes: 15     # el info dict guardado no se reutiliza si sus URLs caducan antes
+    player_client_residential: null    # clientes de yt-dlp por la vía residencial (null = los de player_client); solo
+                                       # web_safari falló en todas las extracciones el 05/11 («format is not available»)
+    proxy_usd_per_gb: 0.62             # lo que cobra el proxy por GB, para el coste de --youtube-stats
+    max_height: 720                    # tope de los tramos (el vídeo final es 1080p y no se nota más); null = como se pida
+    max_fps: 30                        # un 720p60 son el doble de bytes y el vídeo final va a 30 fps; null = sin tope
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
     query_merge: 0.8           # búsquedas casi iguales de dos planos (80 % de palabras en común, mismo año) → una sola
     max_details_per_shot: 6    # vídeos como mucho a los que se piden detalles por plano; con 6 sin 3 válidos, al plano dibujado/alternativo

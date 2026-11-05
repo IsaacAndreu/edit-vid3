@@ -43,14 +43,14 @@ VIDEO_SIZE = (1920, 1080)
 
 
 def cap_height(fmt: str, max_height: Any) -> str:
-    """`ingest.max_height` (720): every height<=N of the yt-dlp format lowered to it. Half the MB per clip and
-    faster downloads; the clip is scaled to 1920x1080 as before. Not part of the stage's fingerprint
-    (runner.SPEED_KEYS): clips already downloaded stay as they are, never downloaded again for it."""
+    """`ingest.max_height` (720): every height<=N of the yt-dlp format lowered to it (sourcing.youtube.cap_height).
+    Not part of the stage's fingerprint (runner.SPEED_KEYS): clips already downloaded stay as they are."""
 
-    if not max_height:
-        return fmt
-    limit = int(max_height)
-    return re.sub(r"height<=(\d+)", lambda m: f"height<={min(int(m.group(1)), limit)}", fmt)
+    from .sourcing.youtube import cap_height as _cap
+
+    return _cap(fmt, max_height)
+
+
 IMAGE_SIZE = (2304, 1296)
 # Sources narrower than this (4:3, square, vertical phone video) are not cropped to 16:9: they keep
 # their frame and the timeline shows them as a framed card over the channel background.
