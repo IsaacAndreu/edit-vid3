@@ -144,6 +144,7 @@ _WARNINGS = (
 )
 WARNING_COUNTS: dict[str, int] = {}
 _warning_lock = threading.Lock()
+_POT_WARNED = False          # the PO Token provider missing with a residential proxy: said once per process
 
 
 def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> str:
@@ -355,8 +356,11 @@ class YouTubeSource:
         mode = str(self.cfg.get("po_token", "auto")).lower()
         if mode in ("off", "false", "no"):
             return False
-        if self.proxy and mode != "force":       # through home: YouTube sees the home IP, which needs no PO Token
-            return False                         # (and the provider would make it here, for the server's IP)
+        if self.proxy and not self.residential and mode != "force":
+            return False       # through home: YouTube sees the home IP, which needs no PO Token (and the provider
+            #                    would make it here, for the server's IP). A residential proxy's IPs do need it: the
+            #                    plugin hands the proxy (with its sticky session) to the provider, so the token is
+            #                    minted for that exit IP, and talks to the provider itself without any proxy.
         url = str(self.cfg.get("pot_provider_url", "http://127.0.0.1:4416")).rstrip("/")
         try:
             plugin = importlib.util.find_spec("yt_dlp_plugins.extractor.getpot_bgutil_http") is not None
@@ -371,7 +375,9 @@ class YouTubeSource:
             except requests.RequestException:
                 server = False
         if not (plugin and server):
-            if mode in ("on", "true", "yes"):
+            global _POT_WARNED
+            if mode in ("on", "true", "yes") or (self.residential and not _POT_WARNED):
+                _POT_WARNED = True             # with a residential proxy it is what most avoids «are you a bot»: said once
                 print(f"   AVISO PO Token: {'falta el plugin bgutil-ytdlp-pot-provider' if not plugin else 'el servidor no responde en ' + url}"
                       " (docs/VPS.md); sigo sin PO Token")
             return False
