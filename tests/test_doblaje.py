@@ -216,3 +216,19 @@ def test_brazilian_channel_gets_the_portuguese_dubs_and_speaks_with_their_voice(
     assert (tmp_path / "materiales" / "gimnasia-br" / name).is_dir()
     dubbed = RunContext.create(name, root=tmp_path)
     assert dubbed.channel == "gimnasia-br" and dubbed.section("dub")["of"] == "gim1"
+
+
+def test_a_dub_links_the_clips_the_editor_slowed_down_but_not_its_voice(tmp_path):
+    """gim1.0-pt: «Error opening input work/gim1.0-pt/editor/stretched/s249-108.mp4» at every try."""
+
+    original, copy = tmp_path / "work" / "gim1.0", tmp_path / "work" / "gim1.0-pt"
+    (original / "editor" / "stretched").mkdir(parents=True)
+    (original / "editor" / "stretched" / "s249-108.mp4").write_bytes(b"x")
+    (original / "editor" / "waveform.json").write_text("{}")
+    (original / "graphics" / "flags").mkdir(parents=True)
+    (original / "graphics" / "flags" / "br.svg").write_text("<svg/>")
+    for folder in dub.LINKED:
+        if (original / folder).is_dir():
+            dub._link_tree(original / folder, copy / folder)
+    assert (copy / "editor" / "stretched" / "s249-108.mp4").is_file() and (copy / "graphics" / "flags" / "br.svg").is_file()
+    assert not (copy / "editor" / "waveform.json").exists()          # the original's voice stays the original's

@@ -48,7 +48,10 @@ ENDSCREEN = {
     "en": ("NEXT STORY", "SUBSCRIBE"), "pt": ("PRÓXIMA HISTÓRIA", "INSCREVA-SE"), "fr": ("PROCHAINE HISTOIRE", "ABONNE-TOI"),
     "it": ("PROSSIMA STORIA", "ISCRIVITI"), "de": ("NÄCHSTE GESCHICHTE", "ABONNIEREN"), "es": ("SIGUIENTE HISTORIA", "SUSCRÍBETE"),
 }
-LINKED = ("media", "media_fallback", "people", "coldopen", "audio", "spotlight")
+# every folder the timeline's media can point at: editor/stretched holds the clips the studio's editor slowed down
+# (gim1.0-pt failed on them at every try; the rest of editor/ is the original's voice and waveform: not linked) and
+# «graphics» the maps, satellite photos and flags
+LINKED = ("media", "media_fallback", "people", "coldopen", "audio", "spotlight", "editor/stretched", "graphics")
 COPIED = ("shots.json", "selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
 MAX_SLOWMO = 1.5
 TEXT_BATCH = 60                     # on-screen texts translated per call
@@ -601,6 +604,11 @@ def run(ctx: RunContext) -> None:
             continue
         seconds = shot["durationInFrames"] / timeline["fps"]
         source = ctx.work_dir / media["src"]
+        if not source.is_file() and (original.work_dir / media["src"]).is_file():
+            source = original.work_dir / media["src"]          # a folder this copy does not link: read it there
+        if not source.is_file():
+            raise RuntimeError(f"{shot['id']}: falta su clip {media['src']} (ni en {ctx.slug} ni en {original.slug}): "
+                               f"rehaz {original.slug} o quítale ese plano en el editor")
         if seconds > _seconds(source) + 0.05:
             target = Path("media_dub") / f"{shot['id']}-{shot['durationInFrames']}.mp4"
             if not (ctx.work_dir / target).is_file():
