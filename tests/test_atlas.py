@@ -43,7 +43,8 @@ def test_groups_time_elements_to_their_words_and_carry_the_chapters(monkeypatch,
     assert out[0]["graphic"]["points"][0]["at"] == 45                  # the frame of «Perth»
     assert out[1]["graphic"]["title"] == {"number": "I", "text": "Nadie a quien *volar*"}   # (if a chapter shot ever comes)
     assert out[2]["graphic"]["chapter"] == 1 and out[2]["graphic"]["chapters"] == ["Nadie a quien *volar*"]
-    assert out[2]["graphic"]["prev"] == out[0]["graphic"]["camera"]    # the globe turns from the last globe shot
+    cam = out[0]["graphic"]["camera"]                                   # the globe turns from where the last one ended
+    assert out[2]["graphic"]["prev"] == {"lat": cam["lat"], "lon": cam["lon"] + 0.75, "zoom": round(cam["zoom"] + atlas.PUSH, 2)}
     assert out[0]["graphic"]["brand"] == "Atlas"
 
 
@@ -239,27 +240,63 @@ def test_a_close_map_frames_its_places():
     assert abs(wide["camera"]["lat"] + 17) < 1.5                       # centred on what it draws
 
 
-def test_a_line_with_nothing_new_moves_the_camera_and_keeps_what_is_drawn(tmp_path, monkeypatch):
+def test_quiet_lines_are_filled_before_the_render_and_a_moment_keeps_one_camera(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     from pipeline import llm
     from pipeline.context import RunContext
 
     ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "atlas"}})
-    shots = [SimpleNamespace(id=f"s{i}", text=f"Frase {i}.") for i in range(1, 9)]
-    cam = {"lat": -15, "lon": -50, "zoom": 1.6}
+    shots = [SimpleNamespace(id=f"s{i}", text=f"Frase {i}.", seconds=3.0) for i in range(1, 9)]
+    calls = []
 
-    def answer(_ctx, **_kw):
-        first = {"n": 1, "camera": cam, "points": [{"name": "Brasília", "lat": -15.8, "lon": -47.9}]}
-        return {"scenes": [first] + [{"n": n, "camera": cam} for n in range(2, 9)]}
+    def answer(_ctx, **kw):
+        calls.append(kw["system"])
+        if "MOMENTOS" in kw["system"]:
+            return {"starts": [1, 5]}
+        if "RELLENAS" in kw["system"]:
+            return {"scenes": [{"n": n, "points": [{"name": f"Extra {n}", "lat": -15 - n, "lon": -48}]} for n in range(2, 9)]}
+        cams = {1: {"lat": -15, "lon": -50, "zoom": 1.6}, 2: {"lat": -14, "lon": -52, "zoom": 1.6}, 5: {"lat": 40, "lon": -3, "zoom": 1.6}}
+        return {"scenes": [{"n": 1, "camera": cams[1], "points": [{"name": "Brasília", "lat": -15.8, "lon": -47.9}]}]
+                + [{"n": n, "camera": cams[2]} for n in (2, 3, 4)]
+                + [{"n": 5, "camera": cams[5], "points": [{"name": "Madrid", "lat": 40.4, "lon": -3.7}]}]
+                + [{"n": n, "camera": cams[5]} for n in (6, 7, 8)]}
 
     monkeypatch.setattr(llm, "complete_json", answer)
     out = atlas.scenes(ctx, shots)
-    cams = [out[f"s{i}"]["camera"] for i in range(1, 9)]
-    assert len({(c["lon"], c["zoom"]) for c in cams}) > 3                      # never the same globe line after line
-    assert all(out[f"s{i}"]["points"] for i in range(1, 9))                    # Brasília stays on it
-    assert all(atlas._angle((c["lat"], c["lon"]), (cam["lat"], cam["lon"])) <= atlas.DRIFT_MAX + 1e-6 and cam["zoom"] - 0.2 - 1e-6 <= c["zoom"] <= cam["zoom"] for c in cams)
+    first = [out[f"s{i}"]["camera"] for i in range(1, 5)]
+    assert all(c == first[0] for c in first)                                   # one moment, one camera
+    assert out["s5"]["camera"] != first[0]                                     # the next moment moves
+    assert any("AHORA SOLO RELLENAS" in c for c in calls)                      # the quiet lines were sent to be filled
+    assert [p["name"] for p in out["s3"]["points"] if not p.get("kept")] == ["EXTRA 3"]
 
+
+def test_sentences_join_the_planner_shots_and_segments_last_as_long_as_the_idea():
+    from types import SimpleNamespace
+
+    shot = lambda i, a, d, text, kind="broll": SimpleNamespace(id=f"s{i}", from_=a, durationInFrames=d, text=text, type=kind)   # noqa: E731
+    todo = [(s, s.from_, s.from_ + s.durationInFrames) for s in
+            [shot(0, 0, 90, "Brasil tem uma costa"), shot(1, 90, 90, "de oito mil quilômetros."), shot(2, 180, 60, "Veja."),
+             shot(3, 240, 30, "O gráfico.")]]
+    lines = atlas.sentences(todo)
+    assert [x["text"] for x in lines] == ["Brasil tem uma costa de oito mil quilômetros.", "Veja.", "O gráfico."]
+    base = atlas.clean({"camera": {"lat": -15, "lon": -50, "zoom": 1.5}}, None)
+    chart = atlas.clean({"view": "chart", "chart": {"kind": "bars", "bars": [{"label": "A", "value": 1}, {"label": "B", "value": 2}]}}, None)
+    for x, sc in zip(lines, [{**base, "moment": 0}, {**base, "moment": 0}, {**chart, "moment": 1}]):
+        x["scene"] = sc
+    segs = atlas._segments(lines + [{"id": "s9", "from": 270, "to": 300, "text": "Fim.", "scene": {**base, "moment": 2}}], 30)
+    assert [len(s["lines"]) for s in segs] == [2, 2]          # same moment joined; a 1-s chart takes the next line (MIN_VIEW)
+
+
+def test_places_the_script_names_are_drawn_by_themselves():
+    seen: set[str] = set()
+    scene = atlas.auto_places(atlas.clean({"camera": {"lat": -15, "lon": -50, "zoom": 1.5}}, None),
+                              "O Brasil tem mais gente em São Paulo do que em Portugal.", seen)
+    assert {h["name"] for h in scene["highlight"]} == {"Brazil", "Portugal"}
+    assert [c["name"] for c in scene["countries"]] == ["Brazil", "Portugal"] and "Brazil" in seen
+    assert [p["name"] for p in scene["points"]] == ["SÃO PAULO"]
+    again = atlas.auto_places(atlas.clean({"camera": {"lat": -15, "lon": -50, "zoom": 1.5}}, None), "O Brasil de novo.", seen)
+    assert not again["countries"]                                              # the flag card only the first time
 
 def test_a_bar_chart_only_with_the_figures_the_script_says():
     def chart(bars):

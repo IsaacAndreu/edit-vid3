@@ -103,10 +103,13 @@ const cameraAt = (g: AtlasGraphic, f: number, fps: number, duration = 0) => {
   // the satellite dive: once there, the globe keeps falling toward the place until the photo takes over
   // (to ~zoom 12.5 by the photo's fade: the globe's scale then matches the satellite's widest layer)
   const dive = g.view === 'sat' && duration ? 9.3 * Math.pow(clamp((f - T) / Math.max(1, duration * 0.5 - T)), 2.2) : 0;
-  const zoom = lerp(a.zoom, b.zoom, t) - dip + 0.05 * clamp((f - T) / (fps * 10)) + dive;
+  // the moment's choreography: after arriving, the camera keeps moving in (push) while its things come in; the next
+  // scene starts from where this one ended (pipeline/atlas.py adds the same drift and push to its «prev»)
+  const push = (g.push ?? 0) * ease(clamp(f / Math.max(1, duration)));
+  const zoom = lerp(a.zoom, b.zoom, t) - dip + push + dive;
   // never exactly at a pole or a round number: the globe's horizon would lie exactly on the equator or a meridian,
   // where the map data has edges, and d3-geo then flips which side is inside from one frame to the next (flicker)
-  return { lon: lon + 0.0731 + 0.25 * Math.max(0, f - T) / fps, lat: Math.max(-88.7, Math.min(88.7, lat + 0.0573)), zoom };
+  return { lon: lon + 0.0731 + 0.25 * f / fps, lat: Math.max(-88.7, Math.min(88.7, lat + 0.0573)), zoom };
 };
 
 const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accent }) => {
@@ -122,6 +125,9 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   const ink = p.ink;
   const red = accent;
   const since = (at: number) => frame - at;
+  // what grows with the voice (a route, a ring) takes until the end of its sentence, between `least` and `most` s
+  const drawFrames = (x: { at: number; until?: number }, least: number, most = 4.5) =>
+    x.until && x.until > x.at ? Math.max(fps * least, Math.min(fps * most, x.until - x.at)) : fps * least;
   const highlighted = new Set((g.highlight ?? []).map((h) => h.name));
   const fine = R > 760;                      // close in: the 1:50m coast
   // on a close map, what can be on screen: within the screen's reach of the camera (plus the line's own size)
@@ -226,7 +232,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           ) : null;
         })() : null}
         {(g.rings ?? []).map((r, i) => {
-          const grow = ease(clamp(since(r.at) / (fps * 0.9)));
+          const grow = ease(clamp(since(r.at) / drawFrames(r, 0.9, 3.5)));
           if (grow <= 0) return null;
           const circle = geoCircle().center([r.lon, r.lat]).radius(Math.max(0.01, (r.km / 111.2) * grow))();
           return (
@@ -240,7 +246,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           const local = since(r.at);
           if (local < 0) return null;
           const many = r.style === 'many';
-          const k = ease(clamp(local / (fps * (many ? 0.7 : 1.3))));
+          const k = ease(clamp(local / drawFrames(r, many ? 0.7 : 1.3)));
           const arc = geoInterpolate([r.from[1], r.from[0]], [r.to[1], r.to[0]]);
           const n = 72;
           const line = { type: 'LineString', coordinates: Array.from({ length: n + 1 }, (_, j) => arc(Math.min(k, j / n))) };
@@ -257,8 +263,11 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           if (local < 0) return null;
           const many = r.style === 'many';
           const arc = geoInterpolate([r.from[1], r.from[0]], [r.to[1], r.to[0]]);
-          const u = many ? ((frame / fps) * 0.22 + i * 0.37) % 1 : clamp((local - fps * 1.3) / (fps * 3.2));
-          if (!many && u <= 0) return null;
+          const drawn = drawFrames(r, 1.3);
+          const travel = (local - drawn) / (fps * 3.2);
+          // a plane or a ship travels once; a dot keeps travelling the route (the eye follows it: never a still map)
+          const u = many ? ((frame / fps) * 0.22 + i * 0.37) % 1 : r.mover === 'dot' && travel > 1 ? ((travel - 1) * 0.65) % 1 : clamp(travel);
+          if (!many && travel <= 0) return null;
           const here = arc(u) as [number, number];
           if (!visible(here[1], here[0])) return null;
           const [x, y] = projection(here) ?? [0, 0];
@@ -334,8 +343,11 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           const spot = tries.find(([, tx, ty, anchor]) => !hit(box(tx, ty, anchor)));
           if (spot) boxes.push(box(spot[1], spot[2], spot[3]));
           const pop = spring({ frame: local, fps, config: { damping: 12, stiffness: 220 }, durationInFrames: 12 });
+          const phase = ((local - 12) / (fps * 2.2)) % 1;          // a soft pulse: the place the voice is talking about
           return (
             <g key={`pt${i}`}>
+              {pt.at >= 0 && local > 12 ? <circle cx={x} cy={y} r={10 + 26 * phase} fill="none" stroke={ink} strokeWidth={2}
+                                                  opacity={0.32 * (1 - phase)} /> : null}
               <circle cx={x} cy={y} r={9 * pop} fill={ink} stroke={p.card} strokeWidth={2.5} />
               {spot ? <text x={spot[1]} y={spot[2]} textAnchor={spot[3]} fontFamily={MONO} fontSize={POINT_FONT}
                             fontWeight={700} letterSpacing={1} fill={ink} opacity={clamp(local / 6)} stroke={p.halo} strokeWidth={7}
@@ -385,7 +397,61 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         }
         return <g>{out}</g>;
       })() : null}
+      {g.lens ? <Lens g={g} p={p} spot={projection([g.lens.lon, g.lens.lat]) ?? null} seen={visible(g.lens.lat, g.lens.lon)}
+                      cx={cx} frame={frame} fps={fps} /> : null}
     </svg>
+  );
+};
+
+/** The magnifier: a circle in a corner showing a small place much closer (a strait, two cities side by side), with a
+ * line to where it is on the globe. Its own projection at the lens's zoom: land, borders, rivers and the dots there. */
+const Lens: FC<{ g: AtlasGraphic; p: Palette; spot: [number, number] | null; seen: boolean; cx: number; frame: number; fps: number }> =
+  ({ g, p, spot, seen, cx, frame, fps }) => {
+  const lens = g.lens;
+  if (!lens || !spot || !seen) return null;
+  const local = frame - lens.at;
+  if (local < 0) return null;
+  const pop = spring({ frame: local, fps, config: { damping: 14, stiffness: 150 }, durationInFrames: 18 });
+  const r = 225 * pop;
+  // top right (the flag cards live top left, the paper cards bottom right); bottom left when the place is over there
+  const right = spot[0] < W - 720;
+  const lx = right ? W - 330 : 330;
+  const ly = right ? 400 : H - 330;
+  const R = 350 * Math.pow(1.42, lens.zoom - 1);
+  const proj = geoOrthographic().scale(R).translate([lx, ly]).rotate([-lens.lon, -lens.lat]).clipAngle(90).precision(0.5);
+  const path = geoPath(proj);
+  const near = (x: { mid: [number, number]; reach: number }) => geoDistance(x.mid, [lens.lon, lens.lat]) - x.reach < Math.asin(Math.min(1, 400 / R)) + 0.05;
+  const id = `lens${g.seed ?? 0}`;
+  const dx = lx - spot[0];
+  const dy = ly - spot[1];
+  const d = Math.hypot(dx, dy) || 1;
+  return (
+    <g opacity={clamp(local / 8)}>
+      <defs><clipPath id={id}><circle cx={lx} cy={ly} r={Math.max(1, r)} /></clipPath></defs>
+      <line x1={spot[0] + (dx / d) * 16} y1={spot[1] + (dy / d) * 16} x2={lx - (dx / d) * r} y2={ly - (dy / d) * r}
+            stroke={p.ink} strokeWidth={2} strokeDasharray="6 5" />
+      <circle cx={spot[0]} cy={spot[1]} r={16} fill="none" stroke={p.ink} strokeWidth={2.4} />
+      <circle cx={lx + 6} cy={ly + 10} r={r * 1.02} fill="rgba(0,0,0,0.18)" />
+      <g clipPath={`url(#${id})`}>
+        <circle cx={lx} cy={ly} r={r} fill={p.depths[0]} />
+        <path d={path(LAND_FC) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={1.2} />
+        <path d={path({ type: 'MultiLineString', coordinates: BORDERS.filter(near).map((x) => x.line.coordinates) } as never) ?? ''}
+              fill="none" stroke={p.soft} strokeWidth={1.4} strokeDasharray="7 5" opacity={0.75} />
+        {RIVERS.filter(near).map((x, i) => <path key={i} d={path(x.river as never) ?? ''} fill="none" stroke={p.depths[2]} strokeWidth={2.2} />)}
+        {(g.points ?? []).filter((pt) => frame >= pt.at && geoDistance([pt.lon, pt.lat], [lens.lon, lens.lat]) < 0.6).map((pt, i) => {
+          const [x, y] = proj([pt.lon, pt.lat]) ?? [0, 0];
+          return (
+            <g key={`lp${i}`}>
+              <circle cx={x} cy={y} r={8} fill={p.ink} stroke={p.card} strokeWidth={2.5} />
+              <text x={x + 14} y={y + 8} fontFamily={MONO} fontSize={22} fontWeight={700} fill={p.ink} stroke={p.halo} strokeWidth={6} paintOrder="stroke">{pt.name}</text>
+            </g>
+          );
+        })}
+      </g>
+      <circle cx={lx} cy={ly} r={r} fill="none" stroke={p.ink} strokeWidth={3} />
+      {lens.label ? <text x={lx} y={ly + r + 38} textAnchor="middle" fontFamily={MONO} fontSize={22} fontWeight={700} letterSpacing={2}
+                          fill={p.ink} stroke={p.halo} strokeWidth={6} paintOrder="stroke">{lens.label}</text> : null}
+    </g>
   );
 };
 
@@ -434,7 +500,15 @@ const Card: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accen
   };
   const small: React.CSSProperties = { fontFamily: MONO, fontSize: 15, letterSpacing: 2, textTransform: 'uppercase', color: '#5E584C' };
   let body: ReactNode = null;
-  if (c.kind === 'date') {
+  if (c.kind === 'photo' && c.image) {
+    body = (
+      <>
+        <Img src={staticFile(c.image.src)} style={{ width: '100%', height: 270, objectFit: 'cover', display: 'block', border: `1px solid ${ink}` }} />
+        <div style={{ fontFamily: SERIF, fontSize: 30, marginTop: 12 }}>{c.title}</div>
+        {c.source ? <div style={{ ...small, fontSize: 12, marginTop: 4, textTransform: 'none', letterSpacing: 0.5 }}>{c.source}</div> : null}
+      </>
+    );
+  } else if (c.kind === 'date') {
     body = (
       <>
         <div style={{ fontFamily: SERIF, fontSize: 64, lineHeight: 1 }}>{c.big || c.title}</div>
@@ -819,7 +893,8 @@ const Counter: FC<{ g: AtlasGraphic; accent: string }> = ({ g, accent }) => {
   if (!c) return null;
   const local = frame - c.at;
   if (local < 0) return null;
-  const k = ease(clamp(local / (fps * 1.6)));
+  const span = c.until && c.until > c.at ? Math.max(fps * 1.6, Math.min(fps * 4, c.until - c.at)) : fps * 1.6;
+  const k = ease(clamp(local / span));          // counts up while the voice says it
   const shown = Math.round(c.value * k);
   const ink = PALETTES.paper.ink;
   return (
@@ -991,11 +1066,26 @@ export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({
   const p = g.dark ? PALETTES.dark : PALETTES.paper;
   const accent = g.dark ? '#E2A33B' : theme.accent;
   const memo = { p, accent };
+  const frame = useCurrentFrame();
+  // no hard cut between the globe and a chart or a drawing: the globe moves aside (and comes back after)
+  const k = ease(clamp(frame / 16));
+  const aside = (g.view === 'chart' || g.view === 'icon') && !!g.prev;
+  const back = g.view === 'globe' && g.enter === 'aside';
+  const leaving: AtlasGraphic = { ...g, view: 'globe', camera: g.prev ?? g.camera, prev: g.prev, push: 0, points: [], routes: [],
+                                  rings: [], tags: [], zone: null, night: null, meridians: null, lens: null, sat: null };
   return (
     <AbsoluteFill style={{ background: `radial-gradient(ellipse 75% 70% at 50% 45%, ${p.page} 55%, ${p.pageEdge} 100%)` }}>
-      {g.view === 'title' ? <TitleCard g={g} {...memo} /> : g.view === 'chart' ? <Chart g={g} {...memo} />
-        : g.view === 'icon' ? <IconView g={g} {...memo} /> : g.view === 'flat' ? <FlatMap g={g} {...memo} />
-        : g.view === 'size' ? <TrueSize g={g} {...memo} /> : <Globe g={g} {...memo} />}
+      {aside && k < 1 ? (
+        <AbsoluteFill style={{ transform: `translateX(${-0.42 * W * k}px) scale(${1 - 0.35 * k})`, opacity: 1 - k }}>
+          <Globe g={leaving} {...memo} />
+        </AbsoluteFill>
+      ) : null}
+      <AbsoluteFill style={aside ? { opacity: k, transform: `translateX(${(1 - k) * 160}px)` }
+                          : back ? { opacity: k, transform: `translateX(${-(1 - k) * 0.42 * W}px) scale(${0.65 + 0.35 * k})` } : undefined}>
+        {g.view === 'title' ? <TitleCard g={g} {...memo} /> : g.view === 'chart' ? <Chart g={g} {...memo} />
+          : g.view === 'icon' ? <IconView g={g} {...memo} /> : g.view === 'flat' ? <FlatMap g={g} {...memo} />
+          : g.view === 'size' ? <TrueSize g={g} {...memo} /> : <Globe g={g} {...memo} />}
+      </AbsoluteFill>
       {g.view === 'sat' ? <SatPhoto g={g} durationInFrames={durationInFrames} /> : null}
       {g.view === 'globe' ? <><Card g={g} {...memo} /><Stamp g={g} accent={accent} /><Headline g={g} {...memo} /></> : null}
       {g.view !== 'title' ? <Counter g={g} accent={accent} /> : null}

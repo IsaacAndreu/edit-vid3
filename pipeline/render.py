@@ -863,8 +863,10 @@ def scenes_preview(r: "Renderer", timeline: dict[str, Any]) -> Path | None:
     first), tiled into out/<slug>/vista-previa.jpg and sent to Telegram / email — if something looks wrong, stop it in
     the studio instead of waiting for the whole render. Done once per montage."""
 
-    from . import simulacion
+    from . import atlas, simulacion
 
+    if atlas.active(r.ctx):
+        return _sheet(r, timeline, atlas_frames(timeline), "atlas")
     if not simulacion.active(r.ctx):
         return None
     fps = int(timeline["fps"])
@@ -883,7 +885,28 @@ def scenes_preview(r: "Renderer", timeline: dict[str, Any]) -> Path | None:
         runs = [runs[int(k * step)] for k in range(12)]
     frames = [min(timeline["durationInFrames"] - 1, run[0]["from"] + int((run[-1]["from"] + run[-1]["durationInFrames"] - run[0]["from"]) * 0.6))
               for run in runs]
-    key = _hash(VERSION, frames, [g["graphic"] for g in sims])
+    return _sheet(r, timeline, frames, "sim")
+
+
+ATLAS_SHEET = 30          # frames of an atlas video in its preview sheet
+
+
+def atlas_frames(timeline: dict[str, Any]) -> list[int]:
+    """One frame late in each atlas scene (everything it draws is in by then), up to ATLAS_SHEET spread over the video:
+    a globe with nothing on it or a scene that changes oddly shows at a glance, before the hour of render."""
+
+    scenes = sorted([g for g in timeline["groups"] if (g.get("graphic") or {}).get("type") == "atlas"
+                     and g["graphic"].get("view") != "title"], key=lambda g: g["from"])
+    if len(scenes) > ATLAS_SHEET:
+        step = len(scenes) / ATLAS_SHEET
+        scenes = [scenes[int(k * step)] for k in range(ATLAS_SHEET)]
+    return [min(timeline["durationInFrames"] - 1, g["from"] + int(g["durationInFrames"] * 0.85)) for g in scenes]
+
+
+def _sheet(r: "Renderer", timeline: dict[str, Any], frames: list[int], kind: str) -> Path | None:
+    if not frames:
+        return None
+    key = _hash(VERSION, kind, frames, [g.get("graphic") for g in timeline["groups"]])
     out = r.ctx.out_dir / PREVIEW
     stamp = r.dir / "vista-previa.key"
     if out.is_file() and stamp.is_file() and stamp.read_text() == key:
@@ -894,7 +917,7 @@ def scenes_preview(r: "Renderer", timeline: dict[str, Any]) -> Path | None:
     shots = r.stills("Documentary", timeline, frames, public)
     if not shots:
         return None
-    cols = 4 if len(shots) > 6 else 3 if len(shots) > 4 else 2
+    cols = 6 if len(shots) > 16 else 4 if len(shots) > 6 else 3 if len(shots) > 4 else 2
     rows = (len(shots) + cols - 1) // cols
     wide = int(timeline["width"]) >= int(timeline["height"])
     w, h = (640, 360) if wide else (360, 640)
@@ -951,7 +974,7 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
           f"Remotion {slow_frames} fotogramas ({len(slow)} tramos)"
           + (" · pantalla final aparte (en caché)" if any(s.kind == "endscreen" for s in segments) else ""))
 
-    try:                                        # a simulation video: a frame of each scene first, to look at
+    try:                                        # a simulation or an atlas video: a frame of each scene first, to look at
         scenes_preview(r, timeline)
     except Exception as error:                  # the video does not depend on it
         print(f"   Vista previa no disponible ({type(error).__name__}: {str(error)[:120]})")

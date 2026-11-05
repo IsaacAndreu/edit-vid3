@@ -400,21 +400,25 @@ export interface AtlasGraphic {
   view: 'globe' | 'chart' | 'icon' | 'title' | 'sat' | 'flat' | 'size';
   camera: { lat: number; lon: number; zoom: number };
   prev?: { lat: number; lon: number; zoom: number };
+  push?: number;                 // zoom the camera gains over the scene (a moment: wide → closer)
+  enter?: '' | 'aside';          // after a chart or a drawing: the globe comes back from the side
+  lens?: { lat: number; lon: number; zoom: number; label: string; at: number; until?: number } | null;   // a magnifier
   dark?: boolean;
   sat?: { lat: number; lon: number; zoom: number; label: string; at: number; credit?: string; layers?: { src: string; z: number }[] } | null;
   flat?: { from: [number, number]; to: [number, number]; straight: string; curve: string; at: number } | null;
   size?: { country: string; to: [number, number]; compare: string; label: string; at: number } | null;
-  counter?: { value: number; unit: string; label: string; at: number } | null;
+  counter?: { value: number; unit: string; label: string; at: number; until?: number } | null;
   countries?: { name: string; label: string; at: number; flag?: { src: string } }[];   // silhouette filled with its flag
-  points?: { name: string; lat: number; lon: number; at: number }[];
-  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; mover?: string; at: number }[];
+  points?: { name: string; lat: number; lon: number; at: number; until?: number }[];
+  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; mover?: string; at: number; until?: number }[];
   tags?: { text: string; lat: number | null; lon: number | null; at: number }[];   // the line's figure on a paper tag
-  rings?: { lat: number; lon: number; km: number; label: string; at: number }[];
+  rings?: { lat: number; lon: number; km: number; label: string; at: number; until?: number }[];
   zone?: { lat: number; label: string; at: number } | null;
   highlight?: { name: string; label: string; group?: number }[];
   night?: { from: [number, number]; to: [number, number]; clock: [string, string]; at: number; lights?: boolean } | null;  // subsolar points
   meridians?: { step: number; labels: boolean; at: number } | null;
-  card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note' | 'clocks' | 'choice'; big: string; title: string; lines: string[]; source: string; side: 'left' | 'right'; at: number } | null;
+  card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note' | 'clocks' | 'choice' | 'photo'; big: string; title: string; lines: string[]; source: string;
+           side: 'left' | 'right'; at: number; image?: { src: string } } | null;   // photo: a place's picture (Wikimedia)
   stamp?: { text: string; at: number } | null;
   headline?: { text: string; at: number } | null;
   chart?: { kind: 'bars' | 'profile' | 'thermo'; title: string; unit: string;

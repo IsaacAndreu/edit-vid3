@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 11
+VERSION = 12
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -96,6 +96,8 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   mientras la voz la dice (distancias, personas, vuelos, años), o null
 - en "night", "lights": true enciende las ciudades en el lado de noche
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
+- "lens": {{"lat", "lon", "zoom": 5-9, "label": "ESTRECHO DE GIBRALTAR", "at": "palabra"}} una lupa: un círculo en una
+  esquina que amplía un sitio pequeño sin dejar el globo (un estrecho, una isla, dos ciudades juntas), o null
 Reglas: CADA frase añade al menos UNA cosa nueva en pantalla (un punto, una ruta, un círculo, un tag con su cifra, una
 tarjeta…): nunca un globo sin nada nuevo. Zoom 1-2 cuando la frase habla de un país entero, un continente o el mundo; 4-6 (un mapa de cerca que llena
 la pantalla) cuando la frase nombra una ciudad, un río, una sierra o una región y lo que dibujas está a menos de 10
@@ -301,6 +303,10 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     if out["view"] == "chart" and not out["chart"] or out["view"] == "icon" and not out["icon"] \
             or out["view"] in ("sat", "flat", "size") and not out[out["view"]]:
         out["view"] = "globe"                     # nothing valid to show instead: the globe stays
+    lens = scene.get("lens") if isinstance(scene.get("lens"), dict) else None
+    out["lens"] = {"lat": _point(lens)[0], "lon": _point(lens)[1], "zoom": round(_float(lens.get("zoom"), 4, 10, 6), 2),
+                   "label": _text(lens.get("label"), 4, True, 30), "at": _at(lens.get("at"))} \
+        if out["view"] == "globe" and lens and _point(lens) else None
     if out["view"] == "sat" and not has_photo(out["sat"]["lat"]):    # nothing to see there (atlas2pt: McMurdo)
         out["points"] = [*out["points"], {"name": out["sat"]["label"], "lat": out["sat"]["lat"], "lon": out["sat"]["lon"],
                                           "at": out["sat"]["at"]}][-6:] if out["sat"]["label"] else out["points"]
@@ -631,6 +637,8 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
             continue
         if any(abs(n - m) < 8 for m in chosen + have):
             continue
+        if "moment" in g and n and scenes[ids[n - 1]].get("moment") == g["moment"]:
+            continue                    # a dive opens a moment, never cuts one in the middle
         chosen.append(n)
     if len(chosen) > wanted:                       # spread over the video
         step = len(chosen) / wanted
@@ -683,16 +691,171 @@ def drift(anchor: dict[str, Any], run: int) -> dict[str, Any]:
             "zoom": round(anchor["zoom"] - (0.2 if run % 2 else 0.0), 2)}
 
 
+MOMENT_SYSTEM = """
+Divides el guion de un vídeo de mapas explicados en MOMENTOS. Un momento es UNA idea contada en UN sitio del mapa:
+normalmente 2-5 frases seguidas (a veces 1, rara vez más de 6). Mientras dura un momento la imagen se queda en el mismo
+sitio y se le van añadiendo cosas; el momento cambia cuando el guion cambia de lugar, de tema, o pasa a un dato que
+pide otra imagen (una cifra que se compara, una fecha con su historia). Nunca cortes una explicación a medias.
+Devuelve SOLO JSON: {"starts": [1, 4, 9, ...]} con el número de la primera frase de cada momento (siempre empieza en 1).
+""".strip()
+
+REFILL_SYSTEM = """
+AHORA SOLO RELLENAS. Estas frases del vídeo no añaden nada al mapa: el globo se queda quieto mientras la voz habla, y eso
+aburre. Para CADA frase devuelve una escena con 1-2 elementos NUEVOS que enseñen lo que dice esa frase (un punto con su
+nombre, una ruta, un círculo de alcance, una etiqueta "tags" con la cifra que dice, una tarjeta, un contador, un país
+en "highlight", una lupa "lens"…), con coordenadas REALES y "at" = una palabra literal de la frase. La cámara NO cambia
+(te la doy: no la devuelvas) y no repitas lo que ya está dibujado. Si una frase de verdad no da para nada, devuélvela
+sin elementos.
+""".strip()
+
 BATCH = 25            # lines per request to the model
 MIN_BATCH = 6         # a failed batch is split in halves down to this
 ICON_EVERY = 8        # lines between two full-screen drawings
 STAMP_EVERY = 10      # lines between two stamps
+QUIET_SECONDS = 6.0   # this long with nothing new on the globe: the plan check asks the model to fill it
+
+
+# --- places the script names, recognised without the model ----------------------------------------------------------
+
+_PLACES: dict[str, Any] = {}
+CITY_STOP = {"Natal", "Victoria", "Esperanza", "Concepción", "Rosario", "Mercedes", "Trinidad", "Valencia", "Florida",
+             "Granada", "Córdoba", "Santa", "Salvador", "Paz", "Asunción", "Belo", "Campo", "Grande", "Nova", "Nuevo",
+             "Bello", "Victória", "Vitória", "Esperança", "Luz", "Mar", "Sol", "Alto", "Real", "Monte", "Santos"}
+
+
+def places() -> dict[str, Any]:
+    """assets/geo/places.json (scripts/build_places.py): countries with their names in six languages, big cities."""
+
+    if not _PLACES:
+        path = Path(__file__).resolve().parent.parent / "assets" / "geo" / "places.json"
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            data = {"countries": {}, "cities": []}
+        country_of = {}
+        for key_name, info in data["countries"].items():
+            for name in info["names"]:
+                if len(name) >= 4:
+                    country_of.setdefault(name, key_name)
+        city_of = {c[0]: c for c in data["cities"] if len(c[0]) >= 4 and c[0] not in CITY_STOP and c[0] not in country_of}
+
+        def pattern(names: Any) -> re.Pattern[str] | None:
+            names = sorted(names, key=len, reverse=True)
+            return re.compile(r"(?<![\w])(" + "|".join(re.escape(n) for n in names) + r")(?![\w])") if names else None
+
+        _PLACES.update({"countries": data["countries"], "country_of": country_of, "city_of": city_of,
+                        "country_re": pattern(country_of), "city_re": pattern(city_of)})
+    return _PLACES
+
+
+def auto_places(scene: dict[str, Any], text: str, seen: set[str]) -> dict[str, Any]:
+    """A country or a big city the line names that the model did not draw: the country tinted (its flag card the
+    first time in the video), the city as a dot. Only on the globe; at most two cities a line."""
+
+    if scene.get("view") != "globe" or not text:
+        return scene
+    data = places()
+    out = dict(scene)
+    tinted = {h["name"] for h in out.get("highlight") or []}
+    flagged = {c["name"] for c in out.get("countries") or []}
+    if data["country_re"] is not None:
+        for match in data["country_re"].finditer(text):
+            name = data["country_of"][match.group(1)]
+            if name not in tinted:
+                out["highlight"] = [*(out.get("highlight") or []), {"name": name, "label": "", "group": 0}]
+                tinted.add(name)
+            if name not in seen and name not in flagged and len(out.get("countries") or []) < 2 and name in flag_codes():
+                out["countries"] = [*(out.get("countries") or []),
+                                    {"name": name, "label": match.group(1).upper()[:26], "at": match.group(1)}]
+                flagged.add(name)
+            seen.add(name)
+    if data["city_re"] is not None:
+        added = 0
+        for match in data["city_re"].finditer(text):
+            name, lat, lon, _ = data["city_of"][match.group(1)]
+            if added >= 2 or any(_angle((lat, lon), (p["lat"], p["lon"])) < 0.5 for p in out.get("points") or []):
+                continue
+            out["points"] = [*(out.get("points") or []), {"name": name.upper()[:28], "lat": lat, "lon": lon,
+                                                          "at": match.group(1), "auto": True}][-6:]
+            added += 1
+    return out
+
+
+def sentences(todo: list[tuple[Any, int, int]], max_shots: int = 6) -> list[dict[str, Any]]:
+    """The voice's sentences: consecutive planner shots joined up to a full stop (a planner shot is ~3 s, often half a
+    sentence: one atlas scene per shot changed the picture in the middle of an explanation). A chapter heading stands
+    alone; a gap in the frames or `max_shots` shots also close a sentence."""
+
+    out: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for shot, a, b in todo:
+        if shot.type == "chapter":
+            if current:
+                out.append(current)
+                current = None
+            out.append({"chapter": shot, "from": a, "to": b})
+            continue
+        if current and current["to"] != a:
+            out.append(current)
+            current = None
+        text = " ".join(str(shot.text or "").split())
+        if current is None:
+            current = {"id": shot.id, "shots": [shot], "from": a, "to": b, "text": text}
+        else:
+            current["shots"].append(shot)
+            current["to"] = b
+            current["text"] = f"{current['text']} {text}".strip()
+        if END.search(text) or len(current["shots"]) >= max_shots:
+            out.append(current)
+            current = None
+    if current:
+        out.append(current)
+    return out
+
+
+END = re.compile(r"[.!?…][\"'»”)\]]*$")
+
+
+def moment_camera(members: list[dict[str, Any]]) -> dict[str, Any]:
+    """One camera for a whole moment: where its first line looks, as close as any of its lines asked, fitted so
+    everything the moment draws is on screen (fit_camera)."""
+
+    base = dict(members[0]["camera"])
+    base["zoom"] = max(m["camera"]["zoom"] for m in members)
+    union: dict[str, Any] = {"camera": base, "points": [], "routes": [], "rings": [], "zone": None}
+    for m in members:
+        for kind in ("points", "routes", "rings"):
+            union[kind] += [x for x in m.get(kind) or [] if not x.get("kept")]
+        union["zone"] = union["zone"] or m.get("zone")
+    return fit_camera(union)["camera"]
+
+
+def heuristic_starts(cleaned: list[dict[str, Any]]) -> list[int]:
+    """Without the model's moments: a new one where a line looks at another place or shows something else."""
+
+    starts = [1]
+    for n in range(2, len(cleaned) + 1):
+        a, b = cleaned[n - 2], cleaned[n - 1]
+        if a.get("view") != b.get("view") or not _same_place(a["camera"], b["camera"]):
+            starts.append(n)
+    return starts
+
+
+def _new_things(scene: dict[str, Any]) -> int:
+    count = sum(1 for k in ("points", "routes", "rings", "tags", "countries") for x in scene.get(k) or [] if not x.get("kept"))
+    return count + sum(1 for k in (*NEW_FIELDS, "lens") if scene.get(k) and not scene[k].get("kept"))
 
 
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
+    """The scene of every line (a sentence of the voice): the model draws each one, then (1) the lines are grouped into
+    moments (one idea in one place) that share one camera, so the picture never changes in the middle of an
+    explanation; (2) countries and cities the line names that the model left out are added; (3) the plan is checked
+    for stretches with nothing new (QUIET_SECONDS) and the model is asked to fill those lines."""
+
     from .llm import complete_json
 
     lines = [(s.id, " ".join(s.text.split())) for s in shots]
+    seconds = [float(getattr(s, "seconds", 3.0) or 3.0) for s in shots]
     cache = ctx.work_dir / "atlas.json"
     digest = key(VERSION, lines)
     try:
@@ -732,11 +895,13 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
 
     for start in range(0, len(lines), BATCH):
         ask(start, lines[start:start + BATCH])
-    out: dict[str, dict[str, Any]] = {}
+
+    # 1. every line cleaned, with the places it names
+    cleaned: list[dict[str, Any]] = []
     previous = None
     last_icon = last_stamp = -99
-    run, anchor = 0, None
-    for n, (shot_id, _) in enumerate(lines, 1):
+    seen: set[str] = set()
+    for n, (_, text) in enumerate(lines, 1):
         raw = found.get(n) or {}
         if raw.get("view") == "icon":           # a drawing alone now and then, never a slideshow of drawings
             if n - last_icon < ICON_EVERY:
@@ -748,17 +913,84 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
                 raw = {**raw, "stamp": None}
             else:
                 last_stamp = n
-        around = " ".join(text for _, text in lines[max(0, n - 3):n])
-        scene = fit_camera(check_chart(clean(raw, previous), around))
-        before = previous
-        previous = auto_tag(carry(scene, previous), lines[n - 1][1], previous)
-        if stale(previous, before, scene["camera"]):           # nothing new on screen: the camera moves a little (never a still globe)
-            run = run + 1 if run else 1
-            anchor = anchor or dict(before["camera"])
-            previous = {**previous, "camera": drift(anchor, run), "ask": anchor}
-        else:
-            run, anchor = 0, None
-        out[shot_id] = previous
+        around = " ".join(t for _, t in lines[max(0, n - 3):n])
+        scene = auto_places(check_chart(clean(raw, previous), around), text, seen)
+        cleaned.append(scene)
+        previous = scene
+
+    # 2. moments: one camera for each
+    try:
+        result = complete_json(ctx, stage="atlas", section="planner", system=MOMENT_SYSTEM, user=story, max_tokens=1500)
+        starts = sorted({int(x) for x in (result.get("starts") or []) if 1 <= int(x) <= len(lines)} | {1})
+    except Exception as error:
+        print(f"   Atlas: momentos por sitio (la IA no los dio: {str(error)[:80]})")
+        starts = heuristic_starts(cleaned)
+    bounds = [*starts, len(lines) + 1]
+    for m, (a, b) in enumerate(zip(bounds, bounds[1:])):
+        members = [cleaned[i - 1] for i in range(a, b) if cleaned[i - 1]["view"] == "globe"]
+        camera = moment_camera(members) if members else None
+        for i in range(a, b):
+            cleaned[i - 1]["moment"] = m
+            if camera and cleaned[i - 1]["view"] == "globe":
+                cleaned[i - 1]["camera"] = dict(camera)
+
+    def build() -> list[dict[str, Any]]:
+        out, before = [], None
+        for n, scene in enumerate(cleaned, 1):
+            done = auto_tag(carry(fit_camera(scene) if scene["view"] != "globe" else scene, before), lines[n - 1][1], before)
+            out.append(done)
+            before = done
+        return out
+
+    built = build()
+
+    # 3. the plan checked before the render: stretches with nothing new are filled
+    quiet: list[int] = []
+    run: list[int] = []
+    for n, scene in enumerate(built, 1):
+        if n > 1 and scene["view"] == "globe" and built[n - 2]["view"] == "globe" and _new_things(cleaned[n - 1]) == 0 \
+                and _new_things(scene) == 0:
+            run.append(n)
+            continue
+        if sum(seconds[i - 1] for i in run) >= QUIET_SECONDS:
+            quiet += run
+        run = []
+    if sum(seconds[i - 1] for i in run) >= QUIET_SECONDS:
+        quiet += run
+    if quiet:
+        quiet_seconds = sum(seconds[i - 1] for i in quiet)
+        ask_lines = []
+        for n in quiet[:40]:
+            scene = built[n - 1]
+            cam = scene["camera"]
+            drawn = ", ".join([p["name"] for p in scene.get("points") or []][:6]) or "nada"
+            ask_lines.append(f"[{n}] {lines[n - 1][1]}\n    cámara {cam['lat']:.1f}, {cam['lon']:.1f}, zoom {cam['zoom']} · ya dibujado: {drawn}")
+        filled = 0
+        try:
+            result = complete_json(ctx, stage="atlas", section="planner", system=system + "\n\n" + REFILL_SYSTEM,
+                                   user="FRASES SIN NADA NUEVO:\n" + "\n".join(ask_lines), max_tokens=400 * len(ask_lines))
+            for extra in result.get("scenes") or []:
+                n = int(extra.get("n") or 0) if isinstance(extra, dict) else 0
+                if n not in quiet:
+                    continue
+                target = cleaned[n - 1]
+                add = clean({**extra, "camera": None, "view": "globe"}, target)
+                for kind in ("points", "routes", "rings", "tags", "highlight"):
+                    if add.get(kind):
+                        target[kind] = [*(target.get(kind) or []), *add[kind]][-LIMITS.get(kind, 6):]
+                for name in ("card", "stamp", "counter", "lens"):
+                    if add.get(name) and not target.get(name):
+                        target[name] = add[name]
+                if _new_things(target):
+                    filled += 1
+        except Exception as error:
+            print(f"   Atlas: el relleno del plan no salió ({str(error)[:80]})")
+        print(f"   Atlas: plan revisado: {len(quiet)} frases sin nada nuevo ({quiet_seconds:.0f} s) → {filled} rellenadas")
+        built = build()
+    else:
+        print("   Atlas: plan revisado: ninguna frase sin nada nuevo")
+
+    out = {shot_id: scene for (shot_id, _), scene in zip(lines, built)}
     ensure_satellites(out, int(ctx.section("visual").get("satellites", 2)))
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"key": digest, "scenes": out}, ensure_ascii=False), encoding="utf-8")
@@ -802,9 +1034,183 @@ SAT_CREDIT = {"es": "Imagen: Sentinel-2 cloudless de EOX (CC BY 4.0), datos Cope
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 
 
+MIN_VIEW = 4.5        # seconds: a chart, a drawing, the satellite… never on screen for less (it takes the next line too)
+PUSH = 0.3            # zoom the camera gains over a globe scene (wide → closer → the next moment pulls out)
+DRIFT_PER_S = 0.25    # degrees of longitude a second the globe turns on its own (Atlas.tsx cameraAt, from the start)
+SINGLE = ("card", "stamp", "headline", "counter", "zone", "meridians", "night", "lens")
+VIEWS_ASIDE = ("chart", "icon")      # the globe moves aside for these instead of a cut
+
+
+def _segments(lines: list[dict[str, Any]], fps: int) -> list[dict[str, Any]]:
+    """Consecutive sentences of the same moment, the same place and the same kind of picture become ONE scene
+    (the camera fixed, the elements coming in at their words); a chapter heading and every chart/drawing/satellite
+    stand alone, a short one taking the next sentence too (MIN_VIEW)."""
+
+    out: list[dict[str, Any]] = []
+    for line in lines:
+        if "chapter" in line:
+            out.append(line)
+            continue
+        scene = line["scene"]
+        current = out[-1] if out and "lines" in out[-1] else None
+        if current is not None:
+            first = current["lines"][0]["scene"]
+            seconds = (current["lines"][-1]["to"] - current["lines"][0]["from"]) / fps
+            if first["view"] != "globe":
+                # a chart, a drawing… stays MIN_VIEW: it takes the next sentence when that one is part of the same
+                # idea or brings nothing new (never a sentence with its own places: atlas e2e lost McMurdo so)
+                same = scene.get("moment") == first.get("moment")
+                if seconds < MIN_VIEW and scene["view"] == "globe" and (same or _new_things(scene) == 0):
+                    current["lines"].append(line)
+                    continue
+                if scene["view"] == first["view"] and same and scene.get(first["view"]) == first.get(first["view"]):
+                    current["lines"].append(line)     # the same chart said over two sentences: one scene
+                    continue
+            elif scene["view"] == "globe" and scene.get("moment") == first.get("moment") \
+                    and _same_place(scene["camera"], first["camera"]) and bool(scene.get("dark")) == bool(first.get("dark")) \
+                    and not any(scene.get(name) and not scene[name].get("kept")
+                                and any(x["scene"].get(name) and not x["scene"][name].get("kept") for x in current["lines"])
+                                for name in SINGLE):
+                current["lines"].append(line)
+                continue
+        out.append({"lines": [line]})
+    return out
+
+
+def _segment_graphic(segment: dict[str, Any], spoken: list[tuple[int, str]], fps: int) -> dict[str, Any]:
+    """The scene of a segment: the last sentence's (everything piled up), every element with the frame of its word in
+    the sentence that brought it ("at") and the end of that sentence ("until": what grows with the voice grows until
+    then); what was already on screen before the segment at -2 s."""
+
+    lines = segment["lines"]
+    a = lines[0]["from"]
+    first = lines[0]["scene"]
+    if first["view"] != "globe":
+        g = json.loads(json.dumps(first))
+        end = lines[0]["to"] - a
+        words = [(f - a, t) for f, t in spoken if lines[0]["from"] <= f < lines[0]["to"]]
+        stagger = 0
+        for name in (*SINGLE, "icon", "sat", "flat", "size"):
+            if g.get(name):
+                g[name]["at"] = -2 * fps if g[name].get("kept") else _frame_of(g[name].get("at", ""), words, round(end * 0.2) + stagger)
+                g[name]["until"] = end
+                stagger += round(0.35 * fps)
+        for name in ("points", "routes", "rings", "tags", "countries"):
+            for i, item in enumerate(g.get(name) or []):
+                item["at"] = -2 * fps if item.get("kept") else _frame_of(item.get("at", ""), words, round(end * 0.15) + i * round(0.25 * fps))
+                item["until"] = end
+        return g
+    g = json.loads(json.dumps(lines[-1]["scene"]))
+    intro: dict[tuple[str, Any], tuple[int, int]] = {}
+    singles: dict[str, dict[str, Any]] = {}
+    tags: list[dict[str, Any]] = []
+    countries: list[dict[str, Any]] = []
+    highlight: dict[str, dict[str, Any]] = {}
+    for line in lines:
+        off, end = line["from"] - a, line["to"] - a
+        words = [(f - a, t) for f, t in spoken if line["from"] <= f < line["to"]]
+        scene = line["scene"]
+        span = end - off
+        for kind in ("points", "routes", "rings"):
+            for i, item in enumerate(scene.get(kind) or []):
+                if not item.get("kept"):
+                    intro.setdefault((kind, _key(kind, item)),
+                                     (_frame_of(item.get("at", ""), words, off + round(span * 0.15) + i * round(0.25 * fps)), end))
+        for i, t in enumerate(scene.get("tags") or []):
+            if not t.get("kept") and t["text"] not in {x["text"] for x in tags}:
+                tags.append({**t, "at": _frame_of(t.get("at", ""), words, off + round(span * 0.2) + i * 8), "until": end})
+        for c in scene.get("countries") or []:
+            if not c.get("kept") and c["name"] not in {x["name"] for x in countries} and len(countries) < 2:
+                countries.append({**c, "at": _frame_of(c.get("at", ""), words, off + round(span * 0.2)) if isinstance(c.get("at"), str) else off})
+        for h in scene.get("highlight") or []:
+            highlight.setdefault(h["name"], h)
+        stagger = 0
+        for name in SINGLE:
+            item = scene.get(name)
+            if item and not item.get("kept") and name not in singles:
+                singles[name] = {**item, "at": _frame_of(item.get("at", ""), words, off + round(span * 0.2) + stagger), "until": end}
+                stagger += round(0.35 * fps)
+    for kind in ("points", "routes", "rings"):
+        for item in g.get(kind) or []:
+            at_until = intro.get((kind, _key(kind, item)))
+            item["at"], item["until"] = at_until if at_until else (-2 * fps, 0)
+            item.pop("kept", None)
+    for name in SINGLE:
+        if name in singles:
+            g[name] = singles[name]
+        elif g.get(name):
+            g[name] = {**g[name], "at": -2 * fps, "until": 0}
+    g["tags"] = tags
+    g["countries"] = countries
+    g["highlight"] = list(highlight.values())
+    for route in g.get("routes") or []:              # something always travels a main route (the eye follows it)
+        if route.get("style") != "many" and not route.get("mover"):
+            route["mover"] = "dot"
+    lens_auto(g)
+    return g
+
+
+def lens_auto(g: dict[str, Any]) -> None:
+    """Two or more new places too close together for the camera (under ~2 % of the screen apart on the whole globe):
+    a magnifying lens on them, unless the scene has one."""
+
+    if g.get("lens") or g["camera"]["zoom"] >= REGION_ZOOM:
+        return
+    new = [p for p in g.get("points") or [] if p.get("at", -1) >= 0]
+    radius = 350 * 1.42 ** (g["camera"]["zoom"] - 1)
+    for i, p in enumerate(new):
+        close = [q for q in new[i + 1:] if 0.05 < _angle((p["lat"], p["lon"]), (q["lat"], q["lon"])) < math.degrees(45 / radius)]
+        if close:
+            group = [p, *close]
+            lat = sum(x["lat"] for x in group) / len(group)
+            lon = sum(x["lon"] for x in group) / len(group)
+            spread = max(_angle((lat, lon), (x["lat"], x["lon"])) for x in group)
+            zoom = 1 + math.log(150 / math.sin(math.radians(max(spread, 0.2))) / 350) / math.log(1.42)
+            g["lens"] = {"lat": round(lat, 3), "lon": round(lon, 3), "zoom": round(min(10.0, max(REGION_ZOOM, zoom)), 2),
+                         "label": "", "at": max(x["at"] for x in group), "until": 0}
+            return
+
+
+def place_photo(ctx: RunContext, name: str, lat: float, lon: float) -> dict[str, Any] | None:
+    """A photo of the place from Wikimedia Commons (free licences only, credited on the card), for a place the satellite
+    has no picture of (Antarctica): work/<slug>/graphics/photos/."""
+
+    from types import SimpleNamespace
+
+    from .sourcing.images import ImageSources
+
+    images = dict(ctx.section("sourcing").get("images") or {})
+    only = {**images, "wikimedia": {**(images.get("wikimedia") or {}), "enabled": True}, "openverse": {"enabled": False},
+            "pixabay": {"enabled": False}, "web": {"enabled": False}, "max_per_shot": 3}
+    source = ImageSources(root=ctx.root, cache_dir=ctx.cache_dir, config=only)
+    title = name.title()
+    spec = SimpleNamespace(visualIntent=title, queries=[title], queriesLocal=[], entities=[title], mustContain=[], avoid=[],
+                           preferredShot="wide", event=None, moment=None)
+    try:
+        _, found = source.search(spec, [])
+    except Exception as error:
+        print(f"   Atlas: foto de {title} no disponible ({str(error)[:80]})")
+        return None
+    for candidate in found:
+        path = ctx.root / candidate.imagePath if candidate.imagePath else None
+        if not path or not path.is_file():
+            continue
+        target = ctx.work_dir / "graphics" / "photos" / f"{key(candidate.id)[:12]}{path.suffix or '.jpg'}"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.is_file():
+            shutil.copyfile(path, target)
+        credit = " · ".join(x for x in (candidate.channel or "", candidate.license or "", "Wikimedia Commons") if x)
+        return {"kind": "photo", "title": title.upper(), "big": "", "lines": [], "source": credit[:90], "side": "right",
+                "image": {"kind": "image", "src": str(target.relative_to(ctx.work_dir)).replace("\\", "/"), "source": "photo"}}
+    return None
+
+
 def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words: Any = None) -> list[dict[str, Any]]:
-    """An atlas scene for every line nothing else covers: the globe turning from the previous camera to this one,
-    every element at its word, the chapter bar, and a title card on every chapter heading."""
+    """The atlas scenes of the video: the voice's sentences (sentences()), drawn line by line (scenes()), joined into
+    scenes that last as long as their idea (_segments()), each with its elements at their words; a title card on every
+    chapter heading."""
+
+    from types import SimpleNamespace
 
     def covered(a: int, b: int) -> bool:
         return any(g.from_ < b and a < g.from_ + g.durationInFrames for g in taken)
@@ -819,32 +1225,32 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
             if shot.type != "endscreen" and not covered(shot.from_, shot.from_ + shot.durationInFrames)]
     if not todo:
         return []
-    found = scenes(ctx, [s for s, _, _ in todo if s.type != "chapter"])
+    lines = sentences(todo)
+    talk = [x for x in lines if "chapter" not in x]
+    found = scenes(ctx, [SimpleNamespace(id=x["id"], text=x["text"], seconds=(x["to"] - x["from"]) / fps) for x in talk])
+    for x in talk:
+        x["scene"] = found.get(x["id"]) or clean({}, None)
     spoken = [(round(w.start * fps), w.text.strip()) for w in (words.words if words is not None else []) if w.text.strip()]
     brand = str(ctx.section("brand").get("name") or ctx.channel or "").strip()
+    photos_left = int(ctx.section("visual").get("place_photos", 2))
     out = []
-    prev: dict[str, Any] | None = None
-    for n, (shot, a, b) in enumerate(todo):
-        span = b - a
-        current = chapter_of.get(shot.id, 0)
-        if shot.type == "chapter":
+    prev: dict[str, Any] | None = None             # where the camera ended in the last globe scene
+    last_view = ""
+    for n, segment in enumerate(_segments(lines, fps)):
+        if "chapter" in segment:
+            shot, a, b = segment["chapter"], segment["from"], segment["to"]
+            current = chapter_of.get(shot.id, 0)
             title = _as_written(ctx, str(shot.chapterTitle or shot.text or ""))
-            g: dict[str, Any] = {"type": "atlas", "view": "title", "camera": (prev or {}).get("camera") or {"lat": 20, "lon": 0, "zoom": 1},
-                                 "dark": False, "title": {"number": ROMAN[(shot.chapterNumber or current or 1) - 1] if (shot.chapterNumber or current or 1) <= 10 else str(shot.chapterNumber),
-                                                          "text": title}}
+            number = shot.chapterNumber or current or 1
+            g: dict[str, Any] = {"type": "atlas", "view": "title", "camera": (prev or {"lat": 20, "lon": 0, "zoom": 1}),
+                                 "dark": False, "title": {"number": ROMAN[number - 1] if number <= 10 else str(number), "text": title}}
+            ident = shot.id
         else:
-            g = json.loads(json.dumps(found.get(shot.id) or clean({}, prev)))
-            line_words = [(f - a, t) for f, t in spoken if a <= f < b]
-            stagger = 0
-            for name in ("zone", "card", "stamp", "headline", "icon", "night", "meridians", "counter", "sat", "flat", "size"):
-                if g.get(name) and g[name].get("kept"):
-                    g[name]["at"] = -2 * fps                     # already on the globe from the last line
-                elif g.get(name):
-                    g[name]["at"] = _frame_of(g[name].get("at", ""), line_words, round(span * 0.2) + stagger)
-                    stagger += round(0.35 * fps)
-            for name in ("points", "routes", "rings", "tags"):
-                for i, item in enumerate(g.get(name) or []):
-                    item["at"] = -2 * fps if item.get("kept") else _frame_of(item.get("at", ""), line_words, round(span * 0.15) + i * round(0.25 * fps))
+            a, b = segment["lines"][0]["from"], segment["lines"][-1]["to"]
+            current = chapter_of.get(segment["lines"][0]["id"], 0)
+            g = _segment_graphic(segment, spoken, fps)
+            ident = segment["lines"][0]["id"]
+        span = b - a
         for c in g.get("countries") or []:            # its flag in the video's files, and the country tinted on the globe
             code = flag_codes().get(c["name"])
             source = ctx.root / "assets" / "flags" / "4x3" / f"{code}.svg"
@@ -854,10 +1260,8 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
                 if not target.is_file():
                     shutil.copyfile(source, target)
                 c["flag"] = {"kind": "image", "src": f"graphics/flags/{code}.svg", "source": "flag"}
-            if c.get("kept"):
-                c["at"] = -2 * fps
-            elif isinstance(c.get("at"), str):
-                c["at"] = _frame_of(c["at"], line_words if shot.type != "chapter" else [], round(span * 0.2))
+            if not isinstance(c.get("at"), int):
+                c["at"] = round(span * 0.2)
             if not any(h.get("name") == c["name"] for h in g.get("highlight") or []):
                 g["highlight"] = [*(g.get("highlight") or []), {"name": c["name"], "label": "", "group": 0}]
         if g.get("view") == "sat" and g.get("sat"):
@@ -881,19 +1285,33 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
                 g["view"] = "globe"
                 g["points"] = [*(g.get("points") or []), {"name": g["sat"]["label"] or "", "lat": g["sat"]["lat"],
                                                           "lon": g["sat"]["lon"], "at": g["sat"]["at"]}]
-        g["prev"] = (prev or g)["camera"]
+        if g.get("view") == "globe" and photos_left > 0 and not g.get("card"):
+            # a place the satellite has no picture of: its photo on a paper card (Wikimedia Commons)
+            spot = next((p for p in g.get("points") or [] if p.get("at", -1) >= 0 and not has_photo(p["lat"]) and not p.get("auto")), None)
+            if spot:
+                card = place_photo(ctx, spot["name"], spot["lat"], spot["lon"])
+                if card:
+                    g["card"] = {**card, "at": spot["at"] + round(0.6 * fps), "until": span}
+                    photos_left -= 1
+        g["prev"] = prev or g["camera"]
+        g["push"] = PUSH if g.get("view") == "globe" and span >= 3 * fps and g["camera"]["zoom"] < 8.5 else 0.0
+        g["enter"] = "aside" if g.get("view") == "globe" and last_view in VIEWS_ASIDE else ""
         g["chapters"] = chapters
         g["chapter"] = current
         g["brand"] = brand
         g["seed"] = n
-        out.append({"id": f"atlas-{shot.id}", "kind": "graphic", "from": a, "durationInFrames": span, "graphic": g})
+        out.append({"id": f"atlas-{ident}", "kind": "graphic", "from": a, "durationInFrames": span, "graphic": g})
         if g["view"] == "globe":
-            prev = g
+            cam = g["camera"]
+            prev = {"lat": cam["lat"], "lon": round((cam["lon"] + DRIFT_PER_S * span / fps + 180) % 360 - 180, 4),
+                    "zoom": round(cam["zoom"] + g["push"], 2)}
         elif prev is None:
-            prev = g
+            prev = g["camera"]
+        last_view = g.get("view", "")
     dives = [g["graphic"]["sat"]["label"] for g in out if g["graphic"].get("view") == "sat"]
-    print(f"   Atlas: {len(dives)} bajada(s) al satélite" + (f": {', '.join(d or '?' for d in dives)}" if dives else
-          " (ningún sitio del guion con foto: la Antártida y el Ártico no tienen)"))
+    scenes_n = sum(1 for g in out if g["graphic"].get("view") != "title")
+    print(f"   Atlas: {scenes_n} escenas para {len(talk)} frases · {len(dives)} bajada(s) al satélite"
+          + (f": {', '.join(d or '?' for d in dives)}" if dives else " (ningún sitio del guion con foto: la Antártida y el Ártico no tienen)"))
     return out
 
 
