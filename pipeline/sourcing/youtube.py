@@ -331,8 +331,13 @@ class YouTubeSource:
         self.proxy = proxy
         if config.get("force_ipv4") and not proxy:
             options["source_address"] = "0.0.0.0"   # YouTube over IPv6 crawls with some providers
-        if config.get("player_client"):
-            options["extractor_args"] = {"youtube": {"player_client": list(config["player_client"])}}
+        # Each player client is its own player request (and connection) per extraction. Through a residential proxy
+        # (paid per GB and per connection) one client is enough: web_safari, the one with the HLS formats the ranges
+        # use (player_client_residential). Home proxies and the direct way keep `player_client`.
+        chosen = config.get("player_client_residential", ["web_safari"]) if self.residential else config.get("player_client")
+        self._configured_clients = [str(c) for c in (chosen or [])]
+        if self._configured_clients:
+            options["extractor_args"] = {"youtube": {"player_client": list(self._configured_clients)}}
         if config.get("cookies_from_browser"):
             options["cookiesfrombrowser"] = (str(config["cookies_from_browser"]),)
         if config.get("rate_limit"):
@@ -1222,7 +1227,9 @@ class YouTubeSource:
     # --- downloads without re-extraction ------------------------------------------------
 
     def _clients(self) -> list[str]:
-        return [str(c) for c in (self.cfg.get("player_client") or [])]
+        """The player clients the info dicts are stamped with (re-extracted when they change)."""
+
+        return list(self._configured_clients)
 
     def _full_info_path(self, video_id: str) -> Path:
         return self.cache_dir / "videos" / video_id / "ytdlp-info.json"
