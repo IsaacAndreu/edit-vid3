@@ -614,6 +614,22 @@ class YouTubeSource:
                         self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
                         tried_ways.add(way)
                         continue
+                if kind in ("bot", "429") and self._local.account is None and is_residential((self.proxies or [""])[way]):
+                    # A residential proxy: «are you a bot» or 429 is this exit IP, not the line — the next connection
+                    # can be another IP. A new sticky session for this video (a few times at most) instead of a two-hour
+                    # quarantine of the whole proxy; after that it is the video, and it is dropped like before.
+                    if self._rotate_after(kind, action, tries):
+                        continue
+                    video = getattr(self._local, "video_id", None) if action != "search" else None
+                    rotations = self.sessions.max_rotations + 1
+                    if kind == "bot":
+                        if video is not None:
+                            self._refuse(video)
+                            print(f"   YouTube pide «no eres un bot» para el vídeo {video} desde {rotations} IPs del proxy: se descarta")
+                        raise RuntimeError(f"yt-dlp {action}: YouTube pide «no eres un bot» desde {rotations} IPs del proxy "
+                                           "residencial; se descarta esta petición") from None
+                    raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429) en {rotations} sesiones del proxy "
+                                      "residencial; se descarta esta petición") from None
                 if kind == "auth" and self.cookies_mode == "fallback" and self._sets and not with_account:
                     with_account = True          # this video needs an account: try it once with one
                     continue
@@ -673,6 +689,27 @@ class YouTubeSource:
                                       "cuarentena") from None
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
 
+    def _rotate_after(self, kind: str, action: str, tries: int) -> bool:
+        """A new sticky session (exit IP) for the current video or the shared search session after «are you a bot»
+        or a 429 (with a pause, rate_backoff × try); False when this video already rotated its share."""
+
+        key = self._session_key()
+        fresh = self.sessions.rotate(key)
+        if fresh is None:
+            return False
+        if kind == "429":
+            pause = min(120.0, float(self.cfg.get("rate_backoff", 20)) * max(1, tries))
+            time.sleep(pause)
+            self._count("espera por límite", pause)
+        now = time.monotonic()
+        if now - getattr(self, "_rotation_said", 0.0) > 120:
+            self._rotation_said = now
+            what = "pide «no eres un bot»" if kind == "bot" else "responde 429"
+            whose = f"el vídeo {key}" if key != "search" else "las búsquedas"
+            print(f"   YouTube {what} a una IP del proxy residencial ({action}): sesión nueva para {whose} "
+                  f"(sesiones rotadas en esta ejecución: {self.sessions.rotated})")
+        return True
+
     def _metadata_proxy_failed(self, kind: str, lowered: str, tries: int) -> str:
         """A metadata request through the residential proxy failed: «again» (the next request leaves from another IP),
         «home» (the usual way, as before the proxy: it does not answer, or the video needs an account) or «drop»."""
@@ -686,7 +723,10 @@ class YouTubeSource:
             self._local.mp_heavy = True         # without the watch page it did not work: again, with it
             return "again"
         if (refused or unreachable) and tries <= retries:
-            return "again"
+            # a residential metadata proxy with sticky sessions: «again» must mean another IP, so the session rotates
+            # (bounded per video); with none left, this video is refused from several IPs below
+            if not (refused and is_residential(self.metadata_proxy)) or self.sessions.rotate(self._session_key()) is not None:
+                return "again"
         if kind == "auth" or unreachable:
             if unreachable and time.monotonic() - getattr(self, "_mp_said", 0.0) > 300:
                 self._mp_said = time.monotonic()
