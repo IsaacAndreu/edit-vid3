@@ -89,12 +89,13 @@ sourcing:
     # config.local.yaml o YOUTUBE_PROXY): cobra por GB y cambia de IP en cada conexión salvo con el sufijo de sesión
     # "-time-30-session-<id>", que el programa añade al usuario con un id por vídeo. Con él: una sola extracción por
     # vídeo y sesión (el info dict guardado sirve a todos los tramos), «no eres un bot» o 429 rotan la sesión en vez
-    # de poner el proxy en cuarentena, PO Token activo, un solo cliente (web_safari), miniaturas del storyboard
+    # de poner el proxy en cuarentena, PO Token activo, miniaturas del storyboard
     # directas y tabla «Proxy» en --youtube-stats. Los proxies de casa (sin usuario) no cambian.
     proxy_session_minutes: 30          # lo que el proveedor mantiene la IP por sesión (sufijo -time-30)
     proxy_session_rotations: 2         # sesiones nuevas por vídeo ante «no eres un bot»/429 antes de descartarlo
     info_expiry_margin_minutes: 15     # el info dict guardado no se reutiliza si sus URLs caducan antes
-    player_client_residential: [web_safari]   # clientes de yt-dlp por la vía residencial
+    player_client_residential: null    # clientes de yt-dlp por la vía residencial (null = los de player_client); solo
+                                       # web_safari falló en todas las extracciones el 05/11 («format is not available»)
     proxy_usd_per_gb: 0.62             # lo que cobra el proxy por GB, para el coste de --youtube-stats
     max_height: 720                    # tope de los tramos (el vídeo final es 1080p y no se nota más); null = como se pida
     max_fps: 30                        # un 720p60 son el doble de bytes y el vídeo final va a 30 fps; null = sin tope

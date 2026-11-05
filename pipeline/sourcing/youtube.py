@@ -396,10 +396,12 @@ class YouTubeSource:
         self.proxy = proxy
         if config.get("force_ipv4") and not proxy:
             options["source_address"] = "0.0.0.0"   # YouTube over IPv6 crawls with some providers
-        # Each player client is its own player request (and connection) per extraction. Through a residential proxy
-        # (paid per GB and per connection) one client is enough: web_safari, the one with the HLS formats the ranges
-        # use (player_client_residential). Home proxies and the direct way keep `player_client`.
-        chosen = config.get("player_client_residential", ["web_safari"]) if self.residential else config.get("player_client")
+        # Each player client is its own player request (and connection) per extraction, so through a residential
+        # proxy (paid per GB and per connection) `player_client_residential` can name fewer. Not web_safari alone:
+        # on 2026-11-05 every extraction with it failed «Requested format is not available» (no usable video
+        # format came back), so the default is the same list as everywhere (`player_client`).
+        chosen = config.get("player_client_residential") if self.residential else None
+        chosen = chosen or config.get("player_client")
         self._configured_clients = [str(c) for c in (chosen or [])]
         if self._configured_clients:
             options["extractor_args"] = {"youtube": {"player_client": list(self._configured_clients)}}

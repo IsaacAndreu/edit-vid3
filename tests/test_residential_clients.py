@@ -1,4 +1,5 @@
-"""Through a residential proxy one player client (web_safari) by default; home and direct keep theirs."""
+"""Through a residential proxy the player clients can be narrowed (player_client_residential); by default they are
+the same as everywhere: web_safari alone made every extraction fail «Requested format is not available»."""
 
 import json
 
@@ -13,21 +14,22 @@ def _source(tmp_path, **cfg):
     return YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never", "player_client": BOTH, **cfg})
 
 
-def test_one_client_through_a_residential_proxy_configurable(tmp_path, monkeypatch):
+def test_residential_clients_default_to_the_usual_list_and_can_be_narrowed(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
     resi = _source(tmp_path, proxy=RESI)
-    assert resi.base_options["extractor_args"]["youtube"]["player_client"] == ["web_safari"]
-    assert resi.clients == ["web_safari"] and resi._clients() == ["web_safari"]
-    custom = _source(tmp_path, proxy=RESI, player_client_residential=["default", "web_safari"])
-    assert custom.clients == BOTH
+    assert resi.base_options["extractor_args"]["youtube"]["player_client"] == BOTH
+    assert resi.clients == BOTH and resi._clients() == BOTH
+    custom = _source(tmp_path, proxy=RESI, player_client_residential=["web_safari"])
+    assert custom.clients == ["web_safari"] and custom._clients() == ["web_safari"]
+    assert _source(tmp_path, proxy=HOME, player_client_residential=["web_safari"]).clients == BOTH   # home: ignored
     home = _source(tmp_path, proxy=HOME)
     direct = _source(tmp_path)
     assert home.clients == BOTH and direct.clients == BOTH and home._clients() == BOTH
 
 
-def test_info_from_the_two_client_days_is_extracted_again_once(tmp_path, monkeypatch):
+def test_info_from_other_clients_is_extracted_again_once(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    yt = _source(tmp_path, proxy=RESI)
+    yt = _source(tmp_path, proxy=RESI, player_client_residential=["web_safari"])
     path = yt._full_info_path("vid00000000")
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"formats": [{"vcodec": "avc1", "url": "https://x/videoplayback?expire=9999999999"}],

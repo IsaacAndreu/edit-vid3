@@ -180,7 +180,8 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
 - **«No eres un bot» o 429** rotan la sesión del vídeo (`proxy_session_rotations`: 2) en vez de poner el proxy en
   cuarentena dos horas; agotadas, el vídeo se descarta como antes. La cuarentena queda para los proxies de casa.
 - **PO Token activo** (el plugin bgutil pasa el proxy con su sesión al servidor local, sin proxy, y el token se hace
-  para esa IP) y **un solo cliente**, `web_safari` (`player_client_residential`).
+  para esa IP). Los clientes de yt-dlp son los de `player_client`; `player_client_residential` permite reducirlos,
+  pero `web_safari` solo no sirve: el 05/11 todas las extracciones fallaron «Requested format is not available».
 - **Nada local por el proxy:** ffmpeg/ffprobe sobre archivos del disco corren sin variables de proxy; las miniaturas
   del storyboard (i.ytimg.com) van directas y solo por el proxy si eso falla.
 - **Tramos a 720p/30 fps** (`max_height`, `max_fps`) y biblioteca por (vídeo, rango, resolución): un tramo ya bajado
