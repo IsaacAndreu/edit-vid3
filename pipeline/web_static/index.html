@@ -1497,11 +1497,13 @@ async function spendPage() {
       <div class="kpi"><div class="k">Media por vídeo</div><div class="v">${usd(o.average)}</div><div class="d">mediana ${usd(o.median)} · ${o.done} terminados</div></div>
       <div class="kpi"><div class="k">Por minuto de vídeo</div><div class="v">${usd(o.perMinute, 3)}</div><div class="d">coste / minutos de vídeo final</div></div>
       <div class="kpi"><div class="k">Últimos 7 días</div><div class="v">${usd(o.week)}</div><div class="d">este mes ${usd(o.month)}</div></div>
-      <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.total)}</div><div class="d">${usd(o.inProgress)} en curso${g.others ? ` · ${usd(g.others.total)} en radar e ideas` : ""}</div></div></div>
-    ${px && px.proxies.length ? `<div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.total)}</div><div class="d">${usd(o.inProgress)} en curso${g.others ? ` · ${usd(g.others.total)} en radar e ideas` : ""}</div></div>
+    ${px && px.proxies.length ? `
       <a class="kpi" href="#/servidor"><div class="k">Proxy · 7 días</div><div class="v">${usd(px.usd)}</div><div class="d">${px.totalGb.toFixed(2)} GB a ${px.usdPerGb} $/GB</div></a>
       <a class="kpi" href="#/servidor"><div class="k">Proxy por vídeo terminado</div><div class="v">${px.gbPerFinished != null ? usd(px.gbPerFinished * px.usdPerGb) : "—"}</div>
-        <div class="d">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "sin vídeos terminados"} · ${o.average != null && px.gbPerFinished != null ? `API + proxy ≈ ${usd(o.average + px.gbPerFinished * px.usdPerGb)}` : ""}</div></a></div>` : ""}
+        <div class="d">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "sin vídeos terminados"}</div></a>
+      <div class="kpi"><div class="k">API + proxy por vídeo</div><div class="v">${o.average != null && px.gbPerFinished != null ? usd(o.average + px.gbPerFinished * px.usdPerGb) : "—"}</div>
+        <div class="d">lo que cuesta de verdad un vídeo terminado</div></div>` : ""}</div>
 
     ${(() => { const s = g.savings, p = g.pipeline, hm = (x) => x == null ? "—" : x >= 3600 ? `${Math.floor(x / 3600)} h ${String(Math.round(x % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(x / 60)} min`;
       const most = Math.max(1, ...(p.stages || []).map((x) => x.seconds));
