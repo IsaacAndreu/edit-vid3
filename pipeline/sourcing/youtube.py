@@ -1647,7 +1647,13 @@ class YouTubeSource:
                 ydl.download_with_info_file(info_file)
 
         def attempt() -> tuple[Path, dict[str, Any]] | None:
-            self._call("download (HLS)" if exact else "download", fetch)
+            try:
+                self._call("download (HLS)" if exact else "download", fetch)
+            except RuntimeError as error:
+                if "ffmpeg exited with code" not in str(error):
+                    raise
+                # yt-dlp reports only the exit code (ffmpeg runs with -loglevel quiet): ask ffmpeg itself why
+                raise RuntimeError(f"{error} — ffmpeg dice: {self._ffmpeg_diagnosis(info_file, fmt)}") from None
             produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*")
                         if p.suffix in (".mp4", ".webm", ".mkv", ".m4a", ".opus", ".weba", ".ts")]
             if not produced:
@@ -1701,13 +1707,48 @@ class YouTubeSource:
         stream URLs were not bound to: 403, «ffmpeg exited with code 8». The option carries the proxy, sticky
         session included; the HLS demuxer passes it on to every segment request."""
 
-        args: dict[str, list[str]] = {"ffmpeg_i": ["-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
+        # -loglevel error (after yt-dlp's -loglevel quiet; the last one wins): ffmpeg's errors reach the service log
+        args: dict[str, list[str]] = {"ffmpeg_i": ["-loglevel", "error", "-nostats",
+                                                   "-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
         proxy = self.proxies[getattr(self._local, "way", 0) or 0] if self.proxies else ""
         if proxy:
             args["ffmpeg_i"] += ["-http_proxy", self._proxy_for(proxy)]
         if not exact:
             args["ffmpeg_o"] = ["-copyts"]
         return args
+
+    def _ffmpeg_diagnosis(self, info_file: str, fmt: str) -> str:
+        """ffmpeg's own words for a range that died with just an exit code: open the stream yt-dlp chose for half
+        a second, with the same proxy (option and environment) and headers, and keep the error line. One small extra
+        request, only after a failure, so «ffmpeg exited with code 8» stops hiding a 403, a DNS error or a bad proxy."""
+
+        import json
+        import subprocess
+
+        try:
+            data = json.loads(Path(info_file).read_text(encoding="utf-8"))
+            with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
+                chosen = ydl.process_ie_result(dict(data), download=False)
+            piece = (chosen.get("requested_formats") or [chosen])[0]
+            url = piece.get("url")
+            if not url:
+                return "el formato elegido no tiene URL"
+            headers = piece.get("http_headers") or chosen.get("http_headers") or {}
+            inputs = self._ffmpeg_args(exact=True)["ffmpeg_i"]
+            command = ["ffmpeg", "-hide_banner", "-nostdin", *inputs]
+            if headers:
+                command += ["-headers", "".join(f"{k}: {v}\r\n" for k, v in headers.items())]
+            command += ["-i", url, "-t", "0.5", "-f", "null", "-"]
+            env = local_env()
+            if "-http_proxy" in inputs:                       # as yt-dlp hands it to ffmpeg: in the environment too
+                env["http_proxy"] = env["HTTP_PROXY"] = inputs[inputs.index("-http_proxy") + 1]
+            done = subprocess.run(command, capture_output=True, text=True, timeout=90, env=env)
+            text = " ".join((done.stderr or "").split())[-300:]
+            if done.returncode == 0:
+                return "la misma URL abre bien ahora (¿enlace caducado o IP distinta en el intento?)"
+            return text or f"salió con código {done.returncode} sin mensaje"
+        except Exception as error:
+            return f"no se pudo diagnosticar ({type(error).__name__}: {str(error)[:80]})"
 
     def subtitle_file(self, video_id: str, language: str = "en") -> Path | None:
         """The video's subtitles in `language` as WebVTT (uploaded ones, else YouTube's automatic ones), cached."""

@@ -575,7 +575,8 @@ def test_a_range_download_gives_up_on_a_connection_that_stops_answering(tmp_path
     monkeypatch.setattr(yt, "_fresh_full_info", lambda video: tmp_path / "info.json")
     with pytest.raises(RuntimeError, match="tramo vacío"):
         yt._fetch_range("AAAAAAAAAAA", 1.0, 2.0, "best", "hd", False, False, tmp_path / "info.json", exact=True)
-    assert seen[0]["external_downloader_args"]["ffmpeg_i"] == ["-rw_timeout", "60000000"]   # 60 s without data
+    ffmpeg_i = seen[0]["external_downloader_args"]["ffmpeg_i"]
+    assert ffmpeg_i[ffmpeg_i.index("-rw_timeout") + 1] == "60000000"                        # 60 s without data
 
 
 def test_what_the_api_says_the_player_will_refuse_never_goes_to_yt_dlp(tmp_path):

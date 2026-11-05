@@ -138,7 +138,7 @@ def test_the_ffmpeg_that_fetches_a_range_gets_the_proxy_as_an_option_not_only_th
     yt._local.way = 0
     args = yt._ffmpeg_args(exact=True)
     sid = yt.sessions.session_id("dQw4w9WgXcQ")
-    assert args["ffmpeg_i"] == ["-rw_timeout", "60000000", "-http_proxy",
+    assert args["ffmpeg_i"] == ["-loglevel", "error", "-nostats", "-rw_timeout", "60000000", "-http_proxy",
                                 f"http://user-time-30-session-{sid}:p%40ss@resi-bridge-eu.rainproxy.io:1111"]
     assert "ffmpeg_o" not in args and yt._ffmpeg_args(exact=False)["ffmpeg_o"] == ["-copyts"]
     home = _source(tmp_path / "h", proxy=HOME)
@@ -179,4 +179,57 @@ def test_range_downloads_build_their_ffmpeg_arguments_when_they_run(tmp_path, mo
     yt.download_range("dQw4w9WgXcQ", 10, 15, fmt="bv*[height<=720]", prefix="hd")
     ffmpeg_i = seen["external_downloader_args"]["ffmpeg_i"]
     assert ffmpeg_i[ffmpeg_i.index("-http_proxy") + 1] == with_sticky_session(RESI, yt.sessions.session_id("dQw4w9WgXcQ"))
+    yt.close()
+
+
+def test_an_ffmpeg_exit_code_is_explained_with_ffmpegs_own_words(tmp_path, monkeypatch):
+    import subprocess
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    yt._local.video_id = "dQw4w9WgXcQ"
+    yt._local.way = 0
+    info = yt._full_info_path("dQw4w9WgXcQ")
+    info.parent.mkdir(parents=True)
+    info.write_text(json.dumps({"id": "dQw4w9WgXcQ", "formats": [
+        {"format_id": "232", "vcodec": "avc1", "protocol": "m3u8_native", "height": 720,
+         "url": "https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/9999999999/x",
+         "http_headers": {"User-Agent": "UA"}}], "_edit_vid3_clients": yt._clients(), "_edit_vid3_via": "",
+        "_edit_vid3_session": yt.sessions.session_id("dQw4w9WgXcQ")}))
+
+    class FakeYdl:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def process_ie_result(self, data, download):
+            return {**data, **data["formats"][0]}
+
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: FakeYdl(extra))
+    seen = {}
+
+    def run(command, **kwargs):
+        seen["command"], seen["env"] = command, kwargs["env"]
+        return subprocess.CompletedProcess(command, 1, "", "[https @ 0x1] HTTP error 403 Forbidden\n[in#0] Error opening input\n")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    text = yt._ffmpeg_diagnosis(str(info), "bv*[height<=720][protocol^=m3u8]")
+    assert text == "[https @ 0x1] HTTP error 403 Forbidden [in#0] Error opening input"
+    command = seen["command"]
+    sticky = with_sticky_session(RESI, yt.sessions.session_id("dQw4w9WgXcQ"))
+    assert command[command.index("-http_proxy") + 1] == sticky and seen["env"]["http_proxy"] == sticky
+    assert command[command.index("-headers") + 1] == "User-Agent: UA\r\n" and command[-4:] == ["-t", "0.5", "-f", "null", "-"][-4:]
+    assert command[command.index("-loglevel") + 1] == "error" and "-nostats" in command
+
+    # a range that dies with an exit code carries the diagnosis in its error
+    monkeypatch.setattr(yt, "_call", lambda action, fn, **kw: (_ for _ in ()).throw(RuntimeError("yt-dlp download (HLS): ERROR: ffmpeg exited with code 8")))
+    import pytest
+
+    with pytest.raises(RuntimeError, match="code 8 — ffmpeg dice: .*403 Forbidden"):
+        yt._fetch_range("dQw4w9WgXcQ", 10, 15, "bv*[height<=720][protocol^=m3u8]", "hd", False, False, info, exact=True)
     yt.close()
