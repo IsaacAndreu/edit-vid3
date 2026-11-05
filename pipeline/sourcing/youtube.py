@@ -57,7 +57,7 @@ def error_kind(message: str) -> str:
 _RATE_MARKERS = ("http error 429", "too many requests")
 
 
-def error_detail(message: str, limit: int = 200) -> str:
+def error_detail(message: str, limit: int = 320) -> str:
     """An error's words for the request log: one line, proxy credentials masked (//****@), video ids kept."""
 
     text = re.sub(r"//[^/@\s]+@", "//****@", " ".join(str(message).split()))
@@ -1743,7 +1743,9 @@ class YouTubeSource:
             if "-http_proxy" in inputs:                       # as yt-dlp hands it to ffmpeg: in the environment too
                 env["http_proxy"] = env["HTTP_PROXY"] = inputs[inputs.index("-http_proxy") + 1]
             done = subprocess.run(command, capture_output=True, text=True, timeout=90, env=env)
-            text = " ".join((done.stderr or "").split())[-300:]
+            # the error lines, without the stream URLs (hundreds of characters of signature that say nothing)
+            text = re.sub(r"https?://\S+", "<url>", " ".join((done.stderr or "").split()))
+            text = re.sub(r"\[\w+ @ 0x[0-9a-f]+\] ", "", text)[:220]
             if done.returncode == 0:
                 return "la misma URL abre bien ahora (¿enlace caducado o IP distinta en el intento?)"
             return text or f"salió con código {done.returncode} sin mensaje"
