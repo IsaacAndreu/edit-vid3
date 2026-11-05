@@ -319,6 +319,9 @@
   .hb select { width: auto; padding: 6px 10px; font-size: 13.5px; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; padding: 5px 11px; font-size: 13px; background: none; } .seg button.on { background: var(--text); color: var(--bg); }
+  .skel > div, .skel .kpis > div { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); height: 32px; margin-bottom: 14px; animation: shimmer 1.2s infinite; }
+  .skel .kpis > div { height: 92px; margin: 0; } .skel .tall { height: 180px; }
+  @keyframes shimmer { 50% { opacity: .55; } }
   main.swap { animation: none; }
   #app > * { animation: fadein .18s ease-out; } @keyframes fadein { from { opacity: .35; } to { opacity: 1; } }
 </style>
@@ -371,11 +374,19 @@ const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 let timer = null, data = null;
 
+// GETs answered in the last few seconds are served from memory (coming back to a page is instant); the page then
+// refreshes itself from the network when its own timer fires
+const apiCache = new Map();
 async function api(path, options = {}) {
+  const isGet = !options.method || options.method === "GET";
+  const hit = isGet && apiCache.get(path);
+  if (hit && Date.now() - hit.at < 8000) return hit.body;
   const res = await fetch(path, {credentials: "same-origin", ...options});
   if (res.status === 401) { showLogin(); throw new Error("login"); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || res.statusText);
+  if (isGet) apiCache.set(path, {at: Date.now(), body});
+  else apiCache.clear();              // something changed on the server: nothing cached is trusted any more
   return body;
 }
 const post = (path, body) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
@@ -498,6 +509,7 @@ function block(title, list, {cls = "", right = null, more = "", open = true, col
 
 let homeData = null;
 async function home() {
+  if (homeData) { drawHome(); apiCache.delete("/api/overview"); }        // what we have, at once; then the fresh answer
   const [overview, dates] = await Promise.all([api("/api/overview"), api("/api/upload/dates").catch(() => ({}))]);
   homeData = {overview, dates};
   drawHome();
@@ -1076,7 +1088,7 @@ async function videoPage(slug) {
   };
   const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;
   pilotBox(v.slug, v);
-  if (v.status === "haciendo") schedule(route, 10000);
+  if (v.status === "haciendo") schedule(() => { apiCache.clear(); route(); }, 10000);
 }
 document.addEventListener("click", (e) => { if (!e.target.closest(".more")) document.querySelectorAll(".more.open").forEach((m) => m.classList.remove("open")); });
 
@@ -1251,35 +1263,38 @@ async function changeChannel(slug, current, el) {
 let spendSort = "last", spendChannel = "";
 
 let allFilter = {q: "", channel: "", state: "todos", kind: ""};
+let allSort = {key: "updated", dir: -1};
+function allSortBy(key) { allSort = {key, dir: allSort.key === key ? -allSort.dir : (key === "title" || key === "channel" ? 1 : -1)}; allVideosPage(); }
 async function allVideosPage() {
   data = await api("/api/overview");
   const f = allFilter, words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
   const stateOf = (v) => v.published ? "subidos" : v.archived ? "archivados" : v.status === "hecho" ? "sin subir" : "en marcha";
+  const value = (v) => allSort.key === "title" ? (v.title || v.slug).toLowerCase() : allSort.key === "channel" ? (v.channel || "")
+    : allSort.key === "published" ? String((v.published || {}).at || "") : allSort.key === "cost" ? (v.costUsd || 0) : allSort.key === "minutes" ? (v.minutes || 0) : v.updated;
   const list = data.videos.filter((v) => (!f.channel || (f.channel === "(sin canal)" ? !v.channel : v.channel === f.channel))
       && (f.state === "todos" || stateOf(v) === f.state)
       && (!f.kind || (f.kind === "shorts" ? v.short : !v.short))
       && words.every((w) => `${v.slug} ${v.title || ""}`.toLowerCase().includes(w)))
-    .sort((a, b) => String((b.published || {}).at || "").localeCompare(String((a.published || {}).at || "")) || b.updated - a.updated);
+    .sort((a, b) => { const x = value(a), y = value(b); return (x < y ? -1 : x > y ? 1 : 0) * allSort.dir; });
   const count = (fn) => data.videos.filter(fn).length;
   const channels = [...new Set(data.videos.map((v) => v.channel).filter(Boolean))].sort();     // only those with videos
+  const th = (key, name, cls = "") => `<th class="${cls}" style="cursor:pointer" onclick="allSortBy('${key}')">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
+  const state = (v) => v.published ? `<span class="pill hecho">subido</span> <span class="small muted">${esc(String(v.published.at || "").slice(0, 10))}</span>${v.published.url ? ` <a href="${esc(v.published.url)}" target="_blank" rel="noopener">↗</a>` : ""}`
+    : v.archived ? '<span class="pill">archivado</span>' : pill(v.lastError && v.status === "en cola" ? "reintento" : v.status);
   $("#app").innerHTML = `<h1>Todos los vídeos</h1>
-    <div class="small muted" style="margin:-4px 0 10px">Todos: también los subidos y los archivados. Cambia el canal de un vídeo con su desplegable (no se rehace: solo cambia dónde cuenta).</div>
-    <input placeholder="🔎 Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)" style="margin-bottom:8px">
-    <div class="yt-tools">${["todos", "subidos", "sin subir", "en marcha", "archivados"].map((s) => `<button class="yt-chip ${f.state === s ? "on" : ""}" onclick="allFilter.state='${s}';allVideosPage()">${s}
-      <span class="muted">${s === "todos" ? data.videos.length : count((v) => stateOf(v) === s)}</span></button>`).join("")}</div>
-    <div class="yt-tools">${[["", "todo"], ["videos", "🎬 vídeos"], ["shorts", "📱 Shorts"]].map(([k, name]) => `<button class="yt-chip ${(f.kind || "") === k ? "on" : ""}" onclick="allFilter.kind='${k}';allVideosPage()">${name}
-      <span class="muted">${count((v) => !k || (k === "shorts" ? v.short : !v.short))}</span></button>`).join("")}</div>
-    <div class="yt-tools">${["", ...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) => `<button class="yt-chip ${f.channel === c ? "on" : ""}" onclick="allFilter.channel='${esc(c)}';allVideosPage()">
-      ${c && c !== "(sin canal)" ? `<i class="dot" style="background:${chColor(c)}"></i>` : ""}${c || "Todos los canales"}
-      <span class="muted">${c === "" ? data.videos.length : count((v) => c === "(sin canal)" ? !v.channel : v.channel === c)}</span></button>`).join("")}</div>
-    <div class="small muted" style="margin:6px 0">${list.length} vídeo(s)</div>
-    <div class="card" style="padding:4px 14px">${list.map((v) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
-        <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap">
-          <a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600;min-width:0">${esc(v.title || v.slug)}</a>
-          <select style="width:auto;padding:2px 6px" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch((e)=>alert(e.message))">
-            ${v.channel ? "" : "<option selected>(sin canal)</option>"}${data.channels.map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
-        <div class="small muted">${esc(v.title ? v.slug : "")}${v.title ? " · " : ""}${v.published ? `📺 subido ${esc(String(v.published.at || "").slice(0, 10))}${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}`
-          : v.archived ? "archivado" : esc(v.status)}</div></div>`).join("") || '<div class="muted" style="padding:12px 0">Ninguno con estos filtros.</div>'}</div>`;
+    <div class="hb" style="margin-top:0"><div class="tools">
+      <input placeholder="Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)" style="width:260px">
+      <select onchange="allFilter.channel=this.value;allVideosPage()"><option value="">Todos los canales (${data.videos.length})</option>${[...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) =>
+        `<option value="${esc(c)}" ${f.channel === c ? "selected" : ""}>${esc(c)} (${count((v) => c === "(sin canal)" ? !v.channel : v.channel === c)})</option>`).join("")}</select>
+      ${data.videos.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${(f.kind || "") === k ? "on" : ""}" onclick="allFilter.kind='${k}';allVideosPage()">${name}</button>`).join("")}</span>` : ""}</div>
+      <div class="tools"><span class="seg">${["todos", "en marcha", "sin subir", "subidos", "archivados"].map((st) => `<button class="${f.state === st ? "on" : ""}" onclick="allFilter.state='${st}';allVideosPage()">${st} <span class="muted">${st === "todos" ? data.videos.length : count((v) => stateOf(v) === st)}</span></button>`).join("")}</span></div></div>
+    <div class="small muted" style="margin:4px 0 8px">${list.length} vídeo(s). El desplegable de canal cambia dónde cuenta el vídeo (no se rehace).</div>
+    <div class="block"><div style="overflow:auto"><table class="vt"><thead><tr>${th("title", "Vídeo")}${th("channel", "Canal", "wide")}${th("updated", "Estado")}${th("minutes", "Dura", "r wide")}${th("cost", "API", "r wide")}</tr></thead>
+      <tbody>${list.map((v) => `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.title ? v.slug : "")}</div></td>
+        <td class="wide"><select style="width:auto;padding:2px 6px;font-size:12.5px" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch((e)=>alert(e.message))">
+          ${v.channel ? (data.channels.includes(v.channel) ? "" : `<option selected>${esc(v.channel)}</option>`) : "<option selected>(sin canal)</option>"}${data.channels.map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td>
+        <td>${state(v)}</td><td class="r wide">${v.minutes ? v.minutes + " min" : "—"}</td><td class="r wide">${v.costUsd ? v.costUsd + " $" : "—"}</td></tr>`).join("")
+        || '<tr><td colspan="5" class="muted" style="padding:14px">Ninguno con estos filtros.</td></tr>'}</tbody></table></div></div>`;
 }
 
 async function doctorCard(refresh) {
@@ -2358,6 +2373,7 @@ const UPLOAD_STEPS = [["video", "Vídeo subido"], ["title", "Título"], ["descri
   ["community", "Post de comunidad"], ["shorts", "Shorts"]];
 let uploadChannel = (() => { try { return localStorage.getItem("subir:canal") || ""; } catch (e) { return ""; } })();
 window.pickUploadChannel = (c) => { uploadChannel = c; try { localStorage.setItem("subir:canal", c); } catch (e) {} uploadPage(); };
+let uploadOpenAll = false;
 async function uploadPage() {
   const r = await api("/api/upload");
   copyTexts.length = 0;
@@ -2382,11 +2398,13 @@ async function uploadPage() {
       const prev = i ? list[i - 1] : null;
       const prevGroup = !prev ? null : !prev.date ? "Sin día en el calendario" : prev.date < today ? "Atrasados" : prev.date === today ? "Hoy" : DAY(prev.date);
       const done = UPLOAD_STEPS.filter(([k]) => checked(v.slug, k)).length;
+      const video = v.files.find((x) => !x.image && !x.still && /video|mp4/i.test(x.label + " " + x.path));
       return `${group !== prevGroup ? `<div class="daylabel ${late ? "late" : v.date === today ? "today" : ""}">${esc(group)}</div>` : ""}
-      <details class="upl" ${i === 0 ? "open" : ""}><summary><span class="dot" style="background:${chColor(v.channel)}"></span>
+      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""}><summary><span class="dot" style="background:${chColor(v.channel)}"></span>
         <div style="min-width:0"><b style="font-size:1.05em">${esc(v.title || v.slug)}</b>
-          <div class="small muted">${esc(v.channel)} · ${esc(v.slug)} · ${done}/${UPLOAD_STEPS.length} pasos</div></div>
-        <span class="pill ${late ? "error" : "hecho"}">${late ? "⚠️ tocaba " : "📅 "}${when}</span></summary><div class="in">
+          <div class="small muted">${esc(v.channel)} · ${esc(v.slug)}${v.minutes ? ` · ${v.minutes} min` : ""} · <span class="mini" style="display:inline-block;width:70px;height:6px;background:var(--panel2);border-radius:99px;vertical-align:middle;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(100 * done / UPLOAD_STEPS.length)}%;background:var(--ok)"></i></span> ${done}/${UPLOAD_STEPS.length} pasos</div></div>
+        <span class="row" style="gap:6px;justify-content:flex-end"><span class="pill ${late ? "error" : "hecho"}">${late ? "tocaba " : ""}${when}</span>
+          ${video ? `<a class="btn" href="${f(video.path)}" download onclick="event.stopPropagation()" style="padding:5px 10px;font-size:12.5px">⬇ Vídeo${video.mb ? ` (${video.mb} MB)` : ""}</a>` : ""}</span></summary><div class="in">
         <div class="small"><a href="#/video/${encodeURIComponent(v.slug)}">Abrir la ficha del vídeo →</a></div>
         <div class="row" style="flex-wrap:wrap;gap:6px;margin:12px 0">${UPLOAD_STEPS.map(([k, name]) =>
           `<label class="small" style="display:flex;gap:4px;align-items:center;font-weight:400"><input type="checkbox" style="width:auto"
@@ -2631,7 +2649,8 @@ async function route() {
   const hash = location.hash || "#/";
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
-  const slow = setTimeout(() => $("#app").classList.add("loading"), 250);     // a slow answer shows it is working
+  const slow = setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
+    if (!$("#app").firstElementChild) $("#app").innerHTML = '<div class="skel"><div style="width:40%"></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>'; }, 250);
   try {
     if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
