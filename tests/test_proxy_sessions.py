@@ -150,13 +150,14 @@ def test_the_ffmpeg_that_fetches_a_range_gets_the_proxy_as_an_option_not_only_th
 
 
 def test_range_downloads_build_their_ffmpeg_arguments_when_they_run(tmp_path, monkeypatch):
+    # a home proxy: through a residential one the segments come in-process (test_hls_local) and ffmpeg stays local
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
-    yt = _source(tmp_path, proxy=RESI)
+    yt = _source(tmp_path, proxy=HOME)
     yt._local.video_id = "dQw4w9WgXcQ"
     info = yt._full_info_path("dQw4w9WgXcQ")
     info.parent.mkdir(parents=True)
     info.write_text(json.dumps({"formats": [{"vcodec": "avc1", "protocol": "m3u8_native", "url": "https://x/expire/9999999999/"}],
-                                "_edit_vid3_clients": yt._clients(), "_edit_vid3_via": "", "_edit_vid3_session": yt.sessions.session_id("dQw4w9WgXcQ")}))
+                                "_edit_vid3_clients": yt._clients(), "_edit_vid3_via": "", "_edit_vid3_session": None}))
     seen = {}
 
     class FakeYdl:
@@ -178,7 +179,7 @@ def test_range_downloads_build_their_ffmpeg_arguments_when_they_run(tmp_path, mo
         {"streams": [{"start_time": "10.0", "height": 720}], "format": {"duration": "5"}})})())
     yt.download_range("dQw4w9WgXcQ", 10, 15, fmt="bv*[height<=720]", prefix="hd")
     ffmpeg_i = seen["external_downloader_args"]["ffmpeg_i"]
-    assert ffmpeg_i[ffmpeg_i.index("-http_proxy") + 1] == with_sticky_session(RESI, yt.sessions.session_id("dQw4w9WgXcQ"))
+    assert ffmpeg_i[ffmpeg_i.index("-http_proxy") + 1] == HOME
     yt.close()
 
 

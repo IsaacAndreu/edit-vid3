@@ -222,6 +222,39 @@ def requested_height(fmt: str) -> int | None:
 RANGE_FAMILY = {"a360": ("a360", "hd", "hdav"), "hd": ("hd", "hdav"), "hdav": ("hdav",), "au": ("au",)}
 
 
+def parse_media_playlist(text: str, base_url: str = "") -> tuple[list[tuple[str, float, float]], str | None]:
+    """An HLS media playlist → ([(segment url, start s, end s)…], init segment url or None). Only what YouTube's
+    VOD playlists use: #EXTINF durations, #EXT-X-MAP and plain URL lines (relative ones resolved against base_url)."""
+
+    from urllib.parse import urljoin
+
+    segments: list[tuple[str, float, float]] = []
+    init_url: str | None = None
+    clock = 0.0
+    duration: float | None = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#EXT-X-MAP:"):
+            found = re.search(r'URI="([^"]+)"', line)
+            if found:
+                init_url = urljoin(base_url, found.group(1)) if base_url else found.group(1)
+        elif line.startswith("#EXTINF:"):
+            try:
+                duration = float(line[len("#EXTINF:"):].split(",", 1)[0])
+            except ValueError:
+                duration = None
+        elif not line.startswith("#"):
+            if duration is None:
+                continue
+            url = urljoin(base_url, line) if base_url else line
+            segments.append((url, clock, clock + duration))
+            clock += duration
+            duration = None
+    return segments, init_url
+
+
 def whole_format(fmt: str) -> str:
     """The same request over plain HTTPS (fetched in 10 MB pieces), video+audio pairs included: YouTube hardly
     offers files with both any more, and dropping the pairs sent every clip with sound to the slow per-range
@@ -1481,6 +1514,11 @@ class YouTubeSource:
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
         if hls and _has_hls(info_path):
             try:
+                if self.residential:
+                    # ffmpeg cannot authenticate against this proxy (it answers the CONNECT with a lowercase
+                    # «proxy-authenticate: basic» that ffmpeg does not parse): the segments come down here, through
+                    # the sticky session, and ffmpeg only cuts local files
+                    return self._fetch_hls_locally(video_id, start, end, hls, prefix, audio, audio_only, info_path)
                 return self._fetch_range(video_id, start, end, hls, prefix, audio, audio_only, info_path, exact=True)
             except (RuntimeError, SourceUnavailable) as error:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
@@ -1560,6 +1598,103 @@ class YouTubeSource:
             return int((json.loads(probe.stdout or "{}").get("streams") or [{}])[0].get("height") or 0) or None
         except (OSError, ValueError, TypeError, IndexError):
             return None
+
+    def _fetch_hls_locally(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
+                           audio_only: bool, info_path: Path) -> Path:
+        """[start, end] from the HLS stream yt-dlp would choose, without ffmpeg ever touching the network: the media
+        playlist and only the segments covering the range are fetched here (requests, through this video's sticky
+        session, so the proxy authenticates and the IP matches the URLs), written as a local playlist, and ffmpeg
+        cuts those seconds exactly. Stale links (403/410) are refreshed once, like the ffmpeg path."""
+
+        import json
+        import shutil
+        import subprocess
+        from urllib.parse import urljoin
+
+        target_dir = self.cache_dir / "videos" / video_id
+        suffix = ".m4a" if audio_only else ".mp4"
+        work = target_dir / f"hls_{prefix}_{start:.2f}_{end:.2f}"
+
+        def choose(path: Path) -> dict[str, Any]:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
+                chosen = ydl.process_ie_result(dict(data), download=False)
+            piece = (chosen.get("requested_formats") or [chosen])[0]
+            if not str(piece.get("protocol") or "").startswith("m3u8"):
+                raise RuntimeError("yt-dlp download (HLS): Requested format is not available (no HLS stream)")
+            return piece
+
+        def fetch(piece: dict[str, Any]) -> tuple[list[Path], float, Path | None]:
+            way = getattr(self._local, "way", 0) or 0
+            headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
+            proxies = self._requests_proxies(way)
+
+            def get(url: str) -> bytes:
+                response = self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies)
+                if response.status_code >= 400:
+                    raise RuntimeError(f"yt-dlp download (HLS): HTTP Error {response.status_code}: {response.reason}")
+                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(response.content)
+                return response.content
+
+            playlist_url = str(piece["url"])
+            segments, init_url = parse_media_playlist(get(playlist_url).decode("utf-8", "replace"), playlist_url)
+            if not segments:
+                raise RuntimeError("yt-dlp download (HLS): empty media playlist")
+            wanted = [seg for seg in segments if seg[2] > start + 1e-3 and seg[1] < end - 1e-3]
+            if not wanted:
+                raise RuntimeError(f"yt-dlp download (HLS): no segment covers {start:.1f}-{end:.1f} s")
+            shutil.rmtree(work, ignore_errors=True)
+            work.mkdir(parents=True, exist_ok=True)
+            init_path = None
+            if init_url:
+                init_path = work / "init.mp4"
+                init_path.write_bytes(get(urljoin(playlist_url, init_url)))
+            paths: list[Path] = []
+            for index, (url, _, _) in enumerate(wanted):
+                path = work / f"seg{index:03d}.ts"
+                path.write_bytes(get(urljoin(playlist_url, url)))
+                paths.append(path)
+            lines = ["#EXTM3U", "#EXT-X-VERSION:3", f"#EXT-X-TARGETDURATION:{int(max(b - a for _, a, b in wanted)) + 1}",
+                     "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-PLAYLIST-TYPE:VOD"]
+            if init_path is not None:
+                lines.append(f'#EXT-X-MAP:URI="{init_path.name}"')
+            for path, (_, a, b) in zip(paths, wanted):
+                lines += [f"#EXTINF:{b - a:.3f},", path.name]
+            lines.append("#EXT-X-ENDLIST")
+            local = work / "local.m3u8"
+            local.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return paths, wanted[0][1], local
+
+        piece = choose(info_path)
+        try:
+            try:
+                _, first_start, playlist = self._call("download (HLS)", lambda: fetch(piece))
+            except RuntimeError as error:
+                if not any(code in str(error) for code in ("HTTP Error 403", "HTTP Error 410", "HTTP Error 404")):
+                    raise
+                self._full_info_path(video_id).unlink(missing_ok=True)      # stale links: fresh ones, once more
+                piece = choose(self._fresh_full_info(video_id))
+                _, first_start, playlist = self._call("download (HLS)", lambda: fetch(piece))
+            target = target_dir / f"{prefix}_{start:.3f}_{end:.3f}{suffix}"
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                       "-protocol_whitelist", "file,crypto,data", "-allowed_extensions", "ALL",
+                       "-ss", f"{max(0.0, start - first_start):.3f}", "-i", str(playlist), "-t", f"{end - start:.3f}"]
+            if audio_only:
+                command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(target)]
+            else:
+                command += ["-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)]
+            done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
+            if done.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
+                target.unlink(missing_ok=True)
+                words = " ".join((done.stderr or "").split())[:200]
+                raise RuntimeError(f"yt-dlp download (HLS): el corte local falló: {words or f'ffmpeg código {done.returncode}'}")
+            if not audio_only:
+                height = piece.get("height")
+                self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
+            return target
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:
         """The whole source, fetched by yt-dlp itself in 10 MB pieces (each one a separate request, which YouTube
