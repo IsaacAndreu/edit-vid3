@@ -258,7 +258,7 @@ def test_a_line_with_nothing_new_moves_the_camera_and_keeps_what_is_drawn(tmp_pa
     cams = [out[f"s{i}"]["camera"] for i in range(1, 9)]
     assert len({(c["lon"], c["zoom"]) for c in cams}) > 3                      # never the same globe line after line
     assert all(out[f"s{i}"]["points"] for i in range(1, 9))                    # Brasília stays on it
-    assert all(abs(c["lon"] - cam["lon"]) <= 3.5 + 1e-6 and cam["zoom"] - 0.2 - 1e-6 <= c["zoom"] <= cam["zoom"] for c in cams)
+    assert all(atlas._angle((c["lat"], c["lon"]), (cam["lat"], cam["lon"])) <= atlas.DRIFT_MAX + 1e-6 and cam["zoom"] - 0.2 - 1e-6 <= c["zoom"] <= cam["zoom"] for c in cams)
 
 
 def test_a_bar_chart_only_with_the_figures_the_script_says():
@@ -275,3 +275,15 @@ def test_a_bar_chart_only_with_the_figures_the_script_says():
     assert one["view"] == "globe" and one["chart"] is None and one["counter"]["value"] == 41.8
     words = atlas.check_chart(atlas.clean(chart([("A", 3), ("B", 5)]), None), "três contra cinco")
     assert len(words["chart"]["bars"]) == 2                                      # figures in words: not checked
+
+
+def test_one_dot_per_place_and_no_bare_numbers():
+    scene = atlas.clean({"camera": {"lat": -77, "lon": 166, "zoom": 1.5},
+                         "points": [{"name": "McMurdo", "lat": -77.8, "lon": 166.7}, {"name": "Base McMurdo", "lat": -77.85, "lon": 166.67}],
+                         "tags": [{"text": "3"}, {"text": "257"}]}, None)
+    assert [p["name"] for p in scene["points"]] == ["BASE MCMURDO"] and [t["text"] for t in scene["tags"]] == ["257"]
+    later = atlas.carry(atlas.clean({"camera": {"lat": -77, "lon": 166, "zoom": 1.5},
+                                     "points": [{"name": "Estreito de McMurdo", "lat": -77.9, "lon": 166.5}]}, scene), scene)
+    assert [p["name"] for p in later["points"]] == ["ESTREITO DE MCMURDO"]          # not two names on one dot
+    polar = atlas.drift({"lat": -78, "lon": 166, "zoom": 1.5}, 2)
+    assert 10 < atlas._angle((polar["lat"], polar["lon"]), (-78, 166)) <= atlas.DRIFT_MAX + 1e-6   # moves near a pole too

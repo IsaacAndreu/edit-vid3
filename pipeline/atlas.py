@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 9
+VERSION = 10
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -219,8 +219,13 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     out["tags"] = [{"text": _text(t.get("text"), 4, False, 26), "lat": _point(t)[0] if _point(t) else None,
                     "lon": _point(t)[1] if _point(t) else None, "at": _at(t.get("at"))}
                    for t in (scene.get("tags") or [])[:3] if isinstance(t, dict) and str(t.get("text") or "").strip()]
-    out["points"] = [{"name": _text(p.get("name"), 3, True, 28), "lat": _point(p)[0], "lon": _point(p)[1], "at": _at(p.get("at"))}
-                     for p in (scene.get("points") or [])[:6] if isinstance(p, dict) and _point(p) and str(p.get("name") or "").strip()]
+    points = [{"name": _text(p.get("name"), 3, True, 28), "lat": _point(p)[0], "lon": _point(p)[1], "at": _at(p.get("at"))}
+              for p in (scene.get("points") or [])[:6] if isinstance(p, dict) and _point(p) and str(p.get("name") or "").strip()]
+    # one dot per place: «MCMURDO» and «BASE MCMURDO» on the same spot are one (the last name wins)
+    out["points"] = [p for i, p in enumerate(points)
+                     if not any(_angle((p["lat"], p["lon"]), (q["lat"], q["lon"])) < SAME_SPOT for q in points[i + 1:])]
+    # a bare small number («1», «3») says nothing on a map: a figure needs its unit, a year or a time
+    out["tags"] = [t for t in out["tags"] if not re.fullmatch(r"\d", t["text"].strip())]
     routes = []
     for r in (scene.get("routes") or [])[:12]:
         if isinstance(r, dict) and _point(r.get("from")) and _point(r.get("to")):
@@ -501,6 +506,7 @@ def fit_camera(scene: dict[str, Any]) -> dict[str, Any]:
 
 
 LIMITS = {"points": 8, "routes": 12, "rings": 6}
+SAME_SPOT = 0.3       # degrees (~30 km): two names this close are one place, one dot
 REGION_ZOOM = 4.4     # the smallest close view: the globe fills the whole screen
 REGION_SPAN = 14      # degrees from the camera a close view shows of what it draws; farther → back to the whole globe
 MAX_CLOSE = 9.0       # the closest map (Remotion: radius 350·1.42^(zoom-1) px → ~1° = 100 px)
@@ -525,15 +531,17 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     repeats them). The zone and the night stay too. A new place starts clean."""
 
     scene = carry_night(scene, previous)
+    # a camera drifting on a quiet stretch (drift()) is still at the place its lines asked for («ask»)
     if not previous or scene.get("view") != "globe" or previous.get("view") != "globe" \
-            or not _same_place(scene["camera"], previous["camera"]):
+            or not _same_place(scene["camera"], previous.get("ask") or previous["camera"]):
         return scene
     out = dict(scene)
     out["camera"] = dict(previous["camera"])            # the same place: no tiny turn of the globe between lines
     for kind, limit in LIMITS.items():
         new = list(scene.get(kind) or [])
         seen = {_key(kind, x) for x in new}
-        kept = [{**x, "at": "", "kept": True} for x in previous.get(kind) or [] if _key(kind, x) not in seen]
+        kept = [{**x, "at": "", "kept": True} for x in previous.get(kind) or [] if _key(kind, x) not in seen
+                and not (kind == "points" and any(_angle((x["lat"], x["lon"]), (p["lat"], p["lon"])) < SAME_SPOT for p in new))]
         out[kind] = (kept + new)[-limit:]
     for name in ("zone", "meridians"):
         if not scene.get(name) and previous.get(name):
@@ -624,13 +632,14 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
 NEW_FIELDS = ("card", "stamp", "headline", "counter", "chart", "icon", "sat", "flat", "size")
 
 
-def stale(scene: dict[str, Any], previous: dict[str, Any] | None) -> bool:
+def stale(scene: dict[str, Any], previous: dict[str, Any] | None, asked: dict[str, Any] | None = None) -> bool:
     """The line adds nothing to the screen: the same place, every dot, route, ring and tag kept from before, no card,
     stamp, counter… of its own, the same night and countries (atlas1pt: 16-36 s of the same globe)."""
 
     if not previous or scene.get("view") != "globe" or previous.get("view") != "globe":
         return False
-    if not _same_place(scene["camera"], previous["camera"]):
+    # where the line asked to look (before carry put it on the drifting camera) against where the last one asked
+    if not _same_place(asked or scene["camera"], previous.get("ask") or previous["camera"]):
         return False
     for kind in ("points", "routes", "rings", "tags", "countries"):
         if any(not x.get("kept") for x in scene.get(kind) or []):
@@ -643,17 +652,19 @@ def stale(scene: dict[str, Any], previous: dict[str, Any] | None) -> bool:
 
 
 DRIFT = (0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0.0)    # of the step: a slow back-and-forth
-DRIFT_PX = 60         # how far the picture slides at the widest step
+DRIFT_PX = 110        # how far the picture slides at the widest step (60 read as still on a pale ocean)
+DRIFT_MAX = 14.0      # degrees, the whole globe (110 px there is ~14°)
 
 
 def drift(anchor: dict[str, Any], run: int) -> dict[str, Any]:
     """The camera for the run-th line in a row with nothing new: it slides ~DRIFT_PX east and back and breathes in and
-    out (zoom 0.2 lower every other line, never closer than the line asked). Always within 3.5° and 0.2 zoom of
-    `anchor` (the camera the lines ask for), so the next line is still «the same place» and keeps what is drawn."""
+    out (zoom 0.2 lower every other line, never closer than the line asked). The scene keeps `anchor` (the camera its
+    lines ask for) as «ask», so the next line is still «the same place» (carry) and keeps what is drawn."""
 
     radius = 350 * 1.42 ** (anchor["zoom"] - 1)
-    step = min(3.5, math.degrees(math.asin(min(1.0, DRIFT_PX / radius))))
-    shift = step * DRIFT[(run - 1) % len(DRIFT)]
+    step = min(DRIFT_MAX, math.degrees(math.asin(min(1.0, DRIFT_PX / radius))))
+    # degrees on the globe, east: near a pole a degree of longitude is much shorter (McMurdo, 78° S)
+    shift = step * DRIFT[(run - 1) % len(DRIFT)] / max(0.25, math.cos(math.radians(anchor["lat"])))
     return {"lat": anchor["lat"], "lon": round((anchor["lon"] + shift + 180) % 360 - 180, 4),
             "zoom": round(anchor["zoom"] - (0.2 if run % 2 else 0.0), 2)}
 
@@ -727,10 +738,10 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         scene = fit_camera(check_chart(clean(raw, previous), around))
         before = previous
         previous = auto_tag(carry(scene, previous), lines[n - 1][1], previous)
-        if stale(previous, before):           # nothing new on screen: the camera moves a little (never a still globe)
+        if stale(previous, before, scene["camera"]):           # nothing new on screen: the camera moves a little (never a still globe)
             run = run + 1 if run else 1
             anchor = anchor or dict(before["camera"])
-            previous = {**previous, "camera": drift(anchor, run)}
+            previous = {**previous, "camera": drift(anchor, run), "ask": anchor}
         else:
             run, anchor = 0, None
         out[shot_id] = previous
