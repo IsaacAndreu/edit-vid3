@@ -186,6 +186,11 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
   del storyboard (i.ytimg.com) van directas y solo por el proxy si eso falla.
 - **Tramos a 720p/30 fps** (`max_height`, `max_fps`) y biblioteca por (vídeo, rango, resolución): un tramo ya bajado
   por otro vídeo, o uno más rico que cubra esos segundos, no vuelve a pasar por el proxy.
+- **Los tramos HLS los baja el programa**, no ffmpeg: Rainproxy responde al `CONNECT` con `407` y `proxy-authenticate:
+  basic` en minúsculas, que ffmpeg no entiende (todos los «ffmpeg exited with code 8»). Se piden solo los segmentos del
+  tramo por la sesión del vídeo y ffmpeg corta en local. Un vídeo sin HLS solo se baja entero si dura menos de
+  `whole_max_minutes_residential` (10) y pesa menos de `whole_max_mb_residential` (80 MB): por encima, el plano pasa
+  al siguiente candidato (en casa siguen `whole_max_minutes` 30 / `whole_max_mb` 600).
 - **Medición:** cada fila de `youtube_downloads.jsonl` lleva sesión y `proxy_bytes`; `python main.py --youtube-stats`
   añade la tabla «Proxy» (éxito %, 403/bot/429/timeout, conexiones, GB, GB por vídeo terminado y coste a
   `proxy_usd_per_gb`, 0.62 $/GB por defecto). Metas: ≥ 90 % de éxito y GB por vídeo terminado a la mitad.

@@ -1561,7 +1561,25 @@ class YouTubeSource:
                 whole = None
             if whole is not None:
                 return self._cut(whole, video_id, start, end, prefix, audio)
+        if self.residential:
+            # the HTTPS range goes through ffmpeg, which cannot authenticate against this proxy: nothing left to try
+            raise RuntimeError(f"yt-dlp download: {video_id} no tiene HLS y entero supera el tope del proxy residencial "
+                               f"({self._whole_caps()[1]:g} MB / {self._whole_caps()[0]:g} min, whole_max_*_residential); "
+                               "se pasa al siguiente candidato")
         return self._fetch_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path, exact=False)
+
+    def _whole_caps(self) -> tuple[float, float]:
+        """(minutes, MB) a video may have to be downloaded whole for one clip: sourcing.youtube.whole_max_minutes (30)
+        and whole_max_mb (600) at home; whole_max_minutes_residential (10) and whole_max_mb_residential (80) through a
+        paid proxy."""
+
+        if self.residential:
+            return (float(self.cfg.get("whole_max_minutes_residential", 10)), float(self.cfg.get("whole_max_mb_residential", 80)))
+        return (float(self.cfg.get("whole_max_minutes", 30)), float(self.cfg.get("whole_max_mb", 600)))
+
+    def _whole_skipped(self, video_id: str, why: str) -> None:
+        if self.residential:
+            print(f"   yt:{video_id}: sin HLS y {why}: no se baja entero por el proxy residencial; siguiente candidato")
 
     def _library_range(self, target_dir: Path, prefix: str, suffix: str, start: float, end: float,
                        wanted: int | None) -> Path | None:
@@ -1728,7 +1746,11 @@ class YouTubeSource:
         if done is not None and done.suffix in (".mp4", ".mkv", ".webm"):
             return done
         data = json.loads(info_path.read_text(encoding="utf-8"))
-        if float(data.get("duration") or 0) > 60 * float(self.cfg.get("whole_max_minutes", 30)):
+        # Through a paid residential proxy a whole video for a 5 s clip is the costliest thing this program does
+        # (330 MB seen for one clip): much lower caps there, and past them the shot takes its next candidate.
+        max_minutes, max_mb = self._whole_caps()
+        if float(data.get("duration") or 0) > 60 * max_minutes:
+            self._whole_skipped(video_id, f"dura {float(data.get('duration') or 0) / 60:.0f} min (> {max_minutes:g} min)")
             return None
         fmt = whole_format(fmt)
         with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
@@ -1737,8 +1759,11 @@ class YouTubeSource:
         if any(str(f.get("protocol") or "").startswith(("m3u8", "http_dash")) for f in pieces):
             return None
         size = sum(float(f.get("filesize") or f.get("filesize_approx") or 0) for f in pieces)
-        if size > 1e6 * float(self.cfg.get("whole_max_mb", 600)):
+        if size > 1e6 * max_mb:
+            self._whole_skipped(video_id, f"pesa {size / 1e6:.0f} MB (> {max_mb:g} MB)")
             return None
+        if self.residential:
+            print(f"   yt:{video_id}: sin HLS; se baja entero por el proxy ({size / 1e6:.0f} MB) para cortar el tramo")
         with self._whole_locks_guard:
             lock = self._whole_locks.setdefault(video_id, threading.Lock())
         with lock:                                     # two clips of one video: one download
