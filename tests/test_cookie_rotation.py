@@ -616,10 +616,12 @@ def test_metadata_goes_through_the_metadata_proxy_and_the_download_extracts_agai
 
     monkeypatch.setattr(yt, "_extract", extract)
     yt.info("abc")
-    assert seen == [("http://u:p@gate.example:7000", None)] * 2 and not yt.refused("abc")
+    # a residential proxy (user in the URL) carries this video's sticky session in its username
+    assert len(seen) == 2 and not yt.refused("abc")
+    assert all(p.startswith("http://u-time-30-session-") and p.endswith(":p@gate.example:7000") and c is None for p, c in seen)
     assert json.loads(yt._full_info_path("abc").read_text())["_edit_vid3_via"] == "metadata_proxy"
     yt._fresh_full_info("abc")                          # its stream URLs are the proxy's: again, the usual way
-    assert seen[-1][0] != "http://u:p@gate.example:7000"
+    assert "gate.example" not in (seen[-1][0] or "")
     assert json.loads(yt._full_info_path("abc").read_text())["_edit_vid3_via"] == ""
     yt.close()
 

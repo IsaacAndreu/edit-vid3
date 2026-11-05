@@ -27,6 +27,7 @@ from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
+from .proxy_sessions import ProxySessions, is_residential, mask_proxy, with_sticky_session
 
 
 _BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
@@ -246,6 +247,11 @@ class YouTubeSource:
         # Downloads keep going out the usual way: stream URLs belong to the IP that asked for them, so a video to be
         # downloaded is extracted again that way first (_fresh_full_info), and the proxy's paid GB are only JSON.
         self.metadata_proxy = str(os.environ.get("YOUTUBE_METADATA_PROXY") or config.get("metadata_proxy") or "").strip()
+        # A paid residential proxy (a user in its URL) changes IP on every connection unless the username carries the
+        # provider's session suffix: one session per video (proxy_session_minutes, 30) so its metadata, storyboard
+        # and ranges all leave from the IP its stream URLs belong to. Home proxies (no user) are one fixed IP: untouched.
+        self.sessions = ProxySessions(cache_dir / "videos", minutes=float(config.get("proxy_session_minutes", 30)),
+                                      max_rotations=int(config.get("proxy_session_rotations", 2)))
         # «modo sin YouTube» (pipeline/sin_youtube.py, while the queue's YouTube pause lasts): what is on disk is still
         # read, but nothing goes out — every request stops here before the network, with this reason
         from ..sin_youtube import REASON, active
@@ -396,6 +402,9 @@ class YouTubeSource:
             row["proxy"] = "metadatos"
         elif len(self.proxies) > 1:
             row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
+        session = self._session_in_use()
+        if session:
+            row["session"] = session
         if span is not None:             # the source seconds of a clip: overlapping downloads can be found later
             row["start"], row["end"] = round(span[0], 2), round(span[1], 2)
         if size is not None:
@@ -476,7 +485,7 @@ class YouTubeSource:
 
         options = {**self.base_options, **(extra or {})}
         if getattr(self._local, "via_metadata_proxy", False):
-            options["proxy"] = self.metadata_proxy          # a new residential IP per request: no account, ever
+            options["proxy"] = self._proxy_for(self.metadata_proxy)   # no account through it, ever
             options.pop("cookiefile", None)
             options.pop("cookiesfrombrowser", None)
             if self.cfg.get("metadata_proxy_light", False) and not getattr(self._local, "mp_heavy", False):
@@ -486,12 +495,32 @@ class YouTubeSource:
                 args["youtube"] = {**(args.get("youtube") or {}), "player_skip": ["webpage"]}
                 options["extractor_args"] = args
             return yt_dlp.YoutubeDL(options)
-        if len(self.proxies) > 1:
-            options["proxy"] = self.proxies[getattr(self._local, "way", 0) or 0]
+        if self.proxies:
+            options["proxy"] = self._proxy_for(self.proxies[getattr(self._local, "way", 0) or 0])
         cookie_file = self._cookie_file()
         if cookie_file:
             options["cookiefile"] = cookie_file
         return yt_dlp.YoutubeDL(options)
+
+    def _session_key(self) -> str:
+        """Whose sticky session a request uses: the video it is about, or the shared one for searches."""
+
+        return getattr(self._local, "video_id", None) or "search"
+
+    def _proxy_for(self, proxy: str) -> str:
+        """`proxy` as yt-dlp (and the ffmpeg it drives) or requests must use it: a residential one gets this video's
+        sticky session in its username; a home proxy (no user) is returned as it is."""
+
+        if not is_residential(proxy):
+            return proxy
+        return with_sticky_session(proxy, self.sessions.session_id(self._session_key()))
+
+    def _session_in_use(self) -> str | None:
+        """The sticky session id the current request leaves with (None through a home proxy or directly)."""
+
+        via_metadata = getattr(self._local, "via_metadata_proxy", False)
+        proxy = self.metadata_proxy if via_metadata else (self.proxies[getattr(self._local, "way", 0) or 0] if self.proxies else "")
+        return self.sessions.session_id(self._session_key()) if is_residential(proxy) else None
 
     def _calm_down(self) -> None:
         """Back to `concurrency` requests at a time: the extra slots are taken and never given back."""
@@ -820,12 +849,28 @@ class YouTubeSource:
         if not any(host in url for host in _FREE_HOSTS):
             self._budget_take(way, REQUEST_UNITS["get"])
         try:
-            return self._sessions[way].get(url, timeout=timeout)
+            return self._session_get(way, url, timeout)
         except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
             if len(self._sessions) == 1:
                 raise
             self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
-            return self._sessions[self._pick_way({way})].get(url, timeout=timeout)
+            return self._session_get(self._pick_way({way}), url, timeout)
+
+    def _session_get(self, way: int, url: str, timeout: float) -> requests.Response:
+        proxies = self._requests_proxies(way)
+        if proxies is None:                   # home proxy or direct: the session's own settings, as always
+            return self._sessions[way].get(url, timeout=timeout)
+        return self._sessions[way].get(url, timeout=timeout, proxies=proxies)
+
+    def _requests_proxies(self, way: int) -> dict[str, str] | None:
+        """Per-request proxies for `requests`: the way's proxy with this video's sticky session when residential;
+        None keeps the session's own (fixed) proxy, or none at all."""
+
+        proxy = self.proxies[way] if self.proxies else ""
+        if not is_residential(proxy):
+            return None
+        sticky = self._proxy_for(proxy)
+        return {"http": sticky, "https": sticky}
 
     def _blocked_everywhere(self) -> None:
         self._remember_block()
@@ -897,6 +942,7 @@ class YouTubeSource:
             else:
                 target = f"ytsearch{limit}:{query}"
                 extra = {"extract_flat": "in_playlist", "skip_download": True}
+            self._local.video_id = None             # a search is nobody's video: the shared sticky session
             info = self._call("search", lambda: self._extract(target, extra))
             keep = ("id", "title", "channel", "uploader", "duration", "url", "live_status", "view_count")
             return [{k: entry.get(k) for k in keep} for entry in (info or {}).get("entries") or [] if isinstance(entry, dict)]
