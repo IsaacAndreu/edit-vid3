@@ -128,3 +128,55 @@ def test_searches_use_the_shared_session_and_the_metrics_record_it(tmp_path, mon
     row = json.loads(yt.metrics_path.read_text().splitlines()[-1])
     assert row["action"] == "search" and row["session"] == yt.sessions.session_id("search") and row["video"] is None
     yt.close()
+
+
+def test_the_ffmpeg_that_fetches_a_range_gets_the_proxy_as_an_option_not_only_the_environment(tmp_path, monkeypatch):
+    # ffmpeg ignores the http_proxy environment variable for https:// (libavformat/http.c); only -http_proxy reaches TLS
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    yt._local.video_id = "dQw4w9WgXcQ"
+    yt._local.way = 0
+    args = yt._ffmpeg_args(exact=True)
+    sid = yt.sessions.session_id("dQw4w9WgXcQ")
+    assert args["ffmpeg_i"] == ["-rw_timeout", "60000000", "-http_proxy",
+                                f"http://user-time-30-session-{sid}:p%40ss@resi-bridge-eu.rainproxy.io:1111"]
+    assert "ffmpeg_o" not in args and yt._ffmpeg_args(exact=False)["ffmpeg_o"] == ["-copyts"]
+    home = _source(tmp_path / "h", proxy=HOME)
+    home._local.way = 0
+    assert home._ffmpeg_args(exact=True)["ffmpeg_i"][-2:] == ["-http_proxy", HOME]      # a home proxy too: same bug
+    direct = _source(tmp_path / "d")
+    assert "-http_proxy" not in direct._ffmpeg_args(exact=True)["ffmpeg_i"]
+    yt.close()
+
+
+def test_range_downloads_build_their_ffmpeg_arguments_when_they_run(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    yt._local.video_id = "dQw4w9WgXcQ"
+    info = yt._full_info_path("dQw4w9WgXcQ")
+    info.parent.mkdir(parents=True)
+    info.write_text(json.dumps({"formats": [{"vcodec": "avc1", "protocol": "m3u8_native", "url": "https://x/expire/9999999999/"}],
+                                "_edit_vid3_clients": yt._clients(), "_edit_vid3_via": "", "_edit_vid3_session": yt.sessions.session_id("dQw4w9WgXcQ")}))
+    seen = {}
+
+    class FakeYdl:
+        def __init__(self, options):
+            seen.update(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def download_with_info_file(self, path):
+            raw = tmp_path / "videos" / "dQw4w9WgXcQ" / "dl_hd_10.00_15.00.mp4"
+            raw.write_bytes(b"x")
+
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: FakeYdl(extra))
+    monkeypatch.setattr("subprocess.run", lambda cmd, **kw: type("P", (), {"returncode": 0, "stdout": json.dumps(
+        {"streams": [{"start_time": "10.0", "height": 720}], "format": {"duration": "5"}})})())
+    yt.download_range("dQw4w9WgXcQ", 10, 15, fmt="bv*[height<=720]", prefix="hd")
+    ffmpeg_i = seen["external_downloader_args"]["ffmpeg_i"]
+    assert ffmpeg_i[ffmpeg_i.index("-http_proxy") + 1] == with_sticky_session(RESI, yt.sessions.session_id("dQw4w9WgXcQ"))
+    yt.close()

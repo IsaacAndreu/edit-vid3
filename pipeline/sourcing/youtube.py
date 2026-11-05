@@ -1640,16 +1640,10 @@ class YouTubeSource:
             "download_ranges": download_range_func(None, [(start, end)]),
             "force_keyframes_at_cuts": exact,             # exact: the file starts right at `start`
         }
-        # ffmpeg (which yt-dlp uses for ranges) waits forever on a connection that stops answering: a proxy PC that
-        # went to sleep mid-download hung instrum4 for 5 hours at 180/191. 60 s without data: that piece fails instead
-        args: dict[str, list[str]] = {"ffmpeg_i": ["-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
-        if not exact:
-            args["ffmpeg_o"] = ["-copyts"]
-        options["external_downloader_args"] = args
         info_file = str(info_path)
 
         def fetch() -> None:
-            with self._ydl(options) as ydl:
+            with self._ydl({**options, "external_downloader_args": self._ffmpeg_args(exact)}) as ydl:
                 ydl.download_with_info_file(info_file)
 
         def attempt() -> tuple[Path, dict[str, Any]] | None:
@@ -1694,6 +1688,26 @@ class YouTubeSource:
             height = info["streams"][0].get("height")
             self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
         return target
+
+    def _ffmpeg_args(self, exact: bool) -> dict[str, list[str]]:
+        """Input/output arguments for the ffmpeg yt-dlp drives for a range (built when the request runs, so they
+        carry the way out it was given).
+
+        -rw_timeout: ffmpeg waits forever on a connection that stops answering (a proxy PC asleep mid-download hung
+        instrum4 for 5 hours at 180/191); range_stall_seconds (60) without data and the piece fails instead.
+        -http_proxy: yt-dlp hands ffmpeg the proxy only through the http_proxy environment variable, and ffmpeg
+        ignores that variable for https:// (libavformat/http.c: `use_proxy = 0` for https; only the -http_proxy
+        option reaches the TLS layer). So every googlevideo range left straight from this server, from an IP the
+        stream URLs were not bound to: 403, «ffmpeg exited with code 8». The option carries the proxy, sticky
+        session included; the HLS demuxer passes it on to every segment request."""
+
+        args: dict[str, list[str]] = {"ffmpeg_i": ["-rw_timeout", str(int(float(self.cfg.get("range_stall_seconds", 60)) * 1e6))]}
+        proxy = self.proxies[getattr(self._local, "way", 0) or 0] if self.proxies else ""
+        if proxy:
+            args["ffmpeg_i"] += ["-http_proxy", self._proxy_for(proxy)]
+        if not exact:
+            args["ffmpeg_o"] = ["-copyts"]
+        return args
 
     def subtitle_file(self, video_id: str, language: str = "en") -> Path | None:
         """The video's subtitles in `language` as WebVTT (uploaded ones, else YouTube's automatic ones), cached."""
