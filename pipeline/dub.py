@@ -495,8 +495,25 @@ def _script_from_voice(ctx: RunContext) -> None:
     (ctx.materials_dir / "guion.txt").write_text(text + "\n", encoding="utf-8")
 
 
+STRETCHED = "editor/stretched/"
+
+
+def stretched_source(work: Path, src: str) -> str | None:
+    """A clip the studio's editor slowed down (editor/stretched/<clip>-<frames>.mp4) comes from <clip>.mp4 in one of
+    the media folders: that one, relative to `work`, or None."""
+
+    stem = Path(src).stem.rsplit("-", 1)[0]
+    for folder in LINKED:
+        if folder.startswith("editor"):
+            continue
+        for candidate in (work / folder).rglob(f"{stem}.mp4") if (work / folder).is_dir() else []:
+            return str(candidate.relative_to(work)).replace("\\", "/")
+    return None
+
+
 def missing_media(original: RunContext) -> list[str]:
-    """Files of the original's timeline that are gone (its heavy folders cleaned after it was finished)."""
+    """Files of the original's timeline that are gone (its heavy folders cleaned after it was finished). A clip the
+    editor slowed down is not one (the dub stretches the clip again): its source clip is, when that is gone too."""
 
     timeline = original.read_json("timeline.json")
     found: list[str] = []
@@ -504,7 +521,10 @@ def missing_media(original: RunContext) -> list[str]:
     def walk(value: Any) -> None:
         if isinstance(value, dict):
             src = value.get("src")
-            if isinstance(src, str) and src and not (original.work_dir / src).exists() \
+            if isinstance(src, str) and src.startswith(STRETCHED) and not (original.work_dir / src).exists():
+                if not stretched_source(original.work_dir, src):
+                    found.append(src)
+            elif isinstance(src, str) and src and not (original.work_dir / src).exists() \
                     and src.split("/", 1)[0] in LINKED:
                 found.append(src)
             for item in value.values():
@@ -606,6 +626,13 @@ def run(ctx: RunContext) -> None:
         source = ctx.work_dir / media["src"]
         if not source.is_file() and (original.work_dir / media["src"]).is_file():
             source = original.work_dir / media["src"]          # a folder this copy does not link: read it there
+        if not source.is_file() and media["src"].startswith(STRETCHED):
+            # the editor's slowed-down copy was cleaned with the original: the clip it came from, stretched here
+            # (gym3.0-pt, gym4.0-pt, gym5.0-pt, gim1.0-pt, gim2.0-pt, gim4.0-pt)
+            found = stretched_source(ctx.work_dir, media["src"]) or stretched_source(original.work_dir, media["src"])
+            if found:
+                media["src"] = found
+                source = ctx.work_dir / found if (ctx.work_dir / found).is_file() else original.work_dir / found
         if not source.is_file():
             raise RuntimeError(f"{shot['id']}: falta su clip {media['src']} (ni en {ctx.slug} ni en {original.slug}): "
                                f"rehaz {original.slug} o quítale ese plano en el editor")

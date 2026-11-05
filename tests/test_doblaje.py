@@ -232,3 +232,13 @@ def test_a_dub_links_the_clips_the_editor_slowed_down_but_not_its_voice(tmp_path
             dub._link_tree(original / folder, copy / folder)
     assert (copy / "editor" / "stretched" / "s249-108.mp4").is_file() and (copy / "graphics" / "flags" / "br.svg").is_file()
     assert not (copy / "editor" / "waveform.json").exists()          # the original's voice stays the original's
+
+
+def test_a_clip_the_editor_slowed_down_is_rebuilt_from_its_source_clip(tmp_path):
+    """gym5.0-pt: «falta su clip editor/stretched/s364-100.mp4 (ni en gym5.0-pt ni en gym5.0)» once gym5.0 was cleaned."""
+
+    work = tmp_path / "work" / "gym5.0"
+    (work / "media").mkdir(parents=True)
+    (work / "media" / "s364.mp4").write_bytes(b"x")
+    assert dub.stretched_source(work, "editor/stretched/s364-100.mp4") == "media/s364.mp4"
+    assert dub.stretched_source(work, "editor/stretched/s999-100.mp4") is None
