@@ -105,3 +105,40 @@ def test_a_residential_metadata_proxy_retries_from_another_session(tmp_path, mon
     yt.info(VIDEO)
     assert len(seen) == 2 and seen[0] != seen[1] and yt.sessions.rotated == 1   # the retry left from another IP
     yt.close()
+
+
+def test_a_502_on_the_proxy_tunnel_rotates_the_session_instead_of_pausing_the_proxy(tmp_path, monkeypatch):
+    from pipeline.sourcing.youtube import tunnel_failure
+
+    assert tunnel_failure("unable to connect to proxy', oserror('tunnel connection failed: 502 bad gateway')") == "502"
+    assert tunnel_failure("tunnel connection failed: 407 proxy authentication required") is None
+    assert tunnel_failure("http error 403") is None
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._local.video_id = VIDEO
+    seen = []
+
+    def dead_node():
+        seen.append(yt._ydl().params["proxy"])
+        if len(seen) < 3:
+            raise RuntimeError("[youtube] x: Unable to download API page: ('Unable to connect to proxy', "
+                               "OSError('Tunnel connection failed: 502 Bad Gateway'))")
+        return "ok"
+
+    assert yt._call("metadata", dead_node) == "ok"
+    assert len(set(seen)) == 3 and yt.sessions.rotated == 2 and yt._resting[0] == 0.0   # new sessions, the proxy never rests
+    calls = []
+    yt._local.video_id = "abcdefghijk"
+    with pytest.raises(RuntimeError, match="túnel \\(502\\)"):
+        yt._call("metadata", lambda: calls.append(1) or (_ for _ in ()).throw(RuntimeError("Tunnel connection failed: 502 Bad Gateway")))
+    assert len(calls) == 3 and not yt._in_quarantine(0)                                 # bounded, then this request only
+
+
+def test_a_home_proxy_tunnel_failure_still_means_the_proxy_is_down(tmp_path, monkeypatch):
+    from pipeline.budget import ProxyDown
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, HOME)
+    monkeypatch.setattr("pipeline.sourcing.youtube.proxy_reachable", lambda proxy, timeout=5.0: True)
+    with pytest.raises(ProxyDown):
+        yt._call("metadata", lambda: (_ for _ in ()).throw(RuntimeError("Unable to connect to proxy: Tunnel connection failed: 502 Bad Gateway")))

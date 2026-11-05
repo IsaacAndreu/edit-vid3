@@ -151,6 +151,17 @@ class RateLimited(RuntimeError):
     pass
 
 
+def tunnel_failure(lowered: str) -> str | None:
+    """The HTTP status a proxy answered to the CONNECT («Tunnel connection failed: 502 Bad Gateway»), or None. Through
+    a residential proxy a 5xx there is the exit node of this session failing to reach YouTube, not the proxy being
+    down; a 407 is the credentials and is left to the usual handling."""
+
+    found = re.search(r"tunnel connection failed: (\d{3})", lowered)
+    if not found or found.group(1) == "407":
+        return None
+    return found.group(1)
+
+
 # yt-dlp warnings that explain slow or failing downloads: shown once each (the rest stays quiet).
 _WARNINGS = (
     (("challenge", "javascript runtime", "js runtime", "n function", "nsig", "ejs"),
@@ -763,6 +774,14 @@ class YouTubeSource:
                         through = self._local.via_metadata_proxy = False
                         with_account = self.cookies_mode == "rotate" or (kind == "auth" and bool(self._sets))
                         continue
+                tunnel = tunnel_failure(lowered) if is_residential((self.proxies or [""])[way]) else None
+                if tunnel is not None:
+                    # the exit node of this sticky session cannot reach YouTube (502/503 on the CONNECT): another
+                    # session, not a 15-minute pause of the whole proxy as with a home PC that is off
+                    if self._rotate_after(f"túnel {tunnel}", action, tries):
+                        continue
+                    raise RuntimeError(f"yt-dlp {action}: el proxy residencial no pudo abrir el túnel ({tunnel}) en "
+                                       f"{self.sessions.max_rotations + 1} sesiones; se descarta esta petición") from None
                 # A request that hangs until it times out: is it YouTube being slow, or the proxy program stopped
                 # (home PC asleep, proxy window closed)? One look at its port says which.
                 if self.proxies and kind in ("other", "timeout") and ("timed out" in lowered or "timeout" in lowered) \
@@ -868,9 +887,10 @@ class YouTubeSource:
         now = time.monotonic()
         if now - getattr(self, "_rotation_said", 0.0) > 120:
             self._rotation_said = now
-            what = "pide «no eres un bot»" if kind == "bot" else "responde 429"
+            what = ("YouTube pide «no eres un bot»" if kind == "bot" else "YouTube responde 429" if kind == "429"
+                    else f"el proxy no abre el túnel ({kind})")
             whose = f"el vídeo {key}" if key != "search" else "las búsquedas"
-            print(f"   YouTube {what} a una IP del proxy residencial ({action}): sesión nueva para {whose} "
+            print(f"   {what} con una IP del proxy residencial ({action}): sesión nueva para {whose} "
                   f"(sesiones rotadas en esta ejecución: {self.sessions.rotated})")
         return True
 
