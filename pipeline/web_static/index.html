@@ -194,7 +194,7 @@
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
   .block { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 16px; overflow: hidden; }
   .block > .bh { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
-  .block > .bh b { font-size: 15.5px; } .block > .bh .count { color: var(--muted); font-weight: 600; margin-left: 6px; }
+  .block > .bh b { font-size: 15.5px; } .block .count { color: var(--muted); font-weight: 600; margin-left: 6px; }
   .block.warn { border-color: var(--bad); } .block.now { border-color: var(--work); }
   .vrow { display: grid; grid-template-columns: 12px 1fr auto; gap: 12px; align-items: center; padding: 10px 16px;
           border-bottom: 1px solid var(--line); cursor: pointer; color: var(--text); }
@@ -246,6 +246,51 @@
   .block > .bh { background: color-mix(in srgb, var(--panel2) 40%, transparent); }
   pre { border: 1px solid var(--line); }
   #login { box-shadow: var(--shadow); }
+  /* --- v2: icons, the attention list, the stage timeline, calmer status colours --- */
+  header nav a .ic svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; display: block; }
+  header nav a.newv .ic { display: none; }
+  .pill.retry, .pill.incompleto { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .kpi .v.ok { color: var(--ok); } .kpi .v.bad { color: var(--bad); } .kpi .v.warn { color: var(--accent); }
+  .kpi .sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .att { display: grid; grid-template-columns: 12px 1fr auto; gap: 12px; align-items: start; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .att:last-child { border-bottom: 0; }
+  .att .t { font-weight: 650; } .att .t a { color: inherit; }
+  .att .why { margin-top: 3px; font-size: 13.5px; } .att .why b { color: var(--bad); }
+  .att .hint { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .att .act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .att .act button, .att .act .btn { padding: 6px 11px; font-size: 13px; }
+  @media (max-width: 700px) { .att { grid-template-columns: 12px 1fr; } .att .act { grid-column: 2; justify-content: flex-start; } }
+  .vhead { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-bottom: 6px; }
+  .vhead h1 { margin: 0; font-size: 24px; line-height: 1.25; } .vhead h1 .slug { font-size: 13px; color: var(--muted); font-weight: 600; margin-left: 8px; letter-spacing: 0; }
+  .vhead .meta { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+  .vhead .primary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .more { position: relative; display: inline-block; }
+  .more > div { display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow); min-width: 240px; padding: 6px; }
+  .more.open > div { display: block; }
+  .more > div button, .more > div a.btn { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 9px 12px; border-radius: 8px; font-weight: 550; }
+  .more > div button:hover, .more > div a.btn:hover { background: var(--panel2); }
+  .why { border-left: 4px solid var(--bad); }
+  .why.warn { border-left-color: var(--accent); } .why.ok { border-left-color: var(--ok); } .why.work { border-left-color: var(--work); }
+  .why h3 { margin: 0 0 4px; font-size: 16px; } .why p { margin: 4px 0; } .why .full { margin-top: 8px; }
+  .why .full summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .why pre { margin-top: 8px; max-height: 200px; }
+  .stages { display: grid; grid-template-columns: repeat(15, 1fr); gap: 4px; margin: 10px 0 4px; }
+  .stages div { height: 8px; border-radius: 4px; background: var(--panel2); position: relative; }
+  .stages div.done { background: var(--ok); } .stages div.now { background: var(--work); animation: pulse 1.4s infinite; }
+  .stages div.failed { background: var(--bad); } .stages div.skip { background: color-mix(in srgb, var(--ok) 35%, var(--panel2)); }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .stagelist { font-size: 13.5px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 18px; margin-top: 10px; }
+  .stagelist div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .stagelist .n { color: var(--muted); font-variant-numeric: tabular-nums; } .stagelist .now { color: var(--work); font-weight: 650; }
+  .stagelist .pend { color: var(--muted); opacity: .7; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .facts div { background: var(--panel2); border-radius: 10px; padding: 10px 12px; } .facts b { display: block; font-size: 20px; letter-spacing: -.01em; }
+  .facts span { font-size: 12px; color: var(--muted); }
+  .logtools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  pre.log .warn { color: var(--accent); } pre.log .err { color: var(--bad); } pre.log .ok { color: var(--ok); }
+  main.swap { animation: none; }
+  #app > * { animation: fadein .18s ease-out; } @keyframes fadein { from { opacity: .35; } to { opacity: 1; } }
 </style>
 </head>
 <body>
@@ -257,24 +302,24 @@
   <nav>
     <a href="#/nuevo" class="newv">＋ Nuevo vídeo</a>
     <div class="sec">Producción</div>
-    <a href="#/"><span class="ic">🏠</span>Inicio</a>
-    <a href="#/subir"><span class="ic">⬆️</span>Para subir</a>
-    <a href="#/videos"><span class="ic">🎞</span>Todos los vídeos</a>
-    <a href="#/guiones"><span class="ic">📝</span>Guiones</a>
-    <a href="#/calendario"><span class="ic">📅</span>Calendario</a>
-    <a href="#/tablero"><span class="ic">🗂</span>Tablero de ideas</a>
+    <a href="#/"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg></span>Inicio</a>
+    <a href="#/subir"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></span>Para subir</a>
+    <a href="#/videos"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg></span>Todos los vídeos</a>
+    <a href="#/guiones"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h8"/></svg></span>Guiones</a>
+    <a href="#/calendario"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>Calendario</a>
+    <a href="#/tablero"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>Tablero de ideas</a>
     <div class="sec">Crecer</div>
-    <a href="#/competencia"><span class="ic">📡</span>Radar</a>
-    <a href="#/canal"><span class="ic">📈</span>Mi canal</a>
-    <a href="#/estadisticas"><span class="ic">📊</span>Estadísticas</a>
-    <a href="#/experimentos"><span class="ic">🧪</span>Experimentos</a>
-    <a href="#/piloto"><span class="ic">🛫</span>Piloto automático</a>
+    <a href="#/competencia"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2"/></svg></span>Radar</a>
+    <a href="#/canal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>Mi canal</a>
+    <a href="#/estadisticas"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Estadísticas</a>
+    <a href="#/experimentos"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-6 10a2 2 0 0 0 1.7 3h12.6a2 2 0 0 0 1.7-3L14 9V3"/></svg></span>Experimentos</a>
+    <a href="#/piloto"><span class="ic"><svg viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-7z"/></svg></span>Piloto automático</a>
     <div class="sec">Sistema</div>
-    <a href="#/biblioteca"><span class="ic">📚</span>Biblioteca</a>
-    <a href="#/errores"><span class="ic">🧐</span>Clips marcados</a>
-    <a href="#/gasto"><span class="ic">💸</span>Gasto de API</a>
-    <a href="#/servidor"><span class="ic">🖥</span>Estado del servidor</a>
-    <a href="#/ajustes"><span class="ic">⚙️</span>Ajustes</a>
+    <a href="#/biblioteca"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></span>Biblioteca</a>
+    <a href="#/errores"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 21V4h12l-1 4 1 4H4"/></svg></span>Clips marcados</a>
+    <a href="#/gasto"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6.5H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7"/></svg></span>Gasto de API</a>
+    <a href="#/servidor"><span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>Estado del servidor</a>
+    <a href="#/ajustes"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>Ajustes</a>
   </nav>
   <div class="foot"><span id="service" class="small muted"></span></div>
 </header>
@@ -344,16 +389,39 @@ function md(text, base) {
 
 function pill(status) { return `<span class="pill ${status === "en cola" ? "cola" : status === "en pausa" ? "pausa" : status}">${esc(status)}</span>`; }
 
+// What an error means and what to do about it, in plain words (the raw text stays available in full).
+function explain(error, v = {}) {
+  const t = String(error || "");
+  const slug = encodeURIComponent(v.slug || "");
+  const retry = {label: "Reintentar ahora", go: `act('retry')`};
+  if (/no eres un bot|YouTubeBlocked|no deja descargar|bloquea/i.test(t))
+    return {kind: "bad", title: "YouTube rechazó las descargas", hint: "Casi siempre es la IP de salida del proxy. El programa cambia de sesión solo; si vuelve a pasar, mira «Estado del servidor» → proxy.", actions: [retry, {label: "Estado del servidor", href: "#/servidor"}]};
+  if (/sin ninguna imagen|planos sin|pizarras de texto|rechazó casi todo/i.test(t))
+    return {kind: "bad", title: "A la mayoría de planos no les encontró imagen", hint: "El juez rechazó casi todo lo que había. Revisa qué descartó y por qué, o permite el stock como último recurso en el canal.", actions: [{label: "Ver decisiones del relleno", href: `#/decisiones/${slug}`}, retry]};
+  if (/proxy .*no responde|ProxyDown|Tunnel connection|unable to connect to proxy/i.test(t))
+    return {kind: "warn", title: "El proxy no respondía", hint: "Se reintenta solo cuando vuelve. Si es el proxy de casa, comprueba que el PC está encendido y proxy-youtube abierto.", actions: [retry, {label: "Estado del servidor", href: "#/servidor"}]};
+  if (/cuota|quota|búsquedas hoy|ApiSearchesShort/i.test(t))
+    return {kind: "warn", title: "Se acabó la cuota de la API de YouTube", hint: "Espera sola a la cuota nueva de mañana; no hace falta hacer nada.", actions: []};
+  if (/sin saldo|insufficient|401|clave .* no vale|API key/i.test(t))
+    return {kind: "bad", title: "Una clave de API no vale o no tiene saldo", hint: "Recarga o renueva la clave en .env y pulsa reintentar.", actions: [retry, {label: "Ajustes", href: "#/ajustes"}]};
+  if (/Traceback|TypeError|NameError|KeyError|AttributeError|ValueError|IndexError/.test(t))
+    return {kind: "bad", title: "Fallo del programa (un error de código)", hint: "No es culpa del vídeo. Copia el informe para Claude y pégalo en el chat: con eso se arregla.", actions: [{label: "📋 Copiar para Claude", go: `copyForClaude('${esc(v.slug || "")}', this)`}, retry]};
+  if (/voz|GenAIPro|tts/i.test(t))
+    return {kind: "warn", title: "La voz no se pudo generar", hint: "Revisa los créditos de GenAIPro o sube tu propio voz.mp3.", actions: [retry]};
+  return {kind: "bad", title: "Falló", hint: "", actions: [retry]};
+}
+const ACT = (a) => a.href ? `<a class="btn" href="${a.href}">${a.label}</a>` : `<button onclick="event.preventDefault();event.stopPropagation();${a.go}">${a.label}</button>`;
+
 
 const hue = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const chColor = (name) => name ? `hsl(${hue(name)} 70% 58%)` : "var(--muted)";
 let homeKind = (() => { try { return localStorage.getItem("inicio:tipo") || ""; } catch (e) { return ""; } })();   // "" | videos | shorts
-window.pickKind = (k) => { homeKind = k; try { localStorage.setItem("inicio:tipo", k); } catch (e) {} drawHome(); };
+window.pickKind = (k) => { homeKind = k; try { localStorage.setItem("inicio:tipo", k); } catch (e) {} drawHome(true); };
 // the same block twice: the long videos, then the Shorts (each with its own count)
 // «Para subir» and «En cola» can hide their Shorts (remembered in this browser): one line with how many and «Mostrar»
 let hiddenShorts = (() => { try { return JSON.parse(localStorage.getItem("inicio:ocultarShorts") || "{}"); } catch (e) { return {}; } })();
 window.toggleShorts = (key) => { hiddenShorts[key] = !hiddenShorts[key];
-  try { localStorage.setItem("inicio:ocultarShorts", JSON.stringify(hiddenShorts)); } catch (e) {} drawHome(); };
+  try { localStorage.setItem("inicio:ocultarShorts", JSON.stringify(hiddenShorts)); } catch (e) {} drawHome(true); };
 function splitBlock(title, list, opts = {}) {
   if (homeKind) return block(title, list, opts);
   const longs = list.filter((v) => !v.short), shorts = list.filter((v) => v.short);
@@ -406,12 +474,17 @@ async function unholdHome(slug) {      // «en pausa» (taken out of the queue):
   await post(`/api/video/${encodeURIComponent(slug)}/unhold`, {}); route();
 }
 
-function drawHome() {               // the channel buttons redraw from what is already loaded: instant
+let homeKey = "";
+function drawHome(force = false) {               // the channel buttons redraw from what is already loaded: instant
   if (!homeData || !location.hash.match(/^(#\/?)?$/)) return;
   const {overview, dates} = homeData;
   data = overview;
-  const s = data.service, b = data.budget;
+  const s = data.service, b = data.budget, yt = data.youtube;
   const all = data.videos.filter((v) => !v.archived);
+  // nothing changed since the last draw: leave the page alone (no flicker, no lost scroll) and look again later
+  const key = JSON.stringify([homeChannel, homeKind, hiddenShorts, s, b, yt && yt.requests, all.map((v) => [v.slug, v.status, v.stage, v.error, v.lastError, v.retryAt, v.published, v.voice, v.quotaWait])]);
+  if (!force && key === homeKey && $("#app").firstElementChild) { schedule(home, all.some((v) => v.status === "haciendo") ? 10000 : 30000); return; }
+  homeKey = key;
   const channels = [...new Set(all.map((v) => v.channel).filter(Boolean))].sort();
   if (homeChannel && !channels.includes(homeChannel)) homeChannel = "";
   const vids = all.filter((v) => (!homeChannel || v.channel === homeChannel)
@@ -423,55 +496,83 @@ function drawHome() {               // the channel buttons redraw from what is a
   toUpload.sort((a, c) => ((slot[a.slug] || {}).date || "9999").localeCompare((slot[c.slug] || {}).date || "9999") || a.updated - c.updated);
   const uploaded = by("hecho").filter((v) => v.published)
     .sort((a, c) => String((c.published || {}).at || "").localeCompare(String((a.published || {}).at || "")));
-  const queue = by("en cola").sort((a, c) => a.updated - c.updated);
-  const attention = [...by("error"), ...by("incompleto"), ...by("en pausa")];
+  const making = by("haciendo");
+  // everything that is not going to finish on its own: failed, waiting for a retry, held, missing files, voice error
+  const attention = vids.filter((v) => (v.status === "error" || v.status === "incompleto" || v.status === "en pausa" || v.lastError || (v.voice || "").startsWith("error")) && !v.quotaWait);
+  const queue = by("en cola").filter((v) => !attention.includes(v)).sort((a, c) => a.updated - c.updated);
   const failed = all.filter((v) => (v.status === "error" || v.lastError) && !v.quotaWait).length;
-  const state = s.youtubeBlocked ? ["⛔ YouTube bloqueado", `desde las ${esc(s.youtubeBlocked)} · prueba cada hora`]
-    : s.paused ? ["⏸ En pausa", "no empieza vídeos nuevos"] : s.watching ? ["● Trabajando", s.queueRunning ? "haciendo la cola" : "vigilando: hace los vídeos solo"]
-    : s.queueRunning ? ["▶ Cola en marcha", ""] : ["○ Parado", "sin vigilante"];
   const late = toUpload.filter((v) => (slot[v.slug] || {}).date && slot[v.slug].date < today).length;
   const when = (v) => { const d = (slot[v.slug] || {}).date; if (!d) return '<span class="muted">sin día</span>';
     return d < today ? `<span style="color:var(--bad)">⚠️ tocaba ${DAY(d)}</span>` : d === today ? `<b style="color:var(--accent)">hoy · ${esc(slot[v.slug].time || "")}</b>` : `📅 ${DAY(d)}`; };
+  // the server in one sentence, and what to do if it is not working
+  const state = s.youtubeBlocked ? ["bad", "YouTube bloquea", `desde las ${esc(s.youtubeBlocked)} · se prueba cada hora`, '<a href="#/servidor">ver →</a>']
+    : s.paused ? ["warn", "En pausa", "no empieza vídeos nuevos", '<a href="#/servidor">quitar la pausa →</a>']
+    : s.watching ? ["ok", "Trabajando", making.length ? `${making.length} vídeo(s) haciéndose` : queue.length ? "entre vídeos: el siguiente empieza solo" : "vigilando: nada pendiente", ""]
+    : s.queueRunning ? ["ok", "Cola en marcha", "sin vigilante: acabará la ronda y parará", ""] : ["bad", "Parado", "no hay vigilante", '<button onclick="startQueue()">Arrancar la cola</button>'];
+  // YouTube / proxy, the last 24 h: one number that says whether downloads are healthy
+  const p24 = (yt && yt.byProxy || []).find((x) => /rainproxy|resi|residencial/.test(x.proxy)) || (yt && yt.byProxy || [])[0];
+  const share = p24 && p24.requests ? Math.round(100 * p24.ok / p24.requests) : null;
+  const ytKpi = yt ? `<a class="kpi" href="#/servidor"><div class="k">YouTube · 24 h</div>
+      <div class="v ${share == null ? "" : share >= 85 ? "ok" : share >= 60 ? "warn" : "bad"}">${share == null ? "—" : share + " %"}</div>
+      <div class="d">${p24 ? `${p24.requests} peticiones bien${p24.proxy_gb ? ` · ${p24.proxy_gb.toFixed(2)} GB de proxy` : ""}${(p24.errors || {}).bot ? ` · ${p24.errors.bot} bot` : ""}` : `${yt.ok} de ${yt.requests} en la semana`}</div></a>`
+    : `<div class="kpi"><div class="k">YouTube · 24 h</div><div class="v">—</div><div class="d">sin descargas todavía</div></div>`;
+  const problem = (v) => {
+    const raw = v.error || v.lastError || v.voice || (v.status === "incompleto" ? "faltan guion.txt o voz.mp3" : v.status === "en pausa" ? "quitado de la cola" : "");
+    const e = v.status === "incompleto" ? {kind: "warn", title: "Le falta el guion o la voz", hint: "Sube guion.txt y voz.mp3 (o activa la voz automática del canal).", actions: [{label: "Abrir", href: `#/video/${encodeURIComponent(v.slug)}`}]}
+      : v.status === "en pausa" ? {kind: "warn", title: "Quitado de la cola por ti", hint: "", actions: [{label: "Volver a la cola", go: `unholdHome('${esc(v.slug)}')`}]}
+      : explain(raw, v);
+    const retry = v.retryAt ? ` · el vigilante lo reintenta a las <b style="color:inherit">${esc(v.retryAt)}</b>` : v.lastError ? " · vuelve a la cola en su turno" : "";
+    const actions = e.actions.map((a) => a.go && a.go.startsWith("act(") ? {...a, go: `retryOne('${esc(v.slug)}', this)`} : a);
+    return `<div class="att"><span class="dot" style="background:${chColor(v.channel)};margin-top:5px"></span>
+      <div style="min-width:0"><div class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a> <span class="small muted">${esc(v.slug)} · ${esc(v.channel)}</span></div>
+        <div class="why"><b>${esc(e.title)}</b>${retry}</div>
+        ${e.hint ? `<div class="hint">${esc(e.hint)}</div>` : ""}
+        ${raw && raw !== e.title ? `<div class="hint" style="opacity:.8">${esc(String(raw).slice(0, 180))}${String(raw).length > 180 ? "…" : ""}</div>` : ""}</div>
+      <div class="act">${actions.map(ACT).join("")}</div></div>`;
+  };
   $("#app").innerHTML = `
     <div class="glance">
-      <a href="#/servidor" class="${s.youtubeBlocked ? "bad" : ""}"><div class="n">${s.youtubeBlocked ? "⛔" : s.paused ? "⏸" : s.watching ? "●" : "○"}</div>
-        <div class="l">${s.youtubeBlocked ? "YouTube bloquea" : s.paused ? "en pausa" : s.watching ? "trabajando" : "parado"}</div></a>
-      <a href="javascript:void(0)" onclick="document.getElementById('h-now')?.scrollIntoView({behavior:'smooth'})"><div class="n">${all.filter((v) => v.status === "haciendo").length}</div><div class="l">haciéndose</div></a>
-      <a href="javascript:void(0)" class="${attention.length ? "bad" : ""}" onclick="document.getElementById('h-warn')?.scrollIntoView({behavior:'smooth'})"><div class="n">${attention.length}</div><div class="l">fallan</div></a>
-      <a href="#/subir"><div class="n">${all.filter((v) => v.status === "hecho" && !v.published).length}</div><div class="l">para subir${late ? ` · <span style="color:var(--bad)">${late} tarde</span>` : ""}</div></a></div>
+      <a href="#/servidor" class="${state[0] === "bad" ? "bad" : ""}"><div class="n">${state[0] === "ok" ? "●" : state[0] === "warn" ? "⏸" : "⛔"}</div><div class="l">${esc(state[1].toLowerCase())}</div></a>
+      <a href="javascript:void(0)" onclick="document.getElementById('h-now')?.scrollIntoView({behavior:'smooth'})"><div class="n">${making.length}</div><div class="l">haciéndose</div></a>
+      <a href="javascript:void(0)" class="${attention.length ? "bad" : ""}" onclick="document.getElementById('h-warn')?.scrollIntoView({behavior:'smooth'})"><div class="n">${attention.length}</div><div class="l">con problemas</div></a>
+      <a href="#/subir"><div class="n">${toUpload.length}</div><div class="l">para subir${late ? ` · <span style="color:var(--bad)">${late} tarde</span>` : ""}</div></a></div>
     <form class="hero home-search" onsubmit="event.preventDefault();searchFrom(this.q.value)">
-      <textarea name="q" placeholder="🔎 ¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
+      <textarea name="q" placeholder="¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}"></textarea>
       <button class="main">Buscar</button></form>
     <div class="kpis home-kpis">
-      <a class="kpi" href="#/servidor"><div class="k">Servidor</div><div class="v" style="font-size:19px;margin:6px 0 2px">${state[0]}</div><div class="d">${state[1]}</div></a>
-      <a class="kpi" href="#/subir"><div class="k">Para subir</div><div class="v">${all.filter((v) => v.status === "hecho" && !v.published).length}</div>
-        <div class="d">${late ? `<span style="color:var(--bad)">${late} atrasado(s)</span>` : "al día"} →</div></a>
-      <div class="kpi"><div class="k">En cola</div><div class="v">${all.filter((v) => v.status === "en cola").length + all.filter((v) => v.status === "haciendo").length}</div>
-        <div class="d">${all.filter((v) => v.status === "haciendo").length} haciéndose ahora</div></div>
-      <div class="kpi"><div class="k">Gasto de hoy</div><div class="v">${b.today.toFixed(2)} $</div>
-        <div class="d">${b.limit ? "de " + b.limit.toFixed(2) + " $" : "sin límite"}</div>
-        ${b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</div>
+      <a class="kpi" href="#/servidor"><div class="k">Servidor</div><div class="v ${state[0]}" style="font-size:20px;margin:6px 0 2px">${state[1]}</div><div class="d">${state[2]}${state[3] ? " · " + state[3] : ""}</div></a>
+      ${ytKpi}
+      <a class="kpi" href="#/subir"><div class="k">Para subir</div><div class="v ${late ? "bad" : ""}">${toUpload.length}</div>
+        <div class="d">${late ? `${late} atrasado(s)` : toUpload.length ? "al día" : "nada pendiente"}${queue.length ? ` · ${queue.length} en cola` : ""}</div></a>
+      <a class="kpi" href="#/gasto"><div class="k">Gasto de hoy</div><div class="v">${b.today.toFixed(2)} $</div>
+        <div class="d">${b.limit ? "de " + b.limit.toFixed(2) + " $ de API" : "API, sin límite"}${yt && yt.proxy_gb ? ` · proxy ${yt.proxy_gb.toFixed(2)} GB/semana` : ""}</div>
+        ${b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</a>
     </div>
     ${channels.length > 1 ? `<div class="chiprow">${["", ...channels].map((c) => `<button class="${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">
       ${c ? `<span class="dot" style="background:${chColor(c)};margin-right:6px"></span>${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : ""}
-    ${block("⚠️ Necesitan tu atención", attention, {cls: "warn", id: "h-warn", more: failed ? `<button onclick="retryAll()">Reintentar todos (${failed})</button><span id="retrymsg" class="muted"></span>` : "",
-      right: (v) => v.status === "incompleto" ? '<span class="pill">falta guion o voz</span>'
-        : v.status === "en pausa" ? `${pill(v.status)} <button onclick="event.preventDefault();event.stopPropagation();unholdHome('${esc(v.slug)}')">Volver a la cola</button>`
-        : pill(v.status)})}
-    <div class="chiprow">${[["", "Todo"], ["videos", "🎬 Vídeos"], ["shorts", "📱 Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}
-      <span class="muted">${all.filter((v) => (!homeChannel || v.channel === homeChannel) && (!k || (k === "shorts" ? v.short : !v.short))).length}</span></button>`).join("")}</div>
-    ${splitBlock("▶ Haciéndose ahora", by("haciendo"), {cls: "now", id: "h-now"})}
-    ${splitBlock("📤 Para subir", toUpload, {hideShorts: "subir", more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
-    ${splitBlock("⏳ En cola", queue, {hideShorts: "cola", more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
+    ${all.some((v) => v.short) ? `<div class="chiprow">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}
+      <span class="muted">${all.filter((v) => (!homeChannel || v.channel === homeChannel) && (!k || (k === "shorts" ? v.short : !v.short))).length}</span></button>`).join("")}</div>` : ""}
+    ${attention.length ? `<div class="block warn" id="h-warn"><div class="bh"><b>Necesitan tu atención<span class="count">${attention.length}</span></b>
+      ${failed ? `<span class="small"><button onclick="retryAll()">Reintentar todos (${failed})</button> <span id="retrymsg" class="muted"></span></span>` : ""}</div>
+      ${attention.map(problem).join("")}</div>` : ""}
+    ${splitBlock("Haciéndose ahora", making, {cls: "now", id: "h-now"})}
+    ${splitBlock("Para subir", toUpload, {hideShorts: "subir", more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
+    ${splitBlock("En cola", queue, {hideShorts: "cola", more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
       right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API " + esc((v.quotaWait.match(/hasta las (\d\d:\d\d)/) || [])[1] || "")}</span>`
-        : v.lastError ? '<span class="pill error">reintento</span>' : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
-    ${splitBlock("✅ Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
+        : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
+    ${splitBlock("Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
       right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}
     ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;
-  schedule(home, by("haciendo").length ? 10000 : 30000);
+  schedule(home, making.length ? 10000 : 30000);
 }
-window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} drawHome(); };
+window.retryOne = async (slug, button) => {
+  if (button) { button.disabled = true; button.textContent = "En cola…"; }
+  try { const r = await post(`/api/video/${encodeURIComponent(slug)}/retry`); if (r.message && button) button.textContent = r.message.slice(0, 40); }
+  catch (e) { alert(e.message); }
+  setTimeout(() => { homeKey = ""; route(); }, 2000);
+};
+window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} drawHome(true); };
 window.searchFrom = (q) => { q = String(q || "").trim(); if (!q) return;
   if (q.length > 1500) { window.pendingSearch = q; location.hash = "#/buscar/" + encodeURIComponent("(guion pegado)"); }
   else location.hash = "#/buscar/" + encodeURIComponent(q); };
@@ -671,10 +772,40 @@ async function createVideo() {
 let tab = "diagnosis";
 async function videoPage(slug) {
   const v = await api("/api/video/" + encodeURIComponent(slug));
+  if (tab === "diagnosis" && !window.tabPicked && (v.error || v.lastError) && v.log) tab = "log";   // the answer is in the log
   const base = `/files/${encodeURIComponent(slug)}/`;
   const st = v.stage;
-  const doing = st ? `<div class="card"><b>Haciendo ahora:</b> ${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · desde hace ${ago(st.started)}
-      <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div></div>` : "";
+  const ORDER = ["factcheck", "align", "planner", "sourcing", "analysis", "judge", "ingest", "people", "fallback", "coldopen", "timeline", "qa", "render", "shorts", "package"];
+  const done = Object.fromEntries(v.stages.map((x) => [x.name, x]));
+  const costs = v.costs || {};
+  const failedAt = !st && (v.error || v.lastError) ? ORDER.find((n) => !done[n]) : null;
+  const totalMin = v.stages.reduce((a, x) => a + (x.seconds || 0), 0) / 60;
+  const cls = (n) => st && st.stage === n ? "now" : done[n] ? "done" : n === failedAt ? "failed" : "";
+  const stagesView = `<div class="card"><div class="row" style="justify-content:space-between"><b>${st ? `Haciendo ${esc(STAGES[st.stage] || st.stage)} (${st.number}/${st.of}) · desde hace ${ago(st.started)}`
+      : v.status === "hecho" ? `Terminado · ${v.stages.length} etapas` : `${v.stages.length} de ${ORDER.length} etapas hechas${failedAt ? ` · se paró en <span style="color:var(--bad)">${esc(STAGES[failedAt] || failedAt)}</span>` : ""}`}</b>
+      <span class="small muted">${totalMin ? `${Math.round(totalMin)} min de trabajo` : ""}${v.costUsd ? ` · ${v.costUsd} $ de API` : ""}</span></div>
+    <div class="stages">${ORDER.map((n) => `<div class="${cls(n)}" title="${esc(STAGES[n] || n)}${done[n] ? " · " + mins(done[n].seconds) : ""}"></div>`).join("")}</div>
+    <details><summary class="small muted" style="cursor:pointer">Ver las etapas una a una</summary><div class="stagelist">${ORDER.map((n) => {
+      const d = done[n]; const now = st && st.stage === n;
+      return `<div class="${now ? "now" : d ? "" : "pend"}"><span>${now ? "▶ " : d ? "✓ " : "· "}${esc(STAGES[n] || n)}</span><span class="n">${now ? ago(st.started) : d ? mins(d.seconds) + (costs[n] ? ` · ${costs[n].toFixed(2)} $` : "") : ""}</span></div>`; }).join("")}</div></details></div>`;
+  const doing = stagesView;
+  // what happened, in plain words, with the whole text one click away
+  const rawError = v.error || v.lastError || "";
+  const ex = rawError ? explain(rawError, v) : null;
+  const whyView = !ex ? "" : `<div class="card why ${ex.kind}"><h3>${esc(ex.title)}</h3>
+      ${v.lastError ? `<p>En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b>, antes si pulsas «Hacer ahora».` : "el vigilante lo hará en su turno."}</p>` : ""}
+      ${ex.hint ? `<p>${esc(ex.hint)}</p>` : ""}
+      <div class="row" style="margin-top:8px">${ex.actions.map(ACT).join("")}</div>
+      <details class="full"><summary>El error completo</summary><pre>${esc(rawError)}</pre></details></div>`;
+  const y = v.youtube;
+  const pct = y && y.requests ? Math.round(100 * y.ok / y.requests) : 0;
+  const ytView = !y ? "" : `<div class="card"><div class="row" style="justify-content:space-between"><b>YouTube y proxy en este vídeo</b><span class="small muted">${y.proxy && y.proxy.length ? "por " + esc(y.proxy.join(", ")) : "sin proxy"}</span></div>
+    <div class="facts">
+      <div><b style="color:${pct >= 85 ? "var(--ok)" : pct >= 60 ? "var(--accent)" : "var(--bad)"}">${pct} %</b><span>peticiones bien (${y.ok} de ${y.requests})</span></div>
+      <div><b>${y.files_ok}/${y.files}</b><span>clips descargados</span></div>
+      <div><b>${(y.proxy_gb || 0).toFixed(2)} GB</b><span>por el proxy${y.sessions ? ` · ${y.sessions} sesiones` : ""}</span></div>
+      <div><b>${(y.errors || {}).bot || 0}</b><span>«no eres un bot»</span></div></div>
+    ${(y.details || []).length ? `<div class="small muted" style="margin-top:10px">Errores más frecuentes:</div><ul class="small" style="margin:4px 0 0;padding-left:18px">${y.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
   const titles = v.youtubeTxt ? `<h2>Para YouTube</h2><div class="card"><pre id="yt">${esc(v.youtubeTxt)}</pre>
       <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">Copiar</button></div>` : "";
   const scenesPreview = v.scenesPreview ? `<h2>Vista previa de las escenas</h2><div class="card"><a href="${base + v.scenesPreview}" target="_blank">
@@ -727,7 +858,15 @@ async function videoPage(slug) {
         <div class="row" style="margin:10px 0"><input type="file" id="retfile" accept=".csv,.txt,.tsv" style="width:auto">
         <button class="main" onclick="uploadRetention()">Analizar retención</button><span id="retmsg" class="small muted"></span></div>
         ${v.retention ? `<div class="md">${md(v.retention, base)}</div>` : ""}`
-    : tab === "log" ? `<pre id="log">${esc(v.log || "Todavía no hay registro.")}</pre>`
+    : tab === "log" ? (() => {
+        const lines = (v.log || "").split("\n");
+        const important = lines.filter((l) => /AVISO|ERROR|Error|Traceback|Tráfico|sesión|descarta|siguiente candidato|=====|\[\d+\/15\]/.test(l));
+        const paint = (l) => /ERROR|Traceback|FALLO/.test(l) ? `<span class="err">${esc(l)}</span>` : /AVISO|descarta/.test(l) ? `<span class="warn">${esc(l)}</span>` : /hecho en/.test(l) ? `<span class="ok">${esc(l)}</span>` : esc(l);
+        const all = window.logAll;
+        return `<div class="logtools"><span class="small muted">${all ? `${lines.length} líneas` : `${important.length} líneas con avisos, errores y etapas (de ${lines.length})`}</span>
+          <button onclick="window.logAll=!window.logAll;route()">${all ? "Solo lo importante" : "Ver todo el registro"}</button>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('log').innerText);this.textContent='Copiado ✓'">Copiar</button></div>
+          <pre id="log" class="log">${(all ? lines : important).map(paint).join("\n") || "Todavía no hay registro."}</pre>`; })()
     : tab === "audit" ? (v.audit ? `<div class="small muted">Minuto · lo que se dice → de dónde sale la imagen · quién la eligió. Cópialo y pégalo en el chat para revisarlo.</div>
         <button style="margin:8px 0" onclick="navigator.clipboard.writeText(document.getElementById('audit').innerText);this.textContent='Copiado ✓'">Copiar todo</button><pre id="audit">${esc(v.audit)}</pre>`
         : "Todavía no hay montaje (sale después de la etapa «timeline»).")
@@ -736,26 +875,30 @@ async function videoPage(slug) {
     : tab === "stages" ? `<table><tr><th>Etapa</th><th>Tiempo</th><th>RAM máx.</th><th>CPU máx.</th></tr>${v.stages.map((s) =>
         `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td>${mins(s.seconds)}</td><td>${s.ram ?? "—"} GB</td><td>${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
     : `<div class="md">${md(docs[tab][1], base)}</div>`;
+  const primary = v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>'
+    : v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>'
+    : v.status === "haciendo" ? '<button onclick="if(confirm(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\'))act(\'stop\')">Parar</button>'
+    : v.status === "en pausa" ? '<button class="main" onclick="act(\'unhold\')">Volver a la cola</button>'
+    : v.hasVideo ? `<a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a>` : "";
+  const secondary = [
+    v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : "",
+    v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : "",
+    `<button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>`,
+    v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : "",
+    !v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : "",
+    v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom()" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
+    v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : "",
+    `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
+  ].filter(Boolean);
   $("#app").innerHTML = `
-    <div class="row" style="justify-content:space-between"><h1>${esc(v.slug)} ${pill(v.status)}</h1>
-      <div class="row">${v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>' : ""}
-        ${v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>' : ""}
-        ${v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : ""}
-        ${v.status === "haciendo" ? '<button onclick="if(confirm(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\'))act(\'stop\')">Parar</button>' : ""}
-        ${v.status === "en pausa" ? '<button class="main" onclick="act(\'unhold\')">Volver a la cola</button>' : ""}
-        ${v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : ""}
-        ${v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : ""}
-        ${!v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : ""}
-        ${v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom()" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">🔁 Rehacer</button>' : ""}
-        ${v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : ""}</div></div>
-    <div class="muted small">${esc(v.channel)} <a href="javascript:void 0" title="Cambiar de canal" onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">✏️</a> · ${v.costUsd} $ de API${v.minutes ? " · " + v.minutes + " min" : ""}
-      ${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">🤖 elegido por el guion</span>` : ""}` : ""}</div>
-    ${v.error ? `<div class="notice bad">${esc(v.error)}</div>` : ""}${doing}
-    <div class="row" style="margin:8px 0"><button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>
-      <span id="pilotBox"></span></div><div id="pilotReport"></div>
+    <div class="vhead"><div style="min-width:0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
+        <div class="meta">${esc(v.channel)}${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">(elegido por el guion)</span>` : ""}` : ""}
+          ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API</div></div>
+      <div class="primary">${primary}
+        <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ▾</button><div>${secondary.join("")}</div></span></div></div>
+    ${whyView}${doing}${ytView}
+    <div class="row" style="margin:8px 0"><span id="pilotBox"></span></div><div id="pilotReport"></div>
     ${v.quotaWait ? `<div class="notice">⏸ En espera: ${esc(v.quotaWait)}. La cola sigue con los demás vídeos y este se reintenta solo.</div>` : ""}
-    ${v.lastError ? `<div class="notice">En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b> (antes si cambias sus archivos o pulsas «Hacer ahora»)` : "el vigilante lo hará en su turno"}.
-      <div class="small muted" style="margin-top:4px">El último intento falló: ${esc(String(v.lastError).slice(0, 220))}</div></div>` : ""}
     ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
       <button style="margin-left:8px" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
@@ -769,7 +912,7 @@ async function videoPage(slug) {
     ${scenesPreview}${titles}${thumbs}${shorts}${dubs}
     ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
     ${v.published ? '<div id="whyBox"></div>' : ""}
-    <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';route()">${name}</button>`).join("")}</div>
+    <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';window.tabPicked=1;route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div>`;
   const repLoad = async () => {
     const box = $("#repBox");
@@ -857,6 +1000,7 @@ async function videoPage(slug) {
   pilotBox(v.slug, v);
   if (v.status === "haciendo") schedule(route, 10000);
 }
+document.addEventListener("click", (e) => { if (!e.target.closest(".more")) document.querySelectorAll(".more.open").forEach((m) => m.classList.remove("open")); });
 
 let statsSort = "views", statsChannel = "";
 function benchCard(bench) {
@@ -2384,7 +2528,7 @@ async function start() {
   if (!session.authorised) return showLogin();
   $("#top").classList.remove("hide");
   document.body.classList.add("authed");
-  window.onhashchange = () => { tab = "diagnosis"; route(); };
+  window.onhashchange = () => { tab = "diagnosis"; window.tabPicked = 0; window.logAll = 0; route(); };
   route();
 }
 start();

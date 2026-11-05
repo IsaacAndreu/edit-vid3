@@ -61,6 +61,9 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         # our own queue before asking (slots + 1 req/s per proxy) vs the time YouTube took to answer
         "wait_avg": round(sum(float(r.get("wait") or 0) for r in calls) / len(calls), 2) if calls else 0.0,
         "answer_avg": round(sum(float(r.get("seconds") or 0) for r in calls) / len(calls), 2) if calls else 0.0,
+        # what the proxy carried (proxy_bytes of every row) and how many sticky sessions it took
+        "proxy_gb": round(sum(int(r.get("proxy_bytes") or 0) for r in rows) / 1e9, 3),
+        "sessions": len({r["session"] for r in rows if r.get("session")}),
     }
 
 

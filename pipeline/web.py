@@ -545,7 +545,40 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "script": (folder / "guion.txt").read_text("utf-8", errors="replace")[:20000] if (folder / "guion.txt").is_file() else "",
         "format": _format_of(root, folder),
         "dubs": _dubs(root, slug),
+        "youtube": _video_youtube(work),
+        "costs": _costs_by_stage(root, slug),
     }
+
+
+def _video_youtube(work: Path) -> dict[str, Any] | None:
+    """This video's requests to YouTube (work/<slug>/youtube_downloads.jsonl): how many, how many failed and why,
+    the GB the proxy carried and the most frequent error words, for the video page."""
+
+    from . import ytstats
+
+    rows = ytstats.read(work / "youtube_downloads.jsonl")
+    if not rows:
+        return None
+    summary = ytstats.summary(rows)
+    details: dict[str, int] = {}
+    for row in rows:
+        if not row.get("ok") and row.get("detail"):
+            text = re.sub(r"^yt-dlp [^:]+: (ERROR: )?", "", str(row["detail"]))[:140]
+            details[text] = details.get(text, 0) + 1
+    summary["details"] = sorted(details.items(), key=lambda kv: -kv[1])[:4]
+    summary["proxy"] = sorted({str(r["proxy"]) for r in rows if r.get("proxy")})
+    return summary
+
+
+def _costs_by_stage(root: Path, slug: str) -> dict[str, float]:
+    """API dollars per stage (work/<slug>/costs.json), for the video page's timeline."""
+
+    out: dict[str, float] = {}
+    for entry in (_json(root / "work" / slug / "costs.json") or {}).get("entries") or []:
+        if isinstance(entry, dict):
+            stage = str(entry.get("stage") or "")
+            out[stage] = round(out.get(stage, 0.0) + float(entry.get("usd") or 0), 3)
+    return out
 
 
 def _dubs(root: Path, slug: str) -> list[dict[str, Any]]:
