@@ -137,7 +137,8 @@ def test_lines_in_the_same_place_pile_up_and_a_bare_figure_becomes_a_tag():
     assert atlas.auto_tag(c, "Nada que contar.", b) == c
     close = atlas.clean({"camera": {"lat": 42, "lon": -4, "zoom": 3}, "points": [{"name": "Vigo", "lat": 42.2, "lon": -8.7}]}, None)
     again = atlas.carry(atlas.clean({"camera": close["camera"]}, close), close)
-    assert again["camera"]["zoom"] == 2.6 and again["points"]          # the same close view, its dot kept
+    assert close["camera"]["zoom"] == 4.4                               # a region: the close map, never a cut globe
+    assert again["camera"]["zoom"] == 4.4 and again["points"]          # the same close view, its dot kept
     far = atlas.carry(atlas.clean({"camera": {"lat": -40, "lon": 140, "zoom": 1.5}}, b), b)
     assert far["points"] == []
 
@@ -186,3 +187,53 @@ def test_the_night_stays_and_its_sun_never_jumps_back():
     assert off["night"] is None
     far = atlas.carry(atlas.clean({"camera": {"lat": -30, "lon": 140, "zoom": 1.4}}, c), c)
     assert far["night"] is None                                                                     # another part of the world
+
+
+def test_close_views_fill_the_screen_or_fall_back_to_the_globe():
+    vigo = {"name": "Vigo", "lat": 42.2, "lon": -8.7}
+    assert atlas.clean({"camera": {"lat": 42, "lon": -8, "zoom": 3.4}, "points": [vigo]}, None)["camera"]["zoom"] == 4.4
+    assert atlas.clean({"camera": {"lat": 42, "lon": -8, "zoom": 9}, "points": [vigo]}, None)["camera"]["zoom"] == 6.0
+    assert atlas.clean({"camera": {"lat": 42, "lon": -8, "zoom": 2.4}, "points": [vigo]}, None)["camera"]["zoom"] == 2.4
+    far = atlas.fit_camera(atlas.clean({"camera": {"lat": 42, "lon": -8, "zoom": 5},
+                                        "points": [vigo, {"name": "Moscú", "lat": 55.7, "lon": 37.6}]}, None))
+    assert far["camera"]["zoom"] <= 2.6                                 # a close view that would hide Moscow
+
+
+def test_a_failed_batch_is_asked_again_in_halves_and_drawings_are_spaced(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from pipeline import llm
+    from pipeline.context import RunContext
+
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "atlas"}})
+    shots = [SimpleNamespace(id=f"s{i}", text=f"Frase {i} sobre Brasil.") for i in range(1, 31)]
+    asked = []
+
+    def answer(_ctx, **kw):
+        first, last = [int(x) for x in kw["user"].split("FRASES ")[1].split(":")[0].split("-")]
+        asked.append((first, last))
+        if last - first + 1 > 13:
+            raise ValueError("JSON cortado")
+        return {"scenes": [{"n": n, "view": "icon", "icon": {"name": "ship"}, "stamp": {"text": "SI"},
+                            "points": [{"name": f"P{n}", "lat": -15, "lon": -47}]} for n in range(first, last + 1)]}
+
+    monkeypatch.setattr(llm, "complete_json", answer)
+    out = atlas.scenes(ctx, shots)
+    assert asked[0] == (1, 25) and (1, 12) in asked and (13, 25) in asked and (26, 30) in asked
+    assert all(out[f"s{i}"]["points"] for i in range(1, 31))           # no line left without its scene
+    icons = [i for i in range(1, 31) if out[f"s{i}"]["view"] == "icon"]
+    assert icons and all(b - a >= atlas.ICON_EVERY for a, b in zip(icons, icons[1:]))
+    stamps = [i for i in range(1, 31) if out[f"s{i}"]["stamp"]]
+    assert stamps and all(b - a >= atlas.STAMP_EVERY for a, b in zip(stamps, stamps[1:]))
+
+
+def test_a_close_map_frames_its_places():
+    near = atlas.fit_camera(atlas.clean({"camera": {"lat": -23.6, "lon": -46.4, "zoom": 3},
+                                         "points": [{"name": "São Paulo", "lat": -23.55, "lon": -46.63},
+                                                    {"name": "Santos", "lat": -23.96, "lon": -46.33}]}, None))
+    wide = atlas.fit_camera(atlas.clean({"camera": {"lat": -15, "lon": -45, "zoom": 3.5},
+                                         "points": [{"name": "Brasília", "lat": -15.8, "lon": -47.9},
+                                                    {"name": "Salvador", "lat": -12.97, "lon": -38.5},
+                                                    {"name": "Rio", "lat": -22.9, "lon": -43.2}]}, None))
+    assert near["camera"]["zoom"] == atlas.MAX_CLOSE and atlas.REGION_ZOOM < wide["camera"]["zoom"] < atlas.MAX_CLOSE
+    assert abs(wide["camera"]["lat"] + 17) < 1.5                       # centred on what it draws

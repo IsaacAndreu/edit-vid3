@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 7
+VERSION = 8
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -97,8 +97,9 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
 - en "night", "lights": true enciende las ciudades en el lado de noche
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
 Reglas: CADA frase añade al menos UNA cosa nueva en pantalla (un punto, una ruta, un círculo, un tag con su cifra, una
-tarjeta…): nunca un globo sin nada nuevo. Zoom 1-2 casi siempre (el globo entero); 3 solo si la frase nombra una ciudad o
-región. La cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos sitios lejanos: mira a su punto medio con
+tarjeta…): nunca un globo sin nada nuevo. Zoom 1-2 cuando la frase habla de un país entero, un continente o el mundo; 4-6 (un mapa de cerca que llena
+la pantalla) cuando la frase nombra una ciudad, un río, una sierra o una región y lo que dibujas está a menos de 10
+grados de la cámara; nunca 3. Un dibujo ("icon") como mucho cada 8 frases y un sello cada 10. La cámara tiene que ENSEÑAR todo lo que dibujas (una ruta entre dos sitios lejanos: mira a su punto medio con
 zoom 1-1,5; una ruta que pasa cerca de un polo: mira al polo); si la frase cita un documento, una ley o a alguien, pon la
 cita en una "card" de tipo "quote" con su fuente; si niega o confirma algo con rotundidad («no está prohibido», «nadie
 sobrevivió»), pon un "stamp"; si la frase da un año con un suceso, una "card" de tipo "date".
@@ -207,9 +208,11 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     if not named and previous and (previous.get("points") or previous.get("tags")) and \
             _angle((camera["lat"], camera["lon"]), (prev_cam["lat"], prev_cam["lon"])) < 4:
         named = True                        # still at the place the last line named: its close view stays
-    # (a globe bigger than ~2.6 is cut at the top under the chapter bar and at the bottom: never, except the satellite
-    # dive, which sets its own camera below)
-    camera["zoom"] = min(camera["zoom"], 2.6 if named else 1.8)
+    # A globe between ~2.6 and ~4.4 is cut at the top and the bottom with paper at the sides: never. The whole globe
+    # (up to 1.8, 2.6 when a place is named), or, for a region or a city the line names (the model asks 3+), a close
+    # map that fills the screen (4.4-6: atlas1pt showed Serra do Mar, Salesópolis and Rio Paraná on one dot at 2.6).
+    asked = camera["zoom"]
+    camera["zoom"] = min(max(asked, REGION_ZOOM), 6.0) if named and asked >= 3 else min(asked, 2.6 if named else 1.8)
     view = str(scene.get("view") or "globe")
     out: dict[str, Any] = {"type": "atlas", "view": view if view in VIEWS else "globe",
                            "camera": camera, "dark": bool(scene.get("dark"))}
@@ -426,6 +429,18 @@ def fit_camera(scene: dict[str, Any]) -> dict[str, Any]:
         return scene
     cam = scene["camera"]
     centre = (cam["lat"], cam["lon"])
+    if cam["zoom"] >= REGION_ZOOM and len(marks) > 1:
+        # a close map: centred on what it draws, as close as their spread allows (São Paulo, Santos and Salesópolis,
+        # 80 km apart, are one dot at 4.4 and three at ~8)
+        total = [sum(_xyz(*m)[i] for m in marks) for i in range(3)]
+        norm = math.sqrt(sum(t * t for t in total)) or 1.0
+        middle = (math.degrees(math.asin(total[2] / norm)), math.degrees(math.atan2(total[1], total[0])))
+        spread = max(_angle(middle, m) for m in marks)
+        if spread > REGION_SPAN:              # too far apart for a close map: the globe
+            return fit_camera({**scene, "camera": {**cam, "zoom": 2.6}})
+        zoom = 1 + math.log(CLOSE_PX / math.sin(math.radians(max(spread, 0.3))) / 350) / math.log(1.42)
+        return {**scene, "camera": {"lat": round(middle[0], 4), "lon": round(middle[1], 4),
+                                    "zoom": round(min(MAX_CLOSE, max(REGION_ZOOM, zoom)), 2)}}
     if max(_angle(centre, m) for m in marks) <= 65:
         return scene
     total = [sum(_xyz(*m)[i] for m in marks) for i in range(3)]
@@ -439,6 +454,10 @@ def fit_camera(scene: dict[str, Any]) -> dict[str, Any]:
 
 
 LIMITS = {"points": 8, "routes": 12, "rings": 6}
+REGION_ZOOM = 4.4     # the smallest close view: the globe fills the whole screen
+REGION_SPAN = 14      # degrees from the camera a close view shows of what it draws; farther → back to the whole globe
+MAX_CLOSE = 9.0       # the closest map (Remotion: radius 350·1.42^(zoom-1) px → ~1° = 100 px)
+CLOSE_PX = 330        # on a close map, the farthest place this many px from the centre
 
 
 def _same_place(a: dict[str, Any], b: dict[str, Any]) -> bool:
@@ -555,6 +574,12 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
         g["camera"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 3.2}
 
 
+BATCH = 25            # lines per request to the model
+MIN_BATCH = 6         # a failed batch is split in halves down to this
+ICON_EVERY = 8        # lines between two full-screen drawings
+STAMP_EVERY = 10      # lines between two stamps
+
+
 def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     from .llm import complete_json
 
@@ -573,19 +598,47 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         system += "\n" + guide
     story = "\n".join(f"[{n}] {text}" for n, (_, text) in enumerate(lines, 1))
     found: dict[int, dict[str, Any]] = {}
-    for start in range(0, len(lines), 40):
-        batch = lines[start:start + 40]
-        user = (f"EL GUION ENTERO:\n{story}\n\n" if len(lines) > 40 else "") + f"FRASES {start + 1}-{start + len(batch)}:\n" + \
+
+    def ask(start: int, batch: list[tuple[str, str]]) -> None:
+        """One batch of lines; a batch that fails (a cut or broken JSON) is asked again in halves, down to
+        MIN_BATCH lines: atlas1pt lost its first 40 lines (1:49 of an empty globe) to one failed answer."""
+
+        user = (f"EL GUION ENTERO:\n{story}\n\n" if len(lines) > len(batch) else "") + \
+            f"FRASES {start + 1}-{start + len(batch)}:\n" + \
             "\n".join(f"[{start + n}] {text}" for n, (_, text) in enumerate(batch, 1))
         try:
             result = complete_json(ctx, stage="atlas", section="planner", system=system, user=user, max_tokens=550 * len(batch))
-            found.update({int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)})
+            got = {int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)}
+            if len([n for n in got if start < n <= start + len(batch)]) < len(batch) // 2:
+                raise ValueError(f"solo {len(got)} escenas de {len(batch)}")
+            found.update(got)
         except Exception as error:
-            print(f"   Atlas: sin escenas de la IA ({str(error)[:100]})")
+            if len(batch) <= MIN_BATCH:
+                print(f"   Atlas: sin escenas de la IA para las frases {start + 1}-{start + len(batch)} ({str(error)[:100]})")
+                return
+            half = len(batch) // 2
+            print(f"   Atlas: la IA falló en las frases {start + 1}-{start + len(batch)}; las pido en dos mitades")
+            ask(start, batch[:half])
+            ask(start + half, batch[half:])
+
+    for start in range(0, len(lines), BATCH):
+        ask(start, lines[start:start + BATCH])
     out: dict[str, dict[str, Any]] = {}
     previous = None
+    last_icon = last_stamp = -99
     for n, (shot_id, _) in enumerate(lines, 1):
-        scene = fit_camera(clean(found.get(n) or {}, previous))
+        raw = found.get(n) or {}
+        if raw.get("view") == "icon":           # a drawing alone now and then, never a slideshow of drawings
+            if n - last_icon < ICON_EVERY:
+                raw = {**raw, "view": "globe", "icon": None}
+            else:
+                last_icon = n
+        if isinstance(raw.get("stamp"), dict):
+            if n - last_stamp < STAMP_EVERY:
+                raw = {**raw, "stamp": None}
+            else:
+                last_stamp = n
+        scene = fit_camera(clean(raw, previous))
         previous = auto_tag(carry(scene, previous), lines[n - 1][1], previous)
         out[shot_id] = previous
     ensure_satellites(out, int(ctx.section("visual").get("satellites", 2)))

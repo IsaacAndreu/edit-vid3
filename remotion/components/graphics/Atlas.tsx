@@ -2,13 +2,14 @@ import type { FC, ReactNode } from 'react';
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { geoArea, geoCentroid, geoCircle, geoDistance, geoEquirectangular, geoMercator, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects } from 'd3-geo';
-import { feature } from 'topojson-client';
+import { feature, mesh } from 'topojson-client';
 import world50 from 'world-atlas/countries-50m.json';
 import land50 from 'world-atlas/land-50m.json';
 import land110 from 'world-atlas/land-110m.json';
 import bathymetry from '../../data/bathymetry.json';
 import GRAIN from '../../data/grain.png';
 import cities from '../../data/cities.json';
+import rivers from '../../data/rivers.json';
 import world110 from 'world-atlas/countries-110m.json';
 import type { AtlasGraphic } from '../../graphics';
 import { theme } from '../../theme';
@@ -22,6 +23,7 @@ import { Vignette } from './Paper';
  */
 
 const W = 1920;
+const POINT_FONT = 27;          // place names: readable on a phone (19 was not)
 const H = 1080;
 const SERIF = "'DM Serif Display', Georgia, serif";
 const MONO = "'JetBrains Mono', monospace";
@@ -38,6 +40,21 @@ const LAND_FC_110 = feature(land110 as never, (land110 as never as { objects: { 
 const ICE_110 = { type: 'FeatureCollection', features: (feature(world110 as never, (world110 as never as { objects: { countries: never } }).objects.countries) as never as { features: Feature[] }).features.filter((c) => ICE.has(c.properties.name)) } as unknown as GeoPermissibleObjects;
 const ICE_FC = { type: 'FeatureCollection', features: ICY } as unknown as GeoPermissibleObjects;
 const GRATICULE = geoGraticule10();
+// close maps only (R > CLOSE): the borders between countries, dashed, and the rivers near the camera
+const CLOSE = 1000;
+const BORDER_LINES = (mesh(world50 as never, (world50 as never as { objects: { countries: never } }).objects.countries as never,
+                           ((a: unknown, b: unknown) => a !== b) as never) as unknown as { coordinates: [number, number][][] }).coordinates;
+// Natural Earth's rivers at 1:10m (scripts/build_rivers.py), each with the middle of its extent, to draw only those
+// near the camera (projecting all ~110,000 points every frame would slow the render down)
+type River = { type: string; properties: { r: number; name: string }; geometry: { coordinates: [number, number][][] } };
+const extent = (all: [number, number][]) => {
+  const lons = all.map((c) => c[0]);
+  const lats = all.map((c) => c[1]);
+  const mid: [number, number] = [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+  return { mid, reach: geoDistance([Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]) / 2 };
+};
+const RIVERS = (rivers as unknown as { features: River[] }).features.map((river) => ({ river, ...extent(river.geometry.coordinates.flat()) }));
+const BORDERS = BORDER_LINES.map((line) => ({ line: { type: 'LineString', coordinates: line }, ...extent(line) }));
 const CITIES = cities as unknown as [number, number, number][];   // [lon, lat, size 1-4] (scripts/build_cities.py)
 // Natural Earth's bathymetry (scripts/build_bathymetry.py): the sea deeper than 200 / 2,000 / 4,000 / 6,000 m
 const DEPTHS = (bathymetry as unknown as { features: { properties: { depth: number } }[] }).features as unknown as (GeoPermissibleObjects & { properties: { depth: number } })[];
@@ -107,6 +124,9 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   const since = (at: number) => frame - at;
   const highlighted = new Set((g.highlight ?? []).map((h) => h.name));
   const fine = R > 760;                      // close in: the 1:50m coast
+  // on a close map, what can be on screen: within the screen's reach of the camera (plus the line's own size)
+  const near = (x: { mid: [number, number]; reach: number }) =>
+    geoDistance(x.mid, [cam.lon, cam.lat]) - x.reach < Math.asin(Math.min(1, 1300 / R)) + 0.05;
 
   return (
     <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
@@ -126,14 +146,29 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
       <g clipPath="url(#disc)">
         <path d={path(GRATICULE as never) ?? ''} fill="none" stroke={p.grid} strokeWidth={1} />
         {/* the ocean floor: each depth band darker, like a relief map (the shallow shelf stays pale along the coasts) */}
-        {DEPTHS.map((d, i) => <path key={`depth${i}`} d={path(d) ?? ''} fill={p.depths[i] ?? p.depths[p.depths.length - 1]} />)}
+        {/* close in, the depth bands' straight edges show: fainter there */}
+        <g opacity={1 - 0.55 * clamp((R - CLOSE) / 600)}>
+          {DEPTHS.map((d, i) => <path key={`depth${i}`} d={path(d) ?? ''} fill={p.depths[i] ?? p.depths[p.depths.length - 1]} />)}
+        </g>
         <path d={path(fine ? LAND_FC : LAND_FC_110) ?? ''} fill={p.land} stroke={p.coast} strokeWidth={0.8} strokeLinejoin="round" />
         <path d={path(fine ? ICE_FC : ICE_110) ?? ''} fill={p.ice} stroke={p.coast} strokeWidth={0.6} strokeLinejoin="round" />
         {COUNTRIES.filter((c) => highlighted.has(c.properties.name)).map((c, i) => {
           const group = (g.highlight ?? []).find((h) => h.name === c.properties.name)?.group ?? 0;
           const tint = [red, '#2F6E8F', '#5E8A4F', '#C9962E'][group] ?? red;
-          return <path key={i} d={path(c as never) ?? ''} fill={tint} opacity={0.34} stroke={tint} strokeWidth={1.4} />;
+          // a close map is mostly that country: a lighter tint, its border stronger
+          return <path key={i} d={path(c as never) ?? ''} fill={tint} fillOpacity={0.34 - 0.18 * clamp((R - CLOSE) / 600)}
+                       strokeOpacity={0.6} stroke={tint} strokeWidth={R > CLOSE ? 3 : 1.4} />;
         })}
+        {R > CLOSE ? (
+          <g opacity={clamp((R - CLOSE) / 300)}>
+            <path d={path({ type: 'MultiLineString', coordinates: BORDERS.filter(near).map((x) => x.line.coordinates) } as never) ?? ''}
+                  fill="none" stroke={p.soft} strokeWidth={1.4} strokeDasharray="7 5" opacity={0.75} />
+            {RIVERS.filter(near)
+              .map((x, i) => <path key={`riv${i}`} d={path(x.river as never) ?? ''} fill="none" stroke={p.depths[2]}
+                                   strokeWidth={x.river.properties.r <= 2 ? 3.2 : x.river.properties.r <= 5 ? 2.2 : 1.4}
+                                   strokeLinecap="round" strokeLinejoin="round" />)}
+          </g>
+        ) : null}
         {g.meridians ? (() => {
           const m = g.meridians;
           const k = ease(clamp(since(m.at) / (fps * 1.2)));
@@ -253,8 +288,8 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         const [x, y] = projection(mid as [number, number]) ?? [0, 0];
         return (
           <g key={`rl${i}`} opacity={clamp(local / 8)}>
-            <rect x={x - 70} y={y - 44} width={140} height={34} rx={3} fill={p.card} stroke={ink} strokeWidth={1} />
-            <text x={x} y={y - 21} textAnchor="middle" fontFamily={MONO} fontSize={18} fontWeight={700} fill={PALETTES.paper.ink}>{r.label}</text>
+            <rect x={x - Math.max(80, r.label.length * 8 + 24)} y={y - 52} width={Math.max(160, r.label.length * 16 + 48)} height={42} rx={3} fill={p.card} stroke={ink} strokeWidth={1} />
+            <text x={x} y={y - 23} textAnchor="middle" fontFamily={MONO} fontSize={24} fontWeight={700} fill={PALETTES.paper.ink}>{r.label}</text>
           </g>
         );
       })}
@@ -265,26 +300,50 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         return (
           <g key={`ringl${i}`} opacity={clamp(local / 8)}>
             <circle cx={x} cy={y} r={5} fill={ink} />
-            <text x={x} y={y - 14} textAnchor="middle" fontFamily={MONO} fontSize={17} fontWeight={700} fill={ink}
+            <text x={x} y={y - 16} textAnchor="middle" fontFamily={MONO} fontSize={24} fontWeight={700} fill={ink}
                   stroke={p.halo} strokeWidth={5} paintOrder="stroke">{r.label}</text>
           </g>
         );
       })}
-      {(g.points ?? []).map((pt, i) => {
-        const local = since(pt.at);
-        if (local < 0 || !visible(pt.lat, pt.lon)) return null;
-        const [x, y] = projection([pt.lon, pt.lat]) ?? [0, 0];
-        const pop = spring({ frame: local, fps, config: { damping: 12, stiffness: 220 }, durationInFrames: 12 });
-        const right = x < cx;
-        return (
-          <g key={`pt${i}`}>
-            <circle cx={x} cy={y} r={8 * pop} fill={ink} stroke={p.card} strokeWidth={2.5} />
-            <text x={x + (right ? 16 : -16)} y={y + 6} textAnchor={right ? 'start' : 'end'} fontFamily={MONO} fontSize={19}
-                  fontWeight={700} letterSpacing={1} fill={ink} opacity={clamp(local / 6)} stroke={p.halo} strokeWidth={6}
-                  paintOrder="stroke">{pt.name}</text>
-          </g>
-        );
-      })}
+      {(() => {
+        // every name where it does not cover another: right, left, above or below its dot, else only the dot
+        // (atlas1pt: «SERRA DO MAR» on «SÃO PAULO», «RIO PARANÁ» on «SALESÓPOLIS»)
+        const boxes: [number, number, number, number][] = [];
+        const hit = (b: [number, number, number, number]) => b[0] < 20 || b[2] > W - 20 || b[1] < 96 || b[3] > H - 20
+          || boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
+        return (g.points ?? []).map((pt, i) => {
+          const local = since(pt.at);
+          if (local < 0 || !visible(pt.lat, pt.lon)) return null;
+          const [x, y] = projection([pt.lon, pt.lat]) ?? [0, 0];
+          boxes.push([x - 11, y - 11, x + 11, y + 11]);
+          return { pt, i, local, x, y };
+        }).map((item) => {
+          if (!item) return null;
+          const { pt, i, local, x, y } = item;
+          const w = pt.name.length * POINT_FONT * 0.64 + 6;
+          const h = POINT_FONT + 6;
+          const first = x < cx ? 'right' : 'left';
+          const tries: [string, number, number, 'start' | 'end' | 'middle'][] = [
+            [first, first === 'right' ? x + 20 : x - 20, y + POINT_FONT * 0.36, first === 'right' ? 'start' : 'end'],
+            [first === 'right' ? 'left' : 'right', first === 'right' ? x - 20 : x + 20, y + POINT_FONT * 0.36, first === 'right' ? 'end' : 'start'],
+            ['up', x, y - 20, 'middle'], ['down', x, y + 20 + POINT_FONT * 0.8, 'middle']];
+          const box = (tx: number, ty: number, anchor: string): [number, number, number, number] => {
+            const left = anchor === 'start' ? tx : anchor === 'end' ? tx - w : tx - w / 2;
+            return [left, ty - h + 4, left + w, ty + 4];
+          };
+          const spot = tries.find(([, tx, ty, anchor]) => !hit(box(tx, ty, anchor)));
+          if (spot) boxes.push(box(spot[1], spot[2], spot[3]));
+          const pop = spring({ frame: local, fps, config: { damping: 12, stiffness: 220 }, durationInFrames: 12 });
+          return (
+            <g key={`pt${i}`}>
+              <circle cx={x} cy={y} r={9 * pop} fill={ink} stroke={p.card} strokeWidth={2.5} />
+              {spot ? <text x={spot[1]} y={spot[2]} textAnchor={spot[3]} fontFamily={MONO} fontSize={POINT_FONT}
+                            fontWeight={700} letterSpacing={1} fill={ink} opacity={clamp(local / 6)} stroke={p.halo} strokeWidth={7}
+                            paintOrder="stroke">{pt.name}</text> : null}
+            </g>
+          );
+        });
+      })()}
       {(g.tags ?? []).map((t, i) => {
         // the figure the line says («14:42», «1940»): a paper tag pinned by its place, or high on the globe
         const local = since(t.at);
@@ -309,7 +368,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         const centre = geoCentroid(c as never) as [number, number];
         if (!visible(centre[1], centre[0])) return null;
         const [x, y] = projection(centre) ?? [0, 0];
-        return <text key={`hl${i}`} x={x} y={y} textAnchor="middle" fontFamily={MONO} fontSize={18} fontWeight={700} fill={ink}
+        return <text key={`hl${i}`} x={x} y={y} textAnchor="middle" fontFamily={MONO} fontSize={25} fontWeight={700} fill={ink}
                      stroke={p.halo} strokeWidth={5} paintOrder="stroke">{h.label}</text>;
       })}
       {g.meridians?.labels ? (() => {
@@ -677,7 +736,7 @@ const IconView: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, a
   const { fps } = useVideoConfig();
   if (!g.icon) return null;
   const d = ICON_PATHS[g.icon.name] ?? ICON_PATHS.warning;
-  const k = clamp(frame / (fps * 1.4));
+  const k = clamp(frame / (fps * 0.6));       // drawn quickly: half drawn for 1.4 s read as broken (atlas1pt)
   return (
     <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
       <svg width={520} height={520} viewBox="-1 -1 26 26">
@@ -691,7 +750,7 @@ const IconView: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, a
         ) : null}
       </svg>
       {g.icon.label ? (
-        <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 22, letterSpacing: 4, color: p.ink, opacity: clamp((frame - g.icon.at - fps * 0.4) / 8) }}>
+        <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 32, letterSpacing: 5, color: p.ink, opacity: clamp((frame - g.icon.at - fps * 0.3) / 8) }}>
           {g.icon.label}
         </div>
       ) : null}
