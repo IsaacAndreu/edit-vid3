@@ -99,7 +99,13 @@
   .kanban .col { background: var(--panel2); border-radius: var(--radius); padding: 10px; min-height: 200px; }
   .kanban .col h3 { margin: 4px 4px 10px; font-size: 14px; }
   .kanban .item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 13.5px; }
-  .review { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .review { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .review .card.focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .review .card .n { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 99px; }
+  .review .card { position: relative; }
+  .rtool { position: sticky; top: 0; z-index: 4; background: var(--bg); padding: 8px 0; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .rtool .row { justify-content: space-between; }
+  .keys { font-size: 12.5px; color: var(--muted); } .keys kbd { font: 11.5px/1 var(--font); background: var(--panel2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; margin: 0 2px; }
   .review .card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
   .review .card.correcta { border-color: var(--ok); } .review .card.incorrecta { border-color: var(--bad); } .review .card.dudosa { border-color: #d29922; }
   .review img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #000; display: block; }
@@ -1754,39 +1760,75 @@ function jobLine(job, what) {
 let reviewFilter = "todos";
 async function reviewPage(slug) {
   const r = await api("/api/review/" + encodeURIComponent(slug));
-  const counts = {correcta: 0, incorrecta: 0, dudosa: 0};
-  r.shots.forEach((s) => s.label && counts[s.label.verdict]++);
-  const left = r.shots.length - counts.correcta - counts.incorrecta - counts.dudosa;
-  const shown = r.shots.filter((s) => reviewFilter === "todos" || (reviewFilter === "pendientes" ? !s.label : s.label && s.label.verdict === reviewFilter));
+  const shots = r.shots;
+  const verdictOf = (sh) => sh.label && sh.label.verdict;
+  const counts = () => { const c = {correcta: 0, incorrecta: 0, dudosa: 0}; shots.forEach((sh) => verdictOf(sh) && c[verdictOf(sh)]++); return c; };
+  const shownList = () => shots.filter((sh) => reviewFilter === "todos" || (reviewFilter === "pendientes" ? !sh.label : verdictOf(sh) === reviewFilter));
   const options = Object.entries(r.reasons).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("");
-  $("#app").innerHTML = `
-    <div class="row" style="justify-content:space-between"><h1>Revisar clips · <a href="#/video/${encodeURIComponent(slug)}">${esc(slug)}</a></h1>
-      ${counts.incorrecta ? `<button class="main" onclick="fixVideo()" ${r.job.running ? "disabled" : ""}>Rehacer con correcciones (${counts.incorrecta})</button>` : ""}</div>
-    <div class="small muted">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
-    ${jobLine(r.job, "Rehaciendo el vídeo con tus correcciones")}
-    <div class="tabs">${[["todos", `Todos (${r.shots.length})`], ["pendientes", `Sin revisar (${left})`], ["incorrecta", `Incorrectos (${counts.incorrecta})`],
-      ["dudosa", `Dudosos (${counts.dudosa})`], ["correcta", `Correctos (${counts.correcta})`]].map(([k, n]) =>
-      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}</div>
-    <div class="review">${shown.map((s) => {
-      const v = s.label && s.label.verdict;
-      return `<div class="card ${v || ""}" id="r-${s.id}">
-        <img loading="lazy" src="/api/review/${encodeURIComponent(slug)}/frame/${s.id}.jpg" alt="">
+  const card = (sh, i) => { const v = verdictOf(sh); return `<div class="card ${v || ""}" id="r-${sh.id}" data-i="${i}" tabindex="0" onclick="focusCard(${i})">
+        <span class="n">${i + 1}</span>
+        <img loading="lazy" src="/api/review/${encodeURIComponent(slug)}/frame/${sh.id}.jpg" alt="">
         <div class="body">
-          <div class="quote">«${esc(s.text || "—")}»</div>
-          <div class="src">${clock(s.at)} · ${esc(s.title || s.credit || s.source || "")}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
+          <div class="quote">«${esc(sh.text || "—")}»</div>
+          <div class="src">${clock(sh.at)} · ${esc(sh.title || sh.credit || sh.source || "")}${sh.url ? ` · <a href="${esc(sh.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
           <div class="acts">
-            <button class="b-ok ${v && v !== "correcta" ? "off" : ""}" onclick="mark('${s.id}','correcta')">Correcta</button>
-            <select id="why-${s.id}">${options}</select>
-            <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="mark('${s.id}','incorrecta')">Incorrecta</button>
-            <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="mark('${s.id}','dudosa')">Dudosa</button>
-            ${v ? `<button onclick="mark('${s.id}',null)" title="Quitar">↺</button>` : ""}
-          </div></div></div>`; }).join("") || '<div class="notice">Nada en este filtro.</div>'}</div>`;
-  r.shots.forEach((s) => { const sel = document.getElementById("why-" + s.id); if (sel && s.label && s.label.reason) sel.value = s.label.reason; });
+            <button class="b-ok ${v && v !== "correcta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','correcta')" title="tecla 1">Correcta</button>
+            <select id="why-${sh.id}" onclick="event.stopPropagation()">${options}</select>
+            <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','incorrecta')" title="tecla 3">Incorrecta</button>
+            <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','dudosa')" title="tecla 2">Dudosa</button>
+            ${v ? `<button onclick="event.stopPropagation();mark('${sh.id}',null)" title="Quitar (tecla 0)">↺</button>` : ""}
+          </div></div></div>`; };
+  const header = () => { const c = counts(), left = shots.length - c.correcta - c.incorrecta - c.dudosa; return `
+    <div class="row"><h1 style="margin:0">Revisar clips <span class="small muted" style="font-weight:600">${esc(slug)}</span></h1>
+      <span class="row" style="gap:6px"><a class="btn" href="#/video/${encodeURIComponent(slug)}">Ficha del vídeo</a>
+      ${c.incorrecta ? `<button class="main" onclick="fixVideo()" ${r.job.running ? "disabled" : ""}>Rehacer con correcciones (${c.incorrecta})</button>` : ""}</span></div>
+    <div class="row" style="margin-top:6px;gap:12px"><div class="bar" style="flex:1;margin:0"><i style="width:${Math.round(100 * (shots.length - left) / Math.max(1, shots.length))}%;background:var(--ok)"></i></div>
+      <span class="small muted">${shots.length - left} de ${shots.length} revisados</span></div>
+    <div class="tabs" style="margin:8px 0 0">${[["todos", `Todos (${shots.length})`], ["pendientes", `Sin revisar (${left})`], ["incorrecta", `Incorrectos (${c.incorrecta})`],
+      ["dudosa", `Dudosos (${c.dudosa})`], ["correcta", `Correctos (${c.correcta})`]].map(([k, n]) =>
+      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}
+      <span class="keys" style="margin-left:auto;align-self:center"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>1</kbd> correcta · <kbd>2</kbd> dudosa · <kbd>3</kbd> incorrecta · <kbd>0</kbd> quitar</span></div>`; };
+  $("#app").innerHTML = `<div class="rtool" id="rtool">${header()}</div>
+    <div class="small muted" style="margin-bottom:8px">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
+    ${jobLine(r.job, "Rehaciendo el vídeo con tus correcciones")}
+    <div class="review" id="review">${shownList().map(card).join("") || '<div class="notice">Nada en este filtro.</div>'}</div>`;
+  shots.forEach((sh) => { const sel = document.getElementById("why-" + sh.id); if (sel && sh.label && sh.label.reason) sel.value = sh.label.reason; });
+  let focus = -1;
+  const cards = () => [...document.querySelectorAll("#review .card[data-i]")];
+  window.focusCard = (i, scroll = false) => {
+    const list = cards(); if (!list.length) return;
+    focus = Math.max(0, Math.min(list.length - 1, i));
+    list.forEach((c) => c.classList.toggle("focus", +c.dataset.i === focus));
+    if (scroll) list.find((c) => +c.dataset.i === focus).scrollIntoView({block: "center", behavior: "smooth"});
+  };
+  // marking repaints only that card (no reload, no lost scroll) and moves the focus to the next one
   window.mark = async (id, verdict) => {
-    const reason = verdict === "incorrecta" ? document.getElementById("why-" + id).value : "";
-    const y = window.scrollY; await post(`/api/review/${encodeURIComponent(slug)}/${id}`, {verdict, reason}); await route(); window.scrollTo(0, y);
+    const sel = document.getElementById("why-" + id);
+    const reason = verdict === "incorrecta" && sel ? sel.value : "";
+    const sh = shots.find((x) => x.id === id);
+    try { await post(`/api/review/${encodeURIComponent(slug)}/${id}`, {verdict, reason}); } catch (e) { return alert(e.message); }
+    sh.label = verdict ? {verdict, reason} : null;
+    const old = document.getElementById("r-" + id);
+    if (old) { const i = +old.dataset.i; old.outerHTML = card(sh, i); if (sel) { const again = document.getElementById("why-" + id); if (again) again.value = sel.value; } }
+    $("#rtool").innerHTML = header();
+    if (verdict && reviewFilter !== "todos") { const el = document.getElementById("r-" + id); if (el && (reviewFilter === "pendientes" || reviewFilter !== verdict)) el.remove(); focusCard(focus, true); }
+    else focusCard(focus + 1, true);
   };
   window.fixVideo = async () => { await post(`/api/video/${encodeURIComponent(slug)}/fix`); route(); };
+  const keys = (e) => {
+    if (!location.hash.startsWith("#/revisar/")) { document.removeEventListener("keydown", keys); return; }
+    if (e.target.matches("input, textarea, select")) return;
+    const list = cards(); if (!list.length) return;
+    const current = list.find((c) => +c.dataset.i === focus);
+    const id = current && current.id.slice(2);
+    if (e.key === "ArrowRight" || e.key === "j") { e.preventDefault(); focusCard(focus < 0 ? 0 : focus + 1, true); }
+    else if (e.key === "ArrowLeft" || e.key === "k") { e.preventDefault(); focusCard(Math.max(0, focus - 1), true); }
+    else if (id && e.key === "1") mark(id, "correcta");
+    else if (id && e.key === "2") mark(id, "dudosa");
+    else if (id && e.key === "3") mark(id, "incorrecta");
+    else if (id && e.key === "0") mark(id, null);
+  };
+  document.addEventListener("keydown", keys);
   if (r.job.running) schedule(route, 8000);
 }
 
@@ -1827,7 +1869,8 @@ async function decisionsPage(slug) {
     <div class="small muted">Planos donde el programa no pudo usar la primera elección y buscó otra cosa. Mira lo que puso: si está bien, «Bien así»; si no, elige la opción que debería ir. Aprende de ello: lo que recuperas no vuelve a descartarse y te dice qué comprobación es demasiado estricta.</div>
     ${r.summary.tips.length ? `<div class="elf">🧝 ${r.summary.tips.map(esc).join("<br>")}</div>` : ""}
     ${jobLine(r.job, "Rehaciendo el vídeo con tus elecciones")}
-    ${r.items.map((i) => `<div class="card" style="margin-top:14px">
+    <div class="keys" style="margin-top:8px"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>Enter</kbd> bien así · <kbd>1</kbd>…<kbd>9</kbd> usar esa opción</div>
+    ${r.items.map((i) => `<div class="card" style="margin-top:14px" data-shot="${esc(i.shot)}" data-options="${esc(i.options.map((o) => o.key).join("\t"))}">
       <div class="row" style="justify-content:space-between"><b>${esc(i.shot)} · «${esc(i.text)}»</b>
         <span class="pill ${i.verdict === "correcta" ? "hecho" : i.pick ? "haciendo" : ""}">${i.verdict === "correcta" ? "bien así" : i.pick ? "elegida otra" : "sin revisar"}</span></div>
       <div class="small" style="margin:6px 0"><b>Por qué buscó otra cosa:</b> ${esc(i.kind)}${i.reason && i.kind !== i.reason ? ` <span class="muted">(${esc(i.reason.slice(0, 140))}${i.reason.length > 140 ? "…" : ""})</span>` : ""}</div>
@@ -1840,10 +1883,25 @@ async function decisionsPage(slug) {
           <img loading="lazy" src="${img(i.shot, o.key)}" alt="">
           <div class="body small">${o.original ? '<b>La que eligió el juez</b> (descartada) · ' : ""}${esc(o.title).slice(0, 80)}
             <div class="muted">${esc(o.channel)}${o.score != null ? ` · nota ${o.score}` : ""}${o.kind === "image" ? " · foto" : ""}</div>
-            <div class="row" style="margin-top:6px"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? "✓ Elegida" : "Usar esta"}</button></div></div></div>`).join("")}
+            <div class="row" style="margin-top:6px"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? "✓ Elegida" : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
       </div></div>`).join("") || '<div class="notice ok">En este vídeo el relleno no tuvo que decidir nada.</div>'}`;
   window.decide = async (shot, body) => { const y = window.scrollY; await post(`/api/decisions/${encodeURIComponent(slug)}/${shot}`, body); await route(); window.scrollTo(0, y); };
   window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { alert(e.message); } };
+  // keyboard: ←/→ between shots, Enter = «bien así», 1-9 = that option
+  let at = -1;
+  const blocks = () => [...document.querySelectorAll("#app > .card[data-shot]")];
+  const go = (i) => { const list = blocks(); if (!list.length) return; at = Math.max(0, Math.min(list.length - 1, i));
+    list.forEach((b, j) => b.style.outline = j === at ? "2px solid var(--accent)" : ""); list[at].scrollIntoView({block: "center", behavior: "smooth"}); };
+  const keys = (e) => {
+    if (!location.hash.startsWith("#/decisiones/")) { document.removeEventListener("keydown", keys); return; }
+    if (e.target.matches("input, textarea, select")) return;
+    const list = blocks(), b = list[at];
+    if (e.key === "ArrowRight" || e.key === "j") { e.preventDefault(); go(at + 1); }
+    else if (e.key === "ArrowLeft" || e.key === "k") { e.preventDefault(); go(Math.max(0, at - 1)); }
+    else if (b && e.key === "Enter") decide(b.dataset.shot, {ok: true});
+    else if (b && /^[1-9]$/.test(e.key)) { const key = (b.dataset.options || "").split("\t")[+e.key - 1]; if (key) decide(b.dataset.shot, {pick: key}); }
+  };
+  document.addEventListener("keydown", keys);
   if (r.job.running) schedule(route, 8000);
 }
 
