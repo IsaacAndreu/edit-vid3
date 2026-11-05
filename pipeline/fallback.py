@@ -649,10 +649,14 @@ def run(ctx: RunContext) -> None:
     # here, before the render, instead of making it. qa.max_empty_share (0.5) of the footage shots, at most.
     limit = float(ctx.section("qa").get("max_empty_share", 0.5))
     if shots and len(unresolved) / len(shots) > limit:
+        # the setting that really stands in the way (atletismo22 was told «pexels: true», already on)
+        person = bool(story.subject) and not cfg.get("pexels_for_person", False)
+        hint = ("permite el stock en vídeos de una persona en su config.yaml (fallback: pexels_for_person: true)"
+                if person else "permite el stock como último recurso en el canal (fallback: pexels: true)")
         raise RuntimeError(
             f"{len(unresolved)} de {len(shots)} planos sin ninguna imagen ({len(unresolved) / len(shots):.0%}): no se "
-            "monta, saldría un vídeo de pizarras de texto. Revisa «Decisiones del relleno» (el juez rechazó casi todo) "
-            "o permite el stock como último recurso en el canal (fallback: pexels: true).")
+            f"monta, saldría un vídeo de pizarras de texto. Revisa «Decisiones del relleno» (el juez rechazó casi todo) "
+            f"o {hint}.")
 
 
 def web_photos(ctx: RunContext, broll: Any, notes: list[str]) -> dict[str, Candidate]:
