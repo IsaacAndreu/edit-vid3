@@ -570,6 +570,28 @@ def git_head(root: Path) -> str:
     return out.stdout.strip()
 
 
+def forget_failures_of_older_code(state_path: Path, code: str) -> list[str]:
+    """After a restart with new code (git pull + systemctl restart, --actualizar), the videos that failed under the
+    previous code go back to the queue at once instead of waiting watch.retry_hours: the new code is usually their
+    fix. A restart with the same code changes nothing. Returns the slugs released."""
+
+    import json
+
+    try:
+        state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
+    except ValueError:
+        state = {}
+    if not state or not code:
+        return []
+    stale = sorted(slug for slug, info in state.items() if isinstance(info, dict) and info.get("code") not in (None, code))
+    if not stale:
+        return []
+    for slug in stale:
+        state.pop(slug, None)
+    state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+    return stale
+
+
 def _git_update(root: Path, running: str) -> bool:
     """git pull; True when the code on disk is newer than the code this process runs (`running`, its HEAD at
     start) — pulled now or by the studio, which pulls too."""
@@ -610,6 +632,10 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
     running_code = git_head(root) if cfg.get("git_pull", True) else ""
     retry = float(cfg.get("retry_hours", 6)) * 3600
     print(f"Vigilando {root / 'materiales'} cada {every_minutes:g} min (Ctrl+C para parar)")
+    retried = forget_failures_of_older_code(state_path, git_head(root))
+    if retried:
+        print(f"Código nuevo desde que fallaron: {', '.join(retried)} vuelven a la cola ya, sin esperar sus "
+              f"{retry / 3600:g} h")
     idle_since = None
 
     def beat() -> None:                      # web «vigilando» / bot: alive also during a long video, not only between
@@ -761,7 +787,8 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 if status == "OK":
                     state.pop(slug, None)
                 else:
-                    state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status}
+                    state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
+                                   "code": running_code or git_head(root)}
             state_path.parent.mkdir(parents=True, exist_ok=True)
             state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
             if waited:

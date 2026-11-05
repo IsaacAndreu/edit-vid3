@@ -375,3 +375,54 @@ def test_simulation_videos_go_before_footage_ones(tmp_path, monkeypatch):
     assert main.pending_slugs(tmp_path) == ["sim1", "gym1"]
     monkeypatch.setattr(main, "_queue_cfg", lambda root: {"drawn_first": False})
     assert main.pending_slugs(tmp_path) == ["gym1", "sim1"]
+
+
+def test_after_a_restart_with_new_code_the_failed_videos_go_back_to_the_queue(tmp_path, monkeypatch):
+    import json
+
+    import main
+
+    root = tmp_path
+    (root / "config.yaml").write_text("watch: {git_pull: false}\n")
+    for slug in ("v1", "v2"):
+        folder = root / "materiales" / slug
+        folder.mkdir(parents=True)
+        for name in ("guion.txt", "voz.mp3"):
+            (folder / name).write_text("x")
+    runs = []
+
+    def fake_queue(**kwargs):
+        runs.append(sorted(kwargs.get("skip") or []))
+        main.LAST_RESULTS[:] = [("v1", "ERROR", 1.0, "boom"), ("v2", "ERROR", 1.0, "boom")]
+        return 1
+
+    def nap(seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(main, "run_queue", fake_queue)
+    monkeypatch.setattr(main.time, "sleep", nap)
+    monkeypatch.setattr(main, "git_head", lambda root: "aaaa111")
+    try:
+        main.watch(0.01, root=root)
+    except KeyboardInterrupt:
+        pass
+    state_path = root / "out" / "_vigilar.json"
+    state = json.loads(state_path.read_text())
+    assert state["v1"]["code"] == "aaaa111" and state["v2"]["code"] == "aaaa111"
+
+    try:                                                   # the same code again: still waiting
+        main.watch(0.01, root=root)
+    except KeyboardInterrupt:
+        pass
+    assert runs == [[]] and json.loads(state_path.read_text()).keys() == {"v1", "v2"}
+
+    monkeypatch.setattr(main, "git_head", lambda root: "bbbb222")    # git pull + systemctl restart
+    try:
+        main.watch(0.01, root=root)
+    except KeyboardInterrupt:
+        pass
+    assert runs == [[], []]                                # both back in the queue at once
+    assert main.forget_failures_of_older_code(state_path, "bbbb222") == []        # nothing older left
+    old = {"v3": {"sig": "s", "at": 1, "status": "ERROR"}}  # a failure written before the code was recorded: kept
+    state_path.write_text(json.dumps(old))
+    assert main.forget_failures_of_older_code(state_path, "bbbb222") == [] and json.loads(state_path.read_text()) == old
