@@ -215,11 +215,12 @@ def test_an_ffmpeg_exit_code_is_explained_with_ffmpegs_own_words(tmp_path, monke
 
     def run(command, **kwargs):
         seen["command"], seen["env"] = command, kwargs["env"]
-        return subprocess.CompletedProcess(command, 1, "", "[https @ 0x1] HTTP error 403 Forbidden\n[in#0] Error opening input\n")
+        return subprocess.CompletedProcess(command, 1, "", "[https @ 0x1a] HTTP error 403 Forbidden\n[hls @ 0x2b] Error opening "
+                                           "input https://rr1.googlevideo.com/videoplayback/x" + "a" * 500 + "\n")
 
     monkeypatch.setattr(subprocess, "run", run)
     text = yt._ffmpeg_diagnosis(str(info), "bv*[height<=720][protocol^=m3u8]")
-    assert text == "[https @ 0x1] HTTP error 403 Forbidden [in#0] Error opening input"
+    assert text == "HTTP error 403 Forbidden Error opening input <url>"          # the error, not the signature
     command = seen["command"]
     sticky = with_sticky_session(RESI, yt.sessions.session_id("dQw4w9WgXcQ"))
     assert command[command.index("-http_proxy") + 1] == sticky and seen["env"]["http_proxy"] == sticky

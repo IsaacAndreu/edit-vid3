@@ -9,6 +9,7 @@ says whether its IP works for this volume.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -112,6 +113,10 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
             if slug in finished:
                 entry["finished"].add(slug)
             entry["bytes"] += int(row.get("proxy_bytes") or 0)
+            if not row.get("ok") and row.get("detail"):
+                # the file row carries the fullest words (ffmpeg's own diagnosis): keep what follows the prefix
+                text = re.sub(r"^yt-dlp [^:]+: (ERROR: )?", "", str(row["detail"]))[:200]
+                entry["details"][text] = entry["details"].get(text, 0) + 1
             if str(row.get("action", "")).startswith("archivo "):
                 continue                                      # the file row repeats a download request
             entry["requests"] += 1
@@ -120,9 +125,6 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
             else:
                 kind = row.get("error") or "other"
                 entry["errors"][kind] = entry["errors"].get(kind, 0) + 1
-                if row.get("detail"):
-                    text = str(row["detail"])[:120]
-                    entry["details"][text] = entry["details"].get(text, 0) + 1
     out = []
     for name, entry in sorted(by_proxy.items()):
         gb = entry["bytes"] / 1e9
