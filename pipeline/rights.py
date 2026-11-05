@@ -103,7 +103,7 @@ def write(ctx: RunContext, rows: list[dict[str, Any]], duration: float) -> list[
     """out/<slug>/derechos.md; returns the QA warnings (owners with high risk)."""
 
     cfg = ctx.section("rights")
-    strict = [*STRICT, *[str(c) for c in cfg.get("strict_channels", [])]]
+    strict = [*STRICT, *[str(c) for c in (cfg.get("strict_channels") or [])]]
     found = owners(rows, strict)
     third = sum(o["seconds"] for o in found)
     lines = [f"# Riesgo de reclamaciones · {ctx.slug}", "",

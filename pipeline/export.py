@@ -75,7 +75,7 @@ def timeline_xml(name: str, fps: int, total: int, width: int, height: int, video
 
 def chapter_markers(timeline: dict[str, Any]) -> list[tuple[int, str]]:
     out = []
-    for shot in timeline.get("shots", []):
+    for shot in (timeline.get("shots") or []):
         if shot.get("type") == "chapter":
             out.append((int(shot["from"]), str(shot.get("chapterTitle") or shot.get("text") or "Capítulo")[:60]))
     return out

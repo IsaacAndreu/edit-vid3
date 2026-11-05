@@ -249,4 +249,4 @@ def run(ctx: RunContext) -> None:
 
 def validate(ctx: RunContext) -> bool:
     data = ctx.read_json(OUTPUT)
-    return all((ctx.work_dir / p["image"]).is_file() for p in data.get("people", []))
+    return all((ctx.work_dir / p["image"]).is_file() for p in (data.get("people") or []))

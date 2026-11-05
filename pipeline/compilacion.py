@@ -65,7 +65,7 @@ def candidates(root: Path, channel: str) -> list[dict[str, Any]]:
 
     from . import agenda
 
-    used = {s for c in _used(root).values() for s in c.get("videos", [])}
+    used = {s for c in _used(root).values() for s in (c.get("videos") or [])}
     try:
         from .estadisticas import report
 
@@ -258,7 +258,7 @@ def build(root: Path, channel: str, slugs: list[str] | None = None, log: Any = p
                 f = tmp / f"f{n + 1}.jpg"
                 if f.is_file():
                     f.replace(stills / f"fotograma-{n + 1}.jpg")
-    title_options = [str(t).strip() for t in meta.get("titles", []) if str(t).strip()][:3] or [f"{hours} HORAS de {channel}"]
+    title_options = [str(t).strip() for t in (meta.get("titles") or []) if str(t).strip()][:3] or [f"{hours} HORAS de {channel}"]
     description = str(meta.get("description") or "").strip()
     (folder / "titulo.txt").write_text(title_options[0] + "\n", encoding="utf-8")
     (folder / "guion.txt").write_text("Compilación:\n" + "\n".join(f"- {t}" for t in titles) + "\n", encoding="utf-8")

@@ -139,7 +139,7 @@ def _chosen(ctx: RunContext) -> dict[str, str]:
         selection = ctx.read_json("selection.json")
     except (OSError, ValueError):
         return {}
-    return {s["shotId"]: str(s["candidateId"])[3:] for s in selection.get("selections", [])
+    return {s["shotId"]: str(s["candidateId"])[3:] for s in (selection.get("selections") or [])
             if s.get("status") == "selected" and str(s.get("candidateId", "")).startswith("yt:")}
 
 

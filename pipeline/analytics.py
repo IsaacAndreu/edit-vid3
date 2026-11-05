@@ -24,7 +24,7 @@ def write_timeline_manifest(scenes: list[SceneDraft], output_path: Path) -> None
             "templateName": scene.get("templateName"),
             "sceneType": scene.get("sceneType"),
             "text": scene.get("text", ""),
-            "keywords": scene.get("keywords", []),
+            "keywords": (scene.get("keywords") or []),
         }
         if scene.get("shots"):
             marker["shots"] = scene["shots"]

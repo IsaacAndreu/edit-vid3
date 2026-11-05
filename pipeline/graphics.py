@@ -289,10 +289,10 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
 
     if kind == "map":
         valid = {c.lower(): c for c in countries}
-        names = [valid[c.lower()] for c in data.get("countries", []) if isinstance(c, str) and c.lower() in valid]
+        names = [valid[c.lower()] for c in (data.get("countries") or []) if isinstance(c, str) and c.lower() in valid]
         points = []
         moved: dict[int, int] = {}                     # the LLM's point index → index among the points kept
-        for i, p in enumerate(data.get("points", [])[:8]):
+        for i, p in enumerate((data.get("points") or [])[:8]):
             if not isinstance(p, dict) or not p.get("name"):
                 continue
             where = geocode(ctx, str(p.get("query") or p["name"]))
@@ -339,7 +339,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                     labels.append({"name": str(extra["name"]), "lon": spot[0], "lat": spot[1]})
         return {"type": "satellite", "place": place, "lon": where[0], "lat": where[1], "labels": labels}
     if kind == "compare":
-        rows = [r for r in data.get("rows", []) if isinstance(r, dict) and _num(r.get("a")) is not None
+        rows = [r for r in (data.get("rows") or []) if isinstance(r, dict) and _num(r.get("a")) is not None
                 and _num(r.get("b")) is not None and said(r["a"], text) and said(r["b"], text)]
         if len(rows) < 2 or not (data.get("left") or {}).get("name") or not (data.get("right") or {}).get("name"):
             return None
@@ -348,21 +348,21 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 "rows": [{"label": str(r.get("label", "")), "a": _num(r["a"]), "b": _num(r["b"]), "unit": r.get("unit"),
                           "better": r.get("better") if r.get("better") in ("high", "low") else "high"} for r in rows[:5]]}
     if kind == "chart":
-        points = [d for d in data.get("data", []) if isinstance(d, dict) and _num(d.get("value")) is not None
+        points = [d for d in (data.get("data") or []) if isinstance(d, dict) and _num(d.get("value")) is not None
                   and said(d["value"], text) and said(d.get("label", ""), text)]
         if len(points) < 3 or data.get("chart") not in ("bar", "line", "pie"):
             return None
         return {"type": "chart", "chart": data["chart"], "title": str(data.get("title") or ""), "unit": data.get("unit"),
                 "data": [{"label": str(d.get("label", "")), "value": _num(d["value"])} for d in points[:12]]}
     if kind == "timeline":
-        events = [e for e in data.get("events", []) if isinstance(e, dict) and e.get("year") and said(e["year"], text)
+        events = [e for e in (data.get("events") or []) if isinstance(e, dict) and e.get("year") and said(e["year"], text)
                   and said(e.get("text", ""), text)]
         if len(events) < 3:
             return None
         return {"type": "timeline", "title": data.get("title"),
                 "events": [{"year": str(e["year"]), "text": str(e.get("text", ""))} for e in events[:8]]}
     if kind == "specs":
-        specs = [s for s in data.get("specs", []) if isinstance(s, dict) and s.get("value") and said(s["value"], text)]
+        specs = [s for s in (data.get("specs") or []) if isinstance(s, dict) and s.get("value") and said(s["value"], text)]
         if len(specs) < 3 or not data.get("name"):
             return None
         return {"type": "specs", "name": str(data["name"]), "subtitle": data.get("subtitle"),
@@ -370,7 +370,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
     if kind == "rank":
         if not data.get("name") or not isinstance(data.get("rank"), int) or not said(data["rank"], text):
             return None
-        stats = [s for s in data.get("stats", []) if isinstance(s, dict) and s.get("value") and said(s["value"], text)]
+        stats = [s for s in (data.get("stats") or []) if isinstance(s, dict) and s.get("value") and said(s["value"], text)]
         return {"type": "rank", "rank": data["rank"], "total": data.get("total") if isinstance(data.get("total"), int) else None,
                 "name": str(data["name"]), "subtitle": data.get("subtitle"),
                 "stats": [{"label": str(s.get("label", "")), "value": str(s["value"])} for s in stats[:4]]}
@@ -390,7 +390,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 "labels": {"d": w["d"], "e": w["e"], "penalty": w["pen"], "total": w["total"]}}
     if kind == "press":
         items = []
-        for item in data.get("items", [])[:3]:
+        for item in (data.get("items") or [])[:3]:
             if not isinstance(item, dict) or not item.get("headline"):
                 continue
             headline = " ".join(str(item["headline"]).split())
@@ -444,7 +444,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             and said_words(data["name"], text, 0.7) else None
         return {"type": "replay", "name": name, "badge": fixed_words(ctx)["replay"]}
     if kind == "standings":
-        rows = [r for r in data.get("rows", []) if isinstance(r, dict) and r.get("name") and r.get("score")
+        rows = [r for r in (data.get("rows") or []) if isinstance(r, dict) and r.get("name") and r.get("score")
                 and _num(r["score"]) is not None and said(r["score"], text) and said_words(r["name"], text, 0.5)]
         if len(rows) < 3:
             return None
@@ -456,7 +456,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             minutes, rest = divmod(whole, 60)
             return said(whole, text) or (minutes >= 1 and (rest == 0 or said(rest, text)) and "minuto" in text.lower())
         limit = _num(data.get("limit"))
-        marks = [m for m in data.get("marks", []) if isinstance(m, dict) and _num(m.get("seconds")) is not None
+        marks = [m for m in (data.get("marks") or []) if isinstance(m, dict) and _num(m.get("seconds")) is not None
                  and 0 < _num(m["seconds"]) < 3600 and spoken_seconds(_num(m["seconds"]))][:3]
         if limit is None or not 0 < limit < 3600 or not spoken_seconds(limit) or not marks:
             return None
@@ -476,7 +476,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 and said_words(data["reason"], text, 0.6) else None}
     if kind == "podium":
         places = {}
-        for item in data.get("places", []):
+        for item in (data.get("places") or []):
             if isinstance(item, dict) and item.get("place") in (1, 2, 3) and item.get("name") \
                     and item["place"] not in places and said_words(item["name"], text, 0.5):
                 note = item.get("note") if item.get("note") and said(item["note"], text) and _numbers(str(item["note"])) else None
@@ -487,7 +487,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 "places": [places[k] for k in sorted(places)]}
     if kind == "race":
         steps = []
-        for step in data.get("steps", [])[:12]:
+        for step in (data.get("steps") or [])[:12]:
             if not isinstance(step, dict) or not step.get("label") or not said(step["label"], text) \
                     or not isinstance(step.get("values"), dict):
                 continue
@@ -499,7 +499,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             return None
         return {"type": "race", "title": str(data.get("title") or ""), "unit": data.get("unit"), "steps": steps}
     if kind == "card":
-        stats = [x for x in data.get("stats", []) if isinstance(x, dict) and x.get("value") and x.get("label")
+        stats = [x for x in (data.get("stats") or []) if isinstance(x, dict) and x.get("value") and x.get("label")
                  and said(x["value"], text) and _numbers(str(x["value"]))]
         head = data.get("headline") if isinstance(data.get("headline"), dict) else {}
         if not data.get("name") or len(stats) < 3 or not said_words(data["name"], text, 0.5):
@@ -511,16 +511,16 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
                 "headline": {"label": str(head.get("label", ""))[:14], "value": str(head["value"])},
                 "stats": [{"label": str(x["label"])[:12], "value": str(x["value"])} for x in stats[:6]]}
     if kind == "scale":
-        items = [{"name": str(i["name"]), "value": _num(i["value"])} for i in data.get("items", [])
+        items = [{"name": str(i["name"]), "value": _num(i["value"])} for i in (data.get("items") or [])
                  if isinstance(i, dict) and i.get("name") and _num(i.get("value")) is not None and said(i["value"], text)]
         if not items or data.get("axis") not in ("height", "length"):
             return None
         refs = [{"name": REFERENCES[r][0], "value": REFERENCES[r][1], "reference": True}
-                for r in data.get("references", [])[:2] if r in REFERENCES]
+                for r in (data.get("references") or [])[:2] if r in REFERENCES]
         return {"type": "scale", "title": data.get("title"), "axis": data["axis"], "unit": str(data.get("unit") or "m"),
                 "items": items[:3] + refs}
     if kind == "receipt":
-        items = [{"label": str(x["label"])[:40], "value": str(x["value"])} for x in data.get("items", [])
+        items = [{"label": str(x["label"])[:40], "value": str(x["value"])} for x in (data.get("items") or [])
                  if isinstance(x, dict) and x.get("label") and x.get("value") and _numbers(str(x["value"]))
                  and said(x["value"], text)]
         total = data.get("total") if isinstance(data.get("total"), dict) else None
@@ -607,7 +607,7 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         return {"type": "post", "author": author, "text": line, "platform": platform, "date": date}
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
-        lines = [str(line) for line in data.get("lines", []) if str(line).strip()][:3]
+        lines = [str(line) for line in (data.get("lines") or []) if str(line).strip()][:3]
         words = [w for line in lines for w in re.findall(r"\w+", line.lower())]
         if not lines or len(words) > 10 or not set(words) <= spoken:
             return None
@@ -656,7 +656,7 @@ def ranking(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
     except Exception as error:  # the marks of the script are enough for the cards
         print(f"   Datos del ranking no disponibles: {str(error)[:120]}")
         result = {}
-    items = [i for i in result.get("items", []) if isinstance(i, dict) and isinstance(i.get("rank"), int)]
+    items = [i for i in (result.get("items") or []) if isinstance(i, dict) and isinstance(i.get("rank"), int)]
     marks = countdown_marks(sents)
     total = result.get("total") if isinstance(result.get("total"), int) else None
     if len(marks) >= 3:
@@ -676,7 +676,7 @@ def ranking(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
         if not said(rank, intro):
             continue
         passage = " ".join(s["text"] for s in sents[n: n + 6])
-        stats = [x for x in item.get("stats", []) if isinstance(x, dict) and x.get("value") and said(x["value"], passage)]
+        stats = [x for x in (item.get("stats") or []) if isinstance(x, dict) and x.get("value") and said(x["value"], passage)]
         subtitle = item.get("subtitle") if isinstance(item.get("subtitle"), str) and item["subtitle"].strip() else None
         start = sents[n]["start"]
         if out and start < out[-1]["end"] + 1:
@@ -711,7 +711,7 @@ def banned(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]
     seconds = float(ctx.section("graphics").get("banned_seconds", 5.5))
     w = fixed_words(ctx)
     out: list[dict[str, Any]] = []
-    for item in sorted((i for i in result.get("items", []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
+    for item in sorted((i for i in (result.get("items") or []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
         n = _as_int(item.get("sentence"))
         if not 0 <= n < len(sents) or not item.get("name"):
             continue
@@ -741,13 +741,13 @@ def tier(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     except Exception as error:  # the video is complete without them
         print(f"   Tier list no disponible: {str(error)[:120]}")
         return []
-    tiers = [str(t).strip()[:12] for t in result.get("tiers", []) if str(t).strip()][:7]
+    tiers = [str(t).strip()[:12] for t in (result.get("tiers") or []) if str(t).strip()][:7]
     if len(tiers) < 2:
         return []
     seconds = float(ctx.section("graphics").get("tier_seconds", 4.5))
     placed: list[dict[str, str]] = []
     out: list[dict[str, Any]] = []
-    for item in sorted((i for i in result.get("items", []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
+    for item in sorted((i for i in (result.get("items") or []) if isinstance(i, dict)), key=lambda i: _as_int(i.get("sentence"))):
         n, name, level = _as_int(item.get("sentence")), str(item.get("name") or "").strip(), str(item.get("tier") or "").strip()
         if not 0 <= n < len(sents) or not name or level not in tiers or any(p["name"] == name for p in placed):
             continue
@@ -772,13 +772,13 @@ def iceberg(ctx: RunContext, sents: list[dict[str, Any]]) -> list[dict[str, Any]
     except Exception as error:  # the video is complete without them
         print(f"   Iceberg no disponible: {str(error)[:120]}")
         return []
-    levels = [lv for lv in sorted((x for x in result.get("levels", []) if isinstance(x, dict)), key=lambda x: _as_int(x.get("sentence")))
+    levels = [lv for lv in sorted((x for x in (result.get("levels") or []) if isinstance(x, dict)), key=lambda x: _as_int(x.get("sentence")))
               if 0 <= _as_int(lv.get("sentence")) < len(sents) and str(lv.get("title") or "").strip()][:12]
     if len(levels) < 2:
         return []
     titles = [str(lv["title"]).strip()[:40] for lv in levels]
     items = [{"name": str(i["name"]).strip()[:40], "level": _as_int(i.get("level")) - 1, "sentence": _as_int(i.get("sentence"))}
-             for i in result.get("items", []) if isinstance(i, dict) and str(i.get("name") or "").strip()
+             for i in (result.get("items") or []) if isinstance(i, dict) and str(i.get("name") or "").strip()
              and 1 <= _as_int(i.get("level")) <= len(levels) and 0 <= _as_int(i.get("sentence")) < len(sents)
              and said_words(i["name"], " ".join(s["text"] for s in sents[max(0, _as_int(i["sentence"]) - 1): _as_int(i["sentence"]) + 2]), 0.5)]
     seconds = float(ctx.section("graphics").get("iceberg_seconds", 5))

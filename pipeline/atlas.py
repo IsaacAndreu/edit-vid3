@@ -692,7 +692,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             "\n".join(f"[{start + n}] {text}" for n, (_, text) in enumerate(batch, 1))
         try:
             result = complete_json(ctx, stage="atlas", section="planner", system=system, user=user, max_tokens=550 * len(batch))
-            got = {int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)}
+            got = {int(s.get("n", 0)): s for s in (result.get("scenes") or []) if isinstance(s, dict)}
             if len([n for n in got if start < n <= start + len(batch)]) < len(batch) // 2:
                 raise ValueError(f"solo {len(got)} escenas de {len(batch)}")
             found.update(got)

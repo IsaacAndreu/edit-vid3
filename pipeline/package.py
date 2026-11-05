@@ -216,8 +216,8 @@ def run(ctx: RunContext) -> None:
     except Exception as error:
         print(f"   Sin títulos/textos del LLM: {str(error)[:120]}")
         result = {}
-    titles = [str(t).strip() for t in result.get("titles", []) if str(t).strip()][:3] or [title]
-    texts = [str(t).strip() for t in result.get("thumbTexts", []) if str(t).strip()][:3] or [title]
+    titles = [str(t).strip() for t in (result.get("titles") or []) if str(t).strip()][:3] or [title]
+    texts = [str(t).strip() for t in (result.get("thumbTexts") or []) if str(t).strip()][:3] or [title]
     while len(texts) < 3:
         texts.append(texts[-1])
 
@@ -242,7 +242,7 @@ def run(ctx: RunContext) -> None:
     if cutout and ctx.section("miniaturas").get("poster", True):    # the third one: the poster style
         variants[2] = {"text": texts[2], "accent": accents[0], "cutout": cutout, "poster": True, "focus": _face(ctx, cutout)}
     if concept:
-        ideas = [c for c in result.get("concepts", []) if isinstance(c, dict) and str(c.get("scene") or "").strip()][:3]
+        ideas = [c for c in (result.get("concepts") or []) if isinstance(c, dict) and str(c.get("scene") or "").strip()][:3]
         for i, idea in enumerate(ideas):
             side = "left" if str(idea.get("side")) == "left" else "right"
             try:

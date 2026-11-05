@@ -194,7 +194,7 @@ def analyse(videos: list[dict[str, Any]], channel: dict[str, Any], tz_name: str 
     # Temas
     topic_rows = []
     for topic in topics or []:
-        wanted = {i for i in topic.get("videos", []) if isinstance(i, int)}     # numbers in the list given to the LLM
+        wanted = {i for i in (topic.get("videos") or []) if isinstance(i, int)}     # numbers in the list given to the LLM
         inside = [v for v in scored if v["index"] in wanted]
         ratios = [v["ratio"] for v in inside if v["ratio"] is not None]
         if len(inside) < 2:
@@ -245,7 +245,7 @@ def group_topics(ctx: RunContext, titles: list[str]) -> list[dict[str, Any]]:
         return cache[digest]
     result = complete_json(ctx, stage="mychannel", section="planner", system=TOPICS_SYSTEM, max_tokens=4000,
                            user="\n".join(f"{i}. {t}" for i, t in enumerate(titles)))
-    topics = [t for t in result.get("topics", []) if isinstance(t, dict) and t.get("name") and t.get("videos")]
+    topics = [t for t in (result.get("topics") or []) if isinstance(t, dict) and t.get("name") and t.get("videos")]
     cache[digest] = topics
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")

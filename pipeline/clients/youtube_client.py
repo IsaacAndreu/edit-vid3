@@ -80,7 +80,7 @@ class YouTubeClient:
                 "and that YouTube is available."
             ) from exc
 
-        entries = info.get("entries", []) if isinstance(info, dict) else []
+        entries = (info.get("entries") or []) if isinstance(info, dict) else []
         candidates: list[YouTubeCandidate] = []
         seen_ids: set[str] = set()
         for entry in entries or []:
@@ -392,7 +392,7 @@ class YouTubeClient:
         except (json.JSONDecodeError, TypeError):
             return []
         cues: list[SubtitleCue] = []
-        for event in payload.get("events", []) if isinstance(payload, dict) else []:
+        for event in (payload.get("events") or []) if isinstance(payload, dict) else []:
             if not isinstance(event, dict):
                 continue
             try:
@@ -400,7 +400,7 @@ class YouTubeClient:
                 end = start + float(event["dDurationMs"]) / 1000
             except (KeyError, TypeError, ValueError):
                 continue
-            segments = event.get("segs", [])
+            segments = (event.get("segs") or [])
             text = cls._clean_subtitle_text(
                 "".join(str(segment.get("utf8", "")) for segment in segments if isinstance(segment, dict))
             )

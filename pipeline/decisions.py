@@ -78,7 +78,7 @@ def items(root: Path, slug: str, limit: int = 6) -> list[dict[str, Any]]:
     picks = {k.split("/", 1)[1]: v for k, v in (_read(root / PICKS) or {}).items() if k.startswith(f"{slug}/")}
     marked = labels(root)
     ctx = RunContext.create(slug, root=root, config={})
-    rows: list[tuple[str, dict[str, Any] | None, str]] = [(i["shotId"], i, i.get("reason", "")) for i in fallback.get("items", [])]
+    rows: list[tuple[str, dict[str, Any] | None, str]] = [(i["shotId"], i, i.get("reason", "")) for i in (fallback.get("items") or [])]
     rows += [(sid, None, why) for sid, why in (fallback.get("unresolved") or {}).items()]
     out = []
     for shot_id, item, reason in sorted(rows, key=lambda r: r[0]):

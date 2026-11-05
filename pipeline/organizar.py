@@ -362,7 +362,7 @@ def similar_ideas(root: Path, slug: str, count: int = 5, refresh: bool = False) 
                            user=f"VÍDEO QUE FUNCIONÓ: {title}\nFORMATO: {format_name or '(el del canal)'}\n\nARRANQUE DEL GUION:\n{script}"
                                 f"\n\nTEMAS YA HECHOS (no repetir):\n" + "\n".join(f"- {t}" for t in done[-80:]))
     ideas = [{"title": str(i.get("title") or "").strip(), "note": str(i.get("note") or "").strip(), "format": format_name}
-             for i in result.get("ideas", []) if isinstance(i, dict) and str(i.get("title") or "").strip()][:count]
+             for i in (result.get("ideas") or []) if isinstance(i, dict) and str(i.get("title") or "").strip()][:count]
     data = {"slug": slug, "title": title, "channel": channel, "format": format_name, "ideas": ideas}
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

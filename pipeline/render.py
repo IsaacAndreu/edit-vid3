@@ -184,8 +184,8 @@ def card_graph(media: dict[str, Any], frames: int, fps: int, badge: bool) -> str
 def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment]:
     segments: list[Segment] = []
     condensed = 0
-    overlays = [*timeline.get("groups", []), *timeline.get("labels", []),   # anything drawn over the footage
-                *timeline.get("transitions", []), *timeline.get("shakes", [])]  # or moving it (zoom / whip / shake)
+    overlays = [*(timeline.get("groups") or []), *(timeline.get("labels") or []),   # anything drawn over the footage
+                *(timeline.get("transitions") or []), *(timeline.get("shakes") or [])]  # or moving it (zoom / whip / shake)
     for shot in timeline["shots"]:
         if hybrid and shot["type"] == "endscreen" and not _covered(shot["from"], shot["from"] + shot["durationInFrames"], overlays):
             # the same in every video of the channel: rendered once and cached (Renderer.endscreen)
@@ -236,9 +236,9 @@ def condensed_props(timeline: dict[str, Any], segments: list[Segment]) -> dict[s
         return out
 
     groups = shifted(timeline["groups"], "Un grupo")
-    labels = shifted(timeline.get("labels", []), "Un rótulo")
-    transitions = shifted(timeline.get("transitions", []), "Una transición")
-    shakes = shifted(timeline.get("shakes", []), "Un temblor")
+    labels = shifted((timeline.get("labels") or []), "Un rótulo")
+    transitions = shifted((timeline.get("transitions") or []), "Una transición")
+    shakes = shifted((timeline.get("shakes") or []), "Un temblor")
     total = sum(s["durationInFrames"] for s in shots)
     audio = {**timeline["audio"], "music": None, "speech": [], "sfx": [], "clips": [], "voiceFrom": 0}
     return {**timeline, "durationInFrames": total, "shots": shots, "groups": groups, "labels": labels,
@@ -758,7 +758,7 @@ class Renderer:
         chains: list[str] = []
         mix: list[str] = []
         if only in (None, "voice"):
-            chains += voice_chains(add(work / audio["voice"]), audio.get("voiceFrom", 0), audio.get("voiceGaps", []),
+            chains += voice_chains(add(work / audio["voice"]), audio.get("voiceFrom", 0), (audio.get("voiceGaps") or []),
                                    self.fps, stereo)
             mix.append("[voice]")
         if audio.get("music") and only in (None, "music"):
@@ -766,8 +766,8 @@ class Renderer:
             index = add(self.chapter_bed(parts, seconds) if len(parts) > 1 else
                         self.music_bed(work / (parts[0]["src"] if parts else audio["music"]), seconds))
             # ducked under the voice AND under the original sound of the cold open / moments
-            busy = sorted([*[tuple(s) for s in audio.get("speech", [])],
-                           *[(c["from"], c["from"] + c["durationInFrames"]) for c in audio.get("clips", [])]])
+            busy = sorted([*[tuple(s) for s in (audio.get("speech") or [])],
+                           *[(c["from"], c["from"] + c["durationInFrames"]) for c in (audio.get("clips") or [])]])
             curve = music_volume_curve(busy, self.fps, total, audio["musicVolume"], audio["duckedVolume"])
             envelope = self.dir / f"envelope-{_hash(busy, total, audio['musicVolume'], audio['duckedVolume'])}.wav"
             if not envelope.is_file():
@@ -780,7 +780,7 @@ class Renderer:
             chains.append(f"[bed][gain]amultiply,afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}[music]")
             mix.append("[music]")
         # Original sound of the cold-open clips (the only clip audio ever used), then SFX.
-        for n, clip in enumerate(audio.get("clips", []) if only in (None, "effects") else []):
+        for n, clip in enumerate((audio.get("clips") or []) if only in (None, "effects") else []):
             index = add(work / clip["src"])
             delay = round(clip["from"] / self.fps * 1000)
             length = clip["durationInFrames"] / self.fps
@@ -793,7 +793,7 @@ class Renderer:
             index = add(work / audio["simTrack"])
             chains.append(f"[{index}:a]{stereo},atrim=end={seconds:.4f}[sim]")
             mix.append("[sim]")
-        for n, sfx in enumerate(audio.get("sfx", []) if only in (None, "effects") else []):
+        for n, sfx in enumerate((audio.get("sfx") or []) if only in (None, "effects") else []):
             index = add(work / sfx["src"])
             delay = round(sfx["from"] / self.fps * 1000)
             chains.append(f"[{index}:a]{stereo},atrim=end={SFX_FRAMES / self.fps:.3f},"
@@ -1160,7 +1160,7 @@ def graphics_sheet(ctx: RunContext, final: Path, timeline: dict[str, Any]) -> No
     """out/<slug>/graficos.md: one frame of every animated graphic of the final video, with its moment and what
     it says, to review them at a glance (and drop one in the editor if it does not convince)."""
 
-    groups = [g for g in timeline.get("groups", []) if g.get("kind") == "graphic" and g.get("graphic")]
+    groups = [g for g in (timeline.get("groups") or []) if g.get("kind") == "graphic" and g.get("graphic")]
     folder = ctx.out_dir / "graficos"
     if folder.is_dir():
         for old in folder.glob("*.jpg"):

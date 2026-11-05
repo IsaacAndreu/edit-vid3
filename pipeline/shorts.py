@@ -87,7 +87,7 @@ def pick(ctx: RunContext, sents: list[dict[str, Any]], strong: set[int] | None =
                            user=f"IDIOMA DE hook/title/description: {ctx.language}\n\n" + listing[:60000],
                            system=SYSTEM.format(count=count, min_s=int(min_s), max_s=int(max_s)))
     chosen, taken = [], set()
-    for item in result.get("shorts", []):
+    for item in (result.get("shorts") or []):
         try:
             span = fit(sents, int(item["from"]), int(item["to"]), min_s, max_s)
         except (KeyError, TypeError, ValueError):

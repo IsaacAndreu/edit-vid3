@@ -75,9 +75,9 @@ def discover(ctx: RunContext, api: Any, cfg: dict[str, Any], known: list[str], t
                            user="NICHOS YA CONOCIDOS (no repetir):\n" + "\n".join(f"- {k}" for k in known[-150:])
                                 + "\n\nVÍDEOS QUE FUNCIONAN:\n" + listing)
     out = []
-    for niche in result.get("niches", []):
+    for niche in (result.get("niches") or []):
         if isinstance(niche, dict) and niche.get("query"):
-            found = [hits[i] for i in niche.get("videos", []) if i in hits]
+            found = [hits[i] for i in (niche.get("videos") or []) if i in hits]
             out.append({"name": str(niche.get("name") or niche["query"]), "query": str(niche["query"]),
                         "why": str(niche.get("why") or ""), "found": found[:6]})
     return out
@@ -119,7 +119,7 @@ def _seen_before(root: Path, today: str) -> set[str]:
     for path in sorted((root / FOLDER).glob("20*.json"))[-14:]:
         if path.stem != today:
             for info in ((_read(path) or {}).get("channels") or {}).values():
-                seen |= {v["id"] for v in info.get("top", [])}
+                seen |= {v["id"] for v in (info.get("top") or [])}
     return seen
 
 
@@ -213,7 +213,7 @@ def propose_niches(ctx: RunContext, about: str, known: list[str], count: int) ->
         ctx, stage=STAGE, section="planner", max_tokens=1500, use_cache=False,
         system=NICHE_SYSTEM.replace("{what}", about).replace("{count}", str(count)),
         user="NICHOS YA CONOCIDOS (no repetir):\n" + "\n".join(f"- {k}" for k in known[-150:]))
-    return [n for n in result.get("niches", []) if isinstance(n, dict) and n.get("query")][:count]
+    return [n for n in (result.get("niches") or []) if isinstance(n, dict) and n.get("query")][:count]
 
 
 def run(root: Path, *, force: bool = False) -> Path:
@@ -343,7 +343,7 @@ def explosions(root: Path, report: dict[str, Any], cfg: dict[str, Any], today: s
         return []
     hits = []
     for name, info in (report.get("channels") or {}).items():
-        for v in info.get("top", []):
+        for v in (info.get("top") or []):
             score = v.get("viral", viral_score(v))
             age = v.get("ageDays")
             if (v.get("id") and v["id"] not in seen and score >= int(cfg.get("alert_score", 60))
@@ -395,7 +395,7 @@ def _notify(ctx: RunContext, report: dict[str, Any]) -> None:
         gaps = gap_lines(report["gaps"])
         if gaps:
             lines += ["🎯 Huecos: público y poca competencia en español:", *gaps, ""]
-    best = sorted(report.get("niches", []), key=lambda n: -n["score"])[:3]
+    best = sorted((report.get("niches") or []), key=lambda n: -n["score"])[:3]
     if best:
         lines.append("Nichos nuevos:")
         lines += [f"  {n['name']} · nota {n['score']} · {n['smallHits']} éxitos de canales pequeños" for n in best]

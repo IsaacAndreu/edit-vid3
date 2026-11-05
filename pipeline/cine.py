@@ -220,7 +220,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         try:
             result = complete_json(ctx, stage="cine", section="planner", system=system, user=user,
                                    max_tokens=420 * len(batch))
-            found = {int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)}
+            found = {int(s.get("n", 0)): s for s in (result.get("scenes") or []) if isinstance(s, dict)}
         except Exception as error:      # a plain shot of the hero rather than no video
             print(f"   Planos de cine no disponibles ({str(error)[:100]}): el héroe en su cuarto")
             found = {}

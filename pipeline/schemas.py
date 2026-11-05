@@ -100,7 +100,7 @@ class BrollSpec(_Strict):
         if isinstance(data, dict) and "queriesEn" in data:
             data = dict(data)
             data["queries"] = data.pop("queriesEn")
-            data["queriesLocal"] = data.pop("queriesEs", data.get("queriesLocal", []))
+            data["queriesLocal"] = data.pop("queriesEs", (data.get("queriesLocal") or []))
         return data
 
     @model_validator(mode="after")

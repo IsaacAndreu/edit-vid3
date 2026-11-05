@@ -222,7 +222,7 @@ def remember(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
             data = learned[entity] = load(ctx, entity)
             if entity == person:
                 data["kind"] = "person"
-        if candidate.id in data.get("removed", []):            # you took it out in the studio
+        if candidate.id in (data.get("removed") or []):            # you took it out in the studio
             return
         if candidate.kind == "video" and candidate.source != "youtube":   # archive footage lives in its own cache
             return
@@ -361,7 +361,7 @@ def overview(root: Path) -> list[dict[str, Any]]:
         stats = data["stats"].values()
         out.append({"key": path.parent.name, "name": data["name"], "kind": data["kind"], "videos": len(data["videos"]),
                     "photos": len(data["photos"]), "cutout": bool(data.get("cutout")),
-                    "inVideos": len({v for s in stats for v in s.get("videos", [])}),
+                    "inVideos": len({v for s in stats for v in (s.get("videos") or [])}),
                     "last": max((str(s.get("last") or "") for s in stats), default="")})
     return sorted(out, key=lambda e: (-(e["videos"] + e["photos"]), e["name"].casefold()))
 
@@ -376,11 +376,11 @@ def entity(root: Path, key: str) -> dict[str, Any]:
         for cid, raw in data[bucket].items():
             stats = data["stats"].get(cid, {})
             clip_dir = _base(root) / CLIPS
-            clips = [c for c in stats.get("clips", []) if (clip_dir / c["file"]).is_file()]
+            clips = [c for c in (stats.get("clips") or []) if (clip_dir / c["file"]).is_file()]
             sources.append({"id": cid, "kind": bucket, "title": raw.get("title") or "", "channel": raw.get("channel") or "",
                             "clips": clips,
                             "url": raw.get("url") or "", "used": stats.get("used", 0), "approved": stats.get("approved", 0),
-                            "right": stats.get("right", 0), "videos": stats.get("videos", []), "last": stats.get("last") or "",
+                            "right": stats.get("right", 0), "videos": (stats.get("videos") or []), "last": stats.get("last") or "",
                             "preview": bool((raw.get("storyboard") or {}).get("sheets") or raw.get("imagePath"))})
     sources.sort(key=lambda s: (-_value(s), s["title"]))
     return {"key": key, "name": data["name"], "kind": data["kind"], "sources": sources}

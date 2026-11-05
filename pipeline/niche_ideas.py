@@ -141,7 +141,7 @@ def ideas(root: Path, seed: dict[str, Any], count: int = 5, more: bool = False) 
     ctx = RunContext.create("_ideas", root=root)
     listing = "\n".join(f"- x{v.get('ratio')} · {v.get('views')} visitas · [{v.get('channel', '')}] {v.get('title')}"
                         for v in videos[:25])
-    before = [i["title"] for i in cached.get("ideas", [])]
+    before = [i["title"] for i in (cached.get("ideas") or [])]
     try:
         taken = done_topics(ctx)[-60:]
     except Exception:
@@ -154,7 +154,7 @@ def ideas(root: Path, seed: dict[str, Any], count: int = 5, more: bool = False) 
               "IDEAS YA PROPUESTAS (no repetir):\n" + ("\n".join(f"- {t}" for t in before) or "(ninguna)") + "\n\n"
               "TEMAS YA HECHOS (no repetir):\n" + ("\n".join(f"- {t}" for t in taken) or "(ninguno)")))
     fresh = []
-    for idea in result.get("ideas", [])[:count]:
+    for idea in (result.get("ideas") or [])[:count]:
         if not isinstance(idea, dict) or not idea.get("title"):
             continue
         if idea.get("format") not in formats:
@@ -162,7 +162,7 @@ def ideas(root: Path, seed: dict[str, Any], count: int = 5, more: bool = False) 
         idea["outline"] = [str(x) for x in idea.get("outline") or []][:8]
         idea["id"] = hashlib.sha256(f"{seed_key(seed)}:{idea['title']}".encode()).hexdigest()[:12]
         fresh.append(idea)
-    data = {"seed": seed, "what": what, "evidence": videos[:8], "ideas": cached.get("ideas", []) + fresh,
+    data = {"seed": seed, "what": what, "evidence": videos[:8], "ideas": (cached.get("ideas") or []) + fresh,
             "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     _write(path, data)
     return data

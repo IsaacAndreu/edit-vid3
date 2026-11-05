@@ -172,7 +172,7 @@ def _remember(root: Path, entry: dict[str, Any], today: str) -> dict[str, Any]:
     data = _read(root)
     k = key(entry["query_es"])
     old = data["items"].get(k) or {}
-    history = [h for h in old.get("history", []) if h.get("date") != today][-20:]
+    history = [h for h in (old.get("history") or []) if h.get("date") != today][-20:]
     history.append({"date": today, "score": entry["score"], "demand": entry["demand"], "recent": entry["recent"]})
     entry = {**old, **entry, "history": history, "firstSeen": old.get("firstSeen", today), "date": today}
     data["items"][k] = entry
@@ -211,7 +211,7 @@ def propose(ctx: RunContext, signals: list[str], known: list[str], count: int) -
                            system=PROPOSE_SYSTEM.replace("{count}", str(count)),
                            user="SEÑALES DE HOY:\n" + ("\n".join(f"- {s}" for s in signals[:40]) or "(ninguna)")
                                 + "\n\nNICHOS YA CONOCIDOS (no repetir):\n" + "\n".join(f"- {k}" for k in known[-200:]))
-    out = [_clean(n) for n in result.get("niches", []) if isinstance(n, dict)]
+    out = [_clean(n) for n in (result.get("niches") or []) if isinstance(n, dict)]
     return [n for n in out if n][:count]
 
 

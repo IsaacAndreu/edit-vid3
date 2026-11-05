@@ -187,7 +187,7 @@ def check(root: Path, slug: str) -> dict[str, Any]:
     checks.append(thumbnail_check(_images(thumbs(slug)), _images(previous)))
     manifest = _read(root / "out" / slug / "manifest.json") or {}
     before = [s for v in earlier for s in (_read(root / "out" / v["slug"] / "manifest.json") or {}).get("shots", [])]
-    checks.append(visuals_check(manifest.get("shots", []), before, float(cfg.get("max_reused", 0.2))))
+    checks.append(visuals_check((manifest.get("shots") or []), before, float(cfg.get("max_reused", 0.2))))
     warns = sum(c["status"] == "warn" for c in checks)
     return {"slug": slug, "checks": checks, "risk": "alto" if warns >= 2 else "medio" if warns else "bajo",
             "compared": len(earlier)}

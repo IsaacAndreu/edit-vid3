@@ -147,7 +147,7 @@ def gather(ctx: RunContext) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
 
     cfg = ctx.section("ideas")
     limit = int(cfg.get("videos_per_channel", 40))
-    competitors = [str(c) for c in cfg.get("competitors", []) if str(c).strip()]
+    competitors = [str(c) for c in (cfg.get("competitors") or []) if str(c).strip()]
     mine = str(cfg.get("my_channel") or "").strip()
     if not competitors and not mine and not ctx.section("lab").get("queries"):
         raise ValueError("Configura ideas.my_channel y/o ideas.competitors en config.yaml")
@@ -163,7 +163,7 @@ def gather(ctx: RunContext) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         from . import lab
 
         lab_cfg = ctx.section("lab")
-        for query in lab_cfg.get("queries", [])[: int(lab_cfg.get("ideas_queries", 6))]:
+        for query in (lab_cfg.get("queries") or [])[: int(lab_cfg.get("ideas_queries", 6))]:
             try:
                 outliers += lab.outliers(ctx, str(query), days=int(lab_cfg.get("ideas_days", 180)),
                                          min_ratio=min_ratio, api=api)
@@ -202,7 +202,7 @@ def propose(ctx: RunContext, outliers: list[dict[str, Any]], best_mine: list[dic
                            for v in marked) or "(ninguno)") + "\n\n"
               f"TEMAS YA HECHOS O YA SUGERIDOS (no repetir):\n" + "\n".join(f"- {t}" for t in taken[-60:])),
     )
-    return [i for i in result.get("ideas", []) if isinstance(i, dict) and i.get("title")][:count]
+    return [i for i in (result.get("ideas") or []) if isinstance(i, dict) and i.get("title")][:count]
 
 
 def _idea_lines(idea: dict[str, Any], heading: str) -> list[str]:

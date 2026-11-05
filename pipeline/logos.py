@@ -43,7 +43,7 @@ def find(name: str, session: Any = None) -> str | None:
     for title in sorted((t for t in titles if good(t)), key=lambda t: (not t.lower().endswith(".svg"), len(t))):
         info = _api(session, action="query", titles=title, prop="imageinfo", iiprop="url", iiurlwidth=400)
         for page in info.get("query", {}).get("pages", {}).values():
-            for item in page.get("imageinfo", []):
+            for item in (page.get("imageinfo") or []):
                 if item.get("thumburl"):
                     return item["thumburl"]
     return None

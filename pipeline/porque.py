@@ -63,7 +63,7 @@ def due(entry: dict[str, Any], now: float) -> bool:
     if not entry.get("published"):
         return True
     age = (now - _ts(entry["published"])) / 3600
-    done = set(entry.get("done", []))
+    done = set((entry.get("done") or []))
     return age <= CHECKPOINTS[-1] + 24 and any(h <= age and h not in done for h in CHECKPOINTS)
 
 

@@ -163,7 +163,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         try:
             result = complete_json(ctx, stage="stickman", section="planner", system=SYSTEM, user=listing,
                                    max_tokens=350 * len(batch))
-            found = {int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)}
+            found = {int(s.get("n", 0)): s for s in (result.get("scenes") or []) if isinstance(s, dict)}
         except Exception as error:      # a plain talking figure rather than no video
             print(f"   Escenas de monigotes no disponibles ({str(error)[:100]}): figura hablando")
             found = {}

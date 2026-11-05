@@ -11,6 +11,7 @@ centres get junk). A web photo is kept only if the searched name appears in its 
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,8 @@ WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php"
 OPENVERSE_API = "https://api.openverse.org/v1/images/"
 PIXABAY_API = "https://pixabay.com/api/"
 SERPER_IMAGES_API = "https://google.serper.dev/images"
+FAILED_FOR = 3600.0       # s: an image that failed to download is not asked for again this long (every process shot)
+_FAILED: dict[str, float] = {}
 _RESTRICTIVE = re.compile(r"\b(nc|nd)\b", re.IGNORECASE)  # non-commercial / no-derivatives
 _OK_WIKIMEDIA_LICENCES = ("cc0", "public domain", "pd", "cc by", "cc-by", "cc by-sa", "cc-by-sa", "attribution")
 
@@ -195,9 +198,12 @@ class ImageSources:
             item = found[item_id]
             suffix = ".png" if item["analysisUrl"].lower().split("?")[0].endswith(".png") else ".jpg"
             target = self.cache_dir / "images" / item["source"] / f"{key(item['analysisUrl'])}{suffix}"
+            if time.time() - _FAILED.get(item["analysisUrl"], 0.0) < FAILED_FOR:
+                continue          # it failed a moment ago: not asked again for every shot (gym6.0: one photo, 200 times)
             try:
                 download_file(self.session, item["analysisUrl"], target, pacer=self.pacers["download"])
             except Exception as error:
+                _FAILED[item["analysisUrl"]] = time.time()
                 notes.append(f"{item_id}: descarga fallida ({type(error).__name__})")
                 continue
             candidates.append(
@@ -277,14 +283,14 @@ class ImageSources:
             )
             raw = [{"title": i.get("title", ""), "image": i.get("imageUrl"), "thumbnail": i.get("thumbnailUrl"),
                     "url": i.get("link"), "width": i.get("imageWidth"), "height": i.get("imageHeight"),
-                    "domain": i.get("domain") or i.get("source")} for i in payload.get("images", [])]
+                    "domain": i.get("domain") or i.get("source")} for i in (payload.get("images") or [])]
         else:
             provider = "ddg"
             payload = cached_json(
                 self.cache_dir / "search" / "web" / f"ddg-{key(query)}.json",
                 lambda: {"images": self._ddg(query, int(cfg.get("results", 20)))},
             )
-            raw = payload.get("images", [])
+            raw = (payload.get("images") or [])
         must = self.web_must.get(query) or tokens(query)
         min_width = int(cfg.get("min_width", 800))
         results = []
@@ -335,7 +341,7 @@ class ImageSources:
             lambda: http_get_json(self.session, OPENVERSE_API, params=params, pacer=self.pacers["openverse"]),
         )
         results = []
-        for item in payload.get("results", []):
+        for item in (payload.get("results") or []):
             if not self._usable(item.get("width"), item.get("height"), "openverse") or not item.get("url"):
                 continue
             if item.get("source") == "wikimedia" and self.cfg.get("wikimedia", {}).get("enabled", True):
@@ -366,7 +372,7 @@ class ImageSources:
             ),
         )
         results = []
-        for hit in payload.get("hits", []):
+        for hit in (payload.get("hits") or []):
             if not self._usable(hit.get("imageWidth"), hit.get("imageHeight")):
                 continue
             author = _short(str(hit.get("user") or "Pixabay"))

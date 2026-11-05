@@ -112,7 +112,7 @@ def describe(ctx: RunContext, api: Any, chosen: list[dict[str, Any]]) -> None:
     except Exception as error:
         print(f"   canales revelación: {str(error)[:160]}")
         return
-    by_id = {str(x.get("id")): x for x in result.get("channels", []) if isinstance(x, dict)}
+    by_id = {str(x.get("id")): x for x in (result.get("channels") or []) if isinstance(x, dict)}
     for c in chosen:
         info = by_id.get(c["id"]) or {}
         c.update({k: info.get(k) for k in ("format", "niche", "query", "why", "how")})

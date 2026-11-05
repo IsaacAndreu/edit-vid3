@@ -74,7 +74,7 @@ def _on_screen(timeline: dict[str, Any], a: float, b: float) -> tuple[str, str]:
     fps = timeline["fps"]
     said = [s["text"] for s in timeline["shots"] if s["from"] / fps < b and (s["from"] + s["durationInFrames"]) / fps > a and s.get("text")]
     seen: list[str] = []
-    for g in timeline.get("groups", []):
+    for g in (timeline.get("groups") or []):
         if g["from"] / fps < b and (g["from"] + g["durationInFrames"]) / fps > a:
             graphic = g.get("graphic") or {}
             if graphic.get("type") == "sim":
@@ -96,7 +96,7 @@ def kind_of(timeline: dict[str, Any], t: float) -> str:
     """The kind of picture at second t (for the channel's lessons)."""
 
     fps = timeline["fps"]
-    for g in timeline.get("groups", []):
+    for g in (timeline.get("groups") or []):
         if g["from"] / fps <= t < (g["from"] + g["durationInFrames"]) / fps:
             graphic = g.get("graphic") or {}
             if graphic.get("type") == "sim":

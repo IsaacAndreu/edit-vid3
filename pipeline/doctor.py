@@ -48,10 +48,10 @@ def parse(log: str) -> list[dict[str, Any]]:
 def still_on_purpose(timeline: dict[str, Any], a: int, b: int) -> bool:
     """Frames [a, b) where a still picture is meant: a graphic or card drawn over, a photo, a chapter card."""
 
-    for group in timeline.get("groups", []):
+    for group in (timeline.get("groups") or []):
         if group["from"] < b and a < group["from"] + group["durationInFrames"]:
             return True
-    for shot in timeline.get("shots", []):
+    for shot in (timeline.get("shots") or []):
         if shot["from"] < b and a < shot["from"] + shot["durationInFrames"]:
             media = shot.get("media") or {}
             if shot.get("type") in STILL_TYPES or media.get("kind") != "video" or media.get("freeze"):

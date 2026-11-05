@@ -41,7 +41,7 @@ def card(ctx: RunContext) -> dict[str, Any]:
     if (ctx.work_dir / "factcheck.json").is_file():
         claims = json.loads((ctx.work_dir / "factcheck.json").read_text("utf-8")).get("claims", [])
         wrong = [c for c in claims if c.get("verdict") == "wrong"]
-    weak = qa.get("lowScore", [])
+    weak = (qa.get("lowScore") or [])
     cfg = ctx.section("report")
     problems = []
     if person and on_screen / total < float(cfg.get("min_protagonist", 0.5)):

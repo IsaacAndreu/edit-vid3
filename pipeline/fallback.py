@@ -265,6 +265,7 @@ def run(ctx: RunContext) -> None:
     # one second search per story event: its finds serve every shot of that event (event_pool reads them), so the
     # twenty minutes reach more events instead of ten searches for ten shots of the same final
     researched: set[str] = set()
+    judge_cfg = ctx.section("judge")              # research() reads it too (it was only defined inside resolve())
 
     def research(shot: Any, reason: str, tried: list[str]) -> tuple[list[Option], dict[str, Candidate]]:
         """New queries for a shot nothing fitted, searched, analysed in work/<slug>/research/ (never the stage
@@ -304,7 +305,7 @@ def run(ctx: RunContext) -> None:
             except Exception as error:
                 tried.append(f"segunda búsqueda: {str(error)[:80]}")
                 return [], {}
-            queries = [str(q).strip() for q in result.get("queries", []) if str(q).strip() and str(q).strip() not in asked][:3]
+            queries = [str(q).strip() for q in (result.get("queries") or []) if str(q).strip() and str(q).strip() not in asked][:3]
             if not queries:
                 return [], {}
             spec = shot.broll.model_copy(update={"queries": [*queries, *shot.broll.queries][:5], "queriesLocal": shot.broll.queriesLocal[:1]})
@@ -441,7 +442,6 @@ def run(ctx: RunContext) -> None:
             except Exception as error:
                 tried.append(f"recreación: {str(error)[:120]}")
 
-        judge_cfg = ctx.section("judge")
         limit = int(cfg.get("next_options", 3))
 
         # 1. The next option from stage 4 — only when the choice itself was fine but its download failed.
@@ -548,7 +548,7 @@ def run(ctx: RunContext) -> None:
                     rid = f"px{kind[0]}:{best['id']}"
                     try:
                         if kind == "video":
-                            files = [f for f in best.get("video_files", []) if (f.get("width") or 0) <= 1920 and f.get("link")]
+                            files = [f for f in (best.get("video_files") or []) if (f.get("width") or 0) <= 1920 and f.get("link")]
                             link = max(files, key=lambda f: f.get("width") or 0)["link"]
                             source = _download(http, link, ctx.cache_dir / "pexels" / f"{best['id']}.mp4")
                             offset = min(1.0, max(0.0, float(best.get("duration") or needed) - needed))

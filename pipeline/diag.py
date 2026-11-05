@@ -196,14 +196,14 @@ def collect(ctx: RunContext) -> dict[str, Any]:
         causes: dict[str, list[str]] = {}
         for shot, message in failed.items():
             causes.setdefault(_cause(str(message)), []).append(shot)
-        data["descarga"] = {"clips": sum(1 for m in ingest.get("media", []) if m.get("kind") == "video"),
-                            "imagenes": sum(1 for m in ingest.get("media", []) if m.get("kind") == "image"),
+        data["descarga"] = {"clips": sum(1 for m in (ingest.get("media") or []) if m.get("kind") == "video"),
+                            "imagenes": sum(1 for m in (ingest.get("media") or []) if m.get("kind") == "image"),
                             "fallidas": len(failed), "causas": causes}
     fallback = _read(work / "fallback.json")
     if fallback:
         methods: dict[str, int] = {}
         reasons: dict[str, int] = {}
-        for item in fallback.get("items", []):
+        for item in (fallback.get("items") or []):
             methods[item.get("method", "?")] = methods.get(item.get("method", "?"), 0) + 1
             reason = re.sub(r" de s\d+|: .*", "", str(item.get("reason", "")))
             reasons[reason] = reasons.get(reason, 0) + 1
@@ -215,17 +215,17 @@ def collect(ctx: RunContext) -> dict[str, Any]:
     qa = _read(ctx.out_dir / "qa" / "qa.json")
     if qa:
         data["pantalla"] = qa.get("shareBySeconds", {})
-        data["planos_flojos"] = len(qa.get("lowScore", []))
+        data["planos_flojos"] = len((qa.get("lowScore") or []))
     costs = _read(work / "costs.json")
     if costs:
         by_stage: dict[str, float] = {}
-        for entry in costs.get("entries", []):
+        for entry in (costs.get("entries") or []):
             by_stage[entry.get("stage", "?")] = by_stage.get(entry.get("stage", "?"), 0.0) + float(entry.get("usd") or 0)
         data["coste_usd"] = {k: round(v, 3) for k, v in by_stage.items()}
     factcheck = _read(work / "factcheck.json")
     if factcheck:
         verdicts: dict[str, int] = {}
-        for claim in factcheck.get("claims", []):
+        for claim in (factcheck.get("claims") or []):
             verdicts[claim.get("verdict", "?")] = verdicts.get(claim.get("verdict", "?"), 0) + 1
         data["verificacion"] = verdicts
     data.update(_log_facts(ctx))
@@ -258,7 +258,7 @@ def hints(data: dict[str, Any], ctx: RunContext) -> list[str]:
     if data.get("cuentas_bloqueadas"):
         out.append(f"YouTube bloqueó {data['cuentas_bloqueadas']} cuenta(s): exporta cookies nuevas de esas cuentas "
                    "(o usa las de Firefox, que no caducan: `browser_accounts`).")
-    for warning in data.get("avisos_ytdlp", []):
+    for warning in (data.get("avisos_ytdlp") or []):
         out.append(f"yt-dlp avisó: {warning}")
     causes = (data.get("descarga") or {}).get("causas", {})
     for cause, shots in sorted(causes.items(), key=lambda c: -len(c[1])):

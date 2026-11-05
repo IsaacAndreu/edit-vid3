@@ -537,7 +537,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             graphic = made
             longest = round((6.0 if graphic["type"] == "strobe" else graphic.pop("seconds")) * fps)
             b = min(b, a + longest)                          # the shots after it show as usual
-        if graphic["type"] == "map" and any(p.get("logo") for p in graphic.get("points", [])):
+        if graphic["type"] == "map" and any(p.get("logo") for p in (graphic.get("points") or [])):
             from .logos import logo
 
             graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
@@ -546,7 +546,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             earth = earth_textures(ctx)
             if earth:
                 graphic = {**graphic, "earth": earth}
-        if (graphic["type"] == "chart" and graphic.get("chart") == "bar" and 2 <= len(graphic.get("data", [])) <= 8
+        if (graphic["type"] == "chart" and graphic.get("chart") == "bar" and 2 <= len((graphic.get("data") or [])) <= 8
                 and ctx.section("graphics").get("bars_3d", True)):
             graphic = {**graphic, "three": True}             # solid lit bars (WebGL) instead of the flat ones
         if graphic["type"] == "map" and graphic.get("style") != "pins" and not graphic.get("globe"):
@@ -787,7 +787,7 @@ def weak_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
                  if s.get("score") is not None and s["score"] < low and not s.get("judge")}
     if (ctx.work_dir / "fallback.json").is_file():
         data = ctx.read_json("fallback.json")
-        weak |= {i["shotId"] for i in data.get("items", []) if i.get("method") != "next-option"} | set(data.get("unresolved", {}))
+        weak |= {i["shotId"] for i in (data.get("items") or []) if i.get("method") != "next-option"} | set(data.get("unresolved", {}))
     out: set[int] = set()
     for shot in ShotsFile.model_validate(ctx.read_json("shots.json")).shots:
         if shot.id not in weak:

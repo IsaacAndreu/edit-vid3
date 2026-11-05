@@ -238,7 +238,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
         try:
             result = complete_json(ctx, stage="simulacion", section="planner", system=system, user=listing,
                                    max_tokens=260 * len(batch))
-            found = {int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)}
+            found = {int(s.get("n", 0)): s for s in (result.get("scenes") or []) if isinstance(s, dict)}
         except Exception as error:      # the simulation alone rather than no video
             print(f"   Escenas de simulación no disponibles ({str(error)[:100]}): la simulación sin paneles")
             found = {}
@@ -372,7 +372,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any]) -> lis
                 old = (before.get("params") or {}).get(name)
                 if isinstance(value, (int, float)) and isinstance(old, (int, float)) and old != value:
                     p = spec_params.get(name, {})
-                    options = [o for o in p.get("options", []) if isinstance(o, (int, float))]
+                    options = [o for o in (p.get("options") or []) if isinstance(o, (int, float))]
                     low = p.get("min", min(options) if options else min(old, value))
                     high = p.get("max", max(options) if options else max(old, value))
                     label = p.get("label") or name
@@ -606,7 +606,7 @@ def qa(ctx: RunContext, timeline: dict[str, Any], final: Path | None = None) -> 
             if p["kind"] == "frozen":
                 end = p["end"] if p["end"] is not None else timeline["durationInFrames"] / fps
                 found.append(f"{stamp(p['start'] * fps)} · {end - p['start']:.0f} s sin movimiento")
-    sims = [g for g in timeline.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"]
+    sims = [g for g in (timeline.get("groups") or []) if (g.get("graphic") or {}).get("type") == "sim"]
     runs: list[list[dict[str, Any]]] = []
     for g in sims:
         if runs and runs[-1][-1]["graphic"]["world"] == g["graphic"]["world"]:
@@ -711,9 +711,9 @@ def retime_sim(old: dict[str, Any], new: dict[str, Any], lang: str) -> None:
     fall on the same lines, a figure or an arrow keeps its place inside its shot — and every panel speaks `lang`."""
 
     fps = int(new.get("fps", 30))
-    before = {g["id"]: g for g in old.get("groups", []) if (g.get("graphic") or {}).get("type") == "sim"}
+    before = {g["id"]: g for g in (old.get("groups") or []) if (g.get("graphic") or {}).get("type") == "sim"}
     moved: dict[float, float] = {}                       # old second where a shot started → its new second
-    for g in new.get("groups", []):
+    for g in (new.get("groups") or []):
         if g["id"] in before:
             moved[round(float(before[g["id"]]["graphic"]["at"]), 3)] = round(g["from"] / fps, 3)
 
@@ -737,7 +737,7 @@ def retime_sim(old: dict[str, Any], new: dict[str, Any], lang: str) -> None:
             out["recap"] = [fix(r) for r in graphic["recap"]]
         return out
 
-    for g in new.get("groups", []):
+    for g in (new.get("groups") or []):
         if g["id"] not in before:
             continue
         o = before[g["id"]]

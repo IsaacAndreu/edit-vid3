@@ -597,4 +597,4 @@ def retry_if(ctx: RunContext) -> bool:
     if not ctx.section("sourcing").get("youtube", {}).get("enabled", True):
         return False
     summary = json.loads((ctx.work_dir / OUTPUT / SUMMARY).read_text(encoding="utf-8"))
-    return any("bloquea" in warning for warning in summary.get("warnings", []))
+    return any("bloquea" in warning for warning in (summary.get("warnings") or []))

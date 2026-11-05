@@ -183,7 +183,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             "\n".join(f"[{start + n}] {text}" for n, (_, text) in enumerate(batch, 1))
         try:
             result = complete_json(ctx, stage="mapas", section="planner", system=system, user=user, max_tokens=500 * len(batch))
-            found.update({int(s.get("n", 0)): s for s in result.get("scenes", []) if isinstance(s, dict)})
+            found.update({int(s.get("n", 0)): s for s in (result.get("scenes") or []) if isinstance(s, dict)})
         except Exception as error:
             print(f"   Mapas: sin planos de la IA ({str(error)[:100]})")
     out: dict[str, dict[str, Any]] = {}

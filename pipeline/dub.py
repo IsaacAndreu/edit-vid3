@@ -205,16 +205,16 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
         bounds[i] = min(bounds[i], bounds[i + 1] - MIN_SHOT_FRAMES)
     for shot, a, b in zip(shots, bounds, bounds[1:]):
         shot["from"], shot["durationInFrames"] = a, b - a
-    for item in [*out["groups"], *out.get("labels", [])]:
+    for item in [*out["groups"], *(out.get("labels") or [])]:
         a = frame(item["from"])
         b = min(total, max(a + 1, frame(item["from"] + item["durationInFrames"])))
         item["from"], item["durationInFrames"] = a, b - a
     for sfx in out["audio"].get("sfx", []):
         sfx["from"] = frame(sfx["from"])
-    for shake in out.get("shakes", []):
+    for shake in (out.get("shakes") or []):
         shake["from"] = frame(shake["from"])
     starts = {s["from"] for s in shots}
-    for tr in out.get("transitions", []):             # centred on a cut: follow the cut, keep the length
+    for tr in (out.get("transitions") or []):             # centred on a cut: follow the cut, keep the length
         half = tr["durationInFrames"] // 2
         cut = frame(tr["from"] + half)
         cut = min(starts, key=lambda f: abs(f - cut)) if starts else cut
@@ -281,7 +281,7 @@ def screen_texts(timeline: dict[str, Any]) -> dict[str, str]:
     for shot in timeline["shots"]:
         if shot.get("chapterTitle"):
             texts[f"chapter:{shot['id']}"] = shot["chapterTitle"]
-    for i, label in enumerate(timeline.get("labels", [])):
+    for i, label in enumerate((timeline.get("labels") or [])):
         if label["kind"] != "name":
             texts[f"label:{i}"] = label["text"]
     for group in timeline["groups"]:
@@ -292,8 +292,8 @@ def screen_texts(timeline: dict[str, Any]) -> dict[str, str]:
             texts[f"stat:{group['id']}"] = group["stat"]["label"]
         if group.get("graphic"):
             _graphic_strings(group["graphic"], f"graphic:{group['id']}", texts)
-        for s, step in enumerate(group.get("steps", [])):
-            for r, row in enumerate(step.get("rows", [])):
+        for s, step in enumerate((group.get("steps") or [])):
+            for r, row in enumerate((step.get("rows") or [])):
                 for key, value in row.items():
                     if isinstance(value, str) and re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{3}", value):
                         texts[f"row:{group['id']}:{s}:{r}:{key}"] = value
@@ -415,7 +415,7 @@ def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
     timeline["title"] = texts.get("title", timeline["title"])
     for shot in timeline["shots"]:
         shot["chapterTitle"] = texts.get(f"chapter:{shot['id']}", shot.get("chapterTitle"))
-    for i, label in enumerate(timeline.get("labels", [])):
+    for i, label in enumerate((timeline.get("labels") or [])):
         label["text"] = texts.get(f"label:{i}", label["text"])
     for group in timeline["groups"]:
         for key in ("title", "note"):
@@ -425,8 +425,8 @@ def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
             group["stat"]["label"] = texts.get(f"stat:{group['id']}", group["stat"]["label"])
         if group.get("graphic"):
             group["graphic"] = _set_graphic_strings(group["graphic"], f"graphic:{group['id']}", texts)
-        for s, step in enumerate(group.get("steps", [])):
-            for r, row in enumerate(step.get("rows", [])):
+        for s, step in enumerate((group.get("steps") or [])):
+            for r, row in enumerate((step.get("rows") or [])):
                 for key in list(row):
                     row[key] = texts.get(f"row:{group['id']}:{s}:{r}:{key}", row[key])
 
@@ -558,7 +558,7 @@ def run(ctx: RunContext) -> None:
     listing = ("ORIGINAL:\n" + "\n".join(f"[{s['n']}] {s['text']}" for s in old_s)
                + "\n\nTRADUCIDA:\n" + "\n".join(f"[{s['n']}] {s['text']}" for s in new_s))
     matched = complete_json(ctx, stage=STAGE, section="planner", system=MATCH_SYSTEM, user=listing[:100000], max_tokens=8000)
-    pairs = [(int(p[0]), int(p[1])) for p in matched.get("map", []) if isinstance(p, list) and len(p) == 2]
+    pairs = [(int(p[0]), int(p[1])) for p in (matched.get("map") or []) if isinstance(p, list) and len(p) == 2]
     points = anchors(pairs, old_s, new_s, old_words["durationSeconds"], new_words["durationSeconds"])
     print(f"   {len(points) - 2} anclas de {len(old_s)} frases")
 

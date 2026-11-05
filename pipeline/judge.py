@@ -483,8 +483,8 @@ def source_lines(options: list[Option], candidates: dict[str, Candidate]) -> str
 def usable(verdict: dict[str, Any], letters: str) -> dict[str, Any]:
     """The ranking without letters off the sheet, repeated, or flagged as screen/off-topic."""
 
-    flagged = {c["letter"] for c in verdict.get("candidates", []) if c.get("screenOrText") or not c.get("onTopic", True)}
-    ranking = [x for x in dict.fromkeys(verdict.get("ranking", [])) if x in letters and x not in flagged]
+    flagged = {c["letter"] for c in (verdict.get("candidates") or []) if c.get("screenOrText") or not c.get("onTopic", True)}
+    ranking = [x for x in dict.fromkeys((verdict.get("ranking") or [])) if x in letters and x not in flagged]
     return {**verdict, "ranking": ranking}
 
 
@@ -531,7 +531,7 @@ def run(ctx: RunContext) -> None:
     blocklist = ctx.section("content").get("title_blocklist")
     hook_seconds = float(cfg.get("hook_seconds", 30))
     judge_all = bool(cfg.get("all", False))
-    trusted = [tokens(str(t)) for t in cfg.get("trusted_channels", []) if tokens(str(t))]
+    trusted = [tokens(str(t)) for t in (cfg.get("trusted_channels") or []) if tokens(str(t))]
     trusted_bonus = float(cfg.get("trusted_bonus", 0.03))
 
     def official(option: Option) -> float:

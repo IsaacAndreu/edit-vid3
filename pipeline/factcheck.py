@@ -78,7 +78,7 @@ def interlanguage(title: str, lang: str, session: Any = None) -> str | None:
                                params={"action": "query", "prop": "langlinks", "lllang": lang, "redirects": 1,
                                        "titles": title, "format": "json", "formatversion": 2})
         for page in response.json().get("query", {}).get("pages", []):
-            for link in page.get("langlinks", []):
+            for link in (page.get("langlinks") or []):
                 return link.get("title")
     except (requests.RequestException, ValueError):
         return None
@@ -114,9 +114,9 @@ def check(ctx: RunContext) -> dict[str, Any]:
     lang = str(ctx.section("align").get("language", "es"))
     listed = complete_json(ctx, stage=STAGE, section="factcheck", system=EXTRACT_SYSTEM, max_tokens=4000,
                            user=f"GUION:\n{script[:30000]}")
-    claims = [c for c in listed.get("claims", []) if isinstance(c, dict) and c.get("claim")][:25]
+    claims = [c for c in (listed.get("claims") or []) if isinstance(c, dict) and c.get("claim")][:25]
     articles = []
-    for title in [str(t) for t in listed.get("wikipedia", [])][:4]:
+    for title in [str(t) for t in (listed.get("wikipedia") or [])][:4]:
         for page in (wikipedia(title, "en", 20000),
                      wikipedia(local, lang, 12000) if lang != "en" and (local := interlanguage(title, lang)) else None):
             if page and page["url"] not in {a["url"] for a in articles}:
@@ -147,7 +147,7 @@ def check(ctx: RunContext) -> dict[str, Any]:
     listing = "\n".join(f"{n}. {c['claim']}" for n, c in enumerate(claims, 1))
     judged = complete_json(ctx, stage=STAGE, section="factcheck", system=JUDGE_SYSTEM, max_tokens=6000,
                            user=f"AFIRMACIONES:\n{listing}\n\nPRUEBAS:\n" + "\n\n".join(evidence)[:120000]) if claims else {}
-    verdicts = {int(r.get("n", 0)): r for r in judged.get("results", []) if isinstance(r, dict)}
+    verdicts = {int(r.get("n", 0)): r for r in (judged.get("results") or []) if isinstance(r, dict)}
     results = []
     for n, claim in enumerate(claims, 1):
         verdict = verdicts.get(n, {})
@@ -155,7 +155,7 @@ def check(ctx: RunContext) -> dict[str, Any]:
                         "verdict": verdict.get("verdict") if verdict.get("verdict") in ("ok", "wrong", "unverified") else "unverified",
                         "correction": verdict.get("correction"), "evidence": verdict.get("evidence"),
                         "source": verdict.get("source")})
-    return {"people": listed.get("people", []), "articles": [a["url"] for a in articles], "claims": results}
+    return {"people": (listed.get("people") or []), "articles": [a["url"] for a in articles], "claims": results}
 
 
 def report(result: dict[str, Any]) -> str:
@@ -256,4 +256,4 @@ def gate(ctx: RunContext) -> list[dict[str, Any]]:
         ctx.write_json(OUTPUT, result)
         ctx.out_dir.mkdir(parents=True, exist_ok=True)
         (ctx.out_dir / REPORT).write_text(report(result), encoding="utf-8")
-    return [c for c in result.get("claims", []) if c.get("verdict") == "wrong"]
+    return [c for c in (result.get("claims") or []) if c.get("verdict") == "wrong"]

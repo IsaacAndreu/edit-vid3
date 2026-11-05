@@ -141,7 +141,7 @@ def _groups(t: dict[str, Any], e: dict[str, Any]) -> dict[str, tuple[int, int, i
 
 def _labels(t: dict[str, Any], e: dict[str, Any]) -> None:
     out = []
-    for label in t.get("labels", []):
+    for label in (t.get("labels") or []):
         original = label["text"]
         text = e["labels"].get(original, original)
         if not text:
@@ -166,7 +166,7 @@ def _audio(t: dict[str, Any], e: dict[str, Any], moved: dict[int, int], shifts: 
             parts[int(index)]["mood"] = Path(src).stem.split("-")[0]
     removed, moved_sfx, volume = set(e["sfx"]["removed"]), e["sfx"]["moved"], e["sfx"]["volume"]
     out = []
-    for item in audio.get("sfx", []):
+    for item in (audio.get("sfx") or []):
         key = sfx_key(item)
         if key in removed:
             continue
@@ -186,8 +186,8 @@ def _audio(t: dict[str, Any], e: dict[str, Any], moved: dict[int, int], shifts: 
     out += [{**item, "_added": i} for i, item in enumerate(e["sfx"]["added"]) if item.get("src")]
     audio["sfx"] = sorted(out, key=lambda s: s["from"])
     t["transitions"] = [{**tr, "from": max(0, _follow_cut(tr["from"] + tr.get("durationInFrames", 12) // 2, moved)
-                                        - tr.get("durationInFrames", 12) // 2)} for tr in t.get("transitions", [])]
-    for shake in t.get("shakes", []):
+                                        - tr.get("durationInFrames", 12) // 2)} for tr in (t.get("transitions") or [])]
+    for shake in (t.get("shakes") or []):
         for start, end, shift in shifts.values():
             if start <= shake["from"] < end:
                 shake["from"] += shift
@@ -295,13 +295,13 @@ def reorder(ctx: Any, t: dict[str, Any], scene_list: list[dict[str, Any]], order
 
     out["shots"] = moved(t["shots"])
     out["groups"] = moved(t["groups"])
-    out["labels"] = moved(t.get("labels", []))
-    out["transitions"] = moved(t.get("transitions", []))
-    out["shakes"] = moved(t.get("shakes", []))
+    out["labels"] = moved((t.get("labels") or []))
+    out["transitions"] = moved((t.get("transitions") or []))
+    out["shakes"] = moved((t.get("shakes") or []))
     new_audio = out["audio"]
-    new_audio["sfx"] = moved(audio.get("sfx", []))
-    new_audio["clips"] = moved(audio.get("clips", []))
-    new_audio["speech"] = sorted([(a - o + n, min(b, e) - o + n) for a, b in audio.get("speech", [])
+    new_audio["sfx"] = moved((audio.get("sfx") or []))
+    new_audio["clips"] = moved((audio.get("clips") or []))
+    new_audio["speech"] = sorted([(a - o + n, min(b, e) - o + n) for a, b in (audio.get("speech") or [])
                                   for o, e, n in blocks if o <= a < e])
     parts = audio.get("musicParts") or []
     pieces = []
@@ -317,7 +317,7 @@ def reorder(ctx: Any, t: dict[str, Any], scene_list: list[dict[str, Any]], order
     new_audio["voiceFrom"] = 0
     new_audio["voiceGaps"] = []
     out["endscreenFrames"] = t.get("endscreenFrames", 0) if tail else 0
-    out["edited"] = {"voiceFrom": audio.get("voiceFrom", 0), "voiceGaps": audio.get("voiceGaps", []),
+    out["edited"] = {"voiceFrom": audio.get("voiceFrom", 0), "voiceGaps": (audio.get("voiceGaps") or []),
                      "blocks": [list(b) for b in blocks], "fps": fps}
     return out
 
@@ -336,7 +336,7 @@ def _voice_track(ctx: Any, t: dict[str, Any], blocks: list[tuple[int, int, int]]
     if target.is_file():
         return str(target.relative_to(ctx.work_dir))
     target.parent.mkdir(parents=True, exist_ok=True)
-    chains = voice_chains(0, audio.get("voiceFrom", 0), audio.get("voiceGaps", []), fps, "aresample=48000,aformat=channel_layouts=stereo")
+    chains = voice_chains(0, audio.get("voiceFrom", 0), (audio.get("voiceGaps") or []), fps, "aresample=48000,aformat=channel_layouts=stereo")
     graph = ";".join(chains) + f";[voice]apad,atrim=0:{max(b[1] for b in blocks) / fps:.4f},asplit={len(blocks)}" \
         + "".join(f"[b{k}]" for k in range(len(blocks)))
     for k, (o, e, _) in enumerate(blocks):
@@ -391,7 +391,7 @@ def ensure_assets(ctx: Any, t: dict[str, Any]) -> None:
     """Music/sfx chosen in the editor straight from assets/ are copied next to the others (work/audio/)."""
 
     audio = t["audio"]
-    for item in [*(audio.get("musicParts") or []), *audio.get("sfx", [])]:
+    for item in [*(audio.get("musicParts") or []), *(audio.get("sfx") or [])]:
         src = item["src"]
         if src.startswith("assets/"):
             source = ctx.root / src
@@ -407,7 +407,7 @@ def ensure_assets(ctx: Any, t: dict[str, Any]) -> None:
 def _strip(t: dict[str, Any]) -> dict[str, Any]:
     """Drop the editor's bookkeeping keys (the timeline schema does not allow extra fields)."""
 
-    for item in [*t.get("labels", []), *t["audio"].get("sfx", [])]:
+    for item in [*(t.get("labels") or []), *t["audio"].get("sfx", [])]:
         for key in ("_original", "_added", "_key"):
             item.pop(key, None)
     return t
@@ -470,7 +470,7 @@ def remap_subtitle_time(timeline: Any, frame: int) -> float | None:
 
     edited = getattr(timeline, "edited", None) or {}
     blocks = edited.get("blocks") or []
-    old = edited.get("voiceFrom", 0) + frame + sum(b for at, b in edited.get("voiceGaps", []) if at <= frame)
+    old = edited.get("voiceFrom", 0) + frame + sum(b for at, b in (edited.get("voiceGaps") or []) if at <= frame)
     new = _within(old, [tuple(b) for b in blocks])
     return None if new is None else new / timeline.fps
 

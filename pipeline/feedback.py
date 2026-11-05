@@ -95,7 +95,7 @@ def shots(root: Path, slug: str) -> list[dict[str, Any]]:
     texts = {s["id"]: s.get("text", "") for s in (_read(work / "shots.json") or {}).get("shots", [])}
     marked = labels(root)
     out = []
-    for shot in timeline.get("shots", []):
+    for shot in (timeline.get("shots") or []):
         media = shot.get("media") or {}
         if not media.get("src"):
             continue
@@ -132,7 +132,7 @@ def frame(root: Path, slug: str, shot_id: str) -> Path | None:
                    "-vf", "scale=480:-2", "-q:v", "4", str(target)]
     else:
         timeline = _read(root / "work" / slug / "timeline.json") or {}
-        shot = next((s for s in timeline.get("shots", []) if s["id"] == shot_id), {})
+        shot = next((s for s in (timeline.get("shots") or []) if s["id"] == shot_id), {})
         src = root / "work" / slug / str((shot.get("media") or {}).get("src") or "")
         if not src.is_file():
             return None

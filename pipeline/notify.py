@@ -231,7 +231,7 @@ def find_chat(token: str) -> str:
     data = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=30).json()
     if not data.get("ok"):
         raise ValueError("Telegram no acepta ese token: cópialo otra vez de @BotFather")
-    chats = [u["message"]["chat"]["id"] for u in data.get("result", []) if u.get("message", {}).get("chat")]
+    chats = [u["message"]["chat"]["id"] for u in (data.get("result") or []) if u.get("message", {}).get("chat")]
     if not chats:
         raise ValueError("Abre tu bot en Telegram, pulsa «Iniciar» (o escríbele /start) y vuelve a pulsar aquí")
     return str(chats[-1])

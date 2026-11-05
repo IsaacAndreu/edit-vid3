@@ -66,14 +66,14 @@ def probe(path: Path) -> dict[str, Any]:
         capture_output=True, text=True, check=True,
     )
     data = json.loads(result.stdout)
-    video = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), {})
+    video = next((s for s in (data.get("streams") or []) if s.get("codec_type") == "video"), {})
     num, _, den = str(video.get("r_frame_rate", "0/1")).partition("/")
     return {
         "width": int(video.get("width") or 0),
         "height": int(video.get("height") or 0),
         "fps": float(num) / float(den or 1) if float(den or 1) else 0.0,
         "duration": float(data.get("format", {}).get("duration") or 0),
-        "hasAudio": any(s.get("codec_type") == "audio" for s in data.get("streams", [])),
+        "hasAudio": any(s.get("codec_type") == "audio" for s in (data.get("streams") or [])),
     }
 
 

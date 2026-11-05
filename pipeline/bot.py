@@ -110,7 +110,7 @@ def status_text(root: Path) -> str:
     state = ("⏸ En pausa" if s["paused"] else "🟢 Vigilando: hace los vídeos solo" if s["watching"]
              else "🟡 Cola en marcha" if s["queueRunning"] else "🔴 El vigilante no da señales")
     lines.append(state)
-    for v in groups.get("haciendo", []):
+    for v in (groups.get("haciendo") or []):
         st = v.get("stage") or {}
         lines.append(f"▶️ {v['slug']} · {st.get('number', '?')}/{st.get('of', 15)} {STAGES.get(st.get('stage'), st.get('stage', ''))}"
                      f" · {_ago(st.get('started'))}" + (f" · {_money(v['costUsd'])}" if v.get("costUsd") else ""))
@@ -489,7 +489,7 @@ class Bot:
                     time.sleep(30)
                 else:
                     refused = ""
-                for update in data.get("result", []) or []:
+                for update in (data.get("result") or []) or []:
                     self.state["offset"] = int(update["update_id"]) + 1
                     self.handle(update)
             except (requests.RequestException, ValueError):

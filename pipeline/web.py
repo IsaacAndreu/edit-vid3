@@ -491,7 +491,7 @@ def for_claude(root: Path, slug: str) -> str:
              f"{detail.get('minutes')} min"]
     if detail.get("error") or detail.get("lastError"):
         parts.append(f"ERROR: {detail.get('error') or detail.get('lastError')}")
-    stages = " · ".join(f"{s['name']} {round((s.get('seconds') or 0) / 60, 1)} min" for s in detail.get("stages", []))
+    stages = " · ".join(f"{s['name']} {round((s.get('seconds') or 0) / 60, 1)} min" for s in (detail.get("stages") or []))
     if stages:
         parts.append(f"ETAPAS: {stages}")
     diagnosis = (out / "diagnostico.md").read_text("utf-8", errors="replace") if (out / "diagnostico.md").is_file() else ""

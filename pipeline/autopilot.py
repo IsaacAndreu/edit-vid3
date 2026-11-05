@@ -208,7 +208,7 @@ def due_channels(root: Path, today: str | None = None) -> list[str]:
     today = today or datetime.now().date().isoformat()
     state = _read(root)
     return [c for c, entry in state.items() if isinstance(entry, dict) and entry.get("on")
-            and sum(1 for m in entry.get("made", []) if m.get("date") == today) < int(entry.get("perDay", 1))
+            and sum(1 for m in (entry.get("made") or []) if m.get("date") == today) < int(entry.get("perDay", 1))
             and entry.get("errorDate") != today]
 
 

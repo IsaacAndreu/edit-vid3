@@ -65,3 +65,20 @@ def test_ingest_max_height_lowers_the_format_and_is_not_in_the_fingerprint():
     assert cap_height(fmt, 720) == "bv*[height<=720][vcodec^=avc1]/bv*[height<=720]/b[height<=720]"
     assert cap_height(fmt, None) == fmt and cap_height("b[height<=480]", 720) == "b[height<=480]"
     assert _without_speed({"format": fmt, "max_height": 720}) == _without_speed({"format": fmt})
+
+
+def test_a_ranking_whose_model_answer_has_null_lists_still_makes_its_cards(tmp_path, monkeypatch):
+    """gym7.0: «"stats": null» in the model's answer stopped the whole timeline (TypeError)."""
+
+    from pipeline import graphics
+    from pipeline.context import RunContext
+
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    sents = [{"n": i, "start": i * 5.0, "end": i * 5.0 + 4, "text": t} for i, t in enumerate(
+        ["Número tres: Nadia Comaneci.", "Ganó en 1976.", "Número dos: Simone Biles.", "Tiene 11 medallas.",
+         "Número uno: Larisa Latynina.", "Fue la reina."])]
+    monkeypatch.setattr(graphics, "complete_json", lambda *a, **k: {"total": 3, "items": [
+        {"rank": 3, "sentence": 0, "name": "Nadia Comaneci", "stats": None, "places": None},
+        {"rank": 2, "sentence": 2, "name": "Simone Biles", "stats": [{"label": "medallas", "value": "11"}]}]})
+    cards = graphics.ranking(ctx, sents)
+    assert cards and all(c["graphic"]["type"] == "rank" for c in cards if c["graphic"]["type"] == "rank")

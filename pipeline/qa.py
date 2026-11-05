@@ -220,7 +220,7 @@ def run(ctx: RunContext) -> None:
     footage_time = sum(by_time.values()) or 1
     costs = json.loads((ctx.work_dir / COSTS_FILE).read_text("utf-8")) if (ctx.work_dir / COSTS_FILE).is_file() else {"entries": []}
     spend: Counter = Counter()
-    for item in costs.get("entries", []):
+    for item in (costs.get("entries") or []):
         spend[f"{item['stage']} · {item['operation']}"] += float(item.get("usd", 0))
     total_usd = sum(spend.values())
 

@@ -184,7 +184,7 @@ def write(ctx: RunContext, timeline: Timeline, rows: list[dict[str, Any]]) -> No
     if credits.strip().count("\n"):  # a drawn video has no third-party sources: no empty heading
         body += ["", credits]
     lines = ["TÍTULO", title, "", "DESCRIPCIÓN", *body, "", "ETIQUETAS"]
-    tags = [str(t).strip() for t in extra.get("tags", []) if str(t).strip()]
+    tags = [str(t).strip() for t in (extra.get("tags") or []) if str(t).strip()]
     lines.append(", ".join(dict.fromkeys(tags))[:490])
     if extra.get("pinnedComment"):
         lines += ["", "COMENTARIO FIJADO (publícalo tú y fíjalo)", str(extra["pinnedComment"]).strip()]

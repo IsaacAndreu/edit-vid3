@@ -262,7 +262,7 @@ class YouTubeAPI:
         ids: list[str] = []
         for _ in range(max(1, pages)):
             data = self.get("search", params)
-            ids += [i["id"]["videoId"] for i in data.get("items", []) if i.get("id", {}).get("videoId")]
+            ids += [i["id"]["videoId"] for i in (data.get("items") or []) if i.get("id", {}).get("videoId")]
             if not data.get("nextPageToken"):
                 break
             params = {**params, "pageToken": data["nextPageToken"]}
@@ -272,7 +272,7 @@ class YouTubeAPI:
         out = []
         for start in range(0, len(ids), 50):
             data = self.get("videos", {"part": "snippet,statistics,contentDetails,status", "id": ",".join(ids[start:start + 50])})
-            for item in data.get("items", []):
+            for item in (data.get("items") or []):
                 snippet, stats = item.get("snippet", {}), item.get("statistics", {})
                 thumbs = snippet.get("thumbnails", {})
                 out.append({
@@ -300,7 +300,7 @@ class YouTubeAPI:
         out = []
         for batch in batches:
             data = self.get("channels", {"part": "snippet,statistics,contentDetails", **batch})
-            for item in data.get("items", []):
+            for item in (data.get("items") or []):
                 snippet, stats = item.get("snippet", {}), item.get("statistics", {})
                 out.append({
                     "id": item["id"], "title": snippet.get("title", ""), "handle": snippet.get("customUrl", ""),
@@ -325,7 +325,7 @@ class YouTubeAPI:
         params: dict[str, Any] = {"part": "contentDetails", "playlistId": playlist, "maxResults": min(50, count)}
         while len(ids) < count:
             data = self.get("playlistItems", params)
-            ids += [i["contentDetails"]["videoId"] for i in data.get("items", [])]
+            ids += [i["contentDetails"]["videoId"] for i in (data.get("items") or [])]
             if not data.get("nextPageToken"):
                 break
             params = {**params, "pageToken": data["nextPageToken"]}

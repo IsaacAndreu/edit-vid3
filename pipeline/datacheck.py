@@ -152,7 +152,7 @@ def check(ctx: RunContext, planned: list[dict[str, Any]], sents: list[dict[str, 
         except Exception as error:  # a failed check keeps the graphics (they are what the script says)
             print(f"   Verificación de gráficos no disponible: {str(error)[:120]}")
             judged = {}
-        verdicts = {int(r.get("n", 0)): r for r in judged.get("results", []) if isinstance(r, dict)}
+        verdicts = {int(r.get("n", 0)): r for r in (judged.get("results") or []) if isinstance(r, dict)}
         for n, x in pending:
             v = verdicts.get(n, {})
             verdict = v.get("verdict") if v.get("verdict") in ("ok", "wrong", "unverified") else "unverified"

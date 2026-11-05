@@ -379,7 +379,7 @@ def rotate_published(root: Path, config: dict[str, Any], now: float | None = Non
     keep_days = float(comp.get("keep_days", 30))
     try:
         compiled = {s for c in json.loads((root / "out" / "_compilaciones.json").read_text("utf-8")).values()
-                    for s in c.get("videos", [])}
+                    for s in (c.get("videos") or [])}
     except (OSError, ValueError):
         compiled = set()
     for folder in video_folders(root):                  # finals kept earlier: out once compiled, old or short of disk

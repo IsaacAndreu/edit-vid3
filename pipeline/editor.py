@@ -192,7 +192,7 @@ def _voice_frames(ctx: RunContext, base: dict[str, Any]) -> list[list[Any]]:
         return []
     fps = base["fps"]
     audio = base["audio"]
-    gaps = audio.get("voiceGaps", [])
+    gaps = (audio.get("voiceGaps") or [])
     out = []
     for word in json.loads(path.read_text("utf-8")).get("words", []):
         frame = round(word["start"] * fps)
@@ -226,7 +226,7 @@ def state(ctx: RunContext) -> dict[str, Any]:
                       "swapped": shot["id"] in edits["footage"] or shot["id"] in edits["own"] or shot["id"] in edits["media"],
                       "options": len(_options(ctx, shot["id"])[0])})
     labels = [{"original": label["text"], "text": edits["labels"].get(label["text"], label["text"]), "from": label["from"],
-               "durationInFrames": label["durationInFrames"], "kind": label["kind"]} for label in base.get("labels", [])]
+               "durationInFrames": label["durationInFrames"], "kind": label["kind"]} for label in (base.get("labels") or [])]
     removed = [{"id": g["id"], "kind": g["kind"], "type": (g.get("graphic") or {}).get("type"), "from": g["from"],
                 "durationInFrames": g["durationInFrames"]} for g in [*base["groups"], *edits["added"]]
                if g["id"] in set(edits["removed"])]

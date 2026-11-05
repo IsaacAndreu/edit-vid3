@@ -81,7 +81,7 @@ def production(root: Path, slug: str) -> dict[str, Any]:
                 labels[entry["verdict"]] += 1
     except Exception:
         pass
-    shots = len(manifest) or len(timeline.get("shots", []))
+    shots = len(manifest) or len((timeline.get("shots") or []))
     return {"usd": round(float(costs.get("totalUsd") or 0), 2), "minutes": round(seconds / 60),
             "duration": round(duration), "shots": shots, "cutsPerMin": round(shots / (duration / 60), 1) if duration else 0,
             "mix": mix, "labels": labels}
