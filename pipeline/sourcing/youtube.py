@@ -252,6 +252,7 @@ class YouTubeSource:
         # and ranges all leave from the IP its stream URLs belong to. Home proxies (no user) are one fixed IP: untouched.
         self.sessions = ProxySessions(cache_dir / "videos", minutes=float(config.get("proxy_session_minutes", 30)),
                                       max_rotations=int(config.get("proxy_session_rotations", 2)))
+        self.residential = any(is_residential(p) for p in self.proxies)
         # «modo sin YouTube» (pipeline/sin_youtube.py, while the queue's YouTube pause lasts): what is on disk is still
         # read, but nothing goes out — every request stops here before the network, with this reason
         from ..sin_youtube import REASON, active
@@ -405,6 +406,9 @@ class YouTubeSource:
         session = self._session_in_use()
         if session:
             row["session"] = session
+        reused = getattr(self._local, "info_reused", None)
+        if reused is not None and (action.startswith("archivo") or action.startswith("download") or action == "captions"):
+            row["info_reused"] = bool(reused)
         if span is not None:             # the source seconds of a clip: overlapping downloads can be found later
             row["start"], row["end"] = round(span[0], 2), round(span[1], 2)
         if size is not None:
@@ -1043,17 +1047,21 @@ class YouTubeSource:
                 path.unlink(missing_ok=True)
 
         def produce() -> dict[str, Any]:
-            # through the metadata proxy, unless this extraction is for a download (its stream URLs must be ours)
-            self._local.via_metadata_proxy = bool(self.metadata_proxy) and not getattr(self._local, "for_download", False)
+            # Through the metadata proxy, unless this extraction is for a download (its stream URLs must be ours) or
+            # the usual way is itself a residential proxy with sticky sessions: then one extraction, by this video's
+            # session, serves the metadata AND every range of the video (no second, «ours», extraction later).
+            self._local.via_metadata_proxy = bool(self.metadata_proxy) and not getattr(self._local, "for_download", False) \
+                and not self.residential
             try:
                 data = self._call(
                     "metadata",
                     lambda: self._extract(f"https://www.youtube.com/watch?v={video_id}", {"skip_download": True}),
                 )
                 via = "metadata_proxy" if self._local.via_metadata_proxy else ""
+                session = self._session_in_use()
             finally:
                 self._local.via_metadata_proxy = self._local.mp_heavy = False
-            self._save_full_info(video_id, data, via)
+            self._save_full_info(video_id, data, via, session)
             formats = data.get("formats") or []
             heights = [f.get("height") or 0 for f in formats if f.get("vcodec") not in (None, "none")]
             boards = [f for f in formats if str(f.get("format_id", "")).startswith("sb") and f.get("fragments")]
@@ -1173,7 +1181,7 @@ class YouTubeSource:
     def _full_info_path(self, video_id: str) -> Path:
         return self.cache_dir / "videos" / video_id / "ytdlp-info.json"
 
-    def _save_full_info(self, video_id: str, data: dict[str, Any], via: str = "") -> None:
+    def _save_full_info(self, video_id: str, data: dict[str, Any], via: str = "", session: str | None = None) -> None:
         """yt-dlp's own info dict (minus bulky fields) so downloads can skip the ~4 s extraction."""
 
         import json
@@ -1181,6 +1189,7 @@ class YouTubeSource:
         slim = {k: v for k, v in data.items() if k not in ("automatic_captions", "subtitles", "thumbnails", "heatmap")}
         slim["_edit_vid3_clients"] = self._clients()     # re-extract when the player clients change
         slim["_edit_vid3_via"] = via                     # metadata_proxy: its stream URLs are another IP's
+        slim["_edit_vid3_session"] = session             # residential proxy: the sticky session (IP) they belong to
         path = self._full_info_path(video_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
@@ -1189,10 +1198,16 @@ class YouTubeSource:
         tmp.replace(path)
 
     def _fresh_full_info(self, video_id: str) -> Path:
-        """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed)."""
+        """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed).
+
+        Valid: extracted the way the download leaves (never the metadata proxy), by the same player clients, with
+        every stream URL at least `info_expiry_margin_minutes` (15) from its `expire`, and — through a residential
+        proxy — by this video's sticky session while it is still alive (the IP the URLs are bound to). Otherwise one
+        extraction, the same price as before, and the result is cached for the next ranges of the video."""
 
         import json
 
+        self._local.info_reused = False
         path = self._full_info_path(video_id)
         if path.is_file():
             try:
@@ -1203,8 +1218,12 @@ class YouTubeSource:
                     # stream URLs carry ?expire=…, HLS manifests /expire/…/
                     for found in [re.search(r"[/?&]expire[/=](\d+)", f["url"])] if found
                 ]
-                if expiries and min(expiries) - time.time() > 600 and data.get("_edit_vid3_clients") == self._clients() \
-                        and not data.get("_edit_vid3_via"):
+                margin = 60 * float(self.cfg.get("info_expiry_margin_minutes", 15))
+                ours = not data.get("_edit_vid3_via") and (
+                    not self.residential or self.sessions.matches(video_id, data.get("_edit_vid3_session")))
+                if expiries and min(expiries) - time.time() > margin and data.get("_edit_vid3_clients") == self._clients() \
+                        and ours:
+                    self._local.info_reused = True
                     return path
             except (OSError, ValueError, KeyError):
                 pass
@@ -1221,6 +1240,7 @@ class YouTubeSource:
         """See _download_range; also records the file's size and speed in the metrics."""
 
         self._local.video_id = video_id
+        self._local.info_reused = None
         began = time.monotonic()
         before = getattr(self._local, "fetched", 0)
         try:
