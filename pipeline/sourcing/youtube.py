@@ -56,6 +56,17 @@ _RATE_MARKERS = ("http error 429", "too many requests")
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
+_PROXY_ENV = ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+
+
+def local_env() -> dict[str, str]:
+    """The environment for ffmpeg/ffprobe working on files already on disk: without proxy variables, so a globally
+    exported HTTPS_PROXY can never route (or bill) a local cut through the residential proxy. The ffmpeg that
+    yt-dlp drives for a range is another matter: yt-dlp hands it the proxy itself, session included."""
+
+    return {k: v for k, v in os.environ.items() if k not in _PROXY_ENV}
+
+
 def proxy_list(env: str | None, many: Any, one: Any) -> list[str]:
     """The ways out to YouTube: YOUTUBE_PROXY (comma separated) wins; else `proxies` (a list) plus `proxy`."""
 
@@ -314,6 +325,9 @@ class YouTubeSource:
                 session.proxies = {"http": way, "https": way}
             self._sessions.append(session)
         self.http = self._sessions[0]
+        self._direct = requests.Session()            # the CDN (i.ytimg.com) without any proxy, explicit or inherited
+        self._direct.trust_env = False
+        self._direct.headers["User-Agent"] = USER_AGENT
         options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": False,     # warnings go to _QuietLogger: the ones that explain slowness are shown once
@@ -901,8 +915,17 @@ class YouTubeSource:
         if self.blocked or self._all_in_quarantine():
             raise SourceUnavailable(self.blocked or "YouTube: todas las conexiones en cuarentena")
         way = self._pick_way()
-        if not any(host in url for host in _FREE_HOSTS):
+        free = any(host in url for host in _FREE_HOSTS)
+        if not free:
             self._budget_take(way, REQUEST_UNITS["get"])
+        if free and is_residential((self.proxies or [""])[way]):
+            # storyboard thumbnails are not bound to an IP: paid GB for nothing — direct, the proxy only if that fails
+            try:
+                response = self._direct.get(url, timeout=timeout)
+                if response.status_code < 500:
+                    return response
+            except requests.RequestException:
+                pass
         try:
             return self._session_get(way, url, timeout)
         except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
@@ -1419,7 +1442,7 @@ class YouTubeSource:
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
              "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)],
-            check=True,
+            check=True, env=local_env(),
         )
         return target
 
@@ -1463,7 +1486,7 @@ class YouTubeSource:
             probe = subprocess.run(
                 ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time:format=duration",
                  "-of", "json", str(produced[0])],
-                capture_output=True, text=True,
+                capture_output=True, text=True, env=local_env(),
             )
             try:
                 info = json.loads(probe.stdout or "{}")
@@ -1489,7 +1512,7 @@ class YouTubeSource:
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", f"0:{stream}",
              *(["-map", "0:a:0?"] if audio and not audio_only else []),
              "-c", "copy", "-avoid_negative_ts", "make_zero", str(target)],
-            check=True,
+            check=True, env=local_env(),
         )
         produced[0].unlink(missing_ok=True)
         return target
