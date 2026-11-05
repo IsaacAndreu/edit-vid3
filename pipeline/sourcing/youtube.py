@@ -55,6 +55,14 @@ def error_kind(message: str) -> str:
         return "timeout"
     return "other"
 _RATE_MARKERS = ("http error 429", "too many requests")
+
+
+def error_detail(message: str, limit: int = 200) -> str:
+    """An error's words for the request log: one line, proxy credentials masked (//****@), video ids kept."""
+
+    text = re.sub(r"//[^/@\s]+@", "//****@", " ".join(str(message).split()))
+    text = re.sub(r"^(ERROR:\s*)+", "", text)
+    return text[:limit]
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
@@ -455,9 +463,11 @@ class YouTubeSource:
         return True
 
     def _metric(self, action: str, *, ok: bool, seconds: float, error: str = "", attempt: int = 0,
-                cookies: bool = False, size: int | None = None, span: tuple[float, float] | None = None) -> None:
+                cookies: bool = False, size: int | None = None, span: tuple[float, float] | None = None,
+                detail: str = "") -> None:
         """One line per request to YouTube in work/<slug>/youtube_downloads.jsonl: what was asked, how it went,
-        with or without an account, client and PO Token (python main.py --youtube-stats sums them up)."""
+        with or without an account, client and PO Token (python main.py --youtube-stats sums them up). `detail` is
+        the error's own words (proxy credentials masked), so «otros» can be told apart later."""
 
         if self.metrics_path is None:
             return
@@ -467,6 +477,8 @@ class YouTubeSource:
                                "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
                                "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
                                "seconds": round(seconds, 2), "wait": round(getattr(self._local, "waited", 0.0), 2)}
+        if detail and not ok:
+            row["detail"] = error_detail(detail)
         if getattr(self._local, "via_metadata_proxy", False):
             row["proxy"] = "metadatos"
         elif self.proxies:
@@ -706,7 +718,7 @@ class YouTubeSource:
                 lowered = message.casefold()
                 kind = error_kind(message)
                 self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
-                             cookies=self._local.account is not None)
+                             cookies=self._local.account is not None, detail=message)
                 way = getattr(self._local, "way", 0) or 0
                 if through:
                     retry = self._metadata_proxy_failed(kind, lowered, tries)
@@ -1025,7 +1037,8 @@ class YouTubeSource:
         except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError) as error:
             if len(self._sessions) == 1:
                 if is_residential((self.proxies or [""])[way]):
-                    self._metric("get", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)))
+                    self._metric("get", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)),
+                                 detail=str(error))
                 raise
             self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
             way = self._local.way = self._pick_way({way})
@@ -1427,7 +1440,7 @@ class YouTubeSource:
         except Exception as error:
             if not (self.offline and str(error) == self.offline):      # never asked: not a failed download
                 self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began,
-                             error=error_kind(str(error)), span=(start, end))
+                             error=error_kind(str(error)), span=(start, end), detail=str(error))
             raise
         if getattr(self._local, "fetched", 0) != before:      # downloaded now, not taken from the cache
             size = path.stat().st_size if path.is_file() else 0

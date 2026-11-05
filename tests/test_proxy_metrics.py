@@ -101,7 +101,30 @@ def test_youtube_stats_add_a_proxy_table_with_gb_per_finished_video_and_cost(tmp
 
     table = ytstats.proxy_summary({"done1": done_rows, "pending": pending_rows}, {"done1"}, usd_per_gb=0.62)
     assert table == [{"proxy": "resi", "requests": 5, "ok_share": 40.0, "errors": {"403": 1, "timeout": 1, "bot": 1},
-                      "sessions": 3, "gb": 2.0, "videos": 2, "finished": 1, "gb_per_finished": 2.0, "usd": 1.24, "usd_per_gb": 0.62}]
+                      "sessions": 3, "gb": 2.0, "videos": 2, "finished": 1, "gb_per_finished": 2.0, "usd": 1.24, "usd_per_gb": 0.62,
+                      "details": []}]
     text = ytstats.report(tmp_path, 7).read_text("utf-8")
     assert "## Proxy" in text and "| resi | 5 | 40.0 % | 1 | 1 | 0 | 1 | 0 | 3 | 2.000 | 1/2 | 2.000 | 1.24 |" in text
     assert "0.62 $/GB" in text
+
+
+def test_failures_keep_their_words_masked_and_the_table_lists_the_most_frequent(tmp_path, monkeypatch):
+    from pipeline.sourcing.youtube import error_detail
+
+    assert error_detail("ERROR: ERROR: Unable to connect to proxy http://u:p@resi.example:1 (407)") == \
+        "Unable to connect to proxy http://****@resi.example:1 (407)"
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    yt._local.video_id = VIDEO
+    try:
+        yt._call("metadata", lambda: (_ for _ in ()).throw(RuntimeError("Unable to connect to proxy http://user:pass@h:1: 407 Proxy Authentication Required")))
+    except Exception:
+        pass
+    rows = _rows(yt)
+    assert rows[-1]["error"] == "other" and rows[-1]["detail"].startswith("Unable to connect to proxy http://****@h:1")
+    assert "pass" not in yt.metrics_path.read_text()
+    table = ytstats.proxy_summary({"v1": rows}, set())
+    assert table[0]["details"][0][1] == 1 and "407" in table[0]["details"][0][0]
+    text = "\n".join(ytstats.proxy_lines(table))
+    assert "Errores más frecuentes por resi-bridge-eu.rainproxy.io" in text and "1× Unable to connect" in text
+    yt.close()

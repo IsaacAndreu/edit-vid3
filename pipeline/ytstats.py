@@ -105,7 +105,7 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
             if not name:
                 continue
             entry = by_proxy.setdefault(name, {"proxy": name, "requests": 0, "ok": 0, "errors": {}, "bytes": 0,
-                                               "videos": set(), "finished": set(), "sessions": set()})
+                                               "videos": set(), "finished": set(), "sessions": set(), "details": {}})
             if row.get("session"):
                 entry["sessions"].add(row["session"])
             entry["videos"].add(slug)
@@ -120,6 +120,9 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
             else:
                 kind = row.get("error") or "other"
                 entry["errors"][kind] = entry["errors"].get(kind, 0) + 1
+                if row.get("detail"):
+                    text = str(row["detail"])[:120]
+                    entry["details"][text] = entry["details"].get(text, 0) + 1
     out = []
     for name, entry in sorted(by_proxy.items()):
         gb = entry["bytes"] / 1e9
@@ -136,6 +139,7 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
             "gb_per_finished": round(gb / done, 3) if done else None,
             "usd": round(gb * usd_per_gb, 2),
             "usd_per_gb": usd_per_gb,
+            "details": sorted(entry["details"].items(), key=lambda kv: -kv[1])[:5],
         })
     return out
 
@@ -153,6 +157,10 @@ def proxy_lines(table: list[dict[str, Any]]) -> list[str]:
         out.append(f"| {t['proxy']} | {t['requests']} | {t['ok_share']:.1f} % | {e.get('403', 0)} | {e.get('bot', 0)} | "
                    f"{e.get('429', 0)} | {e.get('timeout', 0)} | {e.get('other', 0) + e.get('unavailable', 0) + e.get('auth', 0)} | "
                    f"{t['sessions']} | {t['gb']:.3f} | {t['finished']}/{t['videos']} | {per_video} | {t['usd']:.2f} |")
+    for t in table:
+        if t.get("details"):
+            out += ["", f"Errores más frecuentes por {t['proxy']}:", ""]
+            out += [f"- {n}× {text}" for text, n in t["details"]]
     return out
 
 
