@@ -1288,7 +1288,7 @@ async function doctorCard(refresh) {
 }
 
 async function serverPage() {
-  const s = await api("/api/servidor");
+  const [s, px] = await Promise.all([api("/api/servidor"), api("/api/proxy?days=7").catch(() => null)]);
   const m = s.machine || {}, a = s.api, p = s.proxy, b = s.backup;
   const bar = (x, of, warn) => `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, 100 * (x || 0) / Math.max(0.01, of || 0))}%;background:${(x || 0) / Math.max(0.01, of || 0) > warn ? "var(--bad)" : "var(--accent)"}"></i></div>`;
   const kinds = {haciendo: "haciendo", turno: "", cuota: "", youtube: "error", cola: "", error: "error", falta: "", pausa: ""};
@@ -1310,8 +1310,8 @@ async function serverPage() {
       <div class="kpi"><div class="k">Se acaba</div><div class="v" style="font-size:20px">${esc(a.runsOut || "—")}</div><div class="d">al ritmo de hoy</div></div>
       <div class="kpi"><div class="k">Se renueva</div><div class="v" style="font-size:20px">${esc(a.reset)}</div><div class="d">hora de España</div></div></div>`
       : '<div class="card muted">Sin claves de la API de YouTube.</div>'}
-    <h2>Proxy de metadatos</h2>
-    ${p ? `<div class="kpis">
+    ${proxySection(px)}
+    ${p ? `<h2>Proxy de metadatos (saldo apuntado)</h2><div class="kpis">
       <div class="kpi"><div class="k">Queda</div><div class="v">${p.leftGb != null ? fmt(p.leftGb) + " GB" : "—"}</div>
         <div class="d">${p.videosLeft != null ? `≈ ${p.videosLeft} vídeos` : "apunta abajo los GB comprados"}</div>${p.bought ? bar(p.usedGb, p.bought, 0.85) : ""}</div>
       <div class="kpi"><div class="k">Gastado${p.since ? " desde " + esc(p.since) : ""}</div><div class="v">${fmt(p.usedGb)} GB</div>
@@ -1321,7 +1321,7 @@ async function serverPage() {
         <span class="small">el día</span><input name="day" type="date" style="width:auto" value="${esc(p.since || new Date().toISOString().slice(0, 10))}">
         <button>Guardar</button></form>
       <div class="small muted" style="margin-top:4px">Estimado con las peticiones de cada vídeo (el proveedor no da el saldo por API): si no cuadra con su panel, apunta allí lo que queda como una recarga de hoy. Avisa por Telegram cuando queden menos de 10 vídeos.</div>`
-      : '<div class="card muted">Sin proxy de metadatos (sourcing.youtube.metadata_proxy).</div>'}
+      : ""}
     <h2>Conexiones a YouTube</h2>
     <div class="card" style="padding:4px 14px">${(s.ways || []).map((w) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
         <div class="row" style="justify-content:space-between;gap:8px"><b style="word-break:break-all">${esc(w.name)}</b>
@@ -1343,6 +1343,26 @@ async function serverPage() {
         <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`;
   doctorCard();
   schedule(serverPage, 15000);
+}
+
+// The paid proxy, last days: one card that says whether YouTube downloads are healthy and what they cost
+function proxySection(px, title = "Proxy") {
+  if (!px || !px.proxies.length) return `<h2>${title}</h2><div class="card muted small">Sin peticiones por proxy en los últimos ${px ? px.days : 7} días.</div>`;
+  const main = px.proxies.slice().sort((a, b) => b.requests - a.requests)[0];
+  const share = main.ok_share, col = share >= 85 ? "var(--ok)" : share >= 60 ? "var(--accent)" : "var(--bad)";
+  const maxDay = Math.max(0.01, ...px.perDay.map((d) => d.gb));
+  const e = main.errors || {};
+  return `<h2>${title} · últimos ${px.days} días</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Éxito</div><div class="v" style="color:${col}">${share} %</div><div class="d">${main.requests} peticiones por ${esc(main.proxy)}${main.sessions ? ` · ${main.sessions} sesiones` : ""}</div></div>
+      <div class="kpi"><div class="k">GB por el proxy</div><div class="v">${px.totalGb.toFixed(2)}</div><div class="d">≈ ${px.usd.toFixed(2)} $ a ${px.usdPerGb} $/GB</div></div>
+      <div class="kpi"><div class="k">Por vídeo terminado</div><div class="v">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "—"}</div>
+        <div class="d">${px.finished} terminados de ${px.videos} con descargas${px.gbPerFinished != null ? ` · ${(px.gbPerFinished * px.usdPerGb).toFixed(2)} $/vídeo` : ""}</div></div>
+      <div class="kpi"><div class="k">Errores</div><div class="v" style="font-size:20px">${["bot", "403", "429", "timeout"].filter((k) => e[k]).map((k) => `${e[k]} ${k === "bot" ? "bot" : k}`).join(" · ") || "ninguno"}</div>
+        <div class="d">${e.other ? `${e.other} otros` : "bot = «no eres un bot»"}</div></div></div>
+    ${px.perDay.length > 1 ? `<div class="card" style="margin-top:10px;padding:12px 16px"><div class="small muted" style="margin-bottom:6px">GB por día</div>
+      <div class="spend" style="height:90px">${px.perDay.map((d) => `<div style="height:${Math.max(2, 100 * d.gb / maxDay)}%" title="${d.day}: ${d.gb.toFixed(2)} GB"><span>${d.day.slice(5)}</span></div>`).join("")}</div></div>` : ""}
+    ${main.details && main.details.length ? `<div class="card small" style="margin-top:10px"><b>Errores más frecuentes</b><ul style="margin:6px 0 0;padding-left:18px">${main.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul></div>` : ""}`;
 }
 
 let expChannel = "";
@@ -1434,7 +1454,7 @@ async function experimentsPage() {
         || '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`;
 }
 async function spendPage() {
-  const g = await api("/api/gasto");
+  const [g, px] = await Promise.all([api("/api/gasto"), api("/api/proxy?days=7").catch(() => null)]);
   const usd = (n, d = 2) => n == null ? "—" : Number(n).toFixed(d) + " $";
   const o = g.overall, max = Math.max(0.01, ...g.days.map((d) => d.usd));
   const top = Math.max(0.01, ...g.channels.map((c) => c.average || 0));
@@ -1450,6 +1470,10 @@ async function spendPage() {
       <div class="kpi"><div class="k">Por minuto de vídeo</div><div class="v">${usd(o.perMinute, 3)}</div><div class="d">coste / minutos de vídeo final</div></div>
       <div class="kpi"><div class="k">Últimos 7 días</div><div class="v">${usd(o.week)}</div><div class="d">este mes ${usd(o.month)}</div></div>
       <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.total)}</div><div class="d">${usd(o.inProgress)} en curso${g.others ? ` · ${usd(g.others.total)} en radar e ideas` : ""}</div></div></div>
+    ${px && px.proxies.length ? `<div class="kpis" style="margin-top:12px">
+      <a class="kpi" href="#/servidor"><div class="k">Proxy · 7 días</div><div class="v">${usd(px.usd)}</div><div class="d">${px.totalGb.toFixed(2)} GB a ${px.usdPerGb} $/GB</div></a>
+      <a class="kpi" href="#/servidor"><div class="k">Proxy por vídeo terminado</div><div class="v">${px.gbPerFinished != null ? usd(px.gbPerFinished * px.usdPerGb) : "—"}</div>
+        <div class="d">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "sin vídeos terminados"} · ${o.average != null && px.gbPerFinished != null ? `API + proxy ≈ ${usd(o.average + px.gbPerFinished * px.usdPerGb)}` : ""}</div></a></div>` : ""}
 
     ${(() => { const s = g.savings, p = g.pipeline, hm = (x) => x == null ? "—" : x >= 3600 ? `${Math.floor(x / 3600)} h ${String(Math.round(x % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(x / 60)} min`;
       const most = Math.max(1, ...(p.stages || []).map((x) => x.seconds));
