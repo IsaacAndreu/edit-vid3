@@ -242,3 +242,12 @@ def test_a_clip_the_editor_slowed_down_is_rebuilt_from_its_source_clip(tmp_path)
     (work / "media" / "s364.mp4").write_bytes(b"x")
     assert dub.stretched_source(work, "editor/stretched/s364-100.mp4") == "media/s364.mp4"
     assert dub.stretched_source(work, "editor/stretched/s999-100.mp4") is None
+
+
+def test_a_dub_links_every_folder_its_original_timeline_uses():
+    """gym3.0-pt: «No such file … work/gym3.0-pt/motion/g2-0-replay.mp4»: motion/ was not in the fixed list."""
+
+    timeline = {"shots": [{"media": {"src": "motion/g2-0-replay.mp4"}}, {"media": {"src": "editor/stretched/s1-9.mp4"}}],
+                "groups": [{"graphic": {"photo": {"src": "spotlight/x.jpg"}}}], "audio": {"voice": "audio/voz.mp3"}}
+    folders = dub.media_folders(timeline)
+    assert "motion" in folders and "spotlight" in folders and "editor/stretched" in folders and "editor" not in folders

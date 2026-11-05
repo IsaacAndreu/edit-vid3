@@ -511,11 +511,37 @@ def stretched_source(work: Path, src: str) -> str | None:
     return None
 
 
+def media_folders(timeline: dict[str, Any]) -> list[str]:
+    """Every folder the original's timeline takes a file from (media, motion/ replays, graphics/ maps and flags,
+    spotlight…), plus LINKED: the dub links them all. A fixed list missed one at a time (editor/stretched, then
+    motion/ in gym3.0-pt). editor/ itself is never linked whole (the original's voice and waveform live there)."""
+
+    found = list(LINKED)
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            src = value.get("src")
+            if isinstance(src, str) and "/" in src and not src.startswith(("/", "..")):
+                top = src.split("/", 1)[0]
+                folder = STRETCHED.rstrip("/") if top == "editor" else top
+                if folder not in found:
+                    found.append(folder)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(timeline)
+    return found
+
+
 def missing_media(original: RunContext) -> list[str]:
     """Files of the original's timeline that are gone (its heavy folders cleaned after it was finished). A clip the
     editor slowed down is not one (the dub stretches the clip again): its source clip is, when that is gone too."""
 
     timeline = original.read_json("timeline.json")
+    folders = set(media_folders(timeline))
     found: list[str] = []
 
     def walk(value: Any) -> None:
@@ -525,7 +551,7 @@ def missing_media(original: RunContext) -> list[str]:
                 if not stretched_source(original.work_dir, src):
                     found.append(src)
             elif isinstance(src, str) and src and not (original.work_dir / src).exists() \
-                    and src.split("/", 1)[0] in LINKED:
+                    and src.split("/", 1)[0] in folders:
                 found.append(src)
             for item in value.values():
                 walk(item)
@@ -599,7 +625,7 @@ def run(ctx: RunContext) -> None:
     timeline["locale"] = {"chapter": chapter_word, "source": source_word, "next": next_word, "subscribe": subscribe_word}
 
     print("[4/6] Material: reutilizando clips (cámara lenta donde el plano es más largo)")
-    for folder in LINKED:
+    for folder in media_folders(old_timeline):
         if (original.work_dir / folder).is_dir():
             _link_tree(original.work_dir / folder, ctx.work_dir / folder)
     from . import stickman
