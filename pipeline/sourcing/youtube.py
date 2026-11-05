@@ -51,6 +51,8 @@ def error_kind(message: str) -> str:
         return "429"
     if "video unavailable" in low or "not available" in low:
         return "unavailable"
+    if "timed out" in low or "timeout" in low:
+        return "timeout"
     return "other"
 _RATE_MARKERS = ("http error 429", "too many requests")
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -467,11 +469,14 @@ class YouTubeSource:
                                "seconds": round(seconds, 2), "wait": round(getattr(self._local, "waited", 0.0), 2)}
         if getattr(self._local, "via_metadata_proxy", False):
             row["proxy"] = "metadatos"
-        elif len(self.proxies) > 1:
+        elif self.proxies:
             row["proxy"] = self.way_name(getattr(self._local, "way", 0) or 0)
         session = self._session_in_use()
         if session:
             row["session"] = session
+        if self._through_proxy():
+            # what the proxy carried for this request: yt-dlp's own responses, or the range's file (moved by ffmpeg)
+            row["proxy_bytes"] = int(size or 0) if action.startswith("archivo") else int(getattr(self._local, "proxy_bytes", 0) or 0)
         reused = getattr(self._local, "info_reused", None)
         if reused is not None and (action.startswith("archivo") or action.startswith("download") or action == "captions"):
             row["info_reused"] = bool(reused)
@@ -564,13 +569,58 @@ class YouTubeSource:
                 args = dict(options.get("extractor_args") or {})
                 args["youtube"] = {**(args.get("youtube") or {}), "player_skip": ["webpage"]}
                 options["extractor_args"] = args
-            return yt_dlp.YoutubeDL(options)
+            return self._metered(yt_dlp.YoutubeDL(options), True)
         if self.proxies:
             options["proxy"] = self._proxy_for(self.proxies[getattr(self._local, "way", 0) or 0])
         cookie_file = self._cookie_file()
         if cookie_file:
             options["cookiefile"] = cookie_file
-        return yt_dlp.YoutubeDL(options)
+        return self._metered(yt_dlp.YoutubeDL(options), bool(options.get("proxy")))
+
+    def _metered(self, ydl: Any, through_proxy: bool) -> Any:
+        """Count the bytes of every HTTP response this YoutubeDL opens through a proxy (the page, the player API,
+        the player JS, manifests, subtitles: all of yt-dlp's own requests go through `urlopen`) into the current
+        request's `proxy_bytes`. Content-Length when the server sends it, else the body read (decompressed, an
+        upper bound). What ffmpeg moves for a range is not seen here: the range's file size is counted instead."""
+
+        if not through_proxy:
+            return ydl
+        original = ydl.urlopen
+        local = self._local
+
+        def add(amount: int) -> None:
+            local.proxy_bytes = getattr(local, "proxy_bytes", 0) + max(0, int(amount))
+
+        def counting(request: Any) -> Any:
+            response = original(request)
+            length = None
+            try:
+                length = int(response.headers.get("Content-Length"))
+            except (TypeError, ValueError, AttributeError):
+                length = None
+            if length is not None:
+                add(length)
+                return response
+            read = response.read
+
+            def counting_read(amt: int | None = None) -> bytes:
+                data = read(amt)
+                add(len(data))
+                return data
+
+            try:
+                response.read = counting_read
+            except AttributeError:
+                pass
+            return response
+
+        ydl.urlopen = counting
+        return ydl
+
+    def _through_proxy(self) -> bool:
+        """Does the current request leave through a proxy (any kind), or directly from the server?"""
+
+        return bool(getattr(self._local, "via_metadata_proxy", False)) or bool(self.proxies)
 
     def _session_key(self) -> str:
         """Whose sticky session a request uses: the video it is about, or the shared one for searches."""
@@ -620,6 +670,7 @@ class YouTubeSource:
             tries += 1
             began = queued = time.monotonic()
             self._local.waited = 0.0
+            self._local.proxy_bytes = 0
             try:
                 with self._slots:
                     way = self._local.way = self._pick_way(tried_ways)
@@ -667,7 +718,7 @@ class YouTubeSource:
                         continue
                 # A request that hangs until it times out: is it YouTube being slow, or the proxy program stopped
                 # (home PC asleep, proxy window closed)? One look at its port says which.
-                if self.proxies and kind == "other" and ("timed out" in lowered or "timeout" in lowered) \
+                if self.proxies and kind in ("other", "timeout") and ("timed out" in lowered or "timeout" in lowered) \
                         and not proxy_reachable(self.proxies[way]):
                     lowered += " proxy connection refused"
                 if self.proxies and _proxy_down(lowered) and len(tried_ways) >= len(self.proxies) - 1:
@@ -967,13 +1018,24 @@ class YouTubeSource:
                     return response
             except requests.RequestException:
                 pass
+        self._local.way = way
+        began = time.monotonic()
         try:
-            return self._session_get(way, url, timeout)
-        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
+            response = self._session_get(way, url, timeout)
+        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError) as error:
             if len(self._sessions) == 1:
+                if is_residential((self.proxies or [""])[way]):
+                    self._metric("get", ok=False, seconds=time.monotonic() - began, error=error_kind(str(error)))
                 raise
             self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
-            return self._session_get(self._pick_way({way}), url, timeout)
+            way = self._local.way = self._pick_way({way})
+            response = self._session_get(way, url, timeout)
+        if is_residential((self.proxies or [""])[way]):      # paid per GB: every GET through it is in the log
+            self._local.proxy_bytes = len(response.content or b"")
+            self._metric("get", ok=response.status_code < 400, seconds=time.monotonic() - began,
+                         error="" if response.status_code < 400 else ("429" if response.status_code == 429 else
+                                                                       "403" if response.status_code == 403 else "other"))
+        return response
 
     def _session_get(self, way: int, url: str, timeout: float) -> requests.Response:
         proxies = self._requests_proxies(way)
