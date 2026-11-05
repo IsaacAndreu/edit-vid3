@@ -418,7 +418,12 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
                     details={"shot": shot.id, "inputTokens": usage.input_tokens, "cachedTokens": cached, "outputTokens": usage.output_tokens})
         return json.loads(response.output_text)
 
-    return usable(cached_json(ctx.cache_dir / "judge" / f"{cache_key}.json", produce), letters)
+    path = ctx.cache_dir / "judge" / f"{cache_key}.json"
+    if path.is_file():                       # the same frames judged before: not asked (nor paid) again
+        from .ahorro import record
+
+        record(ctx.work_dir, "judge")
+    return usable(cached_json(path, produce), letters)
 
 
 LESSONS_DIR = "_lecciones"     # in cache/judge/: the lessons each channel's judge is using now

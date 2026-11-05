@@ -349,6 +349,7 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         state = {}
     settings = json.dumps({k: voice.get(k) for k in ("voice_id", *DEFAULTS)}, sort_keys=True)
     tasks, files = [], []
+    reused = 0
     for number, part in enumerate(parts, start=1):
         key = hashlib.sha1((settings + part).encode("utf-8")).hexdigest()[:16]
         piece = work / f"{key}.mp3"
@@ -356,6 +357,7 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         if piece.is_file() and piece.stat().st_size > 0:
             log(f"   Voz {number}/{len(parts)}: ya hecha antes, la reutilizo")
             tasks.append(state.get(key, ""))
+            reused += len(part)
             continue
         task_id = state.get(key)
         if task_id:
@@ -410,7 +412,9 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
     import shutil
 
     shutil.rmtree(work, ignore_errors=True)
-    return {"chars": sum(len(p) for p in parts), "pieces": len(parts), "tasks": tasks}
+    total = sum(len(p) for p in parts)
+    # «chars» is the whole narration; only paidChars were generated (and billed) this time
+    return {"chars": total, "paidChars": total - reused, "reusedChars": reused, "pieces": len(parts), "tasks": tasks}
 
 
 # --- word timings from the subtitles (instead of Whisper) ---------------------------------------------------------
@@ -608,9 +612,14 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
     try:
         from .costs import record_cost
 
+        paid = result.get("paidChars", result["chars"])     # a restart reuses pieces: they are not paid twice
         record_cost(ctx, stage="voz", provider="genaipro", operation=voice["model_id"],
-                    usd=float(voice.get("usd_per_1k_chars", 0)) * result["chars"] / 1000,
-                    details={"chars": result["chars"], "pieces": result["pieces"]})
+                    usd=float(voice.get("usd_per_1k_chars", 0)) * paid / 1000,
+                    details={"chars": paid, "pieces": result["pieces"]})
+        if result.get("reusedChars"):
+            from .ahorro import record
+
+            record(ctx.work_dir, "voice", result["reusedChars"])
     except Exception:
         pass
     print(f"   voz.mp3 lista en {time.monotonic() - started:.0f} s ({result['pieces']} trozo(s))")

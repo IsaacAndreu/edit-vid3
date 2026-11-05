@@ -111,6 +111,10 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
     providers: dict[str, float] = {}
     stages: dict[str, float] = {}
     videos = []
+    judge_calls = judge_usd = voice_chars = voice_usd = 0.0     # what the reused things cost when paid
+    stage_time: dict[str, float] = {}
+    from . import ahorro, tiempos
+
     quota = youtube_quota(root)
     proxy, proxy_rates = proxy_usage(root)
     for path in sorted((root / "work").glob("*/costs.json")):
@@ -132,10 +136,22 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
             if day >= since:
                 per_day[day] = per_day.get(day, 0.0) + usd
             last = max(last, day)
+            if entry.get("stage") == "judge" and entry.get("provider") == "openai":
+                judge_calls += 1
+                judge_usd += usd
+            chars = float((entry.get("details") or {}).get("chars") or 0)
+            if entry.get("provider") == "genaipro" and chars:
+                voice_chars += chars
+                voice_usd += usd
         is_video = not slug.startswith("_") and (find_video(root, slug).is_dir() or (root / "out" / slug).is_dir())
         channel = (_channel_of(root, find_video(root, slug)) or "sin canal") if is_video else OTHERS
         seconds = _seconds(root, slug) if is_video else 0.0
-        videos.append({"slug": slug, "channel": channel, "usd": round(total, 4), "done": bool(is_video and is_done(root, slug)),
+        stages_here = tiempos.stage_seconds(path.parent)
+        done_here = bool(is_video and is_done(root, slug))
+        if done_here:
+            for name, secs in stages_here.items():
+                stage_time[name] = stage_time.get(name, 0.0) + secs
+        videos.append({"slug": slug, "workSeconds": round(sum(stages_here.values())), "reused": ahorro.totals(path.parent), "channel": channel, "usd": round(total, 4), "done": bool(is_video and is_done(root, slug)),
                        "minutes": round(seconds / 60, 1), "last": last,
                        "ytSearches": (quota.get(slug) or {}).get("searches"), "ytUnits": (quota.get(slug) or {}).get("units"),
                        "ytEstimated": bool((quota.get(slug) or {}).get("estimated")),
@@ -176,7 +192,29 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
     channels.sort(key=lambda c: -c["total"])
     made = [r for r in videos if r["channel"] != OTHERS]
     start = now.date() - timedelta(days=days - 1)
-    return {"overall": summary(made, "Todos"), "channels": channels,
+    # what reusing saved, priced with what the same thing really cost here
+    per_verdict = judge_usd / judge_calls if judge_calls else 0.0
+    per_char = voice_usd / voice_chars if voice_chars else 0.0
+    verdicts = sum(r["reused"].get("judge", 0) for r in videos)
+    reused_chars = sum(r["reused"].get("voice", 0) for r in videos)
+    for r in videos:
+        r["savedUsd"] = round(r["reused"].get("judge", 0) * per_verdict + r["reused"].get("voice", 0) * per_char, 4)
+    saved = verdicts * per_verdict + reused_chars * per_char
+    spent = sum(r["usd"] for r in videos)
+    finished = [r for r in made if r["done"] and r["workSeconds"]]
+    savings = {"usd": round(saved, 2), "share": round(saved / (saved + spent), 3) if saved + spent else 0.0,
+               "verdicts": int(verdicts), "verdictsUsd": round(verdicts * per_verdict, 2),
+               "perVerdict": round(per_verdict, 5), "voiceChars": int(reused_chars),
+               "voiceUsd": round(reused_chars * per_char, 3), "perKChars": round(per_char * 1000, 4)}
+    pipeline = {"videos": len(finished), "seconds": sum(r["workSeconds"] for r in finished),
+                "usd": round(sum(r["usd"] for r in finished), 2),
+                "averageSeconds": round(statistics.mean(r["workSeconds"] for r in finished)) if finished else None,
+                "averageUsd": round(statistics.mean(r["usd"] for r in finished), 3) if finished else None,
+                "stages": [{"stage": k, "name": tiempos.NAMES.get(k, k), "seconds": round(v)}
+                           for k, v in sorted(stage_time.items(), key=lambda kv: -kv[1]) if v >= 1]}
+    today = now.date().isoformat()
+    return {"overall": summary(made, "Todos"), "channels": channels, "today": round(per_day.get(today, 0.0), 2),
+            "savings": savings, "pipeline": pipeline,
             "others": summary(by_channel.get(OTHERS, []), OTHERS) if OTHERS in by_channel else None,
             "total": round(sum(r["usd"] for r in videos), 2),
             "days": [{"day": (start + timedelta(days=i)).isoformat(),

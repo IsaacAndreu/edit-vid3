@@ -1224,14 +1224,36 @@ async function spendPage() {
   const top = Math.max(0.01, ...g.channels.map((c) => c.average || 0));
   const provTotal = Object.values(g.providers).reduce((a, b) => a + b, 0) || 1;
   const rows = g.videos.filter((v) => !spendChannel || v.channel === spendChannel)
-    .sort((a, b) => spendSort === "usd" ? b.usd - a.usd : spendSort === "minutes" ? b.minutes - a.minutes : b.last.localeCompare(a.last));
+    .sort((a, b) => spendSort === "usd" ? b.usd - a.usd : spendSort === "minutes" ? b.minutes - a.minutes
+      : spendSort === "work" ? (b.workSeconds || 0) - (a.workSeconds || 0) : b.last.localeCompare(a.last));
   $("#app").innerHTML = `<h1>Gasto de API</h1>
     <div class="small muted">Lo que cuestan las APIs de pago (guion, planos, juez, voz…). Las medias cuentan solo vídeos terminados; lo de vídeos a medias va aparte («en curso»).</div>
     <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="k">Hoy</div><div class="v">${usd(g.today)}</div><div class="d">desde las 00:00 (UTC)</div></div>
       <div class="kpi"><div class="k">Media por vídeo</div><div class="v">${usd(o.average)}</div><div class="d">mediana ${usd(o.median)} · ${o.done} terminados</div></div>
       <div class="kpi"><div class="k">Por minuto de vídeo</div><div class="v">${usd(o.perMinute, 3)}</div><div class="d">coste / minutos de vídeo final</div></div>
       <div class="kpi"><div class="k">Últimos 7 días</div><div class="v">${usd(o.week)}</div><div class="d">este mes ${usd(o.month)}</div></div>
       <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.total)}</div><div class="d">${usd(o.inProgress)} en curso${g.others ? ` · ${usd(g.others.total)} en radar e ideas` : ""}</div></div></div>
+
+    ${(() => { const s = g.savings, p = g.pipeline, hm = (x) => x == null ? "—" : x >= 3600 ? `${Math.floor(x / 3600)} h ${String(Math.round(x % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(x / 60)} min`;
+      const most = Math.max(1, ...(p.stages || []).map((x) => x.seconds));
+      return `<h2>Ahorro por reutilizar</h2>
+    <div class="small muted">Lo que no se pagó otra vez, valorado con lo que cuesta aquí lo mismo: un veredicto del juez ${usd(s.perVerdict, 4)},
+      1.000 caracteres de voz ${usd(s.perKChars, 3)}.</div>
+    <div class="kpis" style="margin-top:8px">
+      <div class="kpi"><div class="k">Ahorrado</div><div class="v">${usd(s.usd)}</div><div class="d">${Math.round(100 * s.share)} % de lo que habría costado</div></div>
+      <div class="kpi"><div class="k">Veredictos del juez reutilizados</div><div class="v">${fmt(s.verdicts)}</div><div class="d">${usd(s.verdictsUsd)} (los mismos fotogramas ya juzgados)</div></div>
+      <div class="kpi"><div class="k">Voz reutilizada</div><div class="v">${fmt(s.voiceChars)}</div><div class="d">caracteres · ${usd(s.voiceUsd, 3)} (trozos ya hechos)</div></div></div>
+
+    <h2>Tiempo de pipeline</h2>
+    <div class="small muted">Vídeos terminados: lo que tardó cada etapa trabajando (sin contar la espera de su turno en la cola).</div>
+    <div class="kpis" style="margin-top:8px">
+      <div class="kpi"><div class="k">Vídeos medidos</div><div class="v">${p.videos}</div><div class="d">terminados con sus tiempos</div></div>
+      <div class="kpi"><div class="k">Tiempo total</div><div class="v">${hm(p.seconds)}</div><div class="d">coste total ${usd(p.usd)}</div></div>
+      <div class="kpi"><div class="k">Tiempo medio</div><div class="v">${hm(p.averageSeconds)}</div><div class="d">coste medio ${usd(p.averageUsd)}</div></div></div>
+    ${(p.stages || []).length ? `<div class="card" style="margin-top:8px"><b>Tiempo por etapa</b>
+      ${p.stages.map((x) => `<div style="margin-top:6px"><div class="row small" style="justify-content:space-between"><span>${esc(x.name)}</span><b>${hm(x.seconds)}</b></div>
+        <div class="bar"><i style="width:${100 * x.seconds / most}%;background:var(--accent)"></i></div></div>`).join("")}</div>` : ""}`; })()}
 
     <h2>Cuota de la API de YouTube</h2>
     <div class="kpis">
@@ -1289,21 +1311,23 @@ async function spendPage() {
       ${g.channels.map((c) => `<button class="yt-chip ${c.channel === spendChannel ? "on" : ""}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
         <i class="dot" style="background:${chColor(c.channel)}"></i>${esc(c.channel)}</button>`).join("")}
       <span class="row small" style="gap:4px;margin-left:auto">Ordenar:<select style="width:auto" onchange="spendSort=this.value;spendPage()">
-        ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></span></div>
+        ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"], ["work", "Más lento"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></span></div>
     <div class="card" style="overflow:auto;padding:0;max-height:70vh"><table class="ytt">
-      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Cuota YT</th><th>Proxy</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th style="text-align:left">Desglose</th></tr></thead>
+      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Ahorrado</th><th>Tiempo</th><th>Cuota YT</th><th>Proxy</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th style="text-align:left">Desglose</th></tr></thead>
       <tbody>${rows.map((v) => `<tr class="v"><td><a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600">${esc(v.slug)}</a>
           <div class="sub"><i class="dot" style="background:${chColor(v.channel)}"></i>
             <select style="width:auto;padding:1px 4px;font-size:12px" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
               ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
             · ${esc(v.last)}</div></td>
         <td data-k="Gasto"><b>${usd(v.usd)}</b></td>
+        <td data-k="Ahorrado" title="${fmt(v.reused?.judge || 0)} veredictos · ${fmt(v.reused?.voice || 0)} caracteres de voz">${v.savedUsd ? usd(v.savedUsd) : "—"}</td>
+        <td data-k="Tiempo">${v.workSeconds ? (v.workSeconds >= 3600 ? `${Math.floor(v.workSeconds / 3600)} h ${String(Math.round(v.workSeconds % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(v.workSeconds / 60)} min`) : "—"}</td>
         <td data-k="Cuota YT" title="${v.ytSearches ?? 0} búsquedas">${v.ytUnits ? (v.ytEstimated ? "≈ " : "") + kfmt(v.ytUnits) + " u" : "—"}</td>
         <td data-k="Proxy" title="${v.proxyRequests ?? 0} peticiones por el proxy">${v.proxyUsd ? "≈ " + usd(v.proxyUsd, 2) : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
         <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
         <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
         <td class="wide small muted" style="text-align:left">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
-        || '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
+        || '<tr><td colspan="10" class="muted" style="text-align:center;padding:20px">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
 }
 
 // «En YouTube»: sorted, filtered and grouped in the page, without asking the server again
