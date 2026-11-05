@@ -314,6 +314,13 @@
   .cause .act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .cause .act button, .cause .act .btn { padding: 6px 11px; font-size: 13px; }
   @media (max-width: 700px) { .cause { grid-template-columns: 1fr; } .cause .act { justify-content: flex-start; } .vt td.wide, .vt th.wide { display: none; } .vt td { white-space: normal; } }
+  .vt .ok, .kv .ok { color: var(--ok); } .vt .bad, .kv .bad { color: var(--bad); }
+  .grid2 { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; align-items: start; } .grid2 .block { margin-top: 0; }
+  @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  .ph { display: none; } @media (max-width: 700px) { .ph { display: inline; } .vt td.t { min-width: 150px; } .vt .acts { white-space: nowrap; } }
+  .mine-row { display: grid; grid-template-columns: minmax(120px, 200px) 1fr; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+  .mine-row:first-child { border-top: 0; } .mine-row input { margin: 0; }
+  @media (max-width: 600px) { .mine-row { grid-template-columns: 1fr; gap: 4px; } }
   .hb { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 6px; }
   .hb h2 { margin: 0; } .hb .tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .hb select { width: auto; padding: 6px 10px; font-size: 13.5px; }
@@ -1693,12 +1700,14 @@ function movePrio(i, step) {                       // ▲ ▼ ✕ in «Prioridad
   save({channel_priority: list});
 }
 
+let mineOpen = false, mineEmpty = false;
 async function settingsPage() {
   const [s, n] = [await api("/api/settings"), await api("/api/notify")];
   window.prioList = s.channel_priority || [];
   const guessUrl = n.studioUrl || (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "" : location.origin);
   if (!data) data = await api("/api/overview");
   const code = data && data.service && data.service.code;
+  const filled = s.channels.filter((c) => s.myChannels[c]).length;
   $("#app").innerHTML = `<h1>Ajustes</h1>
     ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
@@ -1743,12 +1752,13 @@ async function settingsPage() {
       <div class="row" style="margin-top:8px"><select id="prio-add" style="width:auto"><option value="">Añadir canal…</option>
         ${s.channels.filter((c) => !(s.channel_priority || []).includes(c)).map((c) => `<option>${esc(c)}</option>`).join("")}</select>
         <button onclick="const c = document.getElementById('prio-add').value; if (c) save({channel_priority: [...(window.prioList || []), c]})">Añadir</button></div></div>
-    <h2>Mi canal de YouTube en cada perfil</h2>
-    <div class="card">
-      <p class="small muted" style="margin-top:0">Tu @canal o su URL: lo usan «Mi canal» y las ideas.</p>
-      ${s.channels.map((c) => `<label>${esc(c)}</label><input class="mine" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}">`).join("")}
-      <div class="row" style="margin-top:14px"><button onclick="save({my_channels: Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))})">Guardar</button></div>
-    </div>`;
+    <details class="block" ${mineOpen ? "open" : ""} ontoggle="mineOpen=this.open"><summary><b>Mi canal de YouTube en cada perfil <span class="count">${filled} de ${s.channels.length} con @canal</span></b></summary>
+      <div style="padding:10px 16px 14px">
+      <p class="small muted" style="margin:0 0 6px">Tu @canal o su URL: lo usan «Mi canal» y las ideas. ${s.channels.length - filled ? `<a href="javascript:mineEmpty=!mineEmpty;route()">${mineEmpty ? "Ver todos" : `Ver solo los ${s.channels.length - filled} sin rellenar`}</a>` : ""}</p>
+      ${s.channels.filter((c) => !mineEmpty || !s.myChannels[c]).map((c) => `<div class="mine-row"><span class="pill" style="border-left:4px solid ${chColor(c)};justify-self:start">${esc(c)}</span>
+        <input class="mine" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}"></div>`).join("")}
+      <div class="row" style="margin-top:14px"><button class="main" onclick="save({my_channels: {...${JSON.stringify(s.myChannels || {}).replace(/"/g, "&quot;")}, ...Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))}})">Guardar</button></div>
+      </div></details>`;
   window.save = async (body) => { await post("/api/settings", body); route(); };
   $("#tg-go").onclick = async () => {
     const msg = $("#tg-msg"); msg.textContent = "Enviando…";
@@ -1847,30 +1857,46 @@ async function reviewPage(slug) {
   if (r.job.running) schedule(route, 8000);
 }
 
+let errFilter = "todos";
 async function errorsPage() {
   const [e, o] = [await api("/api/errors"), data && data.videos ? data : await api("/api/overview")];
   data = o;
-  const done = o.videos.filter((v) => v.hasVideo);
-  const reviewed = new Set(e.videos.map((v) => v.slug));
+  const done = o.videos.filter((v) => v.hasVideo).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const byVideo = Object.fromEntries(e.videos.map((v) => [v.slug, v]));
+  const pending = done.filter((v) => !byVideo[v.slug]).length;
+  const list = done.filter((v) => errFilter === "todos" || (errFilter === "sin revisar") === !byVideo[v.slug]);
   const maxReason = Math.max(1, ...e.reasons.map((r) => r.count));
-  $("#app").innerHTML = `<h1>Errores · para ir mejorando</h1>
-    <div class="grid">
-      <div class="card"><div class="muted small">Clips bien</div><div class="stat">${e.accuracy == null ? "—" : e.accuracy + " %"}</div>
-        <div class="small muted">${e.total.correcta} correctos · ${e.total.incorrecta} incorrectos · ${e.total.dudosa} dudosos</div></div>
-      <div class="card"><div class="muted small">Vídeos revisados</div><div class="stat">${e.videos.length}</div><div class="small muted">de ${done.length} terminados</div></div>
+  const acc = (r) => r.accuracy == null ? "—" : `<b class="${r.accuracy >= 90 ? "ok" : r.accuracy < 70 ? "bad" : ""}">${r.accuracy} %</b>`;
+  const verdicts = (r) => `<span class="ok">${r.correcta}</span> · <span class="bad">${r.incorrecta}</span> · <span class="muted">${r.dudosa}</span>`;
+  $("#app").innerHTML = `<h1>Clips marcados</h1>
+    <div class="small muted" style="margin:-4px 0 12px">Marca los clips de cada vídeo terminado (bien / mal / dudoso) y el programa aprende qué comprobaciones aflojar o apretar.</div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Clips bien</div><div class="v ${e.accuracy == null ? "" : e.accuracy >= 90 ? "ok" : e.accuracy < 70 ? "bad" : "warn"}">${e.accuracy == null ? "—" : e.accuracy + " %"}</div>
+        <div class="d">${e.total.correcta} bien · ${e.total.incorrecta} mal · ${e.total.dudosa} dudosos</div></div>
+      <div class="kpi"><div class="k">Vídeos revisados</div><div class="v">${e.videos.length} <span class="muted" style="font-size:16px;font-weight:600">/ ${done.length}</span></div>
+        <div class="d">${pending ? `${pending} sin revisar` : "todos revisados"}</div></div>
+      <div class="kpi"><div class="k">Fallo más común</div><div class="v" style="font-size:17px;line-height:1.3">${e.reasons.length ? esc(e.reasons[0].name) : "—"}</div>
+        <div class="d">${e.reasons.length ? `${e.reasons[0].count} clip(s)` : "sin clips marcados mal"}</div></div>
+      <div class="kpi"><div class="k">Peor método</div><div class="v" style="font-size:17px;line-height:1.3">${e.methods.length ? esc([...e.methods].sort((a, b) => a.accuracy - b.accuracy)[0].name) : "—"}</div>
+        <div class="d">${e.methods.length ? `${[...e.methods].sort((a, b) => a.accuracy - b.accuracy)[0].accuracy} % de acierto` : "—"}</div></div>
     </div>
     ${e.tips.length ? `<div class="elf">🧝 ${e.tips.map(esc).join("<br>")}</div>` : ""}
-    <h2>Revisar un vídeo</h2>
-    <div class="grid">${done.map((v) => `<div class="card"><b>${esc(v.slug)}</b>
-      <div class="small muted">${esc(v.channel)} · ${reviewed.has(v.slug) ? "revisado" : "sin revisar"}</div>
-      <div class="row" style="margin-top:8px"><a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Clips</a>
-        <a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a></div></div>`).join("") || '<div class="muted">Aún no hay vídeos terminados.</div>'}</div>
-    ${e.reasons.length ? `<h2>Por qué fallan</h2><div class="card">${e.reasons.map((r) => `<div class="row" style="justify-content:space-between"><span>${esc(r.name)}</span><b>${r.count}</b></div>
-      <div class="hbar"><i style="width:${100 * r.count / maxReason}%;background:var(--bad)"></i></div>`).join("")}</div>` : ""}
-    ${e.methods.length ? `<h2>Qué parte del programa falla</h2><div class="card"><table><tr><th>Cómo se encontró el clip</th><th>Bien</th><th>Mal</th><th>Dudosos</th><th>Acierto</th></tr>
-      ${e.methods.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.correcta}</td><td>${m.incorrecta}</td><td>${m.dudosa}</td><td><b>${m.accuracy} %</b></td></tr>`).join("")}</table></div>` : ""}
-    ${e.videos.length ? `<h2>Por vídeo</h2><div class="card"><table><tr><th>Vídeo</th><th>Bien</th><th>Mal</th><th>Dudosos</th><th>Acierto</th></tr>
-      ${e.videos.map((v) => `<tr><td><a href="#/revisar/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></td><td>${v.correcta}</td><td>${v.incorrecta}</td><td>${v.dudosa}</td><td><b>${v.accuracy} %</b></td></tr>`).join("")}</table></div>` : ""}`;
+    <div class="hb"><h2 style="margin:0">Vídeos terminados</h2>
+      <span class="seg">${[["todos", `Todos <span class="muted">${done.length}</span>`], ["sin revisar", `Sin revisar <span class="muted">${pending}</span>`], ["revisados", `Revisados <span class="muted">${e.videos.length}</span>`]].map(([k, n]) =>
+        `<button class="${k === errFilter ? "on" : ""}" onclick="errFilter='${k}';errorsPage()">${n}</button>`).join("")}</span></div>
+    <div class="block" style="margin-top:6px"><div style="overflow:auto"><table class="vt"><thead><tr><th>Vídeo</th><th class="wide">Canal</th><th class="wide">Clips bien · mal · dudosos</th><th class="r wide">Acierto</th><th></th></tr></thead>
+      <tbody>${list.map((v) => { const r = byVideo[v.slug]; return `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.title ? v.slug : "")}<span class="ph"> · ${r ? `${verdicts(r)} · ${acc(r)}` : "sin revisar"}</span></div></td>
+        <td class="wide"><span class="chan"><i style="width:8px;height:8px;border-radius:50%;background:${chColor(v.channel)}"></i>${esc(v.channel || "—")}</span></td>
+        <td class="wide">${r ? verdicts(r) : '<span class="muted">sin revisar</span>'}</td><td class="r wide">${r ? acc(r) : "—"}</td>
+        <td class="acts" style="text-align:right"><a class="btn ${r ? "" : "main"}" href="#/revisar/${encodeURIComponent(v.slug)}">${r ? "Clips" : "Revisar"}</a>
+          <a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}" title="Planos donde el programa buscó otra cosa">Relleno</a></td></tr>`; }).join("")
+        || `<tr><td colspan="5" class="muted" style="padding:14px">${done.length ? "Ninguno con este filtro." : "Aún no hay vídeos terminados."}</td></tr>`}</tbody></table></div></div>
+    ${e.reasons.length || e.methods.length ? `<div class="grid2" style="margin-top:16px">
+      ${e.reasons.length ? `<div class="block"><div class="bh"><b>Por qué fallan los clips</b></div><div style="padding:8px 16px 12px">${e.reasons.map((r) => `<div class="row small" style="justify-content:space-between;margin-top:6px"><span>${esc(r.name)}</span><b>${r.count}</b></div>
+        <div class="hbar"><i style="width:${100 * r.count / maxReason}%;background:var(--bad)"></i></div>`).join("")}</div></div>` : ""}
+      ${e.methods.length ? `<div class="block"><div class="bh"><b>Acierto por cómo se encontró el clip</b></div><table class="vt"><thead><tr><th>Método</th><th class="r">Bien</th><th class="r">Mal</th><th class="r">Dudosos</th><th class="r">Acierto</th></tr></thead>
+        <tbody>${[...e.methods].sort((a, b) => a.accuracy - b.accuracy).map((m) => `<tr><td>${esc(m.name)}</td><td class="r">${m.correcta}</td><td class="r">${m.incorrecta}</td><td class="r">${m.dudosa}</td><td class="r">${acc(m)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    </div>` : ""}`;
 }
 
 // --- Decisiones del relleno ----------------------------------------------------------------------------------------
