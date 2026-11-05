@@ -237,3 +237,41 @@ def test_a_close_map_frames_its_places():
                                                     {"name": "Rio", "lat": -22.9, "lon": -43.2}]}, None))
     assert near["camera"]["zoom"] == atlas.MAX_CLOSE and atlas.REGION_ZOOM < wide["camera"]["zoom"] < atlas.MAX_CLOSE
     assert abs(wide["camera"]["lat"] + 17) < 1.5                       # centred on what it draws
+
+
+def test_a_line_with_nothing_new_moves_the_camera_and_keeps_what_is_drawn(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from pipeline import llm
+    from pipeline.context import RunContext
+
+    ctx = RunContext.create("v", root=tmp_path, config={"visual": {"style": "atlas"}})
+    shots = [SimpleNamespace(id=f"s{i}", text=f"Frase {i}.") for i in range(1, 9)]
+    cam = {"lat": -15, "lon": -50, "zoom": 1.6}
+
+    def answer(_ctx, **_kw):
+        first = {"n": 1, "camera": cam, "points": [{"name": "Brasília", "lat": -15.8, "lon": -47.9}]}
+        return {"scenes": [first] + [{"n": n, "camera": cam} for n in range(2, 9)]}
+
+    monkeypatch.setattr(llm, "complete_json", answer)
+    out = atlas.scenes(ctx, shots)
+    cams = [out[f"s{i}"]["camera"] for i in range(1, 9)]
+    assert len({(c["lon"], c["zoom"]) for c in cams}) > 3                      # never the same globe line after line
+    assert all(out[f"s{i}"]["points"] for i in range(1, 9))                    # Brasília stays on it
+    assert all(abs(c["lon"] - cam["lon"]) <= 3.5 + 1e-6 and cam["zoom"] - 0.2 - 1e-6 <= c["zoom"] <= cam["zoom"] for c in cams)
+
+
+def test_a_bar_chart_only_with_the_figures_the_script_says():
+    def chart(bars):
+        return {"view": "chart", "chart": {"kind": "bars", "title": "População", "unit": "%",
+                                           "bars": [{"label": a, "value": v, "unit": "%"} for a, v in bars]}}
+
+    whole = atlas.check_chart(atlas.clean(chart([("Sudeste", 41.8), ("Resto", 55.2)]), None), "O Sudeste tem 41,8% da população.")
+    assert [b["value"] for b in whole["chart"]["bars"]] == [41.8, 58.2]           # a whole adds up to 100
+    made_up = atlas.check_chart(atlas.clean(chart([("2010", 55.8), ("2022", 54.8), ("2030", 60)]), None),
+                                "Em 2010 eram 55,8%; em 2022, 54,8%.")
+    assert [b["value"] for b in made_up["chart"]["bars"]] == [55.8, 54.8]         # 60 was never said
+    one = atlas.check_chart(atlas.clean(chart([("Sudeste", 41.8), ("Norte", 9)]), None), "O Sudeste tem 41,8%.")
+    assert one["view"] == "globe" and one["chart"] is None and one["counter"]["value"] == 41.8
+    words = atlas.check_chart(atlas.clean(chart([("A", 3), ("B", 5)]), None), "três contra cinco")
+    assert len(words["chart"]["bars"]) == 2                                      # figures in words: not checked

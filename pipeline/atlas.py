@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 8
+VERSION = 9
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -399,6 +399,53 @@ def _chart(chart: Any) -> dict[str, Any] | None:
     return out
 
 
+REST = re.compile(r"^(resto|restante|demais|outros|outras|otros|otras|rest|others|other|the rest|el resto|o resto)\b", re.I)
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _said_numbers(text: str) -> set[float]:
+    """The figures written in digits in a text («41,8 %», «1.845 m», «2.500») as numbers, both ways of reading a
+    separator (1.845 is 1845 in Portuguese and 1.845 in English)."""
+
+    out: set[float] = set()
+    for raw in _NUMBER.findall(text):
+        for candidate in (raw.replace(".", "").replace(",", "."), raw.replace(",", ""), raw.replace(",", ".")):
+            try:
+                out.add(round(float(candidate), 3))
+            except ValueError:
+                pass
+    return out
+
+
+def check_chart(scene: dict[str, Any], text: str) -> dict[str, Any]:
+    """A bar chart only with what the script says: when the lines around write their figures in digits, a bar whose
+    value is not among them goes (the model made it up); bars of a whole («Sudeste 41,8 % / Resto 55,2 %», atlas1pt)
+    add up to 100, the «rest» bar recomputed; fewer than two bars left: no chart (one figure becomes a counter)."""
+
+    chart = scene.get("chart")
+    if not chart or chart.get("kind") != "bars":
+        return scene
+    bars = [dict(b) for b in chart["bars"]]
+    said = _said_numbers(text)
+    if said:
+        bars = [b for b in bars if REST.match(b["label"] or "") or round(float(b["value"]), 3) in said]
+    units = {(b["unit"] or chart["unit"] or "").strip() for b in bars}
+    rest = [b for b in bars if REST.match(b["label"] or "")]
+    if units == {"%"} and len(rest) == 1:
+        others = sum(float(b["value"]) for b in bars if b is not rest[0])
+        if 0 < others < 100:
+            rest[0]["value"] = round(100 - others, 1)
+        else:
+            bars.remove(rest[0])
+    if len(bars) >= 2:
+        return {**scene, "chart": {**chart, "bars": bars}}
+    out = {**scene, "chart": None, "view": "globe"}
+    if bars and not scene.get("counter"):
+        out["counter"] = {"value": bars[0]["value"], "unit": bars[0]["unit"] or chart["unit"],
+                          "label": bars[0]["label"] or chart["title"], "at": ""}
+    return out
+
+
 def _xyz(lat: float, lon: float) -> tuple[float, float, float]:
     a, b = math.radians(lat), math.radians(lon)
     return math.cos(a) * math.cos(b), math.cos(a) * math.sin(b), math.sin(a)
@@ -574,6 +621,43 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
         g["camera"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 3.2}
 
 
+NEW_FIELDS = ("card", "stamp", "headline", "counter", "chart", "icon", "sat", "flat", "size")
+
+
+def stale(scene: dict[str, Any], previous: dict[str, Any] | None) -> bool:
+    """The line adds nothing to the screen: the same place, every dot, route, ring and tag kept from before, no card,
+    stamp, counter… of its own, the same night and countries (atlas1pt: 16-36 s of the same globe)."""
+
+    if not previous or scene.get("view") != "globe" or previous.get("view") != "globe":
+        return False
+    if not _same_place(scene["camera"], previous["camera"]):
+        return False
+    for kind in ("points", "routes", "rings", "tags", "countries"):
+        if any(not x.get("kept") for x in scene.get(kind) or []):
+            return False
+    if any(scene.get(name) and not scene[name].get("kept") for name in NEW_FIELDS):
+        return False
+    if (scene.get("night") and not scene["night"].get("kept")) or scene.get("highlight") != previous.get("highlight"):
+        return False
+    return True
+
+
+DRIFT = (0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0.0)    # of the step: a slow back-and-forth
+DRIFT_PX = 60         # how far the picture slides at the widest step
+
+
+def drift(anchor: dict[str, Any], run: int) -> dict[str, Any]:
+    """The camera for the run-th line in a row with nothing new: it slides ~DRIFT_PX east and back and breathes in and
+    out (zoom 0.2 lower every other line, never closer than the line asked). Always within 3.5° and 0.2 zoom of
+    `anchor` (the camera the lines ask for), so the next line is still «the same place» and keeps what is drawn."""
+
+    radius = 350 * 1.42 ** (anchor["zoom"] - 1)
+    step = min(3.5, math.degrees(math.asin(min(1.0, DRIFT_PX / radius))))
+    shift = step * DRIFT[(run - 1) % len(DRIFT)]
+    return {"lat": anchor["lat"], "lon": round((anchor["lon"] + shift + 180) % 360 - 180, 4),
+            "zoom": round(anchor["zoom"] - (0.2 if run % 2 else 0.0), 2)}
+
+
 BATCH = 25            # lines per request to the model
 MIN_BATCH = 6         # a failed batch is split in halves down to this
 ICON_EVERY = 8        # lines between two full-screen drawings
@@ -626,6 +710,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     previous = None
     last_icon = last_stamp = -99
+    run, anchor = 0, None
     for n, (shot_id, _) in enumerate(lines, 1):
         raw = found.get(n) or {}
         if raw.get("view") == "icon":           # a drawing alone now and then, never a slideshow of drawings
@@ -638,8 +723,16 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
                 raw = {**raw, "stamp": None}
             else:
                 last_stamp = n
-        scene = fit_camera(clean(raw, previous))
+        around = " ".join(text for _, text in lines[max(0, n - 3):n])
+        scene = fit_camera(check_chart(clean(raw, previous), around))
+        before = previous
         previous = auto_tag(carry(scene, previous), lines[n - 1][1], previous)
+        if stale(previous, before):           # nothing new on screen: the camera moves a little (never a still globe)
+            run = run + 1 if run else 1
+            anchor = anchor or dict(before["camera"])
+            previous = {**previous, "camera": drift(anchor, run)}
+        else:
+            run, anchor = 0, None
         out[shot_id] = previous
     ensure_satellites(out, int(ctx.section("visual").get("satellites", 2)))
     cache.parent.mkdir(parents=True, exist_ok=True)
