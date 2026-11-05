@@ -961,7 +961,13 @@ class YouTubeSource:
                 data = {}
             self._refused_cache = data
         when = data.get(video)
-        return when is not None and time.time() - float(when) < 86400 * float(self.cfg.get("refused_days", 7))
+        if when is None:
+            return False
+        # Through a residential proxy «are you a bot» was the exit IP that asked, not the video: a few hours
+        # (refused_hours_residential, 3) and it may be asked again from another session, not refused for a week.
+        ttl = 3600 * float(self.cfg.get("refused_hours_residential", 3)) if self.residential \
+            else 86400 * float(self.cfg.get("refused_days", 7))
+        return time.time() - float(when) < ttl
 
     def _bots_path(self, way: int) -> Path:
         return self.cache_dir / "videos" / (pacer_name((self.proxies or [""])[way]) + ".bots")

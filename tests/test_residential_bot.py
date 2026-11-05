@@ -142,3 +142,24 @@ def test_a_home_proxy_tunnel_failure_still_means_the_proxy_is_down(tmp_path, mon
     monkeypatch.setattr("pipeline.sourcing.youtube.proxy_reachable", lambda proxy, timeout=5.0: True)
     with pytest.raises(ProxyDown):
         yt._call("metadata", lambda: (_ for _ in ()).throw(RuntimeError("Unable to connect to proxy: Tunnel connection failed: 502 Bad Gateway")))
+
+
+def test_a_refused_video_comes_back_after_hours_through_a_residential_proxy_not_days(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._refuse(VIDEO)
+    assert yt.refused(VIDEO)
+    data = json.loads(yt._refused_path().read_text())
+    data[VIDEO] -= 4 * 3600                                       # four hours ago: another session may try it
+    yt._refused_path().write_text(json.dumps(data))
+    yt._refused_cache = None
+    assert not yt.refused(VIDEO)
+    home = _source(tmp_path / "h", HOME)
+    home._refuse(VIDEO)
+    data = json.loads(home._refused_path().read_text())
+    data[VIDEO] -= 4 * 3600
+    home._refused_path().write_text(json.dumps(data))
+    home._refused_cache = None
+    assert home.refused(VIDEO)                                    # at home the week stays
