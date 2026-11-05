@@ -23,7 +23,8 @@ HTTPS = {"protocol": "https", "vcodec": "avc1", "url": f"https://rr1.googlevideo
 
 
 def test_hls_first_then_https_when_there_is_none(tmp_path, monkeypatch):
-    source = _source(tmp_path, player_client=["default", "web_safari"], whole_fallback=False)
+    # max_height/max_fps off: this test is about the HLS → HTTPS order, not the 720p/30fps cap (test_range_library)
+    source = _source(tmp_path, player_client=["default", "web_safari"], whole_fallback=False, max_height=None, max_fps=None)
     _info(tmp_path, source, [HLS, HTTPS])
     calls = []
 

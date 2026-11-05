@@ -171,6 +171,47 @@ def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> st
     return "/".join(f"{alt}[protocol^=m3u8]" for alt in dict.fromkeys(parts))
 
 
+def cap_height(fmt: str, max_height: Any) -> str:
+    """Every height<=N of a yt-dlp format lowered to `max_height` (720): the clip is scaled to 1920x1080 anyway and
+    nothing above 720p is visible after it. None/0 = as requested."""
+
+    if not max_height:
+        return fmt
+    limit = int(max_height)
+    return re.sub(r"height<=(\d+)", lambda m: f"height<={min(int(m.group(1)), limit)}", fmt)
+
+
+def cap_fps(fmt: str, max_fps: Any) -> str:
+    """Each video alternative first at `max_fps` (30) or less, then as it was: a 720p60 stream is twice the bytes of
+    the 720p30 one and the clip is rendered at 30 fps. The resolution still wins over the frame rate (720p60 before
+    480p30). Audio-only alternatives are left alone."""
+
+    if not max_fps:
+        return fmt
+    out: list[str] = []
+    for alt in (a.strip() for a in fmt.split("/") if a.strip()):
+        parts = alt.split("+")
+        video = parts[0]
+        if video.startswith("ba") or "acodec!=none" in video or "fps" in video or "[vcodec=none]" in video:
+            out.append(alt)
+            continue
+        capped = "+".join([f"{video}[fps<={int(max_fps)}]", *parts[1:]])
+        out.extend([capped, alt])
+    return "/".join(dict.fromkeys(out))
+
+
+def requested_height(fmt: str) -> int | None:
+    """The largest height<=N a format asks for (None without one)."""
+
+    heights = [int(h) for h in re.findall(r"height<=(\d+)", fmt)]
+    return max(heights) if heights else None
+
+
+# Which other ranges already on disk can stand in for a request: an HD range serves the 360p analysis of the same
+# seconds, and one with sound serves a silent request (ffmpeg maps the video only)
+RANGE_FAMILY = {"a360": ("a360", "hd", "hdav"), "hd": ("hd", "hdav"), "hdav": ("hdav",), "au": ("au",)}
+
+
 def whole_format(fmt: str) -> str:
     """The same request over plain HTTPS (fetched in 10 MB pieces), video+audio pairs included: YouTube hardly
     offers files with both any more, and dropping the pairs sent every clip with sound to the slow per-range
@@ -1344,13 +1385,13 @@ class YouTubeSource:
 
         target_dir = self.cache_dir / "videos" / video_id
         suffix = ".m4a" if audio_only else ".mp4"       # audio_only: just the sound of the range (sound bites)
-        for existing in target_dir.glob(f"{prefix}_*{suffix}"):
-            try:
-                _, a, b = existing.stem.split("_")
-                if float(a) <= start + 1e-3 and float(b) >= end - 1e-3:
-                    return existing
-            except ValueError:
-                continue
+        if not audio_only:
+            # 720p/30fps at most (sourcing.youtube.max_height/max_fps): the final 1920x1080 at 30 fps shows no more
+            fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
+        wanted = requested_height(fmt)
+        existing = self._library_range(target_dir, prefix, suffix, start, end, wanted)
+        if existing is not None:
+            return existing
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
@@ -1386,6 +1427,62 @@ class YouTubeSource:
             if whole is not None:
                 return self._cut(whole, video_id, start, end, prefix, audio)
         return self._fetch_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path, exact=False)
+
+    def _library_range(self, target_dir: Path, prefix: str, suffix: str, start: float, end: float,
+                       wanted: int | None) -> Path | None:
+        """A range already on disk that covers [start, end]: of this prefix, or a richer one of the same video
+        (RANGE_FAMILY), as long as it is at least as tall as asked for — or was downloaded under the same or a higher
+        cap, so the source has no more to give. Legacy ranges without a sidecar count as before. The cache is shared
+        by every video of the machine: a range another project already paid for never crosses the proxy again."""
+
+        candidates: list[tuple[int, Path]] = []
+        for rank, family in enumerate(RANGE_FAMILY.get(prefix, (prefix,))):
+            for existing in target_dir.glob(f"{family}_*{suffix}"):
+                try:
+                    _, a, b = existing.stem.split("_")
+                    if not (float(a) <= start + 1e-3 and float(b) >= end - 1e-3):
+                        continue
+                except ValueError:
+                    continue
+                side = self._range_sidecar(existing)
+                height, cap = side.get("height"), side.get("cap")
+                tall_enough = wanted is None or height is None or int(height) >= wanted or (cap is not None and int(cap) >= wanted)
+                if tall_enough:
+                    candidates.append((rank, existing))
+        return min(candidates, key=lambda c: (c[0], c[1].name))[1] if candidates else None
+
+    @staticmethod
+    def _range_sidecar(path: Path) -> dict[str, Any]:
+        import json
+
+        try:
+            data = json.loads(path.with_suffix(path.suffix + ".json").read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def _write_range_sidecar(path: Path, *, height: int | None, cap: int | None) -> None:
+        """<range>.mp4.json: the source height of the range and the cap it was asked with (the library's key)."""
+
+        import json
+
+        try:
+            path.with_suffix(path.suffix + ".json").write_text(json.dumps({"height": height, "cap": cap}), encoding="utf-8")
+        except OSError:
+            pass
+
+    @staticmethod
+    def _probe_height(path: Path) -> int | None:
+        import json
+        import subprocess
+
+        try:
+            probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height",
+                                    "-of", "json", str(path)], capture_output=True, text=True, env=local_env())
+            return int((json.loads(probe.stdout or "{}").get("streams") or [{}])[0].get("height") or 0) or None
+        except (OSError, ValueError, TypeError, IndexError):
+            return None
 
     def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:
         """The whole source, fetched by yt-dlp itself in 10 MB pieces (each one a separate request, which YouTube
@@ -1444,6 +1541,7 @@ class YouTubeSource:
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)],
             check=True, env=local_env(),
         )
+        self._write_range_sidecar(target, height=self._probe_height(target), cap=self.cfg.get("max_height", 720))
         return target
 
     def _fetch_range(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
@@ -1484,7 +1582,7 @@ class YouTubeSource:
             if not produced:
                 return None
             probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time:format=duration",
+                ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time,height:format=duration",
                  "-of", "json", str(produced[0])],
                 capture_output=True, text=True, env=local_env(),
             )
@@ -1515,6 +1613,9 @@ class YouTubeSource:
             check=True, env=local_env(),
         )
         produced[0].unlink(missing_ok=True)
+        if not audio_only:
+            height = info["streams"][0].get("height")
+            self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
         return target
 
     def subtitle_file(self, video_id: str, language: str = "en") -> Path | None:
