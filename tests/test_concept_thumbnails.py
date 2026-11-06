@@ -12,6 +12,6 @@ def test_brand_colours_become_words_for_the_image_model():
 
 
 def test_business_channel_uses_concept_thumbnails():
-    assert RunContext.create("Video1", root=PROJECT_ROOT).section("package")["thumbnail_style"] == "concept"
+    assert RunContext.create("_t", root=PROJECT_ROOT, channel="negocios").section("package")["thumbnail_style"] == "concept"
     assert RunContext.create("_t", root=PROJECT_ROOT, channel="gimnasia").section("package").get("thumbnail_style", "frame") == "frame"
     assert '"concepts"' in CONCEPT_SYSTEM and "sin caras" in CONCEPT_SYSTEM

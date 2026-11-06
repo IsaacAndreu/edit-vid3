@@ -50,7 +50,7 @@ def test_repo_business_series_load():
         allowed = set(graphics.TYPES)
         assert set(ctx.section("graphics")["types"]) <= allowed, name
         assert ctx.section("planner").get("outline") and ctx.section("ideas").get("about") and ctx.section("lab")["queries"]
-    video = RunContext.create("Video1", root=PROJECT_ROOT)
+    video = RunContext.create("_t", root=PROJECT_ROOT, channel="negocios", series="negocio-oculto")
     assert video.channel == "negocios" and video.series == "negocio-oculto"
 
 

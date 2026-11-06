@@ -68,7 +68,7 @@ def test_weak_sentences_are_marked_for_graphics(tmp_path):
 
 
 def test_business_profile_has_the_qash_look():
-    ctx = RunContext.create("Video1", root=PROJECT_ROOT)
+    ctx = RunContext.create("_t", root=PROJECT_ROOT, channel="negocios")   # (the sample video folders are no longer in git)
     brand = ctx.section("brand")
     assert brand["accent"] == "#19fe5b"
     assert (brand["chapterStyle"], brand["statStyle"], brand["graphicsStyle"]) == ("numbered", "bare", "pizarra")
