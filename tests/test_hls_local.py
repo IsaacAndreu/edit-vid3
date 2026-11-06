@@ -116,6 +116,7 @@ def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tm
     download = next(r for r in rows if r["action"] == "download (HLS)")
     assert download["ok"] and download["proxy_bytes"] == len(PLAYLIST.encode()) + 3000 and download["session"]
     assert rows[-1]["action"] == "archivo hd" and rows[-1]["ok"] and rows[-1]["bytes"] == 3
+    assert rows[-1]["proxy_bytes"] == 0            # the segments were counted in the download's row: not twice
     yt.close()
 
 
@@ -154,10 +155,9 @@ def test_without_an_hls_stream_the_other_paths_are_tried(tmp_path, monkeypatch):
             raise RuntimeError("ERROR: [youtube] x: Requested format is not available")
 
     monkeypatch.setattr(yt, "_ydl", lambda extra=None: NoHls(extra or {}))
-    seen = []
-    monkeypatch.setattr(yt, "_fetch_range", lambda *a, exact: seen.append(exact) or (tmp_path / "x.mp4"))
-    yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720]", prefix="hd")
-    assert seen == [False]                                                    # straight to the HTTPS range fallback
+    monkeypatch.setattr(yt, "_fetch_range", lambda *a, exact: pytest.fail("ffmpeg cannot authenticate against this proxy"))
+    with pytest.raises(RuntimeError, match="no tiene HLS"):                   # no whole download either: next candidate
+        yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720]", prefix="hd")
     yt.close()
 
 
@@ -170,3 +170,69 @@ def test_a_home_proxy_keeps_the_ffmpeg_path(tmp_path, monkeypatch):
     monkeypatch.setattr(yt, "_fetch_range", lambda *a, exact: seen.append(exact) or (tmp_path / "x.mp4"))
     yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720]", prefix="hd")
     assert seen == [True]
+
+
+def test_a_range_ffmpeg_moves_counts_as_its_file_size(tmp_path, monkeypatch):
+    """Through a proxy ffmpeg's transfer is invisible to the meter: the file's size stands for it, once."""
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, whole_fallback=False)
+    yt.metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    yt._local.video_id = VIDEO
+    yt._local.way = 0
+    yt._local.moved_unseen = False
+    yt._metric("archivo hd", ok=True, seconds=1.0, size=2_000_000)
+    yt._local.moved_unseen = True
+    yt._metric("archivo hd", ok=True, seconds=1.0, size=2_000_000)
+    rows = [json.loads(line) for line in yt.metrics_path.read_text().splitlines()]
+    assert [r["proxy_bytes"] for r in rows[-2:]] == [0, 2_000_000]
+    yt.close()
+
+
+def test_without_hls_a_big_video_is_not_downloaded_whole_through_the_residential_proxy(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path)
+    path = yt._full_info_path(VIDEO)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    https = {"format_id": "136", "protocol": "https", "vcodec": "avc1", "height": 720, "filesize": 330_000_000,
+             "url": "https://rr1.googlevideo.com/videoplayback?expire=9999999999"}
+    path.write_text(json.dumps({"id": VIDEO, "duration": 20 * 60, "formats": [https], "_edit_vid3_clients": yt._clients(),
+                                "_edit_vid3_via": "", "_edit_vid3_session": yt.sessions.session_id(VIDEO)}))
+
+    class Whole(FakeYdl):
+        def process_ie_result(self, data, download):
+            return {**data, **data["formats"][0]}
+
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: Whole(extra or {}))
+    monkeypatch.setattr(yt, "_fetch_range", lambda *a, exact: pytest.fail("ffmpeg must not be sent to the proxy"))
+    called = []
+    monkeypatch.setattr(yt, "_call", lambda action, fn, **kw: called.append(action))
+    with pytest.raises(RuntimeError, match="no tiene HLS y entero supera el tope"):
+        yt.download_range(VIDEO, 10, 15, fmt="bv*[height<=720]", prefix="hd")
+    assert called == [] and "siguiente candidato" in capsys.readouterr().out      # nothing downloaded, said why
+    # the verdict is remembered: the next shot that picks this video neither extracts nor simulates anything
+    assert yt.refused_why(VIDEO) == "sin-hls"
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: pytest.fail("a refused video is not looked at again"))
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda *a, **k: pytest.fail("no extraction for a refused video"))
+    with pytest.raises(RuntimeError, match="descartado"):
+        yt.download_range(VIDEO, 30, 35, fmt="bv*[height<=720]", prefix="hd")
+    with pytest.raises(RuntimeError, match="no se vuelve a pedir"):
+        yt.info(VIDEO)
+    assert called == []
+
+    small = _source(tmp_path / "s", whole_max_mb_residential=500, whole_max_minutes_residential=30)
+    path = small._full_info_path(VIDEO)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"id": VIDEO, "duration": 20 * 60, "formats": [https], "_edit_vid3_clients": small._clients(),
+                                "_edit_vid3_via": "", "_edit_vid3_session": small.sessions.session_id(VIDEO)}))
+    monkeypatch.setattr(small, "_ydl", lambda extra=None: Whole(extra or {}))
+    monkeypatch.setattr(small, "_call", lambda action, fn, **kw: called.append(action))
+    monkeypatch.setattr(small, "_cut", lambda whole, *a: whole)
+    try:
+        small.download_range(VIDEO, 10, 15, fmt="bv*[height<=720]", prefix="hd")
+    except Exception:
+        pass
+    assert called == ["download (completo)"]                                      # under the caps: as before
+    assert _source(tmp_path / "h")._whole_caps() == (10.0, 80.0)
+    home = YouTubeSource(root=tmp_path, cache_dir=tmp_path / "home", config={"proxy": "http://100.64.0.2:8899"})
+    assert home._whole_caps() == (30.0, 600.0)

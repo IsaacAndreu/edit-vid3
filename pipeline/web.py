@@ -545,7 +545,65 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "script": (folder / "guion.txt").read_text("utf-8", errors="replace")[:20000] if (folder / "guion.txt").is_file() else "",
         "format": _format_of(root, folder),
         "dubs": _dubs(root, slug),
+        "youtube": _video_youtube(work),
+        "costs": _costs_by_stage(root, slug),
     }
+
+
+def proxy_report(root: Path, days: float = 7.0) -> dict[str, Any]:
+    """What the proxies carried in the last `days` (work/*/youtube_downloads.jsonl): per proxy, requests, success,
+    errors by kind, sessions, GB, GB and $ per finished video, the most frequent error words; plus GB per day."""
+
+    from . import ytstats
+    from .housekeeping import is_done
+
+    since = time.time() - days * 86400
+    per_video = {p.parent.name: ytstats.read(p, since) for p in sorted((root / "work").glob("*/youtube_downloads.jsonl"))}
+    per_video = {slug: rows for slug, rows in per_video.items() if rows}
+    finished = {slug for slug in per_video if is_done(root, slug)}
+    usd = ytstats._usd_per_gb(root)
+    proxies = ytstats.proxy_summary(per_video, finished, usd)
+    per_day: dict[str, float] = {}
+    for rows in per_video.values():
+        for row in rows:
+            day = time.strftime("%Y-%m-%d", time.localtime(float(row.get("ts") or 0)))
+            per_day[day] = per_day.get(day, 0.0) + int(row.get("proxy_bytes") or 0) / 1e9
+    total_gb = round(sum(p["gb"] for p in proxies), 3)
+    return {"days": days, "proxies": proxies, "usdPerGb": usd, "totalGb": total_gb, "usd": round(total_gb * usd, 2),
+            "videos": len(per_video), "finished": len(finished),
+            "gbPerFinished": round(total_gb / len(finished), 3) if finished else None,
+            "perDay": [{"day": d, "gb": round(g, 3)} for d, g in sorted(per_day.items())]}
+
+
+def _video_youtube(work: Path) -> dict[str, Any] | None:
+    """This video's requests to YouTube (work/<slug>/youtube_downloads.jsonl): how many, how many failed and why,
+    the GB the proxy carried and the most frequent error words, for the video page."""
+
+    from . import ytstats
+
+    rows = ytstats.read(work / "youtube_downloads.jsonl")
+    if not rows:
+        return None
+    summary = ytstats.summary(rows)
+    details: dict[str, int] = {}
+    for row in rows:
+        if not row.get("ok") and row.get("detail"):
+            text = re.sub(r"^yt-dlp [^:]+: (ERROR: )?", "", str(row["detail"]))[:140]
+            details[text] = details.get(text, 0) + 1
+    summary["details"] = sorted(details.items(), key=lambda kv: -kv[1])[:4]
+    summary["proxy"] = sorted({str(r["proxy"]) for r in rows if r.get("proxy")})
+    return summary
+
+
+def _costs_by_stage(root: Path, slug: str) -> dict[str, float]:
+    """API dollars per stage (work/<slug>/costs.json), for the video page's timeline."""
+
+    out: dict[str, float] = {}
+    for entry in (_json(root / "work" / slug / "costs.json") or {}).get("entries") or []:
+        if isinstance(entry, dict):
+            stage = str(entry.get("stage") or "")
+            out[stage] = round(out.get(stage, 0.0) + float(entry.get("usd") or 0), 3)
+    return out
 
 
 def _dubs(root: Path, slug: str) -> list[dict[str, Any]]:
@@ -1164,6 +1222,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import copia, servidor
 
                     return self._ok({**servidor.status(root), "backup": copia.info(root)})
+                if path == "/api/proxy":                   # the paid proxy, last days: success, GB, $ per finished video
+                    days = float((urllib.parse.parse_qs(url.query).get("days") or ["7"])[0])
+                    return self._ok(cached(f"proxy:{root}:{days}", 120, lambda: proxy_report(root, days)))
                 if path == "/api/copia":                   # the newest backup, to keep it on your PC / Drive
                     from . import copia
 

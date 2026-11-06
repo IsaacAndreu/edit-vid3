@@ -61,6 +61,9 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         # our own queue before asking (slots + 1 req/s per proxy) vs the time YouTube took to answer
         "wait_avg": round(sum(float(r.get("wait") or 0) for r in calls) / len(calls), 2) if calls else 0.0,
         "answer_avg": round(sum(float(r.get("seconds") or 0) for r in calls) / len(calls), 2) if calls else 0.0,
+        # what the proxy carried (proxy_bytes of every row) and how many sticky sessions it took
+        "proxy_gb": round(sum(int(r.get("proxy_bytes") or 0) for r in rows) / 1e9, 3),
+        "sessions": len({r["session"] for r in rows if r.get("session")}),
     }
 
 
@@ -146,6 +149,46 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
     return out
 
 
+def by_action(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Where the proxy's bytes go: per kind of request (metadata, search, download (HLS), archivo…), its requests,
+    failures and MB, biggest first. Only rows through a proxy count."""
+
+    table: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not row.get("proxy"):
+            continue
+        action = str(row.get("action") or "?")
+        kind = "archivo" if action.startswith("archivo ") else action
+        entry = table.setdefault(kind, {"action": kind, "requests": 0, "failed": 0, "bytes": 0})
+        entry["requests"] += 1
+        entry["failed"] += not row.get("ok")
+        entry["bytes"] += int(row.get("proxy_bytes") or 0)
+    total = sum(e["bytes"] for e in table.values()) or 1
+    return [{**e, "mb": round(e["bytes"] / 1e6, 1), "share": round(100 * e["bytes"] / total, 1)}
+            for e in sorted(table.values(), key=lambda e: -e["bytes"])]
+
+
+def hourly(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per UTC hour: requests, failures, bot/429, files ok/total, MB through the proxy and the videos at work."""
+
+    table: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        hour = time.strftime("%d/%m %Hh", time.gmtime(float(row.get("ts") or 0)))
+        entry = table.setdefault(hour, {"hour": hour, "requests": 0, "failed": 0, "refused": 0, "files": 0, "files_ok": 0,
+                                        "bytes": 0, "videos": set()})
+        entry["bytes"] += int(row.get("proxy_bytes") or 0)
+        if row.get("_slug"):
+            entry["videos"].add(str(row["_slug"]))
+        if str(row.get("action") or "").startswith("archivo "):
+            entry["files"] += 1
+            entry["files_ok"] += bool(row.get("ok"))
+            continue
+        entry["requests"] += 1
+        entry["failed"] += not row.get("ok")
+        entry["refused"] += row.get("error") in ("bot", "429")
+    return [{**e, "mb": round(e["bytes"] / 1e6, 1), "videos": sorted(e["videos"])} for _, e in sorted(table.items())]
+
+
 def proxy_lines(table: list[dict[str, Any]]) -> list[str]:
     if not table:
         return []
@@ -199,6 +242,16 @@ def report(root: Path, days: float = 7.0) -> Path:
     proxies = proxy_summary(per_video, finished, _usd_per_gb(root))
     if proxies:
         text += ["", *proxy_lines(proxies)]
+        text += ["", "## Dónde van los GB del proxy", "", "| Petición | Veces | Fallidas | MB | % |", "|---|---|---|---|---|"]
+        for e in by_action(everything):
+            text.append(f"| {e['action']} | {e['requests']} | {e['failed']} | {e['mb']} | {e['share']} |")
+        if days <= 2:                              # a night or a morning, hour by hour
+            tagged = [{**row, "_slug": slug} for slug, rows in per_video.items() for row in rows]
+            text += ["", "## Por horas (UTC)", "", "| Hora | Peticiones | Fallidas | Bot/429 | Archivos | MB | Vídeos |",
+                     "|---|---|---|---|---|---|---|"]
+            for e in hourly(tagged):
+                text.append(f"| {e['hour']} | {e['requests']} | {e['failed']} | {e['refused']} | {e['files_ok']}/{e['files']} | "
+                            f"{e['mb']} | {', '.join(e['videos'])} |")
     ways = sorted({str(r["proxy"]) for r in everything if r.get("proxy")})
     if ways:                                       # several proxies: how each way out is doing
         text += ["", "## Por proxy", "", "| Proxy | Peticiones | Fallidas | Bot | Archivos | MB/s | s por archivo |",
