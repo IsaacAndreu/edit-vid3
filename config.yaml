@@ -102,6 +102,7 @@ sourcing:
     whole_max_minutes_residential: 10  # sin HLS, el vídeo entero por el proxy residencial solo si dura/pesa menos que esto
     whole_max_mb_residential: 80       # (en casa: whole_max_minutes 30 / whole_max_mb 600); por encima, siguiente candidato
     refused_hours_residential: 3       # un vídeo con «no eres un bot» desde varias IPs del proxy se vuelve a pedir pasadas estas horas (en casa: refused_days 7)
+    timeout_retries_residential: 1     # un timeout por el proxy residencial: tantas veces más desde otra sesión (otra IP) antes de darlo por perdido
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
     query_merge: 0.8           # búsquedas casi iguales de dos planos (80 % de palabras en común, mismo año) → una sola
     max_details_per_shot: 6    # vídeos como mucho a los que se piden detalles por plano; con 6 sin 3 válidos, al plano dibujado/alternativo

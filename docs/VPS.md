@@ -191,6 +191,10 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
   tramo por la sesión del vídeo y ffmpeg corta en local. Un vídeo sin HLS solo se baja entero si dura menos de
   `whole_max_minutes_residential` (10) y pesa menos de `whole_max_mb_residential` (80 MB): por encima, el plano pasa
   al siguiente candidato (en casa siguen `whole_max_minutes` 30 / `whole_max_mb` 600).
+  Ese veredicto se recuerda (`cache/videos/.rechazados.json`, `refused_days`): ningún otro plano vuelve a pedir ese
+  vídeo (la noche del 5/11 uno se rechazó 12 veces, con su extracción cada vez). Lo mismo con «Unavailable with a VPN
+  or proxy»: se descarta a la primera. Un timeout por el proxy se reintenta una vez desde otra sesión, otra IP
+  (`timeout_retries_residential`): la sesión pegajosa habría mantenido la IP lenta 28 minutos.
 - **Medición:** cada fila de `youtube_downloads.jsonl` lleva sesión y `proxy_bytes`; `python main.py --youtube-stats`
   añade la tabla «Proxy» (éxito %, 403/bot/429/timeout, conexiones, GB, GB por vídeo terminado y coste a
   `proxy_usd_per_gb`, 0.62 $/GB por defecto). Metas: ≥ 90 % de éxito y GB por vídeo terminado a la mitad.

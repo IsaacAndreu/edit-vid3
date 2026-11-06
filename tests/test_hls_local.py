@@ -192,6 +192,15 @@ def test_without_hls_a_big_video_is_not_downloaded_whole_through_the_residential
     with pytest.raises(RuntimeError, match="no tiene HLS y entero supera el tope"):
         yt.download_range(VIDEO, 10, 15, fmt="bv*[height<=720]", prefix="hd")
     assert called == [] and "siguiente candidato" in capsys.readouterr().out      # nothing downloaded, said why
+    # the verdict is remembered: the next shot that picks this video neither extracts nor simulates anything
+    assert yt.refused_why(VIDEO) == "sin-hls"
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: pytest.fail("a refused video is not looked at again"))
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda *a, **k: pytest.fail("no extraction for a refused video"))
+    with pytest.raises(RuntimeError, match="descartado"):
+        yt.download_range(VIDEO, 30, 35, fmt="bv*[height<=720]", prefix="hd")
+    with pytest.raises(RuntimeError, match="no se vuelve a pedir"):
+        yt.info(VIDEO)
+    assert called == []
 
     small = _source(tmp_path / "s", whole_max_mb_residential=500, whole_max_minutes_residential=30)
     path = small._full_info_path(VIDEO)

@@ -163,3 +163,68 @@ def test_a_refused_video_comes_back_after_hours_through_a_residential_proxy_not_
     home._refused_path().write_text(json.dumps(data))
     home._refused_cache = None
     assert home.refused(VIDEO)                                    # at home the week stays
+
+
+def test_a_timeout_rotates_the_session_once_through_a_residential_proxy(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    monkeypatch.setattr("pipeline.sourcing.youtube.proxy_reachable", lambda proxy, timeout=5.0: True)   # the proxy is up
+    yt = _source(tmp_path, RESI)
+    yt._local.video_id = VIDEO
+    seen = []
+
+    def slow_ip():
+        seen.append(yt._ydl().params["proxy"])
+        if len(seen) == 1:
+            raise RuntimeError("ERROR: [youtube] x: Unable to download API page: HTTPSConnectionPool(host='www.youtube.com', "
+                               "port=443): Read timed out. (read timeout=20)")
+        return "ok"
+
+    assert yt._call("metadata", slow_ip) == "ok"
+    assert len(seen) == 2 and len(set(seen)) == 2                       # the second try leaves from another IP
+    assert yt.sessions.rotated == 1 and not yt.refused(VIDEO)
+    calls = []
+
+    def always_slow():
+        calls.append(1)
+        raise RuntimeError("Read timed out. (read timeout=20)")
+
+    with pytest.raises(RuntimeError, match="timed out"):                 # one rotation, not a loop of them
+        yt._call("metadata", always_slow)
+    assert len(calls) == 2
+    yt.close()
+
+
+def test_a_video_youtube_refuses_to_proxies_is_dropped_at_the_first_answer(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._local.video_id = VIDEO
+    calls = []
+
+    def vpn():
+        calls.append(1)
+        raise RuntimeError("ERROR: [youtube] x: Unavailable with a VPN or proxy. This channel doesn't make "
+                           "regionally-restricted content")
+
+    with pytest.raises(RuntimeError, match="IP de un proxy"):
+        yt._call("metadata", vpn)
+    assert len(calls) == 1 and yt.refused_why(VIDEO) == "vpn" and yt.sessions.rotated == 0
+    with pytest.raises(RuntimeError, match="no se vuelve a pedir"):      # the next shot does not ask again
+        yt.info(VIDEO)
+    assert len(calls) == 1
+    yt.close()
+
+
+def test_refusals_with_a_reason_keep_the_week_and_old_entries_still_read(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._refuse(VIDEO, "sin-hls")
+    yt._refuse("abcdefghijk")
+    data = json.loads(yt._refused_path().read_text())
+    data[VIDEO]["at"] -= 4 * 3600                                 # four hours: the bot refusal lapses, this one holds
+    data["abcdefghijk"] -= 4 * 3600
+    data["zzzzzzzzzzz"] = data["abcdefghijk"] + 4 * 3600          # a legacy float entry, fresh
+    yt._refused_path().write_text(json.dumps(data))
+    yt._refused_cache = None
+    assert yt.refused_why(VIDEO) == "sin-hls" and yt.refused_why("abcdefghijk") is None and yt.refused_why("zzzzzzzzzzz") == "bot"
