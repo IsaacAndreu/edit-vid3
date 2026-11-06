@@ -168,6 +168,19 @@ def by_action(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             for e in sorted(table.values(), key=lambda e: -e["bytes"])]
 
 
+def by_destination(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """What the requests' own responses (not the files) are made of, by destination (`hosts` of each row):
+    the watch page, the player API, the player JS, streams… MB and share, biggest first."""
+
+    table: dict[str, int] = {}
+    for row in rows:
+        for where, amount in (row.get("hosts") or {}).items():
+            table[where] = table.get(where, 0) + int(amount or 0)
+    total = sum(table.values()) or 1
+    return [{"where": where, "mb": round(amount / 1e6, 1), "share": round(100 * amount / total, 1)}
+            for where, amount in sorted(table.items(), key=lambda kv: -kv[1])]
+
+
 def hourly(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Per UTC hour: requests, failures, bot/429, files ok/total, MB through the proxy and the videos at work."""
 
@@ -245,6 +258,10 @@ def report(root: Path, days: float = 7.0) -> Path:
         text += ["", "## Dónde van los GB del proxy", "", "| Petición | Veces | Fallidas | MB | % |", "|---|---|---|---|---|"]
         for e in by_action(everything):
             text.append(f"| {e['action']} | {e['requests']} | {e['failed']} | {e['mb']} | {e['share']} |")
+        destinations = by_destination(everything)
+        if destinations:
+            text += ["", "De qué se componen las respuestas de yt-dlp (sin los archivos):", ""]
+            text += [f"- {e['where']}: {e['mb']} MB ({e['share']} %)" for e in destinations[:8]]
         if days <= 2:                              # a night or a morning, hour by hour
             tagged = [{**row, "_slug": slug} for slug, rows in per_video.items() for row in rows]
             text += ["", "## Por horas (UTC)", "", "| Hora | Peticiones | Fallidas | Bot/429 | Archivos | MB | Vídeos |",

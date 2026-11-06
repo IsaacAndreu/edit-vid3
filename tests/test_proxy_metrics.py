@@ -45,6 +45,7 @@ def test_yt_dlp_responses_through_the_proxy_are_counted_into_the_row(tmp_path, m
     metered.urlopen("req")                                     # Content-Length: counted at once
     metered.urlopen("req").read()                              # no length: what is read
     assert yt._local.proxy_bytes == 701_000
+    assert yt._local.proxy_hosts == {"?": 701_000}                # fake requests carry no URL
     untouched = yt._metered(type("Fake", (), {"urlopen": lambda self, req: fake})(), False)
     assert untouched.urlopen("req") is fake                    # direct: nothing wrapped
     assert yt._ydl({"skip_download": True}).urlopen.__name__ == "counting"   # a real YoutubeDL through the proxy is metered
@@ -137,4 +138,38 @@ def test_failures_keep_their_words_masked_and_the_table_lists_the_most_frequent(
     assert table[0]["details"][0][1] == 1 and "407" in table[0]["details"][0][0]
     text = "\n".join(ytstats.proxy_lines(table))
     assert "Errores más frecuentes por resi-bridge-eu.rainproxy.io" in text and "1× Unable to connect" in text
+    yt.close()
+
+
+def test_an_extractions_bytes_are_kept_by_destination(tmp_path, monkeypatch):
+    from pipeline.sourcing.youtube import traffic_key
+
+    assert traffic_key("https://www.youtube.com/watch?v=x") == "youtube.com/watch"
+    assert traffic_key("https://www.youtube.com/youtubei/v1/player?prettyPrint=false") == "youtube.com/youtubei"
+    assert traffic_key("https://www.youtube.com/s/player/abc123/player_ias.vflset/en_US/base.js") == "youtube.com/s/player"
+    assert traffic_key("https://rr3---sn-uxaxpu5ap5-jp5s.googlevideo.com/videoplayback?x=1") == "googlevideo"
+    assert traffic_key("https://i.ytimg.com/sb/x/storyboard3_L2/M0.jpg") == "ytimg"
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    yt._local.video_id = VIDEO
+
+    class Req:
+        def __init__(self, url): self.url = url
+
+    fake = {"https://www.youtube.com/watch?v=x": Response(length=900_000),
+            "https://www.youtube.com/youtubei/v1/player": Response(length=200_000),
+            "https://www.youtube.com/s/player/abc/base.js": Response(length=1_500_000)}
+    metered = yt._metered(type("Fake", (), {"urlopen": lambda self, req: fake[req.url]})(), True)
+
+    def extraction():
+        for url in fake:
+            metered.urlopen(Req(url))
+        return "ok"
+
+    yt._call("metadata", extraction)
+    row = _rows(yt)[-1]
+    assert row["proxy_bytes"] == 2_600_000
+    assert row["hosts"] == {"youtube.com/s/player": 1_500_000, "youtube.com/watch": 900_000, "youtube.com/youtubei": 200_000}
+    assert ytstats.by_destination([row, {"hosts": {"youtube.com/watch": 100_000}}])[:2] == [
+        {"where": "youtube.com/s/player", "mb": 1.5, "share": 55.6}, {"where": "youtube.com/watch", "mb": 1.0, "share": 37.0}]
     yt.close()

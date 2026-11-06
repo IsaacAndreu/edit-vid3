@@ -66,6 +66,28 @@ def error_detail(message: str, limit: int = 320) -> str:
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
+def traffic_key(url: str) -> str:
+    """Where a response came from, for the proxy's accounting: «googlevideo» (streams, whatever the edge host),
+    «youtube.com/watch» (the page), «youtube.com/youtubei» (the player API), «youtube.com/s/player» (the player
+    JS), «ytimg» (storyboards)… so an extraction's MB can be told apart later."""
+
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "?"
+    host = (parts.hostname or "?").lower()
+    if host.endswith("googlevideo.com"):
+        return "googlevideo"
+    if host.endswith("ytimg.com"):
+        return "ytimg"
+    if host.endswith("youtube.com"):
+        head = "/".join(parts.path.split("/")[:3]) if parts.path.startswith("/s/player") else "/" + parts.path.strip("/").split("/")[0]
+        return f"youtube.com{head}"
+    return host
+
+
 _PROXY_ENV = ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
 
 
@@ -539,6 +561,9 @@ class YouTubeSource:
                 row["proxy_bytes"] = int(size or 0) if getattr(self._local, "moved_unseen", True) else 0
             else:
                 row["proxy_bytes"] = int(getattr(self._local, "proxy_bytes", 0) or 0)
+                hosts = getattr(self._local, "proxy_hosts", None)
+                if hosts:
+                    row["hosts"] = dict(sorted(hosts.items(), key=lambda kv: -kv[1])[:8])
         reused = getattr(self._local, "info_reused", None)
         if reused is not None and (action.startswith("archivo") or action.startswith("download") or action == "captions"):
             row["info_reused"] = bool(reused)
@@ -650,24 +675,30 @@ class YouTubeSource:
         original = ydl.urlopen
         local = self._local
 
-        def add(amount: int) -> None:
+        def add(amount: int, where: str = "") -> None:
             local.proxy_bytes = getattr(local, "proxy_bytes", 0) + max(0, int(amount))
+            if where:                             # and by destination: what an extraction is made of
+                hosts = getattr(local, "proxy_hosts", None)
+                if hosts is None:
+                    hosts = local.proxy_hosts = {}
+                hosts[where] = hosts.get(where, 0) + max(0, int(amount))
 
         def counting(request: Any) -> Any:
             response = original(request)
+            where = traffic_key(str(getattr(request, "url", None) or getattr(request, "full_url", "") or ""))
             length = None
             try:
                 length = int(response.headers.get("Content-Length"))
             except (TypeError, ValueError, AttributeError):
                 length = None
             if length is not None:
-                add(length)
+                add(length, where)
                 return response
             read = response.read
 
             def counting_read(amt: int | None = None) -> bytes:
                 data = read(amt)
-                add(len(data))
+                add(len(data), where)
                 return data
 
             try:
@@ -733,6 +764,7 @@ class YouTubeSource:
             began = queued = time.monotonic()
             self._local.waited = 0.0
             self._local.proxy_bytes = 0
+            self._local.proxy_hosts = {}
             try:
                 with self._slots:
                     way = self._local.way = self._pick_way(tried_ways)
