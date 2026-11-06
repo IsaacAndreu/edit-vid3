@@ -533,8 +533,12 @@ class YouTubeSource:
         if session:
             row["session"] = session
         if self._through_proxy():
-            # what the proxy carried for this request: yt-dlp's own responses, or the range's file (moved by ffmpeg)
-            row["proxy_bytes"] = int(size or 0) if action.startswith("archivo") else int(getattr(self._local, "proxy_bytes", 0) or 0)
+            # what the proxy carried for this request: yt-dlp's own responses (and the HLS segments or the whole file
+            # fetched in-process, already counted in the download's row), or the range's file when ffmpeg moved it
+            if action.startswith("archivo"):
+                row["proxy_bytes"] = int(size or 0) if getattr(self._local, "moved_unseen", True) else 0
+            else:
+                row["proxy_bytes"] = int(getattr(self._local, "proxy_bytes", 0) or 0)
         reused = getattr(self._local, "info_reused", None)
         if reused is not None and (action.startswith("archivo") or action.startswith("download") or action == "captions"):
             row["info_reused"] = bool(reused)
@@ -1525,6 +1529,7 @@ class YouTubeSource:
         self._local.info_reused = None
         began = time.monotonic()
         before = getattr(self._local, "fetched", 0)
+        self._local.moved_unseen = False       # True once ffmpeg itself moves the bytes (the meter cannot see them)
         try:
             path = self._download_range(video_id, start, end, fmt=fmt, prefix=prefix, audio=audio, audio_only=audio_only)
         except Exception as error:
@@ -1863,6 +1868,7 @@ class YouTubeSource:
         info_file = str(info_path)
 
         def fetch() -> None:
+            self._local.moved_unseen = True     # ffmpeg fetches the range: its bytes only show as the file's size
             with self._ydl({**options, "external_downloader_args": self._ffmpeg_args(exact)}) as ydl:
                 ydl.download_with_info_file(info_file)
 

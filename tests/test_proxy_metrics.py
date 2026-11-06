@@ -106,6 +106,16 @@ def test_youtube_stats_add_a_proxy_table_with_gb_per_finished_video_and_cost(tmp
     text = ytstats.report(tmp_path, 7).read_text("utf-8")
     assert "## Proxy" in text and "| resi | 5 | 40.0 % | 1 | 1 | 0 | 1 | 0 | 3 | 2.000 | 1/2 | 2.000 | 1.24 |" in text
     assert "0.62 $/GB" in text
+    # where the bytes go, by kind of request, and (for a day or two) by the hour
+    assert ytstats.by_action(done_rows + pending_rows) == [
+        {"action": "metadata", "requests": 3, "failed": 1, "bytes": 1_500_000_000, "mb": 1500.0, "share": 75.0},
+        {"action": "archivo", "requests": 1, "failed": 0, "bytes": 500_000_000, "mb": 500.0, "share": 25.0},
+        {"action": "download (HLS)", "requests": 2, "failed": 2, "bytes": 0, "mb": 0.0, "share": 0.0}]
+    assert "## Dónde van los GB del proxy" in text and "| metadata | 3 | 1 | 1500.0 | 75.0 |" in text
+    assert "## Por horas" not in text                                        # a week: no hourly table
+    text = ytstats.report(tmp_path, 1).read_text("utf-8")
+    hour = time.strftime("%d/%m %Hh", time.gmtime(now))
+    assert f"| {hour} | 6 | 3 | 1 | 1/1 | 2000.0 | done1, pending |" in text
 
 
 def test_failures_keep_their_words_masked_and_the_table_lists_the_most_frequent(tmp_path, monkeypatch):

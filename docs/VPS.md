@@ -198,6 +198,9 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
 - **Medición:** cada fila de `youtube_downloads.jsonl` lleva sesión y `proxy_bytes`; `python main.py --youtube-stats`
   añade la tabla «Proxy» (éxito %, 403/bot/429/timeout, conexiones, GB, GB por vídeo terminado y coste a
   `proxy_usd_per_gb`, 0.62 $/GB por defecto). Metas: ≥ 90 % de éxito y GB por vídeo terminado a la mitad.
+  También «Dónde van los GB del proxy» (por tipo de petición) y, con `--youtube-stats 1` o menos días, «Por horas»
+  (peticiones, fallos, bot/429, tramos y MB de cada hora, con los vídeos en marcha). Un tramo HLS bajado por el
+  programa se cuenta una vez (en su petición), no otra vez como tamaño del archivo.
 
 ## 4. Métricas (lo que decide)
 

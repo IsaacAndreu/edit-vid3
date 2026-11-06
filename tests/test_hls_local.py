@@ -116,6 +116,7 @@ def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tm
     download = next(r for r in rows if r["action"] == "download (HLS)")
     assert download["ok"] and download["proxy_bytes"] == len(PLAYLIST.encode()) + 3000 and download["session"]
     assert rows[-1]["action"] == "archivo hd" and rows[-1]["ok"] and rows[-1]["bytes"] == 3
+    assert rows[-1]["proxy_bytes"] == 0            # the segments were counted in the download's row: not twice
     yt.close()
 
 
@@ -169,6 +170,23 @@ def test_a_home_proxy_keeps_the_ffmpeg_path(tmp_path, monkeypatch):
     monkeypatch.setattr(yt, "_fetch_range", lambda *a, exact: seen.append(exact) or (tmp_path / "x.mp4"))
     yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720]", prefix="hd")
     assert seen == [True]
+
+
+def test_a_range_ffmpeg_moves_counts_as_its_file_size(tmp_path, monkeypatch):
+    """Through a proxy ffmpeg's transfer is invisible to the meter: the file's size stands for it, once."""
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, whole_fallback=False)
+    yt.metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    yt._local.video_id = VIDEO
+    yt._local.way = 0
+    yt._local.moved_unseen = False
+    yt._metric("archivo hd", ok=True, seconds=1.0, size=2_000_000)
+    yt._local.moved_unseen = True
+    yt._metric("archivo hd", ok=True, seconds=1.0, size=2_000_000)
+    rows = [json.loads(line) for line in yt.metrics_path.read_text().splitlines()]
+    assert [r["proxy_bytes"] for r in rows[-2:]] == [0, 2_000_000]
+    yt.close()
 
 
 def test_without_hls_a_big_video_is_not_downloaded_whole_through_the_residential_proxy(tmp_path, monkeypatch, capsys):
