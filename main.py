@@ -49,6 +49,9 @@ def _parser() -> argparse.ArgumentParser:
                         help="Análisis adaptativo antes y después: vídeos mirados, unidades, minutos y planos cubiertos → out/_informe_analisis.md.")
     target.add_argument("--autopiloto", metavar="CANAL[:ID]",
                         help="Piloto automático: hace ya el vídeo propio de la mejor idea del radar del canal (o de esa).")
+    target.add_argument("--capcut", metavar="VÍDEO|CANAL",
+                        help="Proyecto para editar en CapCut (clips limpios por plano, voz, música, efectos sueltos, "
+                             "rótulos editables) → out/VÍDEO/VÍDEO-capcut.zip; con un canal, todos sus vídeos terminados.")
     target.add_argument("--exportar", metavar="SLUG",
                         help="El vídeo terminado como proyecto de Premiere Pro / DaVinci Resolve → out/SLUG/premiere/ y .zip.")
     target.add_argument("--shorts", metavar="SLUG",
@@ -1343,6 +1346,23 @@ def main() -> None:
         except (ValueError, RuntimeError) as error:
             raise SystemExit(str(error))
         print(f"Hecho: {made['slug']} · «{made['title']}» · la voz se genera sola y la cola lo hará")
+        return
+    if args.capcut:
+        from pipeline import capcut
+
+        slugs = capcut.targets(PROJECT_ROOT, args.capcut)
+        if not slugs:
+            raise SystemExit(f"Ni un vídeo terminado ni un canal con vídeos terminados: {args.capcut}")
+        failed = []
+        for n, slug in enumerate(slugs, 1):
+            print(f"[{n}/{len(slugs)}] {slug}")
+            try:
+                capcut.export(RunContext.create(slug, root=PROJECT_ROOT))
+            except Exception as error:          # one video that fails never stops the rest of the channel
+                print(f"   No se pudo: {str(error)[:200]}")
+                failed.append(slug)
+        if failed:
+            raise SystemExit(f"Sin exportar: {', '.join(failed)}")
         return
     if args.exportar:
         from pipeline import export

@@ -1308,6 +1308,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     for c in data["channels"]:
                         c["job"] = job_state(root, f"piloto-{c['channel']}")
                     return self._ok(data)
+                if match := re.fullmatch(r"/api/video/([^/]+)/capcut", path):       # the CapCut project
+                    slug = urllib.parse.unquote(match.group(1))
+                    archive = root / "out" / slug / f"{slug}-capcut.zip"
+                    return self._ok({"job": job_state(root, f"capcut-{slug}"), "zip": archive.name if archive.is_file() else None,
+                                     "mb": round(archive.stat().st_size / 1e6) if archive.is_file() else None})
                 if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):     # the Premiere / DaVinci project
                     slug = urllib.parse.unquote(match.group(1))
                     archive = root / "out" / slug / f"{slug}-premiere.zip"
@@ -1461,6 +1466,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if match.group(2) == "saltar":
                         return self._ok(autopilot.skip(root, channel, video_id))
                     return self._ok(background(root, f"piloto-{channel}", ["--autopiloto", f"{channel}:{video_id}"]))
+                if match := re.fullmatch(r"/api/video/([^/]+)/capcut", path):
+                    slug = urllib.parse.unquote(match.group(1))
+                    if not (root / "out" / slug / "video-final.mp4").is_file():
+                        raise ValueError("Primero tiene que estar el vídeo terminado")
+                    (root / "out" / slug / f"{slug}-capcut.zip").unlink(missing_ok=True)
+                    return self._ok(background(root, f"capcut-{slug}", ["--capcut", slug]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):
                     slug = urllib.parse.unquote(match.group(1))
                     if not (root / "out" / slug / "video-final.mp4").is_file():
