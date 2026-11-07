@@ -719,6 +719,7 @@ async function retryAll() {
 }
 
 async function newVideo() {
+  window.opening = null; window.openings = [];
   data = data || await api("/api/overview");
   let pre = window.prefill;
   if (!pre) { try { pre = JSON.parse(sessionStorage.getItem("prefill") || "null"); } catch (e) {} }
@@ -753,11 +754,25 @@ async function newVideo() {
       <label>Voz <span class="muted">(mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
       <div class="row" style="margin-top:18px"><button id="hookbtn" onclick="checkHook()">Revisar el gancho (antes de grabar)</button><span id="hookmsg" class="small muted"></span></div>
       <div id="hookbox"></div>
+      <label style="margin-top:18px">🎬 Clip de apertura <span class="muted">(opcional: un momento real con su sonido y subtítulos traducidos, antes de la voz. Lo ves aquí antes de crear el vídeo)</span></label>
+      <input id="opask" placeholder="Qué momento: «Simone Biles respondiendo en Instagram si hace falta un tipo de cuerpo» · vacío: lo propone según el título y el guion">
+      <div class="two"><div><input id="opurl" placeholder="o el enlace de YouTube (opcional)"></div>
+        <div class="two"><div><input id="opstart" placeholder="desde (1:15, opcional)"></div><div><input id="opend" placeholder="hasta (1:32, opcional)"></div></div></div>
+      <div class="two"><div><label class="small" style="margin:6px 0 2px">o sube tú el vídeo entero (lo recorto yo)</label><input type="file" id="opfile" accept="video/*,.mp4,.mov,.mkv,.webm"></div>
+        <div><label class="small" style="margin:6px 0 2px">Fuente en pantalla <span class="muted">(opcional: «Vogue»; vacío = el canal de YouTube o quien habla)</span></label><input id="opcredit"></div></div>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-top:8px"><input type="checkbox" id="opsubs" checked style="width:auto">
+        Poner subtítulos traducidos <span class="small muted">(quítalo si el clip ya los lleva)</span></label>
+      <div class="row"><button id="opbtn" onclick="findOpening()">Buscar clip de apertura</button><span id="opmsg" class="small muted"></span></div>
+      <div class="bar hide" id="opbar"><i style="width:0"></i></div>
+      <div id="opbox"></div>
       <div class="row" style="margin-top:10px"><button id="scenebtn" onclick="checkScenes()">Revisar escenas (canales de simulación)</button><span id="scenemsg" class="small muted"></span></div>
       <div id="scenebox"></div>
       <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><b id="msg" style="color:var(--accent)"></b></div>
       <div class="bar hide" id="upbar"><i style="width:0"></i></div>
     </div>`;
+  $("#opsubs").onchange = $("#opcredit").oninput = () => {
+    if (window.opening) Object.assign(window.opening, {subtitles: $("#opsubs").checked, credit: $("#opcredit").value});
+  };
   $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
   if (pre && pre.script) $("#script").value = pre.script;
   if (idea && idea.escenas) $("#scenelist").value = idea.escenas;      // a board idea comes with its scene list
@@ -800,6 +815,117 @@ async function checkHook() {
         ${r.titles.length ? `<div class="small" style="margin-top:6px"><b>Títulos con el patrón que funciona:</b></div><ul class="small">${r.titles.map((t) => `<li>${esc(t)} <button onclick="$('#title').value=this.parentElement.firstChild.textContent.trim()">Usar</button></li>`).join("")}</ul>` : ""}` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
   $("#hookbtn").disabled = false;
+}
+// 🎬 the opening clip: searched in the background, each candidate playing with its translated subtitles on top
+function opClock(s) { s = Math.max(0, +s || 0); return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`; }
+function ytApi() {
+  if (window.YT && window.YT.Player) return Promise.resolve();
+  return new Promise((resolve) => {
+    const before = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (before) before(); resolve(); };
+    if (!document.getElementById("ytapi")) {
+      const tag = document.createElement("script"); tag.id = "ytapi"; tag.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(tag);
+    }
+  });
+}
+function uploadOpening(file) {     // the same file is uploaded once, however many times you search
+  if (window.opUpload && window.opUpload.file === file) return Promise.resolve(window.opUpload.ticket);
+  $("#opbar").classList.remove("hide");
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/apertura/subir");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#opbar i").style.width = (100 * e.loaded / e.total) + "%"; };
+    xhr.onload = () => {
+      $("#opbar").classList.add("hide");
+      if (xhr.status >= 300) return reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));
+      const ticket = JSON.parse(xhr.responseText).file;
+      window.opUpload = {file, ticket, src: URL.createObjectURL(file)};
+      resolve(ticket);
+    };
+    xhr.onerror = () => { $("#opbar").classList.add("hide"); reject(new Error("Fallo de red al subir el vídeo")); };
+    xhr.send(file);
+  });
+}
+async function findOpening() {
+  const msg = $("#opmsg"); $("#opbtn").disabled = true; $("#opbox").innerHTML = "";
+  try {
+    const own = $("#opfile").files[0];
+    let file = "";
+    if (own) { msg.textContent = "Subiendo el vídeo…"; file = await uploadOpening(own); }
+    msg.textContent = own ? "Escuchando el vídeo y buscando el momento… (2-5 min)" : "Buscando el momento y traduciendo… (1-3 min)";
+    const {token} = await post("/api/apertura", {channel: $("#channel").value, title: $("#title").value, script: $("#script").value,
+      ask: $("#opask").value, url: own ? "" : $("#opurl").value, file, start: $("#opstart").value, end: $("#opend").value,
+      language: $("#language").value, subtitles: $("#opsubs").checked});
+    let r;
+    for (let i = 0; i < 200; i++) {
+      await new Promise((ok) => setTimeout(ok, 3000));
+      r = await api("/api/apertura/" + token);
+      if (r.result || !r.job.running) break;
+    }
+    msg.textContent = "";
+    if (!r.result) throw new Error("La búsqueda se cortó: " + (r.job.log || "").slice(-300));
+    if (r.result.error) throw new Error(r.result.error);
+    showOpenings(r.result);
+  } catch (e) { msg.textContent = e.message; }
+  $("#opbtn").disabled = false;
+}
+function showOpenings(result) {
+  const list = result.candidates || [], plan = result.plan || {};
+  window.openings = list; window.opening = null; list.max = result.maxSeconds;
+  $("#opbox").innerHTML = `<div class="notice">
+    <div class="small"><b>Busca:</b> ${esc(plan.about || "")}${plan.speaker ? ` · <b>Habla:</b> ${esc(plan.speaker)}${plan.role ? " (" + esc(plan.role) + ")" : ""}` : ""}</div>
+    ${list.length ? "" : `<div class="small" style="margin-top:6px">No he encontrado el momento en ningún vídeo. Prueba a describirlo de otra forma o pega el enlace (y el segundo).</div>`}
+    ${list.map((c, i) => `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #333)">
+      <div class="small"><b>${i + 1}. ${c.file ? "Tu vídeo" : esc(c.title || c.id)}</b>${c.file ? "" : ` <span class="muted">· ${esc(c.channel || "")} · <a href="${esc(c.url)}&t=${Math.floor(c.start)}s" target="_blank">abrir en YouTube</a></span>`}</div>
+      <div class="small muted">${esc(c.why || "")}</div>
+      <div style="position:relative;max-width:640px;aspect-ratio:16/9;margin-top:6px;background:#000">${c.file
+        ? `<video id="opv${i}" src="${window.opUpload ? window.opUpload.src : ""}#t=${c.start}" controls playsinline style="width:100%;height:100%"></video>`
+        : `<div id="opv${i}" style="width:100%;height:100%"></div>`}
+        <div id="ops${i}" style="position:absolute;left:5%;right:5%;bottom:8%;text-align:center;font-weight:700;font-size:18px;color:#fff;text-shadow:0 0 4px #000,0 2px 6px #000;pointer-events:none"></div></div>
+      <div class="row small" style="margin-top:6px">desde <input id="opa${i}" value="${c.start}" style="width:80px"> hasta <input id="opb${i}" value="${c.end}" style="width:80px"> s
+        <button onclick="replayOpening(${i})">▶ Ver este tramo</button> <button class="main" onclick="useOpeningClip(${i})">Usar esta</button> <b id="opok${i}" style="color:var(--accent)"></b></div>
+      <details class="small" style="margin-top:4px"><summary>Subtítulos</summary><div id="opl${i}"></div></details></div>`).join("")}</div>`;
+  list.forEach((c, i) => { listLines(i); $("#opa" + i).oninput = $("#opb" + i).oninput = () => listLines(i); });
+  window.opPlayers = [];
+  list.forEach((c, i) => {        // your own video: the browser plays the file you picked, stopping at «hasta»
+    if (!c.file) return;
+    const v = document.getElementById("opv" + i);
+    v.ontimeupdate = () => { if (v.currentTime > +$("#opb" + i).value) v.pause(); };
+    window.opPlayers[i] = {getCurrentTime: () => v.currentTime,
+      loadVideoById: (o) => { v.currentTime = o.startSeconds; v.play(); }};
+  });
+  if (list.some((c) => !c.file)) ytApi().then(() => list.forEach((c, i) => {
+    if (c.file) return;
+    window.opPlayers[i] = new YT.Player("opv" + i, {videoId: c.id, width: "100%", height: "100%",
+      playerVars: {start: Math.floor(c.start), end: Math.ceil(c.end), rel: 0, cc_load_policy: 0}});
+  }));
+  clearInterval(window.opTimer);
+  window.opTimer = setInterval(() => {
+    if (!document.getElementById("opbox")) return clearInterval(window.opTimer);
+    (window.openings || []).forEach((c, i) => {
+      const p = (window.opPlayers || [])[i], box = document.getElementById("ops" + i);
+      if (!p || !p.getCurrentTime || !box) return;
+      const t = p.getCurrentTime(), a = +$("#opa" + i).value, b = +$("#opb" + i).value;
+      const line = t >= a && t <= b ? (c.lines || []).find((l) => t >= l.from && t < l.to) : null;
+      box.textContent = line && $("#opsubs").checked ? line.text : "";
+    });
+  }, 150);
+}
+function listLines(i) {
+  const c = window.openings[i], a = +$("#opa" + i).value, b = +$("#opb" + i).value;
+  $("#opl" + i).innerHTML = (c.lines || []).map((l) => `<div style="${l.to < a || l.from > b ? "opacity:.4" : ""}">
+    <span class="muted">${opClock(l.from)}</span> ${esc(l.text)} <span class="muted">· ${esc(l.original)}</span></div>`).join("")
+    + `<div class="muted">${(b - a).toFixed(1)} s${b - a > (window.openings.max || 30) ? " (se recorta al máximo)" : ""}</div>`;
+}
+function replayOpening(i) {
+  const c = window.openings[i], p = (window.opPlayers || [])[i];
+  if (p && p.loadVideoById) p.loadVideoById({videoId: c.id, startSeconds: +$("#opa" + i).value, endSeconds: +$("#opb" + i).value});
+}
+function useOpeningClip(i) {
+  window.opening = {candidate: window.openings[i], start: $("#opa" + i).value, end: $("#opb" + i).value,
+    subtitles: $("#opsubs").checked, credit: $("#opcredit").value};
+  window.openings.forEach((c, k) => { const b = $("#opok" + k); if (b) b.textContent = k === i ? "✓ Elegida: irá antes de la voz" : ""; });
 }
 async function checkScenes() {
   const msg = $("#scenemsg"); msg.textContent = "Mirando qué se puede enseñar… (~20 s)"; $("#scenebtn").disabled = true;
@@ -849,7 +975,7 @@ async function createVideo() {
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
       serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, scenes: $("#scenelist").value,
-      ...((window.dubOptions || {})[$("#channel").value] ? {dub: [...document.querySelectorAll(".dublang:checked")].map((x) => x.value)} : {}), idea: window.prefill ? window.prefill.idea : null});
+      ...((window.dubOptions || {})[$("#channel").value] ? {dub: [...document.querySelectorAll(".dublang:checked")].map((x) => x.value)} : {}), idea: window.prefill ? window.prefill.idea : null, opening: window.opening || null});
     window.prefill = null; try { sessionStorage.removeItem("prefill"); } catch (e) {}
     if (auto) { location.hash = "#/video/" + encodeURIComponent(made.slug); return; }   // GenAIPro makes the voice
     msg.textContent = "Subiendo la voz…"; $("#upbar").classList.remove("hide");

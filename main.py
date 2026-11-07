@@ -52,6 +52,8 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--capcut", metavar="VÍDEO|CANAL",
                         help="Proyecto para editar en CapCut (clips limpios por plano, voz, música, efectos sueltos, "
                              "rótulos editables) → out/VÍDEO/VÍDEO-capcut.zip; con un canal, todos sus vídeos terminados.")
+    target.add_argument("--apertura", metavar="PETICION.json",
+                        help="(La usa la web) Busca el clip de apertura de un vídeo nuevo → PETICION.resultado.json.")
     target.add_argument("--exportar", metavar="SLUG",
                         help="El vídeo terminado como proyecto de Premiere Pro / DaVinci Resolve → out/SLUG/premiere/ y .zip.")
     target.add_argument("--shorts", metavar="SLUG",
@@ -1373,6 +1375,12 @@ def main() -> None:
         except (ValueError, RuntimeError) as error:
             raise SystemExit(str(error))
         print(f"Hecho: {made['slug']} · «{made['title']}» · la voz se genera sola y la cola lo hará")
+        return
+    if args.apertura:
+        from pipeline import apertura
+
+        result = apertura.run_request(PROJECT_ROOT, Path(args.apertura))
+        print(result.get("error") or f"{len(result['candidates'])} clip(s) de apertura")
         return
     if args.capcut:
         from pipeline import capcut

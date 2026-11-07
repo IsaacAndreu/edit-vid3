@@ -264,6 +264,51 @@ def with_quotes(timeline: Timeline, quotes: list[Any], ctx: RunContext, fps: int
     return timeline.model_copy(update={"groups": sorted(groups, key=lambda g: g.from_)})
 
 
+def with_opening(timeline: Timeline, clip: Any, ctx: RunContext, fps: int, volume: float = 1.0) -> Timeline:
+    """The chosen opening (pipeline/apertura.py) before the narration: its own picture and sound, the translated
+    subtitles and who speaks (graphic "quote"); everything else and the voice start after it (audio.voiceFrom).
+    Called right after the moments and the quotes, while the timeline still starts with the voice."""
+
+    frames = max(1, round(clip.durationSeconds * fps))
+    src = str((ctx.root / clip.path).relative_to(ctx.work_dir))
+
+    def moved(item: Any) -> Any:
+        return item.model_copy(update={"from_": item.from_ + frames})
+
+    shot = TimelineShot.model_validate({
+        "id": "apertura", "type": "broll", "from": 0, "durationInFrames": frames, "text": "",
+        "media": {"src": src, "kind": "video", "source": "youtube", "credit": clip.credit, "layout": "full",
+                  "width": clip.width, "height": clip.height},
+        "coldOpen": True,
+    })
+    quote = TimelineGroup.model_validate({
+        "id": "quote-apertura", "kind": "graphic", "from": 0, "durationInFrames": frames,
+        "graphic": {"type": "quote", "speaker": clip.speaker, "role": clip.role,
+                    "lines": [{"text": l.text, "from": round(l.from_ * fps), "to": min(frames, round(l.to * fps))}
+                              for l in clip.subtitles if round(l.from_ * fps) < frames]},
+    })
+    audio = timeline.audio.model_copy(update={
+        "voiceFrom": timeline.audio.voiceFrom + frames,
+        "clips": [TimelineClipAudio.model_validate({"src": src, "from": 0, "durationInFrames": frames, "volume": volume}),
+                  *[moved(c) for c in timeline.audio.clips]],
+        "speech": [(0, frames), *[(a + frames, b + frames) for a, b in timeline.audio.speech]],   # music low under it
+        "sfx": [moved(x) for x in timeline.audio.sfx],
+    })
+    return Timeline.model_validate({
+        **timeline.model_dump(by_alias=True),
+        "durationInFrames": timeline.durationInFrames + frames,
+        "shots": [shot.model_dump(by_alias=True), *[moved(s).model_dump(by_alias=True) for s in timeline.shots]],
+        # no subtitles (the clip already has them burnt in): the clip clean, without the name either
+        "groups": [*([quote.model_dump(by_alias=True)] if quote.graphic["lines"] else []),
+                   *[moved(g).model_dump(by_alias=True) for g in timeline.groups]],
+        "labels": [moved(l).model_dump(by_alias=True) for l in timeline.labels],
+        "captions": [moved(c).model_dump(by_alias=True) for c in timeline.captions],
+        "transitions": [moved(t).model_dump(by_alias=True) for t in timeline.transitions],
+        "shakes": [moved(t).model_dump(by_alias=True) for t in timeline.shakes],
+        "audio": audio.model_dump(by_alias=True),
+    })
+
+
 def _size(path: Path) -> tuple[int | None, int | None]:
     try:
         info = probe(path)
@@ -1498,6 +1543,9 @@ def run(ctx: RunContext) -> None:
         ], fps, float(cfg.get("moment_volume", 1.0)))
     if opening and opening.quotes:
         timeline = with_quotes(timeline, opening.quotes, ctx, fps, float(cfg.get("quote_volume", 1.0)))
+    if opening and opening.opening:
+        timeline = with_opening(timeline, opening.opening, ctx, fps, float(cfg.get("quote_volume", 1.0)))
+        print(f"   Apertura: {opening.opening.durationSeconds:.1f} s de {opening.opening.credit.removeprefix('Fuente: ')} antes de la voz")
     if simulacion.active(ctx) and fps and int(video.get("width", 1920)) > int(video.get("height", 1080)):
         # «¿tú qué harías?»: the voice and the world stop on the question (not in a Short: it would cut it in two)
         timeline = simulacion.with_asks(timeline, fps, float(ctx.section("visual").get("ask_seconds", simulacion.ASK_SECONDS)))

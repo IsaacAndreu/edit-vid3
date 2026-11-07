@@ -853,7 +853,7 @@ def _hold(timeline: Any, ids: list[str], frames: int, fps: int, freeze: bool) ->
         end = group.from_ + group.durationInFrames
         if not any(s.from_ + s.durationInFrames == end for s in timeline.shots):
             continue
-        voice_at = voice_frame_at(list(timeline.audio.voiceGaps), end)
+        voice_at = voice_frame_at(list(timeline.audio.voiceGaps), end - timeline.audio.voiceFrom)
         moved_s = end / fps
 
         def moved(item: Any) -> Any:

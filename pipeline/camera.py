@@ -124,7 +124,7 @@ def with_chapter_pauses(timeline: Timeline, seconds: float, fps: int) -> Timelin
     for chapter in [s.id for s in timeline.shots if s.type == "chapter" and (s.from_ > 0 or s.chapterTitle)]:
         shot = next(s for s in timeline.shots if s.id == chapter)
         at = shot.from_
-        voice_at = voice_frame_at(list(timeline.audio.voiceGaps), at)
+        voice_at = voice_frame_at(list(timeline.audio.voiceGaps), at - timeline.audio.voiceFrom)   # after an opening clip
 
         def moved(item: Any) -> Any:
             return item.model_copy(update={"from_": item.from_ + frames}) if item.from_ > at or (

@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
 import mimetypes
 import os
 import re
@@ -745,6 +746,16 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     script = clean_script(str(body.get("script") or "")).strip()     # «[CAPÍTULO 1 — …]» → «## …», notes out
     if len(script) < 200:
         raise ValueError("El guion es demasiado corto")
+    opening = None
+    if isinstance(body.get("opening"), dict) and body["opening"].get("candidate"):   # the opening clip you chose
+        from . import apertura
+
+        chosen = body["opening"]
+        opening = apertura.choice(chosen["candidate"], apertura._seconds(chosen.get("start")), apertura._seconds(chosen.get("end")),
+                                  subtitles=chosen.get("subtitles") is not False, credit=str(chosen.get("credit") or ""))
+        upload = root / "out" / "_tareas" / f"apertura-{opening['file']}.mp4" if opening.get("file") else None
+        if upload is not None and not upload.is_file():
+            raise ValueError("El vídeo subido para la apertura ya no está: vuelve a subirlo y buscar")
     folder = root / "materiales" / channel / name if channel else root / "materiales" / name
     if channel:
         group = root / "materiales" / channel
@@ -757,6 +768,11 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         (folder / "titulo.txt").write_text(str(body["title"]).strip() + "\n", encoding="utf-8")
     if str(body.get("scenes") or "").strip():             # the scene list for a simulation video (simulacion.DIRECTOR)
         (folder / "escenas.txt").write_text(str(body["scenes"]).strip() + "\n", encoding="utf-8")
+    if opening:
+        if opening.get("file"):                            # your uploaded video goes with the video's materials
+            shutil.move(str(root / "out" / "_tareas" / f"apertura-{opening['file']}.mp4"), str(folder / "apertura.mp4"))
+            opening["file"] = "apertura.mp4"
+        (folder / "apertura.json").write_text(json.dumps(opening, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     if isinstance(body.get("idea"), dict):                 # made from a radar idea: the brief next to the script
         from .niche_ideas import brief
 
@@ -1369,6 +1385,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     for c in data["channels"]:
                         c["job"] = job_state(root, f"piloto-{c['channel']}")
                     return self._ok(data)
+                if match := re.fullmatch(r"/api/apertura/([0-9a-f]{12})", path):   # the opening clip search
+                    token = match.group(1)
+                    found = root / "out" / "_tareas" / f"apertura-{token}.resultado.json"
+                    return self._ok({"job": job_state(root, f"apertura-{token}"),
+                                     "result": json.loads(found.read_text("utf-8")) if found.is_file() else None})
                 if match := re.fullmatch(r"/api/video/([^/]+)/capcut", path):       # the CapCut project
                     slug = urllib.parse.unquote(match.group(1))
                     archive = root / "out" / slug / f"{slug}-capcut.zip"
@@ -1445,6 +1466,22 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             if self.headers.get("Origin") and urllib.parse.urlparse(self.headers["Origin"]).netloc != self.headers.get("Host"):
                 return self._fail(403, "Origen no permitido")
             try:
+                if path == "/api/apertura/subir":          # your own video for the opening: streamed to disk
+                    ticket = secrets.token_hex(6)
+                    folder = root / "out" / "_tareas"
+                    folder.mkdir(parents=True, exist_ok=True)
+                    for old in folder.glob("apertura-*.mp4"):          # uploads never used, after a day
+                        if time.time() - old.stat().st_mtime > 86400:
+                            old.unlink(missing_ok=True)
+                    with (folder / f"apertura-{ticket}.mp4").open("wb") as f:
+                        left = length
+                        while left > 0:
+                            chunk = self.rfile.read(min(left, 1 << 20))
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            left -= len(chunk)
+                    return self._ok({"file": ticket})
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz", path):
                     return self._ok(save_voice(root, urllib.parse.unquote(match.group(1)), self.rfile.read(length)))
                 body = json.loads(self.rfile.read(length) or b"{}")
@@ -1623,6 +1660,19 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                                     str(body.get("note") or ""), str(body.get("date") or "")))
                 if path == "/api/channels":                # a new channel profile
                     return self._ok(create_channel(root, body))
+                if path == "/api/apertura":                # {channel, title, script, ask, url|file, start, end, language}
+                    ticket = str(body.get("file") or "") if re.fullmatch(r"[0-9a-f]{12}", str(body.get("file") or "")) \
+                        else secrets.token_hex(6)          # an uploaded video keeps its ticket
+                    folder = root / "out" / "_tareas"
+                    folder.mkdir(parents=True, exist_ok=True)
+                    keep = ("channel", "title", "script", "ask", "url", "start", "end", "language", "subtitles")
+                    request = {k: body.get(k) for k in keep}
+                    if body.get("file"):
+                        request["file"] = str(folder / f"apertura-{ticket}.mp4")
+                    (folder / f"apertura-{ticket}.json").write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+                    (folder / f"apertura-{ticket}.resultado.json").unlink(missing_ok=True)
+                    background(root, f"apertura-{ticket}", ["--apertura", str(folder / f"apertura-{ticket}.json")])
+                    return self._ok({"token": ticket})
                 if path == "/api/hook":                    # {title, script, channel}: before recording
                     from . import hook
 

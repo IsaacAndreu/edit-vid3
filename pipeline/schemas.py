@@ -566,6 +566,12 @@ class QuoteClip(_Strict):
     subtitles: list[QuoteSubtitle] = Field(default_factory=list)
 
 
+class OpeningClip(QuoteClip):
+    """The chosen opening (pipeline/apertura.py): a real moment with its sound and subtitles before the narration."""
+
+    durationSeconds: float = Field(gt=0, le=30.0 + 1e-6)
+
+
 class ColdOpenFile(_Strict):
     slug: str
     seconds: float = 0
@@ -573,6 +579,7 @@ class ColdOpenFile(_Strict):
     moments: list[ColdOpenClip] = Field(default_factory=list)   # mid-video pauses with the original sound
     bites: list[SoundBite] = Field(default_factory=list)        # timeline.sound_bites: short original sound under the voice
     quotes: list[QuoteClip] = Field(default_factory=list)       # quotes.count: real statements with subtitles
+    opening: OpeningClip | None = None                          # apertura.json: before the narration starts
 
 
 class TimelineTransition(_Strict):

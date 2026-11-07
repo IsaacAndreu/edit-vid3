@@ -1,6 +1,6 @@
 """Original sound in the middle of the video — work/<slug>/coldopen.json + coldopen/ (the file keeps its old name).
 
-There is no opening before the narration any more (no «cold open», no flash-forward): the video starts with the voice.
+The narration starts the video, unless you chose an opening clip (pipeline/apertura.py: `opening`, before the voice).
 
 Moments (`timeline.moments: N`, default 2): the reference channels do it at the climax. The LLM picks the sentences
 after which the story peaks (the landing that wins the gold, the score appearing, the fall); the narration pauses
@@ -372,8 +372,11 @@ def pick_bites(ctx: RunContext, youtube) -> list[SoundBite]:
 
 
 def inputs(ctx: RunContext) -> list:
+    from .apertura import FILE
+
+    chosen = ctx.materials_dir / FILE         # only when there is one: the other videos keep their fingerprint
     return [ctx.work_dir / "selection.json", ctx.work_dir / "shots.json", ctx.work_dir / "fallback.json",
-            ctx.work_dir / "words.json"]
+            ctx.work_dir / "words.json", *([chosen] if chosen.is_file() else [])]
 
 
 def run(ctx: RunContext) -> None:
@@ -385,7 +388,9 @@ def run(ctx: RunContext) -> None:
     person = story.subject.split("·")[0].strip() if story.subject else ""
     moments = pick_moments(ctx, moment_count, moment_seconds) if moment_count > 0 else []
     bite_count = int(cfg.get("sound_bites", 0) or 0)
-    if not moments and bite_count <= 0 and int(ctx.section("quotes").get("count", 0) or 0) <= 0:
+    from . import apertura
+
+    if not moments and bite_count <= 0 and int(ctx.section("quotes").get("count", 0) or 0) <= 0 and not apertura.chosen(ctx):
         ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug).model_dump())
         print("   Sin momentos con sonido original")
         return
@@ -413,10 +418,11 @@ def run(ctx: RunContext) -> None:
         from .quotes import pick_quotes
 
         quotes = pick_quotes(ctx, youtube, out_dir)
+        opening = apertura.pick(ctx, youtube, out_dir)
     finally:
         youtube.close()
     ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug, seconds=seconds, clips=clips, moments=pauses, bites=bites,
-                                        quotes=quotes).model_dump(by_alias=True))
+                                        quotes=quotes, opening=opening).model_dump(by_alias=True))
     print(f"   Momentos con sonido original: {len(pauses)} · "
           + ", ".join(f"{m.afterSeconds:.0f}s ({m.credit.removeprefix('Fuente: ')})" for m in pauses))
     if bite_count > 0:
@@ -426,4 +432,5 @@ def run(ctx: RunContext) -> None:
 
 def validate(ctx: RunContext) -> bool:
     data = ColdOpenFile.model_validate(ctx.read_json(OUTPUT))
-    return all((ctx.root / c.path).is_file() for c in [*data.clips, *data.moments, *data.bites])
+    return all((ctx.root / c.path).is_file() for c in [*data.clips, *data.moments, *data.bites,
+                                                          *([data.opening] if data.opening else [])])
