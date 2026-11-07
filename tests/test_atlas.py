@@ -390,3 +390,22 @@ def test_atlas1pt_review_fixes():
     santos = {"view": "globe", "points": [{"name": "SANTOS", "lat": -23.9, "lon": -46.3}]}
     miss = {"view": "globe", "points": [{"name": "MISSISSIPPI", "lat": 32, "lon": -91}]}
     assert split_far([tiete, santos, {"view": "globe"}, miss], [1]) == [1, 4]
+
+
+def test_darien_review_fixes():
+    from pipeline.atlas import REGION_ZOOM, clean, moment_camera
+
+    # Yaviza and Turbo, 100 km apart, asked on the whole globe: the moment goes close
+    yaviza = clean({"view": "globe", "camera": {"lat": 8, "lon": -77, "zoom": 1.5},
+                    "points": [{"name": "Yaviza", "lat": 8.16, "lon": -77.69}, {"name": "Turbo", "lat": 8.09, "lon": -76.73}]}, None)
+    tag = clean({"view": "globe", "camera": {"lat": 8, "lon": -77, "zoom": 1.5},
+                 "tags": [{"text": "1.845 m", "lat": 7.9, "lon": -77.5}]}, yaviza)
+    assert moment_camera([yaviza, tag])["zoom"] >= REGION_ZOOM
+    # far apart: still the globe
+    far = clean({"view": "globe", "camera": {"lat": 0, "lon": -60, "zoom": 1.5},
+                 "points": [{"name": "Acre", "lat": -9, "lon": -70}, {"name": "Bogotá", "lat": 4.7, "lon": -74}]}, None)
+    assert moment_camera([far])["zoom"] < REGION_ZOOM
+    # a country's label on top of a dot with its name: one name
+    out = clean({"view": "globe", "camera": {"lat": 4, "lon": -73, "zoom": 2},
+                 "points": [{"name": "Colômbia", "lat": 4.5, "lon": -73}], "highlight": [{"name": "Colombia", "label": "COLÔMBIA"}]}, None)
+    assert out["highlight"][0]["label"] == ""

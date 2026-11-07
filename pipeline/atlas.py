@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 14
+VERSION = 15
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -102,6 +102,8 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
 - "lens": {{"lat", "lon", "zoom": 5-9, "label": "ESTRECHO DE GIBRALTAR", "at": "palabra"}} una lupa: un círculo en una
   esquina que amplía un sitio pequeño sin dejar el globo (un estrecho, una isla, dos ciudades juntas), o null
+Si el guion RECORRE un camino (una carretera de país en país, un viaje, una expedición), dibuja cada tramo como una
+"route" que empieza donde acabó la anterior (mover "dot"): el recorrido se queda dibujado mientras avanza.
 Reglas: CADA frase añade al menos UNA cosa nueva en pantalla (un punto, una ruta, un círculo, un tag con su cifra, una
 tarjeta…): nunca un globo sin nada nuevo. Zoom 1-2 cuando la frase habla de un país entero, un continente o el mundo; 4-6 (un mapa de cerca que llena
 la pantalla) cuando la frase nombra una ciudad, un río, una sierra o una región y lo que dibujas está a menos de 10
@@ -280,6 +282,11 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
                          "group": int(_float(h.get("group"), 0, 3, 0))}
                         for h in (scene.get("highlight") or [])[:12] if isinstance(h, dict) and str(h.get("name") or "").strip()
                         and not _region_of(str(h.get("name")), str(h.get("label") or ""))]
+    for h in out["highlight"]:              # «COLÔMBIAÔMBIA» (atlas Darién 7:05): the country's label on a dot's name
+        info = places()["countries"].get(h["name"]) or {}
+        if h["label"] and (h["label"] in named_here or bool(info) and any(
+                _angle((info["lat"], info["lon"]), (p["lat"], p["lon"])) < 4 for p in out["points"])):
+            h["label"] = ""
     night = scene.get("night") if isinstance(scene.get("night"), dict) else None
     out["night"] = _night(night) if night and not night.get("off") else None
     out["nightOff"] = bool(night and night.get("off"))
@@ -915,9 +922,19 @@ def moment_camera(members: list[dict[str, Any]]) -> dict[str, Any]:
         for kind in ("points", "routes", "rings"):
             union[kind] += [x for x in m.get(kind) or [] if not x.get("kept")]
         union["zone"] = union["zone"] or m.get("zone")
+    # a story in a small place (Yaviza and Turbo, 100 km apart: atlas Darién spent 2:40 on the whole globe with two
+    # tiny names) goes close even when the model asked for the globe: what it draws all sits within a few degrees
+    spots = _spots(union)
+    if base["zoom"] < REGION_ZOOM and len(spots) >= 2 and not union["zone"]:
+        total = [sum(_xyz(*m)[i] for m in spots) for i in range(3)]
+        norm = math.sqrt(sum(t * t for t in total)) or 1.0
+        middle = (math.degrees(math.asin(total[2] / norm)), math.degrees(math.atan2(total[1], total[0])))
+        if max(_angle(middle, m) for m in spots) <= SMALL_PLACE:
+            union["camera"] = {"lat": middle[0], "lon": middle[1], "zoom": REGION_ZOOM}
     return fit_camera(union)["camera"]
 
 
+SMALL_PLACE = 6.0      # degrees: a moment drawing only within this of its middle is shown on a close map
 MOMENT_FAR = 25.0      # degrees: a line drawing only this far from what its moment drew so far starts a new one
 
 
