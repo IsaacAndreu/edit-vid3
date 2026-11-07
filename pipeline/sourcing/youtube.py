@@ -66,6 +66,20 @@ def error_detail(message: str, limit: int = 320) -> str:
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
+_PLAYER_JS_RE = re.compile(r"/s/player/([A-Za-z0-9_-]+)/[^?]*\.js(?:$|\?)")
+
+
+def _local_response(url: str, data: bytes) -> Any:
+    """A yt-dlp Response built from bytes on disk, as if the server had answered."""
+
+    import io
+
+    from yt_dlp.networking.common import Response
+
+    return Response(io.BytesIO(data), url, {"Content-Type": "application/javascript; charset=utf-8",
+                                            "Content-Length": str(len(data))}, 200)
+
+
 def traffic_key(url: str) -> str:
     """Where a response came from, for the proxy's accounting: «googlevideo» (streams, whatever the edge host),
     «youtube.com/watch» (the page), «youtube.com/youtubei» (the player API), «youtube.com/s/player» (the player
@@ -664,6 +678,30 @@ class YouTubeSource:
             options["cookiefile"] = cookie_file
         return self._metered(yt_dlp.YoutubeDL(options), bool(options.get("proxy")))
 
+    def _player_js_path(self, url: str) -> Path | None:
+        """Where the player JS of `url` lives on disk (cache/player_js/<version>-<hash>.js), or None for any other
+        URL. The file is immutable per player version (the path carries it)."""
+
+        import hashlib
+
+        found = _PLAYER_JS_RE.search(url)
+        if found is None:
+            return None
+        digest = hashlib.sha1(url.split("?", 1)[0].encode("utf-8")).hexdigest()[:12]
+        return self.cache_dir / "player_js" / f"{found.group(1)}-{digest}.js"
+
+    def _store_player_js(self, path: Path, data: bytes) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_bytes(data)
+            tmp.replace(path)
+            for old in path.parent.glob("*.js"):      # player versions change every few days: a handful stay
+                if old != path and time.time() - old.stat().st_mtime > 7 * 86400:
+                    old.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     def _metered(self, ydl: Any, through_proxy: bool) -> Any:
         """Count the bytes of every HTTP response this YoutubeDL opens through a proxy (the page, the player API,
         the player JS, manifests, subtitles: all of yt-dlp's own requests go through `urlopen`) into the current
@@ -684,8 +722,20 @@ class YouTubeSource:
                 hosts[where] = hosts.get(where, 0) + max(0, int(amount))
 
         def counting(request: Any) -> Any:
+            url = str(getattr(request, "url", None) or getattr(request, "full_url", "") or "")
+            where = traffic_key(url)
+            cached = self._player_js_path(url)
+            if cached is not None:
+                # yt-dlp keeps the player JS (~0.7 MB) only inside one YoutubeDL, and every extraction here is a
+                # new one: 287 MB of the same file in a morning (21 % of the proxy). Once on disk per player version.
+                if cached.is_file():
+                    return _local_response(url, cached.read_bytes())
+                response = original(request)
+                data = response.read()
+                add(len(data), where)
+                self._store_player_js(cached, data)
+                return _local_response(url, data)
             response = original(request)
-            where = traffic_key(str(getattr(request, "url", None) or getattr(request, "full_url", "") or ""))
             length = None
             try:
                 length = int(response.headers.get("Content-Length"))

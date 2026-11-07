@@ -206,6 +206,9 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
   También «Dónde van los GB del proxy» (por tipo de petición) y, con `--youtube-stats 1` o menos días, «Por horas»
   (peticiones, fallos, bot/429, tramos y MB de cada hora, con los vídeos en marcha). Un tramo HLS bajado por el
   programa se cuenta una vez (en su petición), no otra vez como tamaño del archivo.
+- **El JavaScript del reproductor se baja una vez por versión** (`cache/player_js/`): yt-dlp solo lo guarda dentro de
+  un `YoutubeDL`, y aquí cada extracción es uno nuevo (287 MB del mismo fichero en una mañana, el 21 % del proxy).
+  Una extracción son ~2,9 MB: la página del vídeo (~1,2 MB), el JS (~0,7 MB) y la API del reproductor.
 
 ## 4. Métricas (lo que decide)
 
