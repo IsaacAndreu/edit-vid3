@@ -141,6 +141,11 @@ vez, nunca más aunque otro esté parado. El que no responde (apagado, sin Tails
 proxy ni con una cuenta. Con todos en cuarentena se para todo YouTube (la cola se pausa y la prueba horaria no sale
 hasta que acaba). Dos equipos en el mismo router son la misma IP: solo sirven de recambio, no van más rápido.
 
+**Si ningún proxy responde** la etapa se para y el vídeo espera 15 minutos (ProxyDown): nunca se apunta como «este
+plano no tiene nada». Un `candidates/<plano>.json` o `scores/<plano>.json` escrito durante una caída (sus notas dicen
+«no responde») no cuenta como hecho y se rehace solo en la siguiente pasada (gym6.0, 7/11: 257 planos «difíciles»
+con 0 vídeos válidos eran seis extracciones sin respuesta cada uno, guardados como definitivos).
+
 **Regla:** una red que no es tuya (la del trabajo) solo con permiso explícito de quien la gestiona, y nunca para
 saltarse un bloqueo de otra conexión. Si no lo tienes, quita ese proxy de `proxies` en `config.local.yaml`.
 
