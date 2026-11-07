@@ -204,6 +204,7 @@ quotes:                            # declaraciones originales con subtítulos (p
   whisper_minutes: 12              # …solo los primeros minutos
 
 fallback:
+  photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)
   pexels_for_person: false         # en vídeos sobre una persona, NUNCA Pexels (gente y ciudades genéricas que no son él): si no queda
@@ -365,6 +366,7 @@ queue:                             # cola nocturna (python main.py --all)
   #                                  con parallel_videos: 5. El render reparte los núcleos entre los turnos de cpu.
 
 qa:
+  max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
   max_phash_distance: 6            # imágenes más parecidas → posible repetición

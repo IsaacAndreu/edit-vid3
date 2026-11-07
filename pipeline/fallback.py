@@ -595,6 +595,21 @@ def run(ctx: RunContext) -> None:
             # a narrated moment (a fall, tears on the podium) is never filled with any other moment of the person
             item = vet_and_materialise(options, pool_candidates, "protagonist-filler", vet=bool(shot.broll.moment))
 
+        # 2c. A narrated moment nobody filmed (Yulo dejected after fourth place, the Manila parade, a press conference):
+        # a photo of the protagonist instead of an empty shot, as sports channels do. Without the judge (it would
+        # want the exact scene again: gymyulo, 54 % empty), with the identity check — a photo of the person is never
+        # a lie about the moment, another moment's footage could be. `fallback.photo_for_moments` (on).
+        if item is None and who and shot.broll and cfg.get("photo_for_moments", True):
+            for kind in ("library", "web"):
+                if item is not None:
+                    break
+                candidates = library_photos(ctx, who) if kind == "library" else \
+                    web_photos(ctx, shot.broll.model_copy(update={"entities": [who]}), tried)
+                options = [photo_option(c) for c in candidates.values()
+                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
+                           and c.id not in elsewhere][: limit * 2]
+                item = vet_and_materialise(options, candidates, "protagonist-photo", vet=False)
+
         # 3. Generated image — the last resort, never for a video about a real person.
         if item is None and cfg.get("generate", True) and not real_people:
             try:
@@ -646,8 +661,8 @@ def run(ctx: RunContext) -> None:
     for shot_id, why in unresolved.items():
         print(f"   AVISO {shot_id}: {why[:200]}")
     # Most of the video without a picture is a slideshow of chalkboards (negocio2-4: 80-95 % of the shots): stop
-    # here, before the render, instead of making it. qa.max_empty_share (0.5) of the footage shots, at most.
-    limit = float(ctx.section("qa").get("max_empty_share", 0.5))
+    # here, before the render, instead of making it. qa.max_empty_share (0.6) of the footage shots, at most.
+    limit = float(ctx.section("qa").get("max_empty_share", 0.6))
     if shots and len(unresolved) / len(shots) > limit:
         # the setting that really stands in the way (atletismo22 was told «pexels: true», already on)
         person = bool(story.subject) and not cfg.get("pexels_for_person", False)
