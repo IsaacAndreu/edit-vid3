@@ -228,3 +228,28 @@ def test_refusals_with_a_reason_keep_the_week_and_old_entries_still_read(tmp_pat
     yt._refused_path().write_text(json.dumps(data))
     yt._refused_cache = None
     assert yt.refused_why(VIDEO) == "sin-hls" and yt.refused_why("abcdefghijk") is None and yt.refused_why("zzzzzzzzzzz") == "bot"
+
+
+def test_a_response_yt_dlp_cannot_parse_is_asked_once_more_from_another_ip(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._local.video_id = VIDEO
+    seen = []
+
+    def broken_then_fine():
+        seen.append(yt._ydl().params["proxy"])
+        if len(seen) == 1:
+            raise TypeError("sequence item 52: expected str instance, NoneType found")
+        return "ok"
+
+    assert yt._call("metadata", broken_then_fine) == "ok"
+    assert len(seen) == 2 and len(set(seen)) == 2 and yt.sessions.rotated == 1
+
+    def always_broken():
+        seen.append(1)
+        raise KeyError("formats")
+
+    with pytest.raises(RuntimeError, match="formats"):                  # one more try, not a loop
+        yt._call("metadata", always_broken)
+    assert len(seen) == 4
+    yt.close()

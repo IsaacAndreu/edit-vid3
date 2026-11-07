@@ -158,7 +158,7 @@ def test_an_extractions_bytes_are_kept_by_destination(tmp_path, monkeypatch):
 
     fake = {"https://www.youtube.com/watch?v=x": Response(length=900_000),
             "https://www.youtube.com/youtubei/v1/player": Response(length=200_000),
-            "https://www.youtube.com/s/player/abc/base.js": Response(length=1_500_000)}
+            "https://www.youtube.com/s/player/abc/base.js": Response(body=b"j" * 1_500_000)}   # read whole, kept on disk
     metered = yt._metered(type("Fake", (), {"urlopen": lambda self, req: fake[req.url]})(), True)
 
     def extraction():
@@ -172,4 +172,37 @@ def test_an_extractions_bytes_are_kept_by_destination(tmp_path, monkeypatch):
     assert row["hosts"] == {"youtube.com/s/player": 1_500_000, "youtube.com/watch": 900_000, "youtube.com/youtubei": 200_000}
     assert ytstats.by_destination([row, {"hosts": {"youtube.com/watch": 100_000}}])[:2] == [
         {"where": "youtube.com/s/player", "mb": 1.5, "share": 55.6}, {"where": "youtube.com/watch", "mb": 1.0, "share": 37.0}]
+    yt.close()
+
+
+def test_the_player_js_is_fetched_once_per_version_and_served_from_disk_after(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    yt._local.video_id = VIDEO
+    url = "https://www.youtube.com/s/player/abc123/player_ias.vflset/en_US/base.js"
+    calls = []
+
+    class Req:
+        def __init__(self, url): self.url = url
+
+    def urlopen(self, req):
+        calls.append(req.url)
+        return Response(body=b"var a=1;" * 1000)
+
+    metered = yt._metered(type("Fake", (), {"urlopen": urlopen})(), True)
+    yt._local.proxy_bytes = 0
+    first = metered.urlopen(Req(url))
+    assert first.read() == b"var a=1;" * 1000 and first.status == 200 and first.url == url
+    assert yt._local.proxy_bytes == 8000 and len(calls) == 1
+    cached = yt._player_js_path(url)
+    assert cached.is_file() and cached.parent.name == "player_js" and cached.name.startswith("abc123-")
+    second = metered.urlopen(Req(url))
+    assert second.read() == b"var a=1;" * 1000 and len(calls) == 1          # from disk: no request, no bytes
+    assert yt._local.proxy_bytes == 8000
+    other = yt._metered(type("Fake", (), {"urlopen": urlopen})(), True)     # another YoutubeDL, same version
+    assert other.urlopen(Req(url)).read().startswith(b"var a=1;") and len(calls) == 1
+    assert yt._player_js_path("https://www.youtube.com/watch?v=x") is None
+    assert yt._player_js_path("https://www.youtube.com/s/player/abc123/player_ias.vflset/en_US/base.js?x=1") == cached
+    metered.urlopen(Req("https://www.youtube.com/watch?v=x"))               # other URLs: as before
+    assert len(calls) == 2
     yt.close()
