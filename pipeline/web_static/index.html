@@ -1110,7 +1110,7 @@ async function videoPage(slug) {
     `<button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>`,
     v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : "",
     !v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : "",
-    v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom()" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
+    v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom(this)" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
     v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : "",
     `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
   ].filter(Boolean);
@@ -1219,15 +1219,35 @@ async function videoPage(slug) {
     try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
     route();
   };
-  window.redoFrom = async () => {
-    const pick = prompt("¿Desde dónde lo rehago?\n\n1 = Todo (planificación, búsqueda y montaje)\n2 = Elegir imágenes otra vez (juez y relleno)\n3 = Solo el montaje (rápido)", "2");
-    const stages = {"1": ["planner"], "2": ["judge"], "3": ["timeline"]}[String(pick || "").trim()];
-    if (!stages) return;
+  // «Rehacer desde…»: the choice on the page itself (prompt() is silenced in some browsers and in the app, and then
+  // the button did nothing at all)
+  window.redoFrom = (btn) => {
+    const old = document.getElementById("redobox");
+    if (old) { old.remove(); return; }
+    const box = document.createElement("div");
+    box.id = "redobox";
+    box.className = "notice";
+    box.style.cssText = "margin:10px 0";
+    box.innerHTML = `<b>¿Desde dónde lo rehago?</b>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+        <button onclick="redoGo(['timeline'])">Solo el montaje (rápido)</button>
+        <button class="main" onclick="redoGo(['judge'])">Elegir imágenes otra vez (juez y relleno)</button>
+        <button onclick="redoGo(['planner'])">Todo (planificación, búsqueda y montaje)</button>
+        <button onclick="document.getElementById('redobox').remove()">Cancelar</button></div>
+      <div id="redomsg" class="small muted" style="margin-top:6px">Reaprovecha las descargas y la voz.</div>`;
+    const head = document.querySelector(".vhead");          // under the title, not inside the «Más ▾» menu
+    head ? head.insertAdjacentElement("afterend", box) : $("#app").prepend(box);
+    document.querySelectorAll(".more.open").forEach((m) => m.classList.remove("open"));
+    box.scrollIntoView({behavior: "smooth", block: "nearest"});
+  };
+  window.redoGo = async (stages) => {
+    const msg = document.getElementById("redomsg");
+    if (msg) msg.textContent = "Poniéndolo en la cola…";
     try {
       const r = await post(`/api/video/${encodeURIComponent(slug)}/redo`, {stages});
-      if (r.message) alert(r.message);
+      if (msg) msg.textContent = r.message || "En la cola: se rehará en su turno.";
       setTimeout(route, 1500);
-    } catch (e) { alert(e.message); }
+    } catch (e) { if (msg) msg.textContent = "No se pudo: " + e.message; }
   };
   window.act = async (what) => {
     try {
