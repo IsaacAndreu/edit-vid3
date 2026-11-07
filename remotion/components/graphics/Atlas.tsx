@@ -253,7 +253,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           return (
             <path key={`route${i}`} d={path(line as never) ?? ''} fill="none"
                   stroke={many ? (p === PALETTES.dark ? '#E8B64C' : '#C9962E') : red}
-                  strokeWidth={many ? 2.4 : 4.2} strokeOpacity={many ? 0.85 : 1}
+                  strokeWidth={many ? 2.4 : r.trail ? 3.4 : 4.2} strokeOpacity={many ? 0.85 : r.trail ? 0.8 : 1}
                   strokeDasharray={r.dashed ? '14 10' : undefined} strokeLinecap="round" />
           );
         })}

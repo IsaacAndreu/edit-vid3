@@ -410,7 +410,7 @@ export interface AtlasGraphic {
   counter?: { value: number; unit: string; label: string; at: number; until?: number } | null;
   countries?: { name: string; label: string; at: number; flag?: { src: string } }[];   // silhouette filled with its flag
   points?: { name: string; lat: number; lon: number; at: number; until?: number }[];
-  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; mover?: string; at: number; until?: number }[];
+  routes?: { from: [number, number]; to: [number, number]; label: string; dashed: boolean; style: 'main' | 'many'; mover?: string; at: number; until?: number; trail?: boolean }[];
   tags?: { text: string; lat: number | null; lon: number | null; at: number }[];   // the line's figure on a paper tag
   rings?: { lat: number; lon: number; km: number; label: string; at: number; until?: number }[];
   zone?: { lat: number; label: string; at: number } | null;

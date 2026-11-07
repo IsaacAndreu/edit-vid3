@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 12
+VERSION = 13
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -561,6 +561,49 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     return out
 
 
+TRIP_JOIN = 3.0       # degrees: a route that starts this close to where another ended continues the same trip
+TRIP_NEAR = 60.0      # degrees from the camera: the trip so far stays drawn while the globe looks at its part of the world
+TRIP_LEGS = 10        # the last legs kept
+
+
+class Journey:
+    """A trip told leg by leg (driving from Brazil to the United States): each route that starts where an earlier one
+    ended joins the trip, and from then on every globe view near it keeps the whole road travelled so far drawn —
+    instead of each leg vanishing when the camera moves on to the next place (carry() only keeps what stays put)."""
+
+    def __init__(self) -> None:
+        self.ends: list[dict[str, Any]] = []         # every route drawn so far (a trip can start from any of them)
+        self.legs: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _plain(route: dict[str, Any]) -> dict[str, Any]:
+        return {"from": list(route["from"]), "to": list(route["to"]), "label": "", "dashed": bool(route.get("dashed")),
+                "style": "main", "at": "", "kept": True, "trail": True}
+
+    def add(self, scene: dict[str, Any]) -> dict[str, Any]:
+        if scene.get("view") != "globe":
+            return scene
+        for route in scene.get("routes") or []:
+            if route.get("kept") or route.get("style") == "many":
+                continue
+            joins = lambda r: _angle(tuple(route["from"]), tuple(r["to"])) < TRIP_JOIN   # noqa: E731
+            if self.legs and joins(self.legs[-1]):
+                self.legs.append(route)
+            elif (earlier := next((r for r in reversed(self.ends) if joins(r)), None)) is not None:
+                self.legs = [earlier, route]           # the first leg is known once the second starts at its end
+            self.ends.append(route)
+        self.legs = self.legs[-TRIP_LEGS:]
+        if len(self.legs) < 2:
+            return scene
+        cam = scene["camera"]
+        if not any(_angle((cam["lat"], cam["lon"]), tuple(x)) < TRIP_NEAR for leg in self.legs for x in (leg["from"], leg["to"])):
+            return scene
+        own = list(scene.get("routes") or [])
+        have = {_key("routes", r) for r in own}
+        behind = [self._plain(leg) for leg in self.legs if _key("routes", leg) not in have]
+        return {**scene, "routes": (behind + own)[-max(LIMITS["routes"], len(own)):]} if behind else scene
+
+
 NIGHT_LINES = 10      # how many lines a night stays on its own
 
 
@@ -936,8 +979,10 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
 
     def build() -> list[dict[str, Any]]:
         out, before = [], None
+        trip = Journey()
         for n, scene in enumerate(cleaned, 1):
             done = auto_tag(carry(fit_camera(scene) if scene["view"] != "globe" else scene, before), lines[n - 1][1], before)
+            done = trip.add(done)
             out.append(done)
             before = done
         return out
@@ -1144,7 +1189,7 @@ def _segment_graphic(segment: dict[str, Any], spoken: list[tuple[int, str]], fps
     g["countries"] = countries
     g["highlight"] = list(highlight.values())
     for route in g.get("routes") or []:              # something always travels a main route (the eye follows it)
-        if route.get("style") != "many" and not route.get("mover"):
+        if route.get("style") != "many" and not route.get("mover") and not route.get("trail"):
             route["mover"] = "dot"
     lens_auto(g)
     return g

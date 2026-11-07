@@ -336,3 +336,26 @@ def test_no_dive_where_the_satellite_has_no_picture():
                                  "points": [{"name": "Auckland", "lat": -36.85, "lon": 174.76}]}, None)
     atlas.ensure_satellites(scenes, 2)
     assert scenes["s15"]["view"] == "sat" and scenes["s5"]["view"] == "globe"
+
+
+def test_a_trip_keeps_the_road_travelled_so_far():
+    from pipeline.atlas import Journey
+
+    def scene(lat, lon, *routes):
+        return {"view": "globe", "camera": {"lat": lat, "lon": lon, "zoom": 2.0},
+                "routes": [{"from": list(a), "to": list(b), "label": "x", "dashed": False, "style": "main", "at": ""} for a, b in routes]}
+
+    trip = Journey()
+    sao_paulo, bogota, panama, mexico = (-23.5, -46.6), (4.7, -74.1), (9.0, -79.5), (19.4, -99.1)
+    first = trip.add(scene(-10, -60, (sao_paulo, bogota)))
+    assert len(first["routes"]) == 1                                  # one leg is not a trip yet
+    assert trip.add(scene(5, -70))["routes"] == []                    # a view in between: nothing to keep yet
+    second = trip.add(scene(7, -77, (bogota, panama)))
+    assert [r["to"] for r in second["routes"]] == [list(bogota), list(panama)]
+    assert second["routes"][0]["trail"] and second["routes"][0]["label"] == "" and not second["routes"][1].get("trail")
+    later = trip.add(scene(15, -90, (panama, mexico)))
+    assert [r["to"] for r in later["routes"]] == [list(bogota), list(panama), list(mexico)]
+    assert len(trip.add(scene(12, -85))["routes"]) == 3               # a close look on the way: the road stays
+    assert trip.add(scene(40, 120))["routes"] == []                   # the other side of the world: not drawn there
+    other = trip.add(scene(48, 2, ((48.8, 2.3), (51.5, -0.1))))       # an unrelated route: on its own
+    assert len(other["routes"]) == 1
