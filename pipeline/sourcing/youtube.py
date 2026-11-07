@@ -2114,12 +2114,16 @@ class YouTubeSource:
     def candidate(self, video_id: str, entry: dict[str, Any], score: float, notes: list[str]) -> Candidate | None:
         """The video's details (one extraction, cached) → a Candidate, or None when it fails the filters."""
 
+        from ..budget import ApiSearchesShort, BudgetReached
+
         try:
             info = self.info(video_id)
             if not self.passes_metadata_filters(info):
                 return None
             board = self.storyboard(info)
-        except SourceUnavailable:
+        except (SourceUnavailable, ApiSearchesShort, BudgetReached):
+            # the proxy down (ProxyDown) or the quota is the run's problem, not this video's: swallowed as a note
+            # it made every shot «hard, give up» with six unanswered videos, cached as final (gym6.0: 257 shots)
             raise
         except Exception as error:
             notes.append(f"yt:{video_id}: {str(error)[:160]}")

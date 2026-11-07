@@ -32,6 +32,7 @@ from pydantic import ValidationError
 from ..context import RunContext
 from ..schemas import MAX_THIRD_PARTY_SECONDS, Candidate, Option, OptionScores, Shot, ShotCandidates, ShotScores, ShotsFile
 from ..sourcing import needs_footage, youtube_source
+from ..budget import ApiSearchesShort, BudgetReached
 from ..sourcing.common import SourceUnavailable, key, tokens
 from ..sourcing.youtube import YouTubeSource
 from . import detectors as det
@@ -350,6 +351,19 @@ def run(ctx: RunContext) -> None:
     analyse(ctx)
 
 
+def reusable(path: Path, hashes: tuple[str | None, ...]) -> bool:
+    """A scores file worth keeping: made from these inputs, and not while the proxy was down (its windows never
+    came, the notes say «no responde»: an analysis of nothing, kept as final until now)."""
+
+    if not path.is_file():
+        return False
+    try:
+        done = ShotScores.model_validate_json(path.read_text(encoding="utf-8"))
+    except (ValidationError, ValueError):
+        return False
+    return done.inputsHash in hashes and not any("no responde" in n for n in done.notes)
+
+
 def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] | None = None,
             candidates_folder: str = "candidates", folder: str = OUTPUT) -> None:
     """Score every footage shot (or just `only`, for quick experiments). `shots`/`candidates_folder`/`folder`: score
@@ -382,13 +396,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             # YouTube windows that are not on disk cannot come now: a result of its own, redone after the pause
             shot_hash[shot.id] = key(usual, sin_youtube.NOTE)
         path = out_dir / f"{shot.id}.json"
-        if path.is_file():
-            try:
-                done = ShotScores.model_validate_json(path.read_text(encoding="utf-8")).inputsHash
-                if done in (shot_hash[shot.id], usual if offline else None):   # analysed with YouTube: kept, even without it
-                    continue
-            except (ValidationError, ValueError):
-                pass
+        if reusable(path, (shot_hash[shot.id], usual if offline else None)):   # analysed with YouTube: kept, even without it
+            continue
         todo.append(shot)
     print(f"   {len(shots) - len(todo)} planos ya analizados; {len(todo)} pendientes")
     if not todo:
@@ -593,6 +602,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             for job in its:
                 try:
                     out.append((job, youtube.download_section(video.removeprefix("yt:"), job[1], job[2])))
+                except (ApiSearchesShort, BudgetReached):
+                    raise                      # the proxy down or the quota: the stage stops and the video waits
                 except (SourceUnavailable, Exception) as error:
                     out.append((job, error))
             return out

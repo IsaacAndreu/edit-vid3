@@ -33,6 +33,13 @@ STAGE = "sourcing"
 OUTPUT = "candidates"
 SUMMARY = "_summary.json"
 WIDENED = "búsqueda amplia hecha"
+STALE_NOTES = ("bloquea", "no responde")   # searched while YouTube blocked us or the proxy was down: not a result
+
+
+def stale_note(note: str) -> bool:
+    """A note that means the search did not really happen (a block, the proxy down): the file is redone."""
+
+    return any(marker in note for marker in STALE_NOTES)
 
 
 def needs_footage(shot: Shot) -> bool:
@@ -388,7 +395,7 @@ def run(ctx: RunContext) -> None:
                 found = ShotCandidates.model_validate_json(path.read_text(encoding="utf-8"))
                 # searched without YouTube (its pause): kept while the pause lasts, searched again once it is over
                 missed = not sin_youtube.active() and any(sin_youtube.NOTE in n for n in found.notes)
-                if found.specHash == spec_hash and not any("bloquea" in n for n in found.notes) and not missed:
+                if found.specHash == spec_hash and not any(stale_note(n) for n in found.notes) and not missed:
                     return found
             except (ValidationError, ValueError):
                 pass
