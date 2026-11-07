@@ -960,6 +960,12 @@ class YouTubeSource:
                     if kind == "timeout" and tries <= int(self.cfg.get("timeout_retries_residential", 1)) \
                             and self._rotate_after("timeout", action, tries):
                         continue                 # a slow exit IP: the sticky session would keep it for 28 minutes
+                    if isinstance(error, (TypeError, KeyError, IndexError, AttributeError)) and tries <= 1 \
+                            and self._rotate_after("respuesta rota", action, tries):
+                        # yt-dlp itself crashed on what this IP was served («sequence item 52: expected str
+                        # instance, NoneType found», three times from one session on AMA4j3IcLWw; fine from
+                        # another IP): once more from another session
+                        continue
                 if any(marker in lowered for marker in _RATE_MARKERS):
                     # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry
                     self._quarantine(way, "YouTube responde 429 (demasiadas peticiones)")
@@ -985,7 +991,9 @@ class YouTubeSource:
         if now - getattr(self, "_rotation_said", 0.0) > 120:
             self._rotation_said = now
             what = ("YouTube pide «no eres un bot»" if kind == "bot" else "YouTube responde 429" if kind == "429"
-                    else "YouTube no responde a tiempo" if kind == "timeout" else f"el proxy no abre el túnel ({kind})")
+                    else "YouTube no responde a tiempo" if kind == "timeout"
+                    else "YouTube sirve una respuesta que yt-dlp no entiende" if kind == "respuesta rota"
+                    else f"el proxy no abre el túnel ({kind})")
             whose = f"el vídeo {key}" if key != "search" else "las búsquedas"
             print(f"   {what} con una IP del proxy residencial ({action}): sesión nueva para {whose} "
                   f"(sesiones rotadas en esta ejecución: {self.sessions.rotated})")
