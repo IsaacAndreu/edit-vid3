@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 15
+VERSION = 16
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -965,6 +965,45 @@ def split_far(cleaned: list[dict[str, Any]], starts: list[int]) -> list[int]:
     return sorted(out)
 
 
+NOTE_EVERY = 5.0      # seconds: in a stretch still quiet after the fill, a note with the line's key words this often
+
+
+def fill_quiet(cleaned: list[dict[str, Any]], built: list[dict[str, Any]], lines: list[tuple[Any, str]],
+               seconds: list[float]) -> int:
+    """Deterministic last resort for stretches of QUIET_SECONDS with nothing new on the globe: a "note" card with the
+    key words of a line (the script's own words), spaced NOTE_EVERY s. Returns how many lines got one."""
+
+    from .timeline import key_phrase
+
+    added = 0
+    run: list[int] = []
+
+    def close(run: list[int]) -> int:
+        if sum(seconds[i - 1] for i in run) < QUIET_SECONDS:
+            return 0
+        done, since = 0, NOTE_EVERY        # the first quiet line gets one
+        for n in run:
+            if since >= NOTE_EVERY and not cleaned[n - 1].get("card"):
+                phrase = key_phrase(lines[n - 1][1], 7)
+                if len(phrase.split()) >= 2:
+                    cleaned[n - 1]["card"] = {"kind": "note", "big": "", "title": phrase, "lines": [], "source": "",
+                                              "side": "right" if done % 2 == 0 else "left", "at": ""}
+                    done, since = done + 1, 0.0
+            since += seconds[n - 1]
+        return done
+
+    for n, scene in enumerate(built, 1):
+        if scene["view"] == "globe" and _new_things(cleaned[n - 1]) == 0 and _new_things(scene) == 0:
+            run.append(n)
+            continue
+        added += close(run)
+        run = []
+    added += close(run)
+    if added:
+        print(f"   Atlas: {added} notas con las palabras de la frase en tramos que seguían sin nada nuevo")
+    return added
+
+
 def heuristic_starts(cleaned: list[dict[str, Any]]) -> list[int]:
     """Without the model's moments: a new one where a line looks at another place or shows something else."""
 
@@ -1128,6 +1167,10 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     else:
         print("   Atlas: plan revisado: ninguna frase sin nada nuevo")
 
+    # 4. what is still quiet (the model's fill failed or gave nothing: atlas Darién, 25 s of an empty globe five times)
+    # gets the line's own key words on a paper note, one every NOTE_EVERY seconds at most — never a globe with nothing
+    if fill_quiet(cleaned, built, lines, seconds):
+        built = build()
     out = {shot_id: scene for (shot_id, _), scene in zip(lines, built)}
     ensure_satellites(out, int(ctx.section("visual").get("satellites", 2)))
     cache.parent.mkdir(parents=True, exist_ok=True)

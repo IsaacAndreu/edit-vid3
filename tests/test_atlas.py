@@ -409,3 +409,19 @@ def test_darien_review_fixes():
     out = clean({"view": "globe", "camera": {"lat": 4, "lon": -73, "zoom": 2},
                  "points": [{"name": "Colômbia", "lat": 4.5, "lon": -73}], "highlight": [{"name": "Colombia", "label": "COLÔMBIA"}]}, None)
     assert out["highlight"][0]["label"] == ""
+
+
+def test_a_stretch_still_quiet_gets_the_lines_key_words():
+    from pipeline.atlas import fill_quiet
+
+    globe = lambda: {"view": "globe", "camera": {"lat": 0, "lon": 0, "zoom": 1}}   # noqa: E731
+    cleaned = [globe() for _ in range(6)]
+    built = [dict(x) for x in cleaned]
+    lines = [(f"s{i}", t) for i, t in enumerate([
+        "Não é uma ponte quebrada.", "Não é um trecho em obras.", "A estrada simplesmente acaba, no meio do mapa",
+        "e recomeça do outro lado.", "A Rodovia Pan-Americana é uma das maiores do planeta.", "Ok."])]
+    assert fill_quiet(cleaned, built, lines, [3.0] * 6) == 3                     # 18 s quiet: one every ~5 s
+    notes = [c["card"]["title"] for c in cleaned if c.get("card")]
+    assert notes[0] == "Não é uma ponte quebrada" and all(len(n.split()) >= 2 for n in notes)
+    short = [globe(), globe()]
+    assert fill_quiet(short, [dict(x) for x in short], lines[:2], [2.0, 2.0]) == 0   # 4 s: not quiet enough
