@@ -580,12 +580,23 @@ def _video_youtube(work: Path) -> dict[str, Any] | None:
     """This video's requests to YouTube (work/<slug>/youtube_downloads.jsonl): how many, how many failed and why,
     the GB the proxy carried and the most frequent error words, for the video page."""
 
+    import time
+
     from . import ytstats
 
-    rows = ytstats.read(work / "youtube_downloads.jsonl")
-    if not rows:
+    everything = ytstats.read(work / "youtube_downloads.jsonl")
+    if not everything:
         return None
+    # the last two days, not the video's whole history: a video retried over a week carries thousands of requests
+    # of proxies and bugs long gone (gym6.0: 11,064 requests at 4 %, of which 9,185 to a dead proxy)
+    hours = 48
+    rows = [r for r in everything if float(r.get("ts") or 0) >= time.time() - hours * 3600] or everything
     summary = ytstats.summary(rows)
+    summary["hours"] = hours if len(rows) < len(everything) else None
+    if len(rows) < len(everything):
+        whole = ytstats.summary(everything)
+        summary["allTime"] = {"requests": whole["requests"], "ok": whole["ok"], "proxy_gb": whole.get("proxy_gb", 0),
+                              "files_ok": whole["files_ok"], "files": whole["files"]}
     details: dict[str, int] = {}
     for row in rows:
         if not row.get("ok") and row.get("detail"):

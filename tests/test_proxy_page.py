@@ -33,3 +33,20 @@ def test_proxy_report_sums_gb_success_and_cost_per_finished_video(tmp_path):
     assert [list(d) for d in p["details"]] == [["Sign in to confirm you’re not a bot", 1]] and p["sessions"] == 2
     assert len(r["perDay"]) == 2 and sum(d["gb"] for d in r["perDay"]) == 3.0
     assert web.proxy_report(tmp_path / "nothing", 7)["proxies"] == []
+
+
+def test_the_video_page_shows_the_last_two_days_and_keeps_the_whole_history_as_a_footnote(tmp_path):
+    now = time.time()
+    work = tmp_path / "work" / "v"
+    work.mkdir(parents=True)
+    rows = [{"ts": now - 5 * 86400, "action": "metadata", "ok": False, "error": "other", "proxy": "metadatos",
+             "detail": "El proxy gw.old.example no responde"}] * 50 \
+        + [{"ts": now - 3600, "action": "metadata", "ok": True, "proxy": "resi", "session": "a", "proxy_bytes": 3_000_000},
+           {"ts": now - 1800, "action": "archivo hd", "ok": True, "proxy": "resi", "proxy_bytes": 0, "bytes": 2_000_000}]
+    (work / "youtube_downloads.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    y = web._video_youtube(work)
+    assert y["hours"] == 48 and y["requests"] == 1 and y["ok"] == 1 and y["files_ok"] == 1 and y["details"] == []
+    assert y["allTime"] == {"requests": 51, "ok": 1, "proxy_gb": 0.003, "files_ok": 1, "files": 1}
+    (work / "youtube_downloads.jsonl").write_text("\n".join(json.dumps(r) for r in rows[-2:]))
+    y = web._video_youtube(work)
+    assert y["hours"] is None and "allTime" not in y                    # everything is recent: no footnote

@@ -1022,13 +1022,14 @@ async function videoPage(slug) {
       <details class="full"><summary>El error completo</summary><pre>${esc(rawError)}</pre></details></div>`;
   const y = v.youtube;
   const pct = y && y.requests ? Math.round(100 * y.ok / y.requests) : 0;
-  const ytView = !y ? "" : `<div class="card"><div class="row" style="justify-content:space-between"><b>YouTube y proxy en este vídeo</b><span class="small muted">${y.proxy && y.proxy.length ? "por " + esc(y.proxy.join(", ")) : "sin proxy"}</span></div>
+  const ytView = !y ? "" : `<div class="card"><div class="row" style="justify-content:space-between"><b>YouTube y proxy en este vídeo${y.hours ? ` <span class="muted" style="font-weight:500">· últimas ${y.hours} h</span>` : ""}</b><span class="small muted">${y.proxy && y.proxy.length ? "por " + esc(y.proxy.join(", ")) : "sin proxy"}</span></div>
     <div class="facts">
       <div><b style="color:${pct >= 85 ? "var(--ok)" : pct >= 60 ? "var(--accent)" : "var(--bad)"}">${pct} %</b><span>peticiones bien (${y.ok} de ${y.requests})</span></div>
       <div><b>${y.files_ok}/${y.files}</b><span>clips descargados</span></div>
       <div><b>${(y.proxy_gb || 0).toFixed(2)} GB</b><span>por el proxy${y.sessions ? ` · ${y.sessions} sesiones` : ""}</span></div>
       <div><b>${(y.errors || {}).bot || 0}</b><span>«no eres un bot»</span></div></div>
-    ${(y.details || []).length ? `<div class="small muted" style="margin-top:10px">Errores más frecuentes:</div><ul class="small" style="margin:4px 0 0;padding-left:18px">${y.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul>` : ""}</div>`;
+    ${(y.details || []).length ? `<div class="small muted" style="margin-top:10px">Errores más frecuentes:</div><ul class="small" style="margin:4px 0 0;padding-left:18px">${y.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul>` : ""}
+    ${y.allTime ? `<div class="small muted" style="margin-top:10px">Desde el principio: ${y.allTime.requests} peticiones (${y.allTime.requests ? Math.round(100 * y.allTime.ok / y.allTime.requests) : 0} % bien) · ${y.allTime.files_ok}/${y.allTime.files} clips · ${(y.allTime.proxy_gb || 0).toFixed(2)} GB. Incluye intentos de otros días, con proxies y fallos que ya no están.</div>` : ""}</div>`;
   const titles = v.youtubeTxt ? `<h2>Para YouTube</h2><div class="card"><pre id="yt">${esc(v.youtubeTxt)}</pre>
       <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">Copiar</button></div>` : "";
   const scenesPreview = v.scenesPreview ? `<h2>Vista previa de las escenas</h2><div class="card"><a href="${base + v.scenesPreview}" target="_blank">
