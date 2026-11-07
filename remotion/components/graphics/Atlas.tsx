@@ -165,6 +165,21 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
           return <path key={i} d={path(c as never) ?? ''} fill={tint} fillOpacity={0.34 - 0.18 * clamp((R - CLOSE) / 600)}
                        strokeOpacity={0.6} stroke={tint} strokeWidth={R > CLOSE ? 3 : 1.4} />;
         })}
+        {(() => {
+          // the coast of a country N km inland («a line 150 km from the sea»): the coastline stroked 2·N km wide, kept
+          // inside the country (land borders are not coast: the land outline has none), growing in from the sea
+          const band = g.band;
+          const shape = band ? COUNTRIES.find((c) => c.properties.name === band.country) : undefined;
+          if (!band || !shape || since(band.at) < 0) return null;
+          const k = ease(clamp(since(band.at) / drawFrames(band, 1.6, 3)));
+          return (
+            <g>
+              <defs><clipPath id="bandclip"><path d={path(shape as never) ?? ''} /></clipPath></defs>
+              <path d={path(fine ? LAND_FC : LAND_FC_110) ?? ''} fill="none" stroke={red} strokeOpacity={0.5}
+                    strokeWidth={Math.max(2, (2 * band.km * R * k) / 6371)} strokeLinejoin="round" clipPath="url(#bandclip)" />
+            </g>
+          );
+        })()}
         {R > CLOSE ? (
           <g opacity={clamp((R - CLOSE) / 300)}>
             <path d={path({ type: 'MultiLineString', coordinates: BORDERS.filter(near).map((x) => x.line.coordinates) } as never) ?? ''}
@@ -543,7 +558,7 @@ const Card: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accen
     const answer = parseInt(c.source, 10);
     body = (
       <>
-        <div style={{ ...small, color: accent }}>¿Tú qué harías?</div>
+        <div style={{ ...small, color: accent }}>{c.kicker ?? '¿Tú qué harías?'}</div>
         <div style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1.25, marginTop: 8 }}>{c.title}</div>
         {c.lines.slice(0, 2).map((option, i) => {
           const lit = answer === i + 1 && local > fps * 1.2;

@@ -359,3 +359,34 @@ def test_a_trip_keeps_the_road_travelled_so_far():
     assert trip.add(scene(40, 120))["routes"] == []                   # the other side of the world: not drawn there
     other = trip.add(scene(48, 2, ((48.8, 2.3), (51.5, -0.1))))       # an unrelated route: on its own
     assert len(other["routes"]) == 1
+
+
+def test_atlas1pt_review_fixes():
+    from pipeline.atlas import auto_places, clean, split_far
+
+    # Salvador (Bahia) is a city, not El Salvador's flag
+    scene = auto_places(clean({"view": "globe", "camera": {"lat": -13, "lon": -40, "zoom": 2}}, None),
+                        "primeiro Salvador, depois o Rio de Janeiro", set())
+    assert not scene.get("countries") and not scene.get("highlight")
+    # a region of a country is not the whole country tinted; a real country label stays
+    out = clean({"view": "globe", "camera": {"lat": -5, "lon": -60, "zoom": 2},
+                 "highlight": [{"name": "Brazil", "label": "REGIÃO NORTE"}, {"name": "United States of America", "label": "EUA"}]}, None)
+    assert [h["name"] for h in out["highlight"]] == ["United States of America"]
+    # bars of 0 and a counter of 0 are the model's blanks
+    out = clean({"view": "chart", "camera": {"lat": 0, "lon": 0, "zoom": 1}, "counter": {"value": 0, "label": "X"},
+                 "chart": {"kind": "bars", "title": "CRESCIMENTO", "bars": [{"label": "Centro-Oeste", "value": 0}, {"label": "Média", "value": 0}]}}, None)
+    assert out["view"] == "globe" and out["chart"] is None and out["counter"] is None
+    # a ring named like the dot it circles: one name
+    out = clean({"view": "globe", "camera": {"lat": -15, "lon": -47, "zoom": 5},
+                 "points": [{"name": "Cerrado", "lat": -15, "lon": -47}], "rings": [{"lat": -15, "lon": -47, "km": 500, "label": "CERRADO"}]}, None)
+    assert out["rings"][0]["label"] == ""
+    # the coast band, with its label as a tag on the coast
+    out = clean({"view": "globe", "camera": {"lat": -15, "lon": -45, "zoom": 2},
+                 "band": {"country": "Brazil", "km": 150, "label": "150 km", "lat": -23.9, "lon": -46.3, "at": "linha"}}, None)
+    assert out["band"] == {"country": "Brazil", "km": 150.0, "at": "linha"} and out["tags"][0]["text"] == "150 km"
+    assert clean({"view": "globe", "camera": {"lat": 0, "lon": 0, "zoom": 1}, "band": {"country": "Atlantis", "km": 1}}, None)["band"] is None
+    # one moment from the Tietê to the Mississippi is cut where it jumps across the world
+    tiete = {"view": "globe", "points": [{"name": "TIETÊ", "lat": -23.5, "lon": -45.9}]}
+    santos = {"view": "globe", "points": [{"name": "SANTOS", "lat": -23.9, "lon": -46.3}]}
+    miss = {"view": "globe", "points": [{"name": "MISSISSIPPI", "lat": 32, "lon": -91}]}
+    assert split_far([tiete, santos, {"view": "globe"}, miss], [1]) == [1, 4]

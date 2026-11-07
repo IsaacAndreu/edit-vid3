@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 13
+VERSION = 14
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -50,7 +50,11 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
   (máx. 8; "many" para «cada día cientos de aviones cruzan el Ártico»)
 - "rings": [{{"lat", "lon", "km": radio en km, "label": "USHUAIA", "at": "palabra"}}] círculos de alcance (máx. 6)
 - "zone": {{"lat": -60, "label": "Zona Polar Sur", "at": "palabra"}} el paralelo que rodea un polo y lo que encierra, o null
-- "highlight": [{{"name": "Russia", "label": "RUSIA"}}] países tintados ("name" en inglés como en Natural Earth)
+- "band": {{"country": "Brazil" (inglés, Natural Earth), "km": 150, "label": "150 KM", "lat": -23.9, "lon": -46.3 (un punto
+  de esa costa para la etiqueta), "at": "palabra"}} la franja de la costa de un país hasta N km tierra adentro, pintada
+  («dibujemos una línea a 150 km del mar», «la mitad vive a menos de 100 km de la costa»), o null
+- "highlight": [{{"name": "Russia", "label": "RUSIA"}}] países ENTEROS tintados ("name" en inglés como en Natural Earth);
+  nunca una región de un país (la región Norte de Brasil, el Sudeste): para eso puntos, un círculo o una etiqueta
 - "card": {{"kind": {cards}, "big": "1954" (date) o "", "title": "Scandinavian Airlines" , "lines": ["Copenhague → Los
   Ángeles"] (máx. 4 líneas cortas; en "checks" cada línea es una casilla; en "quote" la cita LITERAL del guion),
   "source": "Tratado Antártico, art. VII" (quote) o "", "side": "left"|"right", "at": "palabra"}} o null
@@ -194,6 +198,24 @@ def _at(value: Any) -> str:
     return _text(value, 1)
 
 
+ASK_KICKER = {"es": "¿Tú qué harías?", "pt": "E você, o que faria?", "en": "What would you do?", "fr": "Et vous, que feriez-vous ?",
+              "it": "E tu cosa faresti?", "de": "Was würdest du tun?"}
+
+REGION_WORD = re.compile(r"\b(regi[ãaoó]o?n?|norte|sul|sur|north|south|nordeste|noreste|northeast|sudeste|southeast|"
+                         r"centro|center|central|oeste|west|leste|este|east|interior|litoral|costa|coast|amaz[ôo]nia|"
+                         r"cerrado|estado|state|prov[ií]ncia|province)\b", re.I)
+
+
+def _region_of(country: str, label: str) -> bool:
+    """«Brazil» tinted with the label «REGIÃO NORTE» (atlas1pt 0:50): the whole country painted for a part of it. A
+    label that is not one of the country's own names and speaks of a region → not a country highlight."""
+
+    if not label.strip():
+        return False
+    names = {n.lower() for n in (places()["countries"].get(country) or {}).get("names", [])} | {country.lower()}
+    return label.strip().lower() not in names and bool(REGION_WORD.search(label))
+
+
 def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
     """Only the vocabulary, numbers in range; a scene without a camera keeps the previous one."""
 
@@ -239,12 +261,25 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     out["rings"] = [{"lat": _point(r)[0], "lon": _point(r)[1], "km": _float(r.get("km"), 50, 6000, 1000),
                      "label": _text(r.get("label"), 3, True, 24), "at": _at(r.get("at"))}
                     for r in (scene.get("rings") or [])[:6] if isinstance(r, dict) and _point(r)]
+    band = scene.get("band") if isinstance(scene.get("band"), dict) else None
+    out["band"] = {"country": str(band.get("country")).strip(), "km": _float(band.get("km"), 10, 1000, 100),
+                   "at": _at(band.get("at"))} \
+        if band and str(band.get("country") or "").strip() in places()["countries"] else None
+    if out["band"] and str(band.get("label") or "").strip() and _point(band) and len(out["tags"]) < 3:
+        out["tags"].append({"text": _text(band.get("label"), 4, False, 26), "lat": _point(band)[0], "lon": _point(band)[1],
+                            "at": out["band"]["at"]})
+    named_here = {p["name"] for p in out["points"]}
+    for ring in out["rings"]:               # «CERRADO» twice on the same spot (atlas1pt 5:35): the dot keeps the name
+        if ring["label"] in named_here:
+            ring["label"] = ""
+    out["tags"] = [t for t in out["tags"] if t["text"].upper() not in named_here]
     zone = scene.get("zone") if isinstance(scene.get("zone"), dict) else None
     out["zone"] = {"lat": _float(zone.get("lat"), -89, 89, -60), "label": _text(zone.get("label"), 4, False, 32),
                    "at": _at(zone.get("at"))} if zone and zone.get("lat") is not None else None
     out["highlight"] = [{"name": str(h.get("name")).strip(), "label": _text(h.get("label"), 3, True, 24),
                          "group": int(_float(h.get("group"), 0, 3, 0))}
-                        for h in (scene.get("highlight") or [])[:12] if isinstance(h, dict) and str(h.get("name") or "").strip()]
+                        for h in (scene.get("highlight") or [])[:12] if isinstance(h, dict) and str(h.get("name") or "").strip()
+                        and not _region_of(str(h.get("name")), str(h.get("label") or ""))]
     night = scene.get("night") if isinstance(scene.get("night"), dict) else None
     out["night"] = _night(night) if night and not night.get("off") else None
     out["nightOff"] = bool(night and night.get("off"))
@@ -271,6 +306,11 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     out["headline"] = {"text": _text(headline.get("text"), 12, False, 80), "at": _at(headline.get("at"))} \
         if headline and str(headline.get("text") or "").strip() else None
     out["chart"] = _chart(scene.get("chart")) if out["view"] == "chart" else None
+    if out["chart"] and out["chart"]["kind"] == "bars":
+        # a bar of 0 is the model's blank for a figure the script never gives (atlas1pt 9:45: «Centro-Oeste 0 · média 0»)
+        out["chart"]["bars"] = [b for b in out["chart"]["bars"] if b["value"]]
+        if not out["chart"]["bars"]:
+            out["chart"], out["view"] = None, "globe"
     if out["chart"] and out["chart"]["kind"] == "bars" and len(out["chart"]["bars"]) < 2:
         # one bar compares nothing: its figure counts up on the globe instead
         bar = out["chart"]["bars"][0]
@@ -283,7 +323,7 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     counter = scene.get("counter") if isinstance(scene.get("counter"), dict) else None
     out["counter"] = {"value": _float(counter.get("value"), -1e12, 1e12, 0), "unit": _text(counter.get("unit"), 2, False, 14),
                       "label": _text(counter.get("label"), 6, True, 40), "at": _at(counter.get("at"))} \
-        if counter and _num(counter.get("value")) is not None else None
+        if counter and _num(counter.get("value")) else None          # 0 counts nothing (atlas1pt 6:50: «0»)
     if out["night"] is not None:
         out["night"]["lights"] = bool((night or {}).get("lights", True))
     sat = scene.get("sat") if isinstance(scene.get("sat"), dict) else None
@@ -553,7 +593,7 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
         kept = [{**x, "at": "", "kept": True} for x in previous.get(kind) or [] if _key(kind, x) not in seen
                 and not (kind == "points" and any(_angle((x["lat"], x["lon"]), (p["lat"], p["lon"])) < SAME_SPOT for p in new))]
         out[kind] = (kept + new)[-limit:]
-    for name in ("zone", "meridians"):
+    for name in ("zone", "meridians", "band"):
         if not scene.get(name) and previous.get(name):
             out[name] = {**previous[name], "at": "", "kept": True}
     if not scene.get("highlight") and previous.get("highlight"):
@@ -694,7 +734,7 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
         g["camera"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 3.2}
 
 
-NEW_FIELDS = ("card", "stamp", "headline", "counter", "chart", "icon", "sat", "flat", "size")
+NEW_FIELDS = ("card", "stamp", "headline", "counter", "chart", "icon", "sat", "flat", "size", "band")
 
 
 def stale(scene: dict[str, Any], previous: dict[str, Any] | None, asked: dict[str, Any] | None = None) -> bool:
@@ -766,6 +806,11 @@ CITY_STOP = {"Natal", "Victoria", "Esperanza", "Concepción", "Rosario", "Merced
              "Bello", "Victória", "Vitória", "Esperança", "Luz", "Mar", "Sol", "Alto", "Real", "Monte", "Santos"}
 
 
+# country names that are mostly something else in a script: Salvador (Bahia) drew El Salvador's flag (atlas1pt 2:35),
+# Jordan Chiles drew Jordan; Georgia the US state, Granada the Spanish city, Chad a first name
+COUNTRY_STOP = {"Salvador", "Jordan", "Chad", "Georgia", "Geórgia", "Granada", "Niger", "Jersey"}
+
+
 def places() -> dict[str, Any]:
     """assets/geo/places.json (scripts/build_places.py): countries with their names in six languages, big cities."""
 
@@ -778,7 +823,7 @@ def places() -> dict[str, Any]:
         country_of = {}
         for key_name, info in data["countries"].items():
             for name in info["names"]:
-                if len(name) >= 4:
+                if len(name) >= 4 and name not in COUNTRY_STOP:
                     country_of.setdefault(name, key_name)
         city_of = {c[0]: c for c in data["cities"] if len(c[0]) >= 4 and c[0] not in CITY_STOP and c[0] not in country_of}
 
@@ -871,6 +916,36 @@ def moment_camera(members: list[dict[str, Any]]) -> dict[str, Any]:
             union[kind] += [x for x in m.get(kind) or [] if not x.get("kept")]
         union["zone"] = union["zone"] or m.get("zone")
     return fit_camera(union)["camera"]
+
+
+MOMENT_FAR = 25.0      # degrees: a line drawing only this far from what its moment drew so far starts a new one
+
+
+def _spots(scene: dict[str, Any]) -> list[tuple[float, float]]:
+    out = [(p["lat"], p["lon"]) for p in scene.get("points") or []]
+    out += [tuple(x) for r in scene.get("routes") or [] for x in (r["from"], r["to"])]
+    out += [(r["lat"], r["lon"]) for r in scene.get("rings") or []]
+    out += [(t["lat"], t["lon"]) for t in scene.get("tags") or [] if t.get("lat") is not None]
+    return out
+
+
+def split_far(cleaned: list[dict[str, Any]], starts: list[int]) -> list[int]:
+    """A moment from the model that jumps across the world (atlas1pt 4:00: the Tietê and, two lines later, the
+    Mississippi in one moment) had one camera for both: the whole globe, the Tietê a dot. It is cut where a line draws
+    only things more than MOMENT_FAR from everything its moment drew before."""
+
+    out = set(starts)
+    bounds = [*sorted(starts), len(cleaned) + 1]
+    for a, b in zip(bounds, bounds[1:]):
+        drawn: list[tuple[float, float]] = []
+        for n in range(a, b):
+            scene = cleaned[n - 1]
+            spots = _spots(scene) if scene.get("view") == "globe" else []
+            if drawn and spots and all(min(_angle(s, d) for d in drawn) > MOMENT_FAR for s in spots):
+                out.add(n)
+                drawn = []
+            drawn += spots
+    return sorted(out)
 
 
 def heuristic_starts(cleaned: list[dict[str, Any]]) -> list[int]:
@@ -968,6 +1043,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     except Exception as error:
         print(f"   Atlas: momentos por sitio (la IA no los dio: {str(error)[:80]})")
         starts = heuristic_starts(cleaned)
+    starts = split_far(cleaned, starts)
     bounds = [*starts, len(lines) + 1]
     for m, (a, b) in enumerate(zip(bounds, bounds[1:])):
         members = [cleaned[i - 1] for i in range(a, b) if cleaned[i - 1]["view"] == "globe"]
@@ -1082,7 +1158,7 @@ ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 MIN_VIEW = 4.5        # seconds: a chart, a drawing, the satellite… never on screen for less (it takes the next line too)
 PUSH = 0.3            # zoom the camera gains over a globe scene (wide → closer → the next moment pulls out)
 DRIFT_PER_S = 0.25    # degrees of longitude a second the globe turns on its own (Atlas.tsx cameraAt, from the start)
-SINGLE = ("card", "stamp", "headline", "counter", "zone", "meridians", "night", "lens")
+SINGLE = ("card", "stamp", "headline", "counter", "zone", "meridians", "night", "lens", "band")
 VIEWS_ASIDE = ("chart", "icon")      # the globe moves aside for these instead of a cut
 
 
@@ -1277,6 +1353,7 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
         x["scene"] = found.get(x["id"]) or clean({}, None)
     spoken = [(round(w.start * fps), w.text.strip()) for w in (words.words if words is not None else []) if w.text.strip()]
     brand = str(ctx.section("brand").get("name") or ctx.channel or "").strip()
+    lang = str(ctx.section("align").get("language", "es"))[:2]
     photos_left = int(ctx.section("visual").get("place_photos", 2))
     out = []
     prev: dict[str, Any] | None = None             # where the camera ended in the last globe scene
@@ -1344,6 +1421,8 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
         g["chapters"] = chapters
         g["chapter"] = current
         g["brand"] = brand
+        if g.get("card") and g["card"].get("kind") == "choice":     # the kicker in the video's language (atlas1pt: Spanish)
+            g["card"]["kicker"] = ASK_KICKER.get(lang, ASK_KICKER["en"])
         g["seed"] = n
         out.append({"id": f"atlas-{ident}", "kind": "graphic", "from": a, "durationInFrames": span, "graphic": g})
         if g["view"] == "globe":

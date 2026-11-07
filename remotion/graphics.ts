@@ -414,11 +414,12 @@ export interface AtlasGraphic {
   tags?: { text: string; lat: number | null; lon: number | null; at: number }[];   // the line's figure on a paper tag
   rings?: { lat: number; lon: number; km: number; label: string; at: number; until?: number }[];
   zone?: { lat: number; label: string; at: number } | null;
+  band?: { country: string; km: number; at: number; until?: number } | null;   // a country's coast, N km inland
   highlight?: { name: string; label: string; group?: number }[];
   night?: { from: [number, number]; to: [number, number]; clock: [string, string]; at: number; lights?: boolean } | null;  // subsolar points
   meridians?: { step: number; labels: boolean; at: number } | null;
   card?: { kind: 'date' | 'quote' | 'list' | 'checks' | 'note' | 'clocks' | 'choice' | 'photo'; big: string; title: string; lines: string[]; source: string;
-           side: 'left' | 'right'; at: number; image?: { src: string } } | null;   // photo: a place's picture (Wikimedia)
+           side: 'left' | 'right'; at: number; image?: { src: string }; kicker?: string } | null;   // photo: a place's picture (Wikimedia)
   stamp?: { text: string; at: number } | null;
   headline?: { text: string; at: number } | null;
   chart?: { kind: 'bars' | 'profile' | 'thermo'; title: string; unit: string;
