@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 16
+VERSION = 17
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -299,7 +299,7 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     card = scene.get("card") if isinstance(scene.get("card"), dict) else None
     if card and str(card.get("kind")) in CARDS and (card.get("title") or card.get("lines") or card.get("big")):
         long = card["kind"] == "choice"         # «¿Tú qué harías?»: the whole question
-        out["card"] = {"kind": card["kind"], "big": _text(card.get("big"), 2, False, 14),
+        out["card"] = {"kind": card["kind"], "big": _text(card.get("big"), 3, False, 16),
                        "title": _text(card.get("title"), 24 if long else 8, False, 140 if long else 60),
                        "lines": [_text(x, 14, False, 90) for x in (card.get("lines") or [])[:4] if str(x or "").strip()],
                        "source": _text(card.get("source"), 8, False, 60), "side": "left" if card.get("side") == "left" else "right",
@@ -611,6 +611,7 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
 TRIP_JOIN = 3.0       # degrees: a route that starts this close to where another ended continues the same trip
 TRIP_NEAR = 60.0      # degrees from the camera: the trip so far stays drawn while the globe looks at its part of the world
 TRIP_LEGS = 10        # the last legs kept
+TRIP_LINES = 12       # lines without a new leg after which the trip is over and stops being drawn
 
 
 class Journey:
@@ -621,10 +622,11 @@ class Journey:
     def __init__(self) -> None:
         self.ends: list[dict[str, Any]] = []         # every route drawn so far (a trip can start from any of them)
         self.legs: list[dict[str, Any]] = []
+        self.idle = 0                                  # lines since the last leg
 
     @staticmethod
     def _plain(route: dict[str, Any]) -> dict[str, Any]:
-        return {"from": list(route["from"]), "to": list(route["to"]), "label": "", "dashed": bool(route.get("dashed")),
+        return {"from": list(route["from"]), "to": list(route["to"]), "label": "", "dashed": False,
                 "style": "main", "at": "", "kept": True, "trail": True}
 
     def add(self, scene: dict[str, Any]) -> dict[str, Any]:
@@ -634,12 +636,22 @@ class Journey:
             if route.get("kept") or route.get("style") == "many":
                 continue
             joins = lambda r: _angle(tuple(route["from"]), tuple(r["to"])) < TRIP_JOIN   # noqa: E731
+            before = len(self.legs)
             if self.legs and joins(self.legs[-1]):
                 self.legs.append(route)
             elif (earlier := next((r for r in reversed(self.ends) if joins(r)), None)) is not None:
                 self.legs = [earlier, route]           # the first leg is known once the second starts at its end
+            if len(self.legs) > before or len(self.legs) == 2 and self.legs[-1] is route:
+                # one continuous road: the leg starts exactly where the last ended, drawn solid (atlas Darién: dashed
+                # pieces with gaps between them)
+                route["from"] = list(self.legs[-2]["to"])
+                route["dashed"] = False
+                self.idle = -1
             self.ends.append(route)
         self.legs = self.legs[-TRIP_LEGS:]
+        self.idle += 1
+        if self.idle > TRIP_LINES:                     # the story moved on: the old road is not left lying about
+            self.legs = []
         if len(self.legs) < 2:
             return scene
         cam = scene["camera"]
@@ -778,7 +790,7 @@ def drift(anchor: dict[str, Any], run: int) -> dict[str, Any]:
     # degrees on the globe, east: near a pole a degree of longitude is much shorter (McMurdo, 78° S)
     shift = step * DRIFT[(run - 1) % len(DRIFT)] / max(0.25, math.cos(math.radians(anchor["lat"])))
     return {"lat": anchor["lat"], "lon": round((anchor["lon"] + shift + 180) % 360 - 180, 4),
-            "zoom": round(anchor["zoom"] - (0.2 if run % 2 else 0.0), 2)}
+            "zoom": round(max(min(anchor["zoom"], 1.0), anchor["zoom"] - (0.2 if run % 2 else 0.0)), 2)}
 
 
 MOMENT_SYSTEM = """
@@ -1039,6 +1051,10 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     except (OSError, ValueError, KeyError):
         pass
     system = SYSTEM.format(cards="|".join(CARDS), icons="|".join(ICONS))
+    # the Darién video in Portuguese came out with Spanish cards («¿Abrirías la carretera?»): the prompt is Spanish
+    # and so were the script's headings
+    system += (f"\nIDIOMA: TODOS los textos que escribas (nombres, etiquetas, tarjetas, opciones, sellos) en {ctx.language}, "
+               "aunque el guion tenga algún título en otro idioma.")
     guide = str(ctx.section("visual").get("guide") or "").strip()
     if guide:
         system += "\n" + guide
@@ -1104,8 +1120,12 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     for m, (a, b) in enumerate(zip(bounds, bounds[1:])):
         members = [cleaned[i - 1] for i in range(a, b) if cleaned[i - 1]["view"] == "globe"]
         camera = moment_camera(members) if members else None
+        # the dark page of the hook stays for the whole moment: it went light in the middle of the road being traced
+        # (atlas Darién 0:10, «Pelo Acre… Sobe pelo Equador»)
+        dark = bool(cleaned[a - 1].get("dark"))
         for i in range(a, b):
             cleaned[i - 1]["moment"] = m
+            cleaned[i - 1]["dark"] = dark
             if camera and cleaned[i - 1]["view"] == "globe":
                 cleaned[i - 1]["camera"] = dict(camera)
 

@@ -425,3 +425,21 @@ def test_a_stretch_still_quiet_gets_the_lines_key_words():
     assert notes[0] == "Não é uma ponte quebrada" and all(len(n.split()) >= 2 for n in notes)
     short = [globe(), globe()]
     assert fill_quiet(short, [dict(x) for x in short], lines[:2], [2.0, 2.0]) == 0   # 4 s: not quiet enough
+
+
+def test_a_trip_is_one_solid_road_and_is_not_left_lying_about():
+    from pipeline.atlas import TRIP_LINES, Journey, drift
+
+    def scene(lat, lon, *routes):
+        return {"view": "globe", "camera": {"lat": lat, "lon": lon, "zoom": 2.0},
+                "routes": [{"from": list(a), "to": list(b), "label": "", "dashed": True, "style": "main", "at": ""} for a, b in routes]}
+
+    trip = Journey()
+    trip.add(scene(-10, -60, ((-10, -68), (-12, -77))))
+    second = trip.add(scene(-5, -78, ((-11, -76.5), (-1, -78))))          # starts 1° off the first one's end
+    assert second["routes"][1]["from"] == [-12, -77] and not second["routes"][1]["dashed"]
+    assert not second["routes"][0]["dashed"]
+    for _ in range(TRIP_LINES):
+        assert len(trip.add(scene(-5, -78))["routes"]) == 2
+    assert trip.add(scene(-5, -78))["routes"] == []                       # the story moved on
+    assert drift({"lat": 0, "lon": 0, "zoom": 1.0}, 1)["zoom"] == 1.0     # the whole globe never shrinks
