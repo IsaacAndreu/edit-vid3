@@ -235,3 +235,21 @@ def test_an_ffmpeg_exit_code_is_explained_with_ffmpegs_own_words(tmp_path, monke
     with pytest.raises(RuntimeError, match="code 8 — ffmpeg dice: .*403 Forbidden"):
         yt._fetch_range("dQw4w9WgXcQ", 10, 15, "bv*[height<=720][protocol^=m3u8]", "hd", False, False, info, exact=True)
     yt.close()
+
+
+def test_another_providers_session_format_comes_from_the_config(tmp_path, monkeypatch):
+    from pipeline.sourcing.proxy_sessions import with_sticky_session
+    from pipeline.sourcing.youtube import YouTubeSource
+
+    other = "__sessid-{session_id}__sesstime-30"
+    url = with_sticky_session("http://user:p%40ss@gw.example.com:823", "abc123", suffix=other)
+    assert url == "http://user__sessid-abc123__sesstime-30:p%40ss@gw.example.com:823"
+    again = with_sticky_session(url, "zz9", suffix=other)                        # replaced, never stacked
+    assert again == "http://user__sessid-zz9__sesstime-30:p%40ss@gw.example.com:823"
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never",
+                                                                 "proxy": "http://user:pass@gw.example.com:823",
+                                                                 "proxy_session_suffix": other})
+    yt._local.video_id = "dQw4w9WgXcQ"
+    assert f"user__sessid-{yt.sessions.session_id('dQw4w9WgXcQ')}__sesstime-30:pass@" in yt._ydl().params["proxy"]
+    yt.close()
