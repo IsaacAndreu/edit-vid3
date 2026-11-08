@@ -1111,7 +1111,8 @@ async function videoPage(slug) {
     v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : "",
     !v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : "",
     v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom(this)" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
-    v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>' : "",
+    v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>'
+      : v.status !== "haciendo" ? '<button onclick="if(confirm(\'¿Quitar este vídeo de la lista? No se borra nada: va a materiales/_hechos.\'))act(\'archive\')" title="Sin vídeo hecho: sale de la lista y de la cola (materiales/_hechos)">Quitar de la lista</button>' : "",
     `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
   ].filter(Boolean);
   $("#app").innerHTML = `
@@ -1253,7 +1254,7 @@ async function videoPage(slug) {
     try {
       const r = await post(`/api/video/${encodeURIComponent(slug)}/${what}`);
       if (r.message) alert(r.message);
-      what === "archive" ? (location.hash = "#/") : setTimeout(route, 2500);
+      what === "archive" && r.ok !== false ? (location.hash = "#/") : setTimeout(route, 2500);
     } catch (e) { alert(e.message); }
   };
   const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;

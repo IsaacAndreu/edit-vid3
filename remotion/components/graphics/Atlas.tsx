@@ -737,7 +737,7 @@ const Chart: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
     const grow = ease(clamp((frame - fps * 0.4) / (fps * 1.4)));
     const terrain = `M${x0},${y0} ` + c.points.map((v, i) => `L${X(i)},${Y(v * grow)}`).join(' ') + ` L${x1},${y0} Z`;
     const ticks = [0, top / 4, top / 2, (3 * top) / 4].map((v) => Math.round(v));
-    const plane = clamp((frame - fps * 0.8) / (fps * 4));
+    const plane = ease(clamp((frame - fps * 0.8) / (fps * 6)));
     const cruise = c.cruise ?? null;
     return (
       <AbsoluteFill>
@@ -761,13 +761,37 @@ const Chart: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
               <path d={terrain} fill="none" stroke={accent} strokeWidth={5} clipPath="url(#above)" />
             </g>
           ) : null}
-          {cruise !== null ? (
-            <g>
-              <line x1={x0} y1={Y(cruise)} x2={x1} y2={Y(cruise)} stroke={ink} strokeWidth={1} strokeDasharray="4 8" opacity={0.5} />
-              <text x={x1} y={Y(cruise) - 12} textAnchor="end" fontFamily={MONO} fontSize={16} fill={p.soft}>{`${fmt(cruise)} ${c.unit}`}</text>
-              <g transform={`translate(${x0 + (x1 - x0) * plane}, ${Y(cruise)}) scale(1.6)`}><path d={ICON_PATHS.plane} fill={ink} transform="translate(-12,-12) rotate(90 12 12)" /></g>
-            </g>
-          ) : null}
+          {cruise !== null ? (() => {
+            // the plane's own path (atlas2pt 5:50: it sat in the top corner, far from the story): at cruise, then down
+            // to the safe line — never into the terrain — and on along it, a red trail behind it
+            const pts = c.points!;
+            const ground = (t: number) => {
+              const f = t * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(f));
+              return lerp(pts[i], pts[i + 1], f - i);
+            };
+            const safe = c.line?.value ?? null;
+            const alt = (t: number) => {
+              if (safe === null || safe >= cruise) return cruise;
+              const floor = Math.max(safe, ground(t) + top * 0.04);
+              return t < 0.2 ? cruise : t < 0.5 ? lerp(cruise, Math.max(safe, ground(0.5) + top * 0.04), ease((t - 0.2) / 0.3)) : floor;
+            };
+            const end = 0.9 * plane;
+            const steps = 60;
+            const trail = Array.from({ length: steps + 1 }, (_, k) => (end * k) / steps)
+              .map((t, k) => `${k ? 'L' : 'M'}${x0 + (x1 - x0) * t},${Y(alt(t))}`).join(' ');
+            const dt = 0.01;
+            const angle = (Math.atan2(Y(alt(end + dt)) - Y(alt(end)), (x1 - x0) * dt) * 180) / Math.PI;
+            return (
+              <g>
+                <line x1={x0} y1={Y(cruise)} x2={x1} y2={Y(cruise)} stroke={ink} strokeWidth={1} strokeDasharray="4 8" opacity={0.4} />
+                <text x={x0 + 14} y={Y(cruise) - 12} fontFamily={MONO} fontSize={16} fill={p.soft}>{`${fmt(cruise)} ${c.unit}`}</text>
+                {end > 0 ? <path d={trail} fill="none" stroke={accent} strokeWidth={3.5} strokeLinecap="round" /> : null}
+                <g transform={`translate(${x0 + (x1 - x0) * end}, ${Y(alt(end))}) rotate(${angle}) scale(1.8)`}>
+                  <path d={ICON_PATHS.plane} fill={ink} transform="translate(-12,-12) rotate(90 12 12)" />
+                </g>
+              </g>
+            );
+          })() : null}
         </svg>
       </AbsoluteFill>
     );

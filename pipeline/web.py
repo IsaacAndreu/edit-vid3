@@ -982,6 +982,8 @@ def stop(root: Path, slug: str) -> dict[str, Any]:
 def archive(root: Path, slug: str) -> dict[str, Any]:
     """Out of the queue for good: materiales/_hechos/<slug>."""
 
+    if running(_json(root / "work" / slug / "current.json")):
+        return {"ok": False, "message": "Se está haciendo ahora: pulsa «Parar» primero y luego quítalo de la lista."}
     folder = find_video(root, slug)
     target = root / "materiales" / "_hechos" / slug
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 19
+VERSION = 20
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -617,6 +617,65 @@ def off_the_ice(scene: dict[str, Any]) -> dict[str, Any]:
     if scene.get("view") == "globe" and cam["zoom"] >= REGION_ZOOM and cam["lat"] < ICE_LAT:
         return {**scene, "camera": {**cam, "zoom": ICE_ZOOM}}
     return scene
+
+
+EMPTY_CLOSE_ZOOM = 2.6
+
+
+def no_empty_close(scene: dict[str, Any]) -> dict[str, Any]:
+    """A close map with no name on it (atlas Darién 1.2, 0:40: plain land at zoom 6, only a dashed line through it)
+    says nothing: the globe wide enough to see where it is."""
+
+    cam = scene["camera"]
+    if scene.get("view") != "globe" or cam["zoom"] < REGION_ZOOM or scene.get("points") or scene.get("highlight") \
+            or scene.get("band") or any(r.get("label") for r in scene.get("rings") or []):
+        return scene
+    return {**scene, "camera": {**cam, "zoom": EMPTY_CLOSE_ZOOM}}
+
+
+TAG_NEAR = 15.0       # degrees: a tag further than this from everything drawn points at nothing
+
+
+def _anchors(scene: dict[str, Any]) -> list[tuple[float, float]]:
+    out = [(p["lat"], p["lon"]) for p in scene.get("points") or []]
+    for r in scene.get("routes") or []:
+        a, b = tuple(r["from"]), tuple(r["to"])
+        out += [a, b]
+        va, vb = _xyz(*a), _xyz(*b)
+        mid = [x + y for x, y in zip(va, vb)]
+        norm = math.sqrt(sum(m * m for m in mid))
+        if norm > 1e-6:
+            out.append((math.degrees(math.asin(mid[2] / norm)), math.degrees(math.atan2(mid[1], mid[0]))))
+    out += [(r["lat"], r["lon"]) for r in scene.get("rings") or []]
+    countries = places()["countries"]
+    out += [(countries[h["name"]]["lat"], countries[h["name"]]["lon"]) for h in scene.get("highlight") or []
+            if h.get("name") in countries]
+    return out
+
+
+def pin_tags(scene: dict[str, Any]) -> dict[str, Any]:
+    """A tag is pinned to something drawn: «ETOPS» and «SEM POUSO» (atlas2pt 2:50) pointed at the empty sea for a
+    minute. Tags far from every dot, route and ring become a note card (when the line has none) — words on paper
+    instead of an arrow to nowhere; with a card already there, they go."""
+
+    if scene.get("view") != "globe":
+        return scene
+    anchors = _anchors(scene)
+    keep, loose = [], []
+    for t in scene.get("tags") or []:
+        if t.get("kept") or t.get("lat") is None and anchors:
+            keep.append(t)
+        elif t.get("lat") is not None and anchors and min(_angle((t["lat"], t["lon"]), a) for a in anchors) <= TAG_NEAR:
+            keep.append(t)
+        else:
+            loose.append(t)
+    if not loose:
+        return scene
+    out = {**scene, "tags": keep}
+    if not scene.get("card"):
+        out["card"] = {"kind": "note", "big": "", "title": " · ".join(t["text"] for t in loose)[:60], "lines": [],
+                       "source": "", "side": "right", "at": loose[0].get("at", "")}
+    return out
 
 
 HOLD_MAX = 18.0       # seconds one framing of the globe lasts at most: then the camera reframes by itself
@@ -1218,7 +1277,8 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             done = auto_tag(carry(fit_camera(scene) if scene["view"] != "globe" else scene, before), lines[n - 1][1], before)
             done = trip.add(done)
             done = keep_tint(done, tint)
-            done = off_the_ice(done)
+            done = pin_tags(done)
+            done = no_empty_close(off_the_ice(done))
             out.append(done)
             before = done
         return out

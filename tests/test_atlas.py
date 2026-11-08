@@ -480,3 +480,28 @@ def test_no_view_held_too_long_and_no_close_map_on_the_ice():
     ice = off_the_ice({"view": "globe", "camera": {"lat": -77.8, "lon": 166.7, "zoom": 6.5}})
     assert ice["camera"]["zoom"] < REGION_ZOOM
     assert off_the_ice({"view": "globe", "camera": {"lat": -23, "lon": -46, "zoom": 6.5}})["camera"]["zoom"] == 6.5
+
+
+def test_tags_pointing_at_nothing_become_a_note():
+    from pipeline import atlas as A
+
+    cam = {"lat": -50, "lon": -60, "zoom": 2.0}
+    loose = A.pin_tags({"view": "globe", "camera": cam, "points": [], "routes": [], "rings": [], "highlight": [],
+                        "tags": [{"text": "ETOPS", "lat": -55, "lon": -70, "at": "ETOPS"},
+                                 {"text": "SEM POUSO", "lat": -57, "lon": -68, "at": ""}]})
+    assert loose["tags"] == [] and loose["card"]["kind"] == "note" and loose["card"]["title"] == "ETOPS · SEM POUSO"
+    pinned = A.pin_tags({"view": "globe", "camera": cam, "points": [{"name": "USHUAIA", "lat": -54.8, "lon": -68.3}],
+                         "routes": [], "rings": [], "highlight": [], "tags": [{"text": "40 min", "lat": -55, "lon": -70, "at": ""}]})
+    assert len(pinned["tags"]) == 1 and not pinned.get("card")
+
+
+def test_a_close_map_with_no_name_opens_to_the_globe():
+    from pipeline import atlas as A
+
+    route = {"from": [8, -77], "to": [9, -79], "label": "", "trail": True}
+    empty = A.no_empty_close({"view": "globe", "camera": {"lat": 8, "lon": -77, "zoom": 6}, "points": [], "routes": [route],
+                              "highlight": [], "rings": []})
+    assert empty["camera"]["zoom"] == A.EMPTY_CLOSE_ZOOM
+    named = A.no_empty_close({"view": "globe", "camera": {"lat": 8, "lon": -77, "zoom": 6}, "routes": [],
+                              "points": [{"name": "YAVIZA", "lat": 8.2, "lon": -77.7}], "highlight": []})
+    assert named["camera"]["zoom"] == 6
