@@ -129,6 +129,8 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
   const drawFrames = (x: { at: number; until?: number }, least: number, most = 4.5) =>
     x.until && x.until > x.at ? Math.max(fps * least, Math.min(fps * most, x.until - x.at)) : fps * least;
   const highlighted = new Set((g.highlight ?? []).map((h) => h.name));
+  // what is already written on the map (dots and their names, then tags): a tag does not land on a name
+  const labelBoxes: [number, number, number, number][] = [];
   const fine = R > 760;                      // close in: the 1:50m coast
   // on a close map, what can be on screen: within the screen's reach of the camera (plus the line's own size)
   const near = (x: { mid: [number, number]; reach: number }) =>
@@ -332,7 +334,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
       {(() => {
         // every name where it does not cover another: right, left, above or below its dot, else only the dot
         // (atlas1pt: «SERRA DO MAR» on «SÃO PAULO», «RIO PARANÁ» on «SALESÓPOLIS»)
-        const boxes: [number, number, number, number][] = [];
+        const boxes = labelBoxes;
         const hit = (b: [number, number, number, number]) => b[0] < 20 || b[2] > W - 20 || b[1] < 96 || b[3] > H - 20
           || boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
         return (g.points ?? []).map((pt, i) => {
@@ -379,11 +381,19 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         const [px, py] = placed ? (projection([t.lon as number, t.lat as number]) ?? [cx, cy]) : [cx + (i - 0.5) * 260, cy - R * 0.55];
         const pop = spring({ frame: local, fps, config: { damping: 12, stiffness: 200 }, durationInFrames: 14 });
         const w = Math.max(120, t.text.length * 26 + 40);
-        const x = Math.max(40, Math.min(W - w - 40, px + (placed ? 26 : -w / 2)));
-        const y = Math.max(110, py - (placed ? 92 : 30));
+        // above-right of its place, else above-left, below-right, below-left: never over a name (atlas2pt 3:10:
+        // «voo cheio com» on «SÃO PAULO») nor over another tag
+        const spots: [number, number][] = placed
+          ? [[px + 26, py - 92], [px - 26 - w, py - 92], [px + 26, py + 32], [px - 26 - w, py + 32]]
+          : [[px - w / 2, py - 30], [px - w / 2, py - 100], [px - w / 2, py + 40]];
+        const fit = ([sx, sy]: [number, number]): [number, number] => [Math.max(40, Math.min(W - w - 40, sx)), Math.max(110, Math.min(H - 80, sy))];
+        const clash = ([sx, sy]: [number, number]) => labelBoxes.some((o) => sx < o[2] && sx + w > o[0] && sy < o[3] && sy + 60 > o[1]);
+        const [x, y] = spots.map(fit).find((sp) => !clash(sp)) ?? fit(spots[0]);
+        labelBoxes.push([x, y, x + w, y + 60]);
+        const below = y > py;
         return (
           <g key={`tag${i}`} opacity={clamp(local / 5)} transform={`translate(${x + w / 2}, ${y + 30}) scale(${0.85 + 0.15 * pop}) translate(${-(x + w / 2)}, ${-(y + 30)})`}>
-            {placed ? <line x1={px} y1={py} x2={x + 18} y2={y + 60} stroke={PALETTES.paper.ink} strokeWidth={1.6} /> : null}
+            {placed ? <line x1={px} y1={py} x2={x + w / 2 < px ? x + w - 18 : x + 18} y2={below ? y : y + 60} stroke={PALETTES.paper.ink} strokeWidth={1.6} /> : null}
             <rect x={x} y={y} width={w} height={60} fill={PALETTES.paper.card} stroke={PALETTES.paper.ink} strokeWidth={1.5} />
             <text x={x + w / 2} y={y + 42} textAnchor="middle" fontFamily={SERIF} fontSize={40} fill={PALETTES.paper.ink}>{t.text}</text>
           </g>

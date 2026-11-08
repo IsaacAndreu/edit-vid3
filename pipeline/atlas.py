@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 18
+VERSION = 19
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -608,6 +608,65 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     return out
 
 
+ICE_LAT = -62.0       # a close map south of this is white ice with a dot (atlas2pt 4:35-5:30): the globe instead
+ICE_ZOOM = 2.2
+
+
+def off_the_ice(scene: dict[str, Any]) -> dict[str, Any]:
+    cam = scene["camera"]
+    if scene.get("view") == "globe" and cam["zoom"] >= REGION_ZOOM and cam["lat"] < ICE_LAT:
+        return {**scene, "camera": {**cam, "zoom": ICE_ZOOM}}
+    return scene
+
+
+HOLD_MAX = 18.0       # seconds one framing of the globe lasts at most: then the camera reframes by itself
+HOLD_TURN = 25.0      # degrees, at most, the globe turns towards the latest place when it reframes
+
+
+def reframe_holds(built: list[dict[str, Any]], seconds: list[float]) -> int:
+    """No view held more than HOLD_MAX s (atlas2pt: 35 s of «ETOPS / SEM POUSO» on one globe, 75 s Auckland–McMurdo):
+    at the first line past it, the camera reframes — on the whole globe, a turn towards the latest place named and a
+    little closer or wider (never into the 2.6-4.4 band); on a close map, wider, then back. That line and the rest of
+    the stretch keep the new framing (a new scene: the globe turns there). Returns how many reframes."""
+
+    done = 0
+    held, base, k, latest = 0.0, None, 0, None
+    for n, scene in enumerate(built):
+        cam = scene["camera"]
+        if scene.get("view") != "globe":
+            held, base = 0.0, None
+            continue
+        spots = _spots({k2: [x for x in scene.get(k2) or [] if not x.get("kept")] for k2 in ("points", "routes", "rings", "tags")})
+        if base is None or not _same_place(cam, base["asked"]):
+            held, base, k = 0.0, {"asked": dict(cam), "now": dict(cam)}, 0      # the plan moved on by itself
+        elif held >= HOLD_MAX:
+            k += 1
+            now = dict(base["asked"])
+            if now["zoom"] < REGION_ZOOM:
+                target = spots[-1] if spots else latest
+                if target:
+                    turn = min(HOLD_TURN, 0.4 * _angle((now["lat"], now["lon"]), target))
+                    share = turn / max(1e-6, _angle((now["lat"], now["lon"]), target))
+                    now["lat"] = round(now["lat"] + (target[0] - now["lat"]) * share, 4)
+                    dlon = (target[1] - now["lon"] + 180) % 360 - 180
+                    now["lon"] = round((now["lon"] + dlon * share + 180) % 360 - 180, 4)
+                now["zoom"] = round(min(2.6, max(1.0, now["zoom"] + (0.4 if k % 2 else -0.35))), 2)
+            else:
+                now["zoom"] = round(max(REGION_ZOOM, now["zoom"] - 0.9) if k % 2 else now["zoom"], 2)
+            base["now"], held = now, 0.0
+            done += 1
+        if base["now"] != cam:
+            scene["camera"] = dict(base["now"])
+            if scene["camera"]["zoom"] < REGION_ZOOM:      # the turned globe still shows everything it draws
+                scene["camera"] = fit_camera(scene)["camera"]
+        if spots:
+            latest = spots[-1]
+        held += seconds[n] if n < len(seconds) else 0.0
+    if done:
+        print(f"   Atlas: {done} encuadres nuevos en vistas de más de {HOLD_MAX:.0f} s")
+    return done
+
+
 TINT_LINES = 8        # a tinted country stays tinted this many lines while it is in view (no pink/white flicker)
 
 
@@ -1159,6 +1218,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             done = auto_tag(carry(fit_camera(scene) if scene["view"] != "globe" else scene, before), lines[n - 1][1], before)
             done = trip.add(done)
             done = keep_tint(done, tint)
+            done = off_the_ice(done)
             out.append(done)
             before = done
         return out
@@ -1215,6 +1275,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     # gets the line's own key words on a paper note, one every NOTE_EVERY seconds at most — never a globe with nothing
     if fill_quiet(cleaned, built, lines, seconds):
         built = build()
+    reframe_holds(built, seconds)
     out = {shot_id: scene for (shot_id, _), scene in zip(lines, built)}
     ensure_satellites(out, int(ctx.section("visual").get("satellites", 2)))
     cache.parent.mkdir(parents=True, exist_ok=True)

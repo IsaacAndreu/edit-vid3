@@ -458,3 +458,25 @@ def test_a_tint_stays_while_its_country_is_in_view():
         keep_tint(globe(-60, 20), state)
     assert keep_tint(globe(-60, 20), state).get("highlight") is None            # not for ever
     assert keep_tint({"view": "chart", "camera": {"lat": 0, "lon": 0, "zoom": 1}}, state)["view"] == "chart"
+
+
+def test_no_view_held_too_long_and_no_close_map_on_the_ice():
+    from pipeline.atlas import HOLD_MAX, REGION_ZOOM, off_the_ice, reframe_holds
+
+    def globe(zoom=1.8, **kw):
+        return {"view": "globe", "camera": {"lat": -40, "lon": 170, "zoom": zoom}, **kw}
+
+    built = [globe(tags=[{"text": "ETOPS", "lat": -60, "lon": 160, "at": ""}]) for _ in range(12)]
+    assert reframe_holds(built, [4.0] * 12) >= 2
+    cams = [(b["camera"]["lat"], b["camera"]["lon"], b["camera"]["zoom"]) for b in built]
+    assert len(set(cams)) >= 2 and all(1.0 <= z <= 2.6 for _, _, z in cams)
+    # changes only after HOLD_MAX seconds of the same framing
+    first_change = next(i for i, c in enumerate(cams) if c != cams[0])
+    assert first_change * 4.0 >= HOLD_MAX
+    close = [globe(zoom=6.0) for _ in range(8)]
+    reframe_holds(close, [4.0] * 8)
+    assert {b["camera"]["zoom"] for b in close} >= {6.0, 5.1}
+    assert all(b["camera"]["zoom"] >= REGION_ZOOM for b in close)
+    ice = off_the_ice({"view": "globe", "camera": {"lat": -77.8, "lon": 166.7, "zoom": 6.5}})
+    assert ice["camera"]["zoom"] < REGION_ZOOM
+    assert off_the_ice({"view": "globe", "camera": {"lat": -23, "lon": -46, "zoom": 6.5}})["camera"]["zoom"] == 6.5
