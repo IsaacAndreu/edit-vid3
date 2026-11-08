@@ -196,6 +196,8 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
   tramo por la sesión del vídeo y ffmpeg corta en local. Un vídeo sin HLS solo se baja entero si dura menos de
   `whole_max_minutes_residential` (10) y pesa menos de `whole_max_mb_residential` (80 MB): por encima, el plano pasa
   al siguiente candidato (en casa siguen `whole_max_minutes` 30 / `whole_max_mb` 600).
+  Un candidato así se descarta ya en la búsqueda (su extracción lleva `hls` y `wholeMb`): no se analiza ni se baja
+  entero para puntuarlo. Un vídeo «not available in your country» se descarta a la primera (motivo «geo»).
   Ese veredicto se recuerda (`cache/videos/.rechazados.json`, `refused_days`): ningún otro plano vuelve a pedir ese
   vídeo (la noche del 5/11 uno se rechazó 12 veces, con su extracción cada vez). Lo mismo con «Unavailable with a VPN
   or proxy»: se descarta a la primera. Un timeout por el proxy se reintenta una vez desde otra sesión, otra IP

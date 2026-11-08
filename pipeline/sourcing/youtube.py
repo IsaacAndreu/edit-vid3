@@ -49,7 +49,8 @@ def error_kind(message: str) -> str:
         return "403"
     if any(marker in low for marker in _RATE_MARKERS):
         return "429"
-    if "video unavailable" in low or "not available" in low or "with a vpn or proxy" in low:
+    if "video unavailable" in low or "not available" in low or "with a vpn or proxy" in low \
+            or "available in your country" in low:
         return "unavailable"
     if "timed out" in low or "timeout" in low:
         return "timeout"
@@ -328,6 +329,27 @@ def unplayable(details: dict[str, Any], region: str = "ES") -> str:
     if details.get("uploadStatus") and details["uploadStatus"] not in ("processed", "uploaded"):
         return f"no procesado ({details['uploadStatus']})"
     return ""
+
+
+def whole_estimate_mb(formats: list[dict[str, Any]], max_height: int = 720) -> float | None:
+    """What the video would weigh downloaded whole for a clip: the smallest video stream at `max_height` or less
+    (plus the smallest audio when the video has none), from yt-dlp's filesize / filesize_approx. None when unknown."""
+
+    def size(f: dict[str, Any]) -> float | None:
+        value = f.get("filesize") or f.get("filesize_approx")
+        return float(value) / 1e6 if value else None
+
+    videos = [f for f in formats if f.get("vcodec") not in (None, "none") and (f.get("height") or 0) <= max_height
+              and not str(f.get("format_id", "")).startswith("sb") and size(f) is not None]
+    if not videos:
+        return None
+    best = min(videos, key=lambda f: size(f) or 0)
+    total = size(best) or 0.0
+    if best.get("acodec") in (None, "none"):
+        audios = [size(f) for f in formats if f.get("vcodec") in (None, "none") and f.get("acodec") not in (None, "none")
+                  and size(f) is not None]
+        total += min(audios) if audios else 0.0
+    return round(total, 1)
 
 
 def _has_hls(info_path: Path) -> bool:
@@ -958,6 +980,11 @@ class YouTubeSource:
                         self._refuse(video, "vpn")
                         raise RuntimeError(f"yt-dlp {action}: YouTube no sirve el vídeo {video} a la IP de un proxy; "
                                            "se descarta") from None
+                    if "available in your country" in lowered and video is not None:
+                        # geo-blocked for the proxy's country: 25 answers for one video in gimnasia1, one is enough
+                        self._refuse(video, "geo")
+                        raise RuntimeError(f"yt-dlp {action}: el vídeo {video} no está disponible en el país del proxy; "
+                                           "se descarta") from None
                     if kind == "timeout" and tries <= int(self.cfg.get("timeout_retries_residential", 1)) \
                             and self._rotate_after("timeout", action, tries):
                         continue                 # a slow exit IP: the sticky session would keep it for 28 minutes
@@ -1090,7 +1117,8 @@ class YouTubeSource:
     @staticmethod
     def _refusal_text(why: str) -> str:
         return {"sin-hls": "sin HLS y entero supera el tope del proxy residencial",
-                "vpn": "YouTube no lo sirve a la IP de un proxy"}.get(why, "pidió «no eres un bot»")
+                "vpn": "YouTube no lo sirve a la IP de un proxy",
+                "geo": "no está disponible en el país del proxy"}.get(why, "pidió «no eres un bot»")
 
     def _bots_path(self, way: int) -> Path:
         return self.cache_dir / "videos" / (pacer_name((self.proxies or [""])[way]) + ".bots")
@@ -1459,6 +1487,8 @@ class YouTubeSource:
                 "width": data.get("width"),
                 "height": data.get("height"),
                 "maxHeight": max(heights or [0]),
+                "hls": any(str(f.get("protocol") or "").startswith("m3u8") for f in formats),
+                "wholeMb": whole_estimate_mb(formats),
                 "liveStatus": data.get("live_status"),
                 "fetchedAt": time.time(),
                 "storyboard": None if board is None else {
@@ -1473,6 +1503,21 @@ class YouTubeSource:
             }
 
         return cached_json(path, produce)
+
+    def _undownloadable(self, info: dict[str, Any]) -> str | None:
+        """Why this video could not be downloaded through the residential proxy (no HLS and over the whole-download
+        caps), or None. Older cached infos without the `hls` field are left alone."""
+
+        if not self.residential or info.get("hls") is not False:
+            return None
+        max_minutes, max_mb = self._whole_caps()
+        duration = float(info.get("duration") or 0)
+        if duration > 60 * max_minutes:
+            return f"sin HLS y dura {duration / 60:.0f} min (> {max_minutes:g} min)"
+        size = info.get("wholeMb")
+        if size is not None and float(size) > max_mb:
+            return f"sin HLS y pesa {float(size):.0f} MB (> {max_mb:g} MB)"
+        return None
 
     def passes_metadata_filters(self, info: dict[str, Any]) -> bool:
         if info.get("maxHeight", 0) < int(self.cfg.get("min_height", 720)):
@@ -1653,7 +1698,7 @@ class YouTubeSource:
         existing = self._library_range(target_dir, prefix, suffix, start, end, wanted)
         if existing is not None:
             return existing
-        if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn"):
+        if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo"):
             raise RuntimeError(f"yt-dlp download: {video_id} descartado ({self._refusal_text(self.refused_why(video_id) or '')}); "
                                "se pasa al siguiente candidato")
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
@@ -2178,6 +2223,13 @@ class YouTubeSource:
         try:
             info = self.info(video_id)
             if not self.passes_metadata_filters(info):
+                return None
+            why = self._undownloadable(info)
+            if why:
+                # no HLS and too big to come whole through the paid proxy: analysing it (its windows, its whole
+                # file) would be paid for nothing, since the download refuses it anyway (gimnasia1: 13 shots)
+                self._refuse(video_id, "sin-hls")
+                notes.append(f"yt:{video_id}: {why}; descartado para el proxy residencial")
                 return None
             board = self.storyboard(info)
         except (SourceUnavailable, ApiSearchesShort, BudgetReached):

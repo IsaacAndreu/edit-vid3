@@ -253,3 +253,59 @@ def test_a_response_yt_dlp_cannot_parse_is_asked_once_more_from_another_ip(tmp_p
         yt._call("metadata", always_broken)
     assert len(seen) == 4
     yt.close()
+
+
+def test_a_geo_blocked_video_is_dropped_at_the_first_answer(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._local.video_id = VIDEO
+    calls = []
+
+    def geo():
+        calls.append(1)
+        raise RuntimeError("ERROR: [youtube] x: The uploader has not made this video available in your country. "
+                           "This video is available in Andorra, United Arab Emirates")
+
+    with pytest.raises(RuntimeError, match="país del proxy"):
+        yt._call("metadata", geo)
+    assert len(calls) == 1 and yt.refused_why(VIDEO) == "geo" and yt.sessions.rotated == 0
+    with pytest.raises(RuntimeError, match="no se vuelve a pedir"):
+        yt.info(VIDEO)
+    yt.close()
+
+
+def test_candidates_that_could_never_be_downloaded_are_dropped_at_the_search(tmp_path, monkeypatch):
+    from pipeline.schemas import Storyboard
+    from pipeline.sourcing.youtube import whole_estimate_mb
+    from tests.test_sourcing import BROLL
+
+    board = Storyboard(sheets=["cache/sb/000.jpg"], columns=3, rows=3, tileWidth=320, tileHeight=180, interval=5.0, frames=9)
+    base = {"title": "t", "channel": "c", "uploader": None, "license": "youtube-standard", "width": 1920, "height": 1080,
+            "maxHeight": 1080, "storyboard": {"fps": 0.2, "width": 320}}
+    infos = {"AAAAAAAAAAA": {**base, "id": "AAAAAAAAAAA", "duration": 900, "hls": False, "wholeMb": 60.0},   # too long
+             "BBBBBBBBBBB": {**base, "id": "BBBBBBBBBBB", "duration": 300, "hls": False, "wholeMb": 147.0},  # too heavy
+             "CCCCCCCCCCC": {**base, "id": "CCCCCCCCCCC", "duration": 300, "hls": False, "wholeMb": 40.0},   # small: whole is fine
+             "DDDDDDDDDDD": {**base, "id": "DDDDDDDDDDD", "duration": 3000, "hls": True},                    # HLS: ranges
+             "EEEEEEEEEEE": {**base, "id": "EEEEEEEEEEE", "duration": 3000}}                                 # old cache: unknown
+    entries = [{"id": v, "title": "t", "channel": "c", "duration": 300, "url": ""} for v in infos]
+    for proxy, expected in ((RESI, ["yt:CCCCCCCCCCC", "yt:DDDDDDDDDDD", "yt:EEEEEEEEEEE"]), (HOME, [f"yt:{v}" for v in infos])):
+        monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+        yt = _source(tmp_path / proxy[-4:], proxy, videos_per_shot=9)
+        monkeypatch.setattr(yt, "search", lambda query: entries)
+        monkeypatch.setattr(yt, "info", lambda v: infos[v])
+        monkeypatch.setattr(yt, "storyboard", lambda info: board)
+        notes = []
+        found = yt.candidates(BROLL, notes)
+        assert [c.id for c in found] == expected
+        if proxy == RESI:
+            assert yt.refused_why("AAAAAAAAAAA") == "sin-hls" and yt.refused_why("BBBBBBBBBBB") == "sin-hls"
+            assert any("dura 15 min" in n for n in notes) and any("pesa 147 MB" in n for n in notes)
+        yt.close()
+    formats = [{"format_id": "137", "vcodec": "avc1", "acodec": "none", "height": 1080, "filesize": 300e6},
+               {"format_id": "136", "vcodec": "avc1", "acodec": "none", "height": 720, "filesize_approx": 120e6},
+               {"format_id": "18", "vcodec": "avc1", "acodec": "mp4a", "height": 360, "filesize": 50e6},
+               {"format_id": "140", "vcodec": "none", "acodec": "mp4a", "filesize": 9e6},
+               {"format_id": "sb0", "vcodec": "none", "acodec": "none", "height": 90, "filesize": 1e6}]
+    assert whole_estimate_mb(formats) == 50.0                          # the progressive 360p carries its own audio
+    assert whole_estimate_mb(formats[:2] + formats[3:]) == 129.0        # 720p video + the smallest audio
+    assert whole_estimate_mb([{"format_id": "x", "vcodec": "avc1", "height": 720}]) is None
