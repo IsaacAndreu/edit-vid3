@@ -22,3 +22,7 @@ deno.lock
 materiales/CarlosYulo/
 materiales/FallosGimnasia/
 materiales/Video1/
+
+# Investigaciones (informes para el usuario, no son código)
+research_notes/
+reports/
