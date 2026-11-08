@@ -27,7 +27,7 @@ from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
-from .proxy_sessions import ProxySessions, is_residential, with_sticky_session
+from .proxy_sessions import SESSION_SUFFIX, ProxySessions, is_residential, with_sticky_session
 
 
 _BLOCK_MARKERS = ("not a bot", "confirm you’re not", "confirm you're not")   # not «sign in to confirm your age»
@@ -776,7 +776,8 @@ class YouTubeSource:
 
         if not is_residential(proxy):
             return proxy
-        return with_sticky_session(proxy, self.sessions.session_id(self._session_key()))
+        suffix = str(self.cfg.get("proxy_session_suffix") or "").strip() or SESSION_SUFFIX
+        return with_sticky_session(proxy, self.sessions.session_id(self._session_key()), suffix=suffix)
 
     def _session_in_use(self) -> str | None:
         """The sticky session id the current request leaves with (None through a home proxy or directly)."""

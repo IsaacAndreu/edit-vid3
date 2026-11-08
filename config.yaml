@@ -93,6 +93,8 @@ sourcing:
     # directas y tabla «Proxy» en --youtube-stats. Los proxies de casa (sin usuario) no cambian.
     proxy_session_minutes: 30          # lo que el proveedor mantiene la IP por sesión (sufijo -time-30)
     proxy_session_rotations: 2         # sesiones nuevas por vídeo ante «no eres un bot»/429 antes de descartarlo
+    # proxy_session_suffix: "-time-30-session-{session_id}"   # cómo pide tu proveedor la sesión fija en el usuario del proxy
+    #                                  # (Rainproxy, por defecto). Otro proveedor: su formato de sus docs, con {session_id} donde va el id
     info_expiry_margin_minutes: 15     # el info dict guardado no se reutiliza si sus URLs caducan antes
     player_client_residential: null    # clientes de yt-dlp por la vía residencial (null = los de player_client); solo
                                        # web_safari falló en todas las extracciones el 05/11 («format is not available»)

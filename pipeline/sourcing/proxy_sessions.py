@@ -1,8 +1,9 @@
 """Sticky sessions for a paid residential proxy (Rainproxy and the like).
 
 A home proxy (Tailscale, no user in its URL) is one fixed IP: nothing to do. A residential proxy hands out a new exit
-IP per connection unless the username carries the provider's session suffix, `-time-30-session-<id>`: every
-connection with the same id leaves from the same IP for up to 30 minutes. YouTube binds stream URLs to the IP that
+IP per connection unless the username carries the provider's session suffix (Rainproxy: `-time-30-session-<id>`;
+other providers have their own, sourcing.youtube.proxy_session_suffix): every connection with the same id leaves
+from the same IP for up to 30 minutes. YouTube binds stream URLs to the IP that
 asked for them, so one video's metadata, storyboard and ranges must share one id — or every segment is a 403.
 
 Sessions live per video id in cache/videos/<id>/.sesion.json (every process and stage of that video sees the same
@@ -72,8 +73,12 @@ def with_sticky_session(proxy: str, session_id: str, *, suffix: str = SESSION_SU
     userinfo, at, hostport = netloc.rpartition("@")
     if not at or not userinfo:
         return proxy
+    if "{session_id}" not in suffix:
+        raise ValueError("the session suffix must contain {session_id}.")
     user, colon, password = userinfo.partition(":")
-    user = _SESSION_RE.sub("", user)          # replace a previous session instead of stacking suffixes
+    before, _, after = suffix.partition("{session_id}")
+    previous = re.compile(re.escape(before) + r"[A-Za-z0-9]+" + re.escape(after))
+    user = previous.sub("", _SESSION_RE.sub("", user))   # replace a previous session instead of stacking suffixes
     return f"{scheme}://{user}{suffix.format(session_id=session_id)}{colon}{password}@{hostport}{slash}{path}"
 
 
