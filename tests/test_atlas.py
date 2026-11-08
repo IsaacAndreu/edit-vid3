@@ -443,3 +443,18 @@ def test_a_trip_is_one_solid_road_and_is_not_left_lying_about():
         assert len(trip.add(scene(-5, -78))["routes"]) == 2
     assert trip.add(scene(-5, -78))["routes"] == []                       # the story moved on
     assert drift({"lat": 0, "lon": 0, "zoom": 1.0}, 1)["zoom"] == 1.0     # the whole globe never shrinks
+
+
+def test_a_tint_stays_while_its_country_is_in_view():
+    from pipeline.atlas import TINT_LINES, keep_tint
+
+    state = {"list": [], "left": 0}
+    globe = lambda lat, lon, **kw: {"view": "globe", "camera": {"lat": lat, "lon": lon, "zoom": 1.5}, **kw}   # noqa: E731
+    keep_tint(globe(-70, 0, highlight=[{"name": "Antarctica", "label": "ANTÁRTIDA", "group": 0}]), state)
+    after = keep_tint(globe(-60, 20), state)
+    assert after["highlight"] == [{"name": "Antarctica", "label": "", "group": 0}]
+    assert keep_tint(globe(40, -100), state).get("highlight") is None          # the other side of the world
+    for _ in range(TINT_LINES):
+        keep_tint(globe(-60, 20), state)
+    assert keep_tint(globe(-60, 20), state).get("highlight") is None            # not for ever
+    assert keep_tint({"view": "chart", "camera": {"lat": 0, "lon": 0, "zoom": 1}}, state)["view"] == "chart"

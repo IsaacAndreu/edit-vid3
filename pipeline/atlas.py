@@ -25,7 +25,7 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 17
+VERSION = 18
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
@@ -608,6 +608,28 @@ def carry(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
     return out
 
 
+TINT_LINES = 8        # a tinted country stays tinted this many lines while it is in view (no pink/white flicker)
+
+
+def keep_tint(scene: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    """atlas2pt: Antarctica pink, white, pink, white from one scene to the next (each line tinted it or not). A tint
+    stays on the following globe lines that set none, while its country is within 70° of the camera, up to
+    TINT_LINES lines; a line with its own tint starts again from that one."""
+
+    if scene.get("view") != "globe":
+        return scene
+    if scene.get("highlight"):
+        state["list"], state["left"] = [dict(h) for h in scene["highlight"]], TINT_LINES
+        return scene
+    if state["left"] <= 0 or not state["list"]:
+        return scene
+    cam = scene["camera"]
+    near = [h for h in state["list"] if (info := places()["countries"].get(h["name"]))
+            and _angle((cam["lat"], cam["lon"]), (info["lat"], info["lon"])) < 70]
+    state["left"] -= 1
+    return {**scene, "highlight": [{**h, "label": ""} for h in near]} if near else scene
+
+
 TRIP_JOIN = 3.0       # degrees: a route that starts this close to where another ended continues the same trip
 TRIP_NEAR = 60.0      # degrees from the camera: the trip so far stays drawn while the globe looks at its part of the world
 TRIP_LEGS = 10        # the last legs kept
@@ -1132,9 +1154,11 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
     def build() -> list[dict[str, Any]]:
         out, before = [], None
         trip = Journey()
+        tint: dict[str, Any] = {"list": [], "left": 0}
         for n, scene in enumerate(cleaned, 1):
             done = auto_tag(carry(fit_camera(scene) if scene["view"] != "globe" else scene, before), lines[n - 1][1], before)
             done = trip.add(done)
+            done = keep_tint(done, tint)
             out.append(done)
             before = done
         return out
@@ -1237,6 +1261,8 @@ ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 
 MIN_VIEW = 4.5        # seconds: a chart, a drawing, the satellite… never on screen for less (it takes the next line too)
 PUSH = 0.3            # zoom the camera gains over a globe scene (wide → closer → the next moment pulls out)
+PUSH_PER_S = 0.02      # zoom more a second past 3 s…
+PUSH_MAX = 0.8         # …up to this (×1.32 the size): enough to feel the camera move, not enough to lose the edges
 DRIFT_PER_S = 0.25    # degrees of longitude a second the globe turns on its own (Atlas.tsx cameraAt, from the start)
 SINGLE = ("card", "stamp", "headline", "counter", "zone", "meridians", "night", "lens", "band")
 VIEWS_ASIDE = ("chart", "icon")      # the globe moves aside for these instead of a cut
@@ -1496,7 +1522,9 @@ def groups(ctx: RunContext, shots: list[Any], fps: int, taken: list[Any], words:
                     g["card"] = {**card, "at": spot["at"] + round(0.6 * fps), "until": span}
                     photos_left -= 1
         g["prev"] = prev or g["camera"]
-        g["push"] = PUSH if g.get("view") == "globe" and span >= 3 * fps and g["camera"]["zoom"] < 8.5 else 0.0
+        # a long hold keeps moving in: atlas2pt held the Auckland–McMurdo globe 75 s with a push of 0.3 (it looked still)
+        g["push"] = round(min(PUSH_MAX, PUSH + PUSH_PER_S * max(0.0, span / fps - 3)), 2) \
+            if g.get("view") == "globe" and span >= 3 * fps and g["camera"]["zoom"] < 8.5 else 0.0
         g["enter"] = "aside" if g.get("view") == "globe" and last_view in VIEWS_ASIDE else ""
         g["chapters"] = chapters
         g["chapter"] = current
