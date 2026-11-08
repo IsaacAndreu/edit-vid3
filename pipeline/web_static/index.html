@@ -652,8 +652,9 @@ function drawHome(force = false) {               // the channel buttons redraw f
       <a class="kpi" href="#/subir"><div class="k">Para subir</div><div class="v ${late ? "bad" : ""}">${toUpload.length}</div>
         <div class="d">${late ? `${late} atrasado(s)` : toUpload.length ? "al día" : "nada pendiente"}${queue.length ? ` · ${queue.length} en cola` : ""}</div></a>
       <a class="kpi" href="#/gasto"><div class="k">Gasto de hoy</div><div class="v">${b.today.toFixed(2)} $</div>
-        <div class="d">${b.limit ? "de " + b.limit.toFixed(2) + " $ de API" : "API, sin límite"}${yt && yt.proxy_gb ? ` · proxy ${yt.proxy_gb.toFixed(2)} GB/semana` : ""}</div>
-        ${b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</a>
+        <div class="d">${b.limit ? "de " + b.limit.toFixed(2) + " $ de API" : "API, sin límite"}${b.proxyGbToday != null ? ` · proxy ${b.proxyGbToday.toFixed(2)} GB${b.proxyGbLimit ? ` de ${b.proxyGbLimit} GB` : ""} hoy` : yt && yt.proxy_gb ? ` · proxy ${yt.proxy_gb.toFixed(2)} GB/semana` : ""}</div>
+        ${b.proxyGbLimit ? `<div class="bar"><i style="width:${Math.min(100, 100 * (b.proxyGbToday || 0) / b.proxyGbLimit)}%;background:${(b.proxyGbToday || 0) / b.proxyGbLimit > 0.9 ? "var(--bad)" : "var(--work)"}"></i></div>`
+          : b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</a>
     </div>
     ${attention.length ? `<div class="block warn" id="h-warn"><div class="bh"><b>Necesitan tu atención<span class="count">${attention.length}</span></b>
       ${failed > 1 ? `<span class="small"><button onclick="retryAll()">Reintentar todos (${failed})</button> <span id="retrymsg" class="muted"></span></span>` : ""}</div>
@@ -1887,6 +1888,10 @@ async function settingsPage() {
       <label>Límite de gasto de API al día <span class="muted">(0 = sin límite; al llegar, espera a mañana)</span></label>
       <div class="row"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}" style="max-width:160px"><span>$</span>
         <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
+      <label>Tope de proxy al día <span class="muted">(GB por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope)</span></label>
+      <div class="row"><input id="proxyday" type="number" min="0" step="0.5" value="${s.proxy_gb_per_day ?? 0}" style="max-width:160px"><span>GB</span>
+        <button onclick="save({proxy_gb_per_day: parseFloat(document.getElementById('proxyday').value || 0)})">Guardar</button>
+        <span class="small muted">${data && data.budget && data.budget.proxyGbToday != null ? `hoy ${data.budget.proxyGbToday.toFixed(2)} GB` : ""}</span></div>
       <label>Límite por vídeo <span class="muted">(lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite)</span></label>
       <div class="row"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}" style="max-width:160px"><span>$</span>
         <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div>

@@ -154,6 +154,8 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
     from pipeline import budget
 
     budget.check(root, ctx.config)                       # budget.daily_usd: today's spending at the limit → wait
+    if needs_youtube(root, slug):
+        budget.check_proxy(root, ctx.config)             # budget.proxy_gb_per_day: this video waits for tomorrow
     script = ctx.materials_dir / "guion.txt"
     lang = str(ctx.section("align").get("language", "es"))[:2]
     if lang != "es" and script.is_file():

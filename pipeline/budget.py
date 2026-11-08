@@ -3,6 +3,10 @@
 `budget.daily_usd` (0 = no limit; the web studio's settings can change it): before each video the queue adds up what
 every video spent today (work/*/costs.json, UTC day) and, at the limit, waits until tomorrow instead of starting.
 
+`budget.proxy_gb_per_day` (0 = no limit; also in the studio): GB through the paid residential proxy per UTC day,
+summed from work/*/youtube_downloads.jsonl. At the cap a video that needs YouTube waits for tomorrow (the rest, dubs
+and drawn videos, go on): a 250 GB block bought for 75 $ lasts the days you decide, not the days the retries leave.
+
 `budget.per_video_usd` (1.5; also in the studio): what ONE attempt at a video may spend. Over it, before the next
 stage, the video stops and leaves the queue (it is put on hold) with a message: a video that keeps costing is a video
 that is going wrong (negocio2-4 on 05-10: 1.4-1.5 $ each for chalkboard videos).
@@ -110,6 +114,59 @@ def check_video(root: Path, config: dict, work_dir: Path, folder: Path, started_
         raise VideoOverBudget(
             f"Este intento ya ha gastado {spent:.2f} $ (límite por vídeo {cap:.2f} $): se para y sale de la cola para "
             "que lo mires. Si está bien, súbelo en Ajustes → «Límite por vídeo» y pulsa «Volver a la cola».")
+
+
+class ProxyBudgetReached(ApiSearchesShort):
+    """Today's GB through the paid proxy at budget.proxy_gb_per_day: THIS video (it needs YouTube) waits for the
+    next UTC day; the queue goes on with the videos that need no proxy."""
+
+    def __init__(self, gb: float, cap: float) -> None:
+        from datetime import timedelta
+
+        tomorrow = datetime.combine(datetime.now(timezone.utc).date() + timedelta(days=1), datetime.min.time(),
+                                    tzinfo=timezone.utc)
+        super().__init__(f"Tope diario del proxy alcanzado ({gb:.2f} GB de {cap:g} GB): este vídeo espera a mañana "
+                         "para no gastar más proxy hoy", tomorrow.timestamp(), why="tope diario de GB del proxy")
+
+
+def proxy_gb_today(root: Path) -> float:
+    """GB the paid proxy carried today (UTC): proxy_bytes of every request row of every video."""
+
+    start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc).timestamp()
+    total = 0
+    for path in (root / "work").glob("*/youtube_downloads.jsonl"):
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    if '"proxy_bytes"' not in line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except ValueError:
+                        continue
+                    if float(row.get("ts") or 0) >= start:
+                        total += int(row.get("proxy_bytes") or 0)
+        except OSError:
+            continue
+    return round(total / 1e9, 3)
+
+
+def proxy_limit(root: Path, config: dict) -> float:
+    value = settings(root).get("proxy_gb_per_day", (config.get("budget") or {}).get("proxy_gb_per_day", 0))
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def check_proxy(root: Path, config: dict) -> None:
+    """Raises ProxyBudgetReached when today's GB through the proxy are at budget.proxy_gb_per_day."""
+
+    cap = proxy_limit(root, config)
+    if cap > 0:
+        used = proxy_gb_today(root)
+        if used >= cap:
+            raise ProxyBudgetReached(used, cap)
 
 
 def check(root: Path, config: dict) -> None:
