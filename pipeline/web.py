@@ -396,7 +396,9 @@ def overview(root: Path) -> dict[str, Any]:
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,
                     "youtubeBlocked": _youtube_blocked(root),
                     "lastBeat": beat.read_text().strip() if beat.is_file() else None, "code": code_version(root)},
-        "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config)},
+        "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config),
+                   "proxyGbToday": cached(f"proxyday:{root}", 60, lambda: budget.proxy_gb_today(root)),
+                   "proxyGbLimit": budget.proxy_limit(root, config)},
         "videos": videos, "channels": channels(root), "channelKinds": channel_kinds(root), "formats": formats(root),
         "youtube": youtube,
     }
@@ -1001,6 +1003,8 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
             current["daily_usd"] = max(0.0, float(body["daily_usd"] or 0))
         if "per_video_usd" in body:
             current["per_video_usd"] = max(0.0, float(body["per_video_usd"] or 0))
+        if "proxy_gb_per_day" in body:
+            current["proxy_gb_per_day"] = max(0.0, float(body["proxy_gb_per_day"] or 0))
         if isinstance(body.get("my_channels"), dict):        # merged: an empty value removes that channel's entry
             mine = dict(current.get("my_channels") or {})
             for k, v in body["my_channels"].items():

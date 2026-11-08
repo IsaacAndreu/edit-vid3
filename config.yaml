@@ -401,6 +401,8 @@ render:
 
 budget:
   daily_usd: 0                     # límite de gasto de API al día (0 = sin límite; también en el estudio → Ajustes)
+  proxy_gb_per_day: 0              # tope de GB por el proxy residencial al día (0 = sin tope; también en Ajustes): al llegar,
+                                   # los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen
 
 radar:                             # radar de competencia diario (estudio → Competencia; con --vigilar, cada día)
   enabled: true
