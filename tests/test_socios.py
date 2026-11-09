@@ -76,7 +76,7 @@ def test_nothing_of_yours_opens_for_a_partner(studio):
     root, call, login = studio
     login("contraseña-amigo")
     for path in ("/api/video/mio1", "/files/mio1/video-final.mp4", "/api/review/mio1", "/api/decisions/mio1",
-                 "/api/video/mio1/repeticion", "/api/stats", "/api/settings", "/api/users", "/api/servidor", "/api/radar",
+                 "/api/video/mio1/repeticion", "/api/settings", "/api/users", "/api/servidor",
                  "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/voices/credits",
                  "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia"):
         assert call(path)[0] == 403, path
@@ -263,3 +263,41 @@ def test_a_partners_calendar_scripts_and_board_are_only_theirs(studio):
     assert call("/api/scripts/draft", {"channel": "aviacion", "idea": {"title": "t"}})[0] == 403
     assert call("/api/scripts/similar", {"slug": "mio1"})[0] == 403
     assert agenda.settings(root)["schedule"]["atletismo"]["time"] == "19:00"
+
+
+def test_a_partners_radar_is_their_channels_only(studio):
+    from pipeline import niche_ideas, radar
+
+    root, call, login = studio
+    (root / radar.FOLDER).mkdir(parents=True, exist_ok=True)
+    (root / radar.FOLDER / "2026-11-09.json").write_text(json.dumps({"date": "2026-11-09", "channels": {
+        "aviacion": {"top": [{"id": "A"}], "errors": []}, "atletismo": {"top": [{"id": "B"}], "errors": []}},
+        "rising": [{"id": "R"}], "gaps": [{"name": "g"}]}))
+    niche_ideas.save(root, {"id": "i1", "title": "Mía"}, "aviacion")
+    login("contraseña-amigo")
+    state = json.loads(call("/api/radar")[1])
+    assert set(state["latest"]["channels"]) == {"atletismo"} and state["latest"]["rising"] == [] and state["niches"] == []
+    assert state["saved"] == [] and state["channels"] == ["atletismo"]
+    assert call("/api/ideas/save", {"idea": {"id": "i1", "title": "Pisada"}, "channel": "atletismo"})[0] == 403
+    assert call("/api/ideas/save", {"remove": "i1"})[0] == 403
+    saved = json.loads(call("/api/ideas/save", {"idea": {"id": "i2", "title": "Suya"}, "channel": "atletismo"})[1])
+    assert [i["title"] for i in saved] == ["Suya"]
+    for path in ("/api/radar", "/api/news", "/api/radar/gap"):
+        assert call(path, {"topic": "x"})[0] == 403, path
+
+
+def test_a_partners_channel_page_and_stats_are_theirs(studio, monkeypatch):
+    from pipeline import estadisticas
+
+    root, call, login = studio
+    monkeypatch.setattr(estadisticas, "report", lambda root, refresh=False: {
+        "videos": [{"slug": "mio1", "channel": "aviacion"}, {"slug": "suyo1", "channel": "atletismo"}],
+        "channels": [{"channel": "aviacion", "views": 900, "watchHours": 9, "published": 1, "made": 1, "usd": 1.0},
+                     {"channel": "atletismo", "views": 100, "watchHours": 1, "published": 1, "made": 1, "usd": 0.2}],
+        "totals": {"views": 1000}, "fetched": None, "retention": 0.35})
+    login("contraseña-amigo")
+    st = json.loads(call("/api/stats")[1])
+    assert [v["slug"] for v in st["videos"]] == ["suyo1"] and st["totals"]["views"] == 100
+    assert call("/api/mychannel/atletismo")[0] == 200 and call("/api/mychannel/aviacion")[0] == 403
+    assert call("/api/mychannel/aviacion", {})[0] == 403
+    assert sum(d["usd"] for d in json.loads(call("/api/spending")[1])) == 0.2

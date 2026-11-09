@@ -1116,9 +1116,13 @@ def mychannel_state(root: Path, channel: str) -> dict[str, Any]:
             "job": job_state(root, f"canal-{channel}")}
 
 
-def spending(root: Path, days: int = 14) -> list[dict[str, Any]]:
+def spending(root: Path, days: int = 14, owner: str | None = None) -> list[dict[str, Any]]:
+    from .budget import owner_of_work
+
     per_day: dict[str, float] = {}
     for path in (root / "work").glob("*/costs.json"):
+        if owner is not None and owner_of_work(root, path.parent.name) != owner:
+            continue
         for entry in (_json(path) or {}).get("entries", []):
             day = str(entry.get("at", ""))[:10]
             per_day[day] = per_day.get(day, 0.0) + float(entry.get("usd") or 0)
@@ -1130,10 +1134,12 @@ def spending(root: Path, days: int = 14) -> list[dict[str, Any]]:
 # Everything not listed here answers 403 to a partner (usuarios.py). The video routes also need the video to be in
 # one of their channels; the ones with a channel in the body (a new video, moving one), that channel too.
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
-               "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board")
+               "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar",
+               "/api/stats", "/api/spending")
 PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
                 "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
-                "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas")
+                "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas",
+                "/api/ideas", "/api/ideas/save")
 PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test",
                         "/api/scripts/draft", "/api/board/temas")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
@@ -1158,6 +1164,8 @@ def partner_may(root: Path, mine: list[str], method: str, path: str) -> bool:
 
     if path in (PARTNER_GET if method == "GET" else PARTNER_POST):
         return True
+    if match := re.fullmatch(r"/api/mychannel/([^/]+)", path):       # «Mi canal» of one of their channels
+        return urllib.parse.unquote(match.group(1)) in mine
     if method == "GET" and re.fullmatch(r"/api/apertura/[0-9a-f]{12}", path):
         return True
     for pattern in (PARTNER_VIDEO_GET if method == "GET" else PARTNER_VIDEO_POST):
@@ -1199,6 +1207,23 @@ def partner_board(root: Path, mine: list[str]) -> dict[str, Any]:
     columns = {k: [x for x in items if x.get("channel") in mine] for k, items in agenda.board(root).items()}
     return {"columns": columns, "channels": [c for c in agenda.channels(root) if c in mine],
             "kinds": {k: v for k, v in channel_kinds(root).items() if k in mine}}
+
+
+def partner_radar(root: Path, mine: list[str]) -> dict[str, Any]:
+    """The radar of their channels: their competitors' videos that work, the day's news of their channels, their saved
+    ideas. Not the server-wide discoveries (new niches, small rising channels, measured gaps): those are yours."""
+
+    state = radar_state(root)
+    latest = state.get("latest") or None
+    if latest:
+        latest = {**latest, "channels": {k: v for k, v in (latest.get("channels") or {}).items() if k in mine},
+                  "rising": [], "gaps": [], "niches": []}
+    news = state.get("news") or None
+    if news:
+        news = {**news, "channels": {k: v for k, v in (news.get("channels") or {}).items() if k in mine},
+                "comebacks": {k: v for k, v in (news.get("comebacks") or {}).items() if k in mine}, "errors": []}
+    return {**state, "latest": latest, "niches": [], "gaps": [], "news": news, "channels": mine,
+            "saved": [i for i in state.get("saved") or [] if i.get("channel") in mine], "partner": True}
 
 
 def partner_idea_is_theirs(root: Path, mine: list[str], idea_id: str) -> bool:
@@ -1376,6 +1401,19 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
                     if path == "/api/agenda":
                         return self._ok(partner_agenda(root, mine))
+                    if path == "/api/radar":
+                        return self._ok(partner_radar(root, mine))
+                    if path == "/api/spending":
+                        return self._ok(spending(root, owner=who))
+                    if path == "/api/stats":               # «Estadísticas» of their videos only
+                        from . import estadisticas
+
+                        full = estadisticas.report(root, bool(urllib.parse.parse_qs(url.query).get("refresh")))
+                        rows = [r for r in full["videos"] if r.get("channel") in mine]
+                        chans = [c for c in full["channels"] if c.get("channel") in mine]
+                        totals = {k: (round(sum(c.get(k) or 0 for c in chans), 2) if k == "usd" else sum(c.get(k) or 0 for c in chans))
+                                  for k in ("views", "watchHours", "published", "made", "usd")}
+                        return self._ok({**full, "videos": rows, "channels": chans, "totals": totals})
                     if path == "/api/board":
                         return self._ok(partner_board(root, mine))
                     if path == "/api/scripts":
@@ -1757,6 +1795,21 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         return self._ok(partner_agenda(root, mine)["settings"])
                     if path == "/api/scripts/similar" and video_channel(root, str(body.get("slug") or "")) not in mine:
                         return self._fail(403, "Ese vídeo no es tuyo")
+                    if path == "/api/ideas/save":          # their saved ideas: only to their channels
+                        from . import niche_ideas
+
+                        if body.get("remove"):
+                            if not partner_idea_is_theirs(root, mine, str(body["remove"])):
+                                return self._fail(403, "Esa idea no es tuya")
+                            niche_ideas.unsave(root, str(body["remove"]))
+                        elif str(body.get("channel") or "") not in mine:
+                            return self._fail(403, "Elige uno de tus canales")
+                        else:
+                            idea_id = str((body.get("idea") or {}).get("id") or "")
+                            if any(i.get("id") == idea_id and i.get("channel") not in mine for i in niche_ideas.saved(root)):
+                                return self._fail(403, "Esa idea ya la guardó otra persona")   # saving replaces by id
+                            niche_ideas.save(root, body.get("idea") or {}, str(body["channel"]))
+                        return self._ok([i for i in niche_ideas.saved(root) if i.get("channel") in mine])
                     if path == "/api/board/idea":
                         if body.get("delete"):
                             if not partner_idea_is_theirs(root, mine, str(body["delete"])):

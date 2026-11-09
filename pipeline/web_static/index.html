@@ -2433,6 +2433,15 @@ async function radarPage() {
       <div class="small muted">«${esc(n.query)}»</div>
       <div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: n.query, name: n.name, near: n.near}, n.ideas ? `💡 Ver ideas (${n.ideas})` : "💡 Ideas para este nicho")}</div>
     </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos en este filtro.</div>'}`;
+  if (window.partner) {          // a partner: their channels' competitors and news; the server-wide finds are the owner's
+    for (const h of [...document.querySelectorAll("#app h2")].filter((x) => /^(🚀|🎯|🧭)/.test(x.textContent.trim()))) {
+      let next = h.nextElementSibling;
+      while (next && next.tagName !== "H2") { const gone = next; next = next.nextElementSibling; gone.remove(); }
+      h.remove();
+    }
+    document.querySelectorAll('#app button[onclick^="runNews"], #app button[onclick^="runRadar"]').forEach((b) => b.remove());
+    $("#app h1").insertAdjacentHTML("afterend", '<div class="small muted">El radar se actualiza solo cada día con los competidores de tus canales (los pones al crear el canal).</div>');
+  }
   window.runRadar = async () => { await post("/api/radar"); route(); };
   window.measureGap = async (button) => {
     const topic = ($("#gapTopic").value || "").trim();
@@ -3048,7 +3057,7 @@ async function accountPage() {
 
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
 const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero",
-  "#/gasto", "#/voces", "#/cuenta"];
+  "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta"];
 const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
 
