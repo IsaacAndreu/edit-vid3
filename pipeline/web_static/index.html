@@ -1378,9 +1378,9 @@ window.runBench = async (button) => {
 
 async function stats(refresh = false) {
   const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
-  const bench = await api("/api/ytbench").catch(() => ({}));
-  const scenesBench = await api("/api/scenebench").catch(() => ({}));
-  const times_ = await api("/api/tiempos").catch(() => ({}));
+  const bench = window.partner ? {} : await api("/api/ytbench").catch(() => ({}));       // the server's: the owner's
+  const scenesBench = window.partner ? {} : await api("/api/scenebench").catch(() => ({}));
+  const times_ = window.partner ? {} : await api("/api/tiempos").catch(() => ({}));
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
   const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
   const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
@@ -1433,8 +1433,7 @@ async function stats(refresh = false) {
         <td style="text-align:right;padding-right:8px">${l.correcta || l.incorrecta ? `${l.correcta} / ${l.incorrecta}` : "—"}</td></tr>`; }).join("")}
     </table></div>
 
-    ${benchCard(bench)}
-    ${sceneCard(scenesBench)}
+    ${window.partner ? "" : benchCard(bench) + sceneCard(scenesBench)}
     ${times_.markdown ? `<h2>⏱ Dónde se va el tiempo</h2><div class="card">${md(times_.markdown.replace(/^# .*\n/, ""))}</div>` : ""}
     <details style="margin-top:24px"><summary class="small muted" style="cursor:pointer">Técnico: descargas de YouTube y gasto de API por día</summary>
     ${y ? `<div class="grid" style="margin-top:10px">
@@ -2440,6 +2439,8 @@ async function radarPage() {
       h.remove();
     }
     document.querySelectorAll('#app button[onclick^="runNews"], #app button[onclick^="runRadar"]').forEach((b) => b.remove());
+    document.querySelectorAll("#app .notice, #app .small").forEach((n) => { if (/pulsa «(Buscar todo ahora|📰 Noticias ahora)»/.test(n.textContent))
+      n.textContent = "Todavía no hay: llega con el radar de cada día."; });
     $("#app h1").insertAdjacentHTML("afterend", '<div class="small muted">El radar se actualiza solo cada día con los competidores de tus canales (los pones al crear el canal).</div>');
   }
   window.runRadar = async () => { await post("/api/radar"); route(); };
@@ -2488,7 +2489,9 @@ async function channelPage() {
       <div class="row"><select onchange="myChannel=this.value;route()" style="width:auto">${data.channels.map((n) => `<option ${n === myChannel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
       <button class="main" onclick="analyse()" ${c.job.running || !c.handle ? "disabled" : ""}>Analizar ahora</button></div></div>
     ${c.handle ? `<div class="small muted">${esc(c.handle)}${r ? " · análisis del " + new Date(r.generated).toLocaleString("es-ES") : ""}</div>`
-      : '<div class="notice">Falta tu canal de este perfil: ponlo en <a href="#/ajustes">Ajustes → Mi canal</a>.</div>'}
+      : `<div class="notice">¿Cuál es este canal en YouTube?
+          <div class="row" style="margin-top:8px"><input id="myhandle" placeholder="@TuCanal" style="max-width:260px">
+          <button class="main" onclick="post('/api/mychannel/' + encodeURIComponent(myChannel) + '/handle', {handle: $('#myhandle').value}).then(route)">Guardar</button></div></div>`}
     ${jobLine(c.job, "Analizando el canal")}`;
   window.analyse = async () => { await post("/api/mychannel/" + encodeURIComponent(myChannel)); route(); };
   if (c.job.running) schedule(route, 6000);

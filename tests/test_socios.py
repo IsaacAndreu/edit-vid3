@@ -300,6 +300,10 @@ def test_a_partners_channel_page_and_stats_are_theirs(studio, monkeypatch):
     assert [v["slug"] for v in st["videos"]] == ["suyo1"] and st["totals"]["views"] == 100
     assert call("/api/mychannel/atletismo")[0] == 200 and call("/api/mychannel/aviacion")[0] == 403
     assert call("/api/mychannel/aviacion", {})[0] == 403
+    assert call("/api/mychannel/aviacion/handle", {"handle": "@x"})[0] == 403
+    assert call("/api/mychannel/atletismo/handle", {"handle": "@SuCanal"})[0] == 200
+    from pipeline import mychannel
+    assert mychannel.handle_for(root, "atletismo") == "@SuCanal"
     assert sum(d["usd"] for d in json.loads(call("/api/spending")[1])) == 0.2
 
 

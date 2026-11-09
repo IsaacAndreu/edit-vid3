@@ -1164,7 +1164,7 @@ def partner_may(root: Path, mine: list[str], method: str, path: str) -> bool:
 
     if path in (PARTNER_GET if method == "GET" else PARTNER_POST):
         return True
-    if match := re.fullmatch(r"/api/mychannel/([^/]+)", path):       # «Mi canal» of one of their channels
+    if match := re.fullmatch(r"/api/mychannel/([^/]+)(?:/handle)?", path):     # «Mi canal» of one of their channels
         return urllib.parse.unquote(match.group(1)) in mine
     if method == "GET" and re.fullmatch(r"/api/apertura/[0-9a-f]{12}", path):
         return True
@@ -2102,6 +2102,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import niche_ideas
 
                     return self._ok(niche_ideas.make_profile(root, str(body.get("query") or ""), str(body.get("name") or "")))
+                if match := re.fullmatch(r"/api/mychannel/([^/]+)/handle", path):    # {handle}: @TheirChannel
+                    channel = urllib.parse.unquote(match.group(1))
+                    if channel not in channels(root):
+                        return self._fail(404, "No existe")
+                    settings(root, {"my_channels": {channel: str(body.get("handle") or "").strip()}})
+                    return self._ok({"ok": True})
                 if match := re.fullmatch(r"/api/mychannel/([^/]+)", path):
                     channel = urllib.parse.unquote(match.group(1))
                     if channel not in channels(root):
