@@ -38,9 +38,19 @@ Devuelve SOLO JSON:
                     ("X es uno de los deportes más…", "hoy vamos a ver…", definiciones, contexto sin tensión),
  "strongest": número de la frase con el momento más impactante de todo el guion,
  "problems": ["problemas concretos del arranque, citando frases (máx. 4)"],
- "new_opening": "una apertura alternativa de 2-4 frases (~15 s de voz) que empiece POR el momento más fuerte o por la
-                 promesa del título y deje una pregunta abierta. Usa SOLO hechos que ya están en el guion: ni cifras,
-                 ni nombres, ni fechas nuevas.",
+ "first_kind": "momento | contexto | intro — qué es la PRIMERA frase: el momento más fuerte o impactante de la historia
+                (momento), contexto histórico o general («En 1896…», «La gimnasia nació…») (contexto), o presentación del
+                canal / del vídeo («Hoy vamos a ver…», «Bienvenidos…») (intro)",
+ "end_promise": número de la frase de los primeros ~20 s que promete algo CONCRETO que se verá al final del vídeo
+                («y el número 1 nadie lo ha repetido nunca», «el último te va a sorprender» NO vale: tiene que decir qué
+                es lo especial), o null si no hay,
+ "channel_intro": número de la primera frase que presenta el canal o el vídeo («hoy vamos a ver», «en este vídeo»,
+                  «bienvenidos», «suscríbete») o null,
+ "new_opening": "una apertura alternativa de 2-4 frases (~15 s de voz): la PRIMERA frase es el momento más fuerte del
+                 guion (nunca contexto histórico); después una promesa CONCRETA de algo que se verá al final (lo que el
+                 guion cuenta al final: el número 1, el desenlace) sin desvelarlo; nada de «hoy vamos a ver» ni
+                 presentar el canal. Usa SOLO hechos que ya están en el guion: ni cifras, ni nombres, ni fechas nuevas.",
+ "replaces": cuántas frases del principio del guion sustituye esa apertura (0 si va delante sin quitar nada),
  "tips": ["1-3 cambios concretos para los primeros 30 s"],
  "topic_fit": "bien | dudoso | mal — SOLO si te paso LECCIONES DEL CANAL: si el tema, el ángulo y el título se parecen a lo
                que funcionó en el canal o a lo que fracasó (si no hay lecciones, \"\")",
@@ -63,6 +73,39 @@ def timed(sentences: list[str], words_per_second: float) -> list[dict[str, Any]]
         out.append({"n": n, "start": round(clock, 1), "text": sentence})
         clock += len(sentence.split()) / words_per_second
     return out
+
+
+# a channel or video introduction, in the languages the channels speak: never before the 15th second
+INTRO = re.compile(r"\b(hoy (vamos a|te (voy a|traigo|cuento|enseño)|repasamos|veremos|descubrimos|hablamos)|en este (v[ií]deo|episodio)|en el v[ií]deo de hoy|bienvenid[oa]s?|suscr[ií]bete|"
+                   r"en este canal|hoje (vamos|eu vou)|neste v[ií]deo|bem[- ]vind[oa]s?|inscreva-se|"
+                   r"in (this|today'?s) video|today we('re| are| will)|welcome( back)? to|subscribe)\b", re.I)
+
+
+def sentence_at(sents: list[dict[str, Any]], n: Any) -> str:
+    try:
+        return str(sents[int(n)]["text"])
+    except (TypeError, ValueError, IndexError):
+        return ""
+
+
+def with_opening(script: str, sents: list[dict[str, Any]], opening: str, replaces: Any) -> str:
+    """The script with the proposed opening in place of its first `replaces` sentences (found in the text as written,
+    chapter headings and line breaks after them kept); "" when there is no opening."""
+
+    opening = opening.strip()
+    if not opening:
+        return ""
+    try:
+        count = max(0, min(int(replaces or 0), 6))
+    except (TypeError, ValueError):
+        count = 0
+    pos = 0
+    for x in sents[:count]:
+        match = re.compile(r"\s+".join(map(re.escape, x["text"].split()))).search(script, pos)
+        if not match or script[pos:match.start()].strip(" \n\t\"«»") and not script[pos:match.start()].lstrip().startswith("#"):
+            break                     # not where it should be: cut no further than what was matched
+        pos = match.end()
+    return opening + "\n\n" + script[pos:].lstrip()
 
 
 def review(ctx: RunContext, title: str, script: str, sents: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -92,20 +135,50 @@ def review(ctx: RunContext, title: str, script: str, sents: list[dict[str, Any]]
     limit = float(cfg.get("payoff_seconds", 20))
     generic = bool(result.get("generic_opening"))
     late = payoff is None or payoff > limit
+    # the three rules of the first seconds (third-party footage videos): the strongest moment first, a concrete promise
+    # of the end, no channel intro before 15 s
+    intro_limit = float(cfg.get("intro_seconds", 15))
+    first_kind = str(result.get("first_kind") or "").strip().lower()
+    intro_at = at(result.get("channel_intro"))
+    said_intro = next((x for x in sents if x["start"] < intro_limit and INTRO.search(x["text"])), None)
+    if said_intro and (intro_at is None or said_intro["start"] < intro_at):
+        intro_at = float(said_intro["start"])
+    intro_n = next((x["n"] for x in sents if float(x["start"]) == intro_at), None) if intro_at is not None else None
+    promise_at = at(result.get("end_promise"))
+    rules = [
+        {"rule": "La primera frase es el momento más fuerte", "ok": first_kind == "momento" or first_kind == "",
+         "detail": {"contexto": "empieza con contexto histórico o general", "intro": "empieza presentando el vídeo"}.get(first_kind, "")},
+        {"rule": "Promete algo concreto del final", "ok": promise_at is not None and promise_at <= limit,
+         "detail": f"«{sentence_at(sents, result.get('end_promise'))}»" if promise_at is not None and promise_at <= limit
+         else "ninguna frase del arranque dice qué se verá al final"},
+        {"rule": f"Sin presentar el canal ni «hoy vamos a ver» antes del segundo {intro_limit:.0f}",
+         "ok": intro_at is None or intro_at >= intro_limit,
+         "detail": f"≈{intro_at:.0f} s: «{sents[intro_n]['text']}»" if intro_at is not None and intro_at < intro_limit
+         and intro_n is not None else ""},
+    ]
+    broken = [r for r in rules if not r["ok"]]
     if late:
         verdict = "❌ El título no se cumple hasta " + (f"el segundo {payoff:.0f}" if payoff is not None else "muy tarde")
+    elif not rules[2]["ok"]:
+        verdict = f"❌ Presenta el canal o el vídeo antes del segundo {intro_limit:.0f}"
+    elif not rules[0]["ok"]:
+        verdict = "⚠️ La primera frase no es el momento más fuerte: " + rules[0]["detail"]
     elif generic:
         verdict = "⚠️ Arranque genérico: la promesa llega a tiempo, pero las primeras frases no enganchan"
+    elif broken:
+        verdict = "⚠️ Falta una promesa concreta de lo que se verá al final"
     else:
         verdict = "✅ El arranque cumple el título"
-    sentence = lambda n: sents[int(n)]["text"] if at(n) is not None else ""   # noqa: E731
+    sentence = lambda n: sentence_at(sents, n)   # noqa: E731
     return {
-        "title": title, "verdict": verdict, "ok": not late and not generic, "promise": str(result.get("promise") or ""),
+        "title": title, "verdict": verdict, "ok": not late and not generic and not broken, "rules": rules,
+        "promise": str(result.get("promise") or ""),
         "payoffSeconds": payoff, "payoffSentence": sentence(result.get("first_payoff")), "limit": limit,
         "generic": generic, "strongestSeconds": at(result.get("strongest")),
         "strongestSentence": sentence(result.get("strongest")),
         "problems": [str(p) for p in result.get("problems") or []][:4],
         "newOpening": str(result.get("new_opening") or ""), "tips": [str(t) for t in result.get("tips") or []][:3],
+        "scriptWithOpening": with_opening(script, sents, str(result.get("new_opening") or ""), result.get("replaces")),
         "opening": " ".join(s["text"] for s in sents[:4]),
         "topicFit": str(result.get("topic_fit") or "") if learned else "", "topicWhy": str(result.get("topic_why") or "") if learned else "",
         "titles": [str(t) for t in result.get("titles") or []][:3] if learned else [],
@@ -120,6 +193,9 @@ def markdown(r: dict[str, Any]) -> str:
     if r["strongestSentence"]:
         lines += [f"**Momento más fuerte del guion (≈{r['strongestSeconds']:.0f} s):** «{r['strongestSentence']}»", ""]
     lines += [f"**Cómo empieza ahora:** «{r['opening'][:400]}»", ""]
+    if r.get("rules"):
+        lines += ["## Las tres reglas del arranque", ""] + [
+            f"- {'✅' if x['ok'] else '❌'} {x['rule']}" + (f" — {x['detail']}" if x["detail"] else "") for x in r["rules"]] + [""]
     if r["problems"]:
         lines += ["## Problemas", ""] + [f"- {p}" for p in r["problems"]] + [""]
     if r["newOpening"]:

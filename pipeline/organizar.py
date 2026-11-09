@@ -203,7 +203,11 @@ con la voz y el estilo del guion de referencia del canal (ritmo, tono, cómo arr
 frases. Devuelve SOLO JSON: {"title": "título de trabajo", "script": "el guion"}.
 Reglas del guion:
 - Texto para leer en voz alta (lo lee una voz sintética): frases cortas, sin acotaciones, sin emojis, sin listas.
-- Arranque de 15-20 s que enganche con lo más fuerte de la historia; nada de «hola, bienvenidos».
+- La PRIMERA frase es el momento más fuerte de toda la historia (la caída, el récord, el instante decisivo), nunca
+  contexto histórico ni una definición («En 1896…», «X es uno de los deportes más…»).
+- En los primeros 15-20 s, una promesa CONCRETA de algo que se verá al final, sin desvelarlo («y el número 1 nadie lo
+  ha repetido nunca»; no vale «el último te sorprenderá»).
+- Nada de presentar el canal ni «hoy vamos a ver», «en este vídeo», «bienvenidos» o «suscríbete» antes del segundo 15.
 - 4-7 capítulos marcados con una línea propia «## TÍTULO EN MAYÚSCULAS» (no antes del arranque).
 - Cifras, fechas y nombres solo si estás seguro. Si no lo estás, escribe el dato y detrás [COMPROBAR].
 - Cierra con una pregunta a la audiencia y una frase que lleve al siguiente vídeo.
