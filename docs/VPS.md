@@ -227,6 +227,13 @@ biblioteca, tus canales) le responde 403 aunque escriba la URL. Un canal es de u
 de nadie son tuyos. Cambiar su contraseña cierra sus sesiones; «Quitar» le deja sin entrada (sus vídeos se quedan).
 Solo se guarda un PBKDF2 con sal de cada contraseña, en `out/_usuarios.json`.
 
+Lo que tiene la otra persona: Inicio, Nuevo vídeo y nuevo canal (queda suyo), Para subir, Todos los vídeos,
+Guiones, Calendario y Tablero de ideas de sus canales, Radar (sus competidores y noticias), Mi canal, Estadísticas,
+Mi gasto, Voces y «Mi cuenta» (Telegram, contraseña, cerrar sesión). Los avisos de sus vídeos van a su Telegram
+cuando lo conecta (un enlace al bot); hasta entonces, al tuyo. Cada uno tiene sus topes al día (API y GB de proxy):
+los tuyos en Ajustes, los suyos en Ajustes → Personas. La cola alterna un vídeo de cada persona, empezando por quien
+menos servidor ha usado hoy.
+
 Factura: Ajustes → «Coste del servidor al mes», y en «Gasto» la tabla «Factura por persona» de cada mes: API y voz
 (por el día de cada llamada), proxy (los GB medidos de sus vídeos × `proxy_usd_per_gb`) y su parte del servidor,
 a partes iguales entre tú y cada persona (42 y una persona: 21 cada uno), con un CSV por persona. La otra persona
