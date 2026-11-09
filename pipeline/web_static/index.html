@@ -1703,15 +1703,15 @@ async function spendPage() {
     <div class="small muted" style="margin-top:4px">Cada búsqueda (search.list) cuesta 100 unidades y cada clave da 10.000 al día (y 100 búsquedas). Gratis en dinero, pero limita cuántos vídeos salen al día.
       Los vídeos de antes del registro se estiman por sus búsquedas (marcados con ≈).</div>
 
-    ${g.proxy ? `<h2>Proxy de metadatos (estimado)</h2>
+    ${g.proxy ? `<h2>Proxy, desde el principio</h2>
     <div class="kpis">
-      <div class="kpi"><div class="k">Por vídeo</div><div class="v">${usd(o.proxyUsd, 2)}</div><div class="d">media de los terminados</div></div>
+      <div class="kpi"><div class="k">Por vídeo</div><div class="v">${usd(o.proxyUsd, 2)}</div><div class="d">media de los terminados${o.proxyGb != null ? ` · ${o.proxyGb.toFixed(2)} GB` : ""}</div></div>
       <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.proxy.usd)}</div>
-        <div class="d">≈ ${fmt(Math.round(g.proxy.mb))} MB · ${fmt(g.proxy.requests)} peticiones · ${g.proxy.videos} vídeos</div></div>
+        <div class="d">${g.proxy.gb.toFixed(2)} GB · ${fmt(g.proxy.requests)} peticiones · ${g.proxy.videos} vídeos</div></div>
       <div class="kpi"><div class="k">Desde</div><div class="v" style="font-size:20px">${g.proxy.since ? new Date(g.proxy.since * 1000).toLocaleString("es-ES", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "—"}</div>
         <div class="d">primera petición por el proxy</div></div></div>
-    <div class="small muted" style="margin-top:4px">El proveedor cobra por GB y aquí solo se cuentan peticiones: se estima con ${g.proxy.mbPerRequest} MB por petición y ${g.proxy.usdPerGb} $/GB
-      (sourcing.youtube.metadata_proxy_mb_per_request y metadata_proxy_usd_per_gb en config.local.yaml). Para afinarlo: MB del panel del proveedor ÷ peticiones de aquí.</div>` : ""}
+    <div class="small muted" style="margin-top:4px">Los GB del proxy residencial son los medidos en cada petición, a ${g.proxy.usdPerGb} $/GB (sourcing.youtube.proxy_usd_per_gb).
+      ${g.proxy.estimatedVideos ? `Los ${g.proxy.estimatedVideos} vídeos marcados con ≈ usaron el proxy de metadatos antiguo, que no guardaba tamaños: se estima con ${g.proxy.mbPerRequest} MB por petición y ${g.proxy.metadataUsdPerGb} $/GB.` : ""}</div>` : ""}
 
     <h2>Media por canal</h2>
     <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
@@ -1721,12 +1721,12 @@ async function spendPage() {
         <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="width:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
         <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td>
         <td data-k="Cuota YT" title="${c.ytSearches ?? "—"} búsquedas">${c.ytUnits != null ? kfmt(c.ytUnits) + " u · " + c.ytKeys + " claves" : "—"}</td>
-        <td data-k="Proxy">${c.proxyUsd != null ? "≈ " + usd(c.proxyUsd, 2) : "—"}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
+        <td data-k="Proxy">${c.proxyUsd != null ? usd(c.proxyUsd, 2) + (c.proxyGb != null ? ` <span class="muted small">${c.proxyGb.toFixed(2)} GB</span>` : "") : "—"}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
         <td data-k="Total">${usd(c.total)}</td><td data-k="En curso" class="wide">${usd(c.inProgress)}</td>
         <td data-k="Más caro" class="wide">${c.dearest ? `${esc(c.dearest.slug)} · ${usd(c.dearest.usd)}` : "—"}</td></tr>`).join("")}
       <tr class="group"><td>Todos los canales</td><td style="text-align:right">${usd(o.average)}</td><td style="text-align:right">${usd(o.median)}</td>
         <td style="text-align:right">${usd(o.perMinute, 3)}</td><td style="text-align:right">${o.ytUnits != null ? kfmt(o.ytUnits) + " u · " + o.ytKeys + " claves" : "—"}</td>
-        <td style="text-align:right">${o.proxyUsd != null ? "≈ " + usd(o.proxyUsd, 2) : "—"}</td>
+        <td style="text-align:right">${o.proxyUsd != null ? usd(o.proxyUsd, 2) : "—"}</td>
         <td style="text-align:right">${o.done} de ${o.videos}</td><td style="text-align:right">${usd(o.total)}</td>
         <td style="text-align:right" class="wide">${usd(o.inProgress)}</td><td class="wide"></td></tr></tbody></table></div>
 
@@ -1754,11 +1754,11 @@ async function spendPage() {
             <select style="width:auto;padding:1px 4px;font-size:12px" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
               ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
             · ${esc(v.last)}</div></td>
-        <td data-k="Gasto"><b>${usd(v.usd)}</b></td>
+        <td data-k="Gasto"><b>${usd(v.usd)}</b>${v.proxyUsd ? `<div class="sub" title="API + proxy">con proxy ${usd(v.usd + v.proxyUsd)}</div>` : ""}</td>
         <td data-k="Ahorrado" title="${fmt(v.reused?.judge || 0)} veredictos · ${fmt(v.reused?.voice || 0)} caracteres de voz">${v.savedUsd ? usd(v.savedUsd) : "—"}</td>
         <td data-k="Tiempo">${v.workSeconds ? (v.workSeconds >= 3600 ? `${Math.floor(v.workSeconds / 3600)} h ${String(Math.round(v.workSeconds % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(v.workSeconds / 60)} min`) : "—"}</td>
         <td data-k="Cuota YT" title="${v.ytSearches ?? 0} búsquedas">${v.ytUnits ? (v.ytEstimated ? "≈ " : "") + kfmt(v.ytUnits) + " u" : "—"}</td>
-        <td data-k="Proxy" title="${v.proxyRequests ?? 0} peticiones por el proxy">${v.proxyUsd ? "≈ " + usd(v.proxyUsd, 2) : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
+        <td data-k="Proxy" title="${v.proxyRequests ?? 0} peticiones por el proxy${v.proxyEstimated ? " · estimado por peticiones (proxy de metadatos antiguo)" : ""}">${v.proxyUsd ? (v.proxyEstimated ? "≈ " : "") + usd(v.proxyUsd, 2) + (v.proxyGb ? `<div class="sub">${v.proxyGb.toFixed(2)} GB</div>` : "") : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
         <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
         <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
         <td class="wide small muted" style="text-align:left">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")

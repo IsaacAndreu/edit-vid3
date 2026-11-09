@@ -61,13 +61,57 @@ def youtube_quota(root: Path) -> dict[str, dict[str, Any]]:
     return out
 
 
+_PROXY_CACHE: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+
+
+def _proxy_of(path: Path, mb_per_request: float) -> dict[str, Any]:
+    """One video's request log, added up per proxy kind: the bytes the proxy really carried («proxy_bytes», written
+    since the residential proxy), and the old metadata-proxy requests that have no size (estimated with
+    `mb_per_request`). Kept by the file's size and time: the logs are long and the page is opened often."""
+
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    key = (stat.st_size, stat.st_mtime_ns)
+    hit = _PROXY_CACHE.get(str(path))
+    if hit and hit[0] == key:
+        return hit[1]
+    out = {"requests": 0, "metadataBytes": 0, "paidBytes": 0, "estimatedMb": 0.0, "since": None}
+    try:
+        lines = path.read_text("utf-8").splitlines()
+    except OSError:
+        return {}
+    for line in lines:
+        if '"proxy"' not in line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        name = row.get("proxy")
+        if not name:
+            continue
+        if not str(row.get("action", "")).startswith("archivo "):   # the file row repeats a download request
+            out["requests"] += 1
+        ts = row.get("ts") or 0
+        out["since"] = min(out["since"] or ts, ts)
+        if "proxy_bytes" in row:
+            out["metadataBytes" if name == "metadatos" else "paidBytes"] += int(row.get("proxy_bytes") or 0)
+        elif name == "metadatos":
+            out["estimatedMb"] += mb_per_request
+    _PROXY_CACHE[str(path)] = (key, out)
+    return out
+
+
 def proxy_usage(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, float]]:
-    """Requests that went out through the paid metadata proxy (sourcing.youtube.metadata_proxy), per video, from each
-    video's request log (work/<slug>/youtube_downloads.jsonl, "proxy": "metadatos"). The provider bills by GB and the
-    log has no sizes: GB ≈ requests × `metadata_proxy_mb_per_request`, $ ≈ GB × `metadata_proxy_usd_per_gb` (both in
-    config; calibrate them with the provider's panel: its MB ÷ the requests counted here)."""
+    """What the proxies cost each video, from its request log (work/<slug>/youtube_downloads.jsonl). Rows that carry
+    «proxy_bytes» are measured: GB × `proxy_usd_per_gb` (the residential proxy) or × `metadata_proxy_usd_per_gb`
+    (the old metadata proxy). The old metadata-proxy rows have no size: GB ≈ requests × `metadata_proxy_mb_per_request`
+    («estimated»: the page marks those with ≈)."""
 
     from .context import RunContext
+    from .ytstats import DEFAULT_USD_PER_GB
 
     try:
         cfg = (RunContext.create("_gasto", root=root).section("sourcing").get("youtube") or {})
@@ -75,27 +119,18 @@ def proxy_usage(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, float]
         cfg = {}
     mb = float(cfg.get("metadata_proxy_mb_per_request", 0.6))
     per_gb = float(cfg.get("metadata_proxy_usd_per_gb", 4.5))
+    paid_gb = float(cfg.get("proxy_usd_per_gb", DEFAULT_USD_PER_GB))
     out: dict[str, dict[str, Any]] = {}
     for path in (root / "work").glob("*/youtube_downloads.jsonl"):
-        try:
-            lines = path.read_text("utf-8").splitlines()
-        except OSError:
+        got = _proxy_of(path, mb)
+        if not got or not got["requests"]:
             continue
-        count, first = 0, None
-        for line in lines:
-            if '"metadatos"' not in line:
-                continue
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
-            if row.get("proxy") == "metadatos":
-                count += 1
-                first = min(first or row.get("ts") or 0, row.get("ts") or 0)
-        if count:
-            out[path.parent.name] = {"requests": count, "mb": round(count * mb, 1),
-                                     "usd": round(count * mb / 1024 * per_gb, 3), "since": first}
-    return out, {"mbPerRequest": mb, "usdPerGb": per_gb}
+        metadata_gb = got["metadataBytes"] / 1e9 + got["estimatedMb"] / 1024
+        gb = metadata_gb + got["paidBytes"] / 1e9
+        out[path.parent.name] = {"requests": got["requests"], "mb": round(gb * 1024, 1), "gb": round(gb, 3),
+                                 "usd": round(metadata_gb * per_gb + got["paidBytes"] / 1e9 * paid_gb, 3),
+                                 "estimated": bool(got["estimatedMb"]), "since": got["since"]}
+    return out, {"mbPerRequest": mb, "usdPerGb": paid_gb, "metadataUsdPerGb": per_gb}
 
 
 def report(root: Path, days: int = 30) -> dict[str, Any]:
@@ -156,6 +191,7 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
                        "ytSearches": (quota.get(slug) or {}).get("searches"), "ytUnits": (quota.get(slug) or {}).get("units"),
                        "ytEstimated": bool((quota.get(slug) or {}).get("estimated")),
                        "proxyRequests": (proxy.get(slug) or {}).get("requests"), "proxyUsd": (proxy.get(slug) or {}).get("usd"),
+                       "proxyGb": (proxy.get(slug) or {}).get("gb"), "proxyEstimated": bool((proxy.get(slug) or {}).get("estimated")),
                        "providers": {k: round(v, 4) for k, v in sorted(own.items(), key=lambda kv: -kv[1])},
                        "week": round(sum(float(e.get("usd") or 0) for e in entries if str(e.get("at") or "")[:10] >= week), 4),
                        "month": round(sum(float(e.get("usd") or 0) for e in entries if str(e.get("at") or "")[:7] == month), 4)})
@@ -172,6 +208,7 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
         units = [r["ytUnits"] for r in done if r.get("ytUnits")]
         searches = [r["ytSearches"] for r in done if r.get("ytSearches")]
         proxied = [r["proxyUsd"] for r in done if r.get("proxyUsd")]
+        proxied_gb = [r["proxyGb"] for r in done if r.get("proxyUsd")]
         return {"channel": name, "total": round(sum(r["usd"] for r in rows), 2), "videos": len(rows), "done": len(done),
                 "average": round(statistics.mean(costs), 3) if costs else None,
                 "median": round(statistics.median(costs), 3) if costs else None,
@@ -183,7 +220,8 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
                 "ytUnits": round(statistics.mean(units)) if units else None,          # per finished video
                 "ytSearches": round(statistics.mean(searches)) if searches else None,
                 "ytKeys": round(statistics.mean(units) / 10000, 1) if units else None,
-                "proxyUsd": round(statistics.mean(proxied), 3) if proxied else None}
+                "proxyUsd": round(statistics.mean(proxied), 3) if proxied else None,
+                "proxyGb": round(statistics.mean(proxied_gb), 3) if proxied_gb else None}
 
     by_channel: dict[str, list[dict[str, Any]]] = {}
     for row in videos:
@@ -225,6 +263,8 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
             "ytToday": _quota_today(root),
             "proxy": {**proxy_rates, "videos": len(proxy), "requests": sum(p["requests"] for p in proxy.values()),
                       "mb": round(sum(p["mb"] for p in proxy.values()), 1),
+                      "gb": round(sum(p["gb"] for p in proxy.values()), 2),
+                      "estimatedVideos": sum(1 for p in proxy.values() if p["estimated"]),
                       "usd": round(sum(p["usd"] for p in proxy.values()), 2),
                       "since": min((p["since"] for p in proxy.values() if p["since"]), default=None)} if proxy else None}
 
