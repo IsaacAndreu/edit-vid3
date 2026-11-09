@@ -218,6 +218,19 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
 
 El análisis, por el proxy residencial, ya no baja el vídeo entero a 360p cuando mira 3 o más tramos de él (`prefetch_whole_residential: false`): si el vídeo tiene HLS, cada tramo llega por HLS (la misma 360p). En gimnasia2 el vídeo entero era 1,7 de los 2,8 GB del proxy. Sin HLS sigue bajándose entero, como antes.
 
+## 3g. Estudio compartido (otra persona con sus canales)
+
+En el estudio → Ajustes → «Personas que comparten el estudio»: un nombre, una contraseña (8 o más, distinta de
+la tuya) y sus canales. Entra con esa contraseña en la misma dirección del estudio y solo ve sus canales: sus
+vídeos, crear vídeos en ellos, «Para subir», sus voces y «Mi gasto». Todo lo demás (Ajustes, servidor, radar,
+biblioteca, tus canales) le responde 403 aunque escriba la URL. Un canal es de una sola persona; los que no son
+de nadie son tuyos. Cambiar su contraseña cierra sus sesiones; «Quitar» le deja sin entrada (sus vídeos se quedan).
+Solo se guarda un PBKDF2 con sal de cada contraseña, en `out/_usuarios.json`.
+
+Factura: Ajustes → «Coste del servidor al mes», y en «Gasto» la tabla «Factura por persona» de cada mes: API y voz
+(por el día de cada llamada), proxy (los GB medidos de sus vídeos × `proxy_usd_per_gb`) y su parte del servidor
+por horas de trabajo, con un CSV por persona. La otra persona ve la suya en «Mi gasto».
+
 ## 4. Métricas (lo que decide)
 
 Cada petición a YouTube queda en `work/<vídeo>/youtube_downloads.jsonl` (qué se pidió, si fue bien, el error —403,

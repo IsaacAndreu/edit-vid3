@@ -1128,9 +1128,11 @@ def spending(root: Path, days: int = 14) -> list[dict[str, Any]]:
 
 # Everything not listed here answers 403 to a partner (usuarios.py). The video routes also need the video to be in
 # one of their channels; the ones with a channel in the body (a new video, moving one), that channel too.
-PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv")
-PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes")
-PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes")
+PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
+               "/api/voices", "/api/voices/search")
+PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
+                "/api/voices", "/api/voices/test")
+PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
                      r"/api/decisions/([^/]+)", r"/api/decisions/([^/]+)/frame", r"/files/([^/]+)/.+")
@@ -1327,6 +1329,17 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if path == "/api/search":
                         found = search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000])
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
+                    if path == "/api/voices":
+                        from . import tts
+
+                        key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
+                        return self._ok({"voices": {c: v for c, v in tts.voices(root).items() if c in mine}, "channels": mine,
+                                         "models": list(tts.MODELS), "defaults": tts.DEFAULTS, "hasKey": bool(key),
+                                         "dubbing": {c: tts.dubbing_for(root, c) for c in mine},
+                                         "dubLanguages": list(tts.DUB_LANGUAGES),
+                                         "speaks": {c: tts.voice_for(root, c) is not None for c in mine},
+                                         "dubOptions": {c: _dub_options(root, c) for c, k in channel_kinds(root).items()
+                                                        if k == "simulacion" and c in mine}, "partner": who})
                     if path == "/api/upload/dates":
                         from . import organizar
 

@@ -576,10 +576,11 @@ function drawHome(force = false) {               // the channel buttons redraw f
     : s.paused ? ["warn", "En pausa", "no empieza vídeos nuevos", '<a href="#/servidor">quitar la pausa →</a>']
     : s.watching ? ["ok", "Trabajando", making.length ? `${making.length} vídeo(s) haciéndose` : queue.length ? "entre vídeos: el siguiente empieza solo" : "vigilando: nada pendiente", ""]
     : s.queueRunning ? ["ok", "Cola en marcha", "sin vigilante: acabará la ronda y parará", ""] : ["bad", "Parado", "no hay vigilante", '<button onclick="startQueue()">Arrancar la cola</button>'];
+  if (window.partner) state[3] = "";                    // the server is the owner's: a partner only sees how it is
   // YouTube / proxy, the last 24 h: one number that says whether downloads are healthy
   const p24 = (yt && yt.byProxy || []).find((x) => /rainproxy|resi|residencial/.test(x.proxy)) || (yt && yt.byProxy || [])[0];
   const share = p24 && p24.requests ? Math.round(100 * p24.ok / p24.requests) : null;
-  const ytKpi = yt ? `<a class="kpi" href="#/servidor"><div class="k">YouTube · 24 h</div>
+  const ytKpi = window.partner ? "" : yt ? `<a class="kpi" href="#/servidor"><div class="k">YouTube · 24 h</div>
       <div class="v ${share == null ? "" : share >= 85 ? "ok" : share >= 60 ? "warn" : "bad"}">${share == null ? "—" : share + " %"}</div>
       <div class="d">${p24 ? `${p24.requests} peticiones bien${p24.proxy_gb ? ` · ${p24.proxy_gb.toFixed(2)} GB de proxy` : ""}${(p24.errors || {}).bot ? ` · ${p24.errors.bot} bot` : ""}` : `${yt.ok} de ${yt.requests} en la semana`}</div></a>`
     : `<div class="kpi"><div class="k">YouTube · 24 h</div><div class="v">—</div><div class="d">sin descargas todavía</div></div>`;
@@ -1432,7 +1433,7 @@ async function changeChannel(slug, current, el) {
 }
 
 // «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
-let spendSort = "last", spendChannel = "";
+let spendSort = "last", spendChannel = "", invoiceMonth = "";
 
 let allFilter = {q: "", channel: "", state: "todos", kind: ""};
 let allSort = {key: "updated", dir: -1};
@@ -1646,8 +1647,29 @@ async function experimentsPage() {
           onchange="saveExperiment('${esc(v.slug)}', '${k}', this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
         || '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`;
 }
+// «Factura»: each person's month (you see everyone, a partner only their own), with a CSV to send
+function invoiceBlock(g, usd) {
+  const months = g.invoices || [];
+  if (!months.length) return "";
+  const m = months.find((x) => x.month === invoiceMonth) || months[0];
+  const name = (w) => w ? esc(w) : "Tú";
+  return `<h2>${window.partner ? "Tu factura del mes" : "Factura por persona"}</h2>
+    <div class="yt-tools">${months.map((x) => `<button class="yt-chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth='${x.month}';spendPage()">${x.month}</button>`).join("")}</div>
+    <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
+      <thead><tr><th>Persona</th><th>API</th><th>Voz</th><th>Proxy</th><th>Horas</th><th>Servidor</th><th>Total</th><th></th></tr></thead>
+      <tbody>${m.people.map((p) => `<tr class="v"><td><b>${name(p.who)}</b><div class="sub">${p.videos.length} vídeo${p.videos.length === 1 ? "" : "s"}</div></td>
+        <td data-k="API">${usd(p.api)}</td><td data-k="Voz">${usd(p.voice)}</td>
+        <td data-k="Proxy">${usd(p.proxyUsd)}<div class="sub">${p.proxyGb.toFixed(2)} GB</div></td>
+        <td data-k="Horas">${fmt(p.hours)} h</td><td data-k="Servidor">${usd(p.server)}</td><td data-k="Total"><b>${usd(p.total)}</b></td>
+        <td><a class="btn" style="padding:4px 10px;font-size:12.5px" href="/api/factura.csv?month=${m.month}&who=${encodeURIComponent(p.who)}">CSV</a></td></tr>`).join("")
+        || '<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Sin gasto este mes.</td></tr>'}</tbody></table></div>
+    <div class="small muted" style="margin-top:4px">API y voz por el día de cada llamada · proxy por los GB que llevó cada vídeo ·
+      servidor (${usd(m.serverUsd)} al mes) repartido por horas de trabajo${m.hours != null ? ` (${fmt(m.hours)} h en total este mes)` : ""}.
+      ${!window.partner && !m.serverUsd ? 'Pon lo que cuesta el servidor en <a href="#/ajustes">Ajustes</a>.' : ""}</div>`;
+}
+
 async function spendPage() {
-  const [g, px] = await Promise.all([api("/api/gasto"), api("/api/proxy?days=7").catch(() => null)]);
+  const [g, px] = await Promise.all([api("/api/gasto"), window.partner ? null : api("/api/proxy?days=7").catch(() => null)]);
   const usd = (n, d = 2) => n == null ? "—" : Number(n).toFixed(d) + " $";
   const o = g.overall, max = Math.max(0.01, ...g.days.map((d) => d.usd));
   const top = Math.max(0.01, ...g.channels.map((c) => c.average || 0));
@@ -1655,7 +1677,7 @@ async function spendPage() {
   const rows = g.videos.filter((v) => !spendChannel || v.channel === spendChannel)
     .sort((a, b) => spendSort === "usd" ? b.usd - a.usd : spendSort === "minutes" ? b.minutes - a.minutes
       : spendSort === "work" ? (b.workSeconds || 0) - (a.workSeconds || 0) : b.last.localeCompare(a.last));
-  $("#app").innerHTML = `<h1>Gasto de API</h1>
+  $("#app").innerHTML = `<h1>${window.partner ? "Mi gasto" : "Gasto de API"}</h1>
     <div class="small muted">Lo que cuestan las APIs de pago (guion, planos, juez, voz…). Las medias cuentan solo vídeos terminados; lo de vídeos a medias va aparte («en curso»).</div>
     <div class="kpis" style="margin-top:12px">
       <div class="kpi"><div class="k">Hoy</div><div class="v">${usd(g.today)}</div><div class="d">desde las 00:00 (UTC)</div></div>
@@ -1669,6 +1691,8 @@ async function spendPage() {
         <div class="d">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "sin vídeos terminados"}</div></a>
       <div class="kpi"><div class="k">API + proxy por vídeo</div><div class="v">${o.average != null && px.gbPerFinished != null ? usd(o.average + px.gbPerFinished * px.usdPerGb) : "—"}</div>
         <div class="d">lo que cuesta de verdad un vídeo terminado</div></div>` : ""}</div>
+
+    ${invoiceBlock(g, usd)}
 
     ${(() => { const s = g.savings, p = g.pipeline, hm = (x) => x == null ? "—" : x >= 3600 ? `${Math.floor(x / 3600)} h ${String(Math.round(x % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(x / 60)} min`;
       const most = Math.max(1, ...(p.stages || []).map((x) => x.seconds));
@@ -1868,6 +1892,41 @@ function movePrio(i, step) {                       // ▲ ▼ ✕ in «Prioridad
 }
 
 let mineOpen = false, mineEmpty = false;
+// Ajustes → «Personas»: who else uses the studio, with their password and their channels (they see only those)
+async function peopleBlock(all) {
+  const u = (await api("/api/users").catch(() => ({users: []}))).users;
+  const owner = Object.fromEntries(u.flatMap((x) => x.channels.map((c) => [c, x.name])));
+  const boxes = (who, mine) => all.map((c) => `<label class="row small" style="gap:4px;margin:0;font-weight:400${owner[c] && owner[c] !== who ? ";opacity:.45" : ""}">
+    <input type="checkbox" class="pc-${esc(who || "_new")}" value="${esc(c)}" ${mine.includes(c) ? "checked" : ""} ${owner[c] && owner[c] !== who ? "disabled" : ""}
+      style="width:auto">${esc(c)}${owner[c] && owner[c] !== who ? ` <span class="muted">(${esc(owner[c])})</span>` : ""}</label>`).join("");
+  const picked = (who) => [...document.querySelectorAll(".pc-" + (who || "_new") + ":checked")].map((x) => x.value);
+  window.savePerson = async (who) => {
+    const msg = $("#pmsg-" + (who || "_new"));
+    const name = who || $("#pname").value.trim().toLowerCase(), password = $("#ppass-" + (who || "_new")).value;
+    try { await post("/api/users", {name, password, channels: picked(who)}); settingsPage(); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  window.removePerson = async (who) => {
+    if (!confirm(`¿Quitar a ${who}? No podrá entrar más; sus vídeos se quedan.`)) return;
+    await post("/api/users", {remove: who}); settingsPage();
+  };
+  return `<details class="block"${u.length ? " open" : ""}><summary><b>Personas que comparten el estudio</b>
+      <span class="small muted">${u.length ? u.length + (u.length === 1 ? " persona" : " personas") : "solo tú"}</span></summary>
+    <div class="small muted" style="margin:6px 0">Cada persona entra con su contraseña y solo ve sus canales: sus vídeos, su gasto y su factura.
+      Nada de lo tuyo (ni Ajustes, ni el servidor, ni los demás canales). Un canal es de una sola persona; los que no son de nadie, tuyos.</div>
+    ${u.map((x) => `<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between"><b>${esc(x.name)}</b>
+        <button class="small" onclick="removePerson('${esc(x.name)}')">Quitar</button></div>
+      <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes(x.name, x.channels)}</div>
+      <div class="row"><input id="ppass-${esc(x.name)}" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)" style="max-width:260px">
+        <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small" style="color:var(--bad)"></span></div></div>`).join("")}
+    <div class="card" style="margin-top:8px"><b>Añadir persona</b>
+      <div class="row" style="margin-top:6px"><input id="pname" placeholder="nombre (p. ej. marc)" style="max-width:180px">
+        <input id="ppass-_new" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)" style="max-width:220px"></div>
+      <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes("", [])}</div>
+      <div class="row"><button class="main" onclick="savePerson('')">Añadir</button><span id="pmsg-_new" class="small" style="color:var(--bad)"></span></div></div>
+  </details>`;
+}
+
 async function settingsPage() {
   const [s, n] = [await api("/api/settings"), await api("/api/notify")];
   window.prioList = s.channel_priority || [];
@@ -1875,6 +1934,7 @@ async function settingsPage() {
   if (!data) data = await api("/api/overview");
   const code = data && data.service && data.service.code;
   const filled = s.channels.filter((c) => s.myChannels[c]).length;
+  const people = await peopleBlock(s.channels);
   $("#app").innerHTML = `<h1>Ajustes</h1>
     ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
@@ -1882,6 +1942,7 @@ async function settingsPage() {
       <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button>
       <button style="margin-top:8px" onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">▶️ Reintentar YouTube ahora</button></div>` : ""}
     <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
+    ${people}
     <div class="card">
       <label>Hacer vídeos</label>
       <div class="row"><button class="${s.paused ? "main" : ""}" onclick="save({paused: ${!s.paused}})">${s.paused ? "▶ Reanudar" : "⏸ Pausar"}</button>
@@ -1896,6 +1957,9 @@ async function settingsPage() {
       <label>Límite por vídeo <span class="muted">(lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite)</span></label>
       <div class="row"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}" style="max-width:160px"><span>$</span>
         <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div>
+      <label>Coste del servidor al mes <span class="muted">(para la factura de cada persona en «Gasto»: se reparte por horas de trabajo)</span></label>
+      <div class="row"><input id="servermonth" type="number" min="0" step="0.5" value="${s.server_usd_month ?? 0}" style="max-width:160px"><span>$</span>
+        <button onclick="save({server_usd_month: parseFloat(document.getElementById('servermonth').value || 0)})">Guardar</button></div>
       <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
     </div>
     <h2>Avisos al móvil (Telegram)</h2>
@@ -2504,7 +2568,8 @@ async function voicesPage() {
         <span id="vmsg-${esc(c)}" class="small muted"></span></div><div id="vplay-${esc(c)}"></div>
       ${dubBox(c)}</div>`; };
   const LANGS = {pt: "Portugués", de: "Alemán", fr: "Francés", en: "Inglés", it: "Italiano"};
-  const dubBox = (c) => { const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
+  const dubBox = (c) => { if (window.partner) return "";      // dubbing sends videos to other channels: set up by the owner
+    const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
     return `<details style="margin-top:12px" ${on.length ? "open" : ""}><summary><b>🌍 Doblaje</b> ${on.length ? `<span class="pill hecho">${on.map((l) => LANGS[l] || l).join(", ")}</span>` : '<span class="muted small">apagado</span>'}</summary>
       <div class="small muted" style="margin:6px 0">Cada vídeo terminado de este canal se traduce y se vuelve a leer en esos idiomas; la cola monta el vídeo doblado
         (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</div>
@@ -2843,7 +2908,8 @@ function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (
 async function route() {
   clearTimeout(timer);
   document.body.classList.remove("menu");
-  const hash = location.hash || "#/";
+  let hash = location.hash || "#/";
+  if (window.partner && !partnerMay(hash)) { hash = "#/"; history.replaceState(null, "", "#/"); }
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
   const slow = setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
@@ -2879,7 +2945,7 @@ async function route() {
       if (!window.codeId) window.codeId = s.code.id;
       else if (window.codeId !== s.code.id) { location.reload(); return; }
     }
-    $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
+    $("#service").textContent = window.partner ? "👤 " + window.partner : s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
   clearTimeout(slow); $("#app").classList.remove("loading");
@@ -2893,9 +2959,25 @@ document.addEventListener("click", (e) => {     // menus of the header: open on 
   if (link && link.getAttribute("href") === (location.hash || "#/")) { e.preventDefault(); route(); }   // same page: reload it
 });
 
+// A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/subir", "#/videos", "#/gasto", "#/voces"];
+const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
+function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
+
 async function start() {
   const session = await fetch("/api/session").then((r) => r.json());
   if (!session.authorised) return showLogin();
+  window.partner = session.partner || null;
+  if (window.partner) {
+    document.body.classList.add("partner");
+    document.querySelectorAll("header nav a").forEach((a) => { if (!PARTNER_PAGES.includes(a.getAttribute("href"))) a.remove(); });
+    const spend = document.querySelector('header nav a[href="#/gasto"]');
+    if (spend) spend.lastChild.textContent = "Mi gasto";
+    const nav = document.querySelector("header nav");
+    nav.querySelectorAll(".sec").forEach((sec) => sec.remove());
+    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>`);
+    $("#service").textContent = "👤 " + window.partner;
+  }
   $("#top").classList.remove("hide");
   document.body.classList.add("authed");
   window.onhashchange = () => { tab = "diagnosis"; window.tabPicked = 0; window.logAll = 0; route(); };

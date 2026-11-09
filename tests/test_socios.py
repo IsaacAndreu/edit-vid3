@@ -66,6 +66,10 @@ def test_a_partner_sees_only_their_channels(studio):
     assert [v["slug"] for v in spend["videos"]] == ["suyo1"] and spend["total"] == 0.2 and spend["others"] is None
     hits = json.loads(call("/api/search?q=texto%20guion")[1])
     assert [r["slug"] for r in hits["results"]] == ["suyo1"]
+    voices = json.loads(call("/api/voices")[1])
+    assert voices["channels"] == ["atletismo"] and set(voices["speaks"]) == {"atletismo"}
+    assert call("/api/voices", {"channel": "aviacion", "voice_id": "x"})[0] == 403
+    assert call("/api/voices/credits")[0] == 403 and call("/api/dubbing", {"channel": "atletismo"})[0] == 403
 
 
 def test_nothing_of_yours_opens_for_a_partner(studio):
@@ -73,7 +77,7 @@ def test_nothing_of_yours_opens_for_a_partner(studio):
     login("contraseña-amigo")
     for path in ("/api/video/mio1", "/files/mio1/video-final.mp4", "/api/review/mio1", "/api/decisions/mio1",
                  "/api/video/mio1/repeticion", "/api/stats", "/api/settings", "/api/users", "/api/servidor", "/api/radar",
-                 "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/agenda", "/api/voices", "/api/board",
+                 "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/agenda", "/api/voices/credits", "/api/board",
                  "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia", "/api/scripts"):
         assert call(path)[0] == 403, path
     for path, body in (("/api/video/mio1/hold", {}), ("/api/video/mio1/retry", {}), ("/api/settings", {"daily_usd": 9}),
