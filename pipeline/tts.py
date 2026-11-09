@@ -43,6 +43,22 @@ class TTSError(RuntimeError):
     pass
 
 
+USD_PER_1K_CHARS = 0.022         # GenAIPro (Labs): 22 $ the million characters; tts.usd_per_1k_chars to change it
+
+
+def usd_per_1k_chars(ctx: Any, voice: dict[str, Any] | None = None) -> float:
+    """What 1,000 narrated characters cost: the voice's own price, else tts.usd_per_1k_chars, else 0.022 $. The
+    voices never carried one, so every narration was recorded at 0.00 $ (about 0.30 $ a 12-15 minute video)."""
+
+    own = (voice or {}).get("usd_per_1k_chars")
+    if own is not None:
+        return float(own)
+    try:
+        return float(ctx.section("tts").get("usd_per_1k_chars", USD_PER_1K_CHARS))
+    except Exception:
+        return USD_PER_1K_CHARS
+
+
 # --- voices per channel -----------------------------------------------------------------------------------------
 
 def _read(root: Path) -> dict[str, Any]:
@@ -614,7 +630,7 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
 
         paid = result.get("paidChars", result["chars"])     # a restart reuses pieces: they are not paid twice
         record_cost(ctx, stage="voz", provider="genaipro", operation=voice["model_id"],
-                    usd=float(voice.get("usd_per_1k_chars", 0)) * paid / 1000,
+                    usd=usd_per_1k_chars(ctx, voice) * paid / 1000,
                     details={"chars": paid, "pieces": result["pieces"]})
         if result.get("reusedChars"):
             from .ahorro import record
@@ -671,7 +687,7 @@ def prepare_all(root: Path, log: Any = print) -> int:
             log(f"Voz de {folder.name}: {type(error).__name__}: {str(error)[:200]}")
             if not failed:                       # one message per video, not one every half hour
                 _tell(root, f"🎙️ No se pudo generar la voz de {folder.name} con GenAIPro:\n{str(error)[:300]}\n\n"
-                            f"Lo reintento cada {RETRY_MINUTES} min.")
+                            f"Lo reintento cada {RETRY_MINUTES} min.", folder.name)
     return made
 
 
@@ -721,12 +737,12 @@ def check_credits(root: Path, token: str, session: Any = None, now: float | None
     return state
 
 
-def _tell(root: Path, text: str) -> None:
+def _tell(root: Path, text: str, slug: str = "") -> None:
     try:
         from .context import RunContext
         from .notify import telegram
 
-        telegram(RunContext.create("_voces", root=root), text)
+        telegram(RunContext.create(slug or "_voces", root=root), text)     # a video's: to its owner
     except Exception:            # a message is never worth stopping anything for
         pass
 

@@ -49,3 +49,24 @@ def test_a_resumed_narration_does_not_bill_the_pieces_already_made(tmp_path, mon
     except tts.TTSError:
         return
     assert result["reusedChars"] == len(text) and result["paidChars"] == 0
+
+
+def test_narrations_recorded_at_zero_are_priced_per_character(tmp_path):
+    """The voices never carried a price: every narration showed 0.00 $ (GenAIPro: 0.022 $ per 1,000 characters)."""
+    from types import SimpleNamespace
+
+    from pipeline import tts
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    work = tmp_path / "work" / "v1"
+    work.mkdir(parents=True)
+    (tmp_path / "out" / "v1").mkdir(parents=True)
+    entries = [{"stage": "voz", "provider": "genaipro", "usd": 0, "at": "2026-11-05T10:00:00", "details": {"chars": 14000}},
+               {"stage": "doblaje", "provider": "genaipro", "usd": 0.1, "at": "2026-11-05T11:00:00", "details": {"chars": 9000}}]
+    (work / "costs.json").write_text(json.dumps({"entries": entries}))
+    row = next(r for r in gasto.report(tmp_path)["videos"] if r["slug"] == "v1")
+    assert abs(row["usd"] - (0.308 + 0.1)) < 1e-6                     # an entry with its own price keeps it
+    ctx = SimpleNamespace(section=lambda name: {"usd_per_1k_chars": 0.03} if name == "tts" else {})
+    assert tts.usd_per_1k_chars(ctx) == 0.03
+    assert tts.usd_per_1k_chars(ctx, {"usd_per_1k_chars": 0.01}) == 0.01
+    assert tts.usd_per_1k_chars(SimpleNamespace(section=lambda name: {})) == 0.022

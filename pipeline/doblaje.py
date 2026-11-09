@@ -319,7 +319,7 @@ def voice(ctx: RunContext, lang: str) -> bool:
 
             paid = result.get("paidChars", result["chars"])
             record_cost(ctx, stage="doblaje", provider="genaipro", operation=f"voz-{lang}",
-                        usd=float(spec.get("usd_per_1k_chars", 0)) * paid / 1000,
+                        usd=tts.usd_per_1k_chars(ctx, spec) * paid / 1000,
                         details={"chars": paid, "lang": lang})
             if result.get("reusedChars"):
                 from .ahorro import record

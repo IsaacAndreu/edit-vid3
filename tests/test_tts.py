@@ -146,7 +146,7 @@ def test_a_failure_is_noted_and_retried_later_not_every_loop(tmp_path, monkeypat
         raise tts.TTSError("GenAIPro 402: sin créditos")
 
     monkeypatch.setattr(tts, "generate", failing)
-    monkeypatch.setattr(tts, "_tell", lambda root, text: told.append(text))
+    monkeypatch.setattr(tts, "_tell", lambda root, text, slug="": told.append(text))
     assert tts.prepare_all(tmp_path, log=lambda *_: None) == 0
     assert "sin créditos" in (folder / tts.FAILED).read_text("utf-8") and not (folder / tts.LOCK).exists()
     tts.prepare_all(tmp_path, log=lambda *_: None)
@@ -253,7 +253,7 @@ class _Credits:
 def test_low_credits_are_told_once_a_day(tmp_path, monkeypatch):
     _negocios(tmp_path)
     told = []
-    monkeypatch.setattr(tts, "_tell", lambda root, text: told.append(text))
+    monkeypatch.setattr(tts, "_tell", lambda root, text, slug="": told.append(text))
     api = _Credits(756_769)
     state = tts.check_credits(tmp_path, "k", api, now=1_000_000)
     assert state["videos"] > 50 and not told                             # ~54 voices left: nothing to say

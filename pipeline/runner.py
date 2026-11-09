@@ -94,7 +94,7 @@ SPEED_KEYS = frozenset({
     "metadata_proxy_usd_per_gb",
     "metadata_proxy_retries", "query_merge", "max_details_per_shot",
     "proxy_session_minutes", "proxy_session_rotations", "proxy_session_suffix", "info_expiry_margin_minutes",   # residential proxy sessions
-    "player_client_residential", "max_fps", "proxy_usd_per_gb", "whole_max_minutes_residential", "whole_max_mb_residential",
+    "player_client_residential", "max_fps", "proxy_usd_per_gb", "whole_max_minutes_residential", "whole_max_mb_residential", "prefetch_whole_residential",
     "refused_hours_residential",
     "timeout_retries_residential",
     "max_height",       # ingest: the HD clips already downloaded are not downloaded again at the new height
@@ -207,7 +207,7 @@ def run_stages(
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
             if stage.name in PROXY_STAGES and not offline:
-                budget.check_proxy(ctx.root, ctx.config)     # budget.proxy_gb_per_day: it waits for tomorrow here
+                budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
             current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),

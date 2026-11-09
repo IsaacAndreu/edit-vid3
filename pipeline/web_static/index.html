@@ -331,6 +331,42 @@
   @keyframes shimmer { 50% { opacity: .55; } }
   main.swap { animation: none; }
   #app > * { animation: fadein .18s ease-out; } @keyframes fadein { from { opacity: .35; } to { opacity: 1; } }
+
+  /* --- controls: the browser's own (grey checkboxes, «Choose File», square selects) restyled to match --- */
+  :root { color-scheme: dark; }
+  @media (prefers-color-scheme: light) { :root { color-scheme: light; } }
+  button, .btn, input, select, textarea { transition: background-color .15s, border-color .15s, box-shadow .15s, transform .05s; }
+  button:not(:disabled):hover, .btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); text-decoration: none; }
+  button.main:not(:disabled):hover, .btn.main:hover { filter: brightness(1.07); }
+  button:not(:disabled):active, .btn:active { transform: translateY(1px); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
+  select { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238c99ab' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center; }
+  input[type=checkbox], input[type=radio] { appearance: none; -webkit-appearance: none; width: 18px !important; height: 18px;
+    flex: 0 0 18px; padding: 0; margin: 0 6px 0 0; border: 1.5px solid color-mix(in srgb, var(--muted) 70%, transparent);
+    border-radius: 5px; background: var(--panel); display: inline-grid; place-content: center; cursor: pointer; vertical-align: -4px; }
+  input[type=radio] { border-radius: 50%; }
+  input[type=checkbox]::before { content: ""; width: 10px; height: 10px; transform: scale(0); transition: transform .12s;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); background: #1b1300; }
+  input[type=radio]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; transform: scale(0); transition: transform .12s; background: #1b1300; }
+  input[type=checkbox]:checked, input[type=radio]:checked { background: var(--accent); border-color: var(--accent); }
+  input[type=checkbox]:checked::before, input[type=radio]:checked::before { transform: scale(1); }
+  input[type=checkbox]:disabled, input[type=radio]:disabled { opacity: .4; cursor: default; }
+  input[type=file] { padding: 6px; cursor: pointer; color: var(--muted); }
+  input[type=file]::file-selector-button { font: inherit; font-weight: 600; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; margin-right: 10px; cursor: pointer; }
+  input[type=file]::file-selector-button:hover { border-color: var(--accent); }
+  input[type=range] { accent-color: var(--accent); padding: 0; border: 0; background: transparent; }
+  input[type=date], input[type=time] { min-height: 40px; }
+  details:not(.block):not(.upl) > summary { cursor: pointer; list-style: none; }
+  details:not(.block):not(.upl) > summary::-webkit-details-marker { display: none; }
+  details:not(.block):not(.upl) > summary::before { content: "›"; display: inline-block; width: 14px; color: var(--muted);
+    font-weight: 700; transition: transform .15s; } details:not(.block):not(.upl)[open] > summary::before { transform: rotate(90deg); }
+  * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; border: 2px solid var(--bg); }
 </style>
 </head>
 <body>
@@ -361,7 +397,7 @@
     <a href="#/servidor"><span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>Estado del servidor</a>
     <a href="#/ajustes"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>Ajustes</a>
   </nav>
-  <div class="foot"><span id="service" class="small muted"></span></div>
+  <div class="foot"><span id="service" class="small muted"></span> <a href="#" class="small muted" id="logout" style="float:right" onclick="event.preventDefault();logout()">Salir</a></div>
 </header>
 <main id="app"></main>
 
@@ -576,10 +612,11 @@ function drawHome(force = false) {               // the channel buttons redraw f
     : s.paused ? ["warn", "En pausa", "no empieza vídeos nuevos", '<a href="#/servidor">quitar la pausa →</a>']
     : s.watching ? ["ok", "Trabajando", making.length ? `${making.length} vídeo(s) haciéndose` : queue.length ? "entre vídeos: el siguiente empieza solo" : "vigilando: nada pendiente", ""]
     : s.queueRunning ? ["ok", "Cola en marcha", "sin vigilante: acabará la ronda y parará", ""] : ["bad", "Parado", "no hay vigilante", '<button onclick="startQueue()">Arrancar la cola</button>'];
+  if (window.partner) state[3] = "";                    // the server is the owner's: a partner only sees how it is
   // YouTube / proxy, the last 24 h: one number that says whether downloads are healthy
   const p24 = (yt && yt.byProxy || []).find((x) => /rainproxy|resi|residencial/.test(x.proxy)) || (yt && yt.byProxy || [])[0];
   const share = p24 && p24.requests ? Math.round(100 * p24.ok / p24.requests) : null;
-  const ytKpi = yt ? `<a class="kpi" href="#/servidor"><div class="k">YouTube · 24 h</div>
+  const ytKpi = window.partner ? "" : yt ? `<a class="kpi" href="#/servidor"><div class="k">YouTube · 24 h</div>
       <div class="v ${share == null ? "" : share >= 85 ? "ok" : share >= 60 ? "warn" : "bad"}">${share == null ? "—" : share + " %"}</div>
       <div class="d">${p24 ? `${p24.requests} peticiones bien${p24.proxy_gb ? ` · ${p24.proxy_gb.toFixed(2)} GB de proxy` : ""}${(p24.errors || {}).bot ? ` · ${p24.errors.bot} bot` : ""}` : `${yt.ok} de ${yt.requests} en la semana`}</div></a>`
     : `<div class="kpi"><div class="k">YouTube · 24 h</div><div class="v">—</div><div class="d">sin descargas todavía</div></div>`;
@@ -1349,9 +1386,9 @@ window.runBench = async (button) => {
 
 async function stats(refresh = false) {
   const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
-  const bench = await api("/api/ytbench").catch(() => ({}));
-  const scenesBench = await api("/api/scenebench").catch(() => ({}));
-  const times_ = await api("/api/tiempos").catch(() => ({}));
+  const bench = window.partner ? {} : await api("/api/ytbench").catch(() => ({}));       // the server's: the owner's
+  const scenesBench = window.partner ? {} : await api("/api/scenebench").catch(() => ({}));
+  const times_ = window.partner ? {} : await api("/api/tiempos").catch(() => ({}));
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
   const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
   const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
@@ -1404,8 +1441,7 @@ async function stats(refresh = false) {
         <td style="text-align:right;padding-right:8px">${l.correcta || l.incorrecta ? `${l.correcta} / ${l.incorrecta}` : "—"}</td></tr>`; }).join("")}
     </table></div>
 
-    ${benchCard(bench)}
-    ${sceneCard(scenesBench)}
+    ${window.partner ? "" : benchCard(bench) + sceneCard(scenesBench)}
     ${times_.markdown ? `<h2>⏱ Dónde se va el tiempo</h2><div class="card">${md(times_.markdown.replace(/^# .*\n/, ""))}</div>` : ""}
     <details style="margin-top:24px"><summary class="small muted" style="cursor:pointer">Técnico: descargas de YouTube y gasto de API por día</summary>
     ${y ? `<div class="grid" style="margin-top:10px">
@@ -1440,7 +1476,7 @@ async function changeChannel(slug, current, el) {
 }
 
 // «Gasto de API»: per channel and per video (pipeline/gasto.py); averages only over finished videos
-let spendSort = "last", spendChannel = "";
+let spendSort = "last", spendChannel = "", invoiceMonth = "";
 
 let allFilter = {q: "", channel: "", state: "todos", kind: ""};
 let allSort = {key: "updated", dir: -1};
@@ -1654,8 +1690,29 @@ async function experimentsPage() {
           onchange="saveExperiment('${esc(v.slug)}', '${k}', this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
         || '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`;
 }
+// «Factura»: each person's month (you see everyone, a partner only their own), with a CSV to send
+function invoiceBlock(g, usd) {
+  const months = g.invoices || [];
+  if (!months.length) return "";
+  const m = months.find((x) => x.month === invoiceMonth) || months[0];
+  const name = (w) => w ? esc(w) : "Tú";
+  return `<h2>${window.partner ? "Tu factura del mes" : "Factura por persona"}</h2>
+    <div class="yt-tools">${months.map((x) => `<button class="yt-chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth='${x.month}';spendPage()">${x.month}</button>`).join("")}</div>
+    <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
+      <thead><tr><th>Persona</th><th>API</th><th>Voz</th><th>Proxy</th><th>Servidor</th><th>Total</th><th></th></tr></thead>
+      <tbody>${m.people.map((p) => `<tr class="v"><td><b>${name(p.who)}</b><div class="sub">${p.videos.length} vídeo${p.videos.length === 1 ? "" : "s"}</div></td>
+        <td data-k="API">${usd(p.api)}</td><td data-k="Voz">${usd(p.voice)}</td>
+        <td data-k="Proxy">${usd(p.proxyUsd)}<div class="sub">${p.proxyGb.toFixed(2)} GB</div></td>
+        <td data-k="Servidor">${usd(p.server)}</td><td data-k="Total"><b>${usd(p.total)}</b></td>
+        <td><a class="btn" style="padding:4px 10px;font-size:12.5px" href="/api/factura.csv?month=${m.month}&who=${encodeURIComponent(p.who)}">CSV</a></td></tr>`).join("")
+        || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">Sin gasto este mes.</td></tr>'}</tbody></table></div>
+    <div class="small muted" style="margin-top:4px">API y voz por el día de cada llamada · proxy por los GB que llevó cada vídeo ·
+      servidor: ${fmt(m.serverUsd)} al mes a partes iguales entre ${m.parts || 1} (${fmt(Math.round(100 * m.serverUsd / (m.parts || 1)) / 100)} cada uno).
+      ${!window.partner && !m.serverUsd ? 'Pon lo que cuesta el servidor en <a href="#/ajustes">Ajustes</a>.' : ""}</div>`;
+}
+
 async function spendPage() {
-  const [g, px] = await Promise.all([api("/api/gasto"), api("/api/proxy?days=7").catch(() => null)]);
+  const [g, px] = await Promise.all([api("/api/gasto"), window.partner ? null : api("/api/proxy?days=7").catch(() => null)]);
   const usd = (n, d = 2) => n == null ? "—" : Number(n).toFixed(d) + " $";
   const o = g.overall, max = Math.max(0.01, ...g.days.map((d) => d.usd));
   const top = Math.max(0.01, ...g.channels.map((c) => c.average || 0));
@@ -1663,7 +1720,7 @@ async function spendPage() {
   const rows = g.videos.filter((v) => !spendChannel || v.channel === spendChannel)
     .sort((a, b) => spendSort === "usd" ? b.usd - a.usd : spendSort === "minutes" ? b.minutes - a.minutes
       : spendSort === "work" ? (b.workSeconds || 0) - (a.workSeconds || 0) : b.last.localeCompare(a.last));
-  $("#app").innerHTML = `<h1>Gasto de API</h1>
+  $("#app").innerHTML = `<h1>${window.partner ? "Mi gasto" : "Gasto de API"}</h1>
     <div class="small muted">Lo que cuestan las APIs de pago (guion, planos, juez, voz…). Las medias cuentan solo vídeos terminados; lo de vídeos a medias va aparte («en curso»).</div>
     <div class="kpis" style="margin-top:12px">
       <div class="kpi"><div class="k">Hoy</div><div class="v">${usd(g.today)}</div><div class="d">desde las 00:00 (UTC)</div></div>
@@ -1677,6 +1734,8 @@ async function spendPage() {
         <div class="d">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "sin vídeos terminados"}</div></a>
       <div class="kpi"><div class="k">API + proxy por vídeo</div><div class="v">${o.average != null && px.gbPerFinished != null ? usd(o.average + px.gbPerFinished * px.usdPerGb) : "—"}</div>
         <div class="d">lo que cuesta de verdad un vídeo terminado</div></div>` : ""}</div>
+
+    ${invoiceBlock(g, usd)}
 
     ${(() => { const s = g.savings, p = g.pipeline, hm = (x) => x == null ? "—" : x >= 3600 ? `${Math.floor(x / 3600)} h ${String(Math.round(x % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(x / 60)} min`;
       const most = Math.max(1, ...(p.stages || []).map((x) => x.seconds));
@@ -1711,15 +1770,15 @@ async function spendPage() {
     <div class="small muted" style="margin-top:4px">Cada búsqueda (search.list) cuesta 100 unidades y cada clave da 10.000 al día (y 100 búsquedas). Gratis en dinero, pero limita cuántos vídeos salen al día.
       Los vídeos de antes del registro se estiman por sus búsquedas (marcados con ≈).</div>
 
-    ${g.proxy ? `<h2>Proxy de metadatos (estimado)</h2>
+    ${g.proxy ? `<h2>Proxy, desde el principio</h2>
     <div class="kpis">
-      <div class="kpi"><div class="k">Por vídeo</div><div class="v">${usd(o.proxyUsd, 2)}</div><div class="d">media de los terminados</div></div>
+      <div class="kpi"><div class="k">Por vídeo</div><div class="v">${usd(o.proxyUsd, 2)}</div><div class="d">media de los terminados${o.proxyGb != null ? ` · ${o.proxyGb.toFixed(2)} GB` : ""}</div></div>
       <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.proxy.usd)}</div>
-        <div class="d">≈ ${fmt(Math.round(g.proxy.mb))} MB · ${fmt(g.proxy.requests)} peticiones · ${g.proxy.videos} vídeos</div></div>
+        <div class="d">${g.proxy.gb.toFixed(2)} GB · ${fmt(g.proxy.requests)} peticiones · ${g.proxy.videos} vídeos</div></div>
       <div class="kpi"><div class="k">Desde</div><div class="v" style="font-size:20px">${g.proxy.since ? new Date(g.proxy.since * 1000).toLocaleString("es-ES", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "—"}</div>
         <div class="d">primera petición por el proxy</div></div></div>
-    <div class="small muted" style="margin-top:4px">El proveedor cobra por GB y aquí solo se cuentan peticiones: se estima con ${g.proxy.mbPerRequest} MB por petición y ${g.proxy.usdPerGb} $/GB
-      (sourcing.youtube.metadata_proxy_mb_per_request y metadata_proxy_usd_per_gb en config.local.yaml). Para afinarlo: MB del panel del proveedor ÷ peticiones de aquí.</div>` : ""}
+    <div class="small muted" style="margin-top:4px">Los GB del proxy residencial son los medidos en cada petición, a ${g.proxy.usdPerGb} $/GB (sourcing.youtube.proxy_usd_per_gb).
+      ${g.proxy.estimatedVideos ? `Los ${g.proxy.estimatedVideos} vídeos marcados con ≈ usaron el proxy de metadatos antiguo, que no guardaba tamaños: se estima con ${g.proxy.mbPerRequest} MB por petición y ${g.proxy.metadataUsdPerGb} $/GB.` : ""}</div>` : ""}
 
     <h2>Media por canal</h2>
     <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
@@ -1729,12 +1788,12 @@ async function spendPage() {
         <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="width:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
         <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td>
         <td data-k="Cuota YT" title="${c.ytSearches ?? "—"} búsquedas">${c.ytUnits != null ? kfmt(c.ytUnits) + " u · " + c.ytKeys + " claves" : "—"}</td>
-        <td data-k="Proxy">${c.proxyUsd != null ? "≈ " + usd(c.proxyUsd, 2) : "—"}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
+        <td data-k="Proxy">${c.proxyUsd != null ? usd(c.proxyUsd, 2) + (c.proxyGb != null ? ` <span class="muted small">${c.proxyGb.toFixed(2)} GB</span>` : "") : "—"}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
         <td data-k="Total">${usd(c.total)}</td><td data-k="En curso" class="wide">${usd(c.inProgress)}</td>
         <td data-k="Más caro" class="wide">${c.dearest ? `${esc(c.dearest.slug)} · ${usd(c.dearest.usd)}` : "—"}</td></tr>`).join("")}
       <tr class="group"><td>Todos los canales</td><td style="text-align:right">${usd(o.average)}</td><td style="text-align:right">${usd(o.median)}</td>
         <td style="text-align:right">${usd(o.perMinute, 3)}</td><td style="text-align:right">${o.ytUnits != null ? kfmt(o.ytUnits) + " u · " + o.ytKeys + " claves" : "—"}</td>
-        <td style="text-align:right">${o.proxyUsd != null ? "≈ " + usd(o.proxyUsd, 2) : "—"}</td>
+        <td style="text-align:right">${o.proxyUsd != null ? usd(o.proxyUsd, 2) : "—"}</td>
         <td style="text-align:right">${o.done} de ${o.videos}</td><td style="text-align:right">${usd(o.total)}</td>
         <td style="text-align:right" class="wide">${usd(o.inProgress)}</td><td class="wide"></td></tr></tbody></table></div>
 
@@ -1762,11 +1821,11 @@ async function spendPage() {
             <select style="width:auto;padding:1px 4px;font-size:12px" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
               ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
             · ${esc(v.last)}</div></td>
-        <td data-k="Gasto"><b>${usd(v.usd)}</b></td>
+        <td data-k="Gasto"><b>${usd(v.usd)}</b>${v.proxyUsd ? `<div class="sub" title="API + proxy">con proxy ${usd(v.usd + v.proxyUsd)}</div>` : ""}</td>
         <td data-k="Ahorrado" title="${fmt(v.reused?.judge || 0)} veredictos · ${fmt(v.reused?.voice || 0)} caracteres de voz">${v.savedUsd ? usd(v.savedUsd) : "—"}</td>
         <td data-k="Tiempo">${v.workSeconds ? (v.workSeconds >= 3600 ? `${Math.floor(v.workSeconds / 3600)} h ${String(Math.round(v.workSeconds % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(v.workSeconds / 60)} min`) : "—"}</td>
         <td data-k="Cuota YT" title="${v.ytSearches ?? 0} búsquedas">${v.ytUnits ? (v.ytEstimated ? "≈ " : "") + kfmt(v.ytUnits) + " u" : "—"}</td>
-        <td data-k="Proxy" title="${v.proxyRequests ?? 0} peticiones por el proxy">${v.proxyUsd ? "≈ " + usd(v.proxyUsd, 2) : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
+        <td data-k="Proxy" title="${v.proxyRequests ?? 0} peticiones por el proxy${v.proxyEstimated ? " · estimado por peticiones (proxy de metadatos antiguo)" : ""}">${v.proxyUsd ? (v.proxyEstimated ? "≈ " : "") + usd(v.proxyUsd, 2) + (v.proxyGb ? `<div class="sub">${v.proxyGb.toFixed(2)} GB</div>` : "") : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
         <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
         <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
         <td class="wide small muted" style="text-align:left">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
@@ -1876,6 +1935,46 @@ function movePrio(i, step) {                       // ▲ ▼ ✕ in «Prioridad
 }
 
 let mineOpen = false, mineEmpty = false;
+// Ajustes → «Personas»: who else uses the studio, with their password and their channels (they see only those)
+async function peopleBlock(all) {
+  const u = (await api("/api/users").catch(() => ({users: []}))).users;
+  const owner = Object.fromEntries(u.flatMap((x) => x.channels.map((c) => [c, x.name])));
+  const boxes = (who, mine) => all.map((c) => `<label class="row small" style="gap:4px;margin:0;font-weight:400${owner[c] && owner[c] !== who ? ";opacity:.45" : ""}">
+    <input type="checkbox" class="pc-${esc(who || "_new")}" value="${esc(c)}" ${mine.includes(c) ? "checked" : ""} ${owner[c] && owner[c] !== who ? "disabled" : ""}
+      style="width:auto">${esc(c)}${owner[c] && owner[c] !== who ? ` <span class="muted">(${esc(owner[c])})</span>` : ""}</label>`).join("");
+  const picked = (who) => [...document.querySelectorAll(".pc-" + (who || "_new") + ":checked")].map((x) => x.value);
+  window.savePerson = async (who) => {
+    const msg = $("#pmsg-" + (who || "_new"));
+    const name = who || $("#pname").value.trim().toLowerCase(), password = $("#ppass-" + (who || "_new")).value;
+    const limits = who ? {daily_usd: parseFloat($("#plim-usd-" + who).value || 0), proxy_gb_per_day: parseFloat($("#plim-gb-" + who).value || 0)} : undefined;
+    try { await post("/api/users", {name, password, channels: picked(who), limits}); settingsPage(); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  window.removePerson = async (who) => {
+    if (!confirm(`¿Quitar a ${who}? No podrá entrar más; sus vídeos se quedan.`)) return;
+    await post("/api/users", {remove: who}); settingsPage();
+  };
+  return `<details class="block"${u.length ? " open" : ""}><summary><b>Personas que comparten el estudio</b>
+      <span class="small muted">${u.length ? u.length + (u.length === 1 ? " persona" : " personas") : "solo tú"}</span></summary>
+    <div class="small muted" style="margin:6px 0">Cada persona entra con su contraseña y solo ve sus canales: sus vídeos, su gasto y su factura.
+      Nada de lo tuyo (ni Ajustes, ni el servidor, ni los demás canales). Un canal es de una sola persona; los que no son de nadie, tuyos.</div>
+    ${u.map((x) => `<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between"><b>${esc(x.name)}</b>
+        <button class="small" onclick="removePerson('${esc(x.name)}')">Quitar</button></div>
+      <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes(x.name, x.channels)}</div>
+      <div class="row small" style="gap:8px;margin:6px 0;flex-wrap:wrap">Sus topes al día:
+        <input id="plim-usd-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}" style="max-width:90px"> $ de API
+        <input id="plim-gb-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}" style="max-width:90px"> GB de proxy
+        <span class="muted">(0 = sin tope) · Telegram: ${x.telegram ? "✅ conectado" : "sin conectar (sus avisos te llegan a ti)"}</span></div>
+      <div class="row"><input id="ppass-${esc(x.name)}" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)" style="max-width:260px">
+        <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small" style="color:var(--bad)"></span></div></div>`).join("")}
+    <div class="card" style="margin-top:8px"><b>Añadir persona</b>
+      <div class="row" style="margin-top:6px"><input id="pname" placeholder="nombre (p. ej. marc)" style="max-width:180px">
+        <input id="ppass-_new" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)" style="max-width:220px"></div>
+      <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes("", [])}</div>
+      <div class="row"><button class="main" onclick="savePerson('')">Añadir</button><span id="pmsg-_new" class="small" style="color:var(--bad)"></span></div></div>
+  </details>`;
+}
+
 async function settingsPage() {
   const [s, n] = [await api("/api/settings"), await api("/api/notify")];
   window.prioList = s.channel_priority || [];
@@ -1883,6 +1982,7 @@ async function settingsPage() {
   if (!data) data = await api("/api/overview");
   const code = data && data.service && data.service.code;
   const filled = s.channels.filter((c) => s.myChannels[c]).length;
+  const people = await peopleBlock(s.channels);
   $("#app").innerHTML = `<h1>Ajustes</h1>
     ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
@@ -1890,20 +1990,24 @@ async function settingsPage() {
       <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button>
       <button style="margin-top:8px" onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">▶️ Reintentar YouTube ahora</button></div>` : ""}
     <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
+    ${people}
     <div class="card">
       <label>Hacer vídeos</label>
       <div class="row"><button class="${s.paused ? "main" : ""}" onclick="save({paused: ${!s.paused}})">${s.paused ? "▶ Reanudar" : "⏸ Pausar"}</button>
         <span class="muted small">${s.paused ? "En pausa: no empieza vídeos nuevos (el que está en marcha termina)." : "Activo."}</span></div>
-      <label>Límite de gasto de API al día <span class="muted">(0 = sin límite; al llegar, espera a mañana)</span></label>
+      <label>Límite de gasto de API al día <span class="muted">(de tus vídeos; cada persona tiene el suyo en «Personas» · 0 = sin límite; al llegar, espera a mañana)</span></label>
       <div class="row"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}" style="max-width:160px"><span>$</span>
         <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
-      <label>Tope de proxy al día <span class="muted">(GB por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope)</span></label>
+      <label>Tope de proxy al día <span class="muted">(GB de tus vídeos por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope)</span></label>
       <div class="row"><input id="proxyday" type="number" min="0" step="0.5" value="${s.proxy_gb_per_day ?? 0}" style="max-width:160px"><span>GB</span>
         <button onclick="save({proxy_gb_per_day: parseFloat(document.getElementById('proxyday').value || 0)})">Guardar</button>
         <span class="small muted">${data && data.budget && data.budget.proxyGbToday != null ? `hoy ${data.budget.proxyGbToday.toFixed(2)} GB` : ""}</span></div>
       <label>Límite por vídeo <span class="muted">(lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite)</span></label>
       <div class="row"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}" style="max-width:160px"><span>$</span>
         <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div>
+      <label>Coste del servidor al mes <span class="muted">(para la factura de cada persona en «Gasto»: a partes iguales entre tú y cada persona)</span></label>
+      <div class="row"><input id="servermonth" type="number" min="0" step="0.5" value="${s.server_usd_month ?? 0}" style="max-width:160px"><span>$</span>
+        <button onclick="save({server_usd_month: parseFloat(document.getElementById('servermonth').value || 0)})">Guardar</button></div>
       <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
     </div>
     <h2>Avisos al móvil (Telegram)</h2>
@@ -2336,6 +2440,17 @@ async function radarPage() {
       <div class="small muted">«${esc(n.query)}»</div>
       <div class="row" style="margin-top:8px">${seedButton({kind: "niche", query: n.query, name: n.name, near: n.near}, n.ideas ? `💡 Ver ideas (${n.ideas})` : "💡 Ideas para este nicho")}</div>
     </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos en este filtro.</div>'}`;
+  if (window.partner) {          // a partner: their channels' competitors and news; the server-wide finds are the owner's
+    for (const h of [...document.querySelectorAll("#app h2")].filter((x) => /^(🚀|🎯|🧭)/.test(x.textContent.trim()))) {
+      let next = h.nextElementSibling;
+      while (next && next.tagName !== "H2") { const gone = next; next = next.nextElementSibling; gone.remove(); }
+      h.remove();
+    }
+    document.querySelectorAll('#app button[onclick^="runNews"], #app button[onclick^="runRadar"]').forEach((b) => b.remove());
+    document.querySelectorAll("#app .notice, #app .small").forEach((n) => { if (/pulsa «(Buscar todo ahora|📰 Noticias ahora)»/.test(n.textContent))
+      n.textContent = "Todavía no hay: llega con el radar de cada día."; });
+    $("#app h1").insertAdjacentHTML("afterend", '<div class="small muted">El radar se actualiza solo cada día con los competidores de tus canales (los pones al crear el canal).</div>');
+  }
   window.runRadar = async () => { await post("/api/radar"); route(); };
   window.measureGap = async (button) => {
     const topic = ($("#gapTopic").value || "").trim();
@@ -2382,7 +2497,9 @@ async function channelPage() {
       <div class="row"><select onchange="myChannel=this.value;route()" style="width:auto">${data.channels.map((n) => `<option ${n === myChannel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
       <button class="main" onclick="analyse()" ${c.job.running || !c.handle ? "disabled" : ""}>Analizar ahora</button></div></div>
     ${c.handle ? `<div class="small muted">${esc(c.handle)}${r ? " · análisis del " + new Date(r.generated).toLocaleString("es-ES") : ""}</div>`
-      : '<div class="notice">Falta tu canal de este perfil: ponlo en <a href="#/ajustes">Ajustes → Mi canal</a>.</div>'}
+      : `<div class="notice">¿Cuál es este canal en YouTube?
+          <div class="row" style="margin-top:8px"><input id="myhandle" placeholder="@TuCanal" style="max-width:260px">
+          <button class="main" onclick="post('/api/mychannel/' + encodeURIComponent(myChannel) + '/handle', {handle: $('#myhandle').value}).then(route)">Guardar</button></div></div>`}
     ${jobLine(c.job, "Analizando el canal")}`;
   window.analyse = async () => { await post("/api/mychannel/" + encodeURIComponent(myChannel)); route(); };
   if (c.job.running) schedule(route, 6000);
@@ -2478,13 +2595,13 @@ async function calendarPage() {
     ${Object.keys(byDay).sort().map((d) => `<div class="cal-day ${d === today ? "today" : ""}">${DAY(d)}${d === today ? " · hoy" : ""}</div>${byDay[d].map(slot).join("")}`).join("")
       || '<div class="notice">No hay días de publicación: márcalos abajo.</div>'}
     <h2>Días de publicación</h2>${rules}
-    <div class="card"><div class="two">
+    ${window.partner ? "" : `<div class="card"><div class="two">
       <div><label>Margen para tener guion y voz <span class="muted">(horas antes de publicar)</span></label>
         <input type="number" min="6" step="1" value="${st.lead_hours}" onchange="option({lead_hours: +this.value})"></div>
       <div><label>Vídeos de reserva por canal <span class="muted">(aviso si hay menos)</span></label>
         <input type="number" min="0" step="1" value="${st.buffer}" onchange="option({buffer: +this.value})"></div>
       <div><label>Hora del resumen de la mañana <span class="muted">(Telegram)</span></label>
-        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`;
+        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`}`;
   window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
   window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
     try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
@@ -2512,7 +2629,8 @@ async function voicesPage() {
         <span id="vmsg-${esc(c)}" class="small muted"></span></div><div id="vplay-${esc(c)}"></div>
       ${dubBox(c)}</div>`; };
   const LANGS = {pt: "Portugués", de: "Alemán", fr: "Francés", en: "Inglés", it: "Italiano"};
-  const dubBox = (c) => { const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
+  const dubBox = (c) => { if (window.partner) return "";      // dubbing sends videos to other channels: set up by the owner
+    const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
     return `<details style="margin-top:12px" ${on.length ? "open" : ""}><summary><b>🌍 Doblaje</b> ${on.length ? `<span class="pill hecho">${on.map((l) => LANGS[l] || l).join(", ")}</span>` : '<span class="muted small">apagado</span>'}</summary>
       <div class="small muted" style="margin:6px 0">Cada vídeo terminado de este canal se traduce y se vuelve a leer en esos idiomas; la cola monta el vídeo doblado
         (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</div>
@@ -2828,7 +2946,7 @@ async function newChannelPage() {
       const r = await post("/api/channels", {name: $("#ch-name").value, about: $("#ch-about").value, base: $("#ch-base").value,
         format: $("#ch-format").value, competitors: $("#ch-comp").value, queries: $("#ch-queries").value,
         pattern: $("#ch-pattern").value, my_channel: $("#ch-mine").value});
-      if ($("#ch-mine").value.trim()) await post("/api/settings", {my_channels: {[r.channel]: $("#ch-mine").value.trim()}});
+      if ($("#ch-mine").value.trim() && !window.partner) await post("/api/settings", {my_channels: {[r.channel]: $("#ch-mine").value.trim()}});
       data = null; msg.textContent = `✅ Canal «${r.channel}» creado. Ya puedes elegirlo al crear un vídeo.`;
       setTimeout(() => { location.hash = "#/nuevo"; }, 1200);
     } catch (e) { msg.textContent = e.message; }
@@ -2851,7 +2969,8 @@ function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (
 async function route() {
   clearTimeout(timer);
   document.body.classList.remove("menu");
-  const hash = location.hash || "#/";
+  let hash = location.hash || "#/";
+  if (window.partner && !partnerMay(hash)) { hash = "#/"; history.replaceState(null, "", "#/"); }
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
   const slow = setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
@@ -2879,6 +2998,7 @@ async function route() {
     else if (hash === "#/servidor") await serverPage();
     else if (hash === "#/videos") await allVideosPage();
     else if (hash === "#/ajustes") await settingsPage();
+    else if (hash === "#/cuenta") await accountPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
     const s = data && data.service;
@@ -2887,7 +3007,7 @@ async function route() {
       if (!window.codeId) window.codeId = s.code.id;
       else if (window.codeId !== s.code.id) { location.reload(); return; }
     }
-    $("#service").textContent = s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
+    $("#service").textContent = window.partner ? "👤 " + window.partner : s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
   clearTimeout(slow); $("#app").classList.remove("loading");
@@ -2901,9 +3021,72 @@ document.addEventListener("click", (e) => {     // menus of the header: open on 
   if (link && link.getAttribute("href") === (location.hash || "#/")) { e.preventDefault(); route(); }   // same page: reload it
 });
 
+async function logout() { await post("/api/logout").catch(() => {}); location.hash = "#/"; location.reload(); }
+
+// «Mi cuenta» (a partner): Telegram for their videos' messages, their daily caps, their password
+async function accountPage() {
+  const a = await api("/api/cuenta");
+  const cap = (v, unit) => v ? `${v} ${unit}` : "sin tope propio";
+  $("#app").innerHTML = `<h1>Mi cuenta</h1>
+    <div class="small muted">${esc(a.name)} · tus canales: ${a.channels.map(esc).join(", ") || "ninguno todavía"}</div>
+    <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="k">Gasto de API hoy</div><div class="v">${a.spentToday.toFixed(2)} $</div><div class="d">tope: ${cap(a.limits.daily_usd, "$ al día")}</div>
+        ${a.limits.daily_usd ? `<div class="bar"><i style="width:${Math.min(100, 100 * a.spentToday / a.limits.daily_usd)}%"></i></div>` : ""}</div>
+      <div class="kpi"><div class="k">Proxy hoy</div><div class="v">${a.proxyGbToday.toFixed(2)} GB</div><div class="d">tope: ${cap(a.limits.proxy_gb_per_day, "GB al día")}</div>
+        ${a.limits.proxy_gb_per_day ? `<div class="bar"><i style="width:${Math.min(100, 100 * a.proxyGbToday / a.limits.proxy_gb_per_day)}%"></i></div>` : ""}</div></div>
+    <div class="small muted" style="margin-top:4px">Al llegar a un tope, tus vídeos esperan a mañana (los de otros no cuentan). Los topes los pone quien administra el estudio.</div>
+    <h2>Avisos en Telegram</h2>
+    <div class="card">${a.telegram
+      ? `✅ Conectado: te llegan los avisos de tus vídeos (terminado, error, falta la voz).
+         <div class="row" style="margin-top:10px"><button onclick="post('/api/telegram/unlink').then(accountPage)">Desconectar</button></div>`
+      : `Recibe en el móvil cuándo termina o falla cada vídeo tuyo.
+         <div class="row" style="margin-top:10px"><button class="main" id="tglink">Conectar Telegram</button><span id="tgmsg" class="small muted"></span></div>`}</div>
+    <h2>Contraseña</h2>
+    <div class="card"><div class="two">
+      <div><label>Actual</label><input id="pw-old" type="password" autocomplete="current-password"></div>
+      <div><label>Nueva <span class="muted">(8 o más)</span></label><input id="pw-new" type="password" autocomplete="new-password"></div></div>
+      <div class="row" style="margin-top:12px"><button class="main" id="pw-go">Cambiar</button><span id="pw-msg" class="small muted"></span></div></div>
+    <div class="row" style="margin-top:22px"><button onclick="logout()">Cerrar sesión</button></div>`;
+  if ($("#tglink")) $("#tglink").onclick = async () => {
+    try {
+      const r = await post("/api/telegram/link");
+      $("#tgmsg").innerHTML = r.url ? `Abre <a href="${esc(r.url)}" target="_blank" rel="noopener">este enlace</a> y pulsa «Iniciar» en el bot; luego vuelve aquí.`
+        : `Escribe al bot del estudio: <code>/start ${esc(r.code)}</code> (vale 30 min)`;
+      if (r.url) window.open(r.url, "_blank");
+      const until = Date.now() + 10 * 60000;
+      const poll = async () => { if (location.hash !== "#/cuenta" || Date.now() > until) return;
+        if ((await api("/api/cuenta")).telegram) return accountPage(); setTimeout(poll, 4000); };
+      setTimeout(poll, 4000);
+    } catch (e) { $("#tgmsg").textContent = e.message; }
+  };
+  $("#pw-go").onclick = async () => {
+    try { await post("/api/password", {current: $("#pw-old").value, new: $("#pw-new").value}); $("#pw-msg").textContent = "✅ Cambiada";
+      $("#pw-old").value = $("#pw-new").value = ""; }
+    catch (e) { $("#pw-msg").textContent = e.message; }
+  };
+}
+
+// A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero",
+  "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta"];
+const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
+function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
+
 async function start() {
   const session = await fetch("/api/session").then((r) => r.json());
   if (!session.authorised) return showLogin();
+  window.partner = session.partner || null;
+  if (window.partner) {
+    document.body.classList.add("partner");
+    document.querySelectorAll("header nav a").forEach((a) => { if (!PARTNER_PAGES.includes(a.getAttribute("href"))) a.remove(); });
+    const spend = document.querySelector('header nav a[href="#/gasto"]');
+    if (spend) spend.lastChild.textContent = "Mi gasto";
+    const nav = document.querySelector("header nav");
+    nav.querySelectorAll(".sec").forEach((sec) => sec.remove());
+    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>
+      <a href="#/cuenta"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Mi cuenta</a>`);
+    $("#service").textContent = "👤 " + window.partner;
+  }
   $("#top").classList.remove("hide");
   document.body.classList.add("authed");
   window.onhashchange = () => { tab = "diagnosis"; window.tabPicked = 0; window.logAll = 0; route(); };

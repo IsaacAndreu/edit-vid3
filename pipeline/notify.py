@@ -24,7 +24,36 @@ import requests
 from .context import RunContext
 
 
+def partner_of(ctx: RunContext) -> str:
+    """The partner whose video this is (usuarios.py), or "" when it is yours or not a video (disk, radar, YouTube…:
+    always yours, even when the default channel is someone else's)."""
+
+    slug = str(getattr(ctx, "slug", "") or "")
+    if not slug or slug.startswith("_"):
+        return ""
+    try:
+        from .usuarios import owner_of
+
+        return owner_of(ctx.root, ctx.channel)
+    except Exception:
+        return ""
+
+
+def target(ctx: RunContext) -> tuple[str, str]:
+    """(bot token, chat): your chat, or the partner's for their videos (yours while they have not connected one)."""
+
+    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False) or "", ctx.env("TELEGRAM_CHAT_ID", required=False) or ""
+    who = partner_of(ctx)
+    if who:
+        from .usuarios import telegram_of
+
+        chat = telegram_of(ctx.root, who) or chat
+    return token, chat
+
+
 def email(ctx: RunContext, subject: str, body: str, attachments: list[Path] = ()) -> bool:
+    if partner_of(ctx):                  # a partner's video: their Telegram only, not your inbox
+        return False
     host, user = ctx.env("SMTP_HOST", required=False), ctx.env("SMTP_USER", required=False)
     password, to = ctx.env("SMTP_PASSWORD", required=False), ctx.env("EMAIL_TO", required=False) or user
     if not (host and user and password and to):
@@ -48,7 +77,7 @@ def email(ctx: RunContext, subject: str, body: str, attachments: list[Path] = ()
 
 
 def telegram(ctx: RunContext, text: str, photos: list[Path] = ()) -> bool:
-    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False), ctx.env("TELEGRAM_CHAT_ID", required=False)
+    token, chat = target(ctx)
     if not token or not chat:
         return False
     base = f"https://api.telegram.org/bot{token}"
@@ -83,7 +112,7 @@ def telegram_card(ctx: RunContext, caption: str, photo: Path | None, links: list
                   details: str = "") -> bool:
     """One photo with a short caption and buttons (https links), then the details as a second message."""
 
-    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False), ctx.env("TELEGRAM_CHAT_ID", required=False)
+    token, chat = target(ctx)
     if not token or not chat:
         return False
     base = f"https://api.telegram.org/bot{token}"
@@ -194,7 +223,7 @@ def contact_sheet(video: Path, target: Path, duration: float) -> Path | None:
 
 
 def telegram_photo(ctx: RunContext, photo: Path, caption: str) -> bool:
-    token, chat = ctx.env("TELEGRAM_BOT_TOKEN", required=False), ctx.env("TELEGRAM_CHAT_ID", required=False)
+    token, chat = target(ctx)
     if not token or not chat:
         return False
     try:

@@ -196,6 +196,8 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
   tramo por la sesión del vídeo y ffmpeg corta en local. Un vídeo sin HLS solo se baja entero si dura menos de
   `whole_max_minutes_residential` (10) y pesa menos de `whole_max_mb_residential` (80 MB): por encima, el plano pasa
   al siguiente candidato (en casa siguen `whole_max_minutes` 30 / `whole_max_mb` 600).
+  Un candidato así se descarta ya en la búsqueda (su extracción lleva `hls` y `wholeMb`): no se analiza ni se baja
+  entero para puntuarlo. Un vídeo «not available in your country» se descarta a la primera (motivo «geo»).
   Ese veredicto se recuerda (`cache/videos/.rechazados.json`, `refused_days`): ningún otro plano vuelve a pedir ese
   vídeo (la noche del 5/11 uno se rechazó 12 veces, con su extracción cada vez). Lo mismo con «Unavailable with a VPN
   or proxy»: se descarta a la primera. Un timeout por el proxy se reintenta una vez desde otra sesión, otra IP
@@ -213,6 +215,29 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
 - **El JavaScript del reproductor se baja una vez por versión** (`cache/player_js/`): yt-dlp solo lo guarda dentro de
   un `YoutubeDL`, y aquí cada extracción es uno nuevo (287 MB del mismo fichero en una mañana, el 21 % del proxy).
   Una extracción son ~2,9 MB: la página del vídeo (~1,2 MB), el JS (~0,7 MB) y la API del reproductor.
+
+El análisis, por el proxy residencial, ya no baja el vídeo entero a 360p cuando mira 3 o más tramos de él (`prefetch_whole_residential: false`): si el vídeo tiene HLS, cada tramo llega por HLS (la misma 360p). En gimnasia2 el vídeo entero era 1,7 de los 2,8 GB del proxy. Sin HLS sigue bajándose entero, como antes.
+
+## 3g. Estudio compartido (otra persona con sus canales)
+
+En el estudio → Ajustes → «Personas que comparten el estudio»: un nombre, una contraseña (8 o más, distinta de
+la tuya) y sus canales. Entra con esa contraseña en la misma dirección del estudio y solo ve sus canales: sus
+vídeos, crear vídeos en ellos, «Para subir», sus voces y «Mi gasto». Todo lo demás (Ajustes, servidor, radar,
+biblioteca, tus canales) le responde 403 aunque escriba la URL. Un canal es de una sola persona; los que no son
+de nadie son tuyos. Cambiar su contraseña cierra sus sesiones; «Quitar» le deja sin entrada (sus vídeos se quedan).
+Solo se guarda un PBKDF2 con sal de cada contraseña, en `out/_usuarios.json`.
+
+Lo que tiene la otra persona: Inicio, Nuevo vídeo y nuevo canal (queda suyo), Para subir, Todos los vídeos,
+Guiones, Calendario y Tablero de ideas de sus canales, Radar (sus competidores y noticias), Mi canal, Estadísticas,
+Mi gasto, Voces y «Mi cuenta» (Telegram, contraseña, cerrar sesión). Los avisos de sus vídeos van a su Telegram
+cuando lo conecta (un enlace al bot); hasta entonces, al tuyo. Cada uno tiene sus topes al día (API y GB de proxy):
+los tuyos en Ajustes, los suyos en Ajustes → Personas. La cola alterna un vídeo de cada persona, empezando por quien
+menos servidor ha usado hoy.
+
+Factura: Ajustes → «Coste del servidor al mes», y en «Gasto» la tabla «Factura por persona» de cada mes: API y voz
+(por el día de cada llamada), proxy (los GB medidos de sus vídeos × `proxy_usd_per_gb`) y su parte del servidor,
+a partes iguales entre tú y cada persona (42 y una persona: 21 cada uno), con un CSV por persona. La otra persona
+ve la suya en «Mi gasto».
 
 ## 4. Métricas (lo que decide)
 

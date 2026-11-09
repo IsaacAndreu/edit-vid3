@@ -71,5 +71,24 @@ def test_the_spend_page_estimates_what_the_metadata_proxy_cost_each_video(tmp_pa
     rows = [{"ts": 100 + i, "action": "metadata", "proxy": "metadatos"} for i in range(1024)] + [{"ts": 50, "action": "metadata"}]
     log.write_text("\n".join(json.dumps(r) for r in rows))
     usage, rates = gasto.proxy_usage(tmp_path)
-    assert usage == {"pati1": {"requests": 1024, "mb": 512.0, "usd": 2.0, "since": 100}}
-    assert rates == {"mbPerRequest": 0.5, "usdPerGb": 4.0}
+    assert usage == {"pati1": {"requests": 1024, "mb": 512.0, "gb": 0.5, "usd": 2.0, "estimated": True, "since": 100}}
+    assert rates["mbPerRequest"] == 0.5 and rates["metadataUsdPerGb"] == 4.0
+
+
+def test_the_spend_page_prices_the_gb_the_residential_proxy_really_carried(tmp_path):
+    """gimnasia1 & co. showed «—» under Proxy: only the old metadata proxy was counted, never the measured bytes."""
+    import json
+
+    from pipeline import gasto
+
+    (tmp_path / "config.yaml").write_text("sourcing:\n  youtube:\n    proxy_usd_per_gb: 0.3\n")
+    log = tmp_path / "work" / "gimnasia1" / "youtube_downloads.jsonl"
+    log.parent.mkdir(parents=True)
+    rows = [{"ts": 200, "action": "metadata", "proxy": "rainproxy.example", "proxy_bytes": 1_000_000_000},
+            {"ts": 201, "action": "descarga", "proxy": "rainproxy.example", "proxy_bytes": 500_000_000},
+            {"ts": 202, "action": "archivo descarga", "proxy": "rainproxy.example", "proxy_bytes": 500_000_000},
+            {"ts": 199, "action": "search"}]
+    log.write_text("\n".join(json.dumps(r) for r in rows))
+    usage, rates = gasto.proxy_usage(tmp_path)
+    assert usage["gimnasia1"] == {"requests": 2, "mb": 2048.0, "gb": 2.0, "usd": 0.6, "estimated": False, "since": 200}
+    assert rates["usdPerGb"] == 0.3

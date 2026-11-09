@@ -253,3 +253,103 @@ def test_a_response_yt_dlp_cannot_parse_is_asked_once_more_from_another_ip(tmp_p
         yt._call("metadata", always_broken)
     assert len(seen) == 4
     yt.close()
+
+
+def test_a_geo_blocked_video_is_dropped_at_the_first_answer(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    yt._local.video_id = VIDEO
+    calls = []
+
+    def geo():
+        calls.append(1)
+        raise RuntimeError("ERROR: [youtube] x: The uploader has not made this video available in your country. "
+                           "This video is available in Andorra, United Arab Emirates")
+
+    with pytest.raises(RuntimeError, match="país del proxy"):
+        yt._call("metadata", geo)
+    assert len(calls) == 1 and yt.refused_why(VIDEO) == "geo" and yt.sessions.rotated == 0
+    with pytest.raises(RuntimeError, match="no se vuelve a pedir"):
+        yt.info(VIDEO)
+    yt.close()
+
+
+def test_candidates_that_could_never_be_downloaded_are_dropped_at_the_search(tmp_path, monkeypatch):
+    from pipeline.schemas import Storyboard
+    from pipeline.sourcing.youtube import whole_estimate_mb
+    from tests.test_sourcing import BROLL
+
+    board = Storyboard(sheets=["cache/sb/000.jpg"], columns=3, rows=3, tileWidth=320, tileHeight=180, interval=5.0, frames=9)
+    base = {"title": "t", "channel": "c", "uploader": None, "license": "youtube-standard", "width": 1920, "height": 1080,
+            "maxHeight": 1080, "storyboard": {"fps": 0.2, "width": 320}}
+    infos = {"AAAAAAAAAAA": {**base, "id": "AAAAAAAAAAA", "duration": 900, "hls": False, "wholeMb": 60.0},   # too long
+             "BBBBBBBBBBB": {**base, "id": "BBBBBBBBBBB", "duration": 300, "hls": False, "wholeMb": 147.0},  # too heavy
+             "CCCCCCCCCCC": {**base, "id": "CCCCCCCCCCC", "duration": 300, "hls": False, "wholeMb": 40.0},   # small: whole is fine
+             "DDDDDDDDDDD": {**base, "id": "DDDDDDDDDDD", "duration": 3000, "hls": True},                    # HLS: ranges
+             "EEEEEEEEEEE": {**base, "id": "EEEEEEEEEEE", "duration": 3000}}                                 # old cache: unknown
+    entries = [{"id": v, "title": "t", "channel": "c", "duration": 300, "url": ""} for v in infos]
+    for proxy, expected in ((RESI, ["yt:CCCCCCCCCCC", "yt:DDDDDDDDDDD", "yt:EEEEEEEEEEE"]), (HOME, [f"yt:{v}" for v in infos])):
+        monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+        yt = _source(tmp_path / proxy[-4:], proxy, videos_per_shot=9)
+        monkeypatch.setattr(yt, "search", lambda query: entries)
+        monkeypatch.setattr(yt, "info", lambda v: infos[v])
+        monkeypatch.setattr(yt, "storyboard", lambda info: board)
+        notes = []
+        found = yt.candidates(BROLL, notes)
+        assert [c.id for c in found] == expected
+        if proxy == RESI:
+            assert yt.refused_why("AAAAAAAAAAA") == "sin-hls" and yt.refused_why("BBBBBBBBBBB") == "sin-hls"
+            assert any("dura 15 min" in n for n in notes) and any("pesa 147 MB" in n for n in notes)
+        yt.close()
+    formats = [{"format_id": "137", "vcodec": "avc1", "acodec": "none", "height": 1080, "filesize": 300e6},
+               {"format_id": "136", "vcodec": "avc1", "acodec": "none", "height": 720, "filesize_approx": 120e6},
+               {"format_id": "18", "vcodec": "avc1", "acodec": "mp4a", "height": 360, "filesize": 50e6},
+               {"format_id": "140", "vcodec": "none", "acodec": "mp4a", "filesize": 9e6},
+               {"format_id": "sb0", "vcodec": "none", "acodec": "none", "height": 90, "filesize": 1e6}]
+    assert whole_estimate_mb(formats) == 50.0                          # the progressive 360p carries its own audio
+    assert whole_estimate_mb(formats[:2] + formats[3:]) == 129.0        # 720p video + the smallest audio
+    assert whole_estimate_mb([{"format_id": "x", "vcodec": "avc1", "height": 720}]) is None
+
+
+def test_an_old_cached_info_gets_its_hls_from_the_full_info_on_disk(tmp_path, monkeypatch):
+    """Infos cached before «hls» existed slipped past the search-time filter (gimnasia2: 23 shots on one video)."""
+    import json
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    slim = {"id": VIDEO, "title": "t", "channel": "c", "duration": 900, "storyboard": {"fps": 0.2, "width": 320}}
+    yt._info_path(VIDEO).parent.mkdir(parents=True, exist_ok=True)
+    yt._info_path(VIDEO).write_text(json.dumps(slim))
+    formats = [{"format_id": "18", "vcodec": "avc1", "acodec": "mp4a", "height": 360, "protocol": "https", "filesize": 150e6}]
+    full = {"formats": formats, "_edit_vid3_clients": ["some", "other"]}
+    yt._full_info_path(VIDEO).write_text(json.dumps(full))
+    monkeypatch.setattr(yt, "_call", lambda *a, **k: pytest.fail("no request: the info is cached"))
+    assert "hls" not in yt.info(VIDEO)                                  # other player clients: left unknown
+    yt._full_info_path(VIDEO).write_text(json.dumps({**full, "_edit_vid3_clients": yt._clients()}))
+    info = yt.info(VIDEO)
+    assert info["hls"] is False and info["wholeMb"] == 150.0 and yt._undownloadable(info)
+    assert json.loads(yt._info_path(VIDEO).read_text())["hls"] is False   # written back: once per video
+    yt.close()
+
+
+def test_the_analysis_takes_its_windows_by_hls_instead_of_the_whole_360p_file_through_a_paid_proxy(tmp_path, monkeypatch):
+    """gimnasia2: the whole-video prefetch was 1.7 of the 2.8 GB the proxy carried."""
+    import json
+
+    for proxy, extra, whole in ((RESI, {}, False), (RESI, {"prefetch_whole_residential": True}, True), (HOME, {}, True)):
+        monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+        yt = _source(tmp_path / f"{proxy[-4:]}{len(extra)}", proxy, **extra)
+        info = tmp_path / f"info{proxy[-4:]}{len(extra)}.json"
+        info.write_text(json.dumps({"formats": [{"format_id": "93", "protocol": "m3u8_native", "height": 360}]}))
+        monkeypatch.setattr(yt, "_fresh_full_info", lambda v, info=info: info)
+        asked = []
+        monkeypatch.setattr(yt, "_fetch_whole", lambda *a: asked.append(a) or tmp_path / "full_a360.mp4")
+        assert yt.prefetch_sections(VIDEO) is whole and bool(asked) is whole
+        yt.close()
+    yt = _source(tmp_path / "nohls", RESI)                                # no HLS: whole is the only way anyway
+    info = tmp_path / "nohls.json"
+    info.write_text(json.dumps({"formats": [{"format_id": "18", "protocol": "https", "height": 360}]}))
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda v: info)
+    monkeypatch.setattr(yt, "_fetch_whole", lambda *a: tmp_path / "full_a360.mp4")
+    assert yt.prefetch_sections(VIDEO) is True
+    yt.close()

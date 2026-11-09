@@ -54,10 +54,37 @@ def dead_key(text: str) -> bool:
     return any(marker in text for marker in DEAD_KEY_MARKERS)
 
 
-def spent_today(root: Path) -> float:
+def owner_of_work(root: Path, slug: str) -> str:
+    """Whose spending a work folder is: a partner's name (their channel, usuarios.py) or "" (yours: your videos and
+    every «_» folder, the radar, the ideas…)."""
+
+    if slug.startswith("_"):
+        return ""
+    try:
+        from .context import find_video
+        from .usuarios import owners
+        from .web import _channel_of
+
+        mapping = owners(root)
+        if not mapping:
+            return ""
+        return mapping.get(_channel_of(root, find_video(root, slug)), "")
+    except Exception:
+        return ""
+
+
+def _mine(root: Path, folder: Path, owner: str | None) -> bool:
+    return owner is None or owner_of_work(root, folder.name) == owner
+
+
+def spent_today(root: Path, owner: str | None = None) -> float:
+    """Today's API spending (UTC); `owner` ("" you, a partner's name): only that person's videos."""
+
     today = datetime.now(timezone.utc).date().isoformat()
     total = 0.0
     for path in (root / "work").glob("*/costs.json"):
+        if not _mine(root, path.parent, owner):
+            continue
         try:
             entries = json.loads(path.read_text("utf-8")).get("entries", [])
         except (OSError, ValueError):
@@ -129,12 +156,14 @@ class ProxyBudgetReached(ApiSearchesShort):
                          "para no gastar más proxy hoy", tomorrow.timestamp(), why="tope diario de GB del proxy")
 
 
-def proxy_gb_today(root: Path) -> float:
-    """GB the paid proxy carried today (UTC): proxy_bytes of every request row of every video."""
+def proxy_gb_today(root: Path, owner: str | None = None) -> float:
+    """GB the paid proxy carried today (UTC): proxy_bytes of every request row of every video (of `owner`'s only)."""
 
     start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc).timestamp()
     total = 0
     for path in (root / "work").glob("*/youtube_downloads.jsonl"):
+        if not _mine(root, path.parent, owner):
+            continue
         try:
             with path.open(encoding="utf-8") as handle:
                 for line in handle:
@@ -159,21 +188,32 @@ def proxy_limit(root: Path, config: dict) -> float:
         return 0.0
 
 
-def check_proxy(root: Path, config: dict) -> None:
-    """Raises ProxyBudgetReached when today's GB through the proxy are at budget.proxy_gb_per_day."""
+def partner_limits(root: Path, owner: str) -> dict:
+    """A partner's own daily caps (Ajustes → Personas): {daily_usd, proxy_gb_per_day}, 0 = none."""
 
-    cap = proxy_limit(root, config)
+    from .usuarios import limits_of
+
+    return limits_of(root, owner)
+
+
+def check_proxy(root: Path, config: dict, slug: str = "") -> None:
+    """Raises ProxyBudgetReached when today's GB through the proxy are at the cap of whoever owns this video: yours
+    (budget.proxy_gb_per_day) for your videos, a partner's own for theirs. Each one counts only their own GB."""
+
+    owner = owner_of_work(root, slug) if slug else ""
+    cap = float(partner_limits(root, owner).get("proxy_gb_per_day") or 0) if owner else proxy_limit(root, config)
     if cap > 0:
-        used = proxy_gb_today(root)
+        used = proxy_gb_today(root, owner)
         if used >= cap:
             raise ProxyBudgetReached(used, cap)
 
 
-def check(root: Path, config: dict) -> None:
-    """Raises BudgetReached when today's spending is at the limit."""
+def check(root: Path, config: dict, slug: str = "") -> None:
+    """Raises BudgetReached when today's spending of whoever owns this video is at their limit."""
 
-    cap = limit(root, config)
+    owner = owner_of_work(root, slug) if slug else ""
+    cap = float(partner_limits(root, owner).get("daily_usd") or 0) if owner else limit(root, config)
     if cap > 0:
-        spent = spent_today(root)
+        spent = spent_today(root, owner)
         if spent >= cap:
             raise BudgetReached(f"Límite diario de gasto alcanzado ({spent:.2f} $ de {cap:.2f} $): sigo mañana")

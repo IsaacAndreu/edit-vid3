@@ -438,7 +438,10 @@ def add_idea(root: Path, title: str, channel: str = "", note: str = "", day: str
     if day:
         date.fromisoformat(day)
     data = load(root)
-    idea = {"id": f"tablero-{int(time.time() * 1000)}", "title": title.strip(), "channel": channel, "note": note.strip(),
+    import secrets
+
+    # the millisecond alone repeated when two ideas came in at once: one delete took both
+    idea = {"id": f"tablero-{int(time.time() * 1000)}-{secrets.token_hex(3)}", "title": title.strip(), "channel": channel, "note": note.strip(),
             "date": day, "created": time.strftime("%Y-%m-%dT%H:%M:%S"), **(extra or {})}
     data.setdefault("ideas", []).insert(0, idea)
     save(root, data)

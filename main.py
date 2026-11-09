@@ -153,9 +153,9 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
         raise FileNotFoundError(f"No existe {ctx.materials_dir}")
     from pipeline import budget
 
-    budget.check(root, ctx.config)                       # budget.daily_usd: today's spending at the limit → wait
+    budget.check(root, ctx.config, slug)                 # budget.daily_usd (or its owner's): at the limit → wait
     if needs_youtube(root, slug):
-        budget.check_proxy(root, ctx.config)             # budget.proxy_gb_per_day: this video waits for tomorrow
+        budget.check_proxy(root, ctx.config, slug)       # budget.proxy_gb_per_day (or its owner's): waits for tomorrow
     script = ctx.materials_dir / "guion.txt"
     lang = str(ctx.section("align").get("language", "es"))[:2]
     if lang != "es" and script.is_file():
@@ -326,8 +326,47 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     # queue.drawn_first: the videos drawn in code (simulation, stick figures) before the footage ones
     drawn_first = bool(_queue_cfg(root).get("drawn_first", True))
     drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
-    return [d.name for d in sorted(ready, key=lambda d: (d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
-                                                         due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
+    order = [d.name for d in sorted(ready, key=lambda d: (d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
+                                                          due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
+    longs = [n for n in order if n not in shorts_set]
+    return take_turns(root, longs) + take_turns(root, [n for n in order if n in shorts_set])
+
+
+def take_turns(root: Path, order: list[str]) -> list[str]:
+    """With partners (usuarios.py), the queue alternates people: one video of each in turn, each keeping its own
+    order, beginning with whoever used the server least today (hours of stages finished today). Nobody fills the
+    server with twenty videos while the other's wait. Alone, the order is untouched."""
+
+    from pipeline.usuarios import owners
+
+    if len(order) < 2 or not owners(root):
+        return order
+    from datetime import datetime, timezone
+
+    from pipeline.budget import owner_of_work
+    from pipeline.tiempos import _read
+
+    whose = {n: owner_of_work(root, n) for n in order}
+    if len(set(whose.values())) < 2:
+        return order
+    today = datetime.now(timezone.utc).date().isoformat()
+    used: dict[str, float] = {}
+    for stages in (root / "work").glob("*/.stages"):
+        for path in stages.glob("*.json"):
+            info = _read(path) or {}
+            if str(info.get("completedAt") or "").startswith(today):
+                who = owner_of_work(root, stages.parent.name)
+                used[who] = used.get(who, 0.0) + float(info.get("seconds") or 0)
+    lines: dict[str, list[str]] = {}
+    for n in order:
+        lines.setdefault(whose[n], []).append(n)
+    people = sorted(lines, key=lambda w: (used.get(w, 0.0), order.index(lines[w][0])))
+    out: list[str] = []
+    while any(lines.values()):
+        for who in people:
+            if lines[who]:
+                out.append(lines[who].pop(0))
+    return out
 
 
 def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
