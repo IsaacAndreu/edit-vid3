@@ -397,8 +397,9 @@ def overview(root: Path) -> dict[str, Any]:
         "service": {"watching": alive, "paused": (root / "out" / "_pausa").is_file(), "queueRunning": queue_running,
                     "youtubeBlocked": _youtube_blocked(root),
                     "lastBeat": beat.read_text().strip() if beat.is_file() else None, "code": code_version(root)},
-        "budget": {"today": budget.spent_today(root), "limit": budget.limit(root, config),
-                   "proxyGbToday": cached(f"proxyday:{root}", 60, lambda: budget.proxy_gb_today(root)),
+        # yours: a partner's videos count against their own caps (usuarios.py), not these
+        "budget": {"today": budget.spent_today(root, ""), "limit": budget.limit(root, config),
+                   "proxyGbToday": cached(f"proxyday:{root}", 60, lambda: budget.proxy_gb_today(root, "")),
                    "proxyGbLimit": budget.proxy_limit(root, config)},
         "videos": videos, "channels": channels(root), "channelKinds": channel_kinds(root), "formats": formats(root),
         "youtube": youtube,
@@ -1129,9 +1130,9 @@ def spending(root: Path, days: int = 14) -> list[dict[str, Any]]:
 # Everything not listed here answers 403 to a partner (usuarios.py). The video routes also need the video to be in
 # one of their channels; the ones with a channel in the body (a new video, moving one), that channel too.
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
-               "/api/voices", "/api/voices/search")
+               "/api/voices", "/api/voices/search", "/api/cuenta")
 PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
-                "/api/voices", "/api/voices/test", "/api/channels")
+                "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink")
 PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
@@ -1161,6 +1162,18 @@ def partner_may(root: Path, mine: list[str], method: str, path: str) -> bool:
         if match := re.fullmatch(pattern, path):
             return video_channel(root, urllib.parse.unquote(match.group(1))) in mine
     return False
+
+
+def _bot_name(token: str) -> str:
+    """The bot's @username (getMe), for the t.me link a partner opens to connect their Telegram."""
+
+    import requests
+
+    try:
+        return str((requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=15).json().get("result") or {})
+                   .get("username") or "")
+    except Exception:
+        return ""
 
 
 def partner_overview(root: Path, name: str, mine: list[str]) -> dict[str, Any]:
@@ -1329,6 +1342,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if path == "/api/search":
                         found = search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000])
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
+                    if path == "/api/cuenta":              # «Mi cuenta»: their caps, today, Telegram
+                        from . import budget
+
+                        return self._ok({"name": who, "channels": mine, "telegram": bool(usuarios.telegram_of(root, who)),
+                                         "limits": usuarios.limits_of(root, who), "spentToday": budget.spent_today(root, who),
+                                         "proxyGbToday": budget.proxy_gb_today(root, who)})
                     if path == "/api/voices":
                         from . import tts
 
@@ -1614,12 +1633,29 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 failures.append(time.time())
                 time.sleep(1.5)                                  # slows down guessing
                 return self._fail(403, "Contraseña incorrecta")
+            if path == "/api/logout":                      # anyone, even with an old cookie: it goes
+                return self._send(200, b'{"ok": true}', headers={
+                    "Set-Cookie": "studio=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"})
             who = self._who()
             if who is None:
                 return self._fail(401, "Inicia sesión")
             if self.headers.get("Origin") and urllib.parse.urlparse(self.headers["Origin"]).netloc != self.headers.get("Host"):
                 return self._fail(403, "Origen no permitido")
             mine = usuarios.channels_of(root, who) if who else []
+            if path == "/api/password":                    # a partner changes their own password
+                if not who:
+                    return self._fail(400, "Tu contraseña es WEB_PASSWORD, en el .env del servidor")
+                try:
+                    body = json.loads(self.rfile.read(length) or b"{}")
+                    if usuarios.find(root, str(body.get("current") or "")) != who:
+                        time.sleep(1.5)
+                        return self._fail(403, "La contraseña actual no es esa")
+                    usuarios.save(root, who, usuarios.channels_of(root, who), str(body.get("new") or ""), password)
+                except ValueError as error:
+                    return self._fail(400, str(error))
+                secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+                return self._send(200, b'{"ok": true}', headers={    # the new password closed the old session: a new one
+                    "Set-Cookie": f"studio={usuarios.token(root, secret, who)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000{secure}"})
             if who and not partner_may(root, mine, "POST", path):
                 return self._fail(403, "No disponible")
             if path == "/api/users":                       # partners, from Ajustes: only you
@@ -1632,8 +1668,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     unknown = [c for c in body.get("channels") or [] if c not in channels(root)]
                     if unknown:
                         raise ValueError(f"No existe el canal {unknown[0]}")
-                    return self._ok(usuarios.save(root, str(body.get("name") or ""), list(body.get("channels") or []),
-                                                  str(body.get("password") or ""), password))
+                    saved = usuarios.save(root, str(body.get("name") or ""), list(body.get("channels") or []),
+                                          str(body.get("password") or ""), password)
+                    if isinstance(body.get("limits"), dict):       # their own daily caps: API $ and proxy GB
+                        usuarios.set_limits(root, str(body.get("name") or "").strip().lower(), body["limits"])
+                        saved = {"users": usuarios.listing(root)}
+                    return self._ok(saved)
                 except ValueError as error:
                     return self._fail(400, str(error))
             try:
@@ -1661,6 +1701,16 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         return self._fail(403, "Ese canal no es tuyo")
                     if re.fullmatch(r"/api/video/[^/]+/channel", path) and str(body.get("channel") or "") not in mine:
                         return self._fail(403, "Ese canal no es tuyo")
+                    if path == "/api/telegram/link":       # a code for «/start <code>» to the bot (bot.py links it)
+                        bot_token = RunContext.create("_web", root=root).env("TELEGRAM_BOT_TOKEN", required=False)
+                        if not bot_token:
+                            raise ValueError("El estudio aún no tiene bot de Telegram: pídeselo a quien lo administra")
+                        code = usuarios.link_code(root, who)
+                        bot = cached(f"botname:{bot_token[:8]}", 3600, lambda: _bot_name(bot_token))
+                        return self._ok({"code": code, "bot": bot, "url": f"https://t.me/{bot}?start={code}" if bot else ""})
+                    if path == "/api/telegram/unlink":
+                        usuarios.unlink_chat(root, who)
+                        return self._ok({"ok": True})
                     if path == "/api/channels":            # their new channel: its look only from one of theirs
                         if str(body.get("base") or "") and str(body["base"]) not in mine:
                             return self._fail(403, "Ese canal no es tuyo")

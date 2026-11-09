@@ -391,7 +391,20 @@ class Bot:
             self.pressed(update["callback_query"])
             return
         message = update.get("message") or {}
-        if str((message.get("chat") or {}).get("id")) != self.chat:   # only your chat
+        chat = str((message.get("chat") or {}).get("id"))
+        if chat != self.chat:                            # only your chat, or a partner linking theirs
+            words = str(message.get("text") or "").split()
+            if len(words) == 2 and words[0].split("@")[0] == "/start":
+                from .usuarios import link_chat
+
+                who = link_chat(self.root, words[1], chat)
+                if who:
+                    try:
+                        self.http.post(f"{self.base}/sendMessage", data={"chat_id": chat, "text":
+                                       f"✅ Hola, {who}: aquí te llegarán los avisos de tus vídeos (terminado, error, voz)."},
+                                       timeout=30)
+                    except requests.RequestException:
+                        pass
             return
         try:
             reply = self.answer(str(message.get("text") or ""))
@@ -423,9 +436,9 @@ class Bot:
         warnings["watcher"] = bool(stale)
         config = RunContext.create("_bot", root=self.root).config
         cap = budget.limit(self.root, config)
-        over = bool(cap) and budget.spent_today(self.root) >= cap
+        over = bool(cap) and budget.spent_today(self.root, "") >= cap     # yours: a partner's videos have their own
         if over and warnings.get("budget") != datetime.now().date().isoformat():
-            self.send(f"💸 Límite diario alcanzado ({_money(budget.spent_today(self.root))} de {_money(cap)}): "
+            self.send(f"💸 Límite diario alcanzado ({_money(budget.spent_today(self.root, ''))} de {_money(cap)}): "
                       "no empieza más vídeos hasta mañana. /limite <dólares> para cambiarlo.")
             warnings["budget"] = datetime.now().date().isoformat()
         from . import web

@@ -687,7 +687,7 @@ def prepare_all(root: Path, log: Any = print) -> int:
             log(f"Voz de {folder.name}: {type(error).__name__}: {str(error)[:200]}")
             if not failed:                       # one message per video, not one every half hour
                 _tell(root, f"🎙️ No se pudo generar la voz de {folder.name} con GenAIPro:\n{str(error)[:300]}\n\n"
-                            f"Lo reintento cada {RETRY_MINUTES} min.")
+                            f"Lo reintento cada {RETRY_MINUTES} min.", folder.name)
     return made
 
 
@@ -737,12 +737,12 @@ def check_credits(root: Path, token: str, session: Any = None, now: float | None
     return state
 
 
-def _tell(root: Path, text: str) -> None:
+def _tell(root: Path, text: str, slug: str = "") -> None:
     try:
         from .context import RunContext
         from .notify import telegram
 
-        telegram(RunContext.create("_voces", root=root), text)
+        telegram(RunContext.create(slug or "_voces", root=root), text)     # a video's: to its owner
     except Exception:            # a message is never worth stopping anything for
         pass
 

@@ -397,7 +397,7 @@
     <a href="#/servidor"><span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>Estado del servidor</a>
     <a href="#/ajustes"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>Ajustes</a>
   </nav>
-  <div class="foot"><span id="service" class="small muted"></span></div>
+  <div class="foot"><span id="service" class="small muted"></span> <a href="#" class="small muted" id="logout" style="float:right" onclick="event.preventDefault();logout()">Salir</a></div>
 </header>
 <main id="app"></main>
 
@@ -1939,7 +1939,8 @@ async function peopleBlock(all) {
   window.savePerson = async (who) => {
     const msg = $("#pmsg-" + (who || "_new"));
     const name = who || $("#pname").value.trim().toLowerCase(), password = $("#ppass-" + (who || "_new")).value;
-    try { await post("/api/users", {name, password, channels: picked(who)}); settingsPage(); }
+    const limits = who ? {daily_usd: parseFloat($("#plim-usd-" + who).value || 0), proxy_gb_per_day: parseFloat($("#plim-gb-" + who).value || 0)} : undefined;
+    try { await post("/api/users", {name, password, channels: picked(who), limits}); settingsPage(); }
     catch (e) { msg.textContent = e.message; }
   };
   window.removePerson = async (who) => {
@@ -1953,6 +1954,10 @@ async function peopleBlock(all) {
     ${u.map((x) => `<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between"><b>${esc(x.name)}</b>
         <button class="small" onclick="removePerson('${esc(x.name)}')">Quitar</button></div>
       <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes(x.name, x.channels)}</div>
+      <div class="row small" style="gap:8px;margin:6px 0;flex-wrap:wrap">Sus topes al día:
+        <input id="plim-usd-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}" style="max-width:90px"> $ de API
+        <input id="plim-gb-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}" style="max-width:90px"> GB de proxy
+        <span class="muted">(0 = sin tope) · Telegram: ${x.telegram ? "✅ conectado" : "sin conectar (sus avisos te llegan a ti)"}</span></div>
       <div class="row"><input id="ppass-${esc(x.name)}" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)" style="max-width:260px">
         <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small" style="color:var(--bad)"></span></div></div>`).join("")}
     <div class="card" style="margin-top:8px"><b>Añadir persona</b>
@@ -1983,10 +1988,10 @@ async function settingsPage() {
       <label>Hacer vídeos</label>
       <div class="row"><button class="${s.paused ? "main" : ""}" onclick="save({paused: ${!s.paused}})">${s.paused ? "▶ Reanudar" : "⏸ Pausar"}</button>
         <span class="muted small">${s.paused ? "En pausa: no empieza vídeos nuevos (el que está en marcha termina)." : "Activo."}</span></div>
-      <label>Límite de gasto de API al día <span class="muted">(0 = sin límite; al llegar, espera a mañana)</span></label>
+      <label>Límite de gasto de API al día <span class="muted">(de tus vídeos; cada persona tiene el suyo en «Personas» · 0 = sin límite; al llegar, espera a mañana)</span></label>
       <div class="row"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}" style="max-width:160px"><span>$</span>
         <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
-      <label>Tope de proxy al día <span class="muted">(GB por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope)</span></label>
+      <label>Tope de proxy al día <span class="muted">(GB de tus vídeos por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope)</span></label>
       <div class="row"><input id="proxyday" type="number" min="0" step="0.5" value="${s.proxy_gb_per_day ?? 0}" style="max-width:160px"><span>GB</span>
         <button onclick="save({proxy_gb_per_day: parseFloat(document.getElementById('proxyday').value || 0)})">Guardar</button>
         <span class="small muted">${data && data.budget && data.budget.proxyGbToday != null ? `hoy ${data.budget.proxyGbToday.toFixed(2)} GB` : ""}</span></div>
@@ -2973,6 +2978,7 @@ async function route() {
     else if (hash === "#/servidor") await serverPage();
     else if (hash === "#/videos") await allVideosPage();
     else if (hash === "#/ajustes") await settingsPage();
+    else if (hash === "#/cuenta") await accountPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
     const s = data && data.service;
@@ -2995,8 +3001,53 @@ document.addEventListener("click", (e) => {     // menus of the header: open on 
   if (link && link.getAttribute("href") === (location.hash || "#/")) { e.preventDefault(); route(); }   // same page: reload it
 });
 
+async function logout() { await post("/api/logout").catch(() => {}); location.hash = "#/"; location.reload(); }
+
+// «Mi cuenta» (a partner): Telegram for their videos' messages, their daily caps, their password
+async function accountPage() {
+  const a = await api("/api/cuenta");
+  const cap = (v, unit) => v ? `${v} ${unit}` : "sin tope propio";
+  $("#app").innerHTML = `<h1>Mi cuenta</h1>
+    <div class="small muted">${esc(a.name)} · tus canales: ${a.channels.map(esc).join(", ") || "ninguno todavía"}</div>
+    <div class="kpis" style="margin-top:12px">
+      <div class="kpi"><div class="k">Gasto de API hoy</div><div class="v">${a.spentToday.toFixed(2)} $</div><div class="d">tope: ${cap(a.limits.daily_usd, "$ al día")}</div>
+        ${a.limits.daily_usd ? `<div class="bar"><i style="width:${Math.min(100, 100 * a.spentToday / a.limits.daily_usd)}%"></i></div>` : ""}</div>
+      <div class="kpi"><div class="k">Proxy hoy</div><div class="v">${a.proxyGbToday.toFixed(2)} GB</div><div class="d">tope: ${cap(a.limits.proxy_gb_per_day, "GB al día")}</div>
+        ${a.limits.proxy_gb_per_day ? `<div class="bar"><i style="width:${Math.min(100, 100 * a.proxyGbToday / a.limits.proxy_gb_per_day)}%"></i></div>` : ""}</div></div>
+    <div class="small muted" style="margin-top:4px">Al llegar a un tope, tus vídeos esperan a mañana (los de otros no cuentan). Los topes los pone quien administra el estudio.</div>
+    <h2>Avisos en Telegram</h2>
+    <div class="card">${a.telegram
+      ? `✅ Conectado: te llegan los avisos de tus vídeos (terminado, error, falta la voz).
+         <div class="row" style="margin-top:10px"><button onclick="post('/api/telegram/unlink').then(accountPage)">Desconectar</button></div>`
+      : `Recibe en el móvil cuándo termina o falla cada vídeo tuyo.
+         <div class="row" style="margin-top:10px"><button class="main" id="tglink">Conectar Telegram</button><span id="tgmsg" class="small muted"></span></div>`}</div>
+    <h2>Contraseña</h2>
+    <div class="card"><div class="two">
+      <div><label>Actual</label><input id="pw-old" type="password" autocomplete="current-password"></div>
+      <div><label>Nueva <span class="muted">(8 o más)</span></label><input id="pw-new" type="password" autocomplete="new-password"></div></div>
+      <div class="row" style="margin-top:12px"><button class="main" id="pw-go">Cambiar</button><span id="pw-msg" class="small muted"></span></div></div>
+    <div class="row" style="margin-top:22px"><button onclick="logout()">Cerrar sesión</button></div>`;
+  if ($("#tglink")) $("#tglink").onclick = async () => {
+    try {
+      const r = await post("/api/telegram/link");
+      $("#tgmsg").innerHTML = r.url ? `Abre <a href="${esc(r.url)}" target="_blank" rel="noopener">este enlace</a> y pulsa «Iniciar» en el bot; luego vuelve aquí.`
+        : `Escribe al bot del estudio: <code>/start ${esc(r.code)}</code> (vale 30 min)`;
+      if (r.url) window.open(r.url, "_blank");
+      const until = Date.now() + 10 * 60000;
+      const poll = async () => { if (location.hash !== "#/cuenta" || Date.now() > until) return;
+        if ((await api("/api/cuenta")).telegram) return accountPage(); setTimeout(poll, 4000); };
+      setTimeout(poll, 4000);
+    } catch (e) { $("#tgmsg").textContent = e.message; }
+  };
+  $("#pw-go").onclick = async () => {
+    try { await post("/api/password", {current: $("#pw-old").value, new: $("#pw-new").value}); $("#pw-msg").textContent = "✅ Cambiada";
+      $("#pw-old").value = $("#pw-new").value = ""; }
+    catch (e) { $("#pw-msg").textContent = e.message; }
+  };
+}
+
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
-const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/gasto", "#/voces"];
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/gasto", "#/voces", "#/cuenta"];
 const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
 
@@ -3011,7 +3062,8 @@ async function start() {
     if (spend) spend.lastChild.textContent = "Mi gasto";
     const nav = document.querySelector("header nav");
     nav.querySelectorAll(".sec").forEach((sec) => sec.remove());
-    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>`);
+    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>
+      <a href="#/cuenta"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Mi cuenta</a>`);
     $("#service").textContent = "👤 " + window.partner;
   }
   $("#top").classList.remove("hide");

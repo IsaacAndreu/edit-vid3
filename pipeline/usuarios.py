@@ -48,8 +48,8 @@ def _hash(password: str, salt: str) -> str:
 def listing(root: Path) -> list[dict[str, Any]]:
     """For the settings page: names and channels, never the hashes."""
 
-    return [{"name": n, "channels": list(u.get("channels") or []), "created": u.get("created")}
-            for n, u in sorted(_read(root).items())]
+    return [{"name": n, "channels": list(u.get("channels") or []), "created": u.get("created"),
+             "telegram": bool(u.get("telegram")), "limits": limits_of(root, n)} for n, u in sorted(_read(root).items())]
 
 
 def channels_of(root: Path, name: str) -> list[str]:
@@ -108,6 +108,70 @@ def add_channel(root: Path, name: str, channel: str) -> None:
     users = _read(root)
     if name in users:
         users[name]["channels"] = sorted(set(users[name].get("channels") or []) | {channel})
+        _write(root, users)
+
+
+def limits_of(root: Path, name: str) -> dict[str, float]:
+    """{daily_usd, proxy_gb_per_day} of a partner, set by you in Ajustes → Personas (0 = no cap of their own)."""
+
+    raw = (_read(root).get(name) or {}).get("limits") or {}
+    out = {}
+    for key in ("daily_usd", "proxy_gb_per_day"):
+        try:
+            out[key] = max(0.0, float(raw.get(key) or 0))
+        except (TypeError, ValueError):
+            out[key] = 0.0
+    return out
+
+
+def set_limits(root: Path, name: str, limits: dict[str, Any]) -> None:
+    users = _read(root)
+    if name not in users:
+        raise ValueError("No existe esa persona")
+    current = dict(users[name].get("limits") or {})
+    for key in ("daily_usd", "proxy_gb_per_day"):
+        if key in limits:
+            current[key] = max(0.0, float(limits[key] or 0))
+    users[name]["limits"] = current
+    _write(root, users)
+
+
+def telegram_of(root: Path, name: str) -> str:
+    """The partner's Telegram chat (their videos' messages go there), or ""."""
+
+    return str((_read(root).get(name) or {}).get("telegram") or "")
+
+
+def link_code(root: Path, name: str) -> str:
+    """A one-time code: the partner sends «/start <code>» to the bot and their chat is saved (bot.py)."""
+
+    users = _read(root)
+    if name not in users:
+        raise ValueError("No existe esa persona")
+    code = secrets.token_hex(4)
+    users[name]["telegramCode"] = {"code": code, "at": time.time()}
+    _write(root, users)
+    return code
+
+
+def link_chat(root: Path, code: str, chat: str) -> str | None:
+    """«/start <code>» from a chat: whose code it is (30 minutes), their chat saved; None when it matches nobody."""
+
+    users = _read(root)
+    for name, user in users.items():
+        pending = user.get("telegramCode") or {}
+        if pending.get("code") and hmac.compare_digest(str(pending["code"]), code) and time.time() - float(pending.get("at") or 0) < 1800:
+            user["telegram"] = str(chat)
+            user.pop("telegramCode", None)
+            _write(root, users)
+            return name
+    return None
+
+
+def unlink_chat(root: Path, name: str) -> None:
+    users = _read(root)
+    if name in users:
+        users[name].pop("telegram", None)
         _write(root, users)
 
 

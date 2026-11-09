@@ -93,7 +93,9 @@ def test_you_still_see_everything_and_manage_partners(studio):
     assert login("clave") == 200
     data = json.loads(call("/api/overview")[1])
     assert {v["slug"] for v in data["videos"]} == {"mio1", "suyo1"} and "partner" not in data
-    assert json.loads(call("/api/users")[1])["users"] == [{"name": "amigo", "channels": ["atletismo"], "created": usuarios._read(root)["amigo"]["created"]}]
+    listed = json.loads(call("/api/users")[1])["users"]
+    assert [(u["name"], u["channels"], u["telegram"]) for u in listed] == [("amigo", ["atletismo"], False)]
+    assert "hash" not in json.dumps(listed) and "salt" not in json.dumps(listed)
     assert call("/api/users", {"name": "otro", "channels": ["atletismo"], "password": "otra-clave-larga"})[0] == 400   # one owner
     assert call("/api/users", {"name": "otro", "channels": ["aviacion"], "password": "clave"})[0] == 400              # yours
     assert call("/api/users", {"name": "otro", "channels": ["nada"], "password": "otra-clave-larga"})[0] == 400
@@ -158,3 +160,78 @@ def test_a_partner_makes_a_channel_and_it_is_theirs(studio):
     assert usuarios.channels_of(root, "amigo") == ["atletas-x", "atletismo"]
     assert "atletas-x" in json.loads(call("/api/overview")[1])["channels"]
     assert call("/api/videos", {"name": "nuevo2", "channel": "atletas-x", "script": SCRIPT})[0] == 200
+
+
+def test_a_partner_changes_their_password_and_anyone_can_log_out(studio):
+    root, call, login = studio
+    login("contraseña-amigo")
+    with patch("pipeline.web.time.sleep"):
+        assert call("/api/password", {"current": "mala", "new": "nueva-clave-1"})[0] == 403
+    assert call("/api/password", {"current": "contraseña-amigo", "new": "corta"})[0] == 400
+    code, _, headers = call("/api/password", {"current": "contraseña-amigo", "new": "nueva-clave-1"})
+    assert code == 200
+    root_cookie = headers["Set-Cookie"].split(";")[0]
+    assert usuarios.find(root, "nueva-clave-1") == "amigo"
+    code, _, headers = call("/api/logout", {})
+    assert code == 200 and "Max-Age=0" in headers["Set-Cookie"]
+    login("clave")
+    assert call("/api/password", {"current": "clave", "new": "otra-cosa-1"})[0] == 400       # yours lives in .env
+    assert root_cookie.startswith("studio=u.amigo.")
+
+
+def test_a_partners_video_messages_go_to_their_telegram(studio, monkeypatch):
+    from pipeline import notify
+    from pipeline.bot import Bot
+    from pipeline.context import RunContext
+
+    root, call, login = studio
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:" + "x" * 30)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "111")
+    sent = []
+    monkeypatch.setattr(notify.requests, "post", lambda url, **kw: sent.append((kw.get("json") or kw.get("data"))["chat_id"]) or
+                        type("R", (), {"status_code": 200})())
+    assert notify.target(RunContext.create("suyo1", root=root))[1] == "111"        # not connected yet: to you
+    login("contraseña-amigo")
+    monkeypatch.setattr("pipeline.web._bot_name", lambda token: "MiBot")
+    link = json.loads(call("/api/telegram/link", {})[1])
+    assert link["url"] == f"https://t.me/MiBot?start={link['code']}"
+
+    class Http:
+        def post(self, url, **kw):
+            sent.append(kw["data"]["chat_id"])
+
+    bot = Bot(root, session=Http())
+    bot.handle({"message": {"chat": {"id": 999}, "text": "/start mal"}})
+    assert usuarios.telegram_of(root, "amigo") == ""
+    bot.handle({"message": {"chat": {"id": 999}, "text": f"/start {link['code']}"}})
+    assert usuarios.telegram_of(root, "amigo") == "999" and sent[-1] == "999"
+    assert json.loads(call("/api/cuenta")[1])["telegram"] is True
+    sent.clear()
+    notify.telegram(RunContext.create("suyo1", root=root), "terminado")
+    notify.telegram(RunContext.create("mio1", root=root), "terminado")
+    notify.telegram(RunContext.create("_subidos", root=root), "disco")
+    assert sent == ["999", "111", "111"]
+    assert notify.email(RunContext.create("suyo1", root=root), "x", "y") is False
+
+
+def test_each_person_has_their_own_daily_caps(studio):
+    from datetime import datetime, timezone
+
+    from pipeline import budget
+
+    root, call, login = studio
+    today = datetime.now(timezone.utc).date().isoformat()
+    for slug, usd in (("mio1", 3.0), ("suyo1", 0.4)):
+        (root / "work" / slug / "costs.json").write_text(json.dumps({"entries": [{"usd": usd, "at": today + "T01:00:00"}]}))
+    (root / "out" / "_ajustes.json").write_text(json.dumps({"daily_usd": 2.0}))
+    with pytest.raises(budget.BudgetReached):
+        budget.check(root, {}, "mio1")                              # you: 3 $ of your 2 $
+    budget.check(root, {}, "suyo1")                                 # him: no cap of his own, your 3 $ do not count
+    login("clave")
+    assert call("/api/users", {"name": "amigo", "channels": ["atletismo"], "limits": {"daily_usd": 0.3}})[0] == 200
+    with pytest.raises(budget.BudgetReached):
+        budget.check(root, {}, "suyo1")
+    assert budget.spent_today(root, "") == 3.0 and budget.spent_today(root, "amigo") == 0.4
+    login("contraseña-amigo")
+    account = json.loads(call("/api/cuenta")[1])
+    assert account["limits"]["daily_usd"] == 0.3 and account["spentToday"] == 0.4

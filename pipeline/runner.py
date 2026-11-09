@@ -207,7 +207,7 @@ def run_stages(
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
             if stage.name in PROXY_STAGES and not offline:
-                budget.check_proxy(ctx.root, ctx.config)     # budget.proxy_gb_per_day: it waits for tomorrow here
+                budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
             current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),
