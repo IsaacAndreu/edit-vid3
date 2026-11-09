@@ -301,3 +301,21 @@ def test_a_partners_channel_page_and_stats_are_theirs(studio, monkeypatch):
     assert call("/api/mychannel/atletismo")[0] == 200 and call("/api/mychannel/aviacion")[0] == 403
     assert call("/api/mychannel/aviacion", {})[0] == 403
     assert sum(d["usd"] for d in json.loads(call("/api/spending")[1])) == 0.2
+
+
+def test_the_queue_takes_turns_between_people(studio):
+    import time as _time
+
+    import main
+
+    root, call, login = studio
+    for name, channel in (("mio2", "aviacion"), ("mio3", "aviacion"), ("suyo2", "atletismo")):
+        web.create_video(root, {"name": name, "channel": channel, "script": SCRIPT})
+    order = ["mio1", "mio2", "mio3", "suyo1", "suyo2"]
+    assert main.take_turns(root, order) == ["mio1", "suyo1", "mio2", "suyo2", "mio3"]
+    stages = root / "work" / "mio1" / ".stages"                     # you used the server today: he goes first
+    stages.mkdir(parents=True)
+    (stages / "render.json").write_text(json.dumps({"seconds": 3600, "completedAt": _time.strftime("%Y-%m-%dT%H:%M:%S", _time.gmtime())}))
+    assert main.take_turns(root, order) == ["suyo1", "mio1", "suyo2", "mio2", "mio3"]
+    usuarios.remove(root, "amigo")
+    assert main.take_turns(root, order) == order                    # alone: as before
