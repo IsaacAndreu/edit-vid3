@@ -43,6 +43,22 @@ class TTSError(RuntimeError):
     pass
 
 
+USD_PER_1K_CHARS = 0.022         # GenAIPro (Labs): 22 $ the million characters; tts.usd_per_1k_chars to change it
+
+
+def usd_per_1k_chars(ctx: Any, voice: dict[str, Any] | None = None) -> float:
+    """What 1,000 narrated characters cost: the voice's own price, else tts.usd_per_1k_chars, else 0.022 $. The
+    voices never carried one, so every narration was recorded at 0.00 $ (about 0.30 $ a 12-15 minute video)."""
+
+    own = (voice or {}).get("usd_per_1k_chars")
+    if own is not None:
+        return float(own)
+    try:
+        return float(ctx.section("tts").get("usd_per_1k_chars", USD_PER_1K_CHARS))
+    except Exception:
+        return USD_PER_1K_CHARS
+
+
 # --- voices per channel -----------------------------------------------------------------------------------------
 
 def _read(root: Path) -> dict[str, Any]:
@@ -614,7 +630,7 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
 
         paid = result.get("paidChars", result["chars"])     # a restart reuses pieces: they are not paid twice
         record_cost(ctx, stage="voz", provider="genaipro", operation=voice["model_id"],
-                    usd=float(voice.get("usd_per_1k_chars", 0)) * paid / 1000,
+                    usd=usd_per_1k_chars(ctx, voice) * paid / 1000,
                     details={"chars": paid, "pieces": result["pieces"]})
         if result.get("reusedChars"):
             from .ahorro import record

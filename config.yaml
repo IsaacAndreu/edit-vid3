@@ -472,3 +472,6 @@ without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue a
   reference_min_videos: 3          # con menos, se compara con todos los canales; sin ninguno, los dos límites de abajo
   max_fallback_share: 0.35
   max_unfilled_share: 0
+
+tts:
+  usd_per_1k_chars: 0.022         # GenAIPro: lo que cuestan 1.000 caracteres de voz (22 $ el millón), para «Gasto de API»

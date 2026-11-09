@@ -133,6 +133,16 @@ def proxy_usage(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, float]
     return out, {"mbPerRequest": mb, "usdPerGb": paid_gb, "metadataUsdPerGb": per_gb}
 
 
+def _voice_rate(root: Path) -> float:
+    from .context import RunContext
+    from .tts import USD_PER_1K_CHARS
+
+    try:
+        return float(RunContext.create("_gasto", root=root).section("tts").get("usd_per_1k_chars", USD_PER_1K_CHARS))
+    except Exception:
+        return USD_PER_1K_CHARS
+
+
 def report(root: Path, days: int = 30) -> dict[str, Any]:
     from .context import find_video
     from .housekeeping import is_done
@@ -152,6 +162,7 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
 
     quota = youtube_quota(root)
     proxy, proxy_rates = proxy_usage(root)
+    voice_rate = _voice_rate(root)
     for path in sorted((root / "work").glob("*/costs.json")):
         slug = path.parent.name
         entries = (_read(path) or {}).get("entries") or []
@@ -162,6 +173,9 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
         last = ""
         for entry in entries:
             usd = float(entry.get("usd") or 0)
+            chars = float((entry.get("details") or {}).get("chars") or 0)
+            if entry.get("provider") == "genaipro" and not usd and chars:
+                usd = chars / 1000 * voice_rate       # written at 0.00 $ before the voice had a price
             day = str(entry.get("at") or "")[:10]
             name = NAMES.get(str(entry.get("provider") or ""), str(entry.get("provider") or "otro"))
             total += usd
@@ -174,7 +188,6 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
             if entry.get("stage") == "judge" and entry.get("provider") == "openai":
                 judge_calls += 1
                 judge_usd += usd
-            chars = float((entry.get("details") or {}).get("chars") or 0)
             if entry.get("provider") == "genaipro" and chars:
                 voice_chars += chars
                 voice_usd += usd
