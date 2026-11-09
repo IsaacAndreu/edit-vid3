@@ -1446,6 +1446,8 @@ class YouTubeSource:
                 cached = json.loads(path.read_text(encoding="utf-8"))
                 if "storyboard" not in cached:  # written by the older, download-first sourcing
                     path.unlink()
+                elif "hls" not in cached:
+                    self._backfill_hls(video_id, cached, path)
             except (OSError, ValueError):
                 path.unlink(missing_ok=True)
 
@@ -1503,6 +1505,32 @@ class YouTubeSource:
             }
 
         return cached_json(path, produce)
+
+    def _backfill_hls(self, video_id: str, cached: dict[str, Any], path: Path) -> None:
+        """An info cached before «hls»/«wholeMb» existed: both from the full yt-dlp info already on disk (no request),
+        when the same player clients extracted it (another client set may have had no HLS where today's has). Without
+        them the search-time filter let through, video after video, the same unbuildable candidates of the shared
+        gymnastics pool: gimnasia2, 23 shots on sZuVQzbIjuc alone, all refused at the download."""
+
+        import json
+
+        try:
+            full = json.loads(self._full_info_path(video_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if full.get("_edit_vid3_clients") != self._clients():
+            return
+        formats = full.get("formats") or []
+        if not formats:
+            return
+        cached["hls"] = any(str(f.get("protocol") or "").startswith("m3u8") for f in formats)
+        cached["wholeMb"] = whole_estimate_mb(formats)
+        try:
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(cached), encoding="utf-8")
+            tmp.replace(path)
+        except OSError:
+            pass
 
     def _undownloadable(self, info: dict[str, Any]) -> str | None:
         """Why this video could not be downloaded through the residential proxy (no HLS and over the whole-download

@@ -309,3 +309,24 @@ def test_candidates_that_could_never_be_downloaded_are_dropped_at_the_search(tmp
     assert whole_estimate_mb(formats) == 50.0                          # the progressive 360p carries its own audio
     assert whole_estimate_mb(formats[:2] + formats[3:]) == 129.0        # 720p video + the smallest audio
     assert whole_estimate_mb([{"format_id": "x", "vcodec": "avc1", "height": 720}]) is None
+
+
+def test_an_old_cached_info_gets_its_hls_from_the_full_info_on_disk(tmp_path, monkeypatch):
+    """Infos cached before «hls» existed slipped past the search-time filter (gimnasia2: 23 shots on one video)."""
+    import json
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    slim = {"id": VIDEO, "title": "t", "channel": "c", "duration": 900, "storyboard": {"fps": 0.2, "width": 320}}
+    yt._info_path(VIDEO).parent.mkdir(parents=True, exist_ok=True)
+    yt._info_path(VIDEO).write_text(json.dumps(slim))
+    formats = [{"format_id": "18", "vcodec": "avc1", "acodec": "mp4a", "height": 360, "protocol": "https", "filesize": 150e6}]
+    full = {"formats": formats, "_edit_vid3_clients": ["some", "other"]}
+    yt._full_info_path(VIDEO).write_text(json.dumps(full))
+    monkeypatch.setattr(yt, "_call", lambda *a, **k: pytest.fail("no request: the info is cached"))
+    assert "hls" not in yt.info(VIDEO)                                  # other player clients: left unknown
+    yt._full_info_path(VIDEO).write_text(json.dumps({**full, "_edit_vid3_clients": yt._clients()}))
+    info = yt.info(VIDEO)
+    assert info["hls"] is False and info["wholeMb"] == 150.0 and yt._undownloadable(info)
+    assert json.loads(yt._info_path(VIDEO).read_text())["hls"] is False   # written back: once per video
+    yt.close()
