@@ -228,8 +228,9 @@ de nadie son tuyos. Cambiar su contraseña cierra sus sesiones; «Quitar» le de
 Solo se guarda un PBKDF2 con sal de cada contraseña, en `out/_usuarios.json`.
 
 Factura: Ajustes → «Coste del servidor al mes», y en «Gasto» la tabla «Factura por persona» de cada mes: API y voz
-(por el día de cada llamada), proxy (los GB medidos de sus vídeos × `proxy_usd_per_gb`) y su parte del servidor
-por horas de trabajo, con un CSV por persona. La otra persona ve la suya en «Mi gasto».
+(por el día de cada llamada), proxy (los GB medidos de sus vídeos × `proxy_usd_per_gb`) y su parte del servidor,
+a partes iguales entre tú y cada persona (42 y una persona: 21 cada uno), con un CSV por persona. La otra persona
+ve la suya en «Mi gasto».
 
 ## 4. Métricas (lo que decide)
 

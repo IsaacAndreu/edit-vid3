@@ -133,15 +133,17 @@ def test_each_person_pays_their_month_and_their_hours_of_the_server(studio):
             {"ts": _time.time(), "action": "metadata", "proxy": "resi", "proxy_bytes": int(gb * 1e9)}))
     rate = gasto.proxy_usage(root)[1]["usdPerGb"]
     people = {p["who"]: p for p in gasto.invoices(root)[0]["people"]}
-    assert people[""]["server"] == 15.0 and people["amigo"]["server"] == 5.0              # 3 h and 1 h of 4
+    assert people[""]["server"] == 10.0 and people["amigo"]["server"] == 10.0             # half each, whatever the hours
+    assert people["amigo"]["hours"] == 1.0 and people[""]["hours"] == 3.0
     assert people["amigo"]["api"] == 0.1 and people["amigo"]["voice"] == 0.22
     assert people["amigo"]["proxyUsd"] == round(2.0 * rate, 2)
-    assert people["amigo"]["total"] == round(0.1 + 0.22 + 2.0 * rate + 5.0, 2)
+    assert people["amigo"]["total"] == round(0.1 + 0.22 + 2.0 * rate + 10.0, 2)
     login("contraseña-amigo")
     mine = json.loads(call("/api/gasto")[1])["invoices"][0]
     assert [p["who"] for p in mine["people"]] == ["amigo"] and mine["hours"] is None
     code, body, headers = call(f"/api/factura.csv?month={month}&who=")                    # never another's
     assert code == 200 and "suyo1" in body.decode("utf-8-sig") and "mio1" not in body.decode("utf-8-sig")
+    assert "servidor (20 / 2)" in body.decode("utf-8-sig")
     login("clave")
     code, body, _ = call(f"/api/factura.csv?month={month}&who=")
     assert "mio1" in body.decode("utf-8-sig") and "suyo1" not in body.decode("utf-8-sig")

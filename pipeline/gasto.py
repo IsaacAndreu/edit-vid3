@@ -319,8 +319,8 @@ def _quota_today(root: Path) -> dict[str, Any] | None:
 
 def invoices(root: Path, months: int = 3) -> list[dict[str, Any]]:
     """What each person owes per month: API and voice (costs.json, by the day of each call), the proxy (the GB each
-    of their videos carried that month × its price) and their share of the server (`server_usd_month` in Ajustes)
-    by hours of work: the stages each of their videos ran that month over every video's. A channel is a partner's
+    of their videos carried that month × its price) and their part of the server (`server_usd_month` in Ajustes,
+    split in equal parts between everyone). Hours of work are kept as information. A channel is a partner's
     when usuarios.py says so; everything else (and «Otros»: radar, ideas…) is yours ("")."""
 
     from .budget import settings as _settings
@@ -397,15 +397,23 @@ def invoices(root: Path, months: int = 3) -> list[dict[str, Any]]:
             row["hours"] += h
             video_row(row, slug, channel)["hours"] += h
     out = []
+    from .usuarios import listing
+
+    # the server, a fixed monthly bill: split in equal parts between you and every partner (42 € and one partner:
+    # 21 € each), whether they made one video that month or twenty
+    users = listing(root)
     for m in wanted:
+        # from the month they were added: nobody pays the server of the months before they came
+        partners = [u["name"] for u in users if str(u.get("created") or "")[:7] <= m]
+        share = server_usd / (1 + len(partners))
+        for who in ["", *partners]:
+            person(m, who)
         people = []
         for entry in sorted(table[m].values(), key=lambda e: (e["who"] != "", e["who"])):
-            share = server_usd * entry["hours"] / hours[m] if hours[m] else 0.0
             videos = sorted(entry["videos"].values(), key=lambda v: v["slug"])
             for v in videos:
-                v["server"] = server_usd * v["hours"] / hours[m] if hours[m] else 0.0
-                v["total"] = v["api"] + v["voice"] + v["proxyUsd"] + v["server"]
-                for k in ("api", "voice", "proxyUsd", "server", "total"):
+                v["total"] = v["api"] + v["voice"] + v["proxyUsd"]
+                for k in ("api", "voice", "proxyUsd", "total"):
                     v[k] = round(v[k], 3)
                 v["proxyGb"], v["hours"] = round(v["proxyGb"], 3), round(v["hours"], 2)
             people.append({"who": entry["who"], "api": round(entry["api"], 2), "voice": round(entry["voice"], 2),
@@ -413,7 +421,7 @@ def invoices(root: Path, months: int = 3) -> list[dict[str, Any]]:
                            "hours": round(entry["hours"], 1), "server": round(share, 2),
                            "total": round(entry["api"] + entry["voice"] + entry["proxyUsd"] + share, 2),
                            "videos": videos})
-        out.append({"month": m, "serverUsd": server_usd, "hours": round(hours[m], 1), "people": people})
+        out.append({"month": m, "serverUsd": server_usd, "parts": 1 + len(partners), "hours": round(hours[m], 1), "people": people})
     return out
 
 
@@ -426,11 +434,13 @@ def invoice_csv(month: dict[str, Any], who: str) -> str:
     entry = next((p for p in month["people"] if p["who"] == who), None)
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";")
-    writer.writerow(["mes", "vídeo", "canal", "API $", "voz $", "proxy GB", "proxy $", "horas", "servidor $", "total $"])
+    writer.writerow(["mes", "concepto", "canal", "API", "voz", "proxy GB", "proxy", "servidor", "total"])
     if entry:
         for v in entry["videos"]:
             writer.writerow([month["month"], v["slug"], v["channel"], v["api"], v["voice"], v["proxyGb"], v["proxyUsd"],
-                             v["hours"], v["server"], v["total"]])
+                             "", v["total"]])
+        writer.writerow([month["month"], f"servidor ({month['serverUsd']:g} / {month.get('parts', 1)})", "", "", "", "", "",
+                         entry["server"], entry["server"]])
         writer.writerow([month["month"], "TOTAL", "", entry["api"], entry["voice"], entry["proxyGb"], entry["proxyUsd"],
-                         entry["hours"], entry["server"], entry["total"]])
+                         entry["server"], entry["total"]])
     return buffer.getvalue()

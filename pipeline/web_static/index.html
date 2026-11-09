@@ -1692,15 +1692,15 @@ function invoiceBlock(g, usd) {
   return `<h2>${window.partner ? "Tu factura del mes" : "Factura por persona"}</h2>
     <div class="yt-tools">${months.map((x) => `<button class="yt-chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth='${x.month}';spendPage()">${x.month}</button>`).join("")}</div>
     <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
-      <thead><tr><th>Persona</th><th>API</th><th>Voz</th><th>Proxy</th><th>Horas</th><th>Servidor</th><th>Total</th><th></th></tr></thead>
+      <thead><tr><th>Persona</th><th>API</th><th>Voz</th><th>Proxy</th><th>Servidor</th><th>Total</th><th></th></tr></thead>
       <tbody>${m.people.map((p) => `<tr class="v"><td><b>${name(p.who)}</b><div class="sub">${p.videos.length} vídeo${p.videos.length === 1 ? "" : "s"}</div></td>
         <td data-k="API">${usd(p.api)}</td><td data-k="Voz">${usd(p.voice)}</td>
         <td data-k="Proxy">${usd(p.proxyUsd)}<div class="sub">${p.proxyGb.toFixed(2)} GB</div></td>
-        <td data-k="Horas">${fmt(p.hours)} h</td><td data-k="Servidor">${usd(p.server)}</td><td data-k="Total"><b>${usd(p.total)}</b></td>
+        <td data-k="Servidor">${usd(p.server)}</td><td data-k="Total"><b>${usd(p.total)}</b></td>
         <td><a class="btn" style="padding:4px 10px;font-size:12.5px" href="/api/factura.csv?month=${m.month}&who=${encodeURIComponent(p.who)}">CSV</a></td></tr>`).join("")
-        || '<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Sin gasto este mes.</td></tr>'}</tbody></table></div>
+        || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">Sin gasto este mes.</td></tr>'}</tbody></table></div>
     <div class="small muted" style="margin-top:4px">API y voz por el día de cada llamada · proxy por los GB que llevó cada vídeo ·
-      servidor (${usd(m.serverUsd)} al mes) repartido por horas de trabajo${m.hours != null ? ` (${fmt(m.hours)} h en total este mes)` : ""}.
+      servidor: ${fmt(m.serverUsd)} al mes a partes iguales entre ${m.parts || 1} (${fmt(Math.round(100 * m.serverUsd / (m.parts || 1)) / 100)} cada uno).
       ${!window.partner && !m.serverUsd ? 'Pon lo que cuesta el servidor en <a href="#/ajustes">Ajustes</a>.' : ""}</div>`;
 }
 
@@ -1993,7 +1993,7 @@ async function settingsPage() {
       <label>Límite por vídeo <span class="muted">(lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite)</span></label>
       <div class="row"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}" style="max-width:160px"><span>$</span>
         <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div>
-      <label>Coste del servidor al mes <span class="muted">(para la factura de cada persona en «Gasto»: se reparte por horas de trabajo)</span></label>
+      <label>Coste del servidor al mes <span class="muted">(para la factura de cada persona en «Gasto»: a partes iguales entre tú y cada persona)</span></label>
       <div class="row"><input id="servermonth" type="number" min="0" step="0.5" value="${s.server_usd_month ?? 0}" style="max-width:160px"><span>$</span>
         <button onclick="save({server_usd_month: parseFloat(document.getElementById('servermonth').value || 0)})">Guardar</button></div>
       <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
