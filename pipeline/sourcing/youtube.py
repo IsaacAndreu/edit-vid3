@@ -2180,7 +2180,12 @@ class YouTubeSource:
         of one request per window; download_section then cuts them from it. False when it was not possible."""
 
         try:
-            return self._fetch_whole(video_id, self.SECTION_FORMAT, "a360", self._fresh_full_info(video_id)) is not None
+            info_path = self._fresh_full_info(video_id)
+            if self.residential and not self.cfg.get("prefetch_whole_residential", False) and _has_hls(info_path):
+                # paid by the GB: the whole 360p file (13 MB on average) cost 60 % of gimnasia2's proxy (1.7 of
+                # 2.8 GB, 124 videos) where its 3-6 windows by HLS come to a fraction; same 360p for the analysis
+                return False
+            return self._fetch_whole(video_id, self.SECTION_FORMAT, "a360", info_path) is not None
         except SourceUnavailable:
             raise
         except Exception:

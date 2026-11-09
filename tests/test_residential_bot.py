@@ -330,3 +330,26 @@ def test_an_old_cached_info_gets_its_hls_from_the_full_info_on_disk(tmp_path, mo
     assert info["hls"] is False and info["wholeMb"] == 150.0 and yt._undownloadable(info)
     assert json.loads(yt._info_path(VIDEO).read_text())["hls"] is False   # written back: once per video
     yt.close()
+
+
+def test_the_analysis_takes_its_windows_by_hls_instead_of_the_whole_360p_file_through_a_paid_proxy(tmp_path, monkeypatch):
+    """gimnasia2: the whole-video prefetch was 1.7 of the 2.8 GB the proxy carried."""
+    import json
+
+    for proxy, extra, whole in ((RESI, {}, False), (RESI, {"prefetch_whole_residential": True}, True), (HOME, {}, True)):
+        monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+        yt = _source(tmp_path / f"{proxy[-4:]}{len(extra)}", proxy, **extra)
+        info = tmp_path / f"info{proxy[-4:]}{len(extra)}.json"
+        info.write_text(json.dumps({"formats": [{"format_id": "93", "protocol": "m3u8_native", "height": 360}]}))
+        monkeypatch.setattr(yt, "_fresh_full_info", lambda v, info=info: info)
+        asked = []
+        monkeypatch.setattr(yt, "_fetch_whole", lambda *a: asked.append(a) or tmp_path / "full_a360.mp4")
+        assert yt.prefetch_sections(VIDEO) is whole and bool(asked) is whole
+        yt.close()
+    yt = _source(tmp_path / "nohls", RESI)                                # no HLS: whole is the only way anyway
+    info = tmp_path / "nohls.json"
+    info.write_text(json.dumps({"formats": [{"format_id": "18", "protocol": "https", "height": 360}]}))
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda v: info)
+    monkeypatch.setattr(yt, "_fetch_whole", lambda *a: tmp_path / "full_a360.mp4")
+    assert yt.prefetch_sections(VIDEO) is True
+    yt.close()

@@ -216,6 +216,8 @@ en los registros sale enmascarado (`//****@`). El programa lo reconoce por el us
   un `YoutubeDL`, y aquí cada extracción es uno nuevo (287 MB del mismo fichero en una mañana, el 21 % del proxy).
   Una extracción son ~2,9 MB: la página del vídeo (~1,2 MB), el JS (~0,7 MB) y la API del reproductor.
 
+El análisis, por el proxy residencial, ya no baja el vídeo entero a 360p cuando mira 3 o más tramos de él (`prefetch_whole_residential: false`): si el vídeo tiene HLS, cada tramo llega por HLS (la misma 360p). En gimnasia2 el vídeo entero era 1,7 de los 2,8 GB del proxy. Sin HLS sigue bajándose entero, como antes.
+
 ## 4. Métricas (lo que decide)
 
 Cada petición a YouTube queda en `work/<vídeo>/youtube_downloads.jsonl` (qué se pidió, si fue bien, el error —403,

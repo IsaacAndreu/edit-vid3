@@ -94,7 +94,7 @@ SPEED_KEYS = frozenset({
     "metadata_proxy_usd_per_gb",
     "metadata_proxy_retries", "query_merge", "max_details_per_shot",
     "proxy_session_minutes", "proxy_session_rotations", "proxy_session_suffix", "info_expiry_margin_minutes",   # residential proxy sessions
-    "player_client_residential", "max_fps", "proxy_usd_per_gb", "whole_max_minutes_residential", "whole_max_mb_residential",
+    "player_client_residential", "max_fps", "proxy_usd_per_gb", "whole_max_minutes_residential", "whole_max_mb_residential", "prefetch_whole_residential",
     "refused_hours_residential",
     "timeout_retries_residential",
     "max_height",       # ingest: the HD clips already downloaded are not downloaded again at the new height
