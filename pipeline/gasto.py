@@ -77,7 +77,7 @@ def _proxy_of(path: Path, mb_per_request: float) -> dict[str, Any]:
     hit = _PROXY_CACHE.get(str(path))
     if hit and hit[0] == key:
         return hit[1]
-    out = {"requests": 0, "metadataBytes": 0, "paidBytes": 0, "estimatedMb": 0.0, "since": None}
+    out = {"requests": 0, "metadataBytes": 0, "paidBytes": 0, "estimatedMb": 0.0, "since": None, "months": {}}
     try:
         lines = path.read_text("utf-8").splitlines()
     except OSError:
@@ -96,10 +96,15 @@ def _proxy_of(path: Path, mb_per_request: float) -> dict[str, Any]:
             out["requests"] += 1
         ts = row.get("ts") or 0
         out["since"] = min(out["since"] or ts, ts)
+        month = datetime.fromtimestamp(float(ts or 0), timezone.utc).strftime("%Y-%m")
+        per = out["months"].setdefault(month, {"metadataBytes": 0, "paidBytes": 0, "estimatedMb": 0.0})
         if "proxy_bytes" in row:
-            out["metadataBytes" if name == "metadatos" else "paidBytes"] += int(row.get("proxy_bytes") or 0)
+            kind = "metadataBytes" if name == "metadatos" else "paidBytes"
+            out[kind] += int(row.get("proxy_bytes") or 0)
+            per[kind] += int(row.get("proxy_bytes") or 0)
         elif name == "metadatos":
             out["estimatedMb"] += mb_per_request
+            per["estimatedMb"] += mb_per_request
     _PROXY_CACHE[str(path)] = (key, out)
     return out
 
@@ -143,7 +148,9 @@ def _voice_rate(root: Path) -> float:
         return USD_PER_1K_CHARS
 
 
-def report(root: Path, days: int = 30) -> dict[str, Any]:
+def report(root: Path, days: int = 30, channels: set[str] | None = None) -> dict[str, Any]:
+    """The whole spend page; with `channels`, only those channels' videos (a partner's own page: nothing of the
+    others', no «Otros», no server-wide quota)."""
     from .context import find_video
     from .housekeeping import is_done
     from .web import _channel_of
@@ -162,11 +169,26 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
 
     quota = youtube_quota(root)
     proxy, proxy_rates = proxy_usage(root)
+    if channels is not None:
+        from .context import find_video as _find
+        from .web import _channel_of as _of
+
+        def _mine(slug: str) -> bool:
+            try:
+                return _of(root, _find(root, slug)) in channels
+            except Exception:
+                return False
+
+        proxy = {k: v for k, v in proxy.items() if _mine(k)}
     voice_rate = _voice_rate(root)
     for path in sorted((root / "work").glob("*/costs.json")):
         slug = path.parent.name
         entries = (_read(path) or {}).get("entries") or []
         if not entries:
+            continue
+        is_video = not slug.startswith("_") and (find_video(root, slug).is_dir() or (root / "out" / slug).is_dir())
+        channel = (_channel_of(root, find_video(root, slug)) or "sin canal") if is_video else OTHERS
+        if channels is not None and channel not in channels:
             continue
         own: dict[str, float] = {}
         total = 0.0
@@ -191,8 +213,6 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
             if entry.get("provider") == "genaipro" and chars:
                 voice_chars += chars
                 voice_usd += usd
-        is_video = not slug.startswith("_") and (find_video(root, slug).is_dir() or (root / "out" / slug).is_dir())
-        channel = (_channel_of(root, find_video(root, slug)) or "sin canal") if is_video else OTHERS
         seconds = _seconds(root, slug) if is_video else 0.0
         stages_here = tiempos.stage_seconds(path.parent)
         done_here = bool(is_video and is_done(root, slug))
@@ -273,7 +293,7 @@ def report(root: Path, days: int = 30) -> dict[str, Any]:
             "providers": {k: round(v, 3) for k, v in sorted(providers.items(), key=lambda kv: -kv[1])},
             "stages": {k: round(v, 3) for k, v in sorted(stages.items(), key=lambda kv: -kv[1])},
             "videos": sorted(made, key=lambda r: r["last"], reverse=True),
-            "ytToday": _quota_today(root),
+            "ytToday": _quota_today(root) if channels is None else None,
             "proxy": {**proxy_rates, "videos": len(proxy), "requests": sum(p["requests"] for p in proxy.values()),
                       "mb": round(sum(p["mb"] for p in proxy.values()), 1),
                       "gb": round(sum(p["gb"] for p in proxy.values()), 2),
@@ -295,3 +315,122 @@ def _quota_today(root: Path) -> dict[str, Any] | None:
                 "keys": q["keys"], "reset": reset_text()}
     except Exception:
         return None
+
+
+def invoices(root: Path, months: int = 3) -> list[dict[str, Any]]:
+    """What each person owes per month: API and voice (costs.json, by the day of each call), the proxy (the GB each
+    of their videos carried that month × its price) and their share of the server (`server_usd_month` in Ajustes)
+    by hours of work: the stages each of their videos ran that month over every video's. A channel is a partner's
+    when usuarios.py says so; everything else (and «Otros»: radar, ideas…) is yours ("")."""
+
+    from .budget import settings as _settings
+    from .context import find_video
+    from .usuarios import owners
+    from .web import _channel_of
+
+    now = datetime.now(timezone.utc)
+    wanted: list[str] = []
+    year, month = now.year, now.month
+    for _ in range(months):
+        wanted.append(f"{year:04d}-{month:02d}")
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    whose = owners(root)
+    server_usd = float(_settings(root).get("server_usd_month") or 0)
+    voice_rate = _voice_rate(root)
+    _, rates = proxy_usage(root)
+    mb = rates["mbPerRequest"]
+    table: dict[str, dict[str, dict[str, Any]]] = {m: {} for m in wanted}
+    hours: dict[str, float] = {m: 0.0 for m in wanted}
+
+    def person(m: str, who: str) -> dict[str, Any]:
+        return table[m].setdefault(who, {"who": who, "api": 0.0, "voice": 0.0, "proxyGb": 0.0, "proxyUsd": 0.0,
+                                         "hours": 0.0, "videos": {}})
+
+    def video_row(entry: dict[str, Any], slug: str, channel: str) -> dict[str, Any]:
+        return entry["videos"].setdefault(slug, {"slug": slug, "channel": channel, "api": 0.0, "voice": 0.0,
+                                                 "proxyGb": 0.0, "proxyUsd": 0.0, "hours": 0.0})
+
+    slugs = {p.parent.name for p in (root / "work").glob("*/costs.json")} | \
+            {p.parent.name for p in (root / "work").glob("*/youtube_downloads.jsonl")} | \
+            {p.parent.parent.name for p in (root / "work").glob("*/.stages")}
+    for slug in sorted(slugs):
+        work = root / "work" / slug
+        is_video = not slug.startswith("_") and (find_video(root, slug).is_dir() or (root / "out" / slug).is_dir())
+        channel = (_channel_of(root, find_video(root, slug)) or "sin canal") if is_video else OTHERS
+        who = whose.get(channel, "")
+        last = ""
+        for entry in (_read(work / "costs.json") or {}).get("entries") or []:
+            m = str(entry.get("at") or "")[:7]
+            last = max(last, m)
+            if m not in table:
+                continue
+            usd = float(entry.get("usd") or 0)
+            chars = float((entry.get("details") or {}).get("chars") or 0)
+            voice = entry.get("provider") == "genaipro"
+            if voice and not usd and chars:
+                usd = chars / 1000 * voice_rate
+            row = person(m, who)
+            row["voice" if voice else "api"] += usd
+            video_row(row, slug, channel)["voice" if voice else "api"] += usd
+        got = _proxy_of(work / "youtube_downloads.jsonl", mb) if (work / "youtube_downloads.jsonl").is_file() else {}
+        for m, part in (got.get("months") or {}).items():
+            if m not in table:
+                continue
+            metadata_gb = part["metadataBytes"] / 1e9 + part["estimatedMb"] / 1024
+            gb = metadata_gb + part["paidBytes"] / 1e9
+            usd = metadata_gb * rates["metadataUsdPerGb"] + part["paidBytes"] / 1e9 * rates["usdPerGb"]
+            row = person(m, who)
+            row["proxyGb"] += gb
+            row["proxyUsd"] += usd
+            v = video_row(row, slug, channel)
+            v["proxyGb"] += gb
+            v["proxyUsd"] += usd
+        stages = work / ".stages"
+        for path in (stages.glob("*.json") if stages.is_dir() else []):
+            info = _read(path) or {}
+            m = str(info.get("completedAt") or "")[:7] or last
+            if m not in table:
+                continue
+            h = float(info.get("seconds") or 0) / 3600
+            hours[m] += h
+            row = person(m, who)
+            row["hours"] += h
+            video_row(row, slug, channel)["hours"] += h
+    out = []
+    for m in wanted:
+        people = []
+        for entry in sorted(table[m].values(), key=lambda e: (e["who"] != "", e["who"])):
+            share = server_usd * entry["hours"] / hours[m] if hours[m] else 0.0
+            videos = sorted(entry["videos"].values(), key=lambda v: v["slug"])
+            for v in videos:
+                v["server"] = server_usd * v["hours"] / hours[m] if hours[m] else 0.0
+                v["total"] = v["api"] + v["voice"] + v["proxyUsd"] + v["server"]
+                for k in ("api", "voice", "proxyUsd", "server", "total"):
+                    v[k] = round(v[k], 3)
+                v["proxyGb"], v["hours"] = round(v["proxyGb"], 3), round(v["hours"], 2)
+            people.append({"who": entry["who"], "api": round(entry["api"], 2), "voice": round(entry["voice"], 2),
+                           "proxyGb": round(entry["proxyGb"], 2), "proxyUsd": round(entry["proxyUsd"], 2),
+                           "hours": round(entry["hours"], 1), "server": round(share, 2),
+                           "total": round(entry["api"] + entry["voice"] + entry["proxyUsd"] + share, 2),
+                           "videos": videos})
+        out.append({"month": m, "serverUsd": server_usd, "hours": round(hours[m], 1), "people": people})
+    return out
+
+
+def invoice_csv(month: dict[str, Any], who: str) -> str:
+    """One person's month as a spreadsheet: a line per video, then the server share and the total."""
+
+    import csv
+    import io
+
+    entry = next((p for p in month["people"] if p["who"] == who), None)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow(["mes", "vídeo", "canal", "API $", "voz $", "proxy GB", "proxy $", "horas", "servidor $", "total $"])
+    if entry:
+        for v in entry["videos"]:
+            writer.writerow([month["month"], v["slug"], v["channel"], v["api"], v["voice"], v["proxyGb"], v["proxyUsd"],
+                             v["hours"], v["server"], v["total"]])
+        writer.writerow([month["month"], "TOTAL", "", entry["api"], entry["voice"], entry["proxyGb"], entry["proxyUsd"],
+                         entry["hours"], entry["server"], entry["total"]])
+    return buffer.getvalue()

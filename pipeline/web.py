@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import PROJECT_ROOT
+from . import usuarios
 from .context import RunContext, find_video, load_config, video_folders
 
 STATIC = Path(__file__).with_name("web_static")
@@ -1005,6 +1006,8 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
             current["per_video_usd"] = max(0.0, float(body["per_video_usd"] or 0))
         if "proxy_gb_per_day" in body:
             current["proxy_gb_per_day"] = max(0.0, float(body["proxy_gb_per_day"] or 0))
+        if "server_usd_month" in body:                     # what the server costs a month: split by hours of work
+            current["server_usd_month"] = max(0.0, float(body["server_usd_month"] or 0))
         if isinstance(body.get("my_channels"), dict):        # merged: an empty value removes that channel's entry
             mine = dict(current.get("my_channels") or {})
             for k, v in body["my_channels"].items():
@@ -1121,6 +1124,67 @@ def spending(root: Path, days: int = 14) -> list[dict[str, Any]]:
     return [{"day": d, "usd": round(v, 2)} for d, v in sorted(per_day.items())[-days:]]
 
 
+# --- partners: a closed list of what they may open, and only their channels ------------------------------------
+
+# Everything not listed here answers 403 to a partner (usuarios.py). The video routes also need the video to be in
+# one of their channels; the ones with a channel in the body (a new video, moving one), that channel too.
+PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv")
+PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes")
+PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes")
+PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
+                     r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
+                     r"/api/decisions/([^/]+)", r"/api/decisions/([^/]+)/frame", r"/files/([^/]+)/.+")
+PARTNER_VIDEO_POST = (r"/api/video/([^/]+)/(?:voz|retencion|doblaje|retry|archive|hold|unhold|stop|redo|for-claude|porque"
+                      r"|capcut|exportar|published|fix|channel)",
+                      r"/api/review/([^/]+)/[A-Za-z0-9_-]+", r"/api/decisions/([^/]+)/[A-Za-z0-9_-]+")
+
+
+def video_channel(root: Path, slug: str) -> str | None:
+    """The channel a video belongs to, or None when there is no such video."""
+
+    try:
+        return _channel_of(root, find_video(root, slug))
+    except Exception:
+        return None
+
+
+def partner_may(root: Path, mine: list[str], method: str, path: str) -> bool:
+    """May this partner (their channels: `mine`) open this path? The body's channel is checked apart."""
+
+    if path in (PARTNER_GET if method == "GET" else PARTNER_POST):
+        return True
+    if method == "GET" and re.fullmatch(r"/api/apertura/[0-9a-f]{12}", path):
+        return True
+    for pattern in (PARTNER_VIDEO_GET if method == "GET" else PARTNER_VIDEO_POST):
+        if match := re.fullmatch(pattern, path):
+            return video_channel(root, urllib.parse.unquote(match.group(1))) in mine
+    return False
+
+
+def partner_overview(root: Path, name: str, mine: list[str]) -> dict[str, Any]:
+    """Inicio and the video lists for a partner: their channels' videos only, nothing of the server's or the others'."""
+
+    from . import budget
+
+    data = overview(root)
+    videos = [v for v in data["videos"] if v.get("channel") in mine]
+    today = datetime.now(timezone.utc).date().isoformat()
+    spent = 0.0
+    for v in videos:
+        try:
+            entries = json.loads((root / "work" / v["slug"] / "costs.json").read_text("utf-8")).get("entries") or []
+        except (OSError, ValueError):
+            continue
+        spent += sum(float(e.get("usd") or 0) for e in entries if str(e.get("at", "")).startswith(today))
+    service = data["service"]
+    return {"service": {"watching": service["watching"], "paused": service["paused"], "queueRunning": service["queueRunning"],
+                        "youtubeBlocked": service["youtubeBlocked"], "lastBeat": None, "code": None},
+            "budget": {"today": round(spent, 3), "limit": 0, "proxyGbToday": None, "proxyGbLimit": 0},
+            "videos": videos, "channels": [c for c in data["channels"] if c in mine],
+            "channelKinds": {k: v for k, v in data["channelKinds"].items() if k in mine},
+            "formats": data["formats"], "youtube": None, "partner": name}
+
+
 # --- HTTP ---------------------------------------------------------------------------------------------------------
 
 def _secret(password: str) -> bytes:
@@ -1151,12 +1215,21 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
         def _local(self) -> bool:
             return self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("X-Forwarded-For")
 
-        def _authorised(self) -> bool:
+        def _who(self) -> str | None:
+            """None: nobody logged in; "" (usuarios.ADMIN): you; a name: that partner."""
+
             if self._local() and not password:
-                return True
+                return usuarios.ADMIN
             cookie = self.headers.get("Cookie") or ""
             match = re.search(r"(?:^|;\s*)studio=([^;]+)", cookie)
-            return bool(password) and bool(match) and valid(match.group(1))
+            if not password or not match:
+                return None
+            if valid(match.group(1)):
+                return usuarios.ADMIN
+            return usuarios.check(root, secret, match.group(1))
+
+        def _authorised(self) -> bool:
+            return self._who() is not None
 
         def handle_one_request(self) -> None:
             try:
@@ -1231,22 +1304,69 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             if path in ("/", "/index.html"):
                 return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
             if path == "/api/session":
-                return self._ok({"authorised": self._authorised(), "needsPassword": bool(password) or not self._local()})
-            if not self._authorised():
+                who = self._who()
+                return self._ok({"authorised": who is not None, "needsPassword": bool(password) or not self._local(),
+                                 "partner": who or None, "channels": usuarios.channels_of(root, who) if who else None})
+            who = self._who()
+            if who is None:
                 return self._fail(401, "Inicia sesión")
+            if who:                                        # a partner: their channels, a closed list of pages
+                mine = usuarios.channels_of(root, who)
+                if not partner_may(root, mine, "GET", path):
+                    return self._fail(403, "No disponible")
+                try:
+                    if path == "/api/overview":
+                        return self._ok(partner_overview(root, who, mine))
+                    if path == "/api/gasto":
+                        from . import gasto
+
+                        months = [{**m, "hours": None, "people": [p for p in m["people"] if p["who"] == who]}
+                                  for m in gasto.invoices(root)]
+                        return self._ok({**gasto.report(root, channels=set(mine)), "allChannels": mine, "partner": who,
+                                         "invoices": months})
+                    if path == "/api/search":
+                        found = search_videos(root, (urllib.parse.parse_qs(url.query).get("q") or [""])[0][:20000])
+                        return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
+                    if path == "/api/upload/dates":
+                        from . import organizar
+
+                        return self._ok({k: v for k, v in organizar.upload_dates(root).items() if video_channel(root, k) in mine})
+                    if path == "/api/upload":
+                        from . import organizar
+
+                        return self._ok({"videos": [v for v in organizar.to_upload(root) if video_channel(root, v["slug"]) in mine],
+                                         "compilations": [], "compilationJob": None})
+                except Exception as error:
+                    return self._fail(500, f"{type(error).__name__}: {error}")
             try:
                 if path == "/api/overview":
                     return self._ok(overview(root))
+                if path == "/api/users":                   # Ajustes → «Personas»: names and channels, no hashes
+                    return self._ok({"users": usuarios.listing(root)})
                 if path == "/api/stats":                   # «Estadísticas» (pipeline/estadisticas.py)
                     from . import estadisticas
 
                     return self._ok(estadisticas.report(root, bool(urllib.parse.parse_qs(url.query).get("refresh"))))
                 if path == "/api/spending":
                     return self._ok(spending(root))
+                if path == "/api/factura.csv":             # one person's month (a partner: only their own)
+                    from . import gasto
+
+                    query = urllib.parse.parse_qs(url.query)
+                    month, person = (query.get("month") or [""])[0], (who or (query.get("who") or [""])[0])
+                    found = next((m for m in gasto.invoices(root, 12) if m["month"] == month), None)
+                    if found is None:
+                        return self._fail(404, "Mes sin datos")
+                    name = f"factura-{person or 'yo'}-{month}.csv"
+                    return self._send(200, ("\ufeff" + gasto.invoice_csv(found, person)).encode(), "text/csv; charset=utf-8",
+                                      {"Content-Disposition": f'attachment; filename="{name}"'})
                 if path == "/api/gasto":                   # «Gasto de API» (pipeline/gasto.py)
                     from . import gasto
 
-                    return self._ok({**gasto.report(root), "allChannels": channels(root)})
+                    from .budget import settings as saved
+
+                    return self._ok({**gasto.report(root), "allChannels": channels(root), "invoices": gasto.invoices(root),
+                                     "serverUsdMonth": float(saved(root).get("server_usd_month") or 0)})
                 if path == "/api/doctor":                  # python main.py --doctor, every 10 min at most
                     from . import chequeo
 
@@ -1471,17 +1591,38 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 failures[:] = [t for t in failures if time.time() - t < 600]
                 if len(failures) >= 10:
                     return self._fail(429, "Demasiados intentos: espera 10 minutos")
-                if password and hmac.compare_digest(str(body.get("password") or ""), password):
+                given = str(body.get("password") or "")
+                partner = usuarios.find(root, given) if password and given else None
+                if (password and hmac.compare_digest(given.encode(), password.encode())) or partner:
                     secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+                    value = usuarios.token(root, secret, partner) if partner else token()
                     return self._send(200, b'{"ok": true}', headers={
-                        "Set-Cookie": f"studio={token()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000{secure}"})
+                        "Set-Cookie": f"studio={value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000{secure}"})
                 failures.append(time.time())
                 time.sleep(1.5)                                  # slows down guessing
                 return self._fail(403, "Contraseña incorrecta")
-            if not self._authorised():
+            who = self._who()
+            if who is None:
                 return self._fail(401, "Inicia sesión")
             if self.headers.get("Origin") and urllib.parse.urlparse(self.headers["Origin"]).netloc != self.headers.get("Host"):
                 return self._fail(403, "Origen no permitido")
+            mine = usuarios.channels_of(root, who) if who else []
+            if who and not partner_may(root, mine, "POST", path):
+                return self._fail(403, "No disponible")
+            if path == "/api/users":                       # partners, from Ajustes: only you
+                if who:
+                    return self._fail(403, "No disponible")
+                try:
+                    body = json.loads(self.rfile.read(length) or b"{}")
+                    if body.get("remove"):
+                        return self._ok(usuarios.remove(root, str(body["remove"])))
+                    unknown = [c for c in body.get("channels") or [] if c not in channels(root)]
+                    if unknown:
+                        raise ValueError(f"No existe el canal {unknown[0]}")
+                    return self._ok(usuarios.save(root, str(body.get("name") or ""), list(body.get("channels") or []),
+                                                  str(body.get("password") or ""), password))
+                except ValueError as error:
+                    return self._fail(400, str(error))
             try:
                 if path == "/api/apertura/subir":          # your own video for the opening: streamed to disk
                     ticket = secrets.token_hex(6)
@@ -1502,6 +1643,14 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz", path):
                     return self._ok(save_voice(root, urllib.parse.unquote(match.group(1)), self.rfile.read(length)))
                 body = json.loads(self.rfile.read(length) or b"{}")
+                if who:                                    # a partner: the channel named in the body is theirs too
+                    if path in PARTNER_WITH_CHANNEL and str(body.get("channel") or "") not in mine:
+                        return self._fail(403, "Ese canal no es tuyo")
+                    if re.fullmatch(r"/api/video/[^/]+/channel", path) and str(body.get("channel") or "") not in mine:
+                        return self._fail(403, "Ese canal no es tuyo")
+                    if path == "/api/search":
+                        found = search_videos(root, str(body.get("q") or "")[:200000])
+                        return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
                 if path == "/api/videos":
                     return self._ok(create_video(root, body))
                 if path == "/api/copia":                   # «Hacer copia ahora»
