@@ -1131,7 +1131,7 @@ def spending(root: Path, days: int = 14) -> list[dict[str, Any]]:
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
                "/api/voices", "/api/voices/search")
 PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
-                "/api/voices", "/api/voices/test")
+                "/api/voices", "/api/voices/test", "/api/channels")
 PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
@@ -1661,6 +1661,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         return self._fail(403, "Ese canal no es tuyo")
                     if re.fullmatch(r"/api/video/[^/]+/channel", path) and str(body.get("channel") or "") not in mine:
                         return self._fail(403, "Ese canal no es tuyo")
+                    if path == "/api/channels":            # their new channel: its look only from one of theirs
+                        if str(body.get("base") or "") and str(body["base"]) not in mine:
+                            return self._fail(403, "Ese canal no es tuyo")
+                        made = create_channel(root, body)
+                        usuarios.add_channel(root, who, made["channel"])
+                        return self._ok(made)
                     if path == "/api/search":
                         found = search_videos(root, str(body.get("q") or "")[:200000])
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})

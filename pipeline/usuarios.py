@@ -102,6 +102,15 @@ def save(root: Path, name: str, channels: list[str], password: str = "", admin_p
     return {"users": listing(root)}
 
 
+def add_channel(root: Path, name: str, channel: str) -> None:
+    """A channel the partner just made in the studio: theirs from the start."""
+
+    users = _read(root)
+    if name in users:
+        users[name]["channels"] = sorted(set(users[name].get("channels") or []) | {channel})
+        _write(root, users)
+
+
 def remove(root: Path, name: str) -> dict[str, Any]:
     users = _read(root)
     users.pop(str(name or ""), None)

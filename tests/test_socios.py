@@ -145,3 +145,14 @@ def test_each_person_pays_their_month_and_their_hours_of_the_server(studio):
     login("clave")
     code, body, _ = call(f"/api/factura.csv?month={month}&who=")
     assert "mio1" in body.decode("utf-8-sig") and "suyo1" not in body.decode("utf-8-sig")
+
+
+def test_a_partner_makes_a_channel_and_it_is_theirs(studio):
+    root, call, login = studio
+    login("contraseña-amigo")
+    about = "documentales sobre la historia del atletismo"
+    assert call("/api/channels", {"name": "atletas-x", "about": about, "base": "aviacion"})[0] == 403   # not your look
+    assert call("/api/channels", {"name": "atletas-x", "about": about, "base": "atletismo"})[0] == 200
+    assert usuarios.channels_of(root, "amigo") == ["atletas-x", "atletismo"]
+    assert "atletas-x" in json.loads(call("/api/overview")[1])["channels"]
+    assert call("/api/videos", {"name": "nuevo2", "channel": "atletas-x", "script": SCRIPT})[0] == 200

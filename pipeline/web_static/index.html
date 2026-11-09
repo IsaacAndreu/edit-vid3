@@ -2921,7 +2921,7 @@ async function newChannelPage() {
       const r = await post("/api/channels", {name: $("#ch-name").value, about: $("#ch-about").value, base: $("#ch-base").value,
         format: $("#ch-format").value, competitors: $("#ch-comp").value, queries: $("#ch-queries").value,
         pattern: $("#ch-pattern").value, my_channel: $("#ch-mine").value});
-      if ($("#ch-mine").value.trim()) await post("/api/settings", {my_channels: {[r.channel]: $("#ch-mine").value.trim()}});
+      if ($("#ch-mine").value.trim() && !window.partner) await post("/api/settings", {my_channels: {[r.channel]: $("#ch-mine").value.trim()}});
       data = null; msg.textContent = `✅ Canal «${r.channel}» creado. Ya puedes elegirlo al crear un vídeo.`;
       setTimeout(() => { location.hash = "#/nuevo"; }, 1200);
     } catch (e) { msg.textContent = e.message; }
@@ -2996,7 +2996,7 @@ document.addEventListener("click", (e) => {     // menus of the header: open on 
 });
 
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
-const PARTNER_PAGES = ["#/", "#/nuevo", "#/subir", "#/videos", "#/gasto", "#/voces"];
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/gasto", "#/voces"];
 const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
 
