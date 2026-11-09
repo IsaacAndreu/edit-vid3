@@ -77,8 +77,8 @@ def test_nothing_of_yours_opens_for_a_partner(studio):
     login("contraseña-amigo")
     for path in ("/api/video/mio1", "/files/mio1/video-final.mp4", "/api/review/mio1", "/api/decisions/mio1",
                  "/api/video/mio1/repeticion", "/api/stats", "/api/settings", "/api/users", "/api/servidor", "/api/radar",
-                 "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/agenda", "/api/voices/credits", "/api/board",
-                 "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia", "/api/scripts"):
+                 "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/voices/credits",
+                 "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia"):
         assert call(path)[0] == 403, path
     for path, body in (("/api/video/mio1/hold", {}), ("/api/video/mio1/retry", {}), ("/api/settings", {"daily_usd": 9}),
                        ("/api/users", {"name": "amigo", "channels": ["aviacion"]}), ("/api/update", {}),
@@ -235,3 +235,31 @@ def test_each_person_has_their_own_daily_caps(studio):
     login("contraseña-amigo")
     account = json.loads(call("/api/cuenta")[1])
     assert account["limits"]["daily_usd"] == 0.3 and account["spentToday"] == 0.4
+
+
+def test_a_partners_calendar_scripts_and_board_are_only_theirs(studio):
+    from pipeline import agenda
+
+    root, call, login = studio
+    agenda.add_idea(root, "Idea mía", "aviacion")
+    agenda.add_idea(root, "Idea suya", "atletismo")
+    agenda.add_idea(root, "Idea sin canal", "")
+    login("contraseña-amigo")
+    cal = json.loads(call("/api/agenda")[1])
+    assert set(cal["settings"]["schedule"]) == {"atletismo"} and {v["slug"] for v in cal["videos"]} == {"suyo1"}
+    assert {s["channel"] for s in cal["plan"]} <= {"atletismo"} and [i["title"] for i in cal["settings"]["ideas"]] == ["Idea suya"]
+    assert {c["channel"] for c in json.loads(call("/api/scripts")[1])["channels"]} <= {"atletismo"}
+    board = json.loads(call("/api/board")[1])
+    assert [i["title"] for i in board["columns"]["idea"]] == ["Idea suya"] and board["channels"] == ["atletismo"]
+    assert all(x["channel"] == "atletismo" for items in board["columns"].values() for x in items)
+    assert call("/api/agenda", {"channel": "atletismo", "time": "19:00"})[0] == 200
+    assert call("/api/agenda", {"channel": "aviacion", "time": "19:00"})[0] == 403
+    assert call("/api/agenda", {"buffer": 9})[0] == 403
+    assert call("/api/agenda", {"assign": "mio1", "date": "2030-01-01"})[0] == 403
+    assert call("/api/board/idea", {"title": "x", "channel": "aviacion"})[0] == 403
+    assert call("/api/board/idea", {"title": "x", "channel": ""})[0] == 403
+    mine_id = next(i["id"] for i in agenda.settings(root)["ideas"] if i["channel"] == "aviacion")
+    assert call("/api/board/idea", {"delete": mine_id})[0] == 403
+    assert call("/api/scripts/draft", {"channel": "aviacion", "idea": {"title": "t"}})[0] == 403
+    assert call("/api/scripts/similar", {"slug": "mio1"})[0] == 403
+    assert agenda.settings(root)["schedule"]["atletismo"]["time"] == "19:00"

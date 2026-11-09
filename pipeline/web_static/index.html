@@ -2575,13 +2575,13 @@ async function calendarPage() {
     ${Object.keys(byDay).sort().map((d) => `<div class="cal-day ${d === today ? "today" : ""}">${DAY(d)}${d === today ? " · hoy" : ""}</div>${byDay[d].map(slot).join("")}`).join("")
       || '<div class="notice">No hay días de publicación: márcalos abajo.</div>'}
     <h2>Días de publicación</h2>${rules}
-    <div class="card"><div class="two">
+    ${window.partner ? "" : `<div class="card"><div class="two">
       <div><label>Margen para tener guion y voz <span class="muted">(horas antes de publicar)</span></label>
         <input type="number" min="6" step="1" value="${st.lead_hours}" onchange="option({lead_hours: +this.value})"></div>
       <div><label>Vídeos de reserva por canal <span class="muted">(aviso si hay menos)</span></label>
         <input type="number" min="0" step="1" value="${st.buffer}" onchange="option({buffer: +this.value})"></div>
       <div><label>Hora del resumen de la mañana <span class="muted">(Telegram)</span></label>
-        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`;
+        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`}`;
   window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
   window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
     try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
@@ -3047,7 +3047,8 @@ async function accountPage() {
 }
 
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
-const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/gasto", "#/voces", "#/cuenta"];
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero",
+  "#/gasto", "#/voces", "#/cuenta"];
 const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
 
