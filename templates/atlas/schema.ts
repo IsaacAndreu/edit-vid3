@@ -111,6 +111,89 @@ export const sceneBaseShape = {
 /** Lienzo vacío: sólo fondo, HUD y superposiciones. Útil para pruebas y transiciones. */
 export const blankSceneSchema = z.object({ ...sceneBaseShape, type: z.literal('atlas-blank') }).strict();
 
+/* ── Fase 1: escenas de texto ─────────────────────────────────────────────── */
+
+/** Texto que entra en un momento: tarjetas, líneas, casillas. */
+const timedTextSchema = z
+  .object({ text: richSchema, at: atSchema, sub: z.string().optional(), accent: accentSchema.optional() })
+  .strict();
+
+const textSceneShape = {
+  ...sceneBaseShape,
+  /** Cuándo entra el titular (por defecto, al empezar la escena). */
+  titleAt: atSchema.optional(),
+  /** 'previous' = la escena anterior sigue animándose detrás, atenuada. */
+  backdrop: z.enum(['none', 'previous']).optional(),
+};
+
+export const chapterCardSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-chapter-card'),
+    /** Índice en meta.chapters del capítulo que abre. El numeral sale de ahí. */
+    of: z.number().int().min(0),
+  })
+  .strict();
+
+export const agendaSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-agenda'),
+    /** Un momento por capítulo (meta.chapters): cada numeral entra cuando se nombra. */
+    numerals: z.array(atSchema).min(1),
+    tagline: z.object({ text: richSchema, at: atSchema }).strict().optional(),
+    notes: z.array(z.object({ text: z.string(), at: atSchema, accent: accentSchema.optional() }).strict()).optional(),
+  })
+  .strict();
+
+export const titleOverlaySceneSchema = z
+  .object({ ...textSceneShape, type: z.literal('atlas-title-overlay'), dim: z.number().min(0).max(1).optional() })
+  .strict();
+
+export const statementSceneSchema = z.object({ ...textSceneShape, type: z.literal('atlas-statement') }).strict();
+
+export const cardRowSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-card-row'),
+    cards: z
+      .array(z.object({ heading: z.string(), text: richSchema, at: atSchema, accent: accentSchema.optional() }).strict())
+      .min(1)
+      .max(5),
+  })
+  .strict();
+
+export const checklistSceneSchema = z
+  .object({ ...textSceneShape, type: z.literal('atlas-checklist'), items: z.array(timedTextSchema).min(1).max(6) })
+  .strict();
+
+export const recapSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-recap'),
+    /** Una tarjeta por capítulo, en el orden de meta.chapters; `text` = frase de ~4 palabras. */
+    items: z.array(z.object({ text: z.string(), at: atSchema }).strict()).min(1),
+  })
+  .strict();
+
+export const ctaSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-cta'),
+    /** 'card' = titular y botón dentro de la tarjeta (mitad del vídeo); 'stack' = botón debajo (cierre). */
+    layout: z.enum(['card', 'stack']),
+    button: z
+      .object({
+        label: z.string(),
+        at: atSchema.optional(),
+        /** Texto tras el clic y momento del clic: el botón pasa a oscuro. */
+        doneLabel: z.string().optional(),
+        clickAt: atSchema.optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const reliefMapSceneSchema = z
   .object({
     ...sceneBaseShape,
@@ -199,7 +282,18 @@ export const reliefMapSceneSchema = z
  * Registro de esquemas de escena. Cada fase añade aquí los suyos.
  * La clave `type` debe coincidir con la del registro de componentes (scenes/index.ts).
  */
-export const sceneSchema = z.discriminatedUnion('type', [blankSceneSchema, reliefMapSceneSchema]);
+export const sceneSchema = z.discriminatedUnion('type', [
+  blankSceneSchema,
+  chapterCardSceneSchema,
+  agendaSceneSchema,
+  titleOverlaySceneSchema,
+  statementSceneSchema,
+  cardRowSceneSchema,
+  checklistSceneSchema,
+  recapSceneSchema,
+  ctaSceneSchema,
+  reliefMapSceneSchema,
+]);
 export type AtlasScene = z.infer<typeof sceneSchema>;
 export type SceneType = AtlasScene['type'];
 
@@ -236,6 +330,16 @@ export const storyboardSchema = z
         ctx.addIssue({ code: 'custom', path: ['scenes', i, 'id'], message: `id de escena repetido: "${scene.id}"` });
       }
       ids.add(scene.id);
+      const n = sb.meta.chapters.length;
+      if (scene.type === 'atlas-chapter-card' && scene.of >= n) {
+        ctx.addIssue({ code: 'custom', path: ['scenes', i, 'of'], message: `capítulo ${scene.of} no existe (meta.chapters tiene ${n})` });
+      }
+      if (scene.type === 'atlas-agenda' && scene.numerals.length !== n) {
+        ctx.addIssue({ code: 'custom', path: ['scenes', i, 'numerals'], message: `hacen falta ${n} momentos, uno por capítulo` });
+      }
+      if (scene.type === 'atlas-recap' && scene.items.length !== n) {
+        ctx.addIssue({ code: 'custom', path: ['scenes', i, 'items'], message: `hacen falta ${n} tarjetas, una por capítulo` });
+      }
       if (scene.chapter !== undefined && scene.chapter >= sb.meta.chapters.length) {
         ctx.addIssue({
           code: 'custom',

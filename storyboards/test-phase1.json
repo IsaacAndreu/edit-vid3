@@ -1,0 +1,97 @@
+{
+  "meta": {
+    "slug": "test-phase1",
+    "title": "Prueba fase 1",
+    "brand": { "name": "MANICULE", "icon": "☞" },
+    "chapters": [
+      { "numeral": "I", "label": "Ground" },
+      { "numeral": "II", "label": "Pressure" },
+      { "numeral": "III", "label": "Engines" },
+      { "numeral": "IV", "label": "Airports" },
+      { "numeral": "V", "label": "Cost" }
+    ],
+    "duration": 44
+  },
+  "audio": {},
+  "scenes": [
+    {
+      "id": "agenda", "type": "atlas-agenda", "start": { "t": 0 }, "theme": "paper", "enter": "fade",
+      "title": "Five reasons",
+      "numerals": [{ "t": 0.6 }, { "t": 0.9 }, { "t": 1.2 }, { "t": 1.5 }, { "t": 1.8 }],
+      "tagline": { "text": "Flying across is the easy part.", "at": { "t": 2.3 } },
+      "notes": [{ "text": "EACH ONE: WHAT IF SOMETHING GOES WRONG?", "accent": "danger", "at": { "t": 3.0 } }]
+    },
+    {
+      "id": "chapter-1", "type": "atlas-chapter-card", "start": { "t": 4 }, "theme": "paper", "enter": "fade",
+      "of": 0, "title": "The *ground*"
+    },
+    {
+      "id": "cta-mid", "type": "atlas-cta", "start": { "t": 8 }, "theme": "paper", "enter": "fade", "chapter": 1,
+      "layout": "card", "title": "The world, through *maps*",
+      "button": { "label": "SUBSCRIBE", "doneLabel": "SUBSCRIBED", "at": { "t": 8.6 }, "clickAt": { "t": 10 } }
+    },
+    {
+      "id": "statement-cards", "type": "atlas-card-row", "start": { "t": 12 }, "theme": "paper", "enter": "fade", "chapter": 2,
+      "kicker": "BOEING · OPERATIONS IN MOUNTAINOUS AREAS · 2002",
+      "title": "When the numbers *don’t work*",
+      "cards": [
+        { "heading": "1", "text": "An escape path", "at": { "t": 13 } },
+        { "heading": "2", "text": "A lighter plane", "at": { "t": 13.8 } },
+        { "heading": "3", "text": "Turn back early", "at": { "t": 15.5 } }
+      ]
+    },
+    {
+      "id": "checklist", "type": "atlas-checklist", "start": { "t": 16 }, "theme": "paper", "enter": "fade", "chapter": 4,
+      "title": "Add it *all up*",
+      "items": [
+        { "text": "Permission from China’s aviation authority", "sub": "ASKED FOR MONTHS AHEAD", "at": { "t": 16.6 } },
+        { "text": "Satellite links", "sub": "TO TALK TO CONTROLLERS ANYWHERE", "at": { "t": 17.4 } },
+        { "text": "Extra oxygen", "at": { "t": 18.2 } }
+      ]
+    },
+    {
+      "id": "recap", "type": "atlas-recap", "start": { "t": 20 }, "theme": "paper", "enter": "fade",
+      "title": "Why planes *avoid Tibet*",
+      "items": [
+        { "text": "The ground is high", "at": { "t": 20.5 } },
+        { "text": "No way down in time", "at": { "t": 20.9 } },
+        { "text": "Can’t stay high enough", "at": { "t": 21.3 } },
+        { "text": "Few, and in thin air", "at": { "t": 21.7 } },
+        { "text": "Doesn’t pay for most", "at": { "t": 22.1 } }
+      ]
+    },
+    {
+      "id": "overlays", "type": "atlas-blank", "start": { "t": 24 }, "theme": "paper", "enter": "fade", "chapter": 0,
+      "sourceNote": "ILLUSTRATIVE",
+      "overlays": [
+        { "kind": "info-card", "corner": "bl", "at": { "t": 24.4 }, "kicker": "TO FLY STRAIGHT ACROSS", "title": "",
+          "lines": [ { "text": "Special permission", "at": { "t": 24.8 } }, { "text": "Extra oxygen", "at": { "t": 25.6 } }, { "text": "An escape plan", "at": { "t": 26.4 } } ] },
+        { "kind": "stamp", "at": { "t": 27.0 }, "text": "MOST NEVER BOTHER", "x": 0.49, "y": 0.79 },
+        { "kind": "counter", "corner": "tr", "at": { "t": 24.6 }, "kicker": "STRAIGHT ACROSS", "sub": "ABOVE 20,000 FT · AT 850 KM/H",
+          "steps": [ { "value": "450 km · 0 h 32", "at": { "t": 25.0 } }, { "value": "1,440 km · 1 h 42", "at": { "t": 26.2 } }, { "value": "2,430 km · 2 h 52", "at": { "t": 27.4 } } ] },
+        { "kind": "info-card", "corner": "tl", "at": { "t": 28.2 }, "kicker": "1942–1945 · INDIA → CHINA", "title": "“The Hump”", "sub": "ALLIED SUPPLY FLIGHTS" }
+      ]
+    },
+    {
+      "id": "night-legend", "type": "atlas-blank", "start": { "t": 30 }, "theme": "night", "enter": "fade",
+      "overlays": [
+        { "kind": "legend", "corner": "bl", "at": { "t": 30.3 }, "items": [
+          { "style": "dashed", "accent": "data", "label": "Shortest path" },
+          { "style": "solid", "accent": "amber", "label": "Usual way around · simplified" } ] }
+      ]
+    },
+    {
+      "id": "title-over", "type": "atlas-title-overlay", "start": { "t": 33 }, "theme": "night", "enter": "continuous",
+      "backdrop": "previous", "title": "Why do planes avoid *flying over Tibet?*", "titleAt": { "t": 33.3 }
+    },
+    {
+      "id": "cta-end", "type": "atlas-cta", "start": { "t": 37 }, "theme": "night", "enter": "fade",
+      "layout": "stack", "kicker": "TELL US IN THE COMMENTS", "title": "Would you take *the shortcut over Tibet?*",
+      "button": { "label": "SUBSCRIBE", "at": { "t": 38 } }
+    },
+    {
+      "id": "statement", "type": "atlas-statement", "start": { "t": 41 }, "theme": "paper", "enter": "fade", "chapter": 1,
+      "kicker": "AT ABOUT 35,000 FT, WITHOUT OXYGEN", "title": "Clear-headed for *a minute or less*"
+    }
+  ]
+}

@@ -103,3 +103,64 @@ export const halo = (bg: string, width = 3.5): CSSProperties => ({
   WebkitTextStroke: `${width * 2}px ${bg}`,
   paintOrder: 'stroke fill',
 });
+
+/** Versalitas serif espaciadas: antetítulos de tarjeta, leyendas, subtítulos. */
+export const Caps: FC<{ children: ReactNode; size?: number; color?: string; tracking?: string; style?: CSSProperties }> = ({
+  children,
+  size = 22,
+  color,
+  tracking = '0.12em',
+  style,
+}) => (
+  <span
+    style={{
+      fontFamily: fonts.serif,
+      fontWeight: 500,
+      fontSize: size,
+      letterSpacing: tracking,
+      textTransform: 'uppercase',
+      color,
+      whiteSpace: 'nowrap',
+      ...style,
+    }}
+  >
+    {children}
+  </span>
+);
+
+/** Tarjeta de papel con doble filete (tinta 1 px + 1 px). Siempre clara, también de noche. */
+export const PaperCard: FC<{
+  children: ReactNode;
+  theme: ThemeName;
+  padding?: string | number;
+  style?: CSSProperties;
+}> = ({ children, theme, padding = '30px 36px', style }) => {
+  const t = themes[theme];
+  return (
+    <div
+      style={{
+        position: 'relative',
+        backgroundColor: t.card,
+        opacity: undefined,
+        border: `2px solid ${themes.paper.ink}`,
+        outline: `2px solid ${themes.paper.ink}`,
+        outlineOffset: -10,
+        boxShadow: theme === 'night' ? '0 8px 30px rgba(0,0,0,0.35)' : '0 4px 16px rgba(60,45,25,0.12)',
+        padding,
+        color: themes.paper.ink,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+export type Corner = 'tl' | 'tr' | 'bl' | 'br';
+
+/** Posición absoluta en una esquina libre, por debajo del HUD. */
+export const cornerStyle = (corner: Corner): CSSProperties => {
+  const v = corner[0] === 't' ? { top: 228 } : { bottom: 60 };
+  const h = corner[1] === 'l' ? { left: 88 } : { right: 88 };
+  return { position: 'absolute', ...v, ...h };
+};

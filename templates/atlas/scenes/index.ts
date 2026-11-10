@@ -5,7 +5,25 @@
 import type { FC } from 'react';
 import type { SceneType } from '../schema';
 import { BlankScene } from './BlankScene';
+import {
+  AgendaScene,
+  CardRowScene,
+  ChapterCardScene,
+  ChecklistScene,
+  CtaScene,
+  RecapScene,
+  StatementScene,
+  TitleOverlayScene,
+} from './text';
 
 export const atlasScenes: Partial<Record<SceneType, FC>> = {
   'atlas-blank': BlankScene,
+  'atlas-chapter-card': ChapterCardScene,
+  'atlas-agenda': AgendaScene,
+  'atlas-title-overlay': TitleOverlayScene,
+  'atlas-statement': StatementScene,
+  'atlas-card-row': CardRowScene,
+  'atlas-checklist': ChecklistScene,
+  'atlas-recap': RecapScene,
+  'atlas-cta': CtaScene,
 };

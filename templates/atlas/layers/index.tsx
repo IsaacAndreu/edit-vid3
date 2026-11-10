@@ -27,6 +27,12 @@ export const Background: FC<{ theme: ThemeName }> = ({ theme }) => {
         </filter>
         <rect width="100%" height="100%" filter={`url(#paper-${theme})`} />
       </svg>
+      {/* El centro del original es un poco más claro que el token de fondo (bajo el contenido). */}
+      <AbsoluteFill
+        style={{
+          background: `radial-gradient(ellipse 50% 50% at 50% 48%, rgba(255,250,235,${theme === 'paper' ? 0.2 : 0.03}) 0%, rgba(255,250,235,0) 100%)`,
+        }}
+      />
     </AbsoluteFill>
   );
 };
@@ -35,11 +41,7 @@ export const Background: FC<{ theme: ThemeName }> = ({ theme }) => {
 export const Vignette: FC<{ theme: ThemeName }> = ({ theme }) => (
   <AbsoluteFill
     style={{
-      background: [
-        // El centro del original es un poco más claro que el token de fondo.
-        `radial-gradient(ellipse 50% 50% at 50% 48%, rgba(255,250,235,${theme === 'paper' ? 0.16 : 0.025}) 0%, rgba(255,250,235,0) 100%)`,
-        `radial-gradient(ellipse 72% 68% at 50% 48%, rgba(0,0,0,0) 55%, ${themes[theme].vignette} 100%)`,
-      ].join(', '),
+      background: `radial-gradient(ellipse 72% 68% at 50% 48%, rgba(0,0,0,0) 55%, ${themes[theme].vignette} 100%)`,
       pointerEvents: 'none',
     }}
   />
@@ -143,10 +145,10 @@ export const ChapterIndicator: FC = () => {
                   style={{
                     position: 'absolute',
                     top: 58,
-                    fontFamily: fonts.monoItalic,
+                    fontFamily: fonts.serifItalic,
                     fontStyle: 'italic',
-                    fontSize: 21,
-                    letterSpacing: '0.2em',
+                    fontSize: 23,
+                    letterSpacing: '0.22em',
                     color: tokens.ink,
                     whiteSpace: 'nowrap',
                     opacity: underline,

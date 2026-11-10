@@ -10,13 +10,13 @@ import { ease } from './anim';
 import { SceneContext } from './context';
 import { waitForFonts } from './fonts';
 import { Background, Brand, ChapterIndicator, Grain, Vignette } from './layers';
-import { OverlayLayer } from './overlays';
+import { OverlayLayer, SourceNote } from './overlays';
 import { atlasScenes } from './scenes';
 import type { AtlasStoryboard } from './schema';
 import { parseStoryboard } from './schema';
 import type { Transcript } from './time';
 import { resolveStoryboardAnchors, sceneTimings } from './time';
-import { VIDEO } from './theme';
+import { VIDEO, themes } from './theme';
 
 export type AtlasVideoProps = AtlasStoryboard & {
   /** Rellenado por calculateMetadata: duración total en segundos ya resuelta. */
@@ -52,6 +52,37 @@ export const calculateAtlasMetadata: CalculateMetadataFunction<AtlasVideoProps> 
   };
 };
 
+const sceneComponent = (type: AtlasStoryboard['scenes'][number]['type'], id: string): FC => {
+  const Component = atlasScenes[type];
+  if (!Component) throw new Error(`Escena "${id}": el tipo "${type}" todavía no tiene componente`);
+  return Component;
+};
+
+/**
+ * La escena anterior sigue animándose detrás (titular sobre el globo, CTA sobre el terreno).
+ * Se monta con su propio contexto y el mismo origen de tiempo que la escena actual.
+ */
+const Backdrop: FC<{ storyboard: AtlasStoryboard; index: number; origin: number; dim: number }> = ({
+  storyboard,
+  index,
+  origin,
+  dim,
+}) => {
+  const scene = storyboard.scenes[index];
+  const Component = sceneComponent(scene.type, scene.id);
+  const timings = { start: origin, end: origin };
+  return (
+    <SceneContext.Provider
+      value={{ storyboard, scene, index, ...timings, origin, previous: index > 0 ? storyboard.scenes[index - 1] : null }}
+    >
+      <Background theme={scene.theme} />
+      <Component />
+      <OverlayLayer overlays={scene.overlays} />
+      <AbsoluteFill style={{ backgroundColor: themes[scene.theme].bg, opacity: dim }} />
+    </SceneContext.Provider>
+  );
+};
+
 const SceneSlot: FC<{
   storyboard: AtlasStoryboard;
   index: number;
@@ -61,23 +92,29 @@ const SceneSlot: FC<{
 }> = ({ storyboard, index, start, end, fadeFrames }) => {
   const frame = useCurrentFrame();
   const scene = storyboard.scenes[index];
-  const Component = atlasScenes[scene.type];
-  if (!Component) {
-    throw new Error(`Escena "${scene.id}": el tipo "${scene.type}" todavía no tiene componente`);
-  }
+  const Component = sceneComponent(scene.type, scene.id);
   const opacity =
     scene.enter === 'fade' && index > 0
       ? interpolate(frame, [0, fadeFrames], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })
       : 1;
+  const backdrop = 'backdrop' in scene && scene.backdrop === 'previous' && index > 0;
+  const dim = scene.type === 'atlas-title-overlay' ? scene.dim ?? 0.35 : 0.2;
+  const dimIn = interpolate(frame, [0, fadeFrames * 2], [0, dim], { extrapolateRight: 'clamp', easing: ease });
   return (
     <SceneContext.Provider
-      value={{ storyboard, scene, index, start, end, previous: index > 0 ? storyboard.scenes[index - 1] : null }}
+      value={{ storyboard, scene, index, start, end, origin: start, previous: index > 0 ? storyboard.scenes[index - 1] : null }}
     >
       <AbsoluteFill style={{ opacity }}>
-        <Background theme={scene.theme} />
+        {backdrop ? (
+          <Backdrop storyboard={storyboard} index={index - 1} origin={start} dim={dimIn} />
+        ) : (
+          <Background theme={scene.theme} />
+        )}
         <Component />
-        <OverlayLayer overlays={scene.overlays} sceneId={scene.id} />
+        {/* La viñeta oscurece el lienzo pero no las tarjetas ni el HUD, como en el original. */}
         <Vignette theme={scene.theme} />
+        <OverlayLayer overlays={scene.overlays} />
+        <SourceNote />
         <Brand />
         <ChapterIndicator />
       </AbsoluteFill>

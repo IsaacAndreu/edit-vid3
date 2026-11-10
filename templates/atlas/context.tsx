@@ -11,6 +11,8 @@ export interface SceneContextValue {
   /** Segundos absolutos (desde el inicio del vídeo) en que empieza y acaba la escena. */
   start: number;
   end: number;
+  /** Segundo absoluto en que arranca la Sequence que contiene esta escena (frame 0). */
+  origin: number;
   /** Escena anterior, para entradas 'continuous'. */
   previous: AtlasScene | null;
 }
@@ -27,8 +29,8 @@ export const useScene = (): SceneContextValue => {
 export const useAtlasTime = (): number => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const { start } = useScene();
-  return start + frame / fps;
+  const { origin } = useScene();
+  return origin + frame / fps;
 };
 
 export const useTheme = (): { name: ThemeName; tokens: (typeof themes)[ThemeName] } => {

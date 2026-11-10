@@ -10,7 +10,8 @@
     "atlas:render": "remotion render src/index.ts AtlasVideo",
     "atlas:anchors": "tsx scripts/atlas/resolve-anchors.ts",
     "atlas:stills": "tsx scripts/atlas/stills.ts",
-    "atlas:validate": "tsx scripts/atlas/validate.ts"
+    "atlas:validate": "tsx scripts/atlas/validate.ts",
+    "atlas:compare": "tsx scripts/atlas/compare.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",
