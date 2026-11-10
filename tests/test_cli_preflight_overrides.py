@@ -231,5 +231,25 @@ class OverridesTests(unittest.TestCase):
                 apply_overrides(self._scenes(), load_overrides(path))  # type: ignore[arg-type]
 
 
+
+class LegacyMainModuleTests(unittest.TestCase):
+    def test_external_launchers_can_still_import_parser_and_run_pipeline(self) -> None:
+        import main as legacy
+
+        args = legacy._parser().parse_args(
+            ["--guion", "g.txt", "--voz", "v.mp3", "--output", "o.mp4", "--skip-render", "--skip-third-party"]
+        )
+        with patch.object(legacy, "_run_request", return_value=Path("o.props.json")) as run:
+            self.assertEqual(legacy.run_pipeline(args), Path("o.props.json"))
+        request = run.call_args.args[0]
+        self.assertEqual((request.script_path, request.audio_path, request.output_path), (Path("g.txt"), Path("v.mp3"), Path("o.mp4")))
+        self.assertTrue(request.skip_render)
+        self.assertTrue(request.skip_third_party)
+
+        minimal = argparse.Namespace(guion="g.txt", voz="v.mp3", output="o.mp4")
+        with patch.object(legacy, "_run_request", return_value=Path("o.mp4")) as run:
+            legacy.run_pipeline(minimal)
+        self.assertFalse(run.call_args.args[0].skip_render)
+
 if __name__ == "__main__":
     unittest.main()
