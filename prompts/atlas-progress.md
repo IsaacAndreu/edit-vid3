@@ -52,8 +52,8 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 - Navegador: en el contenedor cloud se usa el Chromium completo de `/opt/pw-browsers`
   (el headless-shell no confía en el CA del proxy y no baja las fuentes). Fuera, `REMOTION_BROWSER`
   o el navegador de Remotion.
-- Icono de marca: admite un carácter (☞) o una ruta a imagen en `public/`. El original usa una
-  manecilla dibujada y rellena; si se quiere igual, añadir un SVG y poner su ruta en `brand.icon`.
+- Icono de marca: admite un carácter o una ruta a imagen en `public/`. Nunca MANICULE ni su manecilla:
+  son la marca del canal de referencia. Cada vídeo usa la del canal.
 
 ## Fase 1 — Escenas de texto y superposiciones
 
@@ -76,7 +76,7 @@ Comparativas: `npm run atlas:stills -- storyboards/test-phase1.json` y
   titulares largos (ocupan ~8 % más de ancho).
 - El fondo nocturno del CTA final lleva terreno 3D en el original; aquí el CTA admite
   `backdrop: "previous"` y lo tendrá cuando exista `atlas-terrain-3d` (fase 5).
-- Icono de la marca y del botón: glifo ☞ en vez de la manecilla dibujada (ver fase 0).
+- Marca: ATLAS con ✦ en las pruebas (MANICULE y su manecilla son la marca del canal de referencia y no se usan).
 
 **Esquema añadido**: `atlas-chapter-card {of}`, `atlas-agenda {numerals[], tagline, notes[]}`,
 `atlas-title-overlay {dim}`, `atlas-statement`, `atlas-card-row {cards[]}`,

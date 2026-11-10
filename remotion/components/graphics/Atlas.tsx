@@ -14,6 +14,8 @@ import world110 from 'world-atlas/countries-110m.json';
 import type { AtlasGraphic } from '../../graphics';
 import { theme } from '../../theme';
 import { Vignette } from './Paper';
+// Fraunces + IBM Plex Mono desde archivos locales (aspecto del vídeo de referencia, prompts/atlas-master-prompt.md)
+import '../../atlas/fonts';
 
 /**
  * Atlas deep dive (pipeline/atlas.py): a paper page with an orthographic globe that turns from one line's camera to
@@ -23,10 +25,13 @@ import { Vignette } from './Paper';
  */
 
 const W = 1920;
-const POINT_FONT = 27;          // place names: readable on a phone (19 was not)
+const POINT_FONT = 30;          // place names: readable on a phone (19 was not)
+/** «LHASA» → «Lhasa»: the reference sets towns in serif title case (the model writes them in capitals). */
+const placeName = (name: string) =>
+  name === name.toUpperCase() ? name.toLowerCase().replace(/(^|[\s\-'’(])(\p{L})/gu, (_m, a: string, b: string) => a + b.toUpperCase()) : name;
 const H = 1080;
-const SERIF = "'DM Serif Display', Georgia, serif";
-const MONO = "'JetBrains Mono', monospace";
+const SERIF = "'Fraunces', Georgia, serif";
+const MONO = "'IBM Plex Mono', monospace";
 
 type Feature = { type: string; properties: { name: string }; geometry: unknown };
 const COUNTRIES = (feature(world50 as never, (world50 as never as { objects: { countries: never } }).objects.countries) as never as { features: Feature[] }).features;
@@ -60,12 +65,15 @@ const CITIES = cities as unknown as [number, number, number][];   // [lon, lat, 
 const DEPTHS = (bathymetry as unknown as { features: { properties: { depth: number } }[] }).features as unknown as (GeoPermissibleObjects & { properties: { depth: number } })[];
 
 const PALETTES = {
-  paper: { page: '#ECE4D1', pageEdge: '#D9CFB8', ink: '#1E2833', soft: '#6B6355', oceanIn: '#D6E4EA', oceanOut: '#C3D6E0',
-           depths: ['#BFD3DF', '#A9C4D5', '#93B4C9', '#82A6BE'],
-           shelf: '#D3E2EA', land: '#E3D4B1', coast: '#8C7A5A', ice: '#F6F4EE', grid: 'rgba(30,40,51,0.07)', rim: '#1E2833', card: '#F4EEDF', halo: '#F4EEDF' },
-  dark: { page: '#2A323B', pageEdge: '#1D232A', ink: '#E9E3D6', soft: '#9AA3AC', oceanIn: '#4A6377', oceanOut: '#41596C',
-          depths: ['#3F576B', '#364D60', '#2E4456', '#283C4D'],
-          shelf: '#4C667B', land: '#8E9FAE', coast: '#B7C3CD', ice: '#EEF2F5', grid: 'rgba(233,227,214,0.06)', rim: '#9FB0BE', card: '#F4EEDF', halo: '#1B232C' },
+  // tokens del vídeo de referencia (prompts/atlas-master-prompt.md §2): papel pergamino, mar azul lavado, tinta parda
+  paper: { page: '#E7DFC9', pageEdge: '#C7BDA7', ink: '#2A2118', soft: '#6F6657', oceanIn: '#BED2D8', oceanOut: '#A9C3D0',
+           depths: ['#A4BCC7', '#97AFBA', '#8FA8B3', '#8AA2AC'],
+           shelf: '#B3C9D2', land: '#E2D6BB', coast: '#9C8B6B', ice: '#F3EFE6', grid: 'rgba(42,33,24,0.07)', rim: '#2A2118', card: '#EFE8D8', halo: '#EFE8D8',
+           concept: '#2F5673' },
+  dark: { page: '#192733', pageEdge: '#101A22', ink: '#EDE6D3', soft: '#8FA0AB', oceanIn: '#2A4255', oceanOut: '#22384A',
+          depths: ['#22384A', '#1F3445', '#1C3142', '#1A2D3D'],
+          shelf: '#2A4255', land: '#8FA3AD', coast: '#B7C3CD', ice: '#E6EBEE', grid: 'rgba(237,230,211,0.06)', rim: '#8FA0AB', card: '#EFE8D8', halo: '#192733',
+          concept: '#EDE6D3' },
 };
 type Palette = typeof PALETTES.paper;
 
@@ -73,17 +81,25 @@ const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const ease = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** The words of a title, the key one set apart: between *asterisks*, else the last word. */
+/** The words of a title, the key phrase set apart: between *asterisks* (one word or several), else the last word. */
 const KeyTitle: FC<{ text: string; size: number; color: string; accent: string; align?: 'center' | 'left' }> = ({ text, size, color, accent, align = 'center' }) => {
-  const words = text.split(/\s+/).filter(Boolean);
-  let key = words.findIndex((w) => /\*/.test(w));
-  if (key < 0) key = words.length - 1;
+  const parts: { t: string; key: boolean }[] = [];
+  if (/\*[^*]+\*/.test(text)) {
+    let last = 0;
+    for (const m of text.matchAll(/\*([^*]+)\*/g)) {
+      if (m.index! > last) parts.push({ t: text.slice(last, m.index), key: false });
+      parts.push({ t: m[1], key: true });
+      last = m.index! + m[0].length;
+    }
+    if (last < text.length) parts.push({ t: text.slice(last), key: false });
+  } else {
+    const cut = text.trimEnd().lastIndexOf(' ');
+    parts.push({ t: text.slice(0, cut + 1), key: false }, { t: text.slice(cut + 1), key: true });
+  }
   return (
-    <div style={{ fontFamily: SERIF, fontSize: size, color, textAlign: align, lineHeight: 1.12 }}>
-      {words.map((w, i) => (
-        <span key={i} style={i === key ? { fontStyle: 'italic', color: accent } : undefined}>
-          {w.replace(/\*/g, '')}{i < words.length - 1 ? ' ' : ''}
-        </span>
+    <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: size, color, textAlign: align, lineHeight: 1.12, letterSpacing: '-0.02em' }}>
+      {parts.map((part, i) => (
+        <span key={i} style={part.key ? { fontStyle: 'italic', color: accent } : undefined}>{part.t.replace(/\*/g, '')}</span>
       ))}
     </div>
   );
@@ -346,7 +362,7 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
         }).map((item) => {
           if (!item) return null;
           const { pt, i, local, x, y } = item;
-          const w = pt.name.length * POINT_FONT * 0.64 + 6;
+          const w = pt.name.length * POINT_FONT * 0.52 + 6;
           const h = POINT_FONT + 6;
           const first = x < cx ? 'right' : 'left';
           const tries: [string, number, number, 'start' | 'end' | 'middle'][] = [
@@ -366,9 +382,9 @@ const Globe: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
               {pt.at >= 0 && local > 12 ? <circle cx={x} cy={y} r={10 + 26 * phase} fill="none" stroke={ink} strokeWidth={2}
                                                   opacity={0.32 * (1 - phase)} /> : null}
               <circle cx={x} cy={y} r={9 * pop} fill={ink} stroke={p.card} strokeWidth={2.5} />
-              {spot ? <text x={spot[1]} y={spot[2]} textAnchor={spot[3]} fontFamily={MONO} fontSize={POINT_FONT}
-                            fontWeight={700} letterSpacing={1} fill={ink} opacity={clamp(local / 6)} stroke={p.halo} strokeWidth={7}
-                            paintOrder="stroke">{pt.name}</text> : null}
+              {spot ? <text x={spot[1]} y={spot[2]} textAnchor={spot[3]} fontFamily={SERIF} fontSize={POINT_FONT}
+                            fontWeight={600} letterSpacing={-0.3} fill={ink} opacity={clamp(local / 6)} stroke={p.halo} strokeWidth={7}
+                            paintOrder="stroke">{placeName(pt.name)}</text> : null}
             </g>
           );
         });
@@ -520,10 +536,14 @@ const Card: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accen
   const left = c.side === 'left';
   const box: React.CSSProperties = {
     position: 'absolute', [left ? 'left' : 'right']: 110, bottom: c.kind === 'quote' ? 300 : 150, width: c.kind === 'quote' ? 520 : 470,
-    background: p.card, border: `1.5px solid ${ink}`, boxShadow: '0 14px 40px rgba(0,0,0,0.28), inset 0 0 0 6px rgba(255,255,255,0.35)',
-    padding: '26px 30px', color: ink, opacity: clamp(local / 6), transform: `translateY(${(1 - pop) * 30}px)`,
+    // doble filete de tinta, como las tarjetas del vídeo de referencia
+    background: p.card, border: `2px solid ${ink}`, outline: `2px solid ${ink}`, outlineOffset: -10,
+    boxShadow: p === PALETTES.dark ? '0 10px 30px rgba(0,0,0,0.35)' : '0 4px 16px rgba(60,45,25,0.14)',
+    padding: '30px 36px', color: ink, opacity: clamp(local / 6), transform: `translateY(${(1 - pop) * 30}px)`,
   };
-  const small: React.CSSProperties = { fontFamily: MONO, fontSize: 15, letterSpacing: 2, textTransform: 'uppercase', color: '#5E584C' };
+  // antetítulo en versalitas serif espaciadas con filete debajo (no mono): «TO FLY STRAIGHT ACROSS»
+  const small: React.CSSProperties = { fontFamily: SERIF, fontWeight: 500, fontSize: 20, letterSpacing: '0.12em', textTransform: 'uppercase', color: PALETTES.paper.soft };
+  const kicker: React.CSSProperties = { ...small, borderBottom: `1.5px solid ${PALETTES.paper.soft}`, paddingBottom: 10, marginBottom: 8 };
   let body: ReactNode = null;
   if (c.kind === 'photo' && c.image) {
     body = (
@@ -584,13 +604,13 @@ const Card: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accen
   } else if (c.kind === 'checks') {
     body = (
       <>
-        {c.title ? <div style={small}>{c.title}</div> : null}
+        {c.title ? <div style={kicker}>{c.title}</div> : null}
         {c.lines.map((l, i) => {
           const ticked = local > fps * (0.6 + 0.5 * i);
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, fontFamily: SERIF, fontSize: 30 }}>
               <span style={{ width: 24, height: 24, border: `2px solid ${ink}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                             fontSize: 20, color: accent }}>{ticked ? '✓' : ''}</span>
+                             fontSize: 20, color: '#3D7A5C' }}>{ticked ? '✓' : ''}</span>
               {l}
             </div>
           );
@@ -600,9 +620,9 @@ const Card: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, accen
   } else {
     body = (
       <>
-        {c.title ? <div style={small}>{c.title}</div> : null}
+        {c.title ? <div style={kicker}>{c.title}</div> : null}
         {c.lines.map((l, i) => (
-          <div key={i} style={{ fontFamily: SERIF, fontSize: 32, marginTop: 8, opacity: clamp((local - i * 8) / 6) }}>{l}</div>
+          <div key={i} style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 34, letterSpacing: '-0.01em', marginTop: 10, opacity: clamp((local - i * 8) / 6) }}>{l}</div>
         ))}
       </>
     );
@@ -619,9 +639,9 @@ const Stamp: FC<{ g: AtlasGraphic; accent: string }> = ({ g, accent }) => {
   const hit = spring({ frame: local, fps, config: { damping: 9, stiffness: 260 }, durationInFrames: 10 });
   const right = g.card?.side !== 'right';
   return (
-    <div style={{ position: 'absolute', [right ? 'right' : 'left']: 230, bottom: 160, transform: `rotate(-8deg) scale(${2 - hit})`,
+    <div style={{ position: 'absolute', [right ? 'right' : 'left']: 230, bottom: 160, transform: `rotate(-4deg) scale(${2 - hit})`,
                   opacity: clamp(local / 3), border: `4px solid ${accent}`, padding: '8px 22px', color: accent, fontFamily: MONO,
-                  fontWeight: 800, fontSize: 34, letterSpacing: 4, boxShadow: `inset 0 0 0 2px ${accent}`, mixBlendMode: 'multiply' }}>
+                  fontWeight: 600, fontSize: 38, letterSpacing: '0.16em', borderRadius: 8, outline: `2px solid ${accent}`, outlineOffset: -9, mixBlendMode: 'multiply' }}>
       {g.stamp.text}
     </div>
   );
@@ -633,8 +653,10 @@ const Headline: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, a
   const local = frame - g.headline.at;
   if (local < 0) return null;
   return (
-    <div style={{ position: 'absolute', top: 70, left: 0, right: 0, opacity: clamp(local / 10), transform: `translateY(${(1 - clamp(local / 12)) * 14}px)` }}>
-      <KeyTitle text={g.headline.text} size={64} color={p.ink} accent={accent} />
+    // el titular-pregunta centrado sobre el globo, con un halo del color de la página para leerse encima del mapa
+    <div style={{ position: 'absolute', top: H / 2 - 40, left: 0, right: 0, opacity: clamp(local / 10), transform: `translateY(${(1 - clamp(local / 12)) * 14}px)`,
+                  WebkitTextStroke: `10px ${p.halo}`, paintOrder: 'stroke fill', textShadow: `0 4px 24px ${p.halo}` }}>
+      <KeyTitle text={g.headline.text} size={84} color={p.ink} accent={accent} />
     </div>
   );
 };
@@ -647,22 +669,23 @@ const Header: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acc
   return (
     <>
       {g.brand ? (
-        <div style={{ position: 'absolute', left: 64, top: 52, fontFamily: MONO, fontSize: 18, letterSpacing: 5, color: p.ink, opacity: 0.85,
-                      textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 22, color: accent }}>✦</span>{g.brand}
+        <div style={{ position: 'absolute', left: 64, top: 56, fontFamily: MONO, fontWeight: 500, fontSize: 19, letterSpacing: '0.24em', color: p.ink,
+                      textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 22, color: p.ink }}>✦</span>{g.brand}
         </div>
       ) : null}
       {chapters.length ? (
-        <div style={{ position: 'absolute', right: 64, top: 44, display: 'flex', gap: 34 }}>
+        <div style={{ position: 'absolute', right: 110, top: 48, display: 'flex', gap: 54 }}>
           {chapters.slice(0, 10).map((name, i) => {
             const on = i + 1 === g.chapter;
+            const seen = g.chapter !== undefined && i + 1 < g.chapter;
             return (
               <div key={i} style={{ position: 'relative', textAlign: 'center', minWidth: 30 }}>
-                <div style={{ fontFamily: SERIF, fontSize: 26, color: on ? accent : p.soft, opacity: on ? 1 : 0.75 }}>{roman[i]}</div>
-                {on ? <div style={{ height: 2, background: accent, margin: '4px auto 0', width: 38 }} /> : null}
+                <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 30, color: on ? accent : p.ink, opacity: on || seen ? 1 : 0.35 }}>{roman[i]}</div>
+                {on ? <div style={{ height: 2.5, background: accent, margin: '6px auto 0', width: 56 }} /> : null}
                 {on ? (
                   <div style={{ position: 'absolute', top: 44, right: '50%', transform: 'translateX(50%)', whiteSpace: 'nowrap',
-                                fontFamily: SERIF, fontStyle: 'italic', fontSize: 22, letterSpacing: 1, color: p.ink }}>{name}</div>
+                                fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, fontSize: 23, letterSpacing: '0.22em', color: p.ink }}>{name}</div>
                 ) : null}
               </div>
             );
@@ -684,12 +707,12 @@ const TitleCard: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, 
   return (
     <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 26, opacity: a }}>
-        <div style={{ width: 120 * a, height: 1.5, background: p.ink, opacity: 0.5 }} />
-        <div style={{ fontFamily: SERIF, fontSize: 64, color: p.ink }}>{t.number}</div>
-        <div style={{ width: 120 * a, height: 1.5, background: p.ink, opacity: 0.5 }} />
+        <div style={{ width: 190 * a, height: 2, background: p.soft }} />
+        <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 88, color: p.ink }}>{t.number}</div>
+        <div style={{ width: 190 * a, height: 2, background: p.soft }} />
       </div>
       <div style={{ marginTop: 26, opacity: b, transform: `translateY(${(1 - b) * 16}px)` }}>
-        <KeyTitle text={t.text} size={84} color={p.ink} accent={accent} />
+        <KeyTitle text={t.text} size={96} color={p.ink} accent={p.concept} />
       </div>
     </AbsoluteFill>
   );
@@ -707,22 +730,48 @@ const Chart: FC<{ g: AtlasGraphic; p: Palette; accent: string }> = ({ g, p, acce
     <div style={{ position: 'absolute', left: 160, top: 190, fontFamily: MONO, fontSize: 20, letterSpacing: 3, color: ink, opacity: 0.85 }}>{c.title}</div>
   );
   if (c.kind === 'bars' && c.bars) {
-    const max = Math.max(...c.bars.map((b) => b.value ?? 0), 1);
+    // barras verticales sobre rejilla punteada, como en el vídeo de referencia: crecen desde el nivel cero con la cifra
+    // contando encima; nombre en cursiva espaciada bajo el eje; la última en el acento, las demás en azul concepto
+    const bars = c.bars;
+    const max = Math.max(...bars.map((b) => b.value ?? 0), 1);
+    const step = 10 ** Math.floor(Math.log10(max));
+    const nice = [1, 2, 2.5, 5, 10].map((m) => m * step).find((v) => max / v <= 5) ?? step * 10;
+    const axisMax = Math.ceil(max / nice) * nice;
+    const ticks = Array.from({ length: Math.round(axisMax / nice) + 1 }, (_, i) => i * nice);
+    const left = 380, right = 1540, base = 860, top = 260;
+    const Y = (v: number) => base - ((base - top) * v) / axisMax;
+    const slot = (right - left) / (bars.length + 0.6);
+    const bw = Math.min(280, slot * 0.62);
+    const cx = (i: number) => left + slot * (0.8 + i);
     return (
       <AbsoluteFill>
-        <div style={{ position: 'absolute', left: 160, top: H / 2 - (c.bars.length * 130) / 2 - 40, fontFamily: MONO, fontSize: 20,
-                      letterSpacing: 3, color: ink, opacity: 0.85 }}>{c.title}</div>
-        {c.bars.map((b, i) => {
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 150, textAlign: 'center', fontFamily: MONO, fontWeight: 500, fontSize: 24,
+                      letterSpacing: '0.2em', textTransform: 'uppercase', color: p.soft }}>{c.title}</div>
+        <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
+          {ticks.slice(1).map((v) => (
+            <g key={v}>
+              <line x1={left} x2={right} y1={Y(v)} y2={Y(v)} stroke={p.soft} strokeOpacity={0.45} strokeWidth={2} strokeDasharray="2 8" />
+              <text x={left - 24} y={Y(v) + 7} textAnchor="end" fontFamily={MONO} fontSize={21} letterSpacing={3} fill={p.soft}>{`${fmt(v)} ${c.unit}`.toUpperCase()}</text>
+            </g>
+          ))}
+          {bars.map((b, i) => {
+            const k = ease(clamp((frame - fps * (0.3 + 0.9 * i)) / (fps * 1.0)));
+            const h = (base - Y(b.value ?? 0)) * k;
+            return <rect key={i} x={cx(i) - bw / 2} y={base - h} width={bw} height={h} fill={p === PALETTES.dark ? '#8FA3AD' : '#C9B48E'} stroke={p.ink} strokeWidth={3} />;
+          })}
+          <line x1={left - 80} x2={right} y1={base} y2={base} stroke={p.ink} strokeWidth={3} />
+        </svg>
+        {bars.map((b, i) => {
           const k = ease(clamp((frame - fps * (0.3 + 0.9 * i)) / (fps * 1.0)));
-          const width = 1300 * ((b.value ?? 0) / max) * k;
-          const shown = Number.isInteger(b.value ?? 0) ? Math.round((b.value ?? 0) * k) : (b.value ?? 0) * k;
+          const v = b.value ?? 0;
+          const shown = k >= 1 ? v : Number.isInteger(v) ? Math.round(v * k) : Math.round(v * k * 10) / 10;
+          const last = i === bars.length - 1;
           return (
-            <div key={i} style={{ position: 'absolute', left: 160, top: H / 2 - (c.bars!.length * 130) / 2 + 40 + i * 130, opacity: clamp((frame - fps * (0.2 + 0.9 * i)) / 6) }}>
-              <div style={{ fontFamily: MONO, fontSize: 17, letterSpacing: 2, color: p.soft, textTransform: 'uppercase' }}>{b.label}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 22, marginTop: 10 }}>
-                <div style={{ width: Math.max(4, width), height: 44, background: i === c.bars!.length - 1 ? '#2F5674' : '#6F6553' }} />
-                <div style={{ fontFamily: SERIF, fontSize: 40, color: ink }}>{fmt(shown)} {b.unit || c.unit}</div>
-              </div>
+            <div key={i} style={{ opacity: clamp((frame - fps * (0.2 + 0.9 * i)) / 6) }}>
+              <div style={{ position: 'absolute', left: cx(i) - 200, width: 400, top: base - (base - Y(v)) * k - 74, textAlign: 'center', fontFamily: SERIF,
+                            fontWeight: 600, fontSize: 44, letterSpacing: '-0.02em', color: last ? accent : p.concept }}>{fmt(shown)} {b.unit || c.unit}</div>
+              <div style={{ position: 'absolute', left: cx(i) - 250, width: 500, top: base + 22, textAlign: 'center', fontFamily: SERIF,
+                            fontStyle: 'italic', fontWeight: 400, fontSize: 38, letterSpacing: '0.24em', color: p.ink }}>{b.label}</div>
             </div>
           );
         })}
@@ -1141,7 +1190,7 @@ export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({
       {g.view === 'globe' ? <CountryFlags g={g} /> : null}
       <Header g={g} {...memo} />
       {/* paper grain from a fixed tile: the SVG noise filter was recomputed on every frame (a quarter of the render) */}
-      <AbsoluteFill style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '256px 256px', opacity: g.dark ? 0.1 : 0.16,
+      <AbsoluteFill style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '256px 256px', opacity: g.dark ? 0.08 : 0.08,
                              mixBlendMode: 'multiply', pointerEvents: 'none' }} />
       <Vignette strength={g.dark ? 0.45 : 0.22} color={g.dark ? '0,0,0' : '90,70,40'} />
     </AbsoluteFill>

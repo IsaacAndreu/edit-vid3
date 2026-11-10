@@ -110,7 +110,7 @@ const SimAudio: FC<SimAudioProps> = ({ groups, fps }) => (
 
 /** Atlas escrito a mano (storyboards/<slug>.json, ver remotion/atlas/schema.ts): vacío por defecto. */
 const atlasEmpty: AtlasVideoProps = {
-  meta: { slug: "vacio", title: "", brand: { name: "ATLAS", icon: "☞" }, chapters: [], duration: 2 },
+  meta: { slug: "vacio", title: "", brand: { name: "ATLAS", icon: "✦" }, chapters: [], duration: 2 },
   audio: {},
   scenes: [{ id: "vacio", type: "atlas-blank", start: { t: 0 }, theme: "paper", enter: "fade" }],
 };

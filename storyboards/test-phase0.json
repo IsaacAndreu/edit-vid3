@@ -2,7 +2,7 @@
   "meta": {
     "slug": "test-phase0",
     "title": "Prueba fase 0",
-    "brand": { "name": "MANICULE", "icon": "☞" },
+    "brand": { "name": "ATLAS", "icon": "✦" },
     "chapters": [
       { "numeral": "I", "label": "Ground" },
       { "numeral": "II", "label": "Pressure" },
