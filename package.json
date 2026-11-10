@@ -6,17 +6,42 @@
   "scripts": {
     "start": "remotion studio",
     "render": "remotion render src/index.ts YoutubeVideo --props=example-props.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "atlas:render": "remotion render src/index.ts AtlasVideo",
+    "atlas:anchors": "tsx scripts/atlas/resolve-anchors.ts",
+    "atlas:stills": "tsx scripts/atlas/stills.ts",
+    "atlas:validate": "tsx scripts/atlas/validate.ts"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "@remotion/google-fonts": "4.0.525",
+    "@remotion/media-utils": "4.0.525",
+    "@remotion/three": "4.0.525",
+    "d3-contour": "^4.0.3",
+    "d3-geo": "^3.1.2",
+    "d3-shape": "^3.2.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "remotion": "4.0.525"
+    "remotion": "4.0.525",
+    "three": "^0.187.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2",
+    "zod": "4.5.4"
   },
   "devDependencies": {
+    "@remotion/bundler": "4.0.525",
     "@remotion/cli": "4.0.525",
+    "@remotion/renderer": "4.0.525",
+    "@types/d3-contour": "^3.0.6",
+    "@types/d3-geo": "^3.1.1",
+    "@types/d3-shape": "^3.2.0",
+    "@types/geojson": "^7946.0.16",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/three": "^0.187.0",
+    "@types/topojson-client": "^3.1.5",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   }
 }

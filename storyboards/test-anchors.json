@@ -1,0 +1,8 @@
+{
+  "meta": { "slug": "test-anchors", "title": "Anclas", "brand": { "name": "MANICULE", "icon": "☞" }, "chapters": [], "duration": 5 },
+  "audio": { "transcript": "atlas-test/transcript.json" },
+  "scenes": [
+    { "id": "a", "type": "atlas-blank", "start": { "t": 0 }, "theme": "night", "enter": "fade" },
+    { "id": "b", "type": "atlas-blank", "start": { "say": "the ground", "nth": 2, "offset": -0.1 }, "theme": "paper", "enter": "fade" }
+  ]
+}

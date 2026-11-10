@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,5 +19,12 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["Root.tsx", "remotion.config.ts", "src", "templates"]
+  "include": [
+    "Root.tsx",
+    "remotion.config.ts",
+    "src",
+    "templates",
+    "scripts",
+    "storyboards"
+  ]
 }

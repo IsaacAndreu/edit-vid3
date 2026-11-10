@@ -1,6 +1,9 @@
 import type { CSSProperties, FC } from 'react';
 import { AbsoluteFill, Audio, Composition, Img, Sequence, Video } from 'remotion';
 import { templates } from './templates/registry';
+import { AtlasVideo, calculateAtlasMetadata } from './templates/atlas/AtlasVideo';
+import { atlasCompositionSchema } from './templates/atlas/schema';
+import atlasDefaultProps from './storyboards/test-phase0.json';
 import { resolveMediaUrl } from './templates/media';
 import type { SceneInput, VideoProps } from './templates/types';
 
@@ -108,6 +111,7 @@ export const YoutubeVideo: FC<VideoProps> = ({ audioUrl, scenes }) => {
 };
 
 export const RemotionRoot: FC = () => (
+  <>
   <Composition
     id="YoutubeVideo"
     component={YoutubeVideo}
@@ -120,4 +124,16 @@ export const RemotionRoot: FC = () => (
       durationInFrames: Math.max(1, getTotalDurationInFrames(props.scenes)),
     })}
   />
+  <Composition
+    id="AtlasVideo"
+    component={AtlasVideo}
+    schema={atlasCompositionSchema}
+    durationInFrames={1}
+    fps={FPS}
+    width={VIDEO_WIDTH}
+    height={VIDEO_HEIGHT}
+    defaultProps={atlasDefaultProps as never}
+    calculateMetadata={calculateAtlasMetadata}
+  />
+  </>
 );
