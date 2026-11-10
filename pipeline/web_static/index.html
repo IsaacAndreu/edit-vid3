@@ -367,6 +367,71 @@
     font-weight: 700; transition: transform .15s; } details:not(.block):not(.upl)[open] > summary::before { transform: rotate(90deg); }
   * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
   ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; border: 2px solid var(--bg); }
+
+  /* === design refresh: one calmer system on top of the base styles above === */
+  :root { --radius: 16px; --radius-sm: 10px; --tint: color-mix(in srgb, var(--accent) 10%, transparent);
+          --ok-tint: color-mix(in srgb, var(--ok) 13%, transparent); --bad-tint: color-mix(in srgb, var(--bad) 13%, transparent);
+          --work-tint: color-mix(in srgb, var(--work) 13%, transparent); --wait-tint: color-mix(in srgb, var(--wait) 14%, transparent);
+          --lift: 0 1px 0 rgba(255,255,255,.03) inset, 0 1px 2px rgba(0,0,0,.25), 0 10px 30px -12px rgba(0,0,0,.45); }
+  @media (prefers-color-scheme: light) { :root { --lift: 0 1px 2px rgba(16,24,40,.05), 0 10px 30px -14px rgba(16,24,40,.18); } }
+  body { background: radial-gradient(1200px 500px at 70% -10%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%), var(--bg);
+         background-attachment: fixed; font-size: 14.5px; }
+  main { padding: 28px 28px 80px; max-width: 1240px; }
+  @media (max-width: 700px) { main { padding: 18px 14px 60px; } }
+  h1 { font-size: 26px; font-weight: 780; letter-spacing: -.02em; margin: 0 0 6px; line-height: 1.2; }
+  h1 + .small.muted, h1 + .muted { font-size: 14px; max-width: 78ch; margin-bottom: 18px; line-height: 1.55; }
+  h2 { font-size: 12px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 32px 0 12px; }
+  h2 + .small.muted { margin-top: -6px; margin-bottom: 10px; max-width: 90ch; }
+  /* surfaces */
+  .card, .kpi, .block, .slot, .upl, .kanban .item { box-shadow: var(--lift); }
+  .card, .kpi, .block { border-color: color-mix(in srgb, var(--line) 85%, transparent); }
+  .card { padding: 18px; } .card + .card { margin-top: 12px; }
+  .card.click, a.kpi { transition: transform .15s, border-color .15s, box-shadow .15s; }
+  .card.click:hover, a.kpi:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  .kpis { gap: 14px; }
+  .kpi { padding: 16px 18px; } .kpi .k { font-size: 11.5px; letter-spacing: .09em; }
+  .kpi .v { font-size: 28px; letter-spacing: -.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  /* notices: tinted, not a grey slab with a thick bar */
+  .notice { background: var(--tint); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-left-width: 1px;
+            border-radius: 12px; padding: 12px 16px; line-height: 1.5; }
+  .notice.bad { background: var(--bad-tint); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+  .notice.ok { background: var(--ok-tint); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+  /* pills: a soft colour behind the colour */
+  .pill { padding: 3px 10px; font-weight: 650; letter-spacing: .01em; border: 1px solid transparent; }
+  .pill.hecho { background: var(--ok-tint); } .pill.error { background: var(--bad-tint); }
+  .pill.haciendo { background: var(--work-tint); } .pill.cola { background: var(--wait-tint); }
+  /* buttons */
+  button, .btn { padding: 8px 15px; border-radius: 10px; }
+  button.main, .btn.main { box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
+  /* tables */
+  table td, table th { padding: 9px 10px; } table th { font-size: 12px; color: var(--muted); font-weight: 650; }
+  .ytt th { text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+  /* tabs */
+  .tabs { gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; }
+  .tabs button { border: 0; background: transparent; color: var(--muted); padding: 7px 14px; }
+  .tabs button.on { background: var(--panel2); color: var(--text); box-shadow: var(--lift); }
+  /* sidebar */
+  header { background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(10px); }
+  header nav a { padding: 8px 11px; } header nav .sec { padding-top: 18px; }
+  /* calendar */
+  .cal-day { margin: 22px 0 8px; font-size: 13px; text-transform: capitalize; color: var(--muted); }
+  .cal-day.today { color: var(--accent); }
+  .slot { padding: 11px 14px; border-radius: 12px; margin: 8px 0; }
+  .slot.gap { border: 1px dashed color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 5%, var(--panel)); }
+  .slot.ok { border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .reserve { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 6px; }
+  .datechips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .datechip { display: inline-flex; flex-direction: column; padding: 6px 10px; border-radius: 10px; background: var(--panel2);
+              border: 1px solid var(--line); font-size: 12.5px; line-height: 1.3; }
+  .datechip b { font-weight: 650; text-transform: capitalize; } .datechip span { color: var(--muted); font-size: 11.5px; }
+  /* kanban */
+  .kanban .col { background: color-mix(in srgb, var(--panel2) 70%, transparent); border: 1px solid var(--line); }
+  .kanban .item { border-radius: 12px; }
+  .kanban .item:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  select { padding-right: 30px !important; background-position: right 10px center !important; }   /* the arrow never covers the text */
+  /* login */
+  #login { max-width: 380px; margin: 14vh auto; padding: 28px; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 20px; box-shadow: var(--lift); }
 </style>
 </head>
 <body>
@@ -1616,7 +1681,7 @@ async function pilotPage() {
         <div class="row" style="gap:8px"><b style="font-size:18px">${esc(c.channel)}</b>
           <button class="${c.on ? "main" : ""}" onclick="pilotSet('${esc(c.channel)}', {on: ${!c.on}})">${c.on ? "VÍDEOS ON" : "EN PAUSA"}</button>
           <select style="width:auto" onchange="pilotSet('${esc(c.channel)}', {perDay: +this.value})">${[1, 2, 3].map((n) => `<option value="${n}" ${n === c.perDay ? "selected" : ""}>${n} al día</option>`).join("")}</select></div>
-        <span class="small">${c.voice ? "🎙️ voz de GenAIPro lista" : '<span class="pill error">sin voz de GenAIPro: el vídeo esperará a que subas la voz</span>'}</span></div>
+        <span class="small">${c.voice ? '<span class="pill hecho">🎙️ voz lista</span>' : '<span class="pill" title="Sin voz de GenAIPro: el vídeo esperará a que subas la voz (Ajustes → Voces)">🎙️ sin voz automática</span>'}</span></div>
       ${c.error ? `<div class="notice bad small">Último intento: ${esc(c.error)}</div>` : ""}
       ${c.job && c.job.running ? '<div class="notice small">✍️ Escribiendo el guion… (un par de minutos)</div>' : ""}
       ${c.job && c.job.failed ? `<div class="notice bad small">${esc((c.job.log || "").trim().split("\n").pop())}</div>` : ""}
@@ -2574,7 +2639,12 @@ async function calendarPage() {
     return `<div class="slot ${cls} ${s.past ? "past" : ""}"><b>${esc(s.channel)} · ${esc(s.time)}</b><span>${state}</span>
       <span style="margin-left:auto" class="row">${done}${unpin}${choose}</span></div>`;
   };
-  const reserve = Object.entries(a.reserve).map(([c, n]) => `<span class="pill ${n < st.buffer ? "error" : "hecho"}">${esc(c)}: ${n} listo${n === 1 ? "" : "s"}</span>`).join(" ");
+  const short = Object.entries(a.reserve).filter(([, n]) => n < st.buffer), fine = Object.keys(a.reserve).length - short.length;
+  const reserve = `<div class="reserve">${short.length ? `<span class="small muted">Con pocos vídeos de reserva (objetivo ${st.buffer}):</span>
+      ${short.slice(0, 8).map(([c, n]) => `<span class="pill">${esc(c)} <b style="color:var(--bad)">${n}</b></span>`).join("")}
+      ${short.length > 8 ? `<span class="pill" title="${esc(short.slice(8).map(([c, n]) => c + ": " + n).join(", "))}">+${short.length - 8} más</span>` : ""}`
+      : `<span class="pill hecho">✓ Todos los canales con reserva</span>`}
+      ${short.length && fine ? `<span class="small muted">· ${fine} canal${fine === 1 ? "" : "es"} bien</span>` : ""}</div>`;
   const rules = Object.entries(st.schedule).map(([c, r]) => `<div class="card" style="margin-bottom:10px">
       <div class="row" style="justify-content:space-between"><b>${esc(c)}</b>
         <label style="margin:0;font-weight:400"><input type="checkbox" style="width:auto" ${r.enabled ? "checked" : ""} onchange="rule('${esc(c)}', {enabled: this.checked})"> publica en este canal</label></div>
@@ -2583,7 +2653,8 @@ async function calendarPage() {
         <input type="time" value="${esc(r.time)}" style="width:auto;margin-left:8px" onchange="rule('${esc(c)}', {time: this.value})"></div></div>`).join("");
   window.agendaRules = st.schedule;
   $("#app").innerHTML = `<h1>Calendario</h1>
-    <div class="row">${reserve} <span class="small muted">vídeos listos sin subir por canal (objetivo ${st.buffer})</span></div>
+    <div class="small muted">Lo que sale cada día en cada canal, y los huecos que aún no tienen vídeo.</div>
+    ${reserve}
     ${Object.keys(byDay).sort().map((d) => `<div class="cal-day ${d === today ? "today" : ""}">${DAY(d)}${d === today ? " · hoy" : ""}</div>${byDay[d].map(slot).join("")}`).join("")
       || '<div class="notice">No hay días de publicación: márcalos abajo.</div>'}
     <h2>Días de publicación</h2>${rules}
@@ -2774,7 +2845,8 @@ async function scriptsPage(days = 14) {
             <div><div class="small">${esc(w.title)}</div><div class="small muted">${kfmt(w.views)} visitas${w.vsChannel ? ` · ${times(w.vsChannel)} tu media` : ""}${w.format ? ` · formato ${esc(w.format)}` : ""}</div></div></div>
           <button onclick="moreLike('${esc(w.slug)}', '${esc(c.channel)}', this)">💡 Más como este</button></div>`).join("")}
         <div id="similar-${esc(c.channel)}"></div></div>` : ""}
-      ${c.empty.length ? `<div class="small" style="margin-top:8px"><b>Días sin vídeo:</b> ${c.empty.map((x) => `${DAY(x.date)} ${esc(x.time)} <span class="muted">(guion antes del ${DAY(x.deadline.slice(0, 10))}, ${esc(x.deadline.slice(11))})</span>`).join(" · ")}</div>` : ""}
+      ${c.empty.length ? `<div class="small" style="margin-top:10px"><b>Días sin vídeo</b><div class="datechips">${c.empty.map((x) =>
+        `<span class="datechip"><b>${DAY(x.date)} · ${esc(x.time)}</b><span>guion antes del ${DAY(x.deadline.slice(0, 10))}, ${esc(x.deadline.slice(11))}</span></span>`).join("")}</div></div>` : ""}
       ${c.noScript.length ? `<div class="small" style="margin-top:4px"><b>Vídeos sin guion:</b> ${c.noScript.map((x) => `<a href="#/video/${encodeURIComponent(x.slug)}">${esc(x.slug)}</a> (${DAY(x.date)})`).join(", ")}</div>` : ""}
       ${c.missing ? `<div style="margin-top:12px"><b class="small">Ideas para ${esc(c.channel)}</b>
         ${c.ideas.length ? c.ideas.map((i) => { const id = `${c.channel}:${i.id}`; window.scriptIdeas[id] = {channel: c.channel, idea: {...(i.idea || {}), title: i.title, note: i.note}};
