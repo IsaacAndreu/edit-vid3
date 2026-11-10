@@ -6,7 +6,7 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 | Fase | Estado |
 |---|---|
 | 0 — Cimientos | ✅ completada |
-| 1 — Texto y superposiciones | pendiente |
+| 1 — Texto y superposiciones | ✅ completada |
 | 2 — Gráficos sin geografía | pendiente |
 | 3 — Datos y mapa de relieve (puerta) | pendiente |
 | 4 — Perfiles y rejilla | pendiente |
@@ -54,3 +54,32 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
   o el navegador de Remotion.
 - Icono de marca: admite un carácter (☞) o una ruta a imagen en `public/`. El original usa una
   manecilla dibujada y rellena; si se quiere igual, añadir un SVG y poner su ruta en `brand.icon`.
+
+## Fase 1 — Escenas de texto y superposiciones
+
+Storyboard de prueba: `storyboards/test-phase1.json` (11 escenas, 44 s).
+Comparativas: `npm run atlas:stills -- storyboards/test-phase1.json` y
+`npm run atlas:compare -- <salida.jpg> <render.png>=<referencia>`.
+
+**Criterios de aceptación**
+- ✅ Réplicas reconocibles de `0-52_agenda`, `1-00_chapter-card`, `4-05_cta-mid`,
+  `5-07_statement-card-row`, `7-05_checklist`, `8-16_recap`, `8-28_cta-end` (composición,
+  jerarquía tipográfica y color). Tres rondas de bucle visual: centro de la viñeta movido bajo el
+  contenido (desvaía el texto), viñeta bajo las tarjetas, checklist más compacto, recap más grueso.
+- ✅ Los revelados entran en orden (numerales de la agenda, tarjetas, casillas, líneas de la
+  info-card, pasos del contador).
+- ✅ Superposiciones `info-card`, `stamp`, `counter` (cada número del texto cuenta y el último
+  fotograma es el texto exacto del storyboard), `legend` y nota de fuente (`sourceNote`).
+
+**Diferencias conocidas con el original**
+- La serif es Fraunces; la del original es más condensada y de más contraste. Se nota en
+  titulares largos (ocupan ~8 % más de ancho).
+- El fondo nocturno del CTA final lleva terreno 3D en el original; aquí el CTA admite
+  `backdrop: "previous"` y lo tendrá cuando exista `atlas-terrain-3d` (fase 5).
+- Icono de la marca y del botón: glifo ☞ en vez de la manecilla dibujada (ver fase 0).
+
+**Esquema añadido**: `atlas-chapter-card {of}`, `atlas-agenda {numerals[], tagline, notes[]}`,
+`atlas-title-overlay {dim}`, `atlas-statement`, `atlas-card-row {cards[]}`,
+`atlas-checklist {items[]}`, `atlas-recap {items[] uno por capítulo}`,
+`atlas-cta {layout: card|stack, button{label, doneLabel, clickAt}}`. Todas aceptan `titleAt`
+y `backdrop: "previous"` (la escena anterior sigue animándose detrás, atenuada).

@@ -7,7 +7,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import sharp from 'sharp';
+import sharp, { type OverlayOptions } from 'sharp';
 import { ROOT, run } from './load';
 
 const W = 960;
@@ -17,7 +17,7 @@ const LABEL = 30;
 run(async () => {
   const [out, ...pairs] = process.argv.slice(2);
   if (!out || pairs.length === 0) throw new Error('Uso: atlas:compare <salida.jpg> <render>=<referencia> ...');
-  const tiles: sharp.OverlayOptions[] = [];
+  const tiles: OverlayOptions[] = [];
   for (const [i, pair] of pairs.entries()) {
     const [render, refArg] = pair.split('=');
     const ref = existsSync(refArg) ? refArg : join(ROOT, 'referencias', 'atlas', 'frames', `${refArg}.jpg`);
