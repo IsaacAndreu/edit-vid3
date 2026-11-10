@@ -7,7 +7,7 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 |---|---|
 | 0 — Cimientos | ✅ completada |
 | 1 — Texto y superposiciones | ✅ completada |
-| 2 — Gráficos sin geografía | pendiente |
+| 2 — Gráficos sin geografía | ✅ completada |
 | 3 — Datos y mapa de relieve (puerta) | pendiente |
 | 4 — Perfiles y rejilla | pendiente |
 | 5 — Globo y terreno 3D | pendiente |
@@ -83,3 +83,25 @@ Comparativas: `npm run atlas:stills -- storyboards/test-phase1.json` y
 `atlas-checklist {items[]}`, `atlas-recap {items[] uno por capítulo}`,
 `atlas-cta {layout: card|stack, button{label, doneLabel, clickAt}}`. Todas aceptan `titleAt`
 y `backdrop: "previous"` (la escena anterior sigue animándose detrás, atenuada).
+
+## Fase 2 — Gráficos sin geografía
+
+Storyboard de prueba: `storyboards/test-phase2.json` (6 escenas, 36 s).
+
+**Criterios de aceptación**
+- ✅ Réplicas de `2-25_dial-countdown`, `7-58_dial-saved`, `1-11_bar-compare`,
+  `6-28_bar-compare-threshold`, `5-39_dot-density`, `5-47_runway-compare`. Dos rondas de bucle
+  visual (posiciones verticales del gráfico de umbral, la densidad y las pistas; dispersión de puntos).
+- ✅ Las cifras cuentan y terminan exactamente en el valor del storyboard: la esfera muestra
+  `to` en el último fotograma; barras y porcentajes usan el texto `display` literal al acabar.
+
+**Esquema añadido**
+- `atlas-dial {dial{max, from, to, at, seconds, fill: remaining|elapsed, accent, hand}, readout{text con {value}, style: mono|serif}}`
+- `atlas-bar-compare {axis{max, step, format "{v} KM", style: grid|ticks, base}, labels: below|above, bars[{label, value, display, at, style: earth|hatched, valueAccent, inside}], ghost, threshold{band}, side{kicker, items}}`
+- `atlas-dot-density {grid, boxes[{label, percent, display, at, accent}]}` — los puntos que
+  desaparecen son siempre los mismos (semilla fija).
+- `atlas-runway-compare {notes[], runways[{label, liftoff (0–1), at, seconds, liftoffLabel}], footer}`
+- `sourceNote` pasa a ir centrada al pie, como en el original.
+- Icono genérico de avión cenital en `templates/atlas/icons.tsx` (se reutilizará en mapas).
+
+**Diferencias conocidas**: el avión de la pista no deja la estela de humo del original.

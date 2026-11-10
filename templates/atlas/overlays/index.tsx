@@ -267,8 +267,17 @@ export const SourceNote: FC = () => {
   const time = useAtlasTime();
   if (!scene.sourceNote) return null;
   return (
-    <div style={{ position: 'absolute', right: 88, bottom: 40, opacity: 0.85 * progress(time, start + 0.4, 0.6) }}>
-      <Mono size={16} color={tokens.inkSoft} tracking="0.16em">
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 66,
+        textAlign: 'center',
+        opacity: 0.85 * progress(time, start + 0.4, 0.6),
+      }}
+    >
+      <Mono size={19} color={tokens.inkSoft} tracking="0.16em" style={{ fontWeight: 400 }}>
         {scene.sourceNote}
       </Mono>
     </div>

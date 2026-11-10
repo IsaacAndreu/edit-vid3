@@ -194,6 +194,116 @@ export const ctaSceneSchema = z
   })
   .strict();
 
+/* ── Fase 2: gráficos sin geografía ─────────────────────────────────────── */
+
+/** Línea mono que entra en un momento (subtítulos, pies). */
+const timedNoteSchema = z.object({ text: z.string(), at: atSchema, accent: accentSchema.optional() }).strict();
+
+export const dialSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-dial'),
+    dial: z
+      .object({
+        /** Valor de la vuelta completa (60 = un minuto). */
+        max: z.number().positive(),
+        from: z.number().min(0),
+        to: z.number().min(0),
+        at: atSchema,
+        seconds: z.number().positive(),
+        /** 'remaining' = el sector es lo que queda y se vacía; 'elapsed' = lo recorrido y se llena. */
+        fill: z.enum(['remaining', 'elapsed']),
+        accent: accentSchema,
+        hand: z.boolean().optional(),
+      })
+      .strict(),
+    /** Texto bajo la esfera; `{value}` se sustituye por la cifra que cuenta. */
+    readout: z.object({ text: richSchema, style: z.enum(['mono', 'serif']), at: atSchema.optional() }).strict(),
+  })
+  .strict();
+
+const barSchema = z
+  .object({
+    label: z.string(),
+    value: z.number(),
+    /** Cifra en pantalla ("~4.1 km"); sus números cuentan mientras la barra crece. */
+    display: z.string(),
+    at: atSchema,
+    style: z.enum(['earth', 'hatched']),
+    valueAccent: accentSchema.optional(),
+    /** Texto mono dentro de la barra ("MOSTLY ICE"). */
+    inside: z.string().optional(),
+  })
+  .strict();
+
+export const barCompareSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-bar-compare'),
+    axis: z
+      .object({
+        max: z.number().positive(),
+        step: z.number().positive(),
+        /** Etiquetas del eje: "{v} KM". */
+        format: z.string(),
+        style: z.enum(['grid', 'ticks']),
+        base: z.string().optional(),
+      })
+      .strict(),
+    /** 'below' = nombre en cursiva bajo el eje y cifra grande encima; 'above' = nombre y cifra mono encima. */
+    labels: z.enum(['below', 'above']),
+    bars: z.array(barSchema).min(1).max(4),
+    ghost: z.object({ bar: z.number().int().min(0), value: z.number(), label: z.string(), at: atSchema }).strict().optional(),
+    threshold: z
+      .object({ value: z.number(), label: z.string(), at: atSchema, accent: accentSchema, band: z.boolean().optional() })
+      .strict()
+      .optional(),
+    side: z.object({ kicker: z.string(), items: z.array(z.string()).min(1), at: atSchema }).strict().optional(),
+  })
+  .strict();
+
+export const dotDensitySceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-dot-density'),
+    /** Puntos por lado de cada caja (9 → 81 puntos). */
+    grid: z.number().int().min(4).max(16),
+    boxes: z
+      .array(
+        z
+          .object({ label: z.string(), percent: z.number().min(0).max(100), display: z.string(), at: atSchema, accent: accentSchema.optional() })
+          .strict(),
+      )
+      .min(1)
+      .max(3),
+  })
+  .strict();
+
+export const runwayCompareSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-runway-compare'),
+    notes: z.array(timedNoteSchema).optional(),
+    runways: z
+      .array(
+        z
+          .object({
+            label: z.string(),
+            /** Punto de despegue como fracción de la pista (0–1). */
+            liftoff: z.number().min(0.05).max(1),
+            at: atSchema,
+            /** Segundos hasta el despegue. */
+            seconds: z.number().positive(),
+            liftoffLabel: z.string().optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(3),
+    footer: timedNoteSchema.optional(),
+  })
+  .strict();
+
 export const reliefMapSceneSchema = z
   .object({
     ...sceneBaseShape,
@@ -292,6 +402,10 @@ export const sceneSchema = z.discriminatedUnion('type', [
   checklistSceneSchema,
   recapSceneSchema,
   ctaSceneSchema,
+  dialSceneSchema,
+  barCompareSceneSchema,
+  dotDensitySceneSchema,
+  runwayCompareSceneSchema,
   reliefMapSceneSchema,
 ]);
 export type AtlasScene = z.infer<typeof sceneSchema>;
@@ -339,6 +453,9 @@ export const storyboardSchema = z
       }
       if (scene.type === 'atlas-recap' && scene.items.length !== n) {
         ctx.addIssue({ code: 'custom', path: ['scenes', i, 'items'], message: `hacen falta ${n} tarjetas, una por capítulo` });
+      }
+      if (scene.type === 'atlas-bar-compare' && scene.ghost && scene.ghost.bar >= scene.bars.length) {
+        ctx.addIssue({ code: 'custom', path: ['scenes', i, 'ghost', 'bar'], message: `la barra ${scene.ghost.bar} no existe` });
       }
       if (scene.chapter !== undefined && scene.chapter >= sb.meta.chapters.length) {
         ctx.addIssue({

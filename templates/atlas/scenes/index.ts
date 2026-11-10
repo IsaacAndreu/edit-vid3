@@ -15,6 +15,7 @@ import {
   StatementScene,
   TitleOverlayScene,
 } from './text';
+import { BarCompareScene, DialScene, DotDensityScene, RunwayCompareScene } from './charts';
 
 export const atlasScenes: Partial<Record<SceneType, FC>> = {
   'atlas-blank': BlankScene,
@@ -26,4 +27,8 @@ export const atlasScenes: Partial<Record<SceneType, FC>> = {
   'atlas-checklist': ChecklistScene,
   'atlas-recap': RecapScene,
   'atlas-cta': CtaScene,
+  'atlas-dial': DialScene,
+  'atlas-bar-compare': BarCompareScene,
+  'atlas-dot-density': DotDensityScene,
+  'atlas-runway-compare': RunwayCompareScene,
 };

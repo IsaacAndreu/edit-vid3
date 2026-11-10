@@ -14,24 +14,24 @@ import { Caps, Mono, PaperCard, RichTitle } from '../ui';
 
 type SceneOf<T extends AtlasScene['type']> = Extract<AtlasScene, { type: T }>;
 
-const useSceneOf = <T extends AtlasScene['type']>(type: T): SceneOf<T> => {
+export const useSceneOf = <T extends AtlasScene['type']>(type: T): SceneOf<T> => {
   const { scene } = useScene();
   if (scene.type !== type) throw new Error(`componente ${type} montado con escena ${scene.type}`);
   return scene as SceneOf<T>;
 };
 
 /** Momento de un `At` opcional; si falta, `fallback` segundos tras el inicio de la escena. */
-const useAtOr = () => {
+export const useAtOr = () => {
   const { start } = useScene();
   return (at: At | undefined, fallback = 0.25) => (at ? sec(at) : start + fallback);
 };
 
-const Center: FC<{ top: number; children: ReactNode; style?: React.CSSProperties }> = ({ top, children, style }) => (
+export const Center: FC<{ top: number; children: ReactNode; style?: React.CSSProperties }> = ({ top, children, style }) => (
   <div style={{ position: 'absolute', left: 0, right: 0, top, display: 'flex', justifyContent: 'center', ...style }}>{children}</div>
 );
 
 /** Antetítulo mono + titular serif con resaltado, centrados arriba. */
-const Header: FC<{ top?: number; size?: number; defaultAccent?: Accent }> = ({ top = 168, size = 66, defaultAccent = 'danger' }) => {
+export const Header: FC<{ top?: number; size?: number; defaultAccent?: Accent }> = ({ top = 168, size = 66, defaultAccent = 'danger' }) => {
   const { scene } = useScene();
   const { name, tokens } = useTheme();
   const time = useAtlasTime();
