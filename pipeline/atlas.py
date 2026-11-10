@@ -25,12 +25,14 @@ from typing import Any
 from .context import RunContext
 from .sourcing.common import key
 
-VERSION = 20
+VERSION = 21
 ICONS = ("plane", "twinjet", "ship", "train", "car", "truck", "thermometer", "fuel", "hospital", "building", "person",
          "people", "clock", "mountain", "snow", "factory", "money", "phone", "satellite", "lighthouse", "bridge", "warning")
 CARDS = ("date", "quote", "list", "checks", "note", "clocks", "choice")
 CHARTS = ("bars", "profile", "thermo")
-VIEWS = ("globe", "chart", "icon", "sat", "flat", "size")
+VIEWS = ("globe", "chart", "icon", "sat", "flat", "size", "scene")
+# view "scene": una escena de remotion/atlas/schema.ts (las mismas piezas que el Atlas escrito a mano)
+SCENES = ("dial", "compare", "density", "runway", "agenda", "recap", "cards")
 MOVERS = ("plane", "ship", "dot")
 
 SYSTEM = """
@@ -102,6 +104,23 @@ guion devuelve UNA escena que la enseña. Campos (los que no uses: null o []):
 - "icon" (solo con view "icon"): {{"name": {icons}, "label": "DOS MOTORES", "at": "palabra"}}
 - "lens": {{"lat", "lon", "zoom": 5-9, "label": "ESTRECHO DE GIBRALTAR", "at": "palabra"}} una lupa: un círculo en una
   esquina que amplía un sitio pequeño sin dejar el globo (un estrecho, una isla, dos ciudades juntas), o null
+- view "scene" (una pantalla de gráfico o de estructura en lugar del globo; como mucho una cada 6 frases): "scene":
+  {{"type": ..., "kicker": "ANTETÍTULO CORTO", "title": "Titular con *palabra clave*", "source": "FUENTE · AÑO" o "", ...}}:
+  · "dial": un reloj que se vacía o se llena («lúcido un minuto o menos», «20 minutos ahorrados»): "max": 60, "from": 0,
+    "to": 60, "fill": "remaining" (cuenta atrás) | "elapsed" (ahorro), "readout": "{{value}} SEG" o "~{{value}} *minutos
+    ahorrados*", "at": "palabra"
+  · "compare": 2-4 barras verticales que crecen: "unit": "KM", "bars": [{{"label": "Antártida", "value": 2.5, "display":
+    "~2,5 km", "at": "palabra"}}], "ghost": {{"bar": 1, "value": 5, "label": "2 × ANTÁRTIDA", "at": "palabra"}} o null,
+    "threshold": {{"value": 2438, "label": "2.438 M Y MÁS", "at": "palabra"}} o null
+  · "density": 2-3 cajas de puntos que se vacían («el aire, un tercio más fino»): "boxes": [{{"label": "NIVEL DEL MAR",
+    "percent": 100, "display": "100 %", "at": "palabra"}}]
+  · "runway": pistas de despegue comparadas: "runways": [{{"label": "NIVEL DEL MAR", "liftoff": 0.46 (dónde despega, 0-1),
+    "at": "palabra"}}], "notes": ["MOTORES: MENOS POTENCIA"], "footer": "MISMA VELOCIDAD EN EL INDICADOR" o ""
+  · "agenda": la frase anuncia los capítulos («cinco razones»): "tagline": "Cruzar es lo fácil." , "notes": ["CADA UNA: ¿Y SI
+    ALGO SALE MAL?"], "at": "palabra"
+  · "recap": el resumen final: "items": ["El suelo es alto", ...] una frase de ~4 palabras por capítulo, en orden
+  · "cards": 2-5 tarjetas numeradas: "cards": [{{"heading": "1", "text": "Una ruta de escape", "at": "palabra"}}]
+  Cifras SOLO del guion, en dígitos.
 Si el guion RECORRE un camino (una carretera de país en país, un viaje, una expedición), dibuja cada tramo como una
 "route" que empieza donde acabó la anterior (mover "dot"): el recorrido se queda dibujado mientras avanza.
 Reglas: CADA frase añade al menos UNA cosa nueva en pantalla (un punto, una ruta, un círculo, un tag con su cifra, una
@@ -324,6 +343,9 @@ def clean(scene: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, A
         scene = {**scene, "counter": {"value": bar["value"], "unit": bar["unit"] or out["chart"]["unit"],
                                       "label": bar["label"] or out["chart"]["title"], "at": (scene.get("chart") or {}).get("at")}}
         out["chart"], out["view"] = None, "globe"
+    out["scene"] = _scene(scene.get("scene"), out["dark"]) if out["view"] == "scene" else None
+    if out["view"] == "scene" and not out["scene"]:
+        out["view"] = "globe"
     icon = scene.get("icon") if isinstance(scene.get("icon"), dict) else None
     out["icon"] = {"name": icon["name"], "label": _text(icon.get("label"), 4, True, 28), "at": _at(icon.get("at"))} \
         if out["view"] == "icon" and icon and icon.get("name") in ICONS else None
@@ -893,7 +915,7 @@ def ensure_satellites(scenes: dict[str, dict[str, Any]], wanted: int = 2) -> Non
         g["camera"] = {"lat": place["lat"], "lon": place["lon"], "zoom": 3.2}
 
 
-NEW_FIELDS = ("card", "stamp", "headline", "counter", "chart", "icon", "sat", "flat", "size", "band")
+NEW_FIELDS = ("card", "stamp", "headline", "counter", "chart", "icon", "sat", "flat", "size", "band", "scene")
 
 
 def stale(scene: dict[str, Any], previous: dict[str, Any] | None, asked: dict[str, Any] | None = None) -> bool:
@@ -1244,7 +1266,7 @@ def scenes(ctx: RunContext, shots: list[Any]) -> dict[str, dict[str, Any]]:
             else:
                 last_stamp = n
         around = " ".join(t for _, t in lines[max(0, n - 3):n])
-        scene = auto_places(check_chart(clean(raw, previous), around), text, seen)
+        scene = auto_places(check_scene(check_chart(clean(raw, previous), around), around), text, seen)
         cleaned.append(scene)
         previous = scene
 
@@ -1380,13 +1402,180 @@ SAT_CREDIT = {"es": "Imagen: Sentinel-2 cloudless de EOX (CC BY 4.0), datos Cope
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 
 
+def _rich(value: Any, words: int = 12, chars: int = 90) -> str:
+    """A title with its key phrase between *asterisks* (Atlas: the phrase in italics and colour)."""
+    return _text(value, words, False, chars)
+
+
+def _accent(value: Any, default: str) -> str:
+    return value if value in ("danger", "data", "good", "amber") else default
+
+
+def _scene(raw: Any, dark: bool) -> dict[str, Any] | None:
+    """The model's simple «scene» → a scene of remotion/atlas/schema.ts with every "at" still a WORD of its line
+    (_segment_graphic turns it into seconds). None when there is nothing valid to show (the globe stays)."""
+
+    if not isinstance(raw, dict) or raw.get("type") not in SCENES:
+        return None
+    kind = raw["type"]
+    out: dict[str, Any] = {"id": kind, "start": {"t": 0}, "theme": "night" if dark else "paper", "enter": "fade"}
+    if str(raw.get("kicker") or "").strip():
+        out["kicker"] = _text(raw.get("kicker"), 10, True, 70)
+    if str(raw.get("title") or "").strip():
+        out["title"] = _rich(raw.get("title"))
+    if str(raw.get("source") or "").strip():
+        out["sourceNote"] = _text(raw.get("source"), 10, True, 70)
+    at = _at(raw.get("at"))
+    if kind == "dial":
+        top, low, high = _num(raw.get("max")), _num(raw.get("from")), _num(raw.get("to"))
+        if not top or top <= 0 or low is None or high is None or not (0 <= low <= top and 0 <= high <= top) or low == high:
+            return None
+        readout = _text(raw.get("readout"), 6, False, 40) or "{value}"
+        if "{value}" not in readout:
+            readout = "{value} " + readout
+        fill = "elapsed" if raw.get("fill") == "elapsed" else "remaining"
+        out.update({"type": "atlas-dial", "dial": {"max": top, "from": low, "to": high, "at": at, "seconds": 4.0, "fill": fill,
+                                                   "accent": "good" if fill == "elapsed" else "danger", "hand": fill != "elapsed"},
+                    "readout": {"text": readout, "style": "serif" if "*" in readout else "mono"}})
+        return out
+    if kind == "compare":
+        bars = []
+        for b in (raw.get("bars") or [])[:4]:
+            v = _num(b.get("value")) if isinstance(b, dict) else None
+            if v is None or v <= 0 or not str(b.get("label") or "").strip():
+                continue
+            unit = _text(raw.get("unit"), 1, False, 8).lower()
+            shown = _text(b.get("display"), 3, False, 16) or f"{v:g} {unit}".strip()
+            bars.append({"label": _text(b.get("label"), 4, False, 28), "value": v, "display": shown, "at": _at(b.get("at")),
+                         "style": "earth", "valueAccent": "data"})
+        if len(bars) < 2:
+            return None
+        bars[-1]["valueAccent"] = "danger"
+        top = max(b["value"] for b in bars)
+        ghost = raw.get("ghost") if isinstance(raw.get("ghost"), dict) else None
+        g_value = _num(ghost.get("value")) if ghost else None
+        threshold = raw.get("threshold") if isinstance(raw.get("threshold"), dict) else None
+        t_value = _num(threshold.get("value")) if threshold else None
+        top = max(top, g_value or 0, t_value or 0)
+        step = 10 ** math.floor(math.log10(top))
+        step = next((m * step for m in (0.5, 1, 2, 2.5, 5, 10) if top / (m * step) <= 5), step * 10)
+        unit = _text(raw.get("unit"), 1, True, 8)
+        out.update({"type": "atlas-bar-compare", "labels": "below", "bars": bars,
+                    "axis": {"max": math.ceil(top / step) * step, "step": step, "format": "{v} " + unit if unit else "{v}", "style": "grid"}})
+        if ghost and g_value and isinstance(ghost.get("bar"), int) and 0 <= ghost["bar"] < len(bars) and g_value > bars[ghost["bar"]]["value"]:
+            out["ghost"] = {"bar": ghost["bar"], "value": g_value, "label": _text(ghost.get("label"), 4, True, 24), "at": _at(ghost.get("at"))}
+        if threshold and t_value:
+            out["threshold"] = {"value": t_value, "label": _text(threshold.get("label"), 5, True, 30), "at": _at(threshold.get("at")),
+                                "accent": "danger", "band": True}
+        return out
+    if kind == "density":
+        boxes = []
+        for b in (raw.get("boxes") or [])[:3]:
+            pct = _num(b.get("percent")) if isinstance(b, dict) else None
+            if pct is None or not 0 < pct <= 100:
+                continue
+            boxes.append({"label": _text(b.get("label"), 5, True, 30), "percent": pct,
+                          "display": _text(b.get("display"), 2, False, 8) or f"{pct:g} %", "at": _at(b.get("at"))})
+        if len(boxes) < 2:
+            return None
+        for i, b in enumerate(boxes[1:], 1):
+            b["accent"] = "danger" if i == len(boxes) - 1 else "data"
+        out.update({"type": "atlas-dot-density", "grid": 9, "boxes": boxes})
+        return out
+    if kind == "runway":
+        runways = []
+        for r in (raw.get("runways") or [])[:3]:
+            lift = _num(r.get("liftoff")) if isinstance(r, dict) else None
+            if lift is None or not str(r.get("label") or "").strip():
+                continue
+            runways.append({"label": _text(r.get("label"), 5, True, 30), "liftoff": max(0.1, min(0.95, lift)), "at": _at(r.get("at")),
+                            "seconds": round(2 + 2 * max(0.1, min(0.95, lift)), 2), "liftoffLabel": _text(raw.get("liftoff_label"), 2, True, 16) or "LIFT-OFF"})
+        if len(runways) < 2:
+            return None
+        out.update({"type": "atlas-runway-compare", "runways": runways,
+                    "notes": [{"text": _text(n, 8, True, 50), "at": at} for n in (raw.get("notes") or [])[:2] if str(n or "").strip()]})
+        if str(raw.get("footer") or "").strip():
+            out["footer"] = {"text": _text(raw.get("footer"), 14, True, 90), "at": at}
+        return out
+    if kind == "agenda":
+        out.update({"type": "atlas-agenda", "numerals": "chapters",
+                    "notes": [{"text": _text(n, 10, True, 60), "at": at, "accent": "danger" if i == 0 else "data"}
+                              for i, n in enumerate((raw.get("notes") or [])[:2]) if str(n or "").strip()]})
+        if str(raw.get("tagline") or "").strip():
+            out["tagline"] = {"text": _rich(raw.get("tagline"), 10, 70), "at": at}
+        return out
+    if kind == "recap":
+        items = [_text(x, 6, False, 40) for x in (raw.get("items") or [])[:10] if str(x or "").strip()]
+        if len(items) < 2:
+            return None
+        out.update({"type": "atlas-recap", "items": [{"text": x, "at": ""} for x in items]})
+        return out
+    cards = [{"heading": _text(c.get("heading"), 1, False, 4) or str(i + 1), "text": _rich(c.get("text"), 6, 40), "at": _at(c.get("at"))}
+             for i, c in enumerate((raw.get("cards") or [])[:5]) if isinstance(c, dict) and str(c.get("text") or "").strip()]
+    if len(cards) < 2:
+        return None
+    out.update({"type": "atlas-card-row", "cards": cards})
+    return out
+
+
+def check_scene(scene: dict[str, Any], text: str) -> dict[str, Any]:
+    """A scene's figures only from the script (like check_chart): when the lines around write figures in digits, a
+    dial, a bar chart or a density whose numbers are not among them goes back to the globe."""
+
+    s = scene.get("scene")
+    if not s or scene.get("view") != "scene":
+        return scene
+    said = _said_numbers(text)
+    if not said:
+        return scene
+    if s["type"] == "atlas-dial":
+        wanted = [s["dial"]["to"]] if s["dial"]["fill"] == "elapsed" else []
+    elif s["type"] == "atlas-bar-compare":
+        wanted = [b["value"] for b in s["bars"]]
+    elif s["type"] == "atlas-dot-density":
+        wanted = [b["percent"] for b in s["boxes"] if b["percent"] != 100]
+    else:
+        return scene
+    if all(round(float(v), 3) in said for v in wanted):
+        return scene
+    return {**scene, "scene": None, "view": "globe"}
+
+
+def scene_times(s: dict[str, Any], words: list[tuple[int, str]], end: int, fps: int, chapters: int) -> dict[str, Any]:
+    """Every "at" of a scene (a word of its line) → {"t": seconds from the start of the group}; things without a word
+    come in one after another from 15 % of the line. The agenda gets one moment per chapter, the recap one card each."""
+
+    s = json.loads(json.dumps(s))
+    counter = [0]
+
+    def when(word: Any) -> dict[str, float]:
+        fallback = round(end * 0.15) + counter[0] * round(0.35 * fps)
+        counter[0] += 1
+        return {"t": round(_frame_of(word if isinstance(word, str) else "", words, fallback) / fps, 3)}
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {k: (when(v) if k == "at" and not isinstance(v, dict) else walk(v)) for k, v in node.items()}
+        if isinstance(node, list):
+            return [walk(v) for v in node]
+        return node
+
+    s = walk(s)
+    if s["type"] == "atlas-agenda":
+        s["numerals"] = [{"t": round((round(end * 0.15) + i * round(0.3 * fps)) / fps, 3)} for i in range(chapters)]
+    if s["type"] == "atlas-recap":
+        items = s["items"][:chapters]
+        s["items"] = [{**x, "at": {"t": round((round(end * 0.1) + i * round(0.4 * fps)) / fps, 3)}} for i, x in enumerate(items)]
+    return s
+
+
 MIN_VIEW = 4.5        # seconds: a chart, a drawing, the satellite… never on screen for less (it takes the next line too)
 PUSH = 0.3            # zoom the camera gains over a globe scene (wide → closer → the next moment pulls out)
 PUSH_PER_S = 0.02      # zoom more a second past 3 s…
 PUSH_MAX = 0.8         # …up to this (×1.32 the size): enough to feel the camera move, not enough to lose the edges
 DRIFT_PER_S = 0.25    # degrees of longitude a second the globe turns on its own (Atlas.tsx cameraAt, from the start)
 SINGLE = ("card", "stamp", "headline", "counter", "zone", "meridians", "night", "lens", "band")
-VIEWS_ASIDE = ("chart", "icon")      # the globe moves aside for these instead of a cut
+VIEWS_ASIDE = ("chart", "icon", "scene")      # the globe moves aside for these instead of a cut
 
 
 def _segments(lines: list[dict[str, Any]], fps: int) -> list[dict[str, Any]]:
@@ -1437,6 +1626,8 @@ def _segment_graphic(segment: dict[str, Any], spoken: list[tuple[int, str]], fps
         g = json.loads(json.dumps(first))
         end = lines[0]["to"] - a
         words = [(f - a, t) for f, t in spoken if lines[0]["from"] <= f < lines[0]["to"]]
+        if g.get("scene"):
+            g["scene"] = scene_times(g["scene"], words, end, fps, len(ROMAN))
         stagger = 0
         for name in (*SINGLE, "icon", "sat", "flat", "size"):
             if g.get(name):

@@ -104,7 +104,8 @@ export const AgendaScene: FC = () => {
       ) : null}
       <Center top={410} style={{ gap: 110 }}>
         {storyboard.meta.chapters.map((c, i) => {
-          const r = reveal(time, sec(scene.numerals[i]), 0.5);
+          const at = scene.numerals[i] ?? scene.numerals[scene.numerals.length - 1];
+          const r = reveal(time, sec(at), 0.5);
           return (
             <span key={i} style={{ ...r.style, fontFamily: fonts.serif, fontWeight: 600, fontSize: 124, lineHeight: 1, color: tokens.ink }}>
               {c.numeral}
@@ -293,7 +294,7 @@ export const RecapScene: FC = () => {
   const time = useAtlasTime();
   const atOr = useAtOr();
   const title = reveal(time, atOr(scene.titleAt, 0.1));
-  const n = scene.items.length;
+  const n = Math.min(scene.items.length, storyboard.meta.chapters.length || scene.items.length);
   const gap = 24;
   const w = Math.min(340, (1800 - gap * (n - 1)) / n);
   const left = (1920 - (n * w + (n - 1) * gap)) / 2;
@@ -306,6 +307,7 @@ export const RecapScene: FC = () => {
       ) : null}
       {scene.items.map((item, i) => {
         const chapter = storyboard.meta.chapters[i];
+        if (!chapter) return null;
         const r = reveal(time, sec(item.at), 0.5);
         return (
           <div

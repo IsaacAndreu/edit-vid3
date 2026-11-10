@@ -16,6 +16,7 @@ import { theme } from '../../theme';
 import { Vignette } from './Paper';
 // Fraunces + IBM Plex Mono desde archivos locales (aspecto del vídeo de referencia, prompts/atlas-master-prompt.md)
 import '../../atlas/fonts';
+import { EmbeddedAtlasScene } from '../../atlas/embed';
 
 /**
  * Atlas deep dive (pipeline/atlas.py): a paper page with an orthographic globe that turns from one line's camera to
@@ -1167,7 +1168,8 @@ export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({
   const frame = useCurrentFrame();
   // no hard cut between the globe and a chart or a drawing: the globe moves aside (and comes back after)
   const k = ease(clamp(frame / 16));
-  const aside = (g.view === 'chart' || g.view === 'icon') && !!g.prev;
+  const aside = (g.view === 'chart' || g.view === 'icon' || g.view === 'scene') && !!g.prev;
+  const { fps } = useVideoConfig();
   const back = g.view === 'globe' && g.enter === 'aside';
   const leaving: AtlasGraphic = { ...g, view: 'globe', camera: g.prev ?? g.camera, prev: g.prev, push: 0, points: [], routes: [],
                                   rings: [], tags: [], zone: null, night: null, meridians: null, lens: null, sat: null };
@@ -1182,7 +1184,9 @@ export const Atlas: FC<{ graphic: AtlasGraphic; durationInFrames: number }> = ({
                           : back ? { opacity: k, transform: `translateX(${-(1 - k) * 0.42 * W}px) scale(${0.65 + 0.35 * k})` } : undefined}>
         {g.view === 'title' ? <TitleCard g={g} {...memo} /> : g.view === 'chart' ? <Chart g={g} {...memo} />
           : g.view === 'icon' ? <IconView g={g} {...memo} /> : g.view === 'flat' ? <FlatMap g={g} {...memo} />
-          : g.view === 'size' ? <TrueSize g={g} {...memo} /> : <Globe g={g} {...memo} />}
+          : g.view === 'size' ? <TrueSize g={g} {...memo} />
+          : g.view === 'scene' ? <EmbeddedAtlasScene scene={g.scene} durationInFrames={durationInFrames} fps={fps} chapters={g.chapters} brand={g.brand} />
+          : <Globe g={g} {...memo} />}
       </AbsoluteFill>
       {g.view === 'sat' ? <SatPhoto g={g} durationInFrames={durationInFrames} /> : null}
       {g.view === 'globe' ? <><Card g={g} {...memo} /><Stamp g={g} accent={accent} /><Headline g={g} {...memo} /></> : null}
