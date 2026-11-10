@@ -389,7 +389,20 @@ _COMMANDS = {
 }
 
 
+def _tolerant_console() -> None:
+    """Never let a console that cannot encode "✓" or "→" (legacy Windows code pages) abort a run."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _tolerant_console()
     argv = list(sys.argv[1:] if argv is None else argv)
     command = "run"
     if argv and argv[0] in SUBCOMMANDS:
