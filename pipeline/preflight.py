@@ -8,6 +8,7 @@ something that would break the run later is missing.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -82,6 +83,26 @@ def _ytdlp_freshness() -> Check | None:
             'python -m pip install -U "yt-dlp[default]"',
         )
     return Check("yt-dlp reciente", OK, f"versión {version}")
+
+
+def _node_dependencies_check(project_root: Path) -> Check:
+    """Every package the render imports must be installed, not only the Remotion CLI."""
+
+    required = ["@remotion/cli"]
+    try:
+        manifest = json.loads((project_root / "package.json").read_text(encoding="utf-8"))
+        required += sorted(manifest.get("dependencies") or {})
+    except (OSError, ValueError):
+        pass
+    missing = [name for name in required if not (project_root / "node_modules" / name).is_dir()]
+    if missing:
+        return Check(
+            "dependencias de Remotion",
+            ERROR,
+            "faltan en node_modules: " + ", ".join(missing),
+            "npm install",
+        )
+    return Check("dependencias de Remotion", OK, f"{len(required)} paquetes instalados")
 
 
 def _directory_size(path: Path) -> int:
@@ -212,11 +233,7 @@ def run_checks(
     if need_render:
         checks.append(_tool_check("node", "render de Remotion", required=True, fix="Instala Node.js 18 o superior."))
         checks.append(_tool_check("npx", "render de Remotion", required=True, fix="Instala Node.js (incluye npx)."))
-        cli = project_root / "node_modules" / "@remotion" / "cli"
-        if cli.is_dir():
-            checks.append(Check("dependencias de Remotion", OK, "node_modules presente"))
-        else:
-            checks.append(Check("dependencias de Remotion", ERROR, "falta node_modules/@remotion/cli", "npm install"))
+        checks.append(_node_dependencies_check(project_root))
 
     if script_path is not None:
         if script_path.is_file():

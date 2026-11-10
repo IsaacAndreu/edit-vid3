@@ -150,6 +150,23 @@ class PreflightTests(unittest.TestCase):
         self.assertNotIn("deno", checks)
         self.assertNotIn("node", checks)
 
+    def test_new_node_dependency_not_installed_yet_is_caught(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "package.json").write_text(
+                json.dumps({"dependencies": {"remotion": "4", "@fontsource/inter": "5"}}), encoding="utf-8"
+            )
+            for name in ("@remotion/cli", "remotion"):
+                (root / "node_modules" / name).mkdir(parents=True)
+
+            stale = preflight._node_dependencies_check(root)
+            self.assertEqual(stale.status, preflight.ERROR)
+            self.assertIn("@fontsource/inter", stale.detail)
+            self.assertEqual(stale.fix, "npm install")
+
+            (root / "node_modules" / "@fontsource" / "inter").mkdir(parents=True)
+            self.assertEqual(preflight._node_dependencies_check(root).status, preflight.OK)
+
     def test_missing_python_package_names_the_install_command(self) -> None:
         check = preflight._module_check("module_that_does_not_exist_xyz", "yt-dlp", required=True)
         self.assertEqual(check.status, preflight.ERROR)
