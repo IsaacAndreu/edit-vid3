@@ -8,7 +8,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { loadStoryboard, run } from './load';
-import { sceneTimings, sec } from '../../templates/atlas/time';
+import { sceneTimings, sec } from '../../remotion/atlas/time';
 
 run(() => {
   const args = process.argv.slice(2);

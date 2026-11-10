@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { bundle } from '@remotion/bundler';
 import { renderStill, selectComposition } from '@remotion/renderer';
 import sharp from 'sharp';
-import { sceneTimings } from '../../templates/atlas/time';
+import { sceneTimings } from '../../remotion/atlas/time';
 import { browserExecutable, loadStoryboard, PUBLIC_DIR, readJson, ROOT, run } from './load';
 
 const THUMB_W = 640;
@@ -34,7 +34,7 @@ run(async () => {
   const onlyScenes = flag('--scene')?.split(',');
   const extraTimes = flag('--at')?.split(',').map(Number) ?? [];
 
-  const bundled = await bundle({ entryPoint: join(ROOT, 'src', 'index.ts'), publicDir: PUBLIC_DIR });
+  const bundled = await bundle({ entryPoint: join(ROOT, 'remotion', 'index.ts'), publicDir: PUBLIC_DIR });
   const inputProps = readJson(storyboardPath) as Record<string, unknown>;
   const exe = browserExecutable();
   const common = {

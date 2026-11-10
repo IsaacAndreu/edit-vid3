@@ -1,6 +1,6 @@
 /** Valida un storyboard (esquema + anclas + duraciones) sin renderizar. */
 import { loadStoryboard, run } from './load';
-import { sceneTimings } from '../../templates/atlas/time';
+import { sceneTimings } from '../../remotion/atlas/time';
 
 run(() => {
   const path = process.argv[2];

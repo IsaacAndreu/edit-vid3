@@ -1,8 +1,8 @@
 /** Carga y valida un storyboard desde disco, resolviendo anclas contra la transcripción. */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { parseStoryboard, type AtlasStoryboard } from '../../templates/atlas/schema';
-import { resolveStoryboardAnchors, type Transcript } from '../../templates/atlas/time';
+import { parseStoryboard, type AtlasStoryboard } from '../../remotion/atlas/schema';
+import { resolveStoryboardAnchors, type Transcript } from '../../remotion/atlas/time';
 
 export const ROOT = resolve(__dirname, '..', '..');
 export const PUBLIC_DIR = join(ROOT, 'public');

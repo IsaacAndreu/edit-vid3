@@ -31,7 +31,7 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 
 **Qué hay**
 - `CLAUDE.md`, `.claude/commands/atlas-goal.md` (comando `/atlas-goal`).
-- `templates/atlas/`: `schema.ts` (zod, §4 del plan), `theme.ts`, `fonts.ts` (Fraunces + IBM
+- `remotion/atlas/`: `schema.ts` (zod, §4 del plan), `theme.ts`, `fonts.ts` (Fraunces + IBM
   Plex Mono vía `@remotion/google-fonts`), `time.ts` (anclas y tiempos de escena),
   `context.tsx`, `ui.tsx` (Mono, RichTitle, halo), `anim/` (reveal, drawOn, countUp, stampHit,
   drift, dimAfter), `layers/` (fondo, viñeta, grano, marca, indicador), `AtlasVideo.tsx`,
@@ -102,6 +102,6 @@ Storyboard de prueba: `storyboards/test-phase2.json` (6 escenas, 36 s).
   desaparecen son siempre los mismos (semilla fija).
 - `atlas-runway-compare {notes[], runways[{label, liftoff (0–1), at, seconds, liftoffLabel}], footer}`
 - `sourceNote` pasa a ir centrada al pie, como en el original.
-- Icono genérico de avión cenital en `templates/atlas/icons.tsx` (se reutilizará en mapas).
+- Icono genérico de avión cenital en `remotion/atlas/icons.tsx` (se reutilizará en mapas).
 
 **Diferencias conocidas**: el avión de la pista no deja la estela de humo del original.
