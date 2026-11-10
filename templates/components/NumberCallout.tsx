@@ -1,6 +1,7 @@
 import type { CSSProperties, FC } from 'react';
-import { AbsoluteFill, Img, Video, interpolate, spring, useVideoConfig, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Img, interpolate, spring, useVideoConfig, useCurrentFrame } from 'remotion';
 import type { SceneProps } from '../types';
+import { MediaVideo } from '../MediaVideo';
 import { resolveMediaUrl } from '../media';
 
 const POP_IN_DURATION_IN_FRAMES = 14;
@@ -63,12 +64,20 @@ const parseCalloutText = (text: string | undefined): ParsedCallout => {
 type BackgroundProps = {
   imageUrl?: string;
   mediaProvider?: string;
+  videoDurationInSeconds?: number;
   videoUrl?: string;
 };
 
-const Background: FC<BackgroundProps> = ({ imageUrl, mediaProvider, videoUrl }) => {
+const Background: FC<BackgroundProps> = ({ imageUrl, mediaProvider, videoDurationInSeconds, videoUrl }) => {
   if (videoUrl) {
-    return <Video loop={mediaProvider !== 'youtube'} src={resolveMediaUrl(videoUrl)} muted style={mediaStyle} />;
+    return (
+      <MediaVideo
+        durationInSeconds={videoDurationInSeconds}
+        loop={mediaProvider !== 'youtube'}
+        style={mediaStyle}
+        url={videoUrl}
+      />
+    );
   }
 
   if (imageUrl) {
@@ -78,7 +87,14 @@ const Background: FC<BackgroundProps> = ({ imageUrl, mediaProvider, videoUrl }) 
   return null;
 };
 
-const NumberCallout: FC<SceneProps> = ({ accentColor, imageUrl, mediaProvider, text, videoUrl }) => {
+const NumberCallout: FC<SceneProps> = ({
+  accentColor,
+  imageUrl,
+  mediaProvider,
+  text,
+  videoDurationInSeconds,
+  videoUrl,
+}) => {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
   const lineColor = accentColor || '#f6c945';
@@ -100,7 +116,12 @@ const NumberCallout: FC<SceneProps> = ({ accentColor, imageUrl, mediaProvider, t
   return (
     <AbsoluteFill style={containerStyle}>
       <AbsoluteFill>
-        <Background imageUrl={imageUrl} mediaProvider={mediaProvider} videoUrl={videoUrl} />
+        <Background
+          imageUrl={imageUrl}
+          mediaProvider={mediaProvider}
+          videoDurationInSeconds={videoDurationInSeconds}
+          videoUrl={videoUrl}
+        />
       </AbsoluteFill>
       <div
         style={{

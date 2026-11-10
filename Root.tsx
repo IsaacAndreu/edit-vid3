@@ -1,12 +1,16 @@
 import type { CSSProperties, FC } from 'react';
-import { AbsoluteFill, Audio, Composition, Img, Sequence, Video } from 'remotion';
+import { AbsoluteFill, Audio, Composition, Img, Sequence } from 'remotion';
+import './templates/fonts';
+import manifest from './templates/manifest.json';
+import { MediaVideo } from './templates/MediaVideo';
 import { templates } from './templates/registry';
 import { resolveMediaUrl } from './templates/media';
 import type { SceneInput, VideoProps } from './templates/types';
 
-export const FPS = 30;
-export const VIDEO_WIDTH = 1920;
-export const VIDEO_HEIGHT = 1080;
+// Shared with the Python pipeline through templates/manifest.json.
+export const FPS = manifest.fps;
+export const VIDEO_WIDTH = manifest.width;
+export const VIDEO_HEIGHT = manifest.height;
 
 export const getTotalDurationInFrames = (scenes: SceneInput[]): number =>
   scenes.reduce((total, scene) => total + scene.durationInFrames, 0);
@@ -25,11 +29,12 @@ const missingTemplateStyle: CSSProperties = {
   width: '100%',
 };
 
-const MEDIA_BACKED_OVERLAY_TEMPLATES = new Set([
-  'kinetic-text-hook',
-  'lower-third',
-  'stat-overlay',
-]);
+/** Templates that only draw an overlay; Root paints the scene media behind them. */
+const MEDIA_BACKED_OVERLAY_TEMPLATES = new Set(
+  Object.entries(manifest.templates)
+    .filter(([, spec]) => spec.background)
+    .map(([name]) => name),
+);
 
 const backgroundMediaStyle: CSSProperties = {
   height: '100%',
@@ -48,7 +53,12 @@ const SceneBackground: FC<{ scene: SceneInput }> = ({ scene }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: '#09090b' }}>
       {scene.videoUrl ? (
-        <Video loop={scene.mediaProvider !== 'youtube'} muted src={resolveMediaUrl(source)} style={backgroundMediaStyle} />
+        <MediaVideo
+          durationInSeconds={scene.videoDurationInSeconds}
+          loop={scene.mediaProvider !== 'youtube'}
+          style={backgroundMediaStyle}
+          url={source}
+        />
       ) : (
         <Img src={resolveMediaUrl(source)} style={backgroundMediaStyle} />
       )}

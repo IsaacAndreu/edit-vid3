@@ -11,9 +11,12 @@ import StatOverlay from './components/StatOverlay';
 import TimelineGraphic from './components/TimelineGraphic';
 import TitleCard from './components/TitleCard';
 import WhipTransition from './components/WhipTransition';
+import manifest from './manifest.json';
 import type { SceneProps } from './types';
 
 export type SceneTemplate = ComponentType<SceneProps>;
+/** Every template described in manifest.json; the registry below must cover exactly these. */
+export type TemplateName = keyof typeof manifest.templates;
 
 const placeholderStyle: CSSProperties = {
   alignItems: 'center',
@@ -57,11 +60,11 @@ const PlaceholderTemplate: SceneTemplate = ({
   );
 
 /**
- * Add future templates here, for example:
- *
- * 'kinetic-text-hook': KineticTextHook,
+ * To add a template: create the component, add it here and describe it in
+ * manifest.json (scene types, media it needs). `npm run typecheck` fails when
+ * the two lists differ, and the Python pipeline reads the same manifest.
  */
-export const templates: Record<string, SceneTemplate> = {
+const registry: Record<TemplateName, SceneTemplate> = {
   'blueprint-data-panel': BlueprintDataPanel,
   'comparison-panel': ComparisonPanel,
   'kinetic-text-hook': KineticTextHook,
@@ -76,3 +79,5 @@ export const templates: Record<string, SceneTemplate> = {
   'title-card': TitleCard,
   'whip-transition': WhipTransition,
 };
+
+export const templates: Record<string, SceneTemplate> = registry;

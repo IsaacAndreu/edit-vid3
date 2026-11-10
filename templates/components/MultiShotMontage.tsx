@@ -1,8 +1,9 @@
 import type { CSSProperties, FC } from 'react';
-import { AbsoluteFill, Easing, Img, Sequence, Video, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Easing, Sequence, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import KenBurnsImage from './KenBurnsImage';
 import type { SceneProps } from '../types';
-import { resolveMediaUrl } from '../media';
+import { MediaVideo } from '../MediaVideo';
+import { hashSeed } from '../shared';
 
 const montageStyle: CSSProperties = {
   backgroundColor: 'transparent',
@@ -18,23 +19,14 @@ const mediaStyle: CSSProperties = {
   width: '100%',
 };
 
-const hashSeed = (seed: string): number => {
-  let hash = 0;
-
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
-  }
-
-  return hash;
-};
-
 type VideoShotProps = {
   durationInFrames: number;
   loop: boolean;
   url: string;
+  videoDurationInSeconds?: number;
 };
 
-const VideoShot: FC<VideoShotProps> = ({ durationInFrames, loop, url }) => {
+const VideoShot: FC<VideoShotProps> = ({ durationInFrames, loop, url, videoDurationInSeconds }) => {
   const frame = useCurrentFrame();
   const { height, width } = useVideoConfig();
   const progress = interpolate(
@@ -53,10 +45,10 @@ const VideoShot: FC<VideoShotProps> = ({ durationInFrames, loop, url }) => {
   const translateY = interpolate(progress, [0, 1], [height * 0.004, -height * 0.004]);
 
   return (
-    <Video
+    <MediaVideo
+      durationInSeconds={videoDurationInSeconds}
       loop={loop}
-      src={resolveMediaUrl(url)}
-      muted
+      url={url}
       style={{
         ...mediaStyle,
         transform: `scale(${scale}) translate3d(${translateX}px, ${translateY}px, 0)`,
@@ -93,7 +85,12 @@ const ShotLayer: FC<ShotLayerProps> = ({ fadeInFrames, scene, shot, shotDuration
           sceneType={scene.sceneType}
         />
       ) : (
-        <VideoShot durationInFrames={shotDurationInFrames} loop={shot.provider !== 'youtube'} url={shot.url} />
+        <VideoShot
+          durationInFrames={shotDurationInFrames}
+          loop={shot.provider !== 'youtube'}
+          url={shot.url}
+          videoDurationInSeconds={shot.durationInSeconds}
+        />
       )}
     </AbsoluteFill>
   );

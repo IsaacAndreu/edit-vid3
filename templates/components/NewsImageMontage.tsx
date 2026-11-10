@@ -1,6 +1,7 @@
 import type { CSSProperties, FC } from 'react';
-import { AbsoluteFill, Easing, Img, Sequence, Video, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Easing, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { SceneProps } from '../types';
+import { MediaVideo } from '../MediaVideo';
 import { resolveMediaUrl } from '../media';
 
 const TRANSITION_IN_FRAMES = 3;
@@ -75,10 +76,10 @@ const NewsShot: FC<NewsShotProps> = ({ accentColor, durationInFrames, fadeInFram
   return (
     <AbsoluteFill style={{ opacity: fadeOpacity }}>
       {shot.type === 'video' ? (
-        <Video
+        <MediaVideo
+          durationInSeconds={shot.durationInSeconds}
           loop={shot.provider !== 'youtube'}
-          src={resolveMediaUrl(shot.url)}
-          muted
+          url={shot.url}
           style={{
             ...mediaStyle,
             transform: `scale(${scale}) translate3d(${translateX}px, ${translateY}px, 0)`,

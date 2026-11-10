@@ -78,8 +78,8 @@ class ManifestDrivenRuleTests(unittest.TestCase):
 class ManifestTests(unittest.TestCase):
     def test_registry_and_manifest_declare_the_same_templates(self) -> None:
         registry = (PROJECT_ROOT / "templates" / "registry.ts").read_text(encoding="utf-8")
-        body = registry[registry.index("export const templates") :]
-        body = body[body.index("{") + 1 : body.index("};")]
+        body = registry[registry.index("const registry: Record<TemplateName, SceneTemplate> = {") :]
+        body = body[body.index("= {") + 3 : body.index("};")]
         keys = {
             match.group(1) or match.group(2)
             for match in re.finditer(r"^\s*(?:'([^']+)'|([A-Za-z_]\w*))\s*:", body, flags=re.MULTILINE)
