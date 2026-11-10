@@ -8,3 +8,21 @@ __pycache__/
 .env
 .env.*
 !.env.example
+work/
+cache/
+cookies/
+*.cookies.txt
+editor/dist/
+config.local.yaml
+
+.venv/
+deno.lock
+
+# Vídeos de ejemplo quitados del repositorio (98a9c88); en local pueden seguir existiendo
+materiales/CarlosYulo/
+materiales/FallosGimnasia/
+materiales/Video1/
+
+# Investigaciones (informes para el usuario, no son código)
+research_notes/
+reports/

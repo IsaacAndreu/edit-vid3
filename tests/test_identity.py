@@ -1,0 +1,163 @@
+"""Right athlete on screen: on-screen captions (strong) and faces (clear cases only)."""
+
+from pathlib import Path
+
+from pipeline.identity import Checker, IdentityCache, caption_verdict, named_in, surname
+from pipeline.context import RunContext
+from pipeline.schemas import Shot
+
+BROLL = {"visualIntent": "gymnast", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+
+
+def line(text, x0, y0, x1, y1):
+    return (text, (x0, y0, x1, y1))
+
+
+SCOREBOARD = [line("134GBR米DV6.0", 533, 878, 845, 915), line("JARMAN", 525, 929, 674, 963),
+              line("PARIS2024", 196, 934, 290, 963), line("QOMEG", 744, 777, 867, 811)]
+
+
+def test_a_caption_naming_someone_else_rejects_the_clip():
+    assert "JARMAN" in caption_verdict([SCOREBOARD, SCOREBOARD, []], ["Carlos Yulo"])
+    assert caption_verdict([SCOREBOARD, [], []], ["Carlos Yulo"]) is None          # once is not enough
+
+
+def test_the_named_athlete_on_the_caption_keeps_it():
+    ours = [line("PHIYULO", 500, 900, 700, 940), line("134GBR", 500, 850, 700, 890), line("JARMAN", 500, 950, 700, 990)]
+    assert caption_verdict([ours, ours], ["Carlos Yulo"]) is None
+
+
+def test_surname_firstname_lines_and_venues():
+    french = [line("POCHON Antoine", 100, 100, 400, 140), line("FRASCA Loris", 100, 150, 400, 190)]
+    assert "POCHON" in caption_verdict([french, french], ["Carlos Yulo"])
+    venue = [line("DOHA", 100, 100, 250, 140), line("PHI", 1500, 900, 1580, 940), line("OMEGA", 1400, 950, 1580, 990)]
+    assert caption_verdict([venue, venue, venue], ["Carlos Yulo"]) is None        # far from the code, or a sponsor
+
+
+def test_who_a_shot_is_about():
+    shot = Shot.model_validate({"id": "s001", "type": "broll", "startWord": 0, "endWord": 1, "start": 0, "end": 2,
+                                "text": "Y entonces Yulo miró a Uchimura", "chapter": 0,
+                                "broll": {**BROLL, "entities": ["Carlos Yulo"]}})
+    assert named_in(shot, ["Carlos Yulo", "Kohei Uchimura", "Simone Biles"]) == ["Carlos Yulo", "Kohei Uchimura"]
+    assert surname("Rebeca Andrade") == "ANDRADE"
+
+
+def test_faces_are_not_judged_without_a_reliable_portrait_for_everyone(tmp_path):
+    checker = Checker(RunContext.create("t", root=tmp_path, config={"fallback": {}}), [])
+    checker._refs = {"Carlos Yulo": object(), "Kohei Uchimura": None}
+    assert checker.face_verdict([object()], ["Carlos Yulo", "Kohei Uchimura"]) is None
+
+
+def test_verdicts_are_cached(tmp_path):
+    ctx = RunContext.create("t", root=tmp_path, config={"fallback": {}})
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"x")
+    calls = []
+
+    class Fake:
+        def check(self, path, kind, names):
+            calls.append(path)
+            return "el rótulo en pantalla dice JARMAN, no YULO"
+
+    cache = IdentityCache(ctx)
+    assert "JARMAN" in cache.get(Fake(), clip, "video", ["Carlos Yulo"])
+    assert "JARMAN" in IdentityCache(ctx).get(Fake(), clip, "video", ["Carlos Yulo"])   # from work/t/identity.json
+    assert len(calls) == 1
+
+
+def test_every_shot_of_the_protagonist_story_is_checked():
+    from types import SimpleNamespace
+
+    from pipeline.identity import expected_people
+
+    names = ["Carlos Yulo", "Kohei Uchimura"]
+    shot = lambda text, event=None: SimpleNamespace(text=text, broll=SimpleNamespace(entities=[], event=event))  # noqa: E731
+    assert expected_people(shot("ganó su primer oro en Stuttgart", "Carlos Yulo floor final 2019 Stuttgart"), names,
+                           "Carlos Yulo") == ["Carlos Yulo"]
+    assert expected_people(shot("el público se puso en pie"), names, "Carlos Yulo") == ["Carlos Yulo"]
+    assert expected_people(shot("su ídolo ganó en Londres", "Kohei Uchimura London 2012 all-around"), names,
+                           "Carlos Yulo") == ["Kohei Uchimura"]
+    assert expected_people(shot("ganó su primer oro"), names, "Carlos Yulo", scope="named") == []
+    assert expected_people(shot("Uchimura y Yulo"), names, "Carlos Yulo") == ["Carlos Yulo", "Kohei Uchimura"]
+
+
+def test_faces_learnt_from_captioned_clips_count_as_references(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
+    face = np.ones(128, dtype=np.float32)
+    checker.faces = lambda image, min_size=48: [(face, 150, True)]
+    assert checker.references("Carlos Yulo") == []
+    checker.learn([np.zeros((10, 10, 3), dtype=np.uint8)] * 2, "Carlos Yulo")
+    assert len(checker.references("Carlos Yulo")) == 2
+
+
+def test_a_woman_in_a_story_about_a_man_is_rejected(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
+    checker._genders["Carlos Yulo"] = "hombre"
+    checker._face_models = lambda: None                 # without the face detector every frame counts
+    frames = [np.zeros((10, 10, 3), dtype=np.uint8)] * 5
+    checker._woman_odds = lambda images: [0.96, 0.95, 0.3, 0.9, 0.2]
+    assert "mujer" in checker.gender_verdict(frames, ["Carlos Yulo"])
+    checker._woman_odds = lambda images: [0.74, 0.83, 0.1, 0.0, 0.2]          # a man in a tight singlet, a doubt
+    assert checker.gender_verdict(frames, ["Carlos Yulo"]) is None
+    checker._genders["Carlos Yulo"] = None                                     # portrait unclear: never judged
+    checker._woman_odds = lambda images: [0.99] * 5
+    assert checker.gender_verdict(frames, ["Carlos Yulo"]) is None
+
+
+def test_stock_agency_previews_are_not_used():
+    from pipeline.sourcing.images import watermarked
+
+    assert watermarked("https://c8.alamy.com/comp/2X/carlos-yulo.jpg") and watermarked("www.gettyimages.com/detail/1")
+    assert watermarked("i.pinimg.com/736x/a.jpg") and not watermarked("https://www.rappler.com/yulo.jpg")
+
+
+def test_the_opening_needs_positive_proof(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"x")
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Carlos Yulo"}])
+    checker.frames = lambda path, kind: [np.zeros((10, 10, 3), dtype=np.uint8)] * 3
+    checker.faces = lambda image, min_size=48: []
+    checker.texts = lambda frame: [("GBR Jake JARMAN", (0, 0, 10, 10))]
+    assert not checker.confirmed(clip, "Carlos Yulo")
+    checker.texts = lambda frame: [("PHI Carlos Edriel YULO", (0, 0, 10, 10))]
+    assert checker.confirmed(clip, "Carlos Yulo")
+
+
+def test_skating_scoreboards_are_not_names():
+    board = [line("TECHNICALSCORE", 500, 850, 800, 890), line("BASE", 820, 850, 900, 890), line("USA", 500, 900, 580, 940),
+             line("WINTEROLYMPICSTM", 600, 900, 900, 940), line("SSHORTPROGRAM", 500, 950, 800, 990)]
+    assert caption_verdict([board, board, board], ["Alysa Liu"]) is None
+    rival = [*board, line("NAKAI", 600, 950, 760, 990), line("JPN", 500, 950, 580, 990)]
+    assert "NAKAI" in caption_verdict([rival, rival], ["Alysa Liu"])        # a real rival is still caught
+
+
+def test_wide_arena_shots_are_never_rejected_for_the_athletes_sex(tmp_path):
+    import numpy as np
+
+    from pipeline.context import RunContext
+    from pipeline.identity import Checker
+
+    checker = Checker(RunContext.create("t", root=tmp_path, config={}), [{"name": "Olga Korbut"}])
+    checker._genders["Olga Korbut"] = "mujer"
+    frames = [np.zeros((1080, 1920, 3), dtype=np.uint8)] * 5
+    checker._woman_odds = lambda images: [0.02, 0.05, 0.03, 0.4, 0.01]       # judges and coaches fill the frame
+    checker._face_models = lambda: True
+    checker.faces = lambda image, min_size=48: []                            # nobody close to the camera
+    assert checker.gender_verdict(frames, ["Olga Korbut"]) is None
+    checker.faces = lambda image, min_size=48: [(None, 200, True)]           # a man's face in close-up
+    assert "hombre" in checker.gender_verdict(frames, ["Olga Korbut"])

@@ -1,0 +1,17 @@
+# Formato «Misterio». Úsalo con `format: misterio` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Misterio sin resolver"
+descripcion: "Un caso que nadie ha explicado del todo: los hechos, las teorías y lo que sigue sin saberse."
+ejemplos: "La empresa que desapareció con 2.000 millones, la gimnasta que se retiró sin explicar por qué."
+guion: |
+  ESTE VÍDEO ES UN MISTERIO SIN RESOLVER: los hechos probados, las pistas, las teorías y la pregunta abierta.
+  - "subject": la persona o empresa del misterio ('Nombre · actividad en inglés'); si no hay, "".
+  - "peak": búsqueda EN INGLÉS de la última imagen conocida o el momento clave del misterio.
+  - "events": uno por cada hecho, pista o teoría, desde la frase que lo presenta. "label" = búsqueda EN INGLÉS de
+    lugares, personas y noticias REALES del caso con año ('Wirecard headquarters Munich raid 2020'); para una teoría,
+    lo concreto de la que habla, nunca 'mystery' o 'conspiracy' en abstracto; "tag" = 'LUGAR · AÑO' o 'TEORÍA 2'.
+  - Capítulos: 'LOS HECHOS', 'LAS PISTAS', 'LAS TEORÍAS', 'LO QUE NO SABEMOS'.
+graficos: |
+  Este vídeo es un misterio: usa "map" para los lugares del caso, "timeline" para la reconstrucción de los hechos,
+  "card" para las personas implicadas, "press" para lo que publicaron los medios y "kinetic" para la pregunta abierta.
+segundos_por_grafico: 70
+titulos: "patrón de título de misterio: 'El misterio de <X>' o 'Nadie sabe <qué pasó con X>', sin afirmar teorías como hechos."

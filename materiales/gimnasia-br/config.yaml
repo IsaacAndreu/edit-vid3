@@ -1,0 +1,3 @@
+# Vídeos del canal brasileño. Todo vídeo dentro de esta carpeta (materiales/gimnasia-br/<vídeo>/ con guion.txt
+# y voz.mp3) se hace con el perfil canales/gimnasia-br.yaml: el de gimnasia, en portugués.
+canal: gimnasia-br

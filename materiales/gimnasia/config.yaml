@@ -1,0 +1,4 @@
+# Canal de historias de atletas (gimnasia, atletismo, patinaje…). Todo vídeo dentro de esta carpeta
+# (materiales/gimnasia/<vídeo>/ con guion.txt y voz.mp3) se hace con el perfil canales/gimnasia.yaml.
+# Lo que pongas aquí vale para todos sus vídeos; el config.yaml de cada vídeo puede cambiarlo.
+canal: gimnasia

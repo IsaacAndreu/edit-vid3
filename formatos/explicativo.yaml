@@ -1,0 +1,19 @@
+# Formato «Explicativo». Úsalo con `format: explicativo` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Explicativo"
+descripcion: "Por qué pasa algo o cómo funciona, con datos, comparativas y fichas; el protagonista es la pregunta."
+ejemplos: "Por qué los robots de Boston Dynamics no se caen, cómo gana dinero Ryanair, por qué China domina la gimnasia."
+guion: |
+  ESTE VÍDEO EXPLICA POR QUÉ PASA ALGO O CÓMO FUNCIONA (un mecanismo, un negocio, una ventaja):
+  - "subject": "" salvo que todo gire en torno a una persona o empresa concreta ('Ryanair · airline').
+  - "peak": búsqueda EN INGLÉS de la imagen que mejor resume la respuesta, o "".
+  - "events": uno por cada pieza de la explicación (cada causa, cada paso del mecanismo, cada ejemplo). "label" =
+    búsqueda EN INGLÉS que ENSEÑE esa pieza en acción, lo más concreta posible (lugar, empresa, máquina, año:
+    'Ryanair boarding passengers Stansted airport', 'Boston Dynamics Atlas balance test lab'), nunca la idea
+    abstracta ('low cost strategy'); "tag" solo si se dice lugar o año.
+  - Capítulos: las partes de la respuesta (la pregunta, la primera causa, el truco, lo que nadie cuenta).
+graficos: |
+  Este vídeo es explicativo: cada vez que el guion da una cifra usa "chart", "scale" o "kinetic"; cuando compara dos
+  cosas, "compare"; cuando presenta una empresa, máquina o producto, "specs"; cuando habla de lugares, "map". Una
+  frase abstracta sin imagen clara ('el sistema está diseñado para…') es el mejor sitio para un gráfico.
+segundos_por_grafico: 60
+titulos: "patrón de título explicativo: 'Por qué <algo sorprendente>' o 'Cómo <X> consigue <Y>', con la cifra si la hay."

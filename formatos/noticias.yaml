@@ -1,0 +1,20 @@
+# Formato «Resumen de noticias». Úsalo con `format: noticias` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Resumen de noticias"
+descripcion: "Las noticias de la semana (o del mes) del tema, una tras otra, con metraje subido en los últimos días."
+ejemplos: "Lo que ha pasado esta semana en la gimnasia, las 5 noticias de negocios de la semana, robots: resumen de septiembre."
+guion: |
+  ESTE VÍDEO ES UN RESUMEN DE NOTICIAS RECIENTES: varias noticias seguidas, cada una con su protagonista.
+  - "subject": ""; "peak": búsqueda EN INGLÉS de la noticia más fuerte con su mes y año.
+  - "events": uno por noticia, desde la frase que la presenta. "label" = búsqueda EN INGLÉS con los nombres, lo que ha
+    pasado, 'news' y el MES Y AÑO actuales ('SpaceX IPO filing news September 2026'); "tag" = 'NOTICIA 3' o la fecha
+    si se dice ('28 SEPT').
+  - Capítulos: uno por noticia o por bloque ('LO MÁS IMPORTANTE', 'EN BREVE'), con las mismas reglas.
+graficos: |
+  Este vídeo es un resumen de noticias: usa "press" en cada noticia que tenga titular (el titular con palabras del
+  guion), "chart" o "kinetic" para la cifra de la noticia y "map" cuando pasa en otro país.
+segundos_por_grafico: 50
+titulos: "patrón de título de noticias: '<La noticia más fuerte> y <N> noticias más de <tema> esta semana' o '<Tema>: lo que ha pasado esta semana', con la fecha si ayuda."
+ajustes:
+  sourcing:
+    youtube:
+      recent_days: 14              # metraje subido en las últimas 2 semanas (7: esta semana · 31: este mes)

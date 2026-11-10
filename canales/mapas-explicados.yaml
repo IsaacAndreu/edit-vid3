@@ -1,0 +1,49 @@
+# «Mapas Explicados» (español): mapas explicados al estilo Johnny Harris / RealLifeLore, hechos en código: satélite
+# real (Sentinel-2 cloudless 2016 de EOX, CC BY 4.0, con su crédito en pantalla) para los planos cercanos, un mapa de
+# papel antiguo para lo amplio, rotulador rojo y objetos de papel; una sola cámara continua, sin cortes
+# (pipeline/mapas.py → MapStory.tsx). Se dobla al alemán en karten-erklaert.
+
+video:
+  fps: 30
+
+visual:
+  style: mapas
+
+brand:
+  accent: "#D9291D"
+  motion: clean
+
+align:
+  language: es
+
+timeline:
+  music_default: intriga
+  music_volume: 0.14
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'un canal de YouTube en español de mapas explicados: islas, fronteras, rutas y líneas en el mapa con un dato sorprendente (dos islas a 4 km separadas por 21 horas, la frontera más rara, el país que no existe), con satélite real y mapas de papel, vídeos de 6-12 min y Shorts de 30-45 s'
+  niches: [geografía, fronteras, islas, rutas, curiosidades del mapa, historia]
+  words: 1200
+
+dubbing:
+  enabled: true
+  languages: [de]
+  channels: {de: karten-erklaert}
+  review: false
+
+shorts:
+  enabled: false
+
+series:
+  short:                           # en materiales/<vídeo>/config.yaml: `serie: short` → un Short vertical de 30-45 s
+    video: {width: 1080, height: 1920}
+    render: {hybrid: false}
+    timeline: {endscreen_seconds: 0, captions: true, caption_words: 3}
+    ideas: {words: 110}

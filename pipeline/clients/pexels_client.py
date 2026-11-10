@@ -96,8 +96,8 @@ class PexelsClient:
         )
         excluded = exclude_urls or set()
         assets: list[PexelsAsset] = []
-        for result_rank, video in enumerate(payload.get("videos", [])):
-            files = [file for file in video.get("video_files", []) if file.get("link")]
+        for result_rank, video in enumerate((payload.get("videos") or [])):
+            files = [file for file in (video.get("video_files") or []) if file.get("link")]
             landscape_files = [
                 file for file in files if (file.get("width") or 0) >= (file.get("height") or 0)
             ]
@@ -150,7 +150,7 @@ class PexelsClient:
         )
         excluded = exclude_urls or set()
         assets: list[PexelsAsset] = []
-        for result_rank, photo in enumerate(payload.get("photos", [])):
+        for result_rank, photo in enumerate((payload.get("photos") or [])):
             src = photo.get("src") or {}
             image_url = src.get("large2x") or src.get("large") or src.get("original")
             if image_url and image_url not in excluded:

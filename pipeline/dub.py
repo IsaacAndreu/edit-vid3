@@ -1,0 +1,697 @@
+"""Dubbed versions that reuse the finished video: same clips, same order, retimed to a new voice.
+
+You record (or get) the narration in another language and leave it next to the original:
+    materiales/CarlosYulo/voz-en.mp3            (+ optional guion-en.txt, the translated script)
+Then `python main.py --dub CarlosYulo:en` (or the night queue, which picks these up by itself)
+creates materiales/CarlosYulo-en/ and builds out/CarlosYulo-en/video-final.mp4 in ~15-25 min:
+
+1. The new voice is transcribed/aligned (align stage, in the new language). Without a
+   guion-en.txt, the transcript itself becomes the script.
+2. The LLM matches each original sentence with where it starts in the new narration. Those
+   anchors give a time map (piecewise linear), and every cut, panel, label and chapter of the
+   original timeline is moved with it. Question panels take the new words as they are spoken.
+3. A shot that now lasts longer than its clip plays in gentle slow motion (up to 1.5x, then the
+   last frame holds); clips of third parties never pass 5 s (the next shot takes the rest).
+4. On-screen texts (chapter titles, places, stat labels, panels) are translated; names and
+   numbers stay. "CAPÍTULO"/"Fuente" become the words of the new language.
+5. QA, render, Shorts and thumbnails/titles run as usual. No new search, judge or download.
+"""
+
+from __future__ import annotations
+
+import bisect
+import copy
+import json
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from . import align
+from .context import RunContext
+from .llm import complete_json
+from .schemas import MAX_THIRD_PARTY_SECONDS, Timeline
+from .shorts import sentences
+from .doblaje import AUDIENCES
+
+STAGE = "dub"
+LANGUAGES = {
+    "en": ("English", "CHAPTER", "Source"), "pt": ("Português", "CAPÍTULO", "Fonte"),
+    "fr": ("Français", "CHAPITRE", "Source"), "it": ("Italiano", "CAPITOLO", "Fonte"),
+    "de": ("Deutsch", "KAPITEL", "Quelle"), "es": ("Español", "CAPÍTULO", "Fuente"),
+}
+ENDSCREEN = {
+    "en": ("NEXT STORY", "SUBSCRIBE"), "pt": ("PRÓXIMA HISTÓRIA", "INSCREVA-SE"), "fr": ("PROCHAINE HISTOIRE", "ABONNE-TOI"),
+    "it": ("PROSSIMA STORIA", "ISCRIVITI"), "de": ("NÄCHSTE GESCHICHTE", "ABONNIEREN"), "es": ("SIGUIENTE HISTORIA", "SUSCRÍBETE"),
+}
+# every folder the timeline's media can point at: editor/stretched holds the clips the studio's editor slowed down
+# (gim1.0-pt failed on them at every try; the rest of editor/ is the original's voice and waveform: not linked) and
+# «graphics» the maps, satellite photos and flags
+LINKED = ("media", "media_fallback", "people", "coldopen", "audio", "spotlight", "editor/stretched", "graphics")
+COPIED = ("shots.json", "selection.json", "fallback.json", "coldopen.json", "people.json", "costs.json")
+MAX_SLOWMO = 1.5
+TEXT_BATCH = 60                     # on-screen texts translated per call
+MIN_SHOT_FRAMES = 12
+
+MATCH_SYSTEM = """
+Te paso las frases numeradas de la narración ORIGINAL de un documental y las de su versión
+TRADUCIDA (que puede juntar o partir frases). Para cada frase original di en qué frase traducida
+empieza su contenido. Los índices deben ir en orden creciente (o iguales si dos originales se
+juntaron en una traducida). Devuelve SOLO JSON: {"map": [[original, traducida], ...]} con todas las
+frases originales que puedas situar con seguridad.
+""".strip()
+
+TRANSLATE_SYSTEM = """
+Traduce al {language} los textos en pantalla de un documental. Mantén MAYÚSCULAS si el
+original las usa, nombres propios, cifras y la brevedad (mismo largo aproximado).{local} Devuelve SOLO
+JSON: {{"texts": {{"id": "traducción", ...}}}} con los mismos ids.
+""".strip()
+
+
+def dub_slug(slug: str, lang: str) -> str:
+    return f"{slug}-{lang}"
+
+
+def pending(root: Path) -> list[tuple[str, str]]:
+    """(slug, lang) whose original video is done and has a voz-<lang>.mp3 without its dubbed video yet."""
+
+    from .context import video_folders
+    from .housekeeping import is_done
+
+    out = []
+    for voice in sorted(v for folder in video_folders(root) for v in folder.glob("voz-*.mp3")):
+        slug, lang = voice.parent.name, voice.stem.split("-", 1)[1]
+        if lang not in LANGUAGES:            # voz-pt.generando.mp3: GenAIPro still writing it (gimbr6-pt.generando)
+            continue
+        if (root / "out" / slug / "video-final.mp4").is_file() \
+                and not is_done(root, dub_slug(slug, lang)):
+            out.append((slug, lang))
+    return out
+
+
+def dub_channel(root: Path, slug: str, lang: str) -> str | None:
+    """The channel this language's dub goes to (`dubbing.channels`, e.g. gimnasia's Portuguese → gimnasia-br), if any."""
+
+    from .context import CHANNELS_DIR
+    from .doblaje import settings
+
+    try:
+        channel = settings(RunContext.create(slug, root=root))["channels"].get(lang)
+    except Exception:
+        return None
+    return channel if channel and (root / CHANNELS_DIR / f"{channel}.yaml").is_file() else None
+
+
+def prepare(root: Path, slug: str, lang: str) -> str:
+    """materiales/<slug>-<lang>/ with the new voice (+ translated script) and the dub config."""
+
+    from .context import find_video
+
+    source = find_video(root, slug)
+    voice = source / f"voz-{lang}.mp3"
+    if not voice.is_file():
+        raise FileNotFoundError(f"Falta {voice} (la narración traducida)")
+    channel = dub_channel(root, slug, lang)
+    target = (root / "materiales" / channel if channel else source.parent) / dub_slug(slug, lang)  # else next to it
+    target.mkdir(parents=True, exist_ok=True)
+    if not (target / "voz.mp3").is_file() or (target / "voz.mp3").stat().st_size != voice.stat().st_size:
+        shutil.copy2(voice, target / "voz.mp3")
+    timings = source / f"voz-{lang}.palabras.json"           # GenAIPro's word times (pipeline/doblaje.py): no Whisper
+    if timings.is_file():
+        shutil.copy2(timings, target / "voz.palabras.json")
+    if (source / f"guion-{lang}.txt").is_file():
+        shutil.copy2(source / f"guion-{lang}.txt", target / "guion.txt")
+    if (source / f"titulo-{lang}.txt").is_file():
+        shutil.copy2(source / f"titulo-{lang}.txt", target / "titulo.txt")
+    config: dict[str, Any] = {}
+    if (source / "config.yaml").is_file():
+        config = yaml.safe_load((source / "config.yaml").read_text("utf-8")) or {}
+    config.setdefault("align", {})["language"] = lang
+    config["align"]["min_match_ratio"] = 0.6          # a translated script never matches word for word
+    config["dub"] = {"of": slug, "lang": lang}
+    if channel:
+        config["canal"] = channel
+    (target / "config.yaml").write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return target.name
+
+
+# --- time map ------------------------------------------------------------------------------------
+
+def anchors(pairs: list[tuple[int, int]], old: list[dict[str, Any]], new: list[dict[str, Any]],
+            old_total: float, new_total: float) -> list[tuple[float, float]]:
+    """(old time, new time) points, strictly increasing on both axes, from sentence matches."""
+
+    points = [(0.0, 0.0)]
+    for o, n in sorted(pairs):
+        if not (0 <= o < len(old) and 0 <= n < len(new)):
+            continue
+        point = (old[o]["start"], new[n]["start"])
+        if point[0] > points[-1][0] + 0.2 and point[1] > points[-1][1] + 0.2:
+            points.append(point)
+    if old_total > points[-1][0] and new_total > points[-1][1]:
+        points.append((old_total, new_total))
+    return points
+
+
+def time_map(points: list[tuple[float, float]]):
+    xs = [p[0] for p in points]
+
+    def f(t: float) -> float:
+        i = min(max(bisect.bisect_right(xs, t) - 1, 0), len(points) - 2)
+        (x0, y0), (x1, y1) = points[i], points[i + 1]
+        return y0 + (t - x0) * (y1 - y0) / (x1 - x0)
+
+    return f
+
+
+def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_party: float) -> dict[str, Any]:
+    """Move every cut/overlay after the cold open with f (voice seconds → voice seconds)."""
+
+    fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
+    gaps = [tuple(g) for g in timeline["audio"].get("voiceGaps", [])]          # (voice frame, frames)
+    new_gaps = [(round(f(at / fps) * fps), frames) for at, frames in gaps]
+    end = int(timeline.get("endscreenFrames", 0))
+    total = vf + round(new_voice_seconds * fps) + sum(b for _, b in gaps) + end
+
+    def frame(old: int) -> int:
+        """Old video frame → new one: voice time goes through f, moments keep their length."""
+
+        if old <= vf:
+            return old
+        voice, before = old - vf, 0
+        for (at, frames), (new_at, _) in zip(gaps, new_gaps):
+            start = at + before                   # where this pause begins in the old video (after vf)
+            if voice < start:
+                break
+            if voice < start + frames:            # inside the pause: same offset from its start
+                return vf + new_at + before + (voice - start)
+            before += frames
+        v = voice - before
+        return vf + final_frame(round(f(v / fps) * fps), new_gaps)
+
+    out = copy.deepcopy(timeline)
+    shots = out["shots"]
+    bounds = [frame(s["from"]) for s in shots] + [total]
+    # keep order, a minimum length, and third-party clips ≤ 5 s (the next shot takes the rest)
+    for i in range(1, len(shots)):
+        bounds[i] = max(bounds[i], bounds[i - 1] + MIN_SHOT_FRAMES)
+        media = shots[i - 1].get("media") or {}
+        if media.get("kind") == "video" and media.get("source") == "youtube":
+            bounds[i] = min(bounds[i], bounds[i - 1] + int(max_third_party * fps))
+    if end and shots[-1].get("type") == "endscreen":
+        bounds[len(shots) - 1] = total - end               # the end screen keeps its length
+    for i in range(len(shots) - 1, 0, -1):               # squeeze back if the end was overrun
+        bounds[i] = min(bounds[i], bounds[i + 1] - MIN_SHOT_FRAMES)
+    for shot, a, b in zip(shots, bounds, bounds[1:]):
+        shot["from"], shot["durationInFrames"] = a, b - a
+    for item in [*out["groups"], *(out.get("labels") or [])]:
+        a = frame(item["from"])
+        b = min(total, max(a + 1, frame(item["from"] + item["durationInFrames"])))
+        item["from"], item["durationInFrames"] = a, b - a
+    for sfx in out["audio"].get("sfx", []):
+        sfx["from"] = frame(sfx["from"])
+    for shake in (out.get("shakes") or []):
+        shake["from"] = frame(shake["from"])
+    starts = {s["from"] for s in shots}
+    for tr in (out.get("transitions") or []):             # centred on a cut: follow the cut, keep the length
+        half = tr["durationInFrames"] // 2
+        cut = frame(tr["from"] + half)
+        cut = min(starts, key=lambda f: abs(f - cut)) if starts else cut
+        tr["from"] = max(0, cut - half)
+    for clip in out["audio"].get("clips", []):
+        clip["from"] = frame(clip["from"])
+    out["audio"]["voiceGaps"] = [list(g) for g in new_gaps]
+    out["durationInFrames"] = total
+    return out
+
+
+def final_frame(voice_frame: int, gaps: list) -> int:
+    """Voice frame → frames after voiceFrom, counting the pauses before it."""
+
+    return voice_frame + sum(frames for at, frames in gaps if at <= voice_frame)
+
+
+# --- media ---------------------------------------------------------------------------------------
+
+def _seconds(path: Path) -> float:
+    result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                            capture_output=True, text=True)
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def slow_motion(source: Path, target: Path, seconds: float) -> None:
+    """Stretch a clip to `seconds`: slow motion up to 1.5x, then hold the last frame."""
+
+    length = _seconds(source) or seconds
+    factor = min(MAX_SLOWMO, seconds / length)
+    hold = max(0.0, seconds - length * factor)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    filters = f"setpts={factor:.4f}*PTS,fps=30" + (f",tpad=stop_mode=clone:stop_duration={hold:.3f}" if hold > 0 else "")
+    result = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-vf", filters, "-an",
+                             "-t", f"{seconds:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
+                             "-pix_fmt", "yuv420p", str(target)], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg (cámara lenta): {result.stderr[-300:]}")
+
+
+def _link_tree(source: Path, target: Path) -> None:
+    """Hard links (no extra disk) with a copy fallback. Read-only use: never write to these files."""
+
+    for path in source.rglob("*"):
+        if not path.is_file():
+            continue
+        dest = target / path.relative_to(source)
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(path, dest)
+        except OSError:
+            shutil.copy2(path, dest)
+
+
+# --- texts ---------------------------------------------------------------------------------------
+
+def screen_texts(timeline: dict[str, Any]) -> dict[str, str]:
+    texts: dict[str, str] = {"title": timeline["title"]}
+    for shot in timeline["shots"]:
+        if shot.get("chapterTitle"):
+            texts[f"chapter:{shot['id']}"] = shot["chapterTitle"]
+    for i, label in enumerate((timeline.get("labels") or [])):
+        if label["kind"] != "name":
+            texts[f"label:{i}"] = label["text"]
+    for group in timeline["groups"]:
+        for key in ("title", "note"):
+            if group.get(key):
+                texts[f"group:{group['id']}:{key}"] = group[key]
+        if group.get("stat") and group["stat"].get("label"):
+            texts[f"stat:{group['id']}"] = group["stat"]["label"]
+        if group.get("graphic"):
+            _graphic_strings(group["graphic"], f"graphic:{group['id']}", texts)
+        for s, step in enumerate((group.get("steps") or [])):
+            for r, row in enumerate((step.get("rows") or [])):
+                for key, value in row.items():
+                    if isinstance(value, str) and re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{3}", value):
+                        texts[f"row:{group['id']}:{s}:{r}:{key}"] = value
+    return texts
+
+
+SKIP = {"src", "kind", "source", "credit", "type", "chart", "layout", "better", "query", "year", "id", "person", "style", "author", "platform"}
+
+
+# a simulation shot (pipeline/simulacion.py): only what is read on screen is translated — never the names the
+# world draws from (world, focus, overlay, scene…); the panels translate themselves with the graphic's «lang»
+SIM_TEXTS = ("title", "list", "rules", "marks", "stat", "texts", "ask")
+# a stickman film (pipeline/cine.py) or a map explainer (pipeline/mapas.py): only the words on screen, never the
+# vocabulary the component draws from (set, shot, light, kind, side, a country's Natural Earth name…)
+DRAWN_TEXTS = {
+    "cine": {"rule": ("text", "word"), "title": None, "counter": ("label", "value"), "phone": ("from", "messages"),
+             "choice": ("question", "a", "b", "comment"), "end": ("series", "title", "follow"), "hud": ("day",)},
+    "mapa": {"circle": ("word",), "tags": ("name", "sub"), "line": ("label", "count"), "props": ("top", "big", "sub", "flip"),
+             "strips": ("text",), "stamp": ("text",), "split": ("left", "right"), "tracker": ("title", "date", "time", "counter"),
+             "highlight": ("label",), "end": ("label", "wrong", "right")},
+    "atlas": {"points": ("name",), "routes": ("label",), "rings": ("label",), "zone": ("label",), "highlight": ("label",),
+              "card": ("big", "title", "lines", "source"), "stamp": ("text",), "headline": ("text",),
+              "chart": ("title", "label"), "icon": ("label",), "title": ("text",)},
+}
+
+
+def _drawn_paths(value: dict[str, Any], path: str) -> list[tuple[str, Any]]:
+    """(path, string) of what a stickman film's or a map's shot shows as text."""
+
+    out: list[tuple[str, Any]] = []
+    for key, fields in DRAWN_TEXTS[value["type"]].items():
+        item = value.get(key)
+        if not item:
+            continue
+        if fields is None:
+            out.append((f"{path}.{key}", item))
+            continue
+        for i, entry in enumerate(item if isinstance(item, list) else [item]):
+            base = f"{path}.{key}.{i}" if isinstance(item, list) else f"{path}.{key}"
+            for field in fields:
+                v = entry.get(field) if isinstance(entry, dict) else None
+                if isinstance(v, str):
+                    out.append((f"{base}.{field}", v))
+                elif isinstance(v, list):
+                    out += [(f"{base}.{field}.{k}", x) for k, x in enumerate(v) if isinstance(x, str)]
+                elif isinstance(v, dict):
+                    out += [(f"{base}.{field}.{k}", x) for k, x in v.items() if isinstance(x, str)]
+    for i, actor in enumerate(value.get("actors") or []):
+        if isinstance(actor, dict) and actor.get("label"):
+            out.append((f"{path}.actors.{i}.label", actor["label"]))
+    return out
+
+
+def _graphic_strings(value: Any, path: str, out: dict[str, str]) -> None:
+    """Every translatable string inside a graphic (titles, names, labels, notes, lines…)."""
+
+    if isinstance(value, dict) and value.get("type") in DRAWN_TEXTS:
+        for p, text in _drawn_paths(value, path):
+            if re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{2}", text):
+                out[p] = text
+        return
+
+    if isinstance(value, dict) and value.get("type") == "sim":
+        for key in SIM_TEXTS:
+            item = value.get(key)
+            if key == "stat" and isinstance(item, dict):
+                _graphic_strings({"label": item.get("label"), "value": item.get("value")}, f"{path}.stat", out)
+            elif key in ("rules", "marks") and isinstance(item, list):
+                for i, r in enumerate(item):
+                    if isinstance(r, dict) and r.get("text"):
+                        _graphic_strings(r["text"], f"{path}.{key}.{i}.text", out)
+            elif item:
+                _graphic_strings(item, f"{path}.{key}", out)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key not in SKIP:
+                _graphic_strings(item, f"{path}.{key}", out)
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            _graphic_strings(item, f"{path}.{i}", out)
+    elif isinstance(value, str) and re.search(r"[A-Za-zÁÉÍÓÚáéíóúñÑ]{2}", value):
+        out[path] = value
+
+
+def _set_path(value: Any, parts: list[str], text: str) -> None:
+    for part in parts[:-1]:
+        value = value[int(part)] if isinstance(value, list) else value[part]
+    last = parts[-1]
+    if isinstance(value, list):
+        value[int(last)] = text
+    else:
+        value[last] = text
+
+
+def _set_graphic_strings(value: Any, path: str, texts: dict[str, str]) -> Any:
+    if isinstance(value, dict) and value.get("type") in DRAWN_TEXTS:
+        out = copy.deepcopy(value)
+        for p, _ in _drawn_paths(value, path):
+            if p in texts:
+                _set_path(out, p[len(path) + 1:].split("."), texts[p])
+        return out
+    if isinstance(value, dict) and value.get("type") == "sim":
+        out = dict(value)
+        for key in SIM_TEXTS:
+            if key in out and out[key]:
+                out[key] = _set_graphic_strings(out[key], f"{path}.{key}", texts) if key not in ("rules", "marks") else [
+                    {**r, "text": texts.get(f"{path}.{key}.{i}.text", r.get("text"))} if isinstance(r, dict) else r
+                    for i, r in enumerate(out[key])]
+        return out
+    if isinstance(value, dict):
+        return {k: v if k in SKIP else _set_graphic_strings(v, f"{path}.{k}", texts) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_set_graphic_strings(v, f"{path}.{i}", texts) for i, v in enumerate(value)]
+    return texts.get(path, value) if isinstance(value, str) else value
+
+
+def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
+    timeline["title"] = texts.get("title", timeline["title"])
+    for shot in timeline["shots"]:
+        shot["chapterTitle"] = texts.get(f"chapter:{shot['id']}", shot.get("chapterTitle"))
+    for i, label in enumerate((timeline.get("labels") or [])):
+        label["text"] = texts.get(f"label:{i}", label["text"])
+    for group in timeline["groups"]:
+        for key in ("title", "note"):
+            if group.get(key):
+                group[key] = texts.get(f"group:{group['id']}:{key}", group[key])
+        if group.get("stat") and group["stat"].get("label"):
+            group["stat"]["label"] = texts.get(f"stat:{group['id']}", group["stat"]["label"])
+        if group.get("graphic"):
+            group["graphic"] = _set_graphic_strings(group["graphic"], f"graphic:{group['id']}", texts)
+        for s, step in enumerate((group.get("steps") or [])):
+            for r, row in enumerate((step.get("rows") or [])):
+                for key in list(row):
+                    row[key] = texts.get(f"row:{group['id']}:{s}:{r}:{key}", row[key])
+
+
+def question_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> None:
+    """Question panels show the new narration's words as they are spoken."""
+
+    fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
+    gaps = timeline["audio"].get("voiceGaps", [])
+
+    def at(t: float) -> int:
+        return vf + final_frame(round(t * fps), gaps)
+
+    for group in timeline["groups"]:
+        if group["kind"] != "question":
+            continue
+        a, b = group["from"], group["from"] + group["durationInFrames"]
+        spoken = [w for w in words if a <= at(w["start"]) < b]
+        group["words"] = [{"text": w["text"], "from": max(0, at(w["start"]) - a)} for w in spoken]
+
+
+def drawn_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> None:
+    """A stickman film's captions go word by word: in the dub, the new narration's words."""
+
+    fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
+    gaps = timeline["audio"].get("voiceGaps", [])
+    for group in timeline["groups"]:
+        g = group.get("graphic") or {}
+        if g.get("type") != "cine" or "words" not in g:
+            continue
+        a, b = group["from"], group["from"] + group["durationInFrames"]
+        frames = [(vf + final_frame(round(w["start"] * fps), gaps), w["text"].strip()) for w in words]
+        g["words"] = [{"t": t, "f": f - a, "key": False} for f, t in frames if a <= f < b and t]
+
+
+def speech_spans(words: list[dict[str, Any]], fps: int, offset: int, gap: float = 0.5,
+                 pauses: list | None = None) -> list[list[int]]:
+    spans: list[list[float]] = []
+    for w in words:
+        if spans and w["start"] - spans[-1][1] < gap:
+            spans[-1][1] = w["end"]
+        else:
+            spans.append([w["start"], w["end"]])
+    out = []
+    for a, b in spans:
+        fa, fb = round(a * fps), round(b * fps)
+        cuts = [at for at, _ in pauses or [] if fa < at < fb]
+        for s, e in zip([fa, *cuts], [*cuts, fb]):
+            end = final_frame(e - 1, pauses or []) + 1 if e in cuts else final_frame(e, pauses or [])
+            out.append([offset + final_frame(s, pauses or []), offset + end])
+    return out
+
+
+# --- run -----------------------------------------------------------------------------------------
+
+def _script_from_voice(ctx: RunContext) -> None:
+    from .whisper_local import transcribe
+
+    cfg = ctx.section("align")
+    raw, _ = transcribe(ctx.materials_dir / "voz.mp3", cache_dir=ctx.cache_dir, model=str(cfg.get("model", "medium")),
+                        language=str(cfg.get("language", "en")), compute_type=str(cfg.get("compute_type", "int8")))
+    text = " ".join(w["word"].strip() for w in raw["words"])
+    (ctx.materials_dir / "guion.txt").write_text(text + "\n", encoding="utf-8")
+
+
+STRETCHED = "editor/stretched/"
+
+
+def stretched_source(work: Path, src: str) -> str | None:
+    """A clip the studio's editor slowed down (editor/stretched/<clip>-<frames>.mp4) comes from <clip>.mp4 in one of
+    the media folders: that one, relative to `work`, or None."""
+
+    stem = Path(src).stem.rsplit("-", 1)[0]
+    for folder in LINKED:
+        if folder.startswith("editor"):
+            continue
+        for candidate in (work / folder).rglob(f"{stem}.mp4") if (work / folder).is_dir() else []:
+            return str(candidate.relative_to(work)).replace("\\", "/")
+    return None
+
+
+def media_folders(timeline: dict[str, Any]) -> list[str]:
+    """Every folder the original's timeline takes a file from (media, motion/ replays, graphics/ maps and flags,
+    spotlight…), plus LINKED: the dub links them all. A fixed list missed one at a time (editor/stretched, then
+    motion/ in gym3.0-pt). editor/ itself is never linked whole (the original's voice and waveform live there)."""
+
+    found = list(LINKED)
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            src = value.get("src")
+            if isinstance(src, str) and "/" in src and not src.startswith(("/", "..")):
+                top = src.split("/", 1)[0]
+                folder = STRETCHED.rstrip("/") if top == "editor" else top
+                if folder not in found:
+                    found.append(folder)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(timeline)
+    return found
+
+
+def missing_media(original: RunContext) -> list[str]:
+    """Files of the original's timeline that are gone (its heavy folders cleaned after it was finished). A clip the
+    editor slowed down is not one (the dub stretches the clip again): its source clip is, when that is gone too."""
+
+    timeline = original.read_json("timeline.json")
+    folders = set(media_folders(timeline))
+    found: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            src = value.get("src")
+            if isinstance(src, str) and src.startswith(STRETCHED) and not (original.work_dir / src).exists():
+                if not stretched_source(original.work_dir, src):
+                    found.append(src)
+            elif isinstance(src, str) and src and not (original.work_dir / src).exists() \
+                    and src.split("/", 1)[0] in folders:
+                found.append(src)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(timeline)
+    return found
+
+
+def restore_original(original: RunContext) -> None:
+    """A video finished (and cleaned) before it was dubbed: its clips are gone. They are downloaded again from its own
+    selection (ingest, people, fill-in, cold open) and its timeline rebuilt, so the dub has something to reuse."""
+
+    gone = missing_media(original)
+    if not gone:
+        return
+    from .runner import run_stages
+
+    print(f"   El original {original.slug} ya no tiene {len(gone)} de sus archivos (se limpiaron al terminarlo): "
+          "los vuelvo a descargar de su propia selección")
+    run_stages(original, force={"ingest", "people", "fallback", "coldopen", "timeline"}, until="timeline")
+    still = missing_media(original)
+    if still:
+        raise RuntimeError(f"Faltan {len(still)} archivos del original {original.slug} (p. ej. {still[0]})")
+
+
+def run(ctx: RunContext) -> None:
+    cfg = ctx.section("dub")
+    original = RunContext.create(str(cfg["of"]), root=ctx.root)
+    lang = str(cfg.get("lang") or ctx.section("align").get("language", "en"))
+    language, chapter_word, source_word = LANGUAGES.get(lang, (lang, "CHAPTER", "Source"))
+    restore_original(original)
+    old_timeline = original.read_json("timeline.json")
+    old_words = original.read_json("words.json")
+
+    from .doblaje import IN_SPANISH, language_of
+
+    script = ctx.materials_dir / "guion.txt"
+    found = language_of(script.read_text("utf-8")) if script.is_file() else ""
+    if found and found != lang[:2]:              # never a «German» video spoken in Spanish
+        raise RuntimeError(f"el guion de {ctx.slug} está en {IN_SPANISH.get(found, found)}, no en {IN_SPANISH.get(lang, lang)}: "
+                           "se rehace solo (la cola lo adapta y lo graba otra vez)")
+    print(f"[1/6] Voz en {language}: transcripción y alineado")
+    if not (ctx.materials_dir / "guion.txt").is_file():
+        _script_from_voice(ctx)
+    align.run(ctx)
+    new_words = ctx.read_json("words.json")
+
+    print("[2/6] Emparejando frases original ↔ traducción")
+    old_s, new_s = sentences(old_words["words"]), sentences(new_words["words"])
+    listing = ("ORIGINAL:\n" + "\n".join(f"[{s['n']}] {s['text']}" for s in old_s)
+               + "\n\nTRADUCIDA:\n" + "\n".join(f"[{s['n']}] {s['text']}" for s in new_s))
+    matched = complete_json(ctx, stage=STAGE, section="planner", system=MATCH_SYSTEM, user=listing[:100000], max_tokens=8000)
+    pairs = [(int(p[0]), int(p[1])) for p in (matched.get("map") or []) if isinstance(p, list) and len(p) == 2]
+    points = anchors(pairs, old_s, new_s, old_words["durationSeconds"], new_words["durationSeconds"])
+    print(f"   {len(points) - 2} anclas de {len(old_s)} frases")
+
+    print("[3/6] Reajustando cortes, paneles y rótulos")
+    timeline = retime(old_timeline, time_map(points), new_words["durationSeconds"], MAX_THIRD_PARTY_SECONDS)
+    timeline["slug"] = ctx.slug
+    from . import simulacion
+
+    simulacion.retime_sim(old_timeline, timeline, lang)          # its clock follows the new voice, its panels speak it
+    question_words(timeline, new_words["words"])
+    drawn_words(timeline, new_words["words"])
+    timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0),
+                                               pauses=timeline["audio"].get("voiceGaps", []))
+    next_word, subscribe_word = ENDSCREEN.get(lang, ("NEXT STORY", "SUBSCRIBE"))
+    timeline["locale"] = {"chapter": chapter_word, "source": source_word, "next": next_word, "subscribe": subscribe_word}
+
+    print("[4/6] Material: reutilizando clips (cámara lenta donde el plano es más largo)")
+    for folder in media_folders(old_timeline):
+        if (original.work_dir / folder).is_dir():
+            _link_tree(original.work_dir / folder, ctx.work_dir / folder)
+    from . import stickman
+
+    manifest = ctx.work_dir / "media" / "_ingest.json"
+    if not manifest.is_file() and stickman.drawn(original):     # drawn in code: no clips (hora1-de: media/ was cleaned)
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps({"slug": ctx.slug, "media": []}), encoding="utf-8")
+    for name in COPIED:   # paths inside point at work/<original>/: make them point at this copy
+        if (original.work_dir / name).is_file():
+            text = (original.work_dir / name).read_text("utf-8")
+            for sep in ("/", "\\\\"):
+                text = text.replace(f"work{sep}{original.slug}{sep}", f"work{sep}{ctx.slug}{sep}")
+            (ctx.work_dir / name).write_text(text, encoding="utf-8")
+    voice = ctx.work_dir / "audio" / "voz.mp3"
+    voice.unlink(missing_ok=True)          # a hard link to the original voice: never write through it
+    shutil.copy2(ctx.materials_dir / "voz.mp3", voice)
+    slowed = 0
+    for shot in timeline["shots"]:
+        media = shot.get("media") or {}
+        if media.get("kind") != "video":
+            continue
+        seconds = shot["durationInFrames"] / timeline["fps"]
+        source = ctx.work_dir / media["src"]
+        if not source.is_file() and (original.work_dir / media["src"]).is_file():
+            source = original.work_dir / media["src"]          # a folder this copy does not link: read it there
+        if not source.is_file() and media["src"].startswith(STRETCHED):
+            # the editor's slowed-down copy was cleaned with the original: the clip it came from, stretched here
+            # (gym3.0-pt, gym4.0-pt, gym5.0-pt, gim1.0-pt, gim2.0-pt, gim4.0-pt)
+            found = stretched_source(ctx.work_dir, media["src"]) or stretched_source(original.work_dir, media["src"])
+            if found:
+                media["src"] = found
+                source = ctx.work_dir / found if (ctx.work_dir / found).is_file() else original.work_dir / found
+        if not source.is_file():
+            raise RuntimeError(f"{shot['id']}: falta su clip {media['src']} (ni en {ctx.slug} ni en {original.slug}): "
+                               f"rehaz {original.slug} o quítale ese plano en el editor")
+        if seconds > _seconds(source) + 0.05:
+            target = Path("media_dub") / f"{shot['id']}-{shot['durationInFrames']}.mp4"
+            if not (ctx.work_dir / target).is_file():
+                slow_motion(source, ctx.work_dir / target, seconds)
+            media["src"] = target.as_posix()
+            slowed += 1
+    print(f"   {slowed} planos en cámara lenta")
+
+    print(f"[5/6] Traduciendo textos en pantalla al {language}")
+    texts = screen_texts(timeline)
+    system = TRANSLATE_SYSTEM.format(language=language, local=(
+        f" Adáptalos al público de {AUDIENCES.get(lang, lang)} como su narración (sus carreteras, "
+        f"tiendas, moneda y unidades): {str(ctx.config.get('localize') or '').strip()[:600]}"
+        if ctx.config.get("localize") else ""))
+    # in batches: a simulation has hundreds of labels and one answer got cut (deepseek-flash, max_tokens=6000)
+    translated: dict[str, Any] = {}
+    items = list(texts.items())
+    for start in range(0, len(items), TEXT_BATCH):
+        batch = dict(items[start:start + TEXT_BATCH])
+        translated.update(complete_json(ctx, stage=STAGE, section="planner", max_tokens=8000, system=system,
+                                        user=json.dumps(batch, ensure_ascii=False)).get("texts", {}))
+    apply_texts(timeline, {k: str(v) for k, v in translated.items() if k in texts and str(v).strip()})
+    if not (ctx.materials_dir / "titulo.txt").is_file():
+        (ctx.materials_dir / "titulo.txt").write_text(timeline["title"] + "\n", encoding="utf-8")
+    Timeline.model_validate(timeline)
+    ctx.write_json("timeline.json", timeline)
+
+    print("[6/6] QA, render, Shorts y miniaturas")
+    from . import package, qa, render, shorts
+
+    for stage in (qa, render, shorts, package):
+        print(f"   · {stage.__name__.rsplit('.', 1)[-1]}")
+        stage.run(ctx)

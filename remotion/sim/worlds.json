@@ -1,0 +1,1283 @@
+{
+  "cruces": {
+    "niche": "tráfico",
+    "describe": "SOLO para frases sobre cruces y rotondas (semáforos de un cruce, ceder el paso): un cruce con semáforos (izquierda) y una rotonda (derecha) con exactamente los mismos coches llegando. Elige scene según la frase: comparar (el cruce con semáforos y la rotonda con los mismos coches, lado a lado) · trafico (la espera media según el tráfico: con poco tráfico la rotonda casi no hace esperar (0,5 s contra 7-8 s), con mucho ganan los semáforos (14 s contra 16 s y pasan 208 coches contra 159)) · verde (la espera en el semáforo según los segundos de verde: más verde, más espera: 6 s con 10 s de verde, 21 s con 60)",
+    "focus": {
+      "both": "pantalla partida",
+      "left": "se amplía el semáforo",
+      "right": "se amplía la rotonda"
+    },
+    "overlay": {
+      "labels": "solo los títulos",
+      "demand": "el mismo tráfico a los dos",
+      "queue": "coches esperando en rojo y qué dirección tiene verde",
+      "yield": "los que ceden el paso en la rotonda",
+      "results": "espera media y coches que han pasado en cada uno",
+      "conflicts": "32 puntos de choque frente a 8",
+      "paths": "flechas de las trayectorias: dónde se cruzan en el semáforo y cómo se incorporan en la rotonda"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "trafico",
+          "verde"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · trafico · verde"
+      },
+      "demand": {
+        "min": 0.05,
+        "max": 0.3,
+        "default": 0.15,
+        "describe": "coches por segundo y calle (0.08 poco tráfico, 0.25 hora punta)",
+        "label": {
+          "es": "tráfico por calle",
+          "en": "traffic per street",
+          "pt": "trânsito por rua",
+          "de": "Verkehr pro Straße"
+        }
+      },
+      "green": {
+        "min": 10,
+        "max": 60,
+        "default": 22,
+        "describe": "segundos de verde de cada fase del semáforo",
+        "label": {
+          "es": "segundos de verde",
+          "en": "seconds of green",
+          "pt": "segundos de verde",
+          "de": "Sekunden Grün"
+        }
+      }
+    },
+    "legend": "bottom",
+    "panels": [
+      "results",
+      "demand"
+    ]
+  },
+  "anillo": {
+    "niche": "tráfico",
+    "describe": "coches en un círculo de 230 m (el experimento de Sugiyama, 2008): un conductor frena un poco y se forma un atasco sin motivo; también: un coche que conduce solo y deshace la onda (Arizona, 2018), el mismo círculo sin despistes, y la curva flujo-densidad. Elige scene: anillo (el círculo con sus focos y paneles de siempre) · densidad (la velocidad media según cuántos coches hay en 230 m: hasta 17 coches van a 30-55 km/h, con 19 cae a 9 km/h: el atasco fantasma aparece de golpe) · conductores (lado a lado, conductores normales contra conductores que dejan hueco: el mismo frenazo y solo a la izquierda se forma la onda)",
+    "focus": {
+      "ring": "el círculo",
+      "chart": "el círculo a un lado y la gráfica espacio-tiempo al otro",
+      "compare": "dos círculos a la vez, 12 y 23 coches, con el mismo frenazo: en el de 12 se apaga, en el de 23 crece (el punto de inflexión)"
+    },
+    "overlay": {
+      "speed": "velocidad media",
+      "brake": "señala al conductor que frena",
+      "jam": "coches parados ahora",
+      "chart": "gráfica espacio-tiempo: el atasco viajando hacia atrás",
+      "auto": "marca el coche que conduce solo (driver: suave) con la velocidad media y los parados: la onda se deshace",
+      "flow": "la curva flujo-densidad: coches por hora según cuántos hay por km, sube hasta un máximo y se hunde; marca este anillo en ella"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "anillo",
+          "densidad",
+          "conductores"
+        ],
+        "default": "anillo",
+        "describe": "qué escena: anillo · densidad · conductores"
+      },
+      "cars": {
+        "min": 12,
+        "max": 30,
+        "default": 22,
+        "describe": "coches en el círculo (con 18 o menos no se forma atasco; con 28 casi todos se paran)",
+        "label": {
+          "es": "coches en la pista",
+          "en": "cars on the track",
+          "pt": "carros na pista",
+          "de": "Autos auf der Strecke"
+        }
+      },
+      "driver": {
+        "options": [
+          "normal",
+          "suave",
+          "calma"
+        ],
+        "default": "normal",
+        "describe": "normal (conductores humanos: atasco) · suave (como normal y, en la frase que lo dice, un coche empieza a conducir solo: la onda desaparece y la velocidad media sube de 6 a 17 km/h; funciona con 20-22 coches, con 24 o más no basta uno) · calma (sin despistes ni frenazo: el mismo círculo fluye)"
+      }
+    },
+    "cues": {
+      "brake": "la frase que habla del frenazo",
+      "jam": "la frase en la que los coches ya están parados",
+      "auto": "la frase en la que un coche empieza a conducir solo"
+    },
+    "marks": {
+      "car": [
+        "este coche",
+        "ese coche",
+        "un conductor",
+        "el conductor",
+        "el primero"
+      ],
+      "jam": [
+        "el atasco",
+        "la onda",
+        "los coches parados",
+        "ese grupo"
+      ],
+      "auto": [
+        "conduce solo",
+        "condujera solo",
+        "coche autonomo"
+      ]
+    },
+    "legend": "right",
+    "panels": [
+      "speed",
+      "jam"
+    ]
+  },
+  "autovia": {
+    "niche": "tráfico",
+    "describe": "SOLO para frases sobre incorporarse cuando un carril se cierra (obras, «cremallera», incorporación temprana): una obra cierra un carril de autovía: arriba los conductores se incorporan pronto (una sola cola larga), abajo en cremallera (usan los dos carriles hasta el final y se alternan); los mismos coches. Elige scene según la frase: comparar (las dos formas de incorporarse lado a lado, con sus colas) · curva (el largo de la cola según el tráfico que llega: con cremallera, la mitad) · pasan (cuántos coches pasan la obra: con cremallera, más)",
+    "focus": {
+      "both": "las dos carreteras",
+      "top": "se amplía la incorporación temprana",
+      "bottom": "se amplía la cremallera"
+    },
+    "overlay": {
+      "queue": "longitud de la cola en cada carretera",
+      "merge": "marca el punto donde se incorporan",
+      "results": "coches que han pasado y longitud de la cola"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "curva",
+          "pasan"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · curva · pasan"
+      },
+      "demand": {
+        "min": 0.3,
+        "max": 0.8,
+        "default": 0.55,
+        "describe": "coches por segundo que llegan: 0.3 fluido (no hay cola en ninguna); 0.55 la cremallera deja la cola en la mitad y pasan más coches; 0.7 atasco en las dos, la cremallera sigue pasando más",
+        "label": {
+          "es": "tráfico que llega",
+          "en": "traffic arriving",
+          "pt": "trânsito que chega",
+          "de": "ankommender Verkehr"
+        }
+      }
+    },
+    "marks": {
+      "jam": [
+        "la cola",
+        "el atasco"
+      ],
+      "merge": [
+        "la cremallera",
+        "se incorporan",
+        "incorporarse"
+      ]
+    },
+    "legend": "right",
+    "panels": [
+      "queue",
+      "results"
+    ]
+  },
+  "contagio": {
+    "niche": "epidemias y bulos",
+    "describe": "400 personas que van y vienen por un barrio visto desde arriba; una empieza contagiada (o creyéndose un bulo) y se transmite al cruzarse. Elige scene según la frase: barrio (el barrio con la gente contagiándose al cruzarse, con sus contadores y la curva) · comparar (a la izquierda sin hacer nada, a la derecha que (que = cuarentena: los enfermos en casa; vacunas: 70 % vacunados): sin medidas se contagian 397 de 400, con cuarentena 2, con 70 % vacunados 48) · curva (aplanar la curva: contagiados a la vez día a día sin medidas, con 50 % vacunados y con cuarentena, con la línea de las camas del hospital) · vacunas (de los no vacunados, cuántos se contagian según cuánta gente está vacunada: 88 % con la mitad vacunada, 41 % con 70 %, casi nadie con 80 %: la inmunidad de grupo) · bulo (lo mismo con un bulo que la gente se cree y comparte · oficina (una oficina real vista desde arriba, como un plano: 36 personas con sus mesas en islas, la sala de reuniones acristalada con su ventana, el rincón del café y los ascensores; llegan por la mañana, se sientan, van a por café y a reuniones, se van; el lunes el paciente cero llega tosiendo; el contagio va de cerca y por el aire de cada sala, que se tiñe de rojo al cargarse. Sin hacer nada: lunes 4 contagiados, martes 14 (la reunión del martes con la ventana cerrada), miércoles 20, viernes 35 de 36; con ventana: 1 la abre (martes 8, miércoles 14); con quarantine: 1 los que tosen se quedan en casa (viernes 12, aunque siguen contagiando los que aún no tienen síntomas). dia: 0 lunes … 4 viernes (el día con que empieza el plano); ritmo: 0 en directo (1 s = 1 min), 1 normal (1 s = 6 min), 2 la semana entera en 15 s. Overlays: zero (el paciente cero tosiendo), counts (contagiados), aire (el aire de las salas), red (quién contagió a quién: la red de cruces que nadie ve), tu (tú: alguien que se contagió el jueves sin haber hablado con el paciente cero)) · oficinas (dos oficinas iguales: izquierda como siempre, derecha con que = cuarentena (los enfermos en casa: 12 contagiados el viernes contra 35) | ventana (la ventana de la sala abierta)) · snow (el mapa de John Snow: Soho, Londres, 1854: las calles, la fuente de Broad Street y cada muerte como una raya negra junto a su casa, amontonándose alrededor de la fuente; abajo las muertes por día de su tabla, que ya bajaban cuando quitaron la palanca el 8 de septiembre; 616 en total) · super (supercontagiadores: 40 enfermos con R ≈ 3 pero muy desigual, la dispersión medida en el SARS de 2003 por Lloyd-Smith y otros en 2005: el 20 % causa la gran mayoría de los contagios y muchos no contagian a nadie) · arbol (el árbol de contagios: cada enfermo contagia a R personas, generación a generación; con r 3 explota, con r 1 se arrastra, con r 0.8 se apaga solo; o contactos: pocos (R ≈ 0,8) | muchos (R ≈ 3)) · doble (crecimiento exponencial: los casos se duplican cada 5 días, contador y curva de 1 a más de 100 000 en 90 días) · oculto (a la izquierda lo que ves hoy: solo los que llevan una semana enfermos; a la derecha lo que hay de verdad: muchos más que aún no saben que lo tienen; ir un paso por delante) · palancas (el medidor de R: empieza en 2,6 y cada palanca lo baja: quedarse en casa si estás malo, lavarse las manos, ventilar, evitar aglomeraciones; con las cuatro baja de 1 y la epidemia se apaga) · caminos (por dónde viaja: cinco viñetas, la oficina, el autobús, la boda, el colegio y el que va a trabajar con fiebre; primero pocos cruces, luego muchos) · inmunidad (inmunidad de grupo: una cuadrícula de gente, los inmunes en azul; con la gripe basta menos, con el sarampión hace falta más del 90 % para proteger al bebé que aún no se puede vacunar, en amarillo) · cuatro (cuatro simulaciones a la vez, cambia una sola cosa en cada una: cuatro: r (cuatro árboles con R 0,8 · 1 · 1,5 · 3: dos se apagan, dos crecen) | contagio (cuatro barrios con contagio 20 · 35 · 50 · 80 %)))",
+    "focus": {
+      "town": "todo el barrio",
+      "close": "de cerca, alrededor del paciente cero"
+    },
+    "overlay": {
+      "zero": "señala al paciente cero",
+      "counts": "sanos, contagiados y recuperados ahora",
+      "curve": "la curva de contagios día a día",
+      "vaccine": "marca a los vacunados",
+      "quarantine": "los contagiados se quedan en casa",
+      "aire": "en oficina: el aire de cada sala, rojo cuanto más cargado",
+      "red": "en oficina: quién contagió a quién",
+      "tu": "en oficina: tú"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "barrio",
+          "comparar",
+          "curva",
+          "vacunas",
+          "bulo",
+          "oficina",
+          "oficinas",
+          "snow",
+          "super",
+          "arbol",
+          "doble",
+          "oculto",
+          "palancas",
+          "caminos",
+          "inmunidad",
+          "cuatro"
+        ],
+        "default": "barrio",
+        "describe": "qué escena: barrio · comparar · curva · vacunas · bulo · oficina · oficinas · snow · super · arbol · doble · oculto · palancas · caminos · inmunidad · cuatro"
+      },
+      "contagion": {
+        "min": 0.15,
+        "max": 1.0,
+        "default": 0.5,
+        "describe": "lo contagioso que es (0.2 poco, 1 como el sarampión)",
+        "label": {
+          "es": "contagio",
+          "en": "how contagious",
+          "pt": "contágio",
+          "de": "Ansteckung"
+        },
+        "percent": true
+      },
+      "vaccinated": {
+        "min": 0,
+        "max": 0.95,
+        "default": 0,
+        "describe": "parte de la gente vacunada desde el principio",
+        "label": {
+          "es": "vacunados",
+          "en": "vaccinated",
+          "pt": "vacinados",
+          "de": "geimpft"
+        },
+        "percent": true
+      },
+      "quarantine": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 0,
+        "describe": "1: los contagiados se quedan en casa (en oficina: los que tienen síntomas)"
+      },
+      "mode": {
+        "options": [
+          "virus",
+          "bulo"
+        ],
+        "default": "virus",
+        "describe": "virus (contagiados) o bulo (gente que se lo cree)"
+      },
+      "que": {
+        "options": [
+          "cuarentena",
+          "vacunas",
+          "ventana"
+        ],
+        "default": "cuarentena",
+        "describe": "solo en comparar (cuarentena | vacunas) y oficinas (cuarentena | ventana): lo que tiene el lado derecho"
+      },
+      "ventana": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 0,
+        "describe": "solo en oficina: 1 la ventana de la sala de reuniones abierta"
+      },
+      "dia": {
+        "options": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "default": 0,
+        "describe": "solo en oficina: el día con que empieza el plano (0 lunes … 4 viernes)"
+      },
+      "ritmo": {
+        "options": [
+          0,
+          1,
+          2
+        ],
+        "default": 1,
+        "describe": "solo en oficina: 0 en directo, 1 normal, 2 la semana en 15 s"
+      },
+      "r": {
+        "options": [
+          0.8,
+          1,
+          3
+        ],
+        "default": 3,
+        "describe": "solo en arbol: a cuántos contagia cada enfermo"
+      },
+      "contactos": {
+        "options": [
+          "",
+          "pocos",
+          "muchos"
+        ],
+        "default": "",
+        "describe": "solo en arbol: pocos (R ≈ 0,8) o muchos (R ≈ 3) en lugar de r"
+      },
+      "palancas": {
+        "options": [
+          -1,
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "default": -1,
+        "describe": "solo en palancas: cuántas palancas están puestas (-1 las va poniendo una a una)"
+      },
+      "mezcla": {
+        "options": [
+          "",
+          "pocos",
+          "muchos"
+        ],
+        "default": "",
+        "describe": "solo en caminos: pocos o muchos cruces (vacío: pocos y a mitad, muchos)"
+      },
+      "virus": {
+        "options": [
+          "gripe",
+          "sarampion"
+        ],
+        "default": "gripe",
+        "describe": "solo en inmunidad: gripe o sarampión"
+      },
+      "inmunes": {
+        "options": [
+          "auto",
+          0.3,
+          0.5,
+          0.7,
+          0.8,
+          0.9,
+          0.95
+        ],
+        "default": "auto",
+        "describe": "solo en inmunidad: parte de la gente inmune (auto: 40 % con la gripe, 93 % con el sarampión)"
+      },
+      "cuatro": {
+        "options": [
+          "r",
+          "contagio"
+        ],
+        "default": "r",
+        "describe": "solo en cuatro: qué cambia entre las cuatro (r o contagio)"
+      }
+    },
+    "marks": {
+      "cafe": [
+        "la cafetera",
+        "el café"
+      ],
+      "sala": [
+        "la reunión",
+        "la sala"
+      ],
+      "ascensor": [
+        "el ascensor"
+      ],
+      "bomba": [
+        "la fuente",
+        "la bomba",
+        "la palanca"
+      ]
+    }
+  },
+  "red": {
+    "niche": "desastres y crisis",
+    "describe": "una red en la que un fallo se contagia (para la red eléctrica y los apagones usa SIEMPRE el mundo apagon, no este; aquí elige kind): bancos (bancos que se prestan entre sí: uno quiebra y sus deudas tumban a los que le prestaron; crisis financieras), suministro (fábricas y almacenes: una se para y a las que abastecía les faltan piezas; cadenas de suministro). Falla una pieza, su carga pasa a las vecinas y caen en cascada. Elige scene: red (la cascada de siempre) · umbral (cuánto cae según el margen de cada pieza: con un 20 % cae el 77 %, con un 25 % solo el 2 %: el punto de no retorno)",
+    "focus": {
+      "map": "todo el país"
+    },
+    "overlay": {
+      "load": "lo cargada que va cada línea",
+      "fail": "señala la primera avería",
+      "cascade": "porcentaje del país sin luz"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "red",
+          "umbral"
+        ],
+        "default": "red",
+        "describe": "qué escena: red · umbral"
+      },
+      "margin": {
+        "min": 0.05,
+        "max": 0.6,
+        "default": 0.2,
+        "describe": "capacidad de reserva de la red (hasta 0.15 se apaga todo el país; 0.2 se apagan tres cuartas partes; desde 0.3 la avería se queda en una ciudad: es un punto de no retorno)",
+        "label": {
+          "es": "margen de la red",
+          "en": "grid margin",
+          "pt": "margem da rede",
+          "de": "Netzreserve"
+        },
+        "percent": true
+      },
+      "kind": {
+        "options": [
+          "electricidad",
+          "bancos",
+          "suministro"
+        ],
+        "default": "electricidad",
+        "describe": "qué red: electricidad · bancos · suministro"
+      }
+    },
+    "cues": {
+      "fail": "la frase en la que falla la primera pieza"
+    }
+  },
+  "incendio": {
+    "niche": "desastres",
+    "describe": "un bosque visto desde arriba: empieza un fuego y se propaga de árbol en árbol con el viento. Elige scene según la frase: bosque (el fuego propagándose desde que empieza) · umbral (cuánto bosque se quema según lo denso que está: por debajo del 55 % casi nada, por encima del 58 % casi todo; el punto de no retorno, la percolación) · densidad (lado a lado, bosque al 55 % y al 60 %: un 5 % más de árboles y se quema el 79 % en lugar del 1 %) · viento (sin viento y con viento fuerte, mismo bosque) · cortafuegos (sin y con cortafuegos: se quema el 94 % contra el 41 %; también limpiar el monte)",
+    "focus": {
+      "forest": "todo el bosque",
+      "close": "de cerca, donde empieza"
+    },
+    "overlay": {
+      "start": "señala dónde empieza",
+      "burned": "superficie quemada",
+      "firebreak": "marca los cortafuegos"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "bosque",
+          "umbral",
+          "densidad",
+          "viento",
+          "cortafuegos"
+        ],
+        "default": "bosque",
+        "describe": "qué escena: bosque · umbral · densidad · viento · cortafuegos"
+      },
+      "density": {
+        "min": 0.45,
+        "max": 0.8,
+        "default": 0.62,
+        "describe": "lo denso que es el bosque (por debajo de 0.55 el fuego suele apagarse solo)",
+        "label": {
+          "es": "densidad del bosque",
+          "en": "forest density",
+          "pt": "densidade da floresta",
+          "de": "Walddichte"
+        },
+        "percent": true
+      },
+      "wind": {
+        "min": 0,
+        "max": 1,
+        "default": 0.4,
+        "describe": "fuerza del viento hacia el este",
+        "label": {
+          "es": "viento",
+          "en": "wind",
+          "pt": "vento",
+          "de": "Wind"
+        }
+      },
+      "firebreaks": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 0,
+        "describe": "1: hay cortafuegos"
+      }
+    },
+    "cues": {
+      "start": "la frase en la que empieza el fuego"
+    }
+  },
+  "segregacion": {
+    "niche": "sociedad",
+    "describe": "un barrio de casas de dos colores (modelo de Schelling): cada familia se muda si menos de cierta parte de sus vecinos son como ella. Elige scene según la frase: barrio (las familias mudándose ronda a ronda hasta separarse) · antes (el barrio mezclado al principio y el mismo después de las mudanzas) · comparar (familias que quieren un 25 % de vecinos iguales contra un 50 %: acaban con un 62 % y un 89 %) · umbral (lo que cada familia pide contra lo que sale: pidiendo un 30 % el barrio acaba con un 76 % de vecinos iguales; nadie quiere separarse y se separa)",
+    "focus": {
+      "town": "todo el barrio"
+    },
+    "overlay": {
+      "unhappy": "marca las familias que quieren mudarse",
+      "share": "porcentaje medio de vecinos iguales"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "barrio",
+          "antes",
+          "comparar",
+          "umbral"
+        ],
+        "default": "barrio",
+        "describe": "qué escena: barrio · antes · comparar · umbral"
+      },
+      "tolerance": {
+        "min": 0.2,
+        "max": 0.75,
+        "default": 0.35,
+        "describe": "parte de vecinos iguales que quiere cada familia (0.3 ya separa el barrio)",
+        "label": {
+          "es": "vecinos iguales que quieren",
+          "en": "like neighbours wanted",
+          "pt": "vizinhos iguais desejados",
+          "de": "gewünschte gleiche Nachbarn"
+        },
+        "percent": true
+      }
+    }
+  },
+  "colas": {
+    "niche": "colas y multitudes",
+    "describe": "un supermercado visto desde arriba (cada persona tarda ≈ 40 s en pagar y cada artículo ≈ 3 s; algunos clientes son lentos: un cupón, una tarjeta que falla). Elige scene: comparar (izquierda una cola por caja, derecha una sola cola que reparte a todas: misma gente; la cola única espera ~15 % menos de media y la espera más larga baja ~25 %) · eleccion (TÚ en una de 3 colas, o 5 con tills; panel: de cientos de veces, tu cola fue la más rápida 1 de cada 3, 1 de cada 5 con 5 cajas) · cabezas (2 personas con el carro lleno contra 5 con cesta: terminan antes los 2 carros; cuenta cabezas, no carros; Dan Meyer) · limite (una caja ocupada el 80, 90 o 95 % del tiempo con la curva de Kingman: la espera es 4, 9 y 19 veces el tiempo de cobro; la curva de clientes iguales va por debajo) · iguales (izquierda clientes distintos, derecha todos tardan lo mismo: la espera media baja ~20 %, las colas no desaparecen) · cambiar (TÚ te cambias a la cola que avanzó y la tuya arranca: tú, si te hubieras quedado, habrías pagado antes) · contar (la ley de Little: cuántos salen por minuto y cuántos tienes delante = tu espera) · rapida (una caja rápida de ≤ 10 artículos: los que llevan poco esperan ~20 % menos)",
+    "focus": {
+      "both": "los dos supermercados",
+      "left": "se amplía el de varias colas",
+      "right": "se amplía el de una sola cola"
+    },
+    "overlay": {
+      "panel": "el panel de la escena (espera media, cuántas veces ganó tu cola, la curva, tu espera…)",
+      "results": "en comparar: espera media y la más larga",
+      "unlucky": "en comparar: marca a un cliente que eligió la cola lenta"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "eleccion",
+          "cabezas",
+          "limite",
+          "iguales",
+          "cambiar",
+          "contar",
+          "rapida"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · eleccion · cabezas · limite · iguales · cambiar · contar · rapida"
+      },
+      "tills": {
+        "min": 3,
+        "max": 5,
+        "default": 4,
+        "describe": "cajas abiertas (en eleccion: 3 o 5)",
+        "label": {
+          "es": "cajas abiertas",
+          "en": "tills open",
+          "pt": "caixas abertas",
+          "de": "offene Kassen"
+        }
+      },
+      "ocupacion": {
+        "options": [
+          0.8,
+          0.9,
+          0.95
+        ],
+        "default": 0.9,
+        "describe": "solo en limite: lo ocupada que está la caja",
+        "label": {
+          "es": "ocupación de la caja",
+          "en": "how busy the till is",
+          "pt": "ocupação da caixa",
+          "de": "Auslastung der Kasse"
+        },
+        "percent": true
+      }
+    },
+    "marks": {
+      "you": [
+        "tu cola",
+        "la tuya",
+        "te cambias",
+        "te pones"
+      ],
+      "slow": [
+        "un cliente lento",
+        "el cliente lento",
+        "ese cliente"
+      ],
+      "line": [
+        "una sola cola",
+        "una cola unica",
+        "cola unica"
+      ]
+    },
+    "panels": [
+      "panel",
+      "results"
+    ]
+  },
+  "embarque": {
+    "niche": "colas y multitudes",
+    "describe": "el embarque de un avión visto desde arriba: la cabina abierta con sus asientos 3+3, el pasillo de un solo carril, los compartimentos de cada fila que se llenan de maletas, y los pasajeros entrando por la pasarela; el que se para a guardar la maleta lleva un anillo rojo y los que esperan detrás se ponen rojizos. Calibrado con el experimento de Steffen (2011): por bloques ≈ 7 min, Steffen ≈ 3,5 min. Elige scene según la frase: comparar (arriba de atrás hacia delante por bloques, abajo method; el mismo avión y la misma gente) · carrera (todos los métodos a la vez, un avión cada uno: bloques ~13:30, al azar ~11 min, ventanilla-centro-pasillo ~9:20, Steffen ~6 min, sin maletas ~5:40, con 180 pasajeros) · experimento (la réplica de 2011: 72 personas, 12 filas, bloques contra Steffen con cronómetro y los tiempos reales 6:54 y 3:36) · pasillo (primer plano del pasillo: uno guarda la maleta y toda la fila de detrás se para; cuántos están parados) · asientos (primer plano de una fila: llega tarde el de la ventanilla y se levantan el del pasillo y el del centro; al lado, entrando primero el de la ventanilla) · bloques (de atrás hacia delante: todos se paran en el mismo trozo del avión y el resto del pasillo está vacío; barras de dónde se para la gente; Bachmat) · maletas (maletas = cuánta gente lleva maleta de mano: los compartimentos se llenan y los últimos buscan hueco; con el dial de 0.3 a 0.9 el embarque pasa de fluir a atascarse) · puerta (hacer cola de pie antes de tiempo contra esperar sentado: minutos de pie y cuándo llega cada uno a su asiento)",
+    "focus": {
+      "plane": "el avión"
+    },
+    "overlay": {
+      "panel": "el panel de la escena (tiempo de embarque, parados en el pasillo, compartimentos llenos…)",
+      "timer": "los cronómetros"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "carrera",
+          "experimento",
+          "pasillo",
+          "asientos",
+          "bloques",
+          "maletas",
+          "puerta"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · carrera · experimento · pasillo · asientos · bloques · maletas · puerta"
+      },
+      "method": {
+        "options": [
+          "steffen",
+          "window",
+          "random",
+          "sinmaletas"
+        ],
+        "default": "steffen",
+        "describe": "solo en comparar: el método del avión de abajo: steffen · window (ventanilla, centro, pasillo) · random (al azar) · sinmaletas (por bloques pero sin maletas de mano)"
+      },
+      "maletas": {
+        "options": [
+          0.0,
+          0.3,
+          0.6,
+          0.85,
+          0.95
+        ],
+        "default": 0.85,
+        "describe": "cuánta gente lleva maleta de mano (0 = nadie: la regla tres quitada)",
+        "label": {
+          "es": "con maleta de mano",
+          "en": "with a carry-on",
+          "pt": "com bagagem de mão",
+          "de": "mit Handgepäck"
+        },
+        "percent": true
+      }
+    },
+    "marks": {
+      "bag": [
+        "su maleta",
+        "guardar la maleta",
+        "la maleta"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "manada": {
+    "niche": "animales",
+    "describe": "una sabana vista desde arriba: gacelas y leones; las gacelas en manada o dispersas, los leones persiguen a la más cercana. Elige scene según la frase: caza (los leones persiguiendo a las gacelas) · comparar (las mismas gacelas en manada contra cada una a lo suyo, 6 leones: cazan 8 contra 25 de 150) · curva (gacelas cazadas según cuántos leones hay, en manada y solas) · ojos (muchos ojos: la probabilidad de ver al león a tiempo según cuántas gacelas hay, si cada una vigila el 10 % del tiempo) · dilucion (el riesgo de cada gacela si el león caza una: 1 de cada N; el efecto dilución)",
+    "focus": {
+      "savanna": "toda la sabana",
+      "close": "de cerca, una persecución"
+    },
+    "overlay": {
+      "caught": "gacelas cazadas",
+      "herd": "marca la manada"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "caza",
+          "comparar",
+          "curva",
+          "ojos",
+          "dilucion"
+        ],
+        "default": "caza",
+        "describe": "qué escena: caza · comparar · curva · ojos · dilucion"
+      },
+      "lions": {
+        "min": 2,
+        "max": 12,
+        "default": 6,
+        "describe": "leones",
+        "label": {
+          "es": "leones",
+          "en": "lions",
+          "pt": "leões",
+          "de": "Löwen"
+        }
+      },
+      "herd": {
+        "options": [
+          0,
+          1
+        ],
+        "default": 1,
+        "describe": "1: las gacelas van en manada; 0: cada una a lo suyo"
+      }
+    }
+  },
+  "carretera": {
+    "niche": "tráfico",
+    "describe": "el mundo para atascos en carretera o autovía en general: una carretera recta vista desde arriba sobre fondo oscuro; cada escena explica una pieza del tráfico (elige scene): frenazo (8 coches numerados, el primero toca el freno y cada uno frena más fuerte que el de delante hasta que el último se para; who: acc = coches con control de crucero), onda (carretera llena: los coches van a la derecha y el atasco viaja hacia atrás; panel: por qué dura), carril (dos carriles, TÚ en uno: adelantas a 4 coches rápido y 4 coches tardan mucho en adelantarte: la ilusión del carril de al lado), hueco (TÚ dejas hueco y sigues rodando sin pararte; detrás quedan menos parados), limite (paneles que bajan el límite antes de las ondas: llegan despacio y se paran menos), carriles (se abre un tercer carril y vuelve a llenarse; panel +10 % carril, +10 % tráfico), rampa (semáforo en la entrada de la autopista: arriba sin semáforo los coches se meten a la vez y se forman ondas; abajo con semáforo entran de uno en uno y la carretera sigue moviéndose; panel: coches por hora, 1.800 frente a 1.390)",
+    "focus": {
+      "road": "la carretera"
+    },
+    "overlay": {
+      "labels": "los rótulos de la escena (flechas, el hueco, los números de cada coche, el carril nuevo…)",
+      "panel": "el panel de la escena (barras, tiempos, parados)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "frenazo",
+          "onda",
+          "carril",
+          "hueco",
+          "limite",
+          "carriles",
+          "rampa"
+        ],
+        "default": "onda",
+        "describe": "qué escena: frenazo · onda · carril · hueco · limite · carriles · rampa"
+      },
+      "who": {
+        "options": [
+          "personas",
+          "acc"
+        ],
+        "default": "personas",
+        "describe": "solo en frenazo: personas o coches con control de crucero adaptativo"
+      }
+    },
+    "cues": {
+      "brake": "en frenazo: la frase en la que el primer coche toca el freno"
+    },
+    "marks": {
+      "car": [
+        "este coche",
+        "ese coche",
+        "el de atras",
+        "el siguiente"
+      ],
+      "jam": [
+        "la onda",
+        "el atasco",
+        "la cola"
+      ],
+      "gap": [
+        "el hueco",
+        "deja hueco",
+        "dejar hueco"
+      ]
+    },
+    "legend": "top",
+    "panels": [
+      "panel"
+    ]
+  },
+  "inundacion": {
+    "niche": "desastres",
+    "describe": "un pueblo junto a un río visto desde arriba cuando el río crece: el agua llena todo lo que está por debajo de su nivel y puede alcanzar desde el río (no salta colinas), las casas que se mojan se marcan en rojo. Elige scene: sube (el río crece y el pueblo se va inundando) · dique (izquierda sin dique, derecha con dique: aguanta seco más tiempo y luego se inunda de golpe) · esponja (izquierda todo asfaltado, derecha con parques y tierra que absorben: menos casas inundadas)",
+    "focus": {
+      "map": "el pueblo"
+    },
+    "overlay": {
+      "panel": "nivel del río y casas inundadas"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "sube",
+          "dique",
+          "esponja"
+        ],
+        "default": "sube",
+        "describe": "qué escena: sube · dique · esponja"
+      }
+    },
+    "marks": {
+      "house": [
+        "la primera casa",
+        "esa casa",
+        "las casas"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "multitud": {
+    "niche": "multitudes",
+    "describe": "multitudes vistas desde arriba (modelo de fuerzas sociales, Helbing 2000): cada persona solo quiere llegar a su sitio, guarda distancia y empuja cuando toca a otra; los cuerpos apretados se ven en rojo. Elige scene: evacuacion (una sala se vacía por una puerta: se forma un arco delante; evacuaciones, conciertos, estadios, metro) · columna (la misma gente con prisa en la misma puerta, sin y con una columna delante: con columna el último sale antes, se rompe el arco) · prisa (con calma frente a con prisa: con prisa la gente se aplasta contra la puerta, aplastamientos y estampidas) · pasillo (un pasillo con gente en las dos direcciones: se forman carriles solos, nadie los organiza) · tiempos (cuántos han salido segundo a segundo: con calma, con prisa y con prisa y una columna delante de la puerta; ojo: en esta simulación con prisa salen antes, pero aplastándose contra la puerta; la columna adelanta un poco al último)",
+    "focus": {
+      "space": "el espacio"
+    },
+    "overlay": {
+      "panel": "el panel de la escena (han salido, el último sale a los, aplastados, carriles)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "evacuacion",
+          "columna",
+          "prisa",
+          "pasillo",
+          "tiempos"
+        ],
+        "default": "evacuacion",
+        "describe": "qué escena: evacuacion · columna · prisa · pasillo · tiempos"
+      }
+    },
+    "marks": {
+      "door": [
+        "la puerta",
+        "la salida"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "ascensores": {
+    "niche": "colas y esperas",
+    "describe": "un edificio de oficinas cortado de lado: plantas, huecos con sus cabinas subiendo y bajando (dentro, cuánta gente lleva), la gente esperando en cada planta con su flecha, y al lado un anillo con cada ascensor en su vuelta (si se juntan, sus puntos se juntan). Elige scene según la frase: pico (hora punta de la mañana, todos suben desde la planta baja: cada viaje para en casi todas las plantas, la cola de abajo crece; cada parada cuesta ~10 s) · juntos (todo el día, dos ascensores subiendo y bajando con gente en todas las plantas: empiezan separados y acaban yendo juntos, sin que nadie lo programe; el que se retrasa encuentra más gente) · autobuses (lo mismo en una línea de autobús circular: tres autobuses acaban en pelotón; Newell y Potts, 1964) · reparto (el mismo edificio: el más cercano va a por todos y se juntan, frente a el sistema que los mantiene repartidos o hace esperar a uno a propósito: espera media ~1:26 contra ~1:05) · curva (la espera media según cuánta gente llega: plana y de pronto se dispara; la línea de 30 s de un buen edificio) · botones (la mitad pulsa los dos botones: ascensores que paran para nadie, contadas; la espera sube de ~1:26 a ~1:51) · zonas (hora punta: todos a todas las plantas contra unos solo a las bajas y otros solo a las altas: espera 2:22 contra 24 s; exprés y transbordo de los rascacielos) · destino (hora punta con pantalla de destino: cada ascensor lleva a la gente de unas pocas plantas: 6,9 paradas por viaje contra 2,5; espera 22 s) · paternoster (las cabinas abiertas que nunca paran, en Alemania: nunca esperas, nunca se juntan) · otis (1854, Nueva York: Elisha Otis en una plataforma, cortan la cuerda y el freno de seguridad se clava en las guías)",
+    "focus": {
+      "building": "el edificio"
+    },
+    "overlay": {
+      "panel": "el panel (espera media, gente esperando abajo, paradas por viaje)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "pico",
+          "juntos",
+          "autobuses",
+          "reparto",
+          "curva",
+          "botones",
+          "zonas",
+          "destino",
+          "paternoster",
+          "otis"
+        ],
+        "default": "pico",
+        "describe": "qué escena: pico · juntos · autobuses · reparto · curva · botones · zonas · destino · paternoster · otis"
+      },
+      "ascensores": {
+        "min": 3,
+        "max": 5,
+        "default": 4,
+        "describe": "cuántos ascensores",
+        "label": {
+          "es": "ascensores",
+          "en": "lifts",
+          "pt": "elevadores",
+          "de": "Aufzüge"
+        }
+      }
+    },
+    "marks": {
+      "lobby": [
+        "el vestibulo",
+        "la planta baja",
+        "la cola de abajo"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "aparcamiento": {
+    "niche": "tráfico y ciudad",
+    "describe": "un aparcamiento de 128 plazas visto desde arriba: los coches entran, recorren los pasillos en orden y cogen la primera plaza libre que ven; los que buscan van en rojo con su tiempo buscando, TÚ en amarillo. Elige scene: buscar (el aparcamiento lleno según ocupacion: cuánto se tarda en encontrar sitio, ~30 s al 70 %, ~1 min al 88 %, ~3 min al 95 %) · ocupacion (la curva: tiempo buscando según lo lleno que está: plana y luego un muro pasado el 85 %; la regla de Donald Shoup: que quede libre 1 plaza de cada 7) · comparar (el mismo aparcamiento al 70 % y al 95 %, lado a lado) · buscando (coches dando vueltas a la vez buscando sitio según lo lleno que está: 2 al 85 %, 15 al 96 %; parte del tráfico del centro es gente buscando aparcamiento)",
+    "focus": {
+      "lot": "el aparcamiento"
+    },
+    "overlay": {
+      "panel": "el panel (tiempo medio buscando, lo lleno que está, coches buscando)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "buscar",
+          "ocupacion",
+          "comparar",
+          "buscando"
+        ],
+        "default": "buscar",
+        "describe": "qué escena: buscar · ocupacion · comparar · buscando"
+      },
+      "ocupacion": {
+        "options": [
+          0.7,
+          0.85,
+          0.95
+        ],
+        "default": 0.85,
+        "describe": "lo lleno que está (en buscar y ocupacion)",
+        "label": {
+          "es": "ocupación del aparcamiento",
+          "en": "how full the car park is",
+          "pt": "ocupação do estacionamento",
+          "de": "Belegung des Parkplatzes"
+        },
+        "percent": true
+      }
+    },
+    "marks": {
+      "you": [
+        "tu coche",
+        "tú buscas",
+        "te toca buscar"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "aeropuerto": {
+    "niche": "colas y esperas",
+    "describe": "el control de seguridad de un aeropuerto visto desde arriba: carriles con su arco y su cinta de rayos X, un agente en cada uno; cada pasajero ≈ 30 s + 8 s por bandeja y 3 de cada 10 no vienen preparados (+40-120 s: los líquidos, el portátil, el cinturón, el arco que pita; anillo rojo). Elige scene: filas (izquierda una cola por control, derecha una sola cola en zigzag que reparte a todos: la misma gente; espera media ~86 s contra ~75 s y la más larga baja) · preparados (como llega la gente contra todos preparados antes de la cinta: la espera media cae de ~75 s a ~5 s) · carriles (con carriles controles y con uno más: cerca del límite un control más lo cambia todo, ~75 s → ~13 s con 4 → 5) · curva (la espera media según los controles abiertos: con 3 la cola no para de crecer, con 4 ~76 s, con 5 ~13 s, con 6 ~4 s) · cadena (UN carril del control visto desde arriba, estación por estación: la cola, la mesa de bandejas donde cada uno se prepara, la cinta y el escáner de rayos X (200 bandejas/h ≈ 105 personas/h, a ritmo fijo), el arco y la recogida al final de la cinta. Arriba lo que deja pasar cada estación: la mesa ~81 personas/h en rojo (el cuello de botella, el Herbie) y el escáner parado ~28 % del tiempo «esperando bandejas»; sobre la cabeza lo que retrasa (la botella, el portátil, la hebilla, el bolso); el que pita vuelve atrás y sus bandejas, en rojo, ocupan el final de la cinta. Colores: azul viajeros frecuentes, naranja ocasionales, verde familias. mesa: 1 (todos en el mismo trozo de mesa, uno detrás de otro) | 4 (carril automatizado: cuatro se preparan a la vez y entra antes el que acaba antes)) · paralelo (los mismos pasajeros: izquierda uno a uno en la mesa (la cola crece: ~13 min de espera al cabo de una hora, pasan ~74/h), derecha cuatro puestos a la vez (casi sin espera, pasan ~98/h y el escáner trabaja sin pausas)) · pistas (cuatro carriles: izquierda todos mezclados, derecha separados por tipo de viajero con las señales de las pistas de esquí (rombo negro expertos, cuadrado azul ocasionales, círculo verde familias), como probaron aeropuertos de EE. UU. en 2008: los expertos pasan de ~14 s de espera a ~3 s; OJO: en la simulación la espera media de todos sube (13 s → 41 s) si los carriles no se reparten según cuánta gente hay de cada tipo) · normas (por qué el control se hizo más lento: 2001, el 11-S y la TSA; agosto de 2006, el plan de los explosivos líquidos en el Reino Unido; noviembre de 2006, la norma europea de los 100 ml en bolsa transparente; y una bandeja que se va llenando de cosas que sacar) · manana (gráfica: la espera en el control a lo largo de la mañana, de 5:00 a 11:00, con oleadas de vuelos: la cola sube con cada oleada y tarda mucho en bajar))",
+    "focus": {
+      "both": "los dos controles"
+    },
+    "overlay": {
+      "panel": "las esperas medias y las más largas de cada lado"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "filas",
+          "preparados",
+          "carriles",
+          "curva",
+          "cadena",
+          "paralelo",
+          "pistas",
+          "normas",
+          "manana"
+        ],
+        "default": "filas",
+        "describe": "qué escena: filas · preparados · carriles · curva · cadena · paralelo · pistas · normas · manana"
+      },
+      "carriles": {
+        "min": 3,
+        "max": 5,
+        "default": 4,
+        "describe": "solo en carriles: controles abiertos a la izquierda (la derecha, uno más)",
+        "label": {
+          "es": "controles abiertos",
+          "en": "lanes open",
+          "pt": "controles abertos",
+          "de": "offene Spuren"
+        }
+      },
+      "mesa": {
+        "options": [
+          1,
+          4
+        ],
+        "default": 1,
+        "describe": "solo en cadena: 1 puesto en la mesa (uno a uno) o 4 (carril automatizado)"
+      }
+    },
+    "marks": {
+      "arch": [
+        "el arco",
+        "la cinta",
+        "el control"
+      ],
+      "line": [
+        "la cola",
+        "una sola cola"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "restaurante": {
+    "niche": "colas y esperas",
+    "describe": "un restaurante a la hora de la cena. Elige scene: cocina (la cocina en línea vista desde arriba: plancha, freidora, parte fría y emplatado, cada una con sus platos haciéndose y su cola delante; el pase con los platos terminados esperando a los de su mesa; y el comedor con 16 mesas, cuántos son, cuánto llevan esperando y sus platos al llegar. La plancha es el cuello de botella (≈ 61 platos/h, el resto 120+): con la plancha ocupada al 70 % la mesa de 2 espera ~25 min y la de 10 ~32; al 90 %, ~43 y ~57. regla: juntos (la mesa recibe todo cuando está el último plato) | centro (cada plato sale al centro al estar listo: la mesa de 10 come a los ~12 min). arreglo: ninguno | plancha2 (una segunda plancha: al 90 % la mesa media baja de ~48 a ~28 min) | frio (un cocinero más en la parte fría: no cambia nada, ~48) | carta (carta corta: ~37). Con el overlay cuello sale lo que saca cada estación por hora y la plancha en rojo: el más lento) · comparar (izquierda como está, derecha con que: centro | plancha2 | frio | carta; con sus minutos) · sentar (un comedor que se llena de golpe: diez mesas a la vez contra de dos en dos; la cola de la plancha no se dispara) · mesas (gráfica: lo que espera la mesa según cuántos sois, todo a la vez contra al centro) · noche (gráfica: la espera según la hora del pedido de 20:30 a 24:00: sube con el comedor lleno, pico hacia las 22:30, y tarda en recuperarse) · herbie (la excursión de Goldratt: chavales en fila por el monte; el grupo avanza al ritmo de Herbie, el de la mochila; herbie: detras | delante) · comandas (la cocina antigua de cocineros sueltos: de la comanda al plato según ocupacion: ~15 min al 80 %, ~26 al 90 %, ~47 al 95 %) · orden (por orden de llegada contra lo rápido primero) · curva (de la comanda al plato según lo ocupada que está la cocina) · pedir (vuestra mesa de diez, plato a plato por las estaciones de la cocina, aunque estuviera vacía: a la izquierda cada uno pide lo suyo (dos risottos, tres chuletones, dos pescados… casi todo a la plancha, que hace cinco a la vez) y la mesa come cuando está el ÚLTIMO; a la derecha pedís parecido (hamburguesas, croquetas, ensaladas, repartido entre plancha, freidora y parte fría): mucho antes) · terraza (sentarse ya en la terraza o esperar mesa en la barra: con la cocina a tope la comida llega casi a la misma hora; la cocina marca el ritmo, no dónde esperas) · pista (los hermanos McDonald, San Bernardino, 1948: la cocina dibujada con tiza en una pista de tenis y los empleados ensayando sus movimientos)",
+    "focus": {
+      "kitchen": "la cocina"
+    },
+    "overlay": {
+      "panel": "el panel (lo que espera la mesa de 2 y la de 10, la plancha ocupada)",
+      "cuello": "lo que saca cada estación por hora, la más lenta en rojo"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "cocina",
+          "comparar",
+          "sentar",
+          "mesas",
+          "noche",
+          "herbie",
+          "comandas",
+          "orden",
+          "curva",
+          "pedir",
+          "terraza",
+          "pista"
+        ],
+        "default": "cocina",
+        "describe": "qué escena: cocina · comparar · sentar · mesas · noche · herbie · comandas · orden · curva · pedir · terraza · pista"
+      },
+      "ocupacion": {
+        "options": [
+          0.7,
+          0.8,
+          0.9,
+          0.95
+        ],
+        "default": 0.9,
+        "describe": "cocina, comparar, mesas, comandas: lo ocupada que está la estación más lenta (la plancha)",
+        "label": {
+          "es": "ocupación de la cocina",
+          "en": "how busy the cooks are",
+          "pt": "ocupação da cozinha",
+          "de": "Auslastung der Küche"
+        },
+        "percent": true
+      },
+      "regla": {
+        "options": [
+          "juntos",
+          "centro"
+        ],
+        "default": "juntos",
+        "describe": "solo en cocina: juntos (todo a la vez, cuando está el último) o centro (raciones al centro según salen)"
+      },
+      "arreglo": {
+        "options": [
+          "ninguno",
+          "plancha2",
+          "frio",
+          "carta"
+        ],
+        "default": "ninguno",
+        "describe": "solo en cocina: el arreglo aplicado"
+      },
+      "que": {
+        "options": [
+          "centro",
+          "plancha2",
+          "frio",
+          "carta"
+        ],
+        "default": "centro",
+        "describe": "solo en comparar: lo que tiene el lado derecho"
+      },
+      "herbie": {
+        "options": [
+          "detras",
+          "delante"
+        ],
+        "default": "detras",
+        "describe": "solo en herbie: Herbie en medio de la fila o delante con la mochila repartida"
+      }
+    },
+    "marks": {
+      "rail": [
+        "las comandas",
+        "el riel",
+        "la comanda"
+      ],
+      "plancha": [
+        "la plancha",
+        "el cuello de botella",
+        "herbie"
+      ],
+      "pase": [
+        "el pase",
+        "los platos terminados"
+      ],
+      "mesas": [
+        "tu mesa",
+        "las mesas",
+        "el comedor"
+      ]
+    },
+    "panels": [
+      "panel",
+      "cuello"
+    ]
+  },
+  "metro": {
+    "niche": "multitudes",
+    "describe": "un andén de metro visto desde arriba (modelo de fuerzas sociales): un vagón con dos puertas, 30 personas que bajan y 30 que esperan para subir (en azul); las puertas cierran a los 40 s. Elige scene: comparar (izquierda esperan delante de las puertas y empujan para entrar a la vez: las puertas se atascan: a los 40 s solo han bajado 13 de 30 y subido 19; derecha esperan a los lados hasta que nadie más baja: todos bajan en ~19 s y todos suben en ~32 s) · delante (solo las puertas bloqueadas) · lados (solo esperando a los lados) · curva (personas que ya han bajado o subido segundo a segundo: esperando a los lados contra delante de las puertas)",
+    "focus": {
+      "platform": "el andén"
+    },
+    "overlay": {
+      "panel": "el panel (han bajado, han subido, las puertas cierran en)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "comparar",
+          "delante",
+          "lados",
+          "curva"
+        ],
+        "default": "comparar",
+        "describe": "qué escena: comparar · delante · lados · curva"
+      }
+    },
+    "marks": {
+      "doors": [
+        "las puertas",
+        "la puerta",
+        "delante de la puerta"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "apagon": {
+    "niche": "desastres y crisis",
+    "describe": "la red eléctrica de un país vista desde arriba (la península ibérica, Alemania, Brasil o el noreste de EE. UU., ver pais), de noche: ciudades como manchas de casas con las ventanas encendidas, centrales con su aspecto (nucleares, ciclos combinados, presas, campos solares, molinos), torres y líneas por las que se ve correr la corriente, y las conexiones con Francia y Marruecos. USA ESTE MUNDO para TODO lo de apagones y red eléctrica (no red). Elige scene según lo que explica la frase: cascada (una línea cae, su carga pasa a las vecinas y caen una a una: se apaga la de al lado, luego otras dos, luego cinco; las ciudades se apagan una a una; con margin 0.1-0.2 se queda sin luz ~70 % de la gente, con 0.3 una esquina, con 0.4 nada; el modelo de Motter y Lai 2002; y también el apagón de 2025) · reparto (las leyes de Kirchhoff: se corta una línea y la corriente se reparte sola por todos los caminos a la vez, unas líneas engordan; no hay llave que cerrar) · combado (una línea vista de lado en un día de calor: se calienta, se dilata, se comba, toca los árboles y se desconecta; la alarma que no sonó; Ohio 2003) · frecuencia (50 hercios: cae una central, producción y consumo dejan de pesar igual en la balanza, la aguja cae; con deslastre los relés cortan barrios a propósito y se recupera; sin él se desconectan centrales y se apaga todo) · inercia (la misma avería con turbinas pesadas girando: la frecuencia cae despacio y aguanta; con paneles solares: cae rápido y se apaga todo) · arena (el montón de arena de Bak, Tang y Wiesenfeld 1987: granos de uno en uno y avalanchas pequeñas y enormes; los apagones siguen el mismo patrón, Dobson) · arranque (el arranque en frío: las hidroeléctricas y las conexiones con Francia y Marruecos encienden islas que crecen y se sincronizan; horas; con golpe si: todos encienden todo a la vez y una isla se vuelve a caer) · isla (una zona se separa a tiempo con su parte de la conexión con Francia y se salva mientras el resto se apaga; Europa partida en trozos en 2006; las interconexiones con protecciones)",
+    "focus": {
+      "map": "la península"
+    },
+    "overlay": {
+      "panel": "el panel de la escena (sin luz, líneas desconectadas, frecuencia, con luz…)",
+      "fail": "señala el primer fallo",
+      "load": "lo cargada que va cada línea (verde, ámbar, rojo)"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "cascada",
+          "reparto",
+          "combado",
+          "frecuencia",
+          "inercia",
+          "arena",
+          "arranque",
+          "isla"
+        ],
+        "default": "cascada",
+        "describe": "qué escena: cascada · reparto · combado · frecuencia · inercia · arena · arranque · isla"
+      },
+      "margin": {
+        "min": 0.05,
+        "max": 0.5,
+        "default": 0.15,
+        "describe": "solo en cascada: margen de cada línea sobre su carga normal (0.1-0.2: se apaga ~70 %; 0.3: una esquina; 0.4: nada)",
+        "label": {
+          "es": "margen de la red",
+          "en": "grid margin",
+          "pt": "margem da rede",
+          "de": "Netzreserve"
+        },
+        "percent": true
+      },
+      "deslastre": {
+        "options": [
+          "si",
+          "no"
+        ],
+        "default": "si",
+        "describe": "solo en frecuencia: si los relés cortan barrios a propósito (si: se salva; no: se apaga todo)"
+      },
+      "golpe": {
+        "options": [
+          "no",
+          "si"
+        ],
+        "default": "no",
+        "describe": "solo en arranque: si todos encienden todo a la vez (si: una isla se vuelve a caer)"
+      },
+      "pais": {
+        "options": [
+          "auto",
+          "iberia",
+          "alemania",
+          "brasil",
+          "eeuu"
+        ],
+        "default": "auto",
+        "describe": "el mapa: auto (el del idioma del vídeo: español la península, alemán Alemania, portugués Brasil, inglés el noreste de EE. UU.; los doblajes cambian solos); otro solo si la frase habla de ese país (el apagón de Ohio y Nueva York de 2003: eeuu)"
+      }
+    },
+    "cues": {
+      "fail": "la frase en la que falla la primera pieza (o se corta la línea, o cae la central)"
+    },
+    "marks": {
+      "fail": [
+        "el primer fallo",
+        "una sola linea",
+        "una linea"
+      ],
+      "france": [
+        "francia",
+        "la conexion con francia"
+      ]
+    },
+    "panels": [
+      "panel"
+    ]
+  },
+  "explica": {
+    "niche": "comodín",
+    "describe": "el COMODÍN para lo que ningún otro mundo enseña (un dato suelto, un momento de la historia, una idea abstracta); úsalo solo en esas frases y vuelve al mundo de la historia en cuanto se pueda. Escribe sus palabras en \"texts\" (cortas) y sus cifras en \"nums\" (solo las que dice la frase). Elige scene: dato (una cifra grande: texts = [etiqueta, unidad, frase corta], nums = [la cifra]) · historia (una fecha y lo que pasó: texts = [año o fecha, quién o qué, qué pasó]; inventos, descubrimientos, quién lo estudió) · curva (una curva con su forma, forma = umbral|exponencial|lineal|campana|meseta: texts = [eje vertical, eje horizontal, nombre del punto de giro]; «a partir de cierto punto se dispara») · comparar (A contra B: texts = [A, B], nums = [valor A, valor B] si la frase los da) · pasos (una cadena de 3-5 causas que se encienden una tras otra: texts = los pasos; bucle = si cuando el último alimenta al primero, «se alimenta a sí mismo»)",
+    "focus": {
+      "center": "el centro"
+    },
+    "overlay": {
+      "none": "sin panel"
+    },
+    "params": {
+      "scene": {
+        "options": [
+          "dato",
+          "historia",
+          "curva",
+          "comparar",
+          "pasos"
+        ],
+        "default": "dato",
+        "describe": "qué escena: dato · historia · curva · comparar · pasos"
+      },
+      "forma": {
+        "options": [
+          "umbral",
+          "exponencial",
+          "lineal",
+          "campana",
+          "meseta"
+        ],
+        "default": "umbral",
+        "describe": "solo en curva: la forma"
+      },
+      "bucle": {
+        "options": [
+          "no",
+          "si"
+        ],
+        "default": "no",
+        "describe": "solo en pasos: si el último paso alimenta al primero"
+      }
+    }
+  }
+}

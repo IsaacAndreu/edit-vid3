@@ -24,6 +24,7 @@
     "remotion.config.ts",
     "src",
     "templates",
+    "remotion",
     "scripts",
     "storyboards"
   ]

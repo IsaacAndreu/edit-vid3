@@ -1,0 +1,21 @@
+# «O Porquê Simulado» (portugués): el canal de simulación general en este idioma. `base: el-porque-simulado` trae todo el molde
+# (mundos, aspecto, gráficos); aquí solo va lo propio: el idioma (voz, paneles, títulos y textos) y sus ideas.
+# Su voz: estudio → Ajustes → Voces por canal → porque-simulado-pt.
+
+base: el-porque-simulado
+
+align:
+  language: pt
+
+localize: |                       # cómo adaptar cada guion al público de Brasil
+  Público de Brasil. «Autovía» → rodovia o marginal (la Marginal Tietê en São Paulo es un atasco que todos conocen);
+  el súper → mercado/supermercado (Carrefour, Assaí, Pão de Açúcar); reales y kilómetros. En vídeos de apagones: el
+  apagón de noviembre de 2009, cuando la línea de Itaipú cayó y dejó sin luz a buena parte del país. Tono: cercano y
+  con ritmo, como se habla en Brasil.
+
+dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
+  enabled: false
+
+ideas:
+  about: 'a YouTube channel in portugués: coisas do dia a dia e do mundo explicadas com simulações vistas de cima (por que há engarrafamentos sem motivo, por que a fila do lado anda mais rápido, como se espalha um boato ou um incêndio), vídeos de ~10 min com uma experiência que se vê'
+  niches: [trânsito, filas, epidemias, desastres, sociedade, animais, ciência do cotidiano]

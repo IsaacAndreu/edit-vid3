@@ -1,0 +1,123 @@
+# Perfil del canal de instrumentos: comparativas y rankings de compra (pianos digitales, teclados, guitarras,
+# auriculares de estudio…) que separan qué parte del precio es tecnología y qué parte es marca. Vídeos de 12-16 min
+# con cuenta atrás, fichas técnicas y comparativas. Mismo molde que megaproyectos.yaml.
+# Úsalo con `canal: instrumentos` (materiales/instrumentos/config.yaml ya lo pone) y `serie: <serie>` en el
+# config.yaml de un vídeo (las series están al final).
+
+format: ranking                    # «7 pianos baratos que…»: cada puesto con su tarjeta 7/7 y su ficha
+
+brand:                             # escenario: negro piano lacado, dorado de marfil y azul de LED
+  accent: "#e8c170"                # dorado: cifras, tarjetas del ranking, títulos
+  accent2: "#7dd3fc"               # azul: lado B de las comparativas (el barato frente al Yamaha)
+  canvas: "#0b0b0d"
+  glow: "rgba(232,193,112,0.22)"
+  label: "#4a3a1a"
+  wipe: "#e8c170"
+  panel: "#141417"
+  panelRaised: "#1c1c21"
+  muted: "#a7a9b4"
+  border: "#2a2a31"
+  chapterStyle: numbered
+  statStyle: bare                  # la cifra gigante directamente sobre el instrumento ('192 notas', '11 kg')
+  motion: editorial
+  articleStyle: paper
+  dataStyle: light
+
+graphics:
+  seconds_per_graphic: 50          # este nicho vive de fichas técnicas y comparativas
+  cover_weak: true
+  types: [specs, compare, split, receipt, chart, race, scale, kinetic, article]
+  hint: "Es una comparativa de compra: \"specs\" con la ficha de cada modelo cuando el guion da sus datos
+    (teclas, polifonía, vatios, peso, precio), \"compare\" cuando enfrenta dos modelos (FP-30X frente a P-225),
+    \"receipt\" para lo que de verdad cuesta (piano + soporte + pedal + auriculares), \"scale\" para tamaños
+    (23 cm de fondo) y \"kinetic\" para la cifra que sorprende."
+
+pacing:                            # producto: planos que dejan ver la tecla, el panel, el mueble
+  base_seconds: 3.6
+  slow_seconds: 4.6
+  fast_seconds: 2.4
+
+people:
+  max: 0                           # productos, no personas
+
+timeline:
+  card_share: 0.1
+  pizarra: true
+  moments: 0
+  sound_bites: 2                   # 2 golpes de sonido real: el instrumento sonando en el vídeo oficial
+  music_default: intriga
+  opening_question: auto
+
+quotes:
+  count: 0
+
+fallback:
+  pexels: true                     # manos tocando un piano digital genérico es b-roll válido entre modelos
+  image_style: illustration
+
+judge:
+  trusted_bonus: 0.06              # los vídeos oficiales de las marcas: el modelo exacto, buena imagen, sin presentador
+  trusted_channels: [Roland, Roland Channel, Casio Music, CASIO Music Global, Kawai, Kawai Pianos, Kawai Global,
+                     Yamaha, Yamaha Music, Yamaha Corporation, Korg, KORG Global, Nord Keyboards, Donner,
+                     Donner Music, Thomann, Gear4music]
+
+content:                           # nunca reseñas de otros creadores (su cara, su voz, su opinión) ni videojuegos
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, minecraft, roblox, fortnite, synthesia game,
+                    piano tiles, videojuego, video game, simulator, "ai generated", tutorial for beginners lesson,
+                    reaction, reacts, unboxing asmr]
+
+planner:
+  shots_note: |
+    - METRAJE: el MODELO EXACTO del que se habla, con marca y modelo completos en cada búsqueda: 'Roland FP-10
+      digital piano official', 'Kawai ES120 demo', 'Casio PX-S1100 slim digital piano', 'Korg B2 digital piano'.
+      Prioriza vídeos oficiales de la marca (presentaciones, demos de sonido, primeros planos del teclado) y
+      fotos de producto. Nunca otro modelo de la misma marca (el FP-30X no es el FP-10, el PX-S3100 no es el
+      PX-S1100), nunca reseñas de youtubers hablando a cámara.
+    - PARTES TÉCNICAS (tecla de martillo, escape, polifonía, altavoces, pedales, muestreo): primeros planos de esa
+      parte ('digital piano hammer action keys close up', 'piano damper pedal close up', 'grand piano hammers
+      mechanism'), o el piano acústico de cola cuando se explica cómo funciona uno de verdad.
+    - CIFRAS (teclas, notas de polifonía, vatios, kilos, euros): cada cifra fuerte en un plano "stat" con su
+      unidad ('192 notas', '2 × 20 W', '11,5 kg', '430 €').
+
+package:
+  thumbnail_style: concept         # el instrumento reconocible + 0-4 palabras ('MITAD DE PRECIO', '¿VALE 1.000 €?')
+  hint: "los protagonistas son modelos concretos y marcas conocidas (Yamaha, Roland, Casio, Kawai). Título con la
+    comparación y el ahorro: '7 pianos digitales baratos que destrozan a un Yamaha de 1.000 €', 'No compres un
+    piano digital sin ver esto', 'El piano de 400 € que suena como uno de 1.000'. Miniatura con el instrumento y
+    el precio tachado o enfrentado al caro."
+
+ideas:
+  about: "un canal de YouTube en español de comparativas y guías de compra de instrumentos musicales (pianos
+    digitales, teclados, guitarras, auriculares y equipo de estudio): qué parte del precio es tecnología y qué
+    parte es marca, rankings de 10-15 min con fichas técnicas"
+  pattern: "producto caro conocido + alternativas baratas + la cifra que sorprende (mitad de precio, mejor tecla)"
+  my_channel: ""
+  competitors: []
+  niches: [pianos digitales, teclados, guitarras eléctricas, auriculares de estudio, equipo de home studio]
+
+lab:
+  queries:
+    - mejor piano digital barato
+    - piano digital calidad precio
+    - best budget digital piano
+    - Roland FP-10 vs Yamaha P-145
+    - mejor teclado para aprender piano
+    - best beginner guitar under 300
+
+grade:
+  look: neutral
+
+# --- series: un formato por semana para ver cuál funciona (en materiales/<vídeo>/config.yaml: `serie: ranking`) ---
+series:
+  ranking:                         # «7 pianos baratos que destrozan a un Yamaha de 1.000 €»
+    format: ranking
+  versus:                          # «Roland FP-30X contra Yamaha P-225: cuál comprar»
+    format: rivalidad
+    graphics:
+      types: [compare, split, specs, receipt, chart, kinetic]
+      hint: "Es un duelo de dos modelos: \"compare\" y \"split\" en cada aspecto (tecla, sonido, altavoces,
+        precio), \"specs\" con la ficha de cada uno y \"receipt\" con el coste total de cada opción."
+  cuanto-cuesta:                   # «Qué pagas de verdad en un piano de 1.000 €»
+    format: cuanto-cuesta
+    graphics:
+      types: [receipt, chart, compare, specs, kinetic]

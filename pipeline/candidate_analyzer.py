@@ -416,7 +416,7 @@ class DeepSeekVisualJudge:
                 item.get("text")
                 for message in output
                 if isinstance(message, dict)
-                for item in message.get("content", [])
+                for item in (message.get("content") or [])
                 if isinstance(item, dict) and item.get("type") == "output_text" and isinstance(item.get("text"), str)
             ]
             if chunks:

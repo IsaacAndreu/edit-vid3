@@ -1,0 +1,23 @@
+# «Das Simulierte Warum» (alemán): el canal de simulación general en este idioma. `base: el-porque-simulado` trae todo el molde
+# (mundos, aspecto, gráficos); aquí solo va lo propio: el idioma (voz, paneles, títulos y textos) y sus ideas.
+# Su voz: estudio → Ajustes → Voces por canal → simuliertes-warum.
+
+base: el-porque-simulado
+
+align:
+  language: de
+
+localize: |                       # cómo adaptar cada guion al público alemán (no traducir sin más)
+  Público de Alemania, Austria y Suiza. «Autovía» → Autobahn; el súper → Supermarkt (Aldi, Lidl, Rewe, Edeka); la DGT
+  → el ADAC (o la policía de tráfico, según lo que haga en la frase); euros y kilómetros. En vídeos de tráfico: el «Stau aus dem Nichts» es como lo llaman allí, y la cremallera
+  (Reißverschlussverfahren) es obligatoria por ley en Alemania. En vídeos de apagones: el apagón europeo del 4 de
+  noviembre de 2006 empezó en Alemania, al desconectar una línea de alta tensión sobre el río Ems para dejar pasar el
+  crucero Norwegian Pearl del astillero de Papenburg, y dejó sin luz a millones de hogares en Europa. Tono: claro y
+  preciso, sin exageraciones.
+
+dubbing:                           # llega doblado desde el-porque-simulado: este canal no dobla a otros
+  enabled: false
+
+ideas:
+  about: 'a YouTube channel in alemán: Alltägliches und die Welt mit Simulationen von oben erklärt (warum Staus aus dem Nichts entstehen, warum die andere Schlange schneller ist, wie sich ein Gerücht oder ein Feuer ausbreitet), ~10-Minuten-Videos mit einem sichtbaren Experiment'
+  niches: [Verkehr, Warteschlangen, Epidemien, Katastrophen, Gesellschaft, Tiere, Alltagswissenschaft]

@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+
+from pipeline import lab
+from pipeline.context import RunContext
+from pipeline.ytapi import NoKeysLeft, YouTubeAPI, parse_channel, parse_duration
+
+
+class Response:
+    def __init__(self, status: int, data: dict) -> None:
+        self.status_code, self._data, self.text = status, data, json.dumps(data)
+
+    def json(self) -> dict:
+        return self._data
+
+
+def _published(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _video(vid: str, channel: str, views: int, seconds: int = 600, days: int = 30) -> dict:
+    return {"id": vid, "snippet": {"title": f"T{vid}", "channelId": channel, "channelTitle": channel,
+                                   "publishedAt": _published(days), "thumbnails": {}},
+            "statistics": {"viewCount": str(views)}, "contentDetails": {"duration": f"PT{seconds // 60}M{seconds % 60}S"}}
+
+
+class FakeYouTube:
+    """search → v1 (big hit on channel A), v2 (normal on B); uploads give each channel's baseline."""
+
+    def __init__(self, quota_fail_keys: set[str] = frozenset()) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self.quota_fail_keys = quota_fail_keys
+        self.videos = {"v1": _video("v1", "A", 50_000), "v2": _video("v2", "B", 1_000), "s1": _video("s1", "A", 10**7, 30),
+                       "a1": _video("a1", "A", 1_000), "a2": _video("a2", "A", 3_000),
+                       "b1": _video("b1", "B", 1_000), "b2": _video("b2", "B", 1_000)}
+
+    def get(self, url: str, params: dict, timeout: int = 0) -> Response:
+        endpoint = url.rsplit("/", 1)[-1]
+        self.calls.append((endpoint, params["key"]))
+        if params["key"] in self.quota_fail_keys:
+            return Response(403, {"error": {"errors": [{"reason": "quotaExceeded"}], "message": "quota"}})
+        if endpoint == "search":
+            return Response(200, {"items": [{"id": {"videoId": v}} for v in ("v1", "v2", "s1")]})
+        if endpoint == "videos":
+            return Response(200, {"items": [self.videos[i] for i in params["id"].split(",")]})
+        if endpoint == "channels":
+            ids = params.get("id", "A").split(",")
+            return Response(200, {"items": [{"id": c, "snippet": {"title": c}, "statistics": {"subscriberCount": "5000"},
+                                             "contentDetails": {"relatedPlaylists": {"uploads": "UU" + c}}} for c in ids]})
+        if endpoint == "playlistItems":
+            ids = {"UUA": ["a1", "a2", "v1", "s1"], "UUB": ["b1", "b2", "v2"]}[params["playlistId"]]
+            return Response(200, {"items": [{"contentDetails": {"videoId": i}} for i in ids]})
+        raise AssertionError(endpoint)
+
+
+def _api(tmp_path, fake: FakeYouTube, keys: str = "k1,k2") -> YouTubeAPI:
+    ctx = RunContext.create("_t", root=tmp_path, config={"lab": {"units_per_key": 10000}})
+    ctx._env_loaded = True
+    import os
+    os.environ["YOUTUBE_API_KEYS"] = keys
+    try:
+        return YouTubeAPI(ctx, session=fake)
+    finally:
+        del os.environ["YOUTUBE_API_KEYS"]
+
+
+def test_parsers():
+    assert parse_duration("PT1H2M3S") == 3723
+    assert parse_duration("PT45S") == 45
+    assert parse_duration("P1DT1M") == 86460
+    assert parse_duration("") == 0
+    assert parse_channel("@GymnastIcons") == {"forHandle": "@GymnastIcons"}
+    assert parse_channel("https://www.youtube.com/@GymnastIcons/videos") == {"forHandle": "@GymnastIcons"}
+    assert parse_channel("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv") == {"id": "UCabcdefghijklmnopqrstuv"}
+    assert parse_channel("GymnastIcons") == {"forHandle": "@GymnastIcons"}
+
+
+def test_outliers_ratio_against_channel_median(tmp_path):
+    fake = FakeYouTube()
+    api = _api(tmp_path, fake)
+    found = lab.outliers(api.ctx, "gimnasta", api=api)
+    ratios = {v["id"]: v["ratio"] for v in found}
+    # A's long uploads: 1000, 3000, 50000 → median 3000; B's: 1000, 1000, 1000. Shorts ignored.
+    assert ratios == {"v1": round(50_000 / 3000, 1), "v2": 1.0}
+    assert found[0]["id"] == "v1" and found[0]["subscribers"] == 5000
+    assert [v["id"] for v in lab.outliers(api.ctx, "gimnasta", min_ratio=2, api=api)] == ["v1"]
+
+
+def test_cache_and_quota_ledger(tmp_path):
+    fake = FakeYouTube()
+    api = _api(tmp_path, fake)
+    api.search("x")
+    api.search("x")                      # cached: no second call
+    assert [c[0] for c in fake.calls] == ["search"]
+    quota = api.quota()
+    assert quota["used"] == 100 and quota["left"] == 19_900 and quota["keys"] == 2 and quota["searchesLeft"] == 199
+    assert "k1" not in (tmp_path / "cache" / "ytapi" / "quota.json").read_text()   # keys never written
+
+
+def test_rotates_to_next_key_and_counts_searches_per_key(tmp_path, monkeypatch):
+    import pytest
+    from pipeline.ytapi import NoKeysLeft, chosen_keys
+
+    fake = FakeYouTube(quota_fail_keys={"k1"})
+    api = _api(tmp_path, fake)
+    assert api.keys == ["k1", "k2"]
+    assert api.search("y") == ["v1", "v2", "s1"]
+    assert [c[1] for c in fake.calls] == ["k1", "k2"]
+    api.search("z")                                       # k1 parked for the day → straight to k2
+    assert fake.calls[-1][1] == "k2" and len(fake.calls) == 3
+
+    env = {"YOUTUBE_API_KEY": "prod", "YOUTUBE_API_KEYS": "a,b", "YOUTUBE_API_KEY_DEV": "dev"}
+    get = lambda name, required=False: env.get(name, "")     # noqa: E731
+    assert chosen_keys(get) == (["a", "b", "prod"], "producción")
+    env["YOUTUBE_API_ENTORNO"] = "desarrollo"
+    assert chosen_keys(get) == (["dev"], "desarrollo")
+
+    ctx = RunContext.create("_t", root=tmp_path / "b", config={"lab": {"searches_per_day": 1}})
+    monkeypatch.setenv("YOUTUBE_API_KEYS", "k8,k9")
+    ctx._env_loaded = True
+    session = FakeYouTube()
+    limited = YouTubeAPI(ctx, session=session)
+    limited.search("uno")
+    limited.search("dos")                                 # k8 has done its 1 search: k9
+    assert [c[1] for c in session.calls if c[0] == "search"] == ["k8", "k9"]
+    with pytest.raises(NoKeysLeft, match="2 claves"):
+        limited.search("tres")
+    assert limited.quota()["searchesLeft"] == 0 and limited.quota()["searches"] == 2
+
+def test_no_keys_left(tmp_path):
+    fake = FakeYouTube(quota_fail_keys={"k1"})
+    api = _api(tmp_path, fake, keys="k1")
+    try:
+        api.search("q")
+    except NoKeysLeft:
+        pass
+    else:
+        raise AssertionError("expected NoKeysLeft")
+
+
+def test_saved_roundtrip(tmp_path):
+    ctx = RunContext.create("_t", root=tmp_path, config={})
+    lab.save(ctx, {"id": "v1", "title": "Uno", "views": 5}, "buena miniatura")
+    lab.save(ctx, {"id": "v2", "title": "Dos"})
+    lab.save(ctx, {"id": "v1", "title": "Uno"})
+    assert [v["id"] for v in lab.saved(ctx)] == ["v1", "v2"]
+    assert [v["id"] for v in lab.unsave(ctx, "v1")] == ["v2"]
+
+
+def test_per_key_limits(tmp_path):
+    api = _api(tmp_path, FakeYouTube(), keys="k1:50000,k2")
+    assert api.keys == ["k1", "k2"] and api.quota()["total"] == 60_000
+
+
+def test_quota_resets_at_midnight_in_los_angeles_shown_in_spanish_time():
+    from datetime import datetime, timezone
+
+    from pipeline.ytapi import next_reset, reset_text
+
+    october = datetime(2026, 10, 12, 10, 0, tzinfo=timezone.utc)
+    assert next_reset(october) == datetime(2026, 10, 13, 7, 0, tzinfo=timezone.utc)
+    assert reset_text(october) == "a las 09:00 del 13/10 (hora de España)"
+    gap = datetime(2026, 10, 27, 10, 0, tzinfo=timezone.utc)          # Spain already in winter time, California not
+    assert reset_text(gap) == "a las 08:00 del 28/10 (hora de España)"
+    assert reset_text(datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc)).startswith("a las 08:00")
+
+
+def test_every_call_is_written_down_and_a_lower_real_quota_is_reported(tmp_path, capsys):
+    fake = FakeYouTube(quota_fail_keys={"k1"})
+    api = _api(tmp_path, fake, keys="k1")
+    import pytest
+    from pipeline.ytapi import NoKeysLeft, quota_day
+
+    with pytest.raises(NoKeysLeft):
+        api.search("y")
+    rows = [json.loads(line) for line in (tmp_path / "cache" / "ytapi" / f"registro-{quota_day()}.jsonl").read_text().splitlines()]
+    assert rows[0]["endpoint"] == "search" and rows[0]["searches"] == 1 and rows[1]["mismatch"] is True
+    assert "k1" not in json.dumps(rows)                                # the key is never written
+    assert "paso a la siguiente" in capsys.readouterr().out

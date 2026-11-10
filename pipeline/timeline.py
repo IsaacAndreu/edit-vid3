@@ -1,0 +1,1619 @@
+"""Stage 8 — build work/<slug>/timeline.json, the props of the Remotion composition.
+
+Merges shots (what each shot shows), stage-6 media and stage-7 fallback media into a
+frame-accurate list of shots, plus:
+- groups: consecutive datacard/split shots sharing a panel (rows revealed step by step)
+  and stat shots (one continuous number while the b-roll keeps cutting underneath);
+- questions: the script's questions (¿…?) as floating text in the middle, words appearing as they are
+  spoken; questions a breath apart are shown together;
+- audio: the narration, optional music from assets/music/ (ducked while the voice speaks)
+  and optional SFX from assets/sfx/ (whoosh on chapters, pop on data).
+
+work/<slug>/ is Remotion's public dir, so every path here is relative to it; the voice
+and any music/SFX are copied into work/<slug>/audio/.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import math
+import shutil
+from pathlib import Path
+from typing import Any
+
+import hashlib
+
+from .context import RunContext
+from .llm import complete_json
+from .ingest import probe
+from .schemas import (
+    MusicPart,
+    FallbackFile,
+    IngestFile,
+    PanelStep,
+    ShotsFile,
+    Timeline,
+    TimelineCaption,
+    TimelineAudio,
+    ColdOpenFile,
+    TimelineClipAudio,
+    TimelineGroup,
+    TimelineLabel,
+    TimelineMedia,
+    TimelineSfx,
+    TimelineShot,
+    TimelineShake,
+    TimelineTransition,
+    WordsFile,
+)
+from .schemas import MAX_THIRD_PARTY_SECONDS
+from .camera import add_zooms, voice_levels, with_chapter_pauses
+from .sourcing import needs_footage
+from .sourcing.common import tokens
+
+
+STAGE = "timeline"
+OUTPUT = "timeline.json"
+AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".aac", ".ogg")
+
+
+def speech_segments(words: WordsFile, fps: int, max_gap: float = 0.5) -> list[tuple[int, int]]:
+    segments: list[list[float]] = []
+    for word in words.words:
+        if segments and word.start - segments[-1][1] <= max_gap:
+            segments[-1][1] = max(segments[-1][1], word.end)
+        else:
+            segments.append([word.start, word.end])
+    return [(round(a * fps), max(round(a * fps) + 1, round(b * fps))) for a, b in segments]
+
+
+OPEN_PUNCT = "«“\"'(¡"
+CLOSE_PUNCT = "»”\"')"
+
+
+def locale_for(lang: str) -> dict[str, str]:
+    """A video made directly in another language (align.language: pt…): «CAPÍTULO», «Fuente» and the end screen in it."""
+
+    from .dub import ENDSCREEN, LANGUAGES
+
+    if lang.startswith("es") or lang not in LANGUAGES:
+        return {}
+    _, chapter, source = LANGUAGES[lang]
+    next_word, subscribe = ENDSCREEN[lang]
+    return {"chapter": chapter, "source": source, "next": next_word, "subscribe": subscribe}
+
+
+def question_spans(words: WordsFile) -> list[tuple[int, int]]:
+    """(first, last) word indexes of each question in the script."""
+
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    sentence = 0
+    for i, word in enumerate(words.words):
+        text = word.text.lstrip(OPEN_PUNCT)
+        if text.startswith("¿"):
+            start = i
+        tail = word.text.rstrip(CLOSE_PUNCT)
+        if tail.endswith("?"):
+            spans.append((start if start is not None else sentence, i))
+            start = None
+        if tail.endswith((".", "!", "?", ":", ";", "…")):
+            sentence = i + 1
+    return spans
+
+
+QUESTION_STARTS = re.compile(
+    r"^(¿|quieres|queréis|sabías|sabes|sabéis|te has|os habéis|alguna vez|has |habéis|qué|que harías|cómo|como es posible|"
+    r"por qué|porque |cuánto|cuántos|cuántas|cuál|quién|dónde|crees|te imaginas|y si |podrías|puedes|es posible|"
+    r"do you|did you|have you|would you|could you|can you|what|why|how|who|where|which|is it|are you|ever wondered)",
+    re.IGNORECASE)
+
+
+def opening_question(words: WordsFile, cfg: dict[str, Any]) -> tuple[int, int] | None:
+    """The first sentence when it asks the viewer something, with or without question marks
+    ("Quieres ser dueño de un casino."); timeline.opening_question: auto | true | false."""
+
+    mode = str(cfg.get("opening_question", "auto")).lower()
+    if mode in ("false", "no", "0") or not words.words:
+        return None
+    end = next((i for i, w in enumerate(words.words) if w.sentenceEnd or w.text.rstrip(CLOSE_PUNCT).endswith((".", "!", "?", "…"))),
+               len(words.words) - 1)
+    sentence = " ".join(w.text for w in words.words[: end + 1])
+    asks = sentence.rstrip(CLOSE_PUNCT).endswith("?") or bool(QUESTION_STARTS.match(sentence.lstrip(OPEN_PUNCT + "¿")))
+    if end + 1 > int(cfg.get("question_max_words", 30)) or not (asks or mode in ("true", "yes", "1")):
+        return None
+    return 0, end
+
+
+def _as_question(texts: list[str], spanish: bool) -> list[str]:
+    """Question marks on screen even if the script has none."""
+
+    out = list(texts)
+    last = out[-1].rstrip(".…!,;:")
+    out[-1] = last if last.endswith("?") else last + "?"
+    if spanish and not out[0].lstrip(OPEN_PUNCT).startswith("¿"):
+        out[0] = "¿" + out[0][:1].upper() + out[0][1:]
+    return out
+
+
+def question_groups(words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                    total: int, cfg: dict[str, Any], spanish: bool = True) -> list[TimelineGroup]:
+    """Floating questions (centred text) that never overlap a data group or a chapter title. A video
+    that opens with a question shows it whole from the very first frame ("q-open")."""
+
+    if not cfg.get("questions", True):
+        return []
+    opening = opening_question(words, cfg)
+    merge_gap = float(cfg.get("question_merge_gap", 2.5))
+    hold = round(float(cfg.get("question_hold", 1.2)) * fps)
+    lead = 3
+    max_words = int(cfg.get("question_max_words", 30))
+    merged: list[list[int]] = []
+    for a, b in question_spans(words):
+        if merged and words.words[a].start - words.words[merged[-1][1]].end <= merge_gap:
+            merged[-1][1] = b
+        else:
+            merged.append([a, b])
+    blocked = sorted([(g.from_, g.from_ + g.durationInFrames) for g in groups]
+                     + [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"])
+    result: list[TimelineGroup] = []
+    if opening:
+        a, b = opening
+        spoken_end = round(words.words[b].end * fps)
+        end = min([total, spoken_end + hold] + [x for x, _ in blocked if x > 0])
+        texts = _as_question([w.text for w in words.words[a : b + 1]], spanish)
+        result.append(TimelineGroup.model_validate({
+            "id": "q-open", "kind": "question", "from": 0, "durationInFrames": max(fps, end),
+            "words": [{"text": t, "from": 0} for t in texts],        # whole question at once, from frame 0
+        }))
+        merged = [m for m in merged if m[1] < a or m[0] > b]
+    for a, b in merged:
+        if b - a + 1 > max_words:
+            continue
+        start = max(0, round(words.words[a].start * fps) - lead)
+        spoken_end = round(words.words[b].end * fps)
+        if any(x < spoken_end and start < y for x, y in blocked):
+            continue
+        end = min([total, spoken_end + hold] + [x for x, _ in blocked if x >= spoken_end])
+        if result:
+            previous = result[-1]
+            if previous.from_ + previous.durationInFrames > start:
+                previous.durationInFrames = max(1, start - previous.from_)
+        result.append(TimelineGroup.model_validate({
+            "id": f"q{len(result) + 1:02d}", "kind": "question", "from": start, "durationInFrames": end - start,
+            "words": [{"text": w.text, "from": max(0, round(w.start * fps) - start)} for w in words.words[a : b + 1]],
+        }))
+    return result
+
+
+def with_moments(timeline: Timeline, moments: list[tuple[str, float, float, str, int, int]], fps: int,
+                 volume: float = 1.0, longest: float = MAX_THIRD_PARTY_SECONDS) -> Timeline:
+    """Pause the narration after peak sentences: (src, voice seconds, clip seconds, credit, w, h).
+
+    Called before the cold open, when frames still equal voice frames. The pause goes at the shot
+    boundary nearest the end of the sentence (within 1.5 s) that does not cut a panel or label;
+    everything after it moves by the clip's length and the voice gets a gap there.
+    """
+
+    for src, after, seconds, credit, width, height in sorted(moments, key=lambda m: m[1]):
+        target = round(after * fps) + sum(b for _, b in timeline.audio.voiceGaps)
+        overlays = [(g.from_, g.from_ + g.durationInFrames) for g in [*timeline.groups, *timeline.labels]]
+        options = [s.from_ for s in timeline.shots[1:] if abs(s.from_ - target) <= 1.5 * fps
+                   and not any(a < s.from_ < b for a, b in overlays)]
+        if not options:
+            continue
+        at = min(options, key=lambda f: abs(f - target))
+        frames = max(1, min(round(seconds * fps), int(longest * fps)))
+        n = len(timeline.audio.voiceGaps) + 1
+
+        def moved(item):
+            return item.model_copy(update={"from_": item.from_ + frames}) if item.from_ >= at else item
+
+        index = next(i for i, s in enumerate(timeline.shots) if s.from_ == at)
+        pause = TimelineShot.model_validate({
+            "id": f"m{n:02d}", "type": "broll", "from": at, "durationInFrames": frames, "text": "",
+            "media": {"src": src, "kind": "video", "source": "youtube", "credit": credit, "layout": "full",
+                      "width": width, "height": height},
+            "coldOpen": True,
+        })
+        speech = []
+        for a, b in timeline.audio.speech:
+            if b <= at:
+                speech.append((a, b))
+            elif a >= at:
+                speech.append((a + frames, b + frames))
+            else:
+                speech += [(a, at), (at + frames, b + frames)]
+        voice_at = at - sum(b for _, b in timeline.audio.voiceGaps)
+        audio = timeline.audio.model_copy(update={
+            "clips": [*[moved(c) for c in timeline.audio.clips],
+                      TimelineClipAudio.model_validate({"src": src, "from": at, "durationInFrames": frames, "volume": volume})],
+            "speech": speech, "sfx": [moved(x) for x in timeline.audio.sfx],
+            "voiceGaps": [*timeline.audio.voiceGaps, (voice_at, frames)],
+        })
+        shots = [*timeline.shots[:index], pause, *[moved(s) for s in timeline.shots[index:]]]
+        timeline = Timeline.model_validate({
+            **timeline.model_dump(by_alias=True),
+            "durationInFrames": timeline.durationInFrames + frames,
+            "shots": [s.model_dump(by_alias=True) for s in shots],
+            "groups": [moved(g).model_dump(by_alias=True) for g in timeline.groups],
+            "labels": [moved(label).model_dump(by_alias=True) for label in timeline.labels],
+            "audio": audio.model_dump(by_alias=True),
+        })
+    return timeline
+
+
+def with_quotes(timeline: Timeline, quotes: list[Any], ctx: RunContext, fps: int, volume: float = 1.0) -> Timeline:
+    """Real statements: the narration pauses after the sentence that quotes someone and their own clip plays, with
+    Spanish subtitles and their name and role (graphic "quote", drawn over the clip)."""
+
+    clips = [(str((ctx.root / q.path).relative_to(ctx.work_dir)), q.afterSeconds, q.durationSeconds, q.credit, q.width,
+              q.height) for q in quotes]
+    timeline = with_moments(timeline, clips, fps, volume, longest=15.0)
+    groups = list(timeline.groups)
+    for n, (q, (src, *_)) in enumerate(zip(quotes, clips), 1):
+        shot = next((s for s in timeline.shots if s.coldOpen and s.media and s.media.src == src), None)
+        if shot is None:
+            continue                                      # no shot boundary near that sentence: no pause was made
+        groups.append(TimelineGroup.model_validate({
+            "id": f"quote-{n}", "kind": "graphic", "from": shot.from_, "durationInFrames": shot.durationInFrames,
+            "graphic": {"type": "quote", "speaker": q.speaker, "role": q.role,
+                        "lines": [{"text": l.text, "from": round(l.from_ * fps), "to": round(l.to * fps)} for l in q.subtitles]},
+        }))
+    return timeline.model_copy(update={"groups": sorted(groups, key=lambda g: g.from_)})
+
+
+def with_opening(timeline: Timeline, clip: Any, ctx: RunContext, fps: int, volume: float = 1.0) -> Timeline:
+    """The chosen opening (pipeline/apertura.py) before the narration: its own picture and sound, the translated
+    subtitles and who speaks (graphic "quote"); everything else and the voice start after it (audio.voiceFrom).
+    Called right after the moments and the quotes, while the timeline still starts with the voice."""
+
+    frames = max(1, round(clip.durationSeconds * fps))
+    src = str((ctx.root / clip.path).relative_to(ctx.work_dir))
+
+    def moved(item: Any) -> Any:
+        return item.model_copy(update={"from_": item.from_ + frames})
+
+    shot = TimelineShot.model_validate({
+        "id": "apertura", "type": "broll", "from": 0, "durationInFrames": frames, "text": "",
+        "media": {"src": src, "kind": "video", "source": "youtube", "credit": clip.credit, "layout": "full",
+                  "width": clip.width, "height": clip.height},
+        "coldOpen": True,
+    })
+    quote = TimelineGroup.model_validate({
+        "id": "quote-apertura", "kind": "graphic", "from": 0, "durationInFrames": frames,
+        "graphic": {"type": "quote", "speaker": clip.speaker, "role": clip.role,
+                    "lines": [{"text": l.text, "from": round(l.from_ * fps), "to": min(frames, round(l.to * fps))}
+                              for l in clip.subtitles if round(l.from_ * fps) < frames]},
+    })
+    audio = timeline.audio.model_copy(update={
+        "voiceFrom": timeline.audio.voiceFrom + frames,
+        "clips": [TimelineClipAudio.model_validate({"src": src, "from": 0, "durationInFrames": frames, "volume": volume}),
+                  *[moved(c) for c in timeline.audio.clips]],
+        "speech": [(0, frames), *[(a + frames, b + frames) for a, b in timeline.audio.speech]],   # music low under it
+        "sfx": [moved(x) for x in timeline.audio.sfx],
+    })
+    return Timeline.model_validate({
+        **timeline.model_dump(by_alias=True),
+        "durationInFrames": timeline.durationInFrames + frames,
+        "shots": [shot.model_dump(by_alias=True), *[moved(s).model_dump(by_alias=True) for s in timeline.shots]],
+        # no subtitles (the clip already has them burnt in): the clip clean, without the name either
+        "groups": [*([quote.model_dump(by_alias=True)] if quote.graphic["lines"] else []),
+                   *[moved(g).model_dump(by_alias=True) for g in timeline.groups]],
+        "labels": [moved(l).model_dump(by_alias=True) for l in timeline.labels],
+        "captions": [moved(c).model_dump(by_alias=True) for c in timeline.captions],
+        "transitions": [moved(t).model_dump(by_alias=True) for t in timeline.transitions],
+        "shakes": [moved(t).model_dump(by_alias=True) for t in timeline.shakes],
+        "audio": audio.model_dump(by_alias=True),
+    })
+
+
+def _size(path: Path) -> tuple[int | None, int | None]:
+    try:
+        info = probe(path)
+        return info["width"] or None, info["height"] or None
+    except Exception:
+        return None, None
+
+
+def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float, narrow: str = "card",
+                  old: bool = False) -> str:
+    """Framed card for stills and for sources that are not widescreen (kept uncropped), plus a
+    deterministic share of ordinary clips for variety, as the channel style does. With
+    `narrow="archive"` (timeline.narrow_layout) narrow clips stay full screen between black bars,
+    with a film look, like TV archive footage; so does `old` footage (an old year in its title or a
+    low-resolution source), whatever its shape."""
+
+    if shot_type in ("chapter", "split"):
+        return "full"
+    if old and media.kind == "video":   # 1972 broadcast, a 360p upload: shown as archive, not stretched
+        return "archive"
+    if media.kind == "image":   # photos alternate between the framed card and the parallax move
+        return "parallax" if int(hashlib.sha1(shot_id.encode()).hexdigest()[8:16], 16) % 2 else "card"
+    if media.width and media.height and media.width / media.height < 1.6:
+        return "archive" if narrow == "archive" and media.kind == "video" else "card"
+    bucket = int(hashlib.sha1(shot_id.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+    return "card" if bucket < card_share else "full"
+
+
+def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
+                 fps: int) -> None:
+    """The first plain shot where the voice names each person (the protagonist after the hook) becomes
+    their presentation card: the cutout from the people stage, with its own credit."""
+
+    path = ctx.work_dir / "people.json"
+    if not path.is_file():
+        return
+    hook = round(float(ctx.section("judge").get("hook_seconds", 30)) * fps)
+    covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    taken: set[str] = set()
+    for index, person in enumerate(ctx.read_json("people.json").get("people", [])):
+        surname = tokens(person["name"].split()[-1])
+        for shot in shots:
+            start, end = shot.from_, shot.from_ + shot.durationInFrames
+            if (shot.id in taken or shot.type != "broll" or shot.groupId or shot.media is None
+                    or shot.durationInFrames < round(1.5 * fps) or (index == 0 and start < hook)
+                    or any(a < end and start < b for a, b in covered) or not surname <= tokens(shot.text)):
+                continue
+            size = _size(ctx.work_dir / person["image"])
+            shot.media = TimelineMedia(src=person["image"], kind="image", source=person.get("source") or "web",
+                                       credit=person.get("credit"), layout="person", caption=person["name"],
+                                       width=size[0], height=size[1])
+            taken.add(shot.id)
+            break
+
+
+def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                 cfg: dict[str, Any]) -> list[TimelineLabel]:
+    """Lower-left tags: the place/date of each story event on its first plain shot, and the names and
+    scores the planner marked. Never over a panel, a stat, a question or a chapter title, never two at once."""
+
+    if not cfg.get("labels", True):
+        return []
+    hold = round(float(cfg.get("label_seconds", 2.5)) * fps)
+    busy = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    busy += [(s.from_, s.from_ + s.durationInFrames) for s in shots
+             if s.type == "chapter" or (s.media and s.media.layout == "person")]
+    wanted: list[tuple[int, str, str]] = []            # (frame, kind, text)
+    by_id = {s.id: s for s in shots}
+    for shot in shots_file.shots:
+        if shot.label is not None and shot.type == "broll":
+            wanted.append((by_id[shot.id].from_, shot.label.kind, shot.label.text))
+    for event in shots_file.events:
+        if event.tag:
+            first = next((s for s in shots_file.shots if s.startWord >= event.startWord), None)
+            if first is not None:
+                wanted.append((by_id[first.id].from_, "place", event.tag))
+    labels: list[TimelineLabel] = []
+    last_end = -1
+    for start, kind, text in sorted(wanted):
+        start += 4                                      # land just after the cut
+        end = start + hold
+        if start < last_end or any(a < end and start < b for a, b in busy) or end > shots[-1].from_ + shots[-1].durationInFrames:
+            continue
+        labels.append(TimelineLabel.model_validate({"kind": kind, "text": text, "from": start, "durationInFrames": hold}))
+        last_end = end
+    return labels
+
+
+def _all_audio(folder: Path, prefix: str) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTENSIONS and p.name.lower().startswith(prefix))
+
+
+MUSIC_USAGE = "music_usage.json"   # in cache/: which tracks each video used
+
+MOODS = {
+    "intriga": "misterio, investigación, contexto, preguntas, la historia se va desvelando",
+    "triunfo": "victoria, oro, récord, podio, celebración, la gloria",
+    "caida": "fracaso, lesión, derrota, tristeza, dudas, pérdida",
+    "tension": "la espera antes de una final, presión, momento decisivo, suspense",
+    "remontada": "superación, volver más fuerte, determinación, esfuerzo que da fruto",
+    "infancia": "orígenes, niñez, familia, primeros pasos, recuerdos",
+}
+
+
+
+def moods_of(ctx: RunContext) -> dict[str, str]:
+    """The moods music files can be named after: the shared ones plus the channel's (timeline.moods)."""
+
+    extra = ctx.section("timeline").get("moods")
+    return {**MOODS, **({str(k).lower(): str(v) for k, v in extra.items()} if isinstance(extra, dict) else {})}
+
+
+MUSIC_SYSTEM = """
+Eres el montador musical de un vídeo documental de YouTube. Para cada tramo numerado del guion elige el
+tono de la música de fondo, SOLO entre estos: {moods}. Evita cambiar de tono sin motivo: tramos
+seguidos con el mismo ánimo llevan el mismo tono. Devuelve SOLO JSON: {{"moods": ["tono del tramo 0", ...]}}
+""".strip()
+
+
+def music_parts(ctx: RunContext, timeline: Timeline, tracks: dict[str, list[str]], default: str) -> list[dict]:
+    """Chapter by chapter: the mood the LLM picks (among moods with tracks), tracks rotating per mood,
+    consecutive chapters with the same mood merged into one part."""
+
+    starts = [0] + [s.from_ for s in timeline.shots if s.type == "chapter" and s.from_ > 0]
+    bounds = list(zip(starts, [*starts[1:], timeline.durationInFrames]))
+    moods = [default] * len(bounds)
+    if len(tracks) > 1:
+        texts = []
+        for a, b in bounds:
+            text = " ".join(s.text for s in timeline.shots if a <= s.from_ < b and s.text)
+            texts.append(text[:1500] or "(apertura con el sonido original de la competición)")
+        try:
+            listed = complete_json(ctx, stage=STAGE, section="planner", max_tokens=600,
+                                   system=MUSIC_SYSTEM.format(moods=", ".join(f"{m} ({moods_of(ctx).get(m, m)})" for m in tracks)),
+                                   user="\n\n".join(f"[{i}] {t}" for i, t in enumerate(texts))).get("moods", [])
+            moods = [str(m).lower() if str(m).lower() in tracks else default for m in listed][:len(bounds)]
+            moods += [moods[-1] if moods else default] * (len(bounds) - len(moods))
+        except Exception as error:  # music by chapter is a nicety: one mood for all otherwise
+            print(f"   Música por capítulos no disponible: {str(error)[:100]}")
+    # Least used first across the channel's videos (cache/music_usage.json), so videos alternate tracks.
+    registry = ctx.cache_dir / MUSIC_USAGE
+    usage: dict[str, list[str]] = json.loads(registry.read_text("utf-8")) if registry.is_file() else {}
+    count: dict[str, int] = {}
+    for slug, names in usage.items():
+        if slug != ctx.slug:
+            for name in names:
+                count[name] = count.get(name, 0) + 1
+    queue = {m: sorted(srcs, key=lambda s: (count.get(Path(s).name, 0), Path(s).name)) for m, srcs in tracks.items()}
+    parts: list[dict] = []
+    used = {m: 0 for m in tracks}
+    for (a, b), mood in zip(bounds, moods):
+        if parts and parts[-1]["mood"] == mood:
+            parts[-1]["durationInFrames"] = b - parts[-1]["from"]
+            continue
+        src = queue[mood][used[mood] % len(queue[mood])]
+        used[mood] += 1
+        parts.append({"src": src, "from": a, "durationInFrames": b - a, "mood": mood})
+    usage[ctx.slug] = sorted({Path(p["src"]).name for p in parts})
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(usage, ensure_ascii=False, indent=1), encoding="utf-8")
+    return parts
+
+
+def with_seconds(ctx: RunContext, media: dict[str, Any]) -> dict[str, Any]:
+    """Clips inside graphics carry their length, so Remotion slows them down or loops them instead of
+    leaving a frozen last frame when the graphic lasts longer than the clip."""
+
+    if media.get("kind") == "video" and "seconds" not in media:
+        from .render import media_seconds
+
+        seconds = media_seconds(ctx.work_dir / media["src"])
+        if seconds > 0:
+            media["seconds"] = round(seconds, 3)
+    return media
+
+
+def motion_graphic(ctx: RunContext, graphic: dict[str, Any], clips: list[dict[str, Any]], sessions: dict[str, Any],
+                   n: int) -> dict[str, Any] | None:
+    """A stroboscope or a speed-ramped replay from the first clip of the passage where it works."""
+
+    from . import motion
+
+    if "rembg" not in sessions:
+        try:
+            from rembg import new_session
+
+            sessions["rembg"] = new_session(str(ctx.section("people").get("model", "u2net_human_seg")))
+        except Exception:  # rembg missing: no motion graphics
+            sessions["rembg"] = None
+    if sessions["rembg"] is None:
+        return None
+    for k, clip in enumerate(clips[:4]):
+        name = f"g{n}-{k}"
+        if graphic["type"] == "strobe":
+            made = motion.strobe(ctx, ctx.work_dir / clip["src"], name, sessions["rembg"])
+        else:
+            made = motion.replay(ctx, ctx.work_dir / clip["src"], name, sessions["rembg"])
+        if made:
+            return {**graphic, **made}
+    return None
+
+
+def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
+                  labels: list[TimelineLabel], fps: int, total: int) -> tuple[list[TimelineGroup], list[TimelineLabel]]:
+    """Animated graphics (maps, A vs B, charts…) over the shots of the sentences they explain.
+
+    Each one is snapped to shot boundaries and skipped where it would cover a data panel, a stat,
+    a question, a chapter card or an athlete card; lower-third labels under it are dropped.
+    """
+
+    from . import graphics
+    from .shorts import sentences
+
+    sents = sentences([w.model_dump() for w in words.words])
+    weak = weak_sentences(ctx, sents) if ctx.section("graphics").get("cover_weak") else set()
+    strong = strong_sentences(ctx, sents) if ctx.section("graphics").get("keep_best_footage", True) else set()
+    from . import simulacion
+
+    # a simulation video keeps its world on screen: the generic full-frame graphics stopped it (hora1: a «cronología»
+    # with 1935 twice, the bars of three unrelated figures); its own panels show the figures and the charts
+    from .stickman import film
+
+    planned = [] if (simulacion.active(ctx) or film(ctx)) and not ctx.section("graphics").get("over_simulation") \
+        else graphics.plan(ctx, sents, words.durationSeconds, weak=weak, strong=strong)
+    from .datacheck import filter_planned
+
+    planned = filter_planned(ctx, planned, sents)       # no wrong figure goes on screen (datos-graficos.md)
+    people = []
+    if (ctx.work_dir / "people.json").is_file():
+        people = json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])
+    bounds = [s.from_ for s in shots] + [total]
+    sessions: dict[str, Any] = {}
+    tier_media: dict[str, Any] = {}          # tier list: each element keeps the picture of its own passage
+    added: list[TimelineGroup] = []
+    blocked = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    blocked += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter" or (s.media and s.media.layout == "person")]
+    for n, item in enumerate(planned, 1):
+        a = min(bounds, key=lambda f: abs(f - item["start"] * fps))
+        b = min(bounds, key=lambda f: abs(f - item["end"] * fps))
+        # the longest stretch of [a, b) free of panels, stats, questions, chapter and athlete cards
+        cuts = sorted({a, b, *[x for lo, hi in blocked + [(g.from_, g.from_ + g.durationInFrames) for g in added]
+                               for x in (lo, hi) if a < x < b]})
+        free = [(lo, hi) for lo, hi in zip(cuts, cuts[1:])
+                if not any(x < hi and lo < y for x, y in blocked + [(g.from_, g.from_ + g.durationInFrames) for g in added])]
+        if not free:
+            continue
+        a, b = max(free, key=lambda r: r[1] - r[0])
+        covered = [s for s in shots if a <= s.from_ < b]
+        if b - a < 3 * fps or not covered:
+            continue
+        graphic = dict(item["graphic"])
+
+        def footage() -> dict[str, Any] | None:   # a photo of this passage (else a clip) for cards without a portrait
+            media = [s.media for s in covered if s.media]
+            pick = next((m for m in media if m.kind == "image"), media[0] if media else None)
+            return with_seconds(ctx, pick.model_dump(exclude_none=True)) if pick else None
+
+        def clips() -> list[dict[str, Any]]:   # the passage's own clips, each once
+            seen: dict[str, dict[str, Any]] = {}
+            for s in covered:
+                if s.media and s.media.kind == "video" and s.media.src not in seen:
+                    seen[s.media.src] = with_seconds(ctx, s.media.model_dump(exclude_none=True))
+            return list(seen.values())
+
+        if graphic["type"] in ("strobe", "replay"):
+            made = motion_graphic(ctx, graphic, clips(), sessions, n)
+            if not made:
+                continue
+            graphic = made
+            longest = round((6.0 if graphic["type"] == "strobe" else graphic.pop("seconds")) * fps)
+            b = min(b, a + longest)                          # the shots after it show as usual
+        if graphic["type"] == "map" and any(p.get("logo") for p in (graphic.get("points") or [])):
+            from .logos import logo
+
+            graphic["points"] = [{**p, "logoMedia": logo(ctx, p["logo"]) if p.get("logo") else None}
+                                 for p in graphic["points"]]
+        if graphic["type"] == "map" and graphic.get("globe") and ctx.section("graphics").get("earth_3d", True):
+            earth = earth_textures(ctx)
+            if earth:
+                graphic = {**graphic, "earth": earth}
+        if (graphic["type"] == "chart" and graphic.get("chart") == "bar" and 2 <= len((graphic.get("data") or [])) <= 8
+                and ctx.section("graphics").get("bars_3d", True)):
+            graphic = {**graphic, "three": True}             # solid lit bars (WebGL) instead of the flat ones
+        if graphic["type"] == "map" and graphic.get("style") != "pins" and not graphic.get("globe"):
+            from .satellite import SOURCES, ground
+
+            try:
+                layers = ground(ctx, graphic)
+            except Exception as error:               # the map is complete without it (the dark vector map)
+                print(f"   Mapa sin satélite: {str(error)[:100]}")
+                layers = []
+            if layers:
+                graphic = {**graphic, "ground": layers, "credit": SOURCES["eox"]["credit"]}
+        if graphic["type"] == "map" and graphic.get("style") == "pins":
+            from .places import photo
+
+            graphic["points"] = [{**p, "photo": photo(ctx, p.get("query") or p["name"])} for p in graphic["points"]]
+        if graphic["type"] == "news":
+            graphic["media"] = graphics.portrait(ctx, graphic["person"], people) if graphic.get("person") else None
+        if graphic["type"] in ("board", "post"):
+            from .logos import logo
+            from .places import photo
+
+            def picture(name: str) -> dict[str, Any] | None:   # the person's cutout, else a logo, else Wikipedia's photo
+                return graphics.portrait(ctx, name, people) or logo(ctx, name) or photo(ctx, name)
+
+            if graphic["type"] == "board":
+                graphic["photo"] = picture(graphic["center"])
+                graphic["items"] = [{**i, "photo": picture(i["name"])} for i in graphic["items"]]
+            else:
+                graphic["media"] = graphics.portrait(ctx, graphic["author"], people) or photo(ctx, graphic["author"])
+        if graphic["type"] == "poster":
+            graphic["media"] = graphics.portrait(ctx, graphic["person"], people)
+            if not graphic["media"]:
+                continue                                   # the poster is the person: without their cutout, nothing
+        if graphic["type"] == "satellite":
+            from .satellite import prepare
+
+            graphic = prepare(ctx, graphic)
+            if not graphic:
+                continue
+        if graphic["type"] == "banned":
+            graphic["media"] = next(iter(clips()), None) or footage()
+        if graphic["type"] == "split":
+            options = clips()
+
+            def side(name: str, taken: str | None) -> dict[str, Any] | None:
+                wanted = set(re.findall(r"\w+", name.lower()))
+                for s in covered:
+                    if s.media and s.media.kind == "video" and s.media.src != taken \
+                            and wanted & set(re.findall(r"\w+", s.text.lower())):
+                        return with_seconds(ctx, s.media.model_dump(exclude_none=True))
+                return None
+
+            left = side(graphic["left"]["name"], None)
+            right = side(graphic["right"]["name"], left["src"] if left else None)
+            left = left or next((m for m in options if not right or m["src"] != right["src"]), None) \
+                or graphics.portrait(ctx, graphic["left"]["name"], people)
+            right = right or next((m for m in reversed(options) if not left or m["src"] != left["src"]), None) \
+                or graphics.portrait(ctx, graphic["right"]["name"], people)
+            if not left or not right or left["src"] == right["src"]:
+                continue
+            graphic["left"]["media"], graphic["right"]["media"] = left, right
+        if graphic["type"] == "tier":
+            graphic["items"] = [dict(it) for it in graphic["items"]]
+            tier_media[graphic["items"][graphic["current"]]["name"]] = footage()
+            for it in graphic["items"]:
+                it["media"] = tier_media.get(it["name"])
+        if graphic["type"] == "podium":
+            for place in graphic["places"]:
+                place["media"] = graphics.portrait(ctx, place["name"], people)
+        if graphic["type"] == "card":
+            graphic["media"] = graphics.portrait(ctx, graphic["name"], people) or footage()
+        if graphic["type"] == "cita":
+            graphic["media"] = (graphics.portrait(ctx, graphic["speaker"], people) if graphic.get("speaker") else None) \
+                or footage()
+        if graphic["type"] in ("rank", "specs"):
+            face = graphics.portrait(ctx, graphic["name"], people)
+            graphic["media"] = face or footage()
+            if graphic["type"] == "specs":
+                graphic["kicker"] = "EN CIFRAS" if face else "FICHA TÉCNICA"
+        if graphic["type"] == "compare":
+            from .logos import logo
+
+            for side in ("left", "right"):
+                name = graphic[side]["name"]
+                graphic[side]["media"] = graphics.portrait(ctx, name, people)
+                if not graphic[side]["media"]:   # a brand or a product: its logo (the brand of «Xiaomi 14» is Xiaomi)
+                    graphic[side]["logo"] = logo(ctx, name) or (logo(ctx, name.split()[0]) if " " in name else None)
+        added.append(TimelineGroup.model_validate({"id": f"graphic-{n}", "kind": "graphic", "from": a,
+                                                   "durationInFrames": b - a, "graphic": graphic}))
+    from . import atlas, cine, mapas, simulacion, stickman
+
+    if atlas.active(ctx):                                      # atlas deep dives: one globe turning line by line
+        added += [TimelineGroup.model_validate(g) for g in atlas.groups(ctx, shots, fps, [*groups, *added], words)]
+    elif cine.active(ctx):                                       # stickman films: a lit set and a shot per line
+        added += [TimelineGroup.model_validate(g) for g in cine.groups(ctx, shots, fps, [*groups, *added], words)]
+    elif mapas.active(ctx):                                    # map explainers: one continuous camera over the map
+        added += [TimelineGroup.model_validate(g) for g in mapas.groups(ctx, shots, fps, [*groups, *added], words)]
+    elif stickman.active(ctx):                                   # every shot drawn: no borrowed footage, no chalkboards
+        added += [TimelineGroup.model_validate(g) for g in stickman.groups(ctx, shots, fps, [*groups, *added])]
+    elif simulacion.active(ctx):                               # every shot simulated, the voice choosing what shows
+        added += [TimelineGroup.model_validate(g) for g in simulacion.groups(ctx, shots, fps, [*groups, *added])]
+    borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
+    punches = fill_empty_shots(shots, [*groups, *added], fps) if borrow else []
+    if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
+        fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False)
+    boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
+    if punches:
+        print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
+              + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»" for g in punches[:12]))
+    boards += punches
+    labels = [label for label in labels
+              if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames
+                         for g in [*added, *boards])]
+    if added:
+        print("   Gráficos: " + ", ".join(f"{g.graphic['type']} {g.from_ / fps:.0f}s" for g in added))
+    if boards:
+        print(f"   Pizarra (plano sin imagen): {len(boards)} · " + ", ".join(f"{g.from_ / fps:.0f}s" for g in boards))
+    return sorted([*groups, *added, *boards], key=lambda g: g.from_), labels
+
+
+EARTH = {"day": "earth_day_4096.jpg", "night": "earth_night_4096.jpg", "surface": "earth_bump_roughness_clouds_4096.jpg"}
+
+
+def earth_textures(ctx: RunContext) -> dict[str, Any] | None:
+    """The photoreal globe's textures (assets/earth/: NASA Blue Marble and Black Marble, public domain, as packaged by
+    three.js) copied next to the timeline, or None when they are missing (the vector globe is drawn instead)."""
+
+    import shutil
+
+    out: dict[str, Any] = {"credit": "Imagen: NASA Blue Marble / Black Marble"}
+    for key_, name in EARTH.items():
+        source = ctx.root / "assets" / "earth" / name
+        if not source.is_file():
+            return None
+        target = ctx.work_dir / "graphics" / "earth" / name
+        if not target.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        out[key_] = {"src": f"graphics/earth/{name}", "kind": "image", "source": "nasa"}
+    return out
+
+
+def voice_frame(timeline: Timeline, seconds: float) -> int:
+    """Timeline frame where the narration says its second `seconds` (after the cold open and the moments' pauses)."""
+
+    t = round(seconds * timeline.fps)
+    return timeline.audio.voiceFrom + t + sum(b for a, b in timeline.audio.voiceGaps if a <= t)
+
+
+FULL_VIDEO = {"es": "Vídeo completo en mi canal", "en": "Full video on my channel", "pt": "Vídeo completo no meu canal",
+              "de": "Ganzes Video auf meinem Kanal", "fr": "Vidéo complète sur ma chaîne", "it": "Video completo sul mio canale"}
+
+
+def short_texts(ctx: RunContext, timeline: Timeline) -> dict[str, str]:
+    """A Short made from a long video (shorts.of): a hook on top for its first 5 s (shorts.hook, else its title) and
+    «Full video on my channel» for its last 5 s (shorts.cta to change it, "" for none)."""
+
+    cfg = ctx.section("shorts")
+    if not cfg.get("of") or timeline.height <= timeline.width:
+        return {}
+    hook = str(cfg.get("hook") or "").strip()
+    if not hook and (ctx.materials_dir / "titulo.txt").is_file():
+        hook = next(iter((ctx.materials_dir / "titulo.txt").read_text("utf-8").strip().splitlines()), "")
+    lang = str(ctx.section("align").get("language", "es"))[:2]
+    cta = str(cfg["cta"]) if "cta" in cfg else FULL_VIDEO.get(lang, FULL_VIDEO["en"])
+    style = "box" if str(cfg.get("hook_style", "kinetic")) == "box" else "kinetic"   # kinetic: words in one by one, the key one in serif italic
+    texts = {k: v for k, v in {"hook": " ".join(hook.split())[:70], "cta": cta.strip()}.items() if v}
+    return {**texts, "style": style} if texts else {}
+
+
+def captions(words: WordsFile, timeline: Timeline, most: int = 3) -> list[TimelineCaption]:
+    """Big captions for native shorts: chunks of up to `most` words (a sentence end or a pause closes one),
+    placed where the voice says them — after the cold open and any pause inserted in the voice."""
+
+    fps = timeline.fps
+
+    def at(seconds: float) -> int:
+        return voice_frame(timeline, seconds)
+
+    chunks: list[list[Any]] = []
+    for word in words.words:
+        text = word.text.strip()
+        if not text:
+            continue
+        last = chunks[-1][-1] if chunks else None
+        if (not chunks or len(chunks[-1]) >= most or word.start - last.end > 0.35
+                or re.search(r"[.!?…,;:]$", last.text)):
+            chunks.append([])
+        chunks[-1].append(word)
+    out: list[TimelineCaption] = []
+    for i, chunk in enumerate(chunks):
+        start = at(chunk[0].start)
+        end = at(chunks[i + 1][0].start) if i + 1 < len(chunks) else at(chunk[-1].end) + round(0.4 * fps)
+        end = min(end, at(chunk[-1].end) + round(0.6 * fps))
+        if end <= start:
+            continue
+        out.append(TimelineCaption.model_validate({"from": start, "durationInFrames": end - start, "words": [
+            {"text": w.text.strip(), "from": max(0, at(w.start) - start)} for w in chunk]}))
+    return out
+
+
+def _sentences_of(ctx: RunContext, shot_ids: set[str], sents: list[dict[str, Any]]) -> set[int]:
+    out: set[int] = set()
+    for shot in ShotsFile.model_validate(ctx.read_json("shots.json")).shots:
+        if shot.id not in shot_ids:
+            continue
+        end = shot.start + shot.duration
+        for s in sents:
+            if min(end, s["end"]) - max(shot.start, s["start"]) >= 0.5 * min(shot.duration, s["end"] - s["start"]):
+                out.add(s["n"])
+    return out
+
+
+def strong_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
+    """Sentences over the best footage of the video (the top `graphics.best_share` of chosen clips by score):
+    graphics stay off them, unless they show that footage themselves (replay, strobe, split)."""
+
+    if not (ctx.work_dir / "selection.json").is_file():
+        return set()
+    picked = [s for s in ctx.read_json("selection.json").get("selections", [])
+              if s.get("status") == "selected" and s.get("kind") == "video" and s.get("score") is not None]
+    if len(picked) < 5:
+        return set()
+    scores = sorted(float(s["score"]) for s in picked)
+    cut = scores[int(len(scores) * (1 - float(ctx.section("graphics").get("best_share", 0.15))))]
+    return _sentences_of(ctx, {s["shotId"] for s in picked if float(s["score"]) >= cut}, sents)
+
+
+def weak_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
+    """Sentences whose footage is weak: a low score nobody judged, a fallback stand-in, or nothing at all.
+    graphics.cover_weak puts the animated graphics there first."""
+
+    low = float(ctx.section("qa").get("low_score", ctx.section("judge").get("min_score", 0.30)))
+    weak: set[str] = set()
+    if (ctx.work_dir / "selection.json").is_file():
+        weak |= {s["shotId"] for s in ctx.read_json("selection.json").get("selections", [])
+                 if s.get("score") is not None and s["score"] < low and not s.get("judge")}
+    if (ctx.work_dir / "fallback.json").is_file():
+        data = ctx.read_json("fallback.json")
+        weak |= {i["shotId"] for i in (data.get("items") or []) if i.get("method") != "next-option"} | set(data.get("unresolved", {}))
+    out: set[int] = set()
+    for shot in ShotsFile.model_validate(ctx.read_json("shots.json")).shots:
+        if shot.id not in weak:
+            continue
+        end = shot.start + shot.duration
+        for s in sents:
+            if min(end, s["end"]) - max(shot.start, s["start"]) >= 0.5 * min(shot.duration, s["end"] - s["start"]):
+                out.add(s["n"])
+    return out
+
+
+def key_phrase(text: str, most: int = 8) -> str:
+    """The script's own words that carry a sentence: the clause with most long words/numbers, ≤ `most` words."""
+
+    text = " ".join(text.split()).strip(" ,.;:¿?¡!…")
+    if len(text.split()) <= most:
+        return text
+    parts = [p.strip(" ,.;:¿?¡!…") for p in re.split(r"[,;:]|\b(?:que|y|pero|porque)\b", text) if p and p.strip()]
+    fitting = [p for p in parts if 2 <= len(p.split()) <= most]
+    if fitting:
+        return max(fitting, key=lambda p: sum(1 for w in re.findall(r"\w+", p) if len(w) > 4 or w.isdigit()))
+    return " ".join(text.split()[:most])
+
+
+_STOP = set("""el la los las un una unos unas de del al a en y e o u que se su sus lo le les con por para como más
+menos muy pero porque cuando donde ya no ni es era fue son está estaba estuvo ser hay había esta este esto ese esa eso
+nos me te mi tu todo toda todos todas sobre entre hasta desde sin tras también solo sólo así durante ante bajo cada
+otro otra otros otras ella él ellos ellas dijo tenía tiene sido muy aquel aquella""".split())
+
+
+def punch_words(text: str, most: int = 3) -> str:
+    """The most striking 1-3 words of a sentence, as said (a name, a figure, a long word): 'más condecorada',
+    'Knysh lo negó', '1972'. They flash over the footage for a moment instead of filling the screen."""
+
+    # words with the number of their sentence: a pick never joins the end of one sentence and the start of the next
+    # («cliente Imagina»), and a capital that only starts a sentence («Veamos», «Según») is not a name
+    words: list[str] = []
+    sentence: list[int] = []
+    first: set[int] = set()
+    number, starts = 0, True
+    for raw in text.split():
+        word = raw.strip(".,;:¿?¡!…\"«»()")
+        if word:
+            if starts:
+                first.add(len(words))
+            words.append(word)
+            sentence.append(number)
+            starts = False
+        if raw.rstrip("\"»)").endswith((".", "!", "?", "…", ":", ";")):
+            number, starts = number + 1, True
+
+    def score(i: int) -> float:
+        core = words[i].lower()
+        if core in _STOP or (len(core) < 3 and not any(c.isdigit() for c in core)):
+            return 0.0
+        value = 1.0
+        if any(c.isdigit() for c in core):
+            value += 3
+        if words[i][:1].isupper() and i not in first:
+            value += 2
+        if len(core) >= 7:
+            value += 1
+        return value
+
+    best, best_value = "", 0.0
+    for i in range(len(words)):
+        for size in range(1, most + 1):
+            window = list(range(i, min(len(words), i + size)))
+            if len(window) < size or score(window[0]) == 0 or score(window[-1]) == 0:
+                continue
+            if sentence[window[0]] != sentence[window[-1]]:
+                continue
+            # only something that says something: a figure or a name («2.500 millones», «Lina Khan»), never two
+            # long words that happen to be there («mismo objetivo», «cliente cualquiera»)
+            if not any(any(c.isdigit() for c in words[k]) or (words[k][:1].isupper() and k not in first)
+                       for k in window):
+                continue
+            value = sum(score(k) for k in window) - 0.8 * sum(1 for k in window if score(k) == 0)
+            value += 0.5 if size == 2 else 0
+            if value > best_value:
+                best, best_value = " ".join(words[k] for k in window), value
+    return best if best_value >= 3 else ""            # nothing striking (no name or figure): just footage
+
+
+PUNCH_GAP = 40               # s between two flashes of key words over borrowed footage
+MIN_RATE = 0.6               # borrowed footage is never slowed down more than this
+
+
+def footage(shot: TimelineShot) -> float:
+    """Frames of the source clip a shot shows (slowed shots show fewer than they last)."""
+    return shot.durationInFrames * float(shot.media.rate or 1.0) if shot.media else 0.0
+
+
+def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
+                     words: bool = True) -> list[TimelineGroup]:
+    """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the clip used
+    farthest away in time, pushed in so it does not look repeated, and at the start of each stretch the 1-3 key
+    words of what is said flash over it for ~2 s. Changes `shots` in place; returns the word overlays."""
+
+    donors = [s for s in shots if s.media is not None and s.media.kind == "video" and not s.coldOpen
+              and (s.media.layout or "full") in ("full", "archive") and s.media.credit]
+    if not donors:
+        return []
+    uses: dict[str, int] = {}
+    overlays: list[TimelineGroup] = []
+    previous_end = -1
+    run_text: list[str] = []
+    run_start = None
+
+    def flush() -> None:
+        if run_start is None or not words:
+            return
+        # words on every gap read as a slideshow (negocios1: 55 in 14 min): at most one every PUNCH_GAP seconds
+        if overlays and run_start - overlays[-1].from_ < PUNCH_GAP * fps:
+            return
+        phrase = punch_words(" ".join(run_text))
+        if phrase:
+            length = min(int(2.2 * fps), previous_end - run_start)
+            if length >= int(0.8 * fps):
+                overlays.append(TimelineGroup.model_validate({"id": f"punch-{run_start}", "kind": "graphic",
+                                                              "from": run_start, "durationInFrames": length,
+                                                              "graphic": {"type": "kinetic", "lines": [phrase]}}))
+
+    for index, shot in enumerate(shots):
+        if shot.media is not None or shot.type != "broll" or shot.groupId:
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+            continue
+        # only a donor with footage for the whole shot at ≥0.6× speed: a slower floor would play past the end of
+        # its file and show more than 5 s of someone else's clip (avion9 s202: 5.27 s blocked the render)
+        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses
+                   and footage(d) >= MIN_RATE * shot.durationInFrames]
+        if not fitting:
+            continue
+        donor = max(fitting, key=lambda d: abs(d.from_ - start) - 600 * uses.get(d.id, 0))
+        uses[donor.id] = uses.get(donor.id, 0) + 1
+        rate = min(1.0, footage(donor) / shot.durationInFrames)
+        shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
+            "zoom": [0, shot.durationInFrames, 1.18], "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
+        if start != previous_end:
+            flush()
+            run_start, run_text = start, []
+        run_text.append(shot.text)
+        previous_end = end
+    flush()
+    return overlays
+
+
+def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+    """Shots left without footage (timeline.pizarra) show their key words on the chalkboard canvas. Shots in a
+    row without footage share ONE card with the key words of the whole stretch (one sentence, not a word per
+    3-second shot: «ESTUVO» … «BAJO SU TUTELA»)."""
+
+    runs: list[list[TimelineShot]] = []
+    for shot in shots:
+        if shot.media is not None or shot.type != "broll" or shot.groupId:
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+            continue
+        # one board never stays more than ~6 s (negocio2: the same sentence for 75 s): a long stretch is split and
+        # each part shows the words of what is being said then
+        if (runs and runs[-1][-1].from_ + runs[-1][-1].durationInFrames == start
+                and start - runs[-1][0].from_ < 6 * fps):
+            runs[-1].append(shot)
+        else:
+            runs.append([shot])
+    out: list[TimelineGroup] = []
+    for run in runs:
+        text = " ".join(s.text for s in run)
+        phrase = key_phrase(text, most=10 if len(run) > 1 else 8)
+        if not phrase:
+            continue
+        words = phrase.split()
+        lines = [" ".join(words[: (len(words) + 1) // 2]), " ".join(words[(len(words) + 1) // 2:])] if len(words) > 4 else [phrase]
+        start = run[0].from_
+        out.append(TimelineGroup.model_validate({"id": f"board-{run[0].id}", "kind": "graphic", "from": start,
+                                                 "durationInFrames": run[-1].from_ + run[-1].durationInFrames - start,
+                                                 "graphic": {"type": "kinetic", "lines": [l for l in lines if l], "board": True}}))
+    return out
+
+
+SPOTLIGHT_DIR = "spotlight"
+
+
+def spotlight_images(ctx: RunContext, clip: Path, seconds: float, name: str, session: Any) -> dict[str, Any] | None:
+    """The frozen frame (1920x1080) and the same frame with only the person (transparent PNG), plus
+    where the person's head is (% of the frame) for the name tag; None if there is no clear person."""
+
+    import subprocess
+
+    import cv2
+    import numpy as np
+    from rembg import remove
+
+    out = ctx.work_dir / SPOTLIGHT_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    still = out / f"{name}.jpg"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{seconds:.3f}", "-i", str(clip), "-frames:v", "1",
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080", "-q:v", "2", str(still)],
+                   check=False)
+    image = cv2.imread(str(still))
+    if image is None:
+        return None
+    rgba = np.array(remove(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), session=session))
+    alpha = rgba[..., 3] > 128
+    coverage = float(alpha.mean())
+    if not 0.015 <= coverage <= 0.45:
+        return None                                        # nobody, or a crowd/close-up filling the frame
+    count, labels_, stats, _ = cv2.connectedComponentsWithStats(alpha.astype(np.uint8))
+    if count < 2:
+        return None
+    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    if stats[biggest, cv2.CC_STAT_AREA] < 0.7 * alpha.sum():
+        return None                                        # several people: no single one to point at
+    rgba[..., 3] = np.where(labels_ == biggest, rgba[..., 3], 0)
+    cutout = out / f"{name}.png"
+    cv2.imwrite(str(cutout), cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
+    x, y, w, h = (int(v) for v in stats[biggest, :4])
+    if h > 0.85 * 1080 or y < 0.03 * 1080:
+        return None                                        # a close-up or a cut-off head: nothing to point at
+    return {"still": str(still.relative_to(ctx.work_dir)), "cutout": str(cutout.relative_to(ctx.work_dir)),
+            "anchor": [round((x + w / 2) / 19.2, 1), round(y / 10.8, 1)], "height": round(h / 10.8, 1)}
+
+
+def source_title(ctx: RunContext, candidate: str) -> str:
+    """Lower-case title + channel of a YouTube candidate ("yt:<id>"), from yt-dlp's cached info."""
+
+    if not candidate.startswith("yt:"):
+        return ""
+    path = ctx.cache_dir / "videos" / candidate[3:] / "ytdlp-info.json"
+    try:
+        info = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return f"{info.get('title') or ''} {info.get('channel') or info.get('uploader') or ''}".lower()
+
+
+def with_spotlights(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
+                    labels: list[TimelineLabel], subject: str, fps: int) -> tuple[list[TimelineGroup], list[TimelineLabel]]:
+    """Freeze frame + spotlight: the first time the narration names someone over a clip, the clip
+    stops, everything but that person goes dark and their name appears next to them."""
+
+    cfg = ctx.section("timeline")
+    limit = int(cfg.get("spotlights", 3))
+    if limit <= 0:
+        return groups, labels
+    people = []
+    if (ctx.work_dir / "people.json").is_file():
+        people = [p["name"] for p in json.loads((ctx.work_dir / "people.json").read_text("utf-8")).get("people", [])]
+    subject = subject.split("·")[0].strip()
+    names = list(dict.fromkeys([n for n in [subject, *people] if n]))
+    if not names:
+        return groups, labels
+    try:
+        from rembg import new_session
+
+        session = new_session(str(ctx.section("people").get("model", "u2net_human_seg")))
+    except Exception:  # rembg missing: no spotlights, like no athlete cards
+        return groups, labels
+    sources = {}
+    if (ctx.work_dir / "media" / "_ingest.json").is_file():
+        sources = {m["shotId"]: m.get("candidateId") or "" for m in
+                   json.loads((ctx.work_dir / "media" / "_ingest.json").read_text("utf-8")).get("media", [])}
+    busy = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    added: list[TimelineGroup] = []
+    for name in names:
+        surname = re.findall(r"\w+", name.lower())[-1:]
+        mentions = [w for w in words.words if surname and re.sub(r"\W", "", w.text.lower()) == surname[0]]
+        for word in mentions[:12]:          # the first mention over a full-screen clip of that person
+            at = round(word.end * fps)
+            shot = next((s for s in shots if s.from_ <= at < s.from_ + s.durationInFrames), None)
+            if not shot or not shot.media or shot.media.kind != "video" or shot.media.layout != "full" \
+                    or surname[0] not in source_title(ctx, sources.get(shot.id, "")):
+                continue                                   # only when the clip is known to show that person
+            start = max(at, shot.from_ + round(0.5 * fps))
+            end = start + round(float(cfg.get("spotlight_seconds", 2.6)) * fps)   # full screen: may run past the cut
+            if start > shot.from_ + shot.durationInFrames - 3 or end > shots[-1].from_ + shots[-1].durationInFrames or any(a < end and start < b for a, b in busy):
+                continue
+            found = spotlight_images(ctx, ctx.work_dir / shot.media.src, (start - shot.from_) / fps,
+                                     f"{shot.id}-{len(added)}", session)
+            if not found:
+                continue
+            added.append(TimelineGroup.model_validate({
+                "id": f"spotlight-{len(added) + 1}", "kind": "graphic", "from": start, "durationInFrames": end - start,
+                "graphic": {"type": "spotlight", "name": name, "anchor": found["anchor"], "height": found["height"],
+                            "still": {"src": found["still"], "kind": "image", "source": shot.media.source},
+                            "cutout": {"src": found["cutout"], "kind": "image", "source": shot.media.source}}}))
+            busy.append((start, end))
+            break
+        if len(added) == limit:
+            break
+    if added:
+        print("   Congelados con foco: " + ", ".join(f"{g.graphic['name']} {g.from_ / fps:.0f}s" for g in added))
+    labels = [label for label in labels
+              if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames for g in added)]
+    return sorted([*groups, *added], key=lambda g: g.from_), labels
+
+
+def with_endscreen(timeline: Timeline, frames: int) -> Timeline:
+    """Append the end screen (YouTube's end-screen elements go over it) after the narration."""
+
+    if frames <= 0:
+        return timeline
+    end = TimelineShot.model_validate({"id": "end", "type": "endscreen", "from": timeline.durationInFrames,
+                                       "durationInFrames": frames, "text": ""})
+    return Timeline.model_validate({
+        **timeline.model_dump(by_alias=True),
+        "durationInFrames": timeline.durationInFrames + frames,
+        "shots": [*[s.model_dump(by_alias=True) for s in timeline.shots], end.model_dump(by_alias=True)],
+        "endscreenFrames": frames,
+    })
+
+
+def key_cuts(timeline: Timeline, cuts: list[int], half: int = 6) -> list[TimelineTransition]:
+    """Visual transitions on the cuts that carry a whoosh: a zoom punch into chapter cards and
+    graphics, a whip pan elsewhere. Only on real shot boundaries, never over the first frames."""
+
+    starts = {s.from_: s for s in timeline.shots}
+    zoom_at = {s.from_ for s in timeline.shots if s.type in ("chapter", "endscreen")}
+    zoom_at |= {g.from_ for g in timeline.groups if g.kind == "graphic"}
+    zoom_at |= {g.from_ + g.durationInFrames for g in timeline.groups if g.kind == "graphic"}
+    out = []
+    for at in cuts:
+        if at in starts and half <= at <= timeline.durationInFrames - half:
+            out.append(TimelineTransition.model_validate({"kind": "zoom" if at in zoom_at else "whip",
+                                                          "from": at - half, "durationInFrames": 2 * half}))
+    return out
+
+
+def transition_sfx(timeline: Timeline, files: list[str], volume: float, min_gap: float = 4.0,
+                   main: str = "", other_every: int = 4, hook_seconds: float = 0.0,
+                   hook_gap: float = 2.5) -> list[TimelineSfx]:
+    """Whooshes at the transitions, rotating through the files, never two closer than `min_gap` s.
+
+    By priority: chapter cards, entering/leaving the original-sound moments and the cold open,
+    athlete cards, then stat/panel entries.
+    """
+
+    if not files:
+        return []
+    fps = timeline.fps
+    points: list[int] = [s.from_ for s in timeline.shots if s.type == "chapter"]
+    moments = [s for s in timeline.shots if s.coldOpen]
+    points += [s.from_ for s in moments if s.from_ > 0] + [s.from_ + s.durationInFrames for s in moments]
+    points += [s.from_ for s in timeline.shots if s.type == "endscreen"]
+    points += [s.from_ for s in timeline.shots if s.media and s.media.layout == "person"]
+    points += [g.from_ for g in timeline.groups if g.kind in ("graphic", "stat", "datacard", "split")
+               and not (g.graphic or {}).get("type") == "sim"]          # a simulation's shots: its own sounds, no swoosh
+    placed: list[int] = []
+    for point in points:
+        at = max(0, point - 4)                    # the swoosh peaks just as the cut lands
+        if at < timeline.durationInFrames and all(abs(at - p) >= min_gap * fps for p in placed):
+            placed.append(at)
+    # the opening: a swoosh on (almost) every cut of its fast shots, `hook_gap` s apart at least
+    hook_end = round(hook_seconds * fps) + timeline.audio.voiceFrom
+    for shot in timeline.shots:
+        at = max(0, shot.from_ - 4)
+        if 0 < shot.from_ < hook_end and all(abs(at - p) >= hook_gap * fps for p in placed):
+            placed.append(at)
+    first = next((f for f in files if main and main.lower() in Path(f).name.lower()), None)
+    others = [f for f in files if f != first] or files
+    chosen = []
+    for i, at in enumerate(sorted(placed)):
+        if first and (not other_every or (i + 1) % other_every):
+            chosen.append((first, at))                  # the main whoosh most of the time…
+        else:
+            step = i // max(1, other_every) if first else i
+            chosen.append((others[step % len(others)], at))   # …another one now and then (or plain rotation)
+    return [TimelineSfx.model_validate({"src": src, "from": at, "volume": volume}) for src, at in chosen]
+
+
+STAT_LANDS = 18   # frame the Stat counter reaches its figure (remotion/components/Stat.tsx)
+
+
+# Frames at which the Remotion components land their big moments (keep in sync with the .tsx files).
+SCORE_LANDS = 40       # Score.tsx: the total
+PLAZO_START = 14        # Plazo.tsx: the clock starts running…
+PLAZO_RUN = 120         # …and takes this many frames to reach the end of its dial
+CAMBIO_SWAP = 34        # Cambio.tsx: the old score is struck out and the new one lands
+PRESS_STEP = 16        # Press.tsx: one clipping every 16 frames
+ARTICLE_CIRCLE, ARTICLE_STEP = 34, 16      # remotion/components/graphics/Article.tsx
+RULE_STAMP = 44        # RulePage.tsx: the stamp hits the page
+BANNED_STAMP = 22      # BannedCard.tsx: the stamp hits the card
+PODIUM_RISE = {3: 6, 2: 14, 1: 24}         # Podium.tsx: when each block rises
+CARD_LANDS = 18                             # PlayerCard.tsx: the card finishes its flip
+STROBE_START, STROBE_STEP = 8, 6            # Strobe.tsx: one position every 6 frames
+STANDINGS_START, STANDINGS_STEP = 6, 14     # Standings.tsx: one row every 14 frames
+
+
+def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
+    """When each element of an animated graphic appears (same timings as its Remotion component)."""
+
+    kind = graphic.get("type")
+    if kind == "map":
+        n = len(graphic.get("points") or [])
+        return [("pop", round((0.15 + 0.45 * i / max(1, n)) * frames)) for i in range(n)]
+    if kind == "chart":
+        n = len(graphic.get("data") or [])
+        if graphic.get("chart") == "line":
+            return [("pop", round(6 + 58 * i / max(1, n - 1))) for i in range(min(n, 24))]
+        if graphic.get("chart") == "pie":
+            return [("pop", 10 + i * 6) for i in range(min(n, 8))]
+        if graphic.get("three"):
+            return [("pop", 8 + i * 7) for i in range(min(n, 8))]
+        return [("pop", 8 + i * 5) for i in range(min(n, 12))]
+    if kind == "board":   # a pin for the centre, then one per card (Board.tsx)
+        n = len(graphic.get("items") or [])
+        step = max(12, min(26, int(frames * 0.6 / (n + 1))))
+        return [("pop", 4), *[("pop", 10 + (i + 1) * step) for i in range(min(n, 5))]]
+    if kind == "post":
+        return [("pop", 6)]
+    if kind == "compare":
+        return [("pop", 14 + i * 10) for i in range(min(len(graphic.get("rows") or []), 5))]
+    if kind == "specs":
+        return [("pop", 14 + i * 7) for i in range(min(len(graphic.get("specs") or []), 6))]
+    if kind == "rank":
+        return [("impact", 2)] + [("pop", 20 + i * 8) for i in range(min(len(graphic.get("stats") or []), 4))]
+    if kind == "timeline":
+        n = min(len(graphic.get("events") or []), 8)
+        return [("pop", round(i * frames / max(1, n))) for i in range(n)]
+    if kind == "score":
+        steps = [("pop", 10), ("pop", 22)] + ([("pop", 34)] if graphic.get("penalty") else [])
+        return steps + [("impact", SCORE_LANDS + (12 if graphic.get("penalty") else 0))]
+    if kind == "press":
+        return [("pop", 4 + i * PRESS_STEP) for i in range(min(len(graphic.get("items") or []), 3))]
+    if kind == "article":   # a pop as each figure gets its red circle
+        return [("pop", ARTICLE_CIRCLE + i * ARTICLE_STEP) for i in range(len(graphic.get("circles") or []))]
+    if kind == "rule":
+        return [("pop", 4)] + ([("impact", RULE_STAMP)] if graphic.get("stamp") else [])
+    if kind == "banned":
+        return [("impact", BANNED_STAMP)]
+    if kind == "split":
+        return [("pop", 4), ("pop", 12)]
+    if kind == "spotlight":
+        return [("impact", 1)]
+    if kind == "plazo":           # a tick as the clock passes each mark, a hit when it crosses the limit
+        span = max([float(graphic.get("limit") or 0)] + [float(m["seconds"]) for m in graphic.get("marks") or []]) * 1.08
+        at = lambda sec: round(PLAZO_START + (float(sec) / max(1.0, span)) * PLAZO_RUN)   # noqa: E731
+        return [("pop", at(m["seconds"])) for m in graphic.get("marks") or []] + [("impact", at(graphic.get("limit") or 0))]
+    if kind == "cambio":
+        return [("pop", 6), ("impact", CAMBIO_SWAP)]
+    if kind == "podium":
+        n = len(graphic.get("places") or [])
+        return [("pop", PODIUM_RISE[p["place"]]) for p in graphic.get("places") or [] if p["place"] != 1][: n] \
+            + [("impact", PODIUM_RISE[1] + 8)]
+    if kind == "card":
+        return [("impact", CARD_LANDS)] + [("pop", CARD_LANDS + 12 + i * 6) for i in range(min(len(graphic.get("stats") or []), 6))]
+    if kind == "scale":
+        return [("pop", 10 + i * 10) for i in range(len(graphic.get("items") or []))]
+    if kind == "race":
+        n = len(graphic.get("steps") or [])
+        return [("pop", round(i * frames * 0.85 / max(1, n - 1))) for i in range(n)]
+    if kind == "strobe":
+        return [("pop", STROBE_START + i * STROBE_STEP) for i in range(len(graphic.get("ghosts") or []))]
+    if kind == "replay":
+        return [("impact", round(float(graphic.get("peak") or 0) * 30))]
+    if kind == "standings":
+        return [("pop", STANDINGS_START + i * STANDINGS_STEP) for i in range(min(len(graphic.get("rows") or []), 8))]
+    if kind == "kinetic":
+        words = sum(len(str(line).split()) for line in graphic.get("lines") or [])
+        gap = max(3, min(8, int(frames * 0.6 / max(1, words))))
+        return [("impact", (words - 1) * gap)]
+    return []
+
+
+def animation_cues(groups: list[TimelineGroup], min_gap: int = 3) -> list[tuple[str, int]]:
+    """Sounds glued to the animations: a pop per bar/pin/row/milestone/panel row, an impact when a
+    big figure lands (stats, ranking numbers, the last word of kinetic text)."""
+
+    cues: list[tuple[str, int]] = []
+    for group in groups:
+        if group.kind == "stat":
+            cues.append(("impact", group.from_ + STAT_LANDS))
+        elif group.kind == "graphic" and group.graphic:
+            cues += [(k, group.from_ + at) for k, at in graphic_cues(group.graphic, group.durationInFrames)
+                     if at < group.durationInFrames]
+        elif group.kind in ("datacard", "split"):
+            cues += [("pop", group.from_ + step.from_) for step in group.steps]
+    out: list[tuple[str, int]] = []
+    for kind, at in sorted(cues, key=lambda c: c[1]):
+        if not out or at - out[-1][1] >= min_gap or kind == "impact":
+            out.append((kind, at))
+    return out
+
+
+def _first_audio(folder: Path, prefix: str = "") -> Path | None:
+    if not folder.is_dir():
+        return None
+    files = sorted(p for p in folder.iterdir() if p.suffix.lower() in AUDIO_EXTENSIONS and p.name.lower().startswith(prefix))
+    return files[0] if files else None
+
+
+def inputs(ctx: RunContext) -> list:
+    return [
+        ctx.work_dir / "shots.json", ctx.work_dir / "words.json", ctx.work_dir / "media" / "_ingest.json",
+        ctx.work_dir / "fallback.json", ctx.work_dir / "coldopen.json", ctx.work_dir / "people.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
+    ] + ([ctx.materials_dir / "datos.csv"] if ctx.config.get("format") == "datos" else [])
+
+
+def run(ctx: RunContext) -> None:
+    cfg = ctx.section("timeline")
+    fps = ctx.fps
+    video = ctx.section("video")
+    shots_file = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    words = WordsFile.model_validate(ctx.read_json("words.json"))
+    total_frames = round(shots_file.durationSeconds * fps)
+
+    # Media per shot: stage 6, replaced by stage 7 where fallback stepped in (failed download,
+    # rejected by the judge, or a look-alike of an earlier shot). Paths relative to the public dir.
+    media: dict[str, TimelineMedia] = {}
+    old: set[str] = set()      # old or low-res footage → archive look (timeline.archive_auto)
+    before = int(cfg.get("archive_before_year", 1995))
+    low = int(cfg.get("archive_max_height", 480))
+    for item in IngestFile.model_validate_json((ctx.work_dir / "media" / "_ingest.json").read_text("utf-8")).media:
+        if item.kind == "video" and ((item.year and item.year < before) or (item.sourceHeight and item.sourceHeight <= low)):
+            old.add(item.shotId)
+        media[item.shotId] = TimelineMedia(
+            src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source, credit=item.credit,
+            width=item.width, height=item.height,
+        )
+    for item in FallbackFile.model_validate(ctx.read_json("fallback.json")).items:
+        old.discard(item.shotId)
+        if item.kind == "video" and ((item.year and item.year < before) or (item.sourceHeight and item.sourceHeight <= low)):
+            old.add(item.shotId)
+        size = _size(ctx.root / item.path)
+        media[item.shotId] = TimelineMedia(
+            src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
+            # a generated image says so on screen, like a source badge (timeline.generated_badge: "" hides it)
+            credit=item.credit if item.source != "generated" else (str(cfg.get("generated_badge", "Imagen generada (IA)")) or None),
+            width=size[0], height=size[1],
+        )
+
+    # Frame-accurate shots: each starts where the previous ended.
+    starts = [round(s.start * fps) for s in shots_file.shots] + [total_frames]
+    starts[0] = 0
+    shots: list[TimelineShot] = []
+    missing = []
+    chapter_number = 0
+    card_share = float(cfg.get("card_share", 0.25))
+    narrow = str(cfg.get("narrow_layout", "card"))
+    # timeline.pizarra (on unless set to false): a shot nothing could fill (no stock, no generated
+    # images for a real person) becomes a card with its key words instead of stopping the video
+    fallback = FallbackFile.model_validate(ctx.read_json("fallback.json"))
+    boards = set(fallback.unresolved) if cfg.get("pizarra", True) else set()
+    from . import stickman
+
+    if stickman.drawn(ctx):                   # drawn in code: no shot has (or needs) footage
+        boards |= {s.id for s in shots_file.shots}
+    for shot_id in boards:
+        media.pop(shot_id, None)
+    for index, shot in enumerate(shots_file.shots):
+        m = media.get(shot.id) if needs_footage(shot) else None
+        if needs_footage(shot) and m is None and shot.id not in boards:
+            missing.append(shot.id)
+        if m is not None:
+            m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share, narrow,
+                                                             old=shot.id in old and cfg.get("archive_auto", True))})
+            if shot.mood == "low":
+                m = m.model_copy(update={"mono": True})
+        if shot.type == "chapter":
+            chapter_number += 1
+        shots.append(TimelineShot.model_validate({
+            "id": shot.id, "type": shot.type, "from": starts[index],
+            "durationInFrames": starts[index + 1] - starts[index], "text": shot.text,
+            "media": m.model_dump() if m else None, "chapterTitle": shot.chapterTitle,
+            "chapterNumber": chapter_number if shot.type == "chapter" else None,
+            "groupId": shot.panelId or (f"stat-{shot.id}" if shot.type == "stat" else None),
+        }))
+    if missing:
+        raise RuntimeError(f"Planos sin medio (¿falta ejecutar ingest/fallback?): {', '.join(missing[:10])}")
+
+    # Groups: panels (datacard/split) and stats, spanning their consecutive shots.
+    groups: list[TimelineGroup] = []
+    by_id = {s.id: s for s in shots_file.shots}
+    for shot in shots:
+        if shot.groupId is None:
+            continue
+        source = by_id[shot.id]
+        if groups and groups[-1].id == shot.groupId:
+            group = groups[-1]
+            group.durationInFrames = shot.from_ + shot.durationInFrames - group.from_
+            if source.panel and source.panel.rows != group.steps[-1].rows:
+                group.steps.append(PanelStep.model_validate({"from": shot.from_ - group.from_, "rows": source.panel.rows}))
+            continue
+        kind = "stat" if source.type == "stat" else source.type
+        groups.append(TimelineGroup.model_validate({
+            "id": shot.groupId, "kind": kind, "from": shot.from_, "durationInFrames": shot.durationInFrames,
+            "title": source.panel.title if source.panel else None,
+            "note": source.panel.note if source.panel else None,
+            "steps": [{"from": 0, "rows": [r.model_dump() for r in source.panel.rows]}] if source.panel else [],
+            "stat": source.stat.model_dump() if source.stat else None,
+        }))
+
+    groups += question_groups(words, shots, groups, fps, total_frames, cfg,
+                              spanish=str(ctx.section("align").get("language", "es")) == "es")
+    groups.sort(key=lambda g: g.from_)
+    from . import atlas as _atlas
+
+    if _atlas.active(ctx):      # an atlas shows its figures on the globe or a paper card, never the generic stat/panel
+        dropped = {g.id for g in groups if g.kind in ("stat", "datacard", "split")}
+        groups = [g for g in groups if g.id not in dropped]
+        for shot in shots:
+            if shot.groupId in dropped:
+                shot.groupId = None
+    person_cards(ctx, shots_file, shots, groups, fps)
+    labels = place_labels(shots_file, shots, groups, fps, cfg)
+    groups, labels = with_graphics(ctx, words, shots, groups, labels, fps, total_frames)
+    groups, labels = with_spotlights(ctx, words, shots, groups, labels, shots_file.subject or "", fps)
+
+    # Audio: voice (always), music and SFX only if the files exist.
+    audio_dir = ctx.work_dir / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    voice = audio_dir / "voz.mp3"
+    shutil.copy2(ctx.materials_dir / "voz.mp3", voice)
+    # camera: slow push-in on emotional shots, a punch-in on the word the narrator stresses (pipeline/camera.py)
+    paces = {s.id: s.pace for s in shots_file.shots if s.pace}
+    levels = voice_levels(voice, words) if cfg.get("emphasis_zoom", True) else []
+    slow_zooms, punches = add_zooms(shots, paces, words, levels, fps, cfg)
+    if slow_zooms or punches:
+        print(f"   Cámara: {slow_zooms} zooms lentos (frases emotivas) · {punches} zooms de énfasis")
+    assets = ctx.root / str(cfg.get("assets", "assets"))
+
+    def folder(name: str, prefix: str = "") -> Path:
+        """The channel's own music/sfx (e.g. assets/robots/sfx/), else the shared assets/<name>/."""
+
+        own = assets / name
+        return own if _all_audio(own, prefix) or assets == ctx.root / "assets" else ctx.root / "assets" / name
+
+    def publish(path: Path | None) -> str | None:
+        if path is None:
+            return None
+        target = audio_dir / path.name
+        if not target.is_file() or target.stat().st_size != path.stat().st_size:
+            shutil.copy2(path, target)
+        return str(target.relative_to(ctx.work_dir))
+
+    tracks: dict[str, list[str]] = {}
+    for path in _all_audio(folder("music"), ""):
+        mood = path.stem.split("-")[0].lower()
+        tracks.setdefault(mood if mood in moods_of(ctx) else "general", []).append(publish(path))
+    default = str(cfg.get("music_default", "intriga"))
+    default = default if default in tracks else next(iter(tracks), "")
+    music = tracks[default][0] if tracks else None
+    whooshes = [publish(p) for p in _all_audio(folder("sfx", "whoosh"), "whoosh")]
+    pop = publish(_first_audio(folder("sfx", "pop"), "pop"))
+    sfx: list[TimelineSfx] = []
+    impact = publish(_first_audio(folder("sfx", "impact"), "impact"))
+    # each graphic comes in with its channel's sound (brand.motion): a sports hit, typewriter keys, a digital bip
+    motion = str(ctx.section("brand").get("motion", "clean"))
+    entry = publish(_first_audio(folder("sfx", f"grafico-{motion}"), f"grafico-{motion}")) if motion != "clean" else None
+    if entry:
+        for group in groups:
+            if group.kind == "graphic" and group.graphic and not group.graphic.get("board") and group.graphic.get("type") not in ("quote", "sim"):
+                sfx.append(TimelineSfx.model_validate({"src": entry, "from": group.from_,
+                                                       "volume": float(cfg.get("graphic_sfx_volume", 0.3))}))
+    from . import simulacion
+
+    if simulacion.active(ctx):           # the simulation sounds its own street, lights and counters (SimScene)
+        sim_sounds = simulacion.sounds(ctx, publish)
+        for group in groups:
+            if group.kind == "graphic" and group.graphic and group.graphic.get("type") == "sim":
+                group.graphic["sounds"] = sim_sounds
+    from . import atlas, cine, mapas, sfx_synth
+
+    drawn_film = cine.active(ctx) or mapas.active(ctx) or atlas.active(ctx)
+    if drawn_film:                       # stickman films and map explainers: one synthesized sound per event
+        first = True
+        level = float(cfg.get("drawn_sfx_volume", 1.0))
+        for group in groups:
+            g = group.graphic if group.kind == "graphic" else None
+            if not g or g.get("type") not in ("cine", "mapa", "atlas"):
+                continue
+            cues = sfx_synth.cine_cues(g, fps, first) if g["type"] == "cine" else \
+                atlas.cues(g, fps) if g["type"] == "atlas" else sfx_synth.mapa_cues(g, fps)
+            first = False
+            for name, at, volume in cues:
+                if 0 <= at < group.durationInFrames + fps:
+                    sfx.append(TimelineSfx.model_validate({"src": publish(sfx_synth.path(ctx.root, name)),
+                                                           "from": group.from_ + at, "volume": min(1.0, volume * level)}))
+        whooshes = []                    # their own swipes and whooshes, not the generic ones on every cut
+    for kind, at in animation_cues(groups):
+        src = pop if kind == "pop" else impact
+        if src:
+            sfx.append(TimelineSfx.model_validate({"src": src, "from": at, "volume": float(
+                cfg.get("pop_volume", 0.25) if kind == "pop" else cfg.get("impact_volume", 0.22))}))
+
+    if drawn_film:                       # the rules thriller's end card comes after the last word: the video holds it
+        total_frames = max(total_frames, max((g.from_ + g.durationInFrames for g in groups), default=0))
+    timeline = Timeline(
+        slug=ctx.slug, title=shots_file.title, fps=fps, width=int(video.get("width", 1920)),
+        height=int(video.get("height", 1080)), durationInFrames=total_frames, shots=shots, groups=groups, labels=labels,
+        audio=TimelineAudio(
+            voice=str(voice.relative_to(ctx.work_dir)), music=music,
+            musicVolume=float(cfg.get("music_volume", 0.25)),
+            duckedVolume=float(cfg.get("music_volume", 0.25)) * 10 ** (-float(cfg.get("duck_db", 18)) / 20),
+            speech=speech_segments(words, fps), sfx=sfx,
+        ),
+        locale=locale_for(str(ctx.section("align").get("language", "es"))),
+    )
+    cold = ctx.work_dir / "coldopen.json"
+    opening = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")) if cold.is_file() else None
+    if opening:
+        timeline = with_moments(timeline, [
+            (str((ctx.root / m.path).relative_to(ctx.work_dir)), m.afterSeconds, m.durationSeconds, m.credit, m.width, m.height)
+            for m in opening.moments if m.afterSeconds is not None
+        ], fps, float(cfg.get("moment_volume", 1.0)))
+    if opening and opening.quotes:
+        timeline = with_quotes(timeline, opening.quotes, ctx, fps, float(cfg.get("quote_volume", 1.0)))
+    if opening and opening.opening:
+        timeline = with_opening(timeline, opening.opening, ctx, fps, float(cfg.get("quote_volume", 1.0)))
+        print(f"   Apertura: {opening.opening.durationSeconds:.1f} s de {opening.opening.credit.removeprefix('Fuente: ')} antes de la voz")
+    if simulacion.active(ctx) and fps and int(video.get("width", 1920)) > int(video.get("height", 1080)):
+        # «¿tú qué harías?»: the voice and the world stop on the question (not in a Short: it would cut it in two)
+        timeline = simulacion.with_asks(timeline, fps, float(ctx.section("visual").get("ask_seconds", simulacion.ASK_SECONDS)))
+        # a breath at each change of scene: the picture changes, then the voice goes on
+        timeline = simulacion.with_breaths(timeline, fps, float(ctx.section("visual").get("breath_seconds", simulacion.BREATH_SECONDS)))
+    # half a second of silence as each chapter begins (pacing.chapter_pause)
+    timeline = with_chapter_pauses(timeline, float(ctx.section("pacing").get("chapter_pause", 0.5)), fps)
+    timeline = timeline.model_copy(update={"brand": {k: str(v) for k, v in ctx.section("brand").items()}})
+    from . import depth
+
+    timeline = depth.add(ctx, timeline)                      # visual.depth: photos with their subject in front
+    if simulacion.active(ctx):           # figures and arrows on the word the voice says them
+        simulacion.sync(timeline.groups, words.words, lambda seconds: voice_frame(timeline, seconds), fps)
+    if cfg.get("captions"):
+        timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
+    if (short := short_texts(ctx, timeline)):
+        timeline = timeline.model_copy(update={"short": short})
+    bites = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).bites if (ctx.work_dir / "coldopen.json").is_file() else []
+    if bites:   # the shots' own sound under the voice, in sync with their picture
+        volume = float(cfg.get("bite_volume", 0.6))
+        timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={"clips": [
+            *timeline.audio.clips,
+            *[TimelineClipAudio.model_validate({"src": str((ctx.root / b.path).relative_to(ctx.work_dir)),
+                                                "from": voice_frame(timeline, b.voiceAt),
+                                                "durationInFrames": max(1, round(b.durationSeconds * fps)),
+                                                "volume": volume, "fade": True}) for b in bites]]})})
+        print(f"   Golpes de sonido original: {len(bites)}")
+    timeline = with_endscreen(timeline, round(float(cfg.get("endscreen_seconds", 0) or 0) * fps))
+    if tracks and cfg.get("music_by_chapter", True):
+        parts = music_parts(ctx, timeline, tracks, default)
+        timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
+            "musicParts": [MusicPart.model_validate(p) for p in parts]})})
+        print("   Música: " + " → ".join(f"{p['mood']} ({Path(p['src']).stem})" for p in parts))
+    if cfg.get("shake", True):   # shake where the impacts ended up (after the cold open / moments moved them)
+        timeline = timeline.model_copy(update={"shakes": [TimelineShake.model_validate({"from": x.from_})
+                                                          for x in timeline.audio.sfx if "impact" in Path(x.src).name]})
+    if whooshes:
+        extra = transition_sfx(timeline, whooshes, float(cfg.get("whoosh_volume", 0.22)), float(cfg.get("sfx_min_gap", 4.0)),
+                               str(cfg.get("whoosh_main", "")), int(cfg.get("whoosh_other_every", 4)),
+                               float(cfg.get("hook_whoosh_seconds", 30) or 0), float(cfg.get("hook_whoosh_gap", 2.5)))
+        if simulacion.active(ctx):
+            # only where the world changes (SimScene zooms from one world to the next itself): a whoosh and a blurred
+            # whip on every line of one continuous simulation made it stutter (hora1)
+            changes = [g.from_ for g in timeline.groups if (g.graphic or {}).get("type") == "sim" and g.graphic.get("enter")]
+            extra = [x for x in extra if any(abs(x.from_ + 4 - c) <= 6 for c in changes)]
+        timeline = timeline.model_copy(update={"audio": timeline.audio.model_copy(update={
+            "sfx": sorted([*timeline.audio.sfx, *extra], key=lambda x: x.from_)})})
+        if cfg.get("transitions", True) and not simulacion.active(ctx):
+            timeline = timeline.model_copy(update={"transitions": key_cuts(timeline, [x.from_ + 4 for x in extra])})
+        sfx = timeline.audio.sfx
+    from . import editor
+
+    payload = timeline.model_dump(by_alias=True, exclude_none=True)
+    ctx.write_json("timeline.base.json", payload)        # as the pipeline made it; the editor's changes go on top
+    ctx.write_json(OUTPUT, editor.build(ctx, payload))
+    kinds: dict[str, int] = {}
+    for group in groups:
+        kinds[group.kind] = kinds.get(group.kind, 0) + 1
+    credited = sum(1 for s in shots if s.media and s.media.credit)
+    print(f"   {len(shots)} planos · {total_frames} fotogramas ({total_frames / fps:.1f} s) · grupos: "
+          + ", ".join(f"{k} {v}" for k, v in kinds.items()))
+    print(f"   Créditos en pantalla: {credited} · música: {music or 'no (assets/music/ vacío)'} · "
+          f"SFX: {len(sfx) if sfx else 'no (assets/sfx/ vacío)'}")
+
+
+def validate(ctx: RunContext) -> bool:
+    timeline = Timeline.model_validate(ctx.read_json(OUTPUT))
+    for shot in timeline.shots:
+        if shot.media and not (ctx.work_dir / shot.media.src).is_file():
+            raise FileNotFoundError(shot.media.src)
+    return True

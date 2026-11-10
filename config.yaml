@@ -1,0 +1,477 @@
+# Parámetros ajustables del pipeline. Las claves de API van en .env, nunca aquí.
+
+# Perfil de canal por defecto: canales/<canal>.yaml se mezcla encima de este archivo (marca, música,
+# fuentes, ideas…). Cada vídeo puede elegir otro con `canal: robots` en materiales/<vídeo>/config.yaml.
+canal: gimnasia
+format: historia                   # cómo se cuenta el vídeo: formatos/<formato>.yaml (lista completa: python main.py --formatos)
+
+video:
+  width: 1920
+  height: 1080
+  fps: 30
+
+paths:
+  materials: materiales   # materiales/<slug>/{titulo.txt, guion.txt, voz.mp3}
+  work: work              # work/<slug>/ — JSON intermedio de cada etapa
+  out: out                # out/<slug>/ — entregables
+  cache: cache            # caché global compartida entre vídeos
+
+align:
+  provider: local         # local (faster-whisper, gratis) | openai (whisper-1, de pago)
+  model: medium           # tiny | base | small | medium | large-v3 (solo provider=local)
+  language: es
+  compute_type: int8
+  # Una palabra del guion sin equivalente en el audio recibe tiempos interpolados.
+  # Si el porcentaje de palabras alineadas cae por debajo de este umbral, la etapa falla:
+  # probablemente el guion y la voz no corresponden.
+  min_match_ratio: 0.80
+
+planner:
+  model: deepseek-flash
+  thinking: false
+  target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
+  batch_size: 24             # planos por llamada al LLM
+  parallel: 4
+  max_attempts: 3            # reintentos si la salida no valida el esquema
+  # Precio en horario punta (el valle es la mitad): https://api-docs.deepseek.com/quick_start/pricing
+  usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
+
+pacing:                            # ritmo que respira (planner): planos más largos en lo emotivo, rápidos en la acción
+  enabled: true                    # cambiarlo no rehace los vídeos ya planificados (python main.py --slug X --force planner)
+  base_seconds: 3.0                # plano normal (~19 cortes/min; antes 2,6 ≈ 23)
+  slow_seconds: 4.3                # frases emotivas: plano largo con zoom lento (máx. 5 s)
+  fast_seconds: 1.9                # frases de acción: cortes rápidos
+  chapter_pause: 2.0               # al entrar en cada capítulo: el rótulo «CAPÍTULO 3» sale en silencio estos segundos y
+                                   # luego habla la voz (menos de 1,5 = solo una pausa, el rótulo sigue sobre la voz; 0 = nada)
+
+factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
+  model: deepseek-flash
+  thinking: false
+  usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
+
+sourcing:
+  parallel: 4                  # planos procesados a la vez (6 subía las peticiones por hora y YouTube bloqueaba más)
+  youtube:
+    enabled: true
+    queries_en: 2              # búsquedas por plano (de las 3-5 en inglés del planner)
+    queries_local: 1           # + búsquedas en el idioma del guion
+    results_per_query: 8
+    videos_per_shot: 3         # vídeos por plano de los que se baja el storyboard (miniaturas)
+    # Búsqueda por escenas (fase 1, apagada: la búsqueda por plano sigue siendo la referencia). Una escena son los planos
+    # seguidos del mismo suceso: una búsqueda conjunta y detalles solo de unos pocos finalistas. Compara antes de
+    # activarla: python main.py --comparar-escenas (Estadísticas → «Comparar búsqueda por escenas»). Para probarla,
+    # en config.local.yaml o en el config.yaml de un vídeo: scene_search: true. Valores por defecto (no se escriben
+    # aquí para no rehacer las búsquedas de los vídeos a medias): scene_max_shots 4, scene_extra_queries 3
+    # (api_scene_extra_queries 2), scene_videos 3 + scene_videos_per_shot 0.5 por plano, scene_videos_max 8.
+    # Con ella, el juez reparte las fuentes solo (variety_margin 0.03 y back_to_back_margin 0.05: nunca la misma fuente
+    # en dos planos seguidos si otra es casi igual de buena; pati7esc tenía 6 seguidas).
+    concurrency: 3             # peticiones simultáneas a YouTube
+    rate_backoff: 20           # s de pausa (x3 en cada reintento) cuando YouTube responde 429
+    min_duration: 30           # s — descarta clips sueltos
+    max_duration: 3600         # s — descarta directos y maratones
+    min_height: 720            # resolución mínima disponible del original
+    min_interval: 1.0          # s entre peticiones a YouTube
+    rate_limit: null           # límite de descarga, p. ej. "2M"
+    sleep_requests: 0          # s entre peticiones HTTP internas de yt-dlp
+    cookies_from_browser: null # "chrome", "firefox", "edge"... (solo en local)
+    cookies_file: ~/.config/edit-vid3/youtube-cookies.txt   # si existe; o YOUTUBE_COOKIES_B64 en el entorno
+    cookies_dir: ~/.config/edit-vid3/cookies                 # varias cuentas: un .txt por cuenta secundaria, van por turnos
+    account_switch_pause: 15       # s de pausa al pasar a otra cuenta porque YouTube bloqueó una
+    browser_accounts: []           # cuentas leídas de Firefox en cada ejecución (no caducan): ["firefox::Cuenta1", "firefox::Cuenta2"]
+    api_queries_per_shot: 2        # con la API: búsqueda del evento + 1 más por plano (≈30.000 unidades/vídeo → ~3 vídeos/día)
+    api_search: true               # buscar con las claves de la API (sin bloqueos); sin cuota, el vídeo ESPERA (api_overflow)
+    # Límite global por conexión, para todos los vídeos y procesos a la vez (se conserva al reiniciar):
+    # requests_per_hour 1500 (peticiones HTTP estimadas: búsqueda 2, detalles 4, tramo descargado 3; las miniaturas
+    # del storyboard, de i.ytimg.com, no cuentan). Al llegar al límite lo dice en el registro y espera.
+    # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
+    player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
+    # Proxy residencial de pago (usuario en la URL, p. ej. http://USUARIO:CLAVE@resi-bridge-eu.rainproxy.io:1111, en
+    # config.local.yaml o YOUTUBE_PROXY): cobra por GB y cambia de IP en cada conexión salvo con el sufijo de sesión
+    # "-time-30-session-<id>", que el programa añade al usuario con un id por vídeo. Con él: una sola extracción por
+    # vídeo y sesión (el info dict guardado sirve a todos los tramos), «no eres un bot» o 429 rotan la sesión en vez
+    # de poner el proxy en cuarentena, PO Token activo, miniaturas del storyboard
+    # directas y tabla «Proxy» en --youtube-stats. Los proxies de casa (sin usuario) no cambian.
+    proxy_session_minutes: 30          # lo que el proveedor mantiene la IP por sesión (sufijo -time-30)
+    proxy_session_rotations: 2         # sesiones nuevas por vídeo ante «no eres un bot»/429 antes de descartarlo
+    # proxy_session_suffix: "-time-30-session-{session_id}"   # cómo pide tu proveedor la sesión fija en el usuario del proxy
+    #                                  # (Rainproxy, por defecto). Otro proveedor: su formato de sus docs, con {session_id} donde va el id
+    info_expiry_margin_minutes: 15     # el info dict guardado no se reutiliza si sus URLs caducan antes
+    player_client_residential: null    # clientes de yt-dlp por la vía residencial (null = los de player_client); solo
+                                       # web_safari falló en todas las extracciones el 05/11 («format is not available»)
+    proxy_usd_per_gb: 0.62             # lo que cobra el proxy por GB, para el coste de --youtube-stats
+    max_height: 720                    # tope de los tramos (el vídeo final es 1080p y no se nota más); null = como se pida
+    max_fps: 30                        # un 720p60 son el doble de bytes y el vídeo final va a 30 fps; null = sin tope
+    whole_max_minutes_residential: 10  # sin HLS, el vídeo entero por el proxy residencial solo si dura/pesa menos que esto
+    whole_max_mb_residential: 80       # (en casa: whole_max_minutes 30 / whole_max_mb 600); por encima, siguiente candidato
+    prefetch_whole_residential: false  # análisis por el proxy residencial: los tramos por HLS, no el vídeo entero a 360p
+    refused_hours_residential: 3       # un vídeo con «no eres un bot» desde varias IPs del proxy se vuelve a pedir pasadas estas horas (en casa: refused_days 7)
+    timeout_retries_residential: 1     # un timeout por el proxy residencial: tantas veces más desde otra sesión (otra IP) antes de darlo por perdido
+    hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
+    query_merge: 0.8           # búsquedas casi iguales de dos planos (80 % de palabras en común, mismo año) → una sola
+    max_details_per_shot: 6    # vídeos como mucho a los que se piden detalles por plano; con 6 sin 3 válidos, al plano dibujado/alternativo
+    force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
+    # (sin HLS se baja el vídeo entero a trozos y se corta aquí: whole_fallback, whole_max_minutes 30, whole_max_mb 600;
+    #  no se escriben aquí para no rehacer las búsquedas de los vídeos a medias)
+  images:
+    max_per_shot: 6
+    min_width: 1280
+    min_aspect: 1.2            # ancho/alto; descarta verticales
+    wikimedia: {enabled: true, queries_per_shot: 3, min_interval: 0.5}
+    openverse: {enabled: true, queries_per_shot: 1, min_interval: 3.2, min_width: 1024}   # anónimo: 20/min, 200/día; Flickr llega a 1024 px
+    pixabay: {enabled: true, queries_per_shot: 1, min_interval: 1.0}     # necesita PIXABAY_API_KEY
+    # Fotos web de las personas/eventos nombrados (como Google Imágenes). Con SERPER_API_KEY usa Google
+    # Imágenes vía Serper; sin clave, DuckDuckGo (funciona desde casa; desde servidores devuelve basura
+    # y el filtro de nombre la descarta). Son fotos de prensa sin licencia libre: se acreditan con la web.
+    web: {enabled: true, queries_per_shot: 2, results: 20, min_width: 800, min_interval: 1.5}
+
+# analysis.adaptive (false por defecto): primero los `adaptive_first` (2) mejores vídeos de cada plano a 360p; los
+# siguientes, hasta los de siempre, solo para los planos sin ningún fragmento útil (mismos umbrales). Para probarlo en
+# un vídeo: en su config.yaml, analysis: {adaptive: true}. Comparar: python main.py --informe-analisis [canal].
+analysis:
+  model: ViT-B-32                  # OpenCLIP; ~28 fotogramas/s en 4 núcleos de CPU
+  pretrained: laion2b_s34b_b79k
+  batch_size: 64
+  precompute_during_sourcing: true   # calcula las huellas CLIP en segundo plano durante el sourcing
+  edge_margin: 0.05                # ignora el primer y el último 5 % de cada vídeo (intros/outros)
+  max_frames_per_video: 40         # miniaturas del storyboard codificadas por vídeo (pasada gruesa)
+  dedupe_difference: 4             # miniaturas consecutivas casi iguales se codifican una vez
+  moments_per_video: 2             # mejores momentos por vídeo en la pasada gruesa
+  fine_windows: 2                  # ventanas por plano que se descargan a 360p (pasada fina)
+  extra_windows_with_entities: 1   # +1 si el plano nombra un lugar/persona/marca concreta
+  window_padding: 2.0              # s alrededor del momento elegido
+  fine_sample_seconds: 1.0         # un fotograma por segundo dentro de la ventana
+  scene_threshold: 27              # PySceneDetect ContentDetector
+  min_span_seconds: 1.2            # sub-planos más cortos no se usan
+  ocr_side: 480                    # lado mayor para detectar texto (más = más lento)
+  max_text_area: 0.08              # descarta fragmentos con más texto en pantalla
+  max_text_area_image: 0.12
+  talking_head_face_area: 0.05     # cara centrada que ocupa más de esto → presentador
+  frozen_difference: 0.5
+  min_clip: 0.20                   # por debajo, la opción se marca "poco relevante"
+  min_clip_entity: 0.15            # umbral si la fuente nombra la entidad del plano (CLIP no conoce lugares concretos)
+  weights: {clip: 1.0, entity: 0.10, sharpness: 0.02, motion: 0.01}
+
+judge:
+  hook_seconds: 30                 # los planos del gancho pasan siempre por el juez (más exigente)
+  # Canales oficiales: +trusted_bonus a sus fragmentos (mejor calidad, títulos fiables). Ojo: son también
+  # los que más reclaman por Content ID. Coincide si el canal contiene TODAS las palabras de alguno.
+  trusted_channels: [Olympics, Olympic Games, Olympic Channel, FIG Gymnastics, World Athletics, Wanda Diamond League,
+                     ISU Skating, European Athletics, European Gymnastics, USA Gymnastics, NBC Sports, Eurovision Sport]
+  trusted_bonus: 0.03
+  avoid_other_videos: true         # no reutilizar fragmentos/fotos ya usados en otros vídeos del canal (cache/used_fragments.json)
+  all: true                        # el juez revisa todos los planos (~0,20 $/vídeo); false = solo los dudosos
+  provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
+  model: gpt-5-mini
+  reasoning_effort: low
+  detail: auto                     # resolución con la que el modelo ve la hoja de contactos
+  margin: 0.02                     # duda si la 1.ª y la 2.ª opción están más cerca que esto…
+  min_score: 0.30                  # …o si la mejor no llega a esta nota
+  min_accept: 0.22                 # por debajo, la opción no se usa (→ fallback)
+  candidates: 3                    # opciones que ve el juez por hoja
+  rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
+  rounds_rest: 1                   # fuera del gancho, como mucho una hoja (ahorra la 2.ª llamada); sin poner = rounds.
+                                   # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
+  lessons_refresh: 10              # las lecciones de «Errores» se renuevan cada 10 correcciones nuevas (si no, cada etiqueta invalida la caché del juez)
+  # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
+  # usd_per_mtok_rest: {input: …, output: …}        # los precios de model_rest (para que el gasto de API salga bien)
+  parallel: 8
+  source_bonus: {youtube: 0.02}    # prioridad: metraje de terceros antes que fotos
+  max_phash_distance: 6            # fragmentos más parecidos que esto cuentan como repetidos
+  # https://developers.openai.com/api/docs/pricing
+  usd_per_mtok: {input: 0.25, output: 2.0}
+
+ingest:
+  format: "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]"   # HD del tramo elegido
+  max_height: 720                  # baja los tramos a 720p (la mitad de MB, más rápido); se escalan a 1080 igual. null = 1080
+  lut: assets/lut.cube             # LUT común; si no existe, se omite
+  crf: 18                          # calidad x264 (menor = mejor)
+  preset: veryfast
+  parallel: 5                      # descargas HD a la vez: YouTube limita cada conexión, no el total
+
+grade:                             # color igualado entre clips (se aplica al preparar cada clip/foto; pipeline/grade.py)
+  enabled: true
+  strength: 0.6                    # 0 = sin tocar, 1 = del todo a los objetivos
+  luma: 0.45                       # brillo medio objetivo (0-1)
+  contrast: 0.22                   # contraste objetivo (desviación del brillo)
+  saturation: 0.30                 # saturación media objetivo
+  warmth: 0.02                     # balance rojo-azul (0 neutro, + cálido, − frío); el blanco y negro no se tiñe
+  look: cine                       # tono común del canal: neutral | cine (sombras frías, luces cálidas) | frio | calido
+
+quotes:                            # declaraciones originales con subtítulos (pipeline/quotes.py)
+  count: 0                         # cuántas citas del guion buscar dichas por su autor (0 = ninguna; los canales lo activan)
+  max_seconds: 12                  # duración máxima de cada declaración
+  min_match: 0.55                  # parecido mínimo entre lo que dice el vídeo y la cita del guion
+  videos_per_quote: 4              # resultados de YouTube que se revisan por cita
+  max_video_minutes: 40            # no se leen vídeos más largos
+  whisper: true                    # sin subtítulos de YouTube: transcribir el audio (más lento)
+  whisper_minutes: 12              # …solo los primeros minutos
+
+fallback:
+  photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez
+  next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
+  pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)
+  pexels_for_person: false         # en vídeos sobre una persona, NUNCA Pexels (gente y ciudades genéricas que no son él): si no queda
+                                   # vídeo suyo, ni foto de lo que se nombra, ni del evento, ni suya en la web, el plano sale como
+                                   # rótulo con sus palabras clave. true = Pexels como último recurso
+  min_clip: 0.22                   # parecido mínimo con el plano para aceptar algo de Pexels
+  caption_check: true              # descarta un clip si el rótulo en pantalla nombra a OTRO atleta ("JARMAN 134 GBR")
+  face_check: true                 # …o si 2+ fotogramas muestran una cara grande de frente que no es la del retrato
+  face_min_size: 100               # px de la cara para contar como "grande"
+  face_reject: 0.22                # parecido máximo (SFace, coseno) para descartar; el mismo atleta suele dar 0,3-0,6
+  identity_scope: protagonist      # comprobar TODOS los planos de la historia del protagonista, no solo los que dicen su nombre (named = solo esos)
+  gender_check: true               # en la historia de un hombre, fuera los clips donde claramente sale una mujer o una niña (y al revés)
+  gender_reject: 0.85              # seguridad mínima de CLIP en 2 de 5 fotogramas
+  cold_open_confirm: true          # los momentos con sonido original solo con clips donde el rótulo dice su nombre o su cara coincide (face_accept)
+  face_accept: 0.36                # parecido (SFace) para dar por buena una cara
+  face_reference_min: 90           # px mínimos de la cara del retrato para fiarse de él
+  generate: true                   # último recurso: imagen generada
+  image_model: gpt-image-2
+  image_quality: medium
+  # Estimación (OpenAI no publica aún el precio por imagen de gpt-image-2): se calcula con los tokens devueltos
+  image_usd_per_mtok: {text_input: 5.0, image_output: 40.0}
+
+content:
+  # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
+                    fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun,
+                    excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop,
+                    gymnast icons]   # canales de la competencia: su material ya está editado
+
+ideas:
+  my_channel: ""                   # tu canal, p. ej. "@TuCanal" (sus mejores vídeos también inspiran las ideas)
+  competitors: ["@GymnastIcons"]   # canales de la competencia (añade los que quieras: @handle o URL)
+  niches: [gimnasia, atletismo, patinaje artístico]
+  videos_per_channel: 40           # últimos vídeos que se miran de cada canal
+  min_ratio: 2.0                   # outlier = al menos 2x la mediana de visitas de su canal
+
+lab:                               # panel (python main.py --panel) e ideas con la API de YouTube (YOUTUBE_API_KEY en .env)
+  units_per_key: 10000             # cuota diaria del proyecto (la de Google por defecto; «clave:50000» si te aprueban más)
+  searches_per_day: 100            # búsquedas (search.list) al día por clave; con varias claves, una tras otra
+  queries:                         # búsquedas del nicho: botones rápidos del panel y fuente de las ideas diarias
+    - historia gimnasta
+    - gymnast story
+    - gimnasia artística documental
+    - figure skater story
+    - historia patinaje artístico
+    - track and field athlete story
+    - historia atleta olímpico
+    - olympic athlete documentary
+  ideas_queries: 6                 # cuántas de ellas usa --ideas cada día (~160 unidades cada una)
+  ideas_days: 180                  # solo vídeos de los últimos N días
+
+brand:                             # kit de marca del canal: colores de TODAS las plantillas (ver remotion/theme.ts)
+  accent: "#f5c451"                # dorado: cifras, títulos, barras, rutas del mapa
+  accent2: "#9b5cff"               # morado: segundo color (lado B de comparativas, 2.ª serie)
+  canvas: "#0b0613"                # fondo con cuadrícula
+  glow: "rgba(140,82,255,0.42)"    # brillo morado abajo del fondo
+  label: "#6a2fd6"                 # rótulos de nombre/lugar
+  wipe: "#8b5cf6"                  # barrido de los capítulos
+  panel: "#150d22"
+  panelRaised: "#20152f"
+  muted: "#a397bd"
+  ocean: "#0a0612"                 # mapas
+  land: "#1d142b"
+  border: "#35274d"
+  motion: sport                    # paquete de movimiento: sport (barridos diagonales, letra condensada en cursiva) |
+                                   # editorial (fundidos, filetes de revista, títulos con serifa) | tech (glitch, corchetes, mono) | clean
+  # finish: cine                   # acabado de película en TODO el vídeo: grano que se mueve, viñeta, un leve parpadeo y
+                                   # alguna mota o raya; las frases cinéticas se escriben palabra a palabra con serifa y la
+                                   # palabra clave (*así* en el guion de gráficos) en `keyword` (rojo por defecto). none = sin acabado
+
+report:                            # resumen de la mañana (out/<slug>/resumen.md y el email): cuándo pedir revisión
+  min_protagonist: 0.5             # menos de la mitad del tiempo con el protagonista → revisar
+  max_stock: 0.10                  # más de un 10 % de metraje genérico → revisar
+  max_weak: 15                     # más de 15 planos flojos → revisar
+
+graphics:                          # gráficos animados elegidos del guion (mapas, A vs B, gráficas, línea de tiempo…)
+  enabled: true
+  seconds_per_graphic: 100         # ~1 gráfico cada 100 s de vídeo
+  max: 8
+  min_seconds: 4
+  max_seconds: 12
+  types: [map, compare, chart, timeline, specs, kinetic, score, press, rule, split, strobe, replay, standings, podium, race, card, scale, receipt]
+  # extra_types: además, en todos los canales, los gráficos «de papel»: search (buscador), marker (subrayado sobre
+  # periódico), lens (lupa), scroll (pergamino), news (noticia con la persona), poster (sol rojo), board (tablón de
+  # corcho con fotos y hilo rojo), post (publicación en redes, solo si el guion dice que se publicó); [] = ninguno.
+  # bars_3d: false = barras planas de siempre; por defecto las barras (hasta 8) son bloques 3D iluminados (WebGL).
+  # El mapa con «pins» (papel antiguo con polaroids) lo elige el grafista cuando el guion recorre la vida de alguien.
+  # satellite_maps: false = mapas oscuros de siempre; por defecto los mapas planos llevan debajo imagen real de
+  # satélite (Sentinel-2 de EOX, CC BY 4.0, con su crédito en pantalla).
+  # score: nota desglosada (D + E − penalización) · press: recortes de prensa · rule: página del reglamento
+  # con sello · split: dos clips lado a lado · strobe: estroboscopia · replay: repetición a cámara lenta con
+  # el atleta señalado · standings: marcador que se reordena. "rank"/"banned": formatos ranking y prohibidos.
+  # seconds_per_format: {tecnica: 55}   # opcional: cambia el ritmo de un formato (el suyo está en formatos/<formato>.yaml)
+  banned_seconds: 5.5              # tarjeta de cada elemento en los vídeos de prohibidos
+
+shorts:                            # Shorts verticales sacados del vídeo final → out/<slug>/shorts/
+  # hook_style: kinetic            # (por defecto) texto del gancho palabra a palabra, la clave en cursiva serif de color; box = el cartel blanco de antes
+  enabled: true                    # 3 Shorts de cada vídeo terminado, de sus momentos más fuertes (false = solo con
+                                   # python main.py --shorts <vídeo>). style: native (vertical con Remotion: metraje a
+                                   # pantalla completa, gráficos en ventana, subtítulos) | blur (16:9 sobre fondo desenfocado)
+                                   # | nuevo (por defecto en simulación y monigotes): cada Short es un vídeo NUEVO en
+                                   # vertical, con su propio guion (escrito del guion largo), su voz y sus escenas;
+                                   # entra en la cola como materiales/<canal>/<vídeo>-shortN/
+  count: 3
+  min_seconds: 25
+  max_seconds: 58
+  zoom: 1.1                        # el plano 16:9 un poco más ancho que la pantalla
+
+people:
+  enabled: true                    # tarjeta de presentación (atleta recortado + nombre) la 1.ª vez que se le nombra
+  max: 4                           # protagonista + hasta 3 personas con rótulo de nombre
+  tries: 8                         # fotos que se prueban por persona hasta encontrar una recortable
+  model: u2net_human_seg           # modelo de rembg para recortar personas
+
+timeline:
+  assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
+  music_volume: 0.2                # música de fondo en las pausas: ~-34 LUFS (antes 0.32; súbelo si la quieres más presente)
+  music_by_chapter: true           # tono de la música por capítulo (assets/music/<tono>-*.mp3)
+  music_default: intriga           # tono si no hay otra cosa
+  duck_db: 12                      # baja 12 dB más bajo la voz y el sonido original: ~23 dB por debajo de la voz
+  whoosh_volume: 0.22              # transiciones: assets/sfx/whoosh*.mp3, se van alternando
+  sfx_min_gap: 4                   # nunca dos transiciones a menos de 4 s
+  whoosh_main: espada              # el que suena casi siempre (parte del nombre del archivo)
+  whoosh_other_every: 4            # 1 de cada 4 usa otro de assets/sfx para variar (0 = solo el principal)
+  pop_volume: 0.25                 # pop de barras/chinchetas/datos: ~8 dB por debajo de la voz
+  impact_volume: 0.22              # golpe de las cifras grandes: justo por debajo de la voz
+  questions: true                  # preguntas del guion (¿…?) como texto flotante en el centro
+  opening_question: auto           # si el vídeo empieza con una pregunta (con o sin ¿?), sale entera desde el primer fotograma; true/false para forzar
+  question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas
+  question_hold: 1.2               # s que el texto sigue tras la última palabra
+  question_max_words: 30
+  card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
+  labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
+  label_seconds: 2.5
+  endscreen_seconds: 20           # pantalla final para los elementos de YouTube (vídeo sugerido + suscribirse); 0 = no
+  moments: 2                       # momentos cumbre en los que la voz calla y suena el original (0 = ninguno)
+  moment_seconds: 4.5              # duración de cada uno (máx. 5 s, clip de terceros)
+  moment_volume: 1.0
+  sound_bites: 8                   # golpes de 1-2 s del sonido original (público, comentarista) BAJO la voz, en los picos
+  bite_seconds: 1.6                # (0 = ninguno). Solo cuentan picos claros: la música de fondo constante no
+  bite_volume: 0.6
+  bite_gap: 20                     # s mínimos entre dos golpes
+  bite_contrast: 6                 # dB por encima del nivel habitual del clip para contar como pico
+  spotlights: 3                    # congelados con foco: la 1.ª vez que se nombra a alguien sobre un clip suyo (0 = ninguno)
+  spotlight_seconds: 2.6
+
+speed:                             # solo cuánto trabajo va a la vez: cambiarlo no hace rehacer ninguna etapa
+  fallback_parallel: 8             # planos que el relleno busca a la vez (descargas y juez en paralelo); con poca RAM, 4
+
+queue:                             # cola nocturna (python main.py --all)
+  parallel_videos: 3               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
+  footage_at_once: 2               # de esos, como mucho 2 con metraje de terceros: la otra línea es para los dibujados
+  shorts_at_once: 0                # líneas más solo para Shorts además de esas (0: ninguna)
+  shorts_last: true                # los Shorts, lo último: solo cuando no queda ningún vídeo largo por hacer
+  drawn_first: true                # los vídeos de simulación y monigotes antes que los de metraje (false: por orden)
+                                   # (simulación, monigotes); si solo quedan de terceros, esperan su turno
+  slots: {red: 1, cpu: 2}          # cuántos vídeos a la vez en cada turno (red 2 dobló los 429 y «no eres un bot»: gim1.0, 2,4 min por plano) (red: buscar/descargar · cpu: analizar,
+  #                                  rellenar, renderizar). En una máquina grande (64 GB, 16 núcleos): {red: 3, cpu: 2}
+  #                                  con parallel_videos: 5. El render reparte los núcleos entre los turnos de cpu.
+
+qa:
+  max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
+  low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
+  low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
+  max_phash_distance: 6            # imágenes más parecidas → posible repetición
+  columns: 14                      # hoja de contactos
+
+# doctor: tras el render se mira el vídeo final una vez buscando negros y congelados, y se arreglan en su tramo
+# (un clip más corto que su plano se ralentiza para llenarlo en vez de quedarse en su último fotograma; otro tramo se
+# vuelve a cortar). Informe en out/<vídeo>/qa/doctor.json. doctor: {enabled: false} lo apaga; black_seconds 0.25,
+# freeze_seconds 1.0, max_stretch 1.6 por defecto.
+# visual: {style: stickman} (en canales/<canal>.yaml) = vídeo de monigotes dibujado en código, sin metraje: no se busca
+# ni se descarga nada y cada plano es una escena (poses, caras, objetos, lugares) elegida por el LLM. palette: color
+# (por defecto: lugares rellenos de color, camisetas de colores, rótulo en caja negra) o paper (líneas negras sobre papel).
+# visual: {style: simulacion} = vídeo de simulaciones vistas desde arriba, sin metraje (canales/hora-punta.yaml): cada
+# frase del guion recibe del LLM su escena (mundo simulado, foco de la cámara, panel, título, cifra dicha, lista final;
+# pipeline/simulacion.py) y la simulación corre sola mientras ese mundo sigue en pantalla.
+# visual: {depth: true} = fotos con profundidad (2.5D): en las fotos con movimiento parallax se recorta el sujeto (rembg)
+# y avanza por delante de la foto, con el hueco rellenado detrás (pipeline/depth.py). Apagado por defecto.
+render:
+  # Híbrido: los planos que son solo vídeo + crédito se montan con ffmpeg (rápido); el resto
+  # (paneles, cifras, capítulos, fotos con Ken Burns) lo dibuja Remotion en una sola pasada.
+  hybrid: true
+  concurrency: 0                   # pestañas de Chrome para Remotion (0 = núcleos de la máquina)
+  browser_executable: auto         # auto = Chromium preinstalado si existe; si no, Remotion descarga el suyo
+  crf: 18
+  preset: veryfast
+  parallel: 3                      # segmentos de ffmpeg en paralelo
+  loudness: -16                    # LUFS del máster (YouTube)
+  true_peak: -1.5
+  audio_bitrate: 192k
+
+budget:
+  daily_usd: 0                     # límite de gasto de API al día (0 = sin límite; también en el estudio → Ajustes)
+  proxy_gb_per_day: 0              # tope de GB por el proxy residencial al día (0 = sin tope; también en Ajustes): al llegar,
+                                   # los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen
+
+radar:                             # radar de competencia diario (estudio → Competencia; con --vigilar, cada día)
+  enabled: true
+  hour: 13                         # cada día a esta hora (de tu zona, radar.timezone o Europe/Madrid) llega el resumen
+  rising_max_subs: 50000           # «canales revelación»: como mucho estos suscriptores…
+  rising_min_multiple: 5           # …y un vídeo reciente con al menos 5 veces sus suscriptores en visitas
+  days: 30                         # vídeos de los últimos N días
+  min_ratio: 2.0                   # al menos 2x las visitas normales de su canal
+  min_views: 5000
+  alert_score: 60                  # aviso «🔥 Explota en tu tema» por Telegram/correo: puntuación viral 60+ (≈10x su canal)…
+  alert_days: 3                    # …de como mucho 3 días…
+  alerts_per_day: 2                # …y 2 avisos al día como máximo (nunca el mismo dos veces)
+  queries: 3                       # búsquedas del nicho (lab.queries) por canal (~200 unidades de API cada una)
+  videos_per_competitor: 30
+  keep: 20                         # vídeos que se guardan por canal
+  new_niches: 1                    # nichos cercanos nuevos por canal, medidos en YouTube
+  free_niches: 2                   # y nichos nuevos de cualquier tema
+  niche_days: 120
+  gaps: true                       # «Huecos»: demanda frente a competencia en español y el hueco frente al inglés
+  gaps_new: 5                      # temas nuevos medidos al día (~400 unidades de API cada uno)
+  gaps_again: 1                    # y los mejores de días anteriores, otra vez (para ver si se llenan)
+
+mychannel:                         # análisis de tu canal (estudio → Mi canal; tu canal en Ajustes)
+  timezone: Europe/Madrid
+  max_videos: 400
+
+gancho:                            # revisión del principio del guion antes de grabar (--check y el estudio)
+  payoff_seconds: 20               # lo que promete el título tiene que verse/contarse antes de este segundo
+  words_per_second: 2.6            # ritmo de locución para estimar tiempos sin voz grabada
+
+ritmo:                             # tras el render: tramos sin nada nuevo en pantalla y silencios (qa/ritmo.md; avisa, no bloquea)
+  enabled: true
+  quiet_seconds: 12                # tramo quieto avisado (Manicule tiene 1-2 así en 5 min)
+  hook_seconds: 30                 # el arranque, más exigente:
+  hook_quiet: 6                    # ya avisa a los 6 s quieto
+  silence_seconds: 2.5             # la voz calla este tiempo o más
+
+miniaturas:
+  enabled: false                   # las miniaturas las haces tú; true = 3 miniaturas automáticas en out/<vídeo>/miniaturas/
+
+bot:                               # bot de Telegram (python main.py --bot; en la VPS, servicio edit-vid3-bot)
+  hourly: true                     # parte cada hora: qué está haciendo, terminados, errores, gasto, disco
+  quiet_hours: []                  # horas sin parte, p. ej. [1, 2, 3, 4, 5, 6, 7] (los errores llegan igual)
+  watcher_alert_minutes: 20        # avisa si el vigilante deja de dar señales de vida
+  stuck_hours: 3                   # avisa si un vídeo lleva más de esto en la misma etapa
+
+dubbing:                           # doblaje automático (pipeline/doblaje.py): APAGADO hasta que tengas el canal en otro idioma
+  enabled: false                   # true aquí o, mejor, en canales/<canal>.yaml solo para los canales que quieras doblar
+  languages: [en]                  # idiomas: en, pt, fr, it, de
+  voices: {}                       # por idioma: {en: {voice_id: "…", model_id: eleven_multilingual_v2, name: "…"}}
+
+compilations:                      # compilaciones largas (python main.py --compilar CANAL · estudio → Para subir)
+  max_minutes: 180                 # como mucho ~3 h
+  max_videos: 12
+  min_videos: 3
+  keep_finals: true                # el vídeo final de los ya subidos se guarda para una compilación…
+  keep_days: 30                    # …hasta 30 días, hasta que entra en una o hasta que falta disco (cleanup.min_free_gb)
+
+watch:
+  continue_without_youtube: false  # con YouTube en pausa, los vídeos que aún lo necesitan siguen sin él (pipeline/sin_youtube.py):
+                                   # ninguna petición a YouTube, se reutiliza lo ya hecho y solo se termina si la cobertura no es
+                                   # peor que la habitual del canal; si no, espera a YouTube. Mejor por canal (canales/<canal>.yaml)
+without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue al montaje (se compara con los vídeos del canal hechos con él)
+  fallback_margin: 0.05            # planos al relleno: como mucho lo habitual del canal + 5 puntos
+  reference_videos: 10             # últimos vídeos terminados del canal con los que se compara
+  reference_min_videos: 3          # con menos, se compara con todos los canales; sin ninguno, los dos límites de abajo
+  max_fallback_share: 0.35
+  max_unfilled_share: 0
+
+tts:
+  usd_per_1k_chars: 0.022         # GenAIPro: lo que cuestan 1.000 caracteres de voz (22 $ el millón), para «Gasto de API»

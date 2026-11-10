@@ -1,0 +1,287 @@
+"""Where viewers leave (pipeline/retencion.py): YouTube Studio's retention CSV against the video's own timeline."""
+
+from __future__ import annotations
+
+from pipeline import retencion
+from pipeline.context import RunContext
+
+
+def _timeline():
+    sim = lambda a, n, world, **k: {"id": f"g{a}", "kind": "graphic", "from": a, "durationInFrames": n,  # noqa: E731
+                                    "graphic": {"type": "sim", "world": world, "overlay": "none", "params": {}, **k}}
+    return {"fps": 30, "durationInFrames": 30 * 300,
+            "shots": [{"id": f"s{i}", "type": "broll", "from": i * 900, "durationInFrames": 900, "text": f"frase {i}"} for i in range(10)],
+            "groups": [sim(0, 30 * 150, "anillo"), sim(30 * 150, 30 * 150, "colas", params={"scene": "limite"})]}
+
+
+def test_the_drops_are_found_with_what_was_said_and_seen(tmp_path, monkeypatch):
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    ctx.write_json("timeline.json", _timeline())
+    # a CSV like YouTube Studio's: position as a fraction, absolute retention in %; a cliff at 2:40 (160 s)
+    rows = ["Video position,Absolute audience retention (%)"]
+    for k in range(101):
+        t = k * 3
+        r = 100 - t * 0.12 - (15 if t >= 165 else 0) - max(0, (t - 159)) * 2.5 * (159 < t < 165)
+        rows.append(f"{k / 100:.2f},{r:.1f}")
+    monkeypatch.setattr(retencion, "advice", lambda ctx, r: ["Adelanta la escena de la caja"])
+    result = retencion.analyse(ctx, "\n".join(rows))
+    assert result["hook30"] > 95 and result["drops"]
+    big = max(result["drops"], key=lambda d: d["loss"])
+    assert 145 <= big["at"] <= 165 and "colas · limite" in big["seen"] and "frase" in big["said"]
+    report = (ctx.out_dir / "retencion.md").read_text("utf-8")
+    assert "Dónde se va la gente" in report and "Adelanta la escena" in report
+
+
+def test_times_and_fractions_are_read():
+    curve = retencion.parse("pos;ret\n0:00;100\n0:30;80\n1:00;70\n1:30;65\n2:00;60\n", 120)
+    assert curve[1] == (30.0, 80.0)
+    frac = retencion.parse("a,b\n0,1\n0.25,0.8\n0.5,0.7\n0.75,0.6\n1,0.5\n", 200)
+    assert frac[1] == (50.0, 80.0)
+
+
+def test_topic_ideas_only_with_the_channels_worlds_and_one_a_day(tmp_path, monkeypatch):
+    import shutil
+    from datetime import date
+    from pathlib import Path
+
+    from pipeline import agenda, temas
+
+    root = Path(__file__).resolve().parent.parent
+    shutil.copy(root / "config.yaml", tmp_path / "config.yaml")
+    shutil.copytree(root / "canales", tmp_path / "canales")
+    good = [{"idea": f"bloque {k}", "world": w, "scene": sc} for k, (w, sc) in enumerate(
+        [("metro", "comparar"), ("multitud", "evacuacion"), ("metro", "lados"), ("multitud", "pasillo"), ("explica", "dato"), ("metro", "delante")])]
+    half = good[:3] + [{"idea": "x", "world": "volcan", "scene": "y"}] * 3
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **k: {"ideas": [
+        {"title": "Por qué el wifi va lento", "worlds": ["colas"], "scenes": "limite", "plan": good, "interest": "media"},
+        {"title": "Por qué el metro se colapsa", "hook": "Llegas al andén…", "worlds": ["multitud"], "scenes": "pasillo", "why": "x",
+         "plan": good, "interest": "alta"},
+        {"title": "Algo imposible", "worlds": ["volcan"], "plan": good},
+        {"title": "A medias", "worlds": ["metro"], "plan": half, "interest": "alta"},
+        {"title": "Sin plan", "worlds": ["colas"]}]})
+    added = temas.calendar(tmp_path, "el-porque-simulado", 10, start=date(2026, 11, 2))
+    assert [a["title"] for a in added] == ["Por qué el metro se colapsa", "Por qué el wifi va lento"]   # most searched first
+    assert [a["date"] for a in added] == ["2026-11-02", "2026-11-03"] and "Mundos: multitud" in added[0]["note"]
+    assert "100 %" in added[0]["note"] and "metro comparar" in added[0]["escenas"]
+    assert len(agenda.load(tmp_path)["ideas"]) == 2
+
+
+def _sim_root(tmp_path):
+    import json
+    import shutil
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    shutil.copy(root / "config.yaml", tmp_path / "config.yaml")
+    shutil.copytree(root / "canales", tmp_path / "canales")
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "_voces.json").write_text(json.dumps({
+        "el-porque-simulado": {"voice_id": "es-voice", "name": "Narrador ES"},
+        "simulated-why": {"voice_id": "en-voice", "name": "Narrator EN"}}), "utf-8")
+    return tmp_path
+
+
+def test_a_simulation_dubs_only_where_there_is_a_voice_of_that_language(tmp_path):
+    from pipeline import doblaje
+    from pipeline.web import create_video
+
+    root = _sim_root(tmp_path)
+    opts = {o["lang"]: o["voice"] for o in doblaje.options(root, "el-porque-simulado")}
+    assert opts == {"en": "Narrator EN", "pt": None, "de": None}          # never the Spanish voice reading German
+    ctx = RunContext.create("x", root=root, channel="el-porque-simulado")
+    cfg = doblaje.settings(ctx)
+    assert cfg["enabled"] and cfg["languages"] == ["en"] and cfg["voices"]["en"]["voice_id"] == "en-voice"
+    script = "Vas al súper con prisa y eliges la cola más corta. " * 10
+    create_video(root, {"name": "super1", "channel": "el-porque-simulado", "script": script, "dub": []})
+    none = RunContext.create("super1", root=root)
+    assert none.config.get("dub_skip") == ["en"] and not doblaje.settings(none)["enabled"]
+    create_video(root, {"name": "super2", "channel": "el-porque-simulado", "script": script, "dub": ["en", "de"]})
+    chosen = doblaje.settings(RunContext.create("super2", root=root))
+    assert chosen["enabled"] and chosen["languages"] == ["en"]                # German ticked but it has no voice
+
+
+def test_a_language_without_a_voice_when_made_is_dubbed_once_it_has_one(tmp_path):
+    import json
+
+    from pipeline import doblaje
+    from pipeline.web import create_video
+
+    root = _sim_root(tmp_path)
+    script = "Vas al súper con prisa y eliges la cola más corta. " * 10
+    create_video(root, {"name": "super1", "channel": "el-porque-simulado", "script": script, "dub": ["en"]})
+    voices = json.loads((root / "out" / "_voces.json").read_text("utf-8"))
+    voices["simuliertes-warum"] = {"voice_id": "de-voice", "name": "Sprecher DE"}       # German set later in Ajustes
+    (root / "out" / "_voces.json").write_text(json.dumps(voices), "utf-8")
+    assert doblaje.settings(RunContext.create("super1", root=root))["languages"] == ["en", "de"]
+    old = RunContext.create("super0", root=root, channel="el-porque-simulado")        # an old `dub_languages: [en]`
+    old.config["dub_languages"] = ["en"]
+    assert doblaje.settings(old)["languages"] == ["en", "de"]
+    doblaje.choose(root, "super1", "en", False)                                       # «No doblar a English»
+    ctx = RunContext.create("super1", root=root)
+    assert doblaje.settings(ctx)["languages"] == ["de"]
+    rows = {d["lang"]: d for d in doblaje.status(root, "super1")}
+    assert rows["en"]["skipped"] and not rows["de"]["skipped"]                         # the box still offers English
+    doblaje.choose(root, "super1", "en", True)
+    assert doblaje.settings(RunContext.create("super1", root=root))["languages"] == ["en", "de"]
+
+
+def test_a_dub_is_adapted_to_its_viewers(tmp_path, monkeypatch):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "atasco1"
+    folder.mkdir(parents=True)
+    (root / "materiales" / "el-porque-simulado" / "config.yaml").write_text("canal: el-porque-simulado\n", "utf-8")
+    script = "Vas por la autovía y todo se para. " * 20
+    (folder / "guion.txt").write_text(script, "utf-8")
+    seen = {}
+
+    def fake(ctx, **k):
+        seen.update(k)
+        return {"title": "Stau aus dem Nichts", "script": "Du fährst auf der Autobahn und alles steht. " * 20,
+                "changes": ["autovía → Autobahn", "añadido el apagón europeo de 2006 (río Ems)"]}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    ctx = RunContext.create("atasco1", root=root)
+    assert doblaje.translate(ctx, "de")
+    assert "Alemania, Austria y Suiza" in seen["system"] and "Autobahn" in seen["system"] and "Ems" in seen["system"]
+    assert "Autobahn" in (folder / "guion-de.txt").read_text("utf-8")
+    assert "río Ems" in (folder / "adaptacion-de.md").read_text("utf-8")
+
+
+def test_the_voice_waits_for_the_review_of_the_adapted_script(tmp_path, monkeypatch):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "atasco2"
+    folder.mkdir(parents=True)
+    (root / "materiales" / "el-porque-simulado" / "config.yaml").write_text("canal: el-porque-simulado\n", "utf-8")
+    (folder / "guion.txt").write_text("Vas por la autovía. " * 30, "utf-8")
+    (folder / "guion-en.txt").write_text("You're on the freeway. " * 30, "utf-8")
+    (folder / "config.yaml").write_text("dubbing:\n  review: true\n", "utf-8")      # off by default; on for this one
+    calls = []
+    monkeypatch.setattr("pipeline.tts.generate", lambda *a, **k: calls.append(a) or {"chars": 10})
+    ctx = RunContext.create("atasco2", root=root)
+    assert doblaje.waiting_review(ctx, "en") and not doblaje.voice(ctx, "en") and not calls
+    status = {d["lang"]: d for d in doblaje.status(root, "atasco2")}
+    assert status["en"]["review"] is True
+    doblaje.approve(root, "atasco2", "en")
+    assert not doblaje.waiting_review(ctx, "en") and doblaje.voice(ctx, "en") and calls
+
+
+
+def test_by_default_the_dub_goes_on_without_waiting(tmp_path):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    assert not doblaje.waiting_review(RunContext.create("x", root=root, channel="el-porque-simulado"), "en")
+
+
+SPANISH = ("Cuando vas en el metro y llega el tren, todo el mundo quiere entrar a la vez por la misma puerta. "
+           "Pero la gente que sale también tiene prisa, y en la puerta se forma un tapón que nadie ha querido. ") * 3
+GERMAN = ("Wenn du in der U-Bahn stehst und der Zug kommt, will jeder gleichzeitig durch dieselbe Tür. Aber die Leute, "
+          "die aussteigen, haben es auch eilig, und an der Tür entsteht ein Stau, den niemand wollte. ") * 3
+MIXED = ("Cuando vas en la U-Bahn y llega el tren, todo el mundo mira el Handy y quiere entrar a la vez por la misma puerta. "
+         "Pero la gente que sale de la Ampel también tiene prisa, y en la puerta se forma un Stau que nadie ha querido. ") * 3
+
+
+def test_the_language_of_a_script_is_told_by_its_little_words():
+    from pipeline.doblaje import language_of
+
+    assert language_of(SPANISH) == "es" and language_of(GERMAN) == "de" and language_of(MIXED) == "es"
+    assert language_of("Hola") == ""
+
+
+def test_a_dub_adapted_in_spanish_is_asked_again_and_never_accepted(tmp_path, monkeypatch):
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "metro1"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text(SPANISH, "utf-8")
+    ctx = RunContext.create("metro1", root=root)
+    answers = iter([{"title": "X", "script": MIXED}, {"title": "U-Bahn", "script": GERMAN}])
+    asked = []
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda *a, **k: asked.append(k["system"]) or next(answers))
+    assert doblaje.translate(ctx, "de")
+    assert (folder / "guion-de.txt").read_text("utf-8").startswith("Wenn du") and "alemán" in asked[0]
+    assert "ENTERO" in asked[1]
+    (folder / "guion-de.txt").unlink()
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda *a, **k: {"title": "X", "script": MIXED})
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        doblaje.translate(ctx, "de")
+    assert not (folder / "guion-de.txt").exists()
+
+
+def test_a_dub_spoken_in_spanish_is_put_aside_and_made_again(tmp_path):
+    import json
+
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "el-porque-simulado" / "sim6"
+    folder.mkdir(parents=True)
+    for name, text in (("guion.txt", SPANISH), ("guion-de.txt", MIXED), ("voz-de.mp3", "x"), ("titulo-de.txt", "X")):
+        (folder / name).write_text(text, "utf-8")
+    dub = root / "materiales" / "simuliertes-warum" / "sim6-de"
+    dub.mkdir(parents=True)
+    (dub / "voz.mp3").write_text("x")
+    (dub / "guion.txt").write_text(MIXED, "utf-8")
+    out = root / "out" / "sim6-de"
+    out.mkdir(parents=True)
+    (out / "video-final.mp4").write_text("x")
+    short = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
+    short.mkdir(parents=True)
+    (short / "guion.txt").write_text("El tapón de la puerta del metro. " * 10, "utf-8")
+    assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 1
+    assert not short.exists() and (root / "materiales" / "_descartados" / "sim6-de-short1" / "guion.txt").exists()
+    assert not (folder / "guion-de.txt").exists() and not (folder / "voz-de.mp3").exists() and (folder / "guion.txt").exists()
+    assert not (dub / "voz.mp3").exists() and not (out / "video-final.mp4").exists() and (out / doblaje.WRONG).exists()
+    # a good German one, or one already on YouTube, stays
+    (folder / "guion-de.txt").write_text(GERMAN, "utf-8")
+    assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 0
+    other = root / "materiales" / "el-porque-simulado" / "sim7"
+    other.mkdir(parents=True)
+    (other / "guion-de.txt").write_text(MIXED, "utf-8")
+    (root / "out" / "sim7-de").mkdir()
+    (root / "out" / "sim7-de" / "publicado.json").write_text(json.dumps({"at": "x"}))
+    assert doblaje.repair_wrong_language(root, log=lambda *a: None) == 0 and (other / "guion-de.txt").exists()
+
+
+def test_the_shorts_of_a_dub_put_aside_earlier_go_too_but_not_the_new_ones(tmp_path):
+    import os
+    import time
+
+    from pipeline import doblaje
+
+    root = _sim_root(tmp_path)
+    out = root / "out" / "sim6-de"
+    out.mkdir(parents=True)
+    (out / doblaje.WRONG).write_text("x")
+    os.utime(out / doblaje.WRONG, (time.time() - 7200, time.time() - 7200))      # keeps the date of its render
+    (out / "rehecho.json").write_text("{}")                                       # put aside now
+    old = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
+    old.mkdir(parents=True)
+    (old / "guion.txt").write_text("El tapón de la puerta del metro. " * 10, "utf-8")
+    os.utime(old / "guion.txt", (time.time() - 3600, time.time() - 3600))
+    new = root / "materiales" / "simuliertes-warum" / "sim6-de-short2"
+    new.mkdir(parents=True)
+    (new / "guion.txt").write_text(GERMAN, "utf-8")
+    doblaje.repair_wrong_language(root, log=lambda *a: None)
+    assert not old.exists() and new.exists()
+
+
+def test_a_spanish_script_on_a_german_channel_is_never_made(tmp_path):
+    import pytest
+
+    import main
+
+    root = _sim_root(tmp_path)
+    folder = root / "materiales" / "simuliertes-warum" / "sim6-de-short1"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text(SPANISH, "utf-8")
+    (folder / "config.yaml").write_text("canal: simuliertes-warum\n", "utf-8")
+    with pytest.raises(RuntimeError, match="español"):
+        main.run_one("sim6-de-short1", force=set(), until=None, review=False, root=root)

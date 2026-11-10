@@ -1,160 +1,1674 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import shutil
-import subprocess
+import sys
+import time
+import traceback
+from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
-from pipeline.build_props import build_props
-from pipeline.config import ConfigError, Settings, load_settings
-from pipeline.analytics import write_timeline_manifest
-from pipeline.fetch_media import fetch_media
-from pipeline.postflight import (
-    RenderPostflightError,
-    enforce_postflight,
-    inspect_render,
-    master_audio,
-    write_postflight_report,
-)
-from pipeline.qa import PipelineQualityError, enforce_qa, validate_scene_plan, write_qa_report
-from pipeline.segment import segment_script
-from pipeline.transcribe import transcribe_audio
+# Harmless library chatter that buries the progress lines: OpenCV 5's "Targets are not supported by
+# the new graph engine" and Hugging Face's "unauthenticated requests" (only a rate limit, never reached).
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+from pipeline.config import PROJECT_ROOT, ConfigError
+from pipeline.context import RunContext
+from pipeline.qa import QABlocked
+from pipeline.runner import STAGE_NAMES, StageNotImplemented, run_stages
+
+QUEUE_LOCK = "work/.cola.lock"
+QUEUE_REPORT = "out/_cola.md"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Genera un vídeo Remotion a partir de un guion y una voz en off."
+        description="Genera un vídeo documental a partir de materiales/<slug>/{guion.txt, voz.mp3} (titulo.txt opcional)."
     )
-    parser.add_argument("--guion", type=Path, required=True, help="Fichero de guion UTF-8.")
-    parser.add_argument("--voz", type=Path, required=True, help="Audio de voz en off.")
-    parser.add_argument("--output", type=Path, required=True, help="Ruta del MP4 final.")
-    parser.add_argument(
-        "--avatar-dir",
-        type=Path,
-        help="Carpeta opcional con scene-001.mp4, scene-002.mp4, etc. para escenas avatar.",
-    )
-    parser.add_argument(
-        "--skip-render",
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--slug", help="Carpeta dentro de materiales/, p. ej. Video1.")
+    target.add_argument(
+        "--all",
         action="store_true",
-        help="Genera y guarda props.json, pero no lanza Remotion (útil para probar el pipeline).",
+        help="Cola: procesa uno tras otro todos los vídeos de materiales/ que aún no tienen out/<slug>/video-final.mp4. "
+        "Si uno falla, lo apunta y sigue con el siguiente. Resumen en out/_cola.md.",
     )
+    target.add_argument("--ideas", action="store_true",
+                        help="3 ideas de vídeo basadas en los outliers de la competencia y tus mejores vídeos "
+                             "(out/_ideas/<fecha>.md, y por email/Telegram si está configurado).")
+    target.add_argument("--check", metavar="SLUG",
+                        help="Antes de grabar la voz: verifica los datos del guion de materiales/SLUG (→ out/SLUG/verificacion.md) "
+                             "y si su arranque cumple lo que promete el título (→ out/SLUG/gancho.md).")
+    target.add_argument("--informe-analisis", nargs="?", const="", metavar="CANAL",
+                        help="Análisis adaptativo antes y después: vídeos mirados, unidades, minutos y planos cubiertos → out/_informe_analisis.md.")
+    target.add_argument("--autopiloto", metavar="CANAL[:ID]",
+                        help="Piloto automático: hace ya el vídeo propio de la mejor idea del radar del canal (o de esa).")
+    target.add_argument("--capcut", metavar="VÍDEO|CANAL",
+                        help="Proyecto para editar en CapCut (clips limpios por plano, voz, música, efectos sueltos, "
+                             "rótulos editables) → out/VÍDEO/VÍDEO-capcut.zip; con un canal, todos sus vídeos terminados.")
+    target.add_argument("--apertura", metavar="PETICION.json",
+                        help="(La usa la web) Busca el clip de apertura de un vídeo nuevo → PETICION.resultado.json.")
+    target.add_argument("--exportar", metavar="SLUG",
+                        help="El vídeo terminado como proyecto de Premiere Pro / DaVinci Resolve → out/SLUG/premiere/ y .zip.")
+    target.add_argument("--shorts", metavar="SLUG",
+                        help="Hace 3 Shorts verticales de un vídeo ya terminado → out/SLUG/shorts/.")
+    target.add_argument("--dub", metavar="SLUG:IDIOMA",
+                        help="Versión doblada reutilizando el vídeo hecho, p. ej. CarlosYulo:en con la voz en "
+                             "materiales/CarlosYulo/voz-en.mp3 (+ guion-en.txt opcional) → out/CarlosYulo-en/.")
+    target.add_argument("--editor", metavar="SLUG",
+                        help="Editor antes del render: ver el montaje, cambiar planos, gráficos y textos, y renderizar "
+                             "(http://127.0.0.1:8766). Mejor con el vídeo lanzado antes con --review.")
+    target.add_argument("--panel", action="store_true",
+                        help="Panel web local (outliers, análisis de canales, guardados, ideas) en http://127.0.0.1:8765.")
     parser.add_argument(
-        "--skip-audio-master",
-        action="store_true",
-        help="No normaliza el audio después del render de Remotion.",
+        "--force",
+        action="append",
+        default=[],
+        metavar="ETAPA",
+        help=f"Vuelve a ejecutar una etapa aunque esté al día (repetible, o 'all'). Etapas: {', '.join(STAGE_NAMES)}.",
     )
-    parser.add_argument(
-        "--skip-third-party",
-        action="store_true",
-        help="Desactiva yt-dlp/YouTube y prueba directamente Pexels/GPT Image.",
-    )
+    parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
+    parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
+    target.add_argument("--probar-youtube", action="store_true",
+                        help="Comprueba en 1 minuto por qué YouTube descarga lento en esta máquina y qué hacer.")
+    target.add_argument("--formatos", action="store_true",
+                        help="Lista de formatos de vídeo (formatos/*.yaml): se eligen con format: en la config.yaml.")
+    target.add_argument("--semana", metavar="CANAL",
+                        help="Plan de la semana: 1 idea por cada serie del canal (canales/<canal>.yaml → series:), "
+                             "en out/_ideas/<canal>/semana-<fecha>.md.")
+    target.add_argument("--series", metavar="CANAL",
+                        help="Qué serie del canal funciona mejor: visitas de tus vídeos publicados agrupadas por serie "
+                             "(out/_series/<canal>-<fecha>.md).")
+    parser.add_argument("--serie", help="Con --ideas: ideas de una sola serie del canal (p. ej. estafas).")
+    parser.add_argument("--canal", help="Con --ideas / --panel: perfil de canal (canales/<canal>.yaml), p. ej. robots.")
+    parser.add_argument("--limit", type=int, default=0, help="Con --all: como mucho N vídeos en esta ejecución.")
+    target.add_argument("--doctor", action="store_true",
+                        help="Revisa en segundos claves, herramientas, disco, proxy, cuota y servicios, sin hacer "
+                             "peticiones: lo que haría fallar un vídeo a mitad.")
+    target.add_argument("--actualizar", nargs="?", const=3.0, type=float, metavar="HORAS",
+                        help="Actualiza el servidor sin cortar nada: espera (como mucho HORAS, 3) a que ningún vídeo "
+                             "de terceros esté buscando o descargando, git pull, instala dependencias solo si "
+                             "cambiaron y reinicia los servicios.")
+    target.add_argument("--tiempos", nargs="?", const=30.0, type=float, metavar="DÍAS",
+                        help="Dónde se va el tiempo: minutos de cada etapa de los vídeos terminados en los últimos "
+                             "DÍAS (30) → out/_tiempos.md.")
+    target.add_argument("--ritmo", metavar="SLUG",
+                        help="Tramos sin nada nuevo en pantalla y silencios de un vídeo ya renderizado → "
+                             "out/SLUG/qa/ritmo.md (se hace solo tras cada render).")
+    target.add_argument("--cola-por-que", action="store_true",
+                        help="Lista los vídeos sin hacer y por qué cada uno entra o no en la cola ahora.")
+    target.add_argument("--vigilar", nargs="?", const=5.0, type=float, metavar="MIN",
+                        help="Servidor: hace los vídeos de materiales/ en cuanto aparecen, mirando cada MIN minutos "
+                             "(5); no repite en bucle uno que falló; se actualiza con git pull.")
+    target.add_argument("--youtube-stats", nargs="?", const=7.0, type=float, metavar="DÍAS",
+                        help="Cómo respondió YouTube en los últimos DÍAS (7 por defecto): peticiones, 403, bloqueos, "
+                             "velocidad, con o sin cuenta → out/_youtube_stats.md.")
+    target.add_argument("--web", nargs="?", const=8080, type=int, metavar="PUERTO",
+                        help="Estudio web (sin comandos): subir guion y voz, ver cómo va cada vídeo, descargar, revisar "
+                             "errores, competencia y tu canal → http://127.0.0.1:8080.")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="Con --web: dónde escucha (127.0.0.1 = solo este equipo; en la VPS lo publica Caddy).")
+    target.add_argument("--bot", action="store_true",
+                        help="Bot de Telegram: /estado, /gasto, /videos, /errores… y un parte cada hora (TELEGRAM_* en .env).")
+    target.add_argument("--velocidad-youtube", action="store_true",
+                        help="Prueba de velocidad: cada proxy × cada cliente de yt-dlp (detalles, 360p, 1080p) → out/_youtube_prueba.json.")
+    target.add_argument("--comparar-escenas", action="store_true",
+                        help="Búsqueda por plano vs por escenas en un conjunto fijo de escenas, sin pedir nada a YouTube "
+                             "→ out/_comparar_escenas.json.")
+    target.add_argument("--copia", action="store_true",
+                        help="Copia de seguridad ahora (config, guiones, voces, datos del estudio) → backup.dir.")
+    target.add_argument("--comprobar-proteccion", action="store_true",
+                        help="Cuarentenas, recuperación tras «no eres un bot», cookies, claves (solo nombres) y cuota de la API.")
+    target.add_argument("--piloto-escenas", metavar="VIDEO",
+                        help="Activa la búsqueda por escenas solo en ese vídeo (piloto), con --referencia <vídeo hecho>.")
+    target.add_argument("--informe-piloto", metavar="VIDEO",
+                        help="Piloto frente a su referencia con lo que pasó de verdad → out/<vídeo>/piloto.md.")
+    target.add_argument("--quitar-piloto", metavar="VIDEO", help="Vuelve ese vídeo a la búsqueda por plano.")
+    parser.add_argument("--referencia", metavar="VIDEO", help="Con --piloto-escenas / --informe-piloto: el vídeo hecho de referencia.")
+    target.add_argument("--radar", action="store_true",
+                        help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
+    target.add_argument("--compilar", metavar="CANAL",
+                        help="Compilación larga (2-3 h) con los mejores vídeos terminados del canal → out/compilacion-…/.")
+    target.add_argument("--limpiar", action="store_true",
+                        help="Libera disco ya: borra vídeo final, previas, Shorts y clips de los vídeos marcados como "
+                             "subidos a YouTube, y las descargas de cache/ sin usar en 14 días.")
+    target.add_argument("--noticias", action="store_true",
+                        help="Noticias del día: las historias que suben ahora en tus nichos → out/_radar/noticias.json.")
+    target.add_argument("--mi-canal", metavar="CANAL",
+                        help="Análisis de tu canal de YouTube de ese perfil (canales/<CANAL>.yaml) → out/_canal/<CANAL>.json.")
     return parser
 
 
-def _render_remotion(props_path: Path, output_path: Path, settings: Settings) -> None:
-    executable = "npx.cmd" if os.name == "nt" else "npx"
-    command = [
-        executable,
-        "remotion",
-        "render",
-        "src/index.ts",
-        "YoutubeVideo",
-        str(output_path),
-        "--props",
-        str(props_path),
-    ]
-    subprocess.run(command, cwd=settings.project_root, check=True)
+def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root: Path = PROJECT_ROOT) -> None:
+    """One video, end to end. Raises on failure (the caller decides whether to stop)."""
+
+    ctx = RunContext.create(slug, root=root)
+    if not ctx.materials_dir.is_dir():
+        raise FileNotFoundError(f"No existe {ctx.materials_dir}")
+    from pipeline import budget
+
+    budget.check(root, ctx.config, slug)                 # budget.daily_usd (or its owner's): at the limit → wait
+    if needs_youtube(root, slug):
+        budget.check_proxy(root, ctx.config, slug)       # budget.proxy_gb_per_day (or its owner's): waits for tomorrow
+    script = ctx.materials_dir / "guion.txt"
+    lang = str(ctx.section("align").get("language", "es"))[:2]
+    if lang != "es" and script.is_file():
+        from pipeline.doblaje import IN_SPANISH, language_of
+
+        # a script in Spanish on a channel in another language (the Shorts of a «German» dub written in Spanish):
+        # its native voice would read Spanish
+        if language_of(script.read_text("utf-8", errors="replace")) == "es":
+            parent = str(ctx.section("shorts").get("of") or "")
+            if parent:                                    # a Short cut from the wrong script: aside, its video makes another
+                aside = root / "materiales" / "_descartados" / slug
+                aside.parent.mkdir(parents=True, exist_ok=True)
+                if aside.exists():
+                    shutil.rmtree(aside)
+                ctx.materials_dir.replace(aside)
+                print(f"{slug}: su guion está en español y su canal es en {IN_SPANISH.get(lang, lang)}: apartado en "
+                      f"materiales/_descartados/ (al rehacerse {parent} saldrá otro en su idioma)")
+                return
+            raise RuntimeError(f"el guion de {slug} está en español y su canal es en {IN_SPANISH.get(lang, lang)}: "
+                               "no se hace (escribe el guion en ese idioma o cámbialo de canal)")
+    with _one_process(ctx):                               # never two runs of one video at once
+        from pipeline import formats
+
+        if formats.ensure_auto(ctx):                      # a new video: the format that suits its script
+            ctx = RunContext.create(slug, root=root)
+        redo = redo_stages(ctx.materials_dir)             # «Rehacer»: from those stages, whoever runs it
+        from pipeline import sin_youtube, ytpause
+
+        if ytpause.paused(root) and needs_youtube(root, slug) and sin_youtube.enabled(root, slug):
+            print(f"{slug}: YouTube en pausa → modo sin YouTube (ninguna petición; se termina solo si el material "
+                  "es tan bueno como el habitual del canal)")
+            with sin_youtube.offline():
+                sin_youtube.begin(ctx)
+                _run_one(ctx, force=set(force) | redo, until=until, review=review)
+        else:
+            if not ytpause.paused(root):
+                sin_youtube.resumed(ctx)
+            _run_one(ctx, force=set(force) | redo, until=until, review=review)
+        if redo and until is None and not review:
+            (ctx.materials_dir / REDO).unlink(missing_ok=True)
 
 
-def _copy_audio_to_public(audio_path: Path, assets_dir: Path, project_root: Path) -> str:
-    target = assets_dir / "audio" / f"voice{audio_path.suffix.lower()}"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(audio_path, target)
-    relative_path = target.resolve().relative_to((project_root / "public").resolve())
-    return f"/{relative_path.as_posix()}"
+class _one_process:
+    """work/<slug>/.proceso holds the pid of the run making this video; a second run stops right away instead of
+    rewriting the same files (two runs mixed their candidates and the judge crashed with a KeyError)."""
+
+    def __init__(self, ctx: RunContext) -> None:
+        self.path = ctx.work_dir / ".proceso"
+
+    def __enter__(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            other = int(self.path.read_text().split()[0]) if self.path.is_file() else 0
+        except (OSError, ValueError, IndexError):
+            other = 0
+        if other and other != os.getpid():
+            try:
+                os.kill(other, 0)
+                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}). "
+                                 f"Si no es así, borra {self.path}")
+            except ProcessLookupError:
+                pass                                       # a run that died: take over
+            except PermissionError:
+                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}).") from None
+        self.path.write_text(f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n")
+
+    def __exit__(self, *exc) -> None:
+        try:
+            if int(self.path.read_text().split()[0]) == os.getpid():
+                self.path.unlink(missing_ok=True)
+        except (OSError, ValueError, IndexError):
+            pass
 
 
-def run_pipeline(args: argparse.Namespace) -> Path:
-    settings = load_settings()
-    script_path = args.guion.expanduser().resolve()
-    audio_path = args.voz.expanduser().resolve()
-    output_path = args.output.expanduser().resolve()
+def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: bool) -> None:
+    from pipeline import diag
 
-    if not script_path.is_file():
-        raise FileNotFoundError(f"No existe el guion: {script_path}")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # everything printed also goes to out/<slug>/log.txt; out/<slug>/diagnostico.md says what to improve
+    with diag.logging(ctx):
+        try:
+            if ctx.section("dub").get("of"):            # a dubbed version reuses the original's edit
+                from pipeline import dub
 
-    print("1/8 Transcribiendo audio con Whisper...")
-    transcript = transcribe_audio(audio_path, settings)
-    print(f"   {len(transcript['words'])} palabras con timestamp")
+                current = ctx.work_dir / "current.json"       # the studio and --cola-por-que: «haciéndose ahora»
+                ctx.work_dir.mkdir(parents=True, exist_ok=True)
+                current.write_text(json.dumps({"stage": "dub", "number": 1, "of": 1, "pid": os.getpid(),
+                                               "started": datetime.now().astimezone().isoformat(timespec="seconds")}),
+                                   encoding="utf-8")
+                try:
+                    dub.run(ctx)
+                finally:
+                    try:
+                        current.write_text(json.dumps({**json.loads(current.read_text("utf-8")),
+                                                       "ended": datetime.now().astimezone().isoformat(timespec="seconds")}),
+                                           encoding="utf-8")
+                    except (OSError, ValueError):
+                        pass
+            else:
+                from pipeline import capitulos, tts
 
-    print("2/8 Segmentando el guion con DeepSeek...")
-    script_text = script_path.read_text(encoding="utf-8")
-    scenes = segment_script(script_text, transcript, settings)
-    print(f"   {len(scenes)} escenas")
+                capitulos.ensure(ctx)                   # `## ` chapters in a new script that has none
+                tts.ensure(ctx)                         # no voz.mp3 but a voice for the channel: GenAIPro makes it
+                run_stages(ctx, force=force, until=until, review=review)
+                if until is None and not review:
+                    from pipeline import housekeeping
 
-    run_id = output_path.stem
-    assets_dir = settings.project_root / "public" / "pipeline-assets" / run_id
-    audio_url = _copy_audio_to_public(audio_path, assets_dir, settings.project_root)
-    print("3/8 Resolviendo material visual...")
-    scenes = fetch_media(
-        scenes,
-        settings,
-        assets_dir=assets_dir,
-        avatar_dir=args.avatar_dir,
-        third_party_enabled=not args.skip_third_party,
-    )
+                    housekeeping.after_video(ctx)          # cleanup.after_video (a server's small disk)
+        except BaseException as error:
+            diag.write(ctx, error)
+            from pipeline import ytpause
+            from pipeline.sin_youtube import WaitingForYouTube
 
-    print("4/8 Ejecutando QA pre-render...")
-    qa_issues = validate_scene_plan(scenes, transcript["duration_seconds"])
-    qa_path = output_path.with_suffix(".qa.json")
-    write_qa_report(qa_path, qa_issues)
-    for issue in qa_issues:
-        scene_label = f" escena {issue.scene_index}" if issue.scene_index is not None else ""
-        print(f"   [{issue.level.upper()}]{scene_label} {issue.message}")
-    enforce_qa(qa_issues)
+            if isinstance(error, ytpause.YouTubeBlocked):    # the whole queue waits (one message, not one per video)
+                ytpause.pause(ctx.root, str(error))
+            elif not isinstance(error, (KeyboardInterrupt, WaitingForYouTube)):   # waiting is no failure
+                from pipeline import notify as messages
 
-    props_path = output_path.with_suffix(".props.json")
-    print("5/8 Construyendo props.json...")
-    build_props(scenes, props_path, audio_url=audio_url)
-    print(f"   Props: {props_path}")
-    timeline_path = output_path.with_suffix(".timeline.json")
-    write_timeline_manifest(scenes, timeline_path)
-    print(f"   Timeline: {timeline_path}")
+                try:
+                    messages.video_failed(ctx, error)       # to the phone: stage, error, link to the log
+                except Exception:
+                    pass
+            raise
+        diag.write(ctx)
 
-    if args.skip_render:
-        print("6/8 Render omitido por --skip-render.")
-        return props_path
 
-    print("6/8 Renderizando con Remotion...")
-    _render_remotion(props_path, output_path, settings)
-    if not args.skip_audio_master:
-        print("7/8 Masterizando audio a -16 LUFS...")
-        master_audio(output_path)
+def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
+    """materiales/<slug>/ with a script and a voice but no final video yet, oldest first."""
+
+    from pipeline.context import video_folders
+
+    materials = root / "materiales"
+    ready, names = [], set()
+    for d in video_folders(root):
+        skipped = any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts)   # _hechos/, _video
+        if skipped or d.name in names or not (d / "guion.txt").is_file():
+            continue
+        if not (d / "voz.mp3").is_file():
+            from pipeline import tts
+
+            if not tts.has_auto_voice(root, d):      # its channel has a GenAIPro voice: made before the first stage
+                continue
+            if tts.generating(d):                # being made in the background: the next video goes first
+                continue
+        if (d / HOLD).is_file():           # «Quitar de la cola» in the studio
+            continue
+        if quota_wait(d):                  # waiting for the API quota reset: the others go on
+            continue
+        names.add(d.name)                  # two videos with the same name: only the first (out/ is per name)
+        from pipeline.housekeeping import is_done
+
+        if not is_done(root, d.name) or (d / REDO).is_file():   # not made yet, or «Rehacer» in the studio
+            ready.append(d)
+    from pipeline import agenda
+
+    due = agenda.priority(root) if ready else {}          # the video that goes out first is made first
+    rank = channel_rank(root) if ready else {}             # «Prioridad de canales» (Ajustes): those channels first
+    if rank:
+        from pipeline.web import _channel_of
+
+        first = {d.name: rank.get(_channel_of(root, d), len(rank)) for d in ready}
     else:
-        print("7/8 Masterización de audio omitida.")
-    print("8/8 Ejecutando postflight técnico...")
-    postflight_issues = inspect_render(output_path, transcript["duration_seconds"])
-    postflight_path = output_path.with_suffix(".postflight.json")
-    write_postflight_report(postflight_path, postflight_issues)
-    enforce_postflight(postflight_issues)
-    print(f"Vídeo generado: {output_path}")
-    return output_path
+        first = {}
+    # queue.shorts_last (true): the Shorts after every long video, made only when nothing else is waiting; false: a
+    # Short drawn in code (minutes) goes before everything
+    last = bool(_queue_cfg(root).get("shorts_last", True))
+    shorts_set = {d.name for d in ready if last and is_short_video(root, d.name)}
+    easy = {d.name for d in ready if not last and easy_short(root, d)}
+    # queue.drawn_first: the videos drawn in code (simulation, stick figures) before the footage ones
+    drawn_first = bool(_queue_cfg(root).get("drawn_first", True))
+    drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
+    order = [d.name for d in sorted(ready, key=lambda d: (d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
+                                                          due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
+    longs = [n for n in order if n not in shorts_set]
+    return take_turns(root, longs) + take_turns(root, [n for n in order if n in shorts_set])
+
+
+def take_turns(root: Path, order: list[str]) -> list[str]:
+    """With partners (usuarios.py), the queue alternates people: one video of each in turn, each keeping its own
+    order, beginning with whoever used the server least today (hours of stages finished today). Nobody fills the
+    server with twenty videos while the other's wait. Alone, the order is untouched."""
+
+    from pipeline.usuarios import owners
+
+    if len(order) < 2 or not owners(root):
+        return order
+    from datetime import datetime, timezone
+
+    from pipeline.budget import owner_of_work
+    from pipeline.tiempos import _read
+
+    whose = {n: owner_of_work(root, n) for n in order}
+    if len(set(whose.values())) < 2:
+        return order
+    today = datetime.now(timezone.utc).date().isoformat()
+    used: dict[str, float] = {}
+    for stages in (root / "work").glob("*/.stages"):
+        for path in stages.glob("*.json"):
+            info = _read(path) or {}
+            if str(info.get("completedAt") or "").startswith(today):
+                who = owner_of_work(root, stages.parent.name)
+                used[who] = used.get(who, 0.0) + float(info.get("seconds") or 0)
+    lines: dict[str, list[str]] = {}
+    for n in order:
+        lines.setdefault(whose[n], []).append(n)
+    people = sorted(lines, key=lambda w: (used.get(w, 0.0), order.index(lines[w][0])))
+    out: list[str] = []
+    while any(lines.values()):
+        for who in people:
+            if lines[who]:
+                out.append(lines[who].pop(0))
+    return out
+
+
+def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
+    """Every video not made yet and why it is (or is not) in the queue now: «why is no simulation being made?»."""
+
+    import json
+
+    from pipeline import tts
+    from pipeline.context import video_folders
+    from pipeline.housekeeping import is_done
+
+    materials = root / "materiales"
+    try:
+        state = json.loads((root / WATCH_STATE).read_text("utf-8")) if (root / WATCH_STATE).is_file() else {}
+    except ValueError:
+        state = {}
+    try:
+        retry = float(RunContext.create("_vigilar", root=root).section("watch").get("retry_hours", 6)) * 3600
+    except Exception:
+        retry = 6 * 3600
+    order = {slug: i for i, slug in enumerate(pending_slugs(root))}
+    # this round so far (out/_cola.md): a video already tried waits for the round to end, then retry_hours
+    tried: dict[str, str] = {}
+    try:
+        for row in (root / QUEUE_REPORT).read_text("utf-8").splitlines():
+            cells = [c.strip() for c in row.strip("|").split("|")]
+            if len(cells) >= 4 and cells[1] not in ("Estado", "---", "OK"):
+                tried[cells[0]] = f"{cells[1]}: {cells[3][:160]}"
+    except OSError:
+        pass
+    from pipeline.web import _json, running
+
+    lines = []
+    for d in video_folders(root):
+        if any(part.startswith(("_", ".")) for part in d.relative_to(materials).parts):
+            continue
+        if is_done(root, d.name) and not (d / REDO).is_file():
+            continue
+        kind = ("Short " if is_short_video(root, d.name) else "") + ("dibujado" if is_drawn(root, d.name) else "con metraje")
+        info = state.get(d.name) or {}
+        if not (d / "guion.txt").is_file():
+            why = "sin guion.txt"
+        elif not (d / "voz.mp3").is_file() and not tts.has_auto_voice(root, d):
+            why = "sin voz.mp3 (y su canal no tiene voz automática)"
+        elif not (d / "voz.mp3").is_file() and tts.generating(d):
+            why = "la voz se está generando"
+        elif (d / HOLD).is_file():
+            why = "quitado de la cola (en pausa)"
+        elif quota_wait(d):
+            why = "espera la cuota de la API"
+        elif d.name not in order:
+            why = "no entra (otro vídeo con el mismo nombre)"
+        elif info.get("sig") == _materials_signature(root, d.name) and time.time() - info.get("at", 0) < retry:
+            again = datetime.fromtimestamp(info.get("at", 0) + retry)
+            why = f"falló ({info.get('status', 'error')}): se reintenta a las {again:%H:%M} o con «Reintentar»"
+        elif running(_json(root / "work" / d.name / "current.json")):
+            why = "HACIÉNDOSE AHORA"
+        elif d.name in tried:
+            why = f"ya probado en esta ronda y falló ({tried[d.name]}): vuelve tras la ronda (o «Reintentar»)"
+        else:
+            why = f"EN COLA, puesto {order[d.name] + 1}"
+        lines.append(f"{d.name} [{kind}]: {why}")
+    return sorted(lines, key=lambda line: ("HACIÉNDOSE" not in line, "EN COLA" not in line, line))
+
+
+def _queue_cfg(root: Path) -> dict:
+    try:
+        return RunContext.create("_cola", root=root).section("queue")
+    except Exception:
+        return {}
+
+
+def easy_short(root: Path, folder: Path) -> bool:
+    """A Short made as a new video (shorts.style: nuevo → `shorts: of:` in its config) whose channel draws it in code
+    (simulation, stick figures): no footage to search, a minute of voice — it goes before everything else."""
+
+    import yaml
+
+    try:
+        cfg = yaml.safe_load((folder / "config.yaml").read_text("utf-8")) or {}
+    except (OSError, ValueError):
+        return False
+    if not isinstance(cfg, dict) or not (cfg.get("shorts") or {}).get("of"):
+        return False
+    return is_drawn(root, folder.name)
+
+
+def needs_youtube(root: Path, slug: str) -> bool:
+    """Whether this video still has to ask YouTube anything. Searched, analysed and downloaded in HD already (the
+    ingest stage is done), a dub (same clips, retimed) or a channel without YouTube: no. While YouTube blocks this
+    connection those still go on (render, Shorts, titles), instead of the whole queue waiting behind the block."""
+
+    from pipeline import sin_youtube
+    from pipeline.context import find_video, load_config
+
+    if (root / "work" / slug / ".stages" / "ingest.json").is_file() and not sin_youtube.made_without(root, slug):
+        return False                     # (made during YouTube's pause, it still needs YouTube to be redone)
+    folder = find_video(root, slug)
+    try:
+        cfg = load_config(folder / "config.yaml") if (folder / "config.yaml").is_file() else {}
+    except Exception:
+        cfg = {}
+    if (cfg.get("dub") or {}).get("of"):
+        return False
+    try:
+        from pipeline import stickman
+
+        if stickman.drawn(RunContext.create(slug, root=root)):      # drawn in code: no footage at all
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def waits_for_youtube(root: Path, slug: str) -> bool:
+    """YouTube is paused and this video needs it: it waits, unless it may go on without it (sin_youtube.py)."""
+
+    from pipeline import sin_youtube, ytpause
+
+    return bool(ytpause.paused(root)) and needs_youtube(root, slug) and not sin_youtube.can_continue(root, slug)
+
+
+def channel_rank(root: Path) -> dict[str, int]:
+    """The channels chosen in Ajustes → «Prioridad de canales», in order; the rest go after them, as before."""
+
+    from pipeline.budget import settings
+
+    order = settings(root).get("channel_priority") or []
+    return {str(c): i for i, c in enumerate(order) if str(c).strip()}
+
+
+HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»
+QUOTA_WAIT = ".espera-cuota"           # in a video's folder: epoch of the API quota reset it waits for (the pilot)
+
+
+QUOTA_EXIT = 75                        # `--slug` exit code (EX_TEMPFAIL): the video waits for the API quota
+YOUTUBE_EXIT = 76                      # `--slug` exit code: made without YouTube it fell short, it waits for YouTube
+WAITING = ("espera cuota", "en espera", "espera YouTube")     # statuses of the queue that are not failures
+
+
+def wait_for_quota(root: Path, slug: str, error: BaseException) -> None:
+    from pipeline.context import find_video
+
+    (find_video(root, slug) / QUOTA_WAIT).write_text(
+        f"{float(getattr(error, 'until', 0)):.0f}\n{getattr(error, 'why', 'cuota de la API de YouTube')}", encoding="utf-8")
+
+
+def api_dry(root: Path, slug: str) -> BaseException | None:
+    """A video that still has to search YouTube, with keys whose searches are all spent today: it waits for the
+    quota reset before it starts (no voice, judge or LLM spent on a video that would stop at the search)."""
+
+    from pipeline.context import RunContext
+
+    try:
+        if (root / "work" / slug / "candidates" / "_summary.json").is_file():
+            return None                                  # searched already: it needs no API search
+        ctx = RunContext.create(slug, root=root)
+        yt_cfg = ctx.section("sourcing").get("youtube", {})
+        if not yt_cfg.get("api_search", True) or str(yt_cfg.get("api_overflow", "esperar")).lower() != "esperar":
+            return None
+        from pipeline.budget import ApiSearchesShort
+        from pipeline.ytapi import YouTubeAPI, next_reset, reset_text
+
+        api = YouTubeAPI(ctx)
+        if not api.keys or api.quota()["searchesLeft"] > 0:
+            return None
+        return ApiSearchesShort(f"La API de YouTube no tiene búsquedas hoy en ninguna clave: este vídeo espera a la "
+                                f"cuota nueva, {reset_text()}", next_reset().timestamp(),
+                                why="sin búsquedas en la API de YouTube")
+    except Exception:                                    # never a reason to stop the queue
+        return None
+
+
+def quota_wait(folder: Path) -> float | None:
+    """The quota reset this video waits for, or None (gone or already passed: the file is removed)."""
+
+    path = folder / QUOTA_WAIT
+    try:
+        until = float(path.read_text("utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    if until <= time.time():
+        path.unlink(missing_ok=True)
+        return None
+    return until
+REDO = ".rehacer"                      # in a video's folder: made again from these stages (one per line), then removed
+
+
+def redo_stages(folder: Path) -> set[str]:
+    try:
+        return {s for s in (folder / REDO).read_text("utf-8").split() if s in STAGE_NAMES}
+    except OSError:
+        return set()
+
+
+def on_hold(root: Path, slug: str) -> bool:
+    from pipeline.context import find_video
+
+    return (find_video(root, slug) / HOLD).is_file()
+
+
+REQUIRED_KEYS = ("LLM_API_KEY", "OPENAI_API_KEY")
+MIN_FREE_GB = 20
+
+
+def preflight(root: Path = PROJECT_ROOT) -> list[str]:
+    """What would make tonight's queue fail, checked before it starts."""
+
+    import requests
+
+    problems: list[str] = []
+    ctx = RunContext.create("_preflight", root=root, config={})   # only for .env access
+    for name in REQUIRED_KEYS:
+        if not ctx.env(name, required=False):
+            problems.append(f"falta la clave {name} en .env")
+    free_gb = shutil.disk_usage(root).free / 1e9
+    if free_gb < MIN_FREE_GB:
+        problems.append(f"solo quedan {free_gb:.0f} GB libres en disco (mínimo {MIN_FREE_GB})")
+    for tool in ("ffmpeg", "ffprobe", "npx"):
+        if not shutil.which(tool):
+            problems.append(f"no encuentro '{tool}' en el PATH")
+    try:
+        if requests.get("https://www.youtube.com", timeout=15).status_code >= 500:
+            problems.append("YouTube no responde")
+    except requests.RequestException as error:
+        problems.append(f"sin conexión con YouTube ({type(error).__name__})")
+    return problems
+
+
+WATCH_STATE = "out/_vigilar.json"
+WAKE = "out/_despertar"          # the studio's «Reintentar todos ahora»: the watcher looks again without waiting
+
+
+def _materials_signature(root: Path, slug: str) -> float:
+    from pipeline.context import find_video
+
+    folder = find_video(root, slug)
+    files = [p for p in folder.rglob("*") if p.is_file()] if folder.is_dir() else []
+    parent = folder.parent / "config.yaml"
+    return max([p.stat().st_mtime for p in files + ([parent] if parent.is_file() else [])] or [0.0])
+
+
+def git_head(root: Path) -> str:
+    import subprocess
+
+    out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+def forget_failures_of_older_code(state_path: Path, code: str) -> list[str]:
+    """After a restart with new code (git pull + systemctl restart, --actualizar), the videos that failed under the
+    previous code go back to the queue at once instead of waiting watch.retry_hours: the new code is usually their
+    fix. A restart with the same code changes nothing. Returns the slugs released."""
+
+    import json
+
+    try:
+        state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
+    except ValueError:
+        state = {}
+    if not state or not code:
+        return []
+    stale = sorted(slug for slug, info in state.items() if isinstance(info, dict) and info.get("code") not in (None, code))
+    if not stale:
+        return []
+    for slug in stale:
+        state.pop(slug, None)
+    state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+    return stale
+
+
+def _git_update(root: Path, running: str) -> bool:
+    """git pull; True when the code on disk is newer than the code this process runs (`running`, its HEAD at
+    start) — pulled now or by the studio, which pulls too."""
+
+    import subprocess
+
+    pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
+    if pulled.returncode != 0:
+        print(f"(git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-200:]})")
+    now = git_head(root)
+    return bool(running) and bool(now) and now != running
+
+
+def while_updating(root: Path, slugs: list[str]) -> list[str]:
+    """`--actualizar` is waiting for a gap (pipeline/actualizar.py): no third-party video starts meanwhile."""
+
+    from pipeline import actualizar
+
+    if not actualizar.updating(root):
+        return slugs
+    kept = [slug for slug in slugs if is_drawn(root, slug)]
+    held = len(slugs) - len(kept)
+    if held and held != getattr(while_updating, "said", 0):
+        print(f"Actualización esperando hueco: {held} vídeo(s) de terceros esperan a después")
+    while_updating.said = held                     # type: ignore[attr-defined]
+    return kept
+
+
+def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
+    """A server that makes videos all the time: whenever materiales/ has pending videos, the queue runs; otherwise
+    it looks again every `every_minutes`. A video that failed is not retried until its files change or
+    `watch.retry_hours` (6) pass. Between runs it updates the code (git pull) and restarts itself with it."""
+
+    import json
+
+    state_path = root / WATCH_STATE
+    cfg = RunContext.create("_vigilar", root=root).section("watch") if (root / "config.yaml").is_file() else {}
+    running_code = git_head(root) if cfg.get("git_pull", True) else ""
+    retry = float(cfg.get("retry_hours", 6)) * 3600
+    print(f"Vigilando {root / 'materiales'} cada {every_minutes:g} min (Ctrl+C para parar)")
+    retried = forget_failures_of_older_code(state_path, git_head(root))
+    if retried:
+        print(f"Código nuevo desde que fallaron: {', '.join(retried)} vuelven a la cola ya, sin esperar sus "
+              f"{retry / 3600:g} h")
+    idle_since = None
+
+    def beat() -> None:                      # web «vigilando» / bot: alive also during a long video, not only between
+        import threading
+
+        def loop() -> None:
+            while True:
+                try:
+                    (root / "out").mkdir(parents=True, exist_ok=True)
+                    (root / "out" / "_vigilar.latido").write_text(datetime.now().isoformat(timespec="seconds"))
+                except OSError:
+                    pass
+                time.sleep(60)
+
+        threading.Thread(target=loop, name="latido", daemon=True).start()
+
+    def voices() -> None:                    # GenAIPro narrations made as soon as a video appears, not on its turn
+        import threading
+
+        def loop() -> None:
+            from pipeline import tts
+
+            try:
+                tts.clear_own_locks(root)
+            except Exception:
+                pass
+            while True:
+                try:
+                    if not (root / "out" / "_pausa").is_file():
+                        tts.prepare_all(root)
+                        from pipeline import doblaje
+
+                        doblaje.prepare_all(root)            # dubbing.enabled (off by default)
+                except Exception as error:       # never stops the watcher
+                    print(f"Voces en segundo plano: {type(error).__name__}: {error}")
+                time.sleep(20)
+
+        threading.Thread(target=loop, name="voces", daemon=True).start()
+
+    def radar_thread() -> None:              # the daily radar at radar.hour, even with the queue always busy
+        import threading
+
+        def loop() -> None:
+            from pipeline import radar
+
+            from pipeline import copia, servidor
+
+            while True:
+                try:
+                    radar.run_if_due(root)
+                except Exception as error:
+                    print(f"Radar: {type(error).__name__}: {error}")
+                try:
+                    from pipeline import autopilot
+
+                    autopilot.run_if_due(root)                    # channels on autopilot: today's video
+                except Exception as error:
+                    print(f"Piloto automático: {type(error).__name__}: {error}")
+                try:
+                    from pipeline import porque
+
+                    porque.run(root)                              # view curves; why it worked at 48 h and 7 days
+                except Exception as error:
+                    print(f"Por qué funcionó: {type(error).__name__}: {error}")
+                try:
+                    servidor.check_proxy(root)                    # the proxy balance, once an hour
+                except Exception as error:
+                    print(f"Saldo del proxy: {type(error).__name__}: {error}")
+                try:
+                    if (made := copia.make_if_due(root)):         # the weekly backup
+                        print(f"Copia de seguridad → {made}")
+                except Exception as error:
+                    print(f"Copia de seguridad: {type(error).__name__}: {error}")
+                time.sleep(600)
+
+        threading.Thread(target=loop, name="radar", daemon=True).start()
+
+    beat()
+    voices()
+    radar_thread()
+    while True:
+        (root / "out").mkdir(parents=True, exist_ok=True)
+        (root / "out" / "_vigilar.latido").write_text(datetime.now().isoformat(timespec="seconds"))   # web: «vigilando»
+        if (root / "out" / "_pausa").is_file():                     # paused from the web studio
+            time.sleep(60)
+            continue
+        from pipeline import ytpause
+
+        if ytpause.paused(root):                                    # YouTube blocked: test it now and then
+            if ytpause.due(root, float(cfg.get("youtube_probe_minutes", 60))):
+                if ytpause.probe(root):
+                    ytpause.resume(root)
+                    state_path.unlink(missing_ok=True)              # what failed on the block goes again now
+                    print(f"{datetime.now():%H:%M} · YouTube vuelve a dejar pasar: sigo con la cola")
+                else:
+                    every = float(cfg.get("youtube_probe_minutes", 60))
+                    print(f"{datetime.now():%H:%M} · YouTube sigue bloqueando: cola en pausa, vuelvo a probar en "
+                          f"{every:.0f} min (o «Reintentar YouTube ahora» en el estudio)")
+            if ytpause.paused(root):
+                from pipeline import dub as _dub
+
+                offline = [s for s in pending_slugs(root) if not waits_for_youtube(root, s)] + list(_dub.pending(root))
+                if not offline:                                     # nothing that can go on without YouTube
+                    time.sleep(60)
+                    continue
+        try:
+            state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
+        except ValueError:
+            state = {}
+        skip = {slug for slug, info in state.items()
+                if info.get("sig") == _materials_signature(root, slug) and time.time() - info.get("at", 0) < retry}
+        from pipeline import dub
+
+        waiting = [slug for slug in pending_slugs(root) if slug not in skip] + [
+            slug for slug, _ in dub.pending(root)]
+        waiting = while_updating(root, waiting)
+        def refill() -> list[str]:
+            """The queue as it is now (a free line takes it while the round goes on)."""
+
+            if (root / "out" / "_pausa").is_file():
+                return []
+            try:
+                now = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
+            except ValueError:
+                now = {}
+            held = {slug for slug, info in now.items()
+                    if info.get("sig") == _materials_signature(root, slug) and time.time() - info.get("at", 0) < retry}
+            fresh = [slug for slug in pending_slugs(root) if slug not in held]
+            from pipeline import dub as _dub
+
+            return while_updating(root, fresh + [_dub.prepare(root, slug, lang) for slug, lang in _dub.pending(root)
+                                                 if _dub.dub_slug(slug, lang) not in fresh])
+
+        if waiting:
+            idle_since = None
+            LAST_RESULTS.clear()
+            try:
+                run_queue(force=set(), until=None, review=False, root=root, skip=skip, refill=refill,
+                          new_code=(lambda: _git_update(root, running_code)) if running_code else None)
+            except Stopped:                          # systemctl stop / «Parar» in the studio: end now
+                raise
+            except SystemExit as stop:               # preflight said no (keys, disk…): look again later
+                print(stop)
+                time.sleep(30 * 60)
+            waited = any(status == "en espera" for _, status, _, _ in LAST_RESULTS)
+            for slug, status, _, _ in LAST_RESULTS:
+                if status in WAITING:                                # budget / API quota / YouTube: not a failure
+                    continue
+                if status == "OK":
+                    state.pop(slug, None)
+                else:
+                    state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
+                                   "code": running_code or git_head(root)}
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+            if waited:
+                time.sleep(30 * 60)                                  # over the daily budget: look again later
+        elif idle_since is None:
+            idle_since = time.time()
+            print(f"{datetime.now():%H:%M} · nada pendiente"
+                  + (f" ({len(skip)} con error esperando cambios: {', '.join(sorted(skip))})" if skip else "")
+                  + f"; vuelvo a mirar cada {every_minutes:g} min")
+        if not waiting:
+            from pipeline import housekeeping
+
+            if time.time() - getattr(watch, "chores_at", 0) > 6 * 3600:    # every few hours, while idle
+                watch.chores_at = time.time()                              # type: ignore[attr-defined]
+                housekeeping.published_chores_in_background(root)
+        from pipeline import tts
+        from pipeline.context import video_folders
+
+        voicing = any(tts.generating(d) for d in video_folders(root))       # never cut a narration being made
+        if running_code and not voicing and _git_update(root, running_code):
+            print("Código nuevo (git pull): reinicio con él; los vídeos que fallaron se reintentan ya")
+            state_path.unlink(missing_ok=True)          # the new code is usually the fix for them
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+        if not waiting:
+            wake = root / WAKE
+            deadline = time.time() + every_minutes * 60
+            while time.time() < deadline and not wake.is_file():      # «Reintentar todos» wakes it at once
+                time.sleep(5)
+            wake.unlink(missing_ok=True)
+
+
+def update_ytdlp() -> None:
+    """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night."""
+
+    import subprocess
+
+    try:
+        # [default] also updates yt-dlp-ejs, the part that solves YouTube's challenges: with an old one
+        # next to a new yt-dlp, YouTube serves downloads at a crawl (hours for one video's clips)
+        result = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp[default]"],
+                                capture_output=True, text=True, timeout=300)
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            ejs = version("yt-dlp-ejs")
+        except PackageNotFoundError:
+            ejs = "FALTA"
+        runtime = next((name for name in ("deno", "node", "bun") if shutil.which(name)), None)
+        print(f"yt-dlp {version('yt-dlp')} · retos (yt-dlp-ejs) {ejs} · JavaScript: {runtime or 'NINGUNO'}"
+              + ("" if result.returncode == 0 else " (no se pudo actualizar)"))
+        if ejs == "FALTA" or runtime is None:
+            print("AVISO: sin yt-dlp-ejs o sin deno/node las descargas de YouTube van lentísimas: "
+                  "pip install -U \"yt-dlp[default]\" deno")
+    except Exception as error:  # offline or pip missing: the queue still runs with the installed one
+        print(f"yt-dlp: no se pudo actualizar ({type(error).__name__})")
+
+
+def notify(root: Path, text: str) -> None:
+    """Email and/or Telegram, whichever is configured in .env; silent otherwise."""
+
+    from pipeline import notify as messages
+
+    first_line = text.splitlines()[0] if text else "Cola"
+    messages.send(RunContext.create("_notify", root=root, config={}), first_line, text)
+
+
+def _describe(error: BaseException) -> str:
+    if isinstance(error, QABlocked):
+        return f"QA bloqueó el render: {error}"
+    if isinstance(error, (StageNotImplemented, ConfigError, FileNotFoundError, RuntimeError, ValueError)):
+        return str(error)
+    return f"{type(error).__name__}: {error}"
+
+
+def _clear_stale_lock(lock: Path) -> None:
+    """A queue lock left by a process that no longer exists (killed by a restart, power cut) is removed: otherwise
+    the watcher would think a queue is running and wait for ever."""
+
+    from pipeline.locks import _alive
+
+    try:
+        pid = int(lock.read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return
+    if pid != os.getpid() and not _alive(pid):
+        print(f"(Quito {QUEUE_LOCK}: era de un proceso que ya no existe, pid {pid})")
+        lock.unlink(missing_ok=True)
+
+
+LAST_RESULTS: list[tuple[str, str, float, str]] = []      # the last queue's (slug, status, seconds, detail)
+
+
+def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT,
+              check: bool = True, skip: set[str] | None = None, new_code: Callable[[], bool] | None = None,
+              refill: Callable[[], list[str]] | None = None) -> int:
+    """Process every pending video; never stop the night because one video failed. Returns failures."""
+
+    lock = root / QUEUE_LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    _clear_stale_lock(lock)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
+        os.close(fd)
+    except FileExistsError:
+        raise SystemExit(f"Ya hay una cola en marcha ({lock.read_text().strip()}). "
+                         f"Si no es así (p. ej. se apagó el PC), borra {QUEUE_LOCK} y vuelve a lanzarla.")
+    results: list[tuple[str, str, float, str]] = []
+    try:
+        if not check:
+            problems = []
+        else:
+            update_ytdlp()
+            from pipeline import housekeeping
+
+            try:
+                housekeeping.old_cache(RunContext.create("_cola", root=root))   # cleanup.cache_days (a server's disk)
+                housekeeping.published_chores_in_background(root)   # uploaded videos' heavy files: meanwhile
+            except Exception as error:   # never stops the night
+                print(f"(Limpieza de caché no hecha: {str(error)[:100]})")
+            problems = preflight(root)
+        if problems:
+            message = "Cola NO iniciada:\n- " + "\n- ".join(problems)
+            notify(root, message)
+            raise SystemExit(message)
+        slugs = pending_slugs(root)
+        from pipeline import dub
+
+        slugs += [dub.prepare(root, slug, lang) for slug, lang in dub.pending(root)
+                  if dub.dub_slug(slug, lang) not in slugs]    # dubs of videos already finished
+        slugs = [slug for slug in slugs if slug not in (skip or set())]   # --vigilar: failed lately, unchanged
+        if limit > 0:
+            slugs = slugs[:limit]
+        print(f"Cola: {len(slugs)} vídeo(s) pendiente(s): {', '.join(slugs) or '—'}")
+        workers = parallel_videos(root)
+        if workers > 1 and (len(slugs) > 1 or refill is not None):
+            # with `refill` (the watcher) a free line takes what becomes pending meanwhile, instead of waiting for
+            # the whole round (sim videos sat for hours behind one third-party video)
+            results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root, refill=refill)
+            slugs = []
+        from pipeline import ytpause
+
+        for number, slug in enumerate(slugs, start=1):
+            if waits_for_youtube(root, slug):
+                print(f"{slug}: necesita YouTube, que está bloqueado: espera (sigo con los que ya no lo necesitan)")
+                continue
+            if on_hold(root, slug):
+                print(f"{slug}: quitado de la cola, se salta")
+                continue
+            if number > 1 and new_code is not None and new_code():     # --vigilar: each video on the latest code
+                print("Código nuevo (git pull): la cola se reinicia con él antes del siguiente vídeo")
+                break
+            if (dry_api := api_dry(root, slug)) is not None:
+                wait_for_quota(root, slug, dry_api)
+                results.append((slug, "espera cuota", 0.0, str(dry_api)))
+                print(f"⏸ {slug}: {dry_api}")
+                continue
+            print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
+            started = time.monotonic()
+            try:
+                run_one(slug, force=force, until=until, review=review, root=root)
+                results.append((slug, "OK", time.monotonic() - started, ""))
+            except KeyboardInterrupt:
+                results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
+                raise
+            except Stopped as stop:          # systemctl restart/stop: the whole queue stops, not just this video
+                results.append((slug, "interrumpido", time.monotonic() - started, str(stop)))
+                raise
+            except BaseException as error:  # SystemExit too: one bad video must not end the queue
+                from pipeline.budget import ApiSearchesShort, BudgetReached
+                from pipeline.sin_youtube import WaitingForYouTube
+
+                if isinstance(error, WaitingForYouTube):      # short without YouTube: it waits, the rest go on
+                    results.append((slug, "espera YouTube", time.monotonic() - started, str(error)))
+                    print(f"⏸ {error}")
+                    _write_report(root, results)
+                    continue
+                if isinstance(error, ApiSearchesShort):       # only this video waits for the quota; the rest go on
+                    wait_for_quota(root, slug, error)
+                    results.append((slug, "espera cuota", time.monotonic() - started, str(error)))
+                    print(f"⏸ {slug}: {error}")
+                    notify(root, f"⏸ {slug}: {error}")
+                    _write_report(root, results)
+                    continue
+                if (dry := out_of_credit(error)):               # an API with no balance: every video would fail
+                    results.append((slug, "en espera", time.monotonic() - started, dry))
+                    print(f"⏸ {dry}")
+                    notify(root, f"⏸ {dry}")
+                    break
+                if isinstance(error, BudgetReached):            # not this video's fault: the rest wait too
+                    results.append((slug, "en espera", time.monotonic() - started, str(error)))
+                    print(f"⏸ {error}")
+                    notify(root, f"⏸ {error}")
+                    break
+                traceback.print_exc()
+                results.append((slug, "ERROR", time.monotonic() - started, _describe(error)))
+                print(f"✗ {slug}: {_describe(error)} — sigo con el siguiente")
+            _write_report(root, results)
+    finally:
+        lock.unlink(missing_ok=True)
+        _write_report(root, results)
+    LAST_RESULTS[:] = results
+    failures = sum(1 for _, status, _, _ in results if status != "OK" and status not in WAITING)
+    print(f"\nCola terminada: {len(results) - failures} OK · {failures} con error · resumen en {QUEUE_REPORT}")
+    if results:
+        notify(root, f"Cola terminada: {len(results) - failures} OK · {failures} con error\n" + "\n".join(
+            f"{'✅' if status == 'OK' else '⏸' if status in WAITING else '❌'} {slug} · {seconds / 60:.0f} min" + (f" · {detail[:150]}" if detail else "")
+            for slug, status, seconds, detail in results))
+    return failures
+
+
+def out_of_credit(error: BaseException) -> str | None:
+    """«Insufficient Balance» (DeepSeek) / «insufficient_quota» (OpenAI): not the video's fault. The queue waits
+    (and tries again every 30 min) instead of marking every video as failed; the message says what to top up."""
+
+    text = f"{type(error).__name__}: {error}"
+    from pipeline.budget import dead_key
+
+    if dead_key(text):
+        # a key revoked, expired or wrong (OpenAI invalidates one it finds leaked): every video would fail the same way
+        who = ("OpenAI (platform.openai.com → API keys)" if any(m in text for m in (
+            "token_invalidated", "invalid_api_key", "expired_secret", "Incorrect API key")) else "DeepSeek (platform.deepseek.com → API keys)"
+               if "Authentication Fails" in text else "una API (la del error)")
+        return (f"La clave de {who} ya no vale (401): la cola espera y lo reintenta cada 30 min. Crea una nueva, "
+                "ponla en .env y reinicia; los vídeos siguen donde se quedaron.")
+    if "Insufficient Balance" in text:
+        who, where = "DeepSeek", "platform.deepseek.com → Top up"
+    elif "insufficient_quota" in text or "exceeded your current quota" in text:
+        who, where = "OpenAI", "platform.openai.com → Billing"
+    elif "Error code: 402" in text:
+        who, where = "una API", "su panel de pago"
+    else:
+        return None
+    return (f"{who} se ha quedado sin saldo: la cola espera y lo reintenta cada 30 min. Recarga en {where}; "
+            "los vídeos siguen donde se quedaron.")
+
+
+def parallel_videos(root: Path) -> int:
+    try:
+        cfg = RunContext.create("_cola", root=root).section("queue")
+    except ConfigError:
+        return 1
+    return max(1, int(cfg.get("parallel_videos", 1)))
+
+
+def footage_at_once(root: Path) -> int:
+    try:
+        cfg = RunContext.create("_cola", root=root).section("queue")
+    except ConfigError:
+        return 1
+    return max(1, int(cfg.get("footage_at_once", 1)))
+
+
+IDLE_NOTE_EVERY = 600                 # s: how often a free line says why nothing goes in
+REFILL_EVERY = 60                     # s: how often a free line looks for videos that became pending
+
+
+def shorts_at_once(root: Path) -> int:
+    """An extra line only for Shorts (queue.shorts_at_once, 1): short and light, made while the other two go on."""
+
+    try:
+        cfg = RunContext.create("_cola", root=root).section("queue")
+    except ConfigError:
+        return 0
+    return max(0, int(cfg.get("shorts_at_once", 0)))
+
+
+def is_short_video(root: Path, slug: str) -> bool:
+    from pipeline.context import find_video
+    from pipeline.web import _channel_of, is_short
+
+    try:
+        folder = find_video(root, slug)
+        return is_short(root, folder, _channel_of(root, folder))
+    except Exception:
+        return False
+
+
+def is_drawn(root: Path, slug: str) -> bool:
+    """The video is drawn in code (simulation, stick figures): no footage to search or download."""
+
+    from pipeline import stickman
+
+    try:
+        return stickman.drawn(RunContext.create(slug, root=root))
+    except Exception:                    # an unreadable config: treated as footage (the careful side)
+        return False
+
+
+def is_light(root: Path, slug: str) -> bool:
+    """Needs no line for third-party footage: drawn in code, a dub (same clips, retimed) or a footage video whose
+    clips are already searched, analysed and downloaded (only the render and what follows are left)."""
+
+    if is_drawn(root, slug):
+        return True
+    try:
+        return not needs_youtube(root, slug)
+    except Exception:                    # unreadable: the careful side
+        return False
+
+
+def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
+                 root: Path, refill: Callable[[], list[str]] | None = None) -> list[tuple[str, str, float, str]]:
+    """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
+    while one video downloads from YouTube, another one analyses or renders. Each video's lines are
+    prefixed with its name and kept in out/_cola/<video>.log."""
+
+    import subprocess
+    import threading
+    from collections import deque
+
+    logs = root / "out" / "_cola"
+    logs.mkdir(parents=True, exist_ok=True)
+    pending = deque(slugs)
+    results: list[tuple[str, str, float, str]] = []
+    lock = threading.Lock()
+
+    def run(slug: str) -> None:
+        started = time.monotonic()
+        args = [sys.executable, "-u", str(root / "main.py"), "--slug", slug, *[f"--force={f}" for f in force]]
+        if until:
+            args.append(f"--until={until}")
+        if review:
+            args.append("--review")
+        tail: deque[str] = deque(maxlen=200)
+        with (logs / f"{slug}.log").open("w", encoding="utf-8", buffering=1) as log:   # line by line: readable while it runs
+            process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                       encoding="utf-8", errors="replace",
+                                       env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1",
+                                            "PYTHONIOENCODING": "utf-8"})   # accents intact on Windows
+            assert process.stdout is not None
+            for line in process.stdout:
+                log.write(line)
+                line = line.rstrip()
+                tail.append(line)
+                if line and not line.startswith(("[h264", "libpng", "[ WARN")):
+                    print(f"[{slug}] {line}", flush=True)
+            code = process.wait()
+        detail = "" if code == 0 else _error_line(list(tail), code)
+        status = "OK" if code == 0 else "espera cuota" if code == QUOTA_EXIT else "espera YouTube" if code == YOUTUBE_EXIT \
+            else "ERROR"
+        with lock:
+            results.append((slug, status, time.monotonic() - started, detail))
+            if status == "ERROR":
+                failed_at[slug] = time.time()
+            _write_report(root, results)
+
+    # third-party footage videos at once (queue.footage_at_once, 1): the other lines are for videos drawn in code
+    # (simulation, stick figures), which need neither YouTube nor the footage analysis; and one more line only for
+    # Shorts (queue.shorts_at_once, 1)
+    footage_max = footage_at_once(root)
+    short_lines = shorts_at_once(root)
+    kinds = {slug: is_light(root, slug) for slug in slugs}
+    shorts = {slug: is_short_video(root, slug) for slug in slugs}
+    footage_running = [0]
+    active = [0]
+    started = set(slugs)
+    last_refill = [time.monotonic()]
+
+    failed_at: dict[str, float] = {}
+
+    def retried() -> list[str]:
+        """«Reintentar» in the studio on a video that already failed in this round: it goes in again now."""
+
+        from pipeline.web import RETRY_DIR
+
+        folder = root / RETRY_DIR
+        if not folder.is_dir():
+            return []
+        asked = {p.name: p.stat().st_mtime for p in folder.iterdir() if p.is_file()}
+        every = asked.pop("_todos", 0.0)
+        again = []
+        with lock:
+            for s, when in list(failed_at.items()):
+                if max(asked.get(s, 0.0), every) > when:
+                    failed_at.pop(s)
+                    started.discard(s)
+                    again.append(s)
+        for p in folder.iterdir():
+            p.unlink(missing_ok=True)
+        if again:
+            print(f"Cola: «Reintentar» → vuelven ahora {', '.join(again)}")
+        return again
+
+    def top_up() -> None:
+        """What became pending since the round started (a failed video whose wait is over, a new one, a dub)."""
+
+        if refill is None or time.monotonic() - last_refill[0] < REFILL_EVERY:
+            return
+        last_refill[0] = time.monotonic()
+        try:
+            fresh = [s for s in refill() if s not in started]
+        except Exception as error:               # never stops the round
+            print(f"Cola: no se pudo mirar si hay vídeos nuevos ({type(error).__name__}: {str(error)[:120]})")
+            return
+        fresh += retried()
+        for s in fresh:
+            drawn, short = is_light(root, s), is_short_video(root, s)
+            with lock:
+                if s in started:
+                    continue
+                started.add(s)
+                kinds[s], shorts[s] = drawn, short
+                pending.append(s)
+            print(f"Cola: entra {s} (pendiente desde que empezó la ronda)")
+
+    last_note = [time.monotonic()]
+
+    def idle_note(only_shorts: bool) -> None:
+        """A line for drawn videos free while a footage one runs: say once in a while why nothing goes in."""
+
+        if only_shorts or refill is None or time.monotonic() - last_note[0] < IDLE_NOTE_EVERY:
+            return
+        with lock:
+            if not footage_running[0]:
+                return
+            last_note[0] = time.monotonic()
+            waiting = list(pending)
+        if waiting:
+            print(f"Cola: línea libre, pero lo que queda ({', '.join(waiting[:5])}) es metraje de terceros y ya hay uno")
+            return
+        try:
+            out = [line for line in queue_reasons(root) if "dibujado" in line and "EN COLA" not in line]
+        except Exception:
+            out = []
+        print("Cola: línea de dibujados libre: no hay ninguna simulación pendiente"
+              + (" · " + " · ".join(out[:6]) if out else ""))
+
+    def worker(only_shorts: bool) -> None:
+        while True:
+            with lock:
+                fits = [s for s in pending if (shorts[s] if only_shorts else True) and (kinds[s] or footage_running[0] < footage_max)]
+                # queue.shorts_last: a long video that came in meanwhile still goes before the Shorts
+                if not only_shorts and _queue_cfg(root).get("shorts_last", True):
+                    fits.sort(key=lambda s: shorts[s])
+                slug = fits[0] if fits else None
+                if slug is not None:
+                    pending.remove(slug)
+                    active[0] += 1
+                    if not kinds[slug]:
+                        footage_running[0] += 1
+                finished = not pending and active[0] == 0
+            if slug is None:
+                if finished and refill is None:
+                    return
+                top_up()
+                idle_note(only_shorts)
+                with lock:
+                    if not pending and active[0] == 0:
+                        return                   # nothing running, nothing new: the round ends
+                time.sleep(5)
+                continue
+            try:
+                if waits_for_youtube(root, slug):
+                    continue                     # waits for YouTube; the ones that no longer need it go on
+                if on_hold(root, slug):
+                    print(f"{slug}: quitado de la cola, se salta")
+                    continue
+                run(slug)
+            except Exception as error:           # a line never dies: the others would wait for it for ever
+                with lock:
+                    results.append((slug, "ERROR", 0.0, f"{type(error).__name__}: {error}"))
+                print(f"✗ {slug}: no se pudo lanzar ({type(error).__name__}: {str(error)[:200]})")
+            finally:
+                with lock:
+                    active[0] -= 1
+                    if not kinds[slug]:
+                        footage_running[0] -= 1
+
+    print(f"Cola en paralelo: {workers} vídeos a la vez (red y CPU por turnos), de ellos {footage_max} como mucho con "
+          f"metraje de terceros; el resto, dibujados (simulación, monigotes)"
+          + (f" · y {short_lines} línea(s) más solo para Shorts" if short_lines else "") + " · registros en out/_cola/")
+    threads = [threading.Thread(target=worker, args=(False,), daemon=True) for _ in range(workers)] + \
+        [threading.Thread(target=worker, args=(True,), daemon=True) for _ in range(short_lines)]
+    for thread in threads:
+        thread.start()
+        time.sleep(2)
+    for thread in threads:
+        thread.join()
+    return results
+
+
+NOISE = ("[h264", "[hevc", "[mov", "[aac", "libpng", "[ WARN", "frame=", "size=")
+
+
+def _error_line(tail: list[str], code: int) -> str:
+    """The line that says what failed, not ffmpeg's last decoder warning (e.g. «mmco: unref short failure»)."""
+
+    lines = [l.strip() for l in tail if l.strip() and not l.strip().startswith(NOISE)]
+    for line in reversed(lines):
+        if re.search(r"Falló|Error|error:|Exception|Traceback", line) and not line.startswith("Traceback"):
+            return line
+    return lines[-1] if lines else f"código {code}"
+
+
+def _write_report(root: Path, results: list[tuple[str, str, float, str]]) -> None:
+    lines = [f"# Cola · {datetime.now():%Y-%m-%d %H:%M}", "",
+             "| Vídeo | Estado | Tiempo | Etapa más lenta | Detalle | Lo primero a mejorar |", "|---|---|---|---|---|---|"]
+    from pipeline import tiempos
+
+    for slug, status, seconds, detail in results:
+        where = f"out/{slug}/video-final.mp4" if status == "OK" else detail.replace("|", "/")[:300]
+        diag = root / "work" / slug / "diag.json"
+        try:
+            tips = json.loads(diag.read_text("utf-8")).get("consejos", [])
+        except (OSError, ValueError):
+            tips = []
+        tip = (tips[0].replace("|", "/")[:160] + f" (+{len(tips) - 1} en out/{slug}/diagnostico.md)") if tips else "—"
+        lines.append(f"| {slug} | {status} | {seconds / 60:.0f} min | {tiempos.slowest(root / 'work' / slug)} | {where} | {tip} |")
+    lines += ["", f"Dónde se va el tiempo de todos los vídeos: {tiempos.REPORT} (python main.py --tiempos)"]
+    report = root / QUEUE_REPORT
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        tiempos.write(root)
+    except Exception as error:          # a report never stops the queue
+        print(f"   (informe de tiempos: {error})")
+
+
+class Stopped(SystemExit):
+    """The process was told to stop (closed SSH window, systemctl stop, kill): said in the log and the diagnosis
+    instead of vanishing without a trace."""
+
+
+def _more_open_files() -> None:
+    """Linux gives a process 1024 open files by default; the analysis of a long video (hundreds of downloads through
+    the proxy, threads, models) can need more. Raised to what the system allows, up to 65536."""
+
+    try:
+        import resource
+    except ImportError:          # Windows: no such limit
+        return
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        wanted = 65536 if hard == resource.RLIM_INFINITY else min(65536, hard)
+        if soft != resource.RLIM_INFINITY and soft < wanted:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, hard))
+    except (ValueError, OSError):
+        pass
+
+
+def _stop_signals() -> None:
+    import signal
+
+    names = {getattr(signal, n): n for n in ("SIGHUP", "SIGTERM") if hasattr(signal, n)}
+
+    def stop(number, _frame):
+        why = {"SIGHUP": "se cerró la ventana/sesión SSH desde la que se lanzó (usa tmux o el servicio)",
+               "SIGTERM": "alguien o algo lo paró (systemctl stop, kill, reinicio)"}.get(names.get(number, ""), "")
+        raise Stopped(f"Parado por la señal {names.get(number, number)}: {why}")
+
+    for number in names:
+        try:
+            signal.signal(number, stop)
+        except (ValueError, OSError):            # not the main thread / not supported here
+            pass
 
 
 def main() -> None:
     args = _parser().parse_args()
+    _stop_signals()
+    _more_open_files()
+    if args.informe_analisis is not None:
+        from pipeline import informe_analisis
+
+        data = informe_analisis.report(PROJECT_ROOT, args.informe_analisis or None)
+        text = informe_analisis.markdown(data)
+        out = PROJECT_ROOT / "out" / "_informe_analisis.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        print(text + f"\n→ {out.relative_to(PROJECT_ROOT)}")
+        return
+    if args.autopiloto:
+        from pipeline import autopilot
+
+        channel, _, video_id = args.autopiloto.partition(":")
+        try:
+            made = autopilot.make(PROJECT_ROOT, channel, video_id or None)
+        except (ValueError, RuntimeError) as error:
+            raise SystemExit(str(error))
+        print(f"Hecho: {made['slug']} · «{made['title']}» · la voz se genera sola y la cola lo hará")
+        return
+    if args.apertura:
+        from pipeline import apertura
+
+        result = apertura.run_request(PROJECT_ROOT, Path(args.apertura))
+        print(result.get("error") or f"{len(result['candidates'])} clip(s) de apertura")
+        return
+    if args.capcut:
+        from pipeline import capcut
+
+        slugs = capcut.targets(PROJECT_ROOT, args.capcut)
+        if not slugs:
+            raise SystemExit(f"Ni un vídeo terminado ni un canal con vídeos terminados: {args.capcut}")
+        failed = []
+        for n, slug in enumerate(slugs, 1):
+            print(f"[{n}/{len(slugs)}] {slug}")
+            try:
+                capcut.export(RunContext.create(slug, root=PROJECT_ROOT))
+            except Exception as error:          # one video that fails never stops the rest of the channel
+                print(f"   No se pudo: {str(error)[:200]}")
+                failed.append(slug)
+        if failed:
+            raise SystemExit(f"Sin exportar: {', '.join(failed)}")
+        return
+    if args.exportar:
+        from pipeline import export
+
+        try:
+            export.export(RunContext.create(args.exportar))
+        except RuntimeError as error:
+            raise SystemExit(str(error))
+        return
+    if args.check:
+        from pipeline import factcheck
+
+        ctx = RunContext.create(args.check)
+        if not (ctx.materials_dir / "guion.txt").is_file():
+            raise SystemExit(f"No existe {ctx.materials_dir / 'guion.txt'}")
+        factcheck.run(ctx)
+        print(factcheck.summary(ctx))
+        from pipeline import hook
+
+        try:
+            path = hook.run(ctx)                    # does the opening keep the title's promise? → gancho.md
+            print(path.read_text("utf-8").split("\n")[2] + f" ({path.relative_to(ctx.root)})")
+        except Exception as error:
+            print(f"Gancho no revisado: {str(error)[:160]}")
+        from pipeline import simulacion
+
+        if simulacion.active(ctx):                  # the lines no simulated world can show → escenas.md
+            try:
+                path = simulacion.review_file(ctx)
+                print(path.read_text("utf-8").split("\n")[2] + f" ({path.relative_to(ctx.root)})")
+            except Exception as error:
+                print(f"Escenas no revisadas: {str(error)[:160]}")
+        return
+    if args.shorts:
+        from pipeline import shorts
+
+        ctx = RunContext.create(args.shorts)
+        if not (ctx.out_dir / "video-final.mp4").is_file():
+            raise SystemExit(f"Aún no existe {ctx.out_dir / 'video-final.mp4'}")
+        ctx.config.setdefault("shorts", {})["enabled"] = True
+        shorts.run(ctx)
+        print(f"Shorts en {ctx.out_dir / shorts.DIR}")
+        return
+    if args.dub:
+        from pipeline import dub
+
+        slug, _, lang = args.dub.partition(":")
+        if not lang:
+            raise SystemExit("Usa --dub SLUG:IDIOMA, p. ej. --dub CarlosYulo:en")
+        run_one(dub.prepare(PROJECT_ROOT, slug, lang), force=set(), until=None, review=False)
+        return
+    if args.editor:
+        from pipeline import editor
+
+        editor.serve(RunContext.create(args.editor))
+        return
+    if args.panel:
+        from pipeline import panel
+
+        panel.serve(RunContext.create("_panel", channel=args.canal))
+        return
+    if args.ideas:
+        from pipeline import ideas
+
+        path = ideas.run(RunContext.create("_ideas", channel=args.canal, series=args.serie))
+        print(f"Ideas en {path}")
+        return
+    if args.cola_por_que:
+        print("\n".join(queue_reasons(PROJECT_ROOT)) or "No hay vídeos sin hacer.")
+        return
+    if args.doctor:
+        from pipeline import chequeo
+
+        raise SystemExit(chequeo.main(PROJECT_ROOT))
+    if args.actualizar is not None:
+        from pipeline import actualizar
+
+        raise SystemExit(actualizar.main(PROJECT_ROOT, args.actualizar))
+    if args.ritmo:
+        from pipeline import ritmo
+
+        found = ritmo.run(RunContext.create(args.ritmo, root=PROJECT_ROOT))
+        print(f"Sin out/{args.ritmo}/video-final.mp4 (o ritmo.enabled: false)" if found is None else
+              (PROJECT_ROOT / "out" / args.ritmo / "qa" / "ritmo.md").read_text("utf-8"))
+        return
+    if args.tiempos is not None:
+        from pipeline import tiempos
+
+        print(tiempos.write(PROJECT_ROOT, args.tiempos))
+        return
+    if args.vigilar is not None:
+        watch(args.vigilar)
+        return
+    if args.web is not None:
+        from pipeline import web
+
+        web.serve(port=args.web, host=args.host)
+        return
+    if args.bot:
+        from pipeline import bot
+
+        bot.Bot().run()
+        return
+    if args.compilar:
+        from pipeline import compilacion
+
+        print(f"Compilación lista: {compilacion.build(PROJECT_ROOT, args.compilar)}")
+        return
+    if args.limpiar:
+        import shutil
+
+        from pipeline import housekeeping
+
+        before = shutil.disk_usage(PROJECT_ROOT).free / 1e9
+        ctx = RunContext.create("_limpiar", root=PROJECT_ROOT)
+        cleanup = {**ctx.section("cleanup"), "published_days": 0}
+        cleanup["cache_days"] = cleanup.get("cache_days") or 14
+        cleanup["whole_hours"] = min(float(cleanup.get("whole_hours", 12)), 2)   # whole sources: only the current video's stay
+        gb = housekeeping.rotate_published(PROJECT_ROOT, {**ctx.config, "cleanup": cleanup,       # now: finals too
+                                                          "compilations": {**ctx.section("compilations"), "keep_finals": False}})
+        housekeeping.old_cache(RunContext.create("_limpiar", root=PROJECT_ROOT, config={**ctx.config, "cleanup": cleanup}))
+        after = shutil.disk_usage(PROJECT_ROOT).free / 1e9
+        print(f"Vídeos subidos: {gb:.1f} GB liberados · libre: {before:.0f} GB → {after:.0f} GB")
+        return
+    if args.noticias:
+        from pipeline import noticias
+
+        report = noticias.scan(PROJECT_ROOT)
+        print("\n".join(noticias.telegram_lines(report)) or "Nada que suba ahora mismo.")
+        return
+    if args.velocidad_youtube:
+        from pipeline import ytbench
+
+        best = (ytbench.run(PROJECT_ROOT)["summary"] or [{}])[0]
+        print(f"Más rápido: {best.get('way')} · {best.get('client')} · 360p {best.get('mbps360')} MB/s")
+        return
+    if args.copia:
+        from pipeline import copia
+
+        made = copia.make(PROJECT_ROOT)
+        print(f"Copia de seguridad: {made} ({made.stat().st_size / 1e6:.1f} MB)")
+        return
+    if args.comprobar_proteccion:
+        from pipeline import proteccion
+
+        print("\n".join(proteccion.report(PROJECT_ROOT)))
+        return
+    if args.piloto_escenas or args.informe_piloto or args.quitar_piloto:
+        from pipeline import piloto
+
+        if args.piloto_escenas:
+            done = piloto.enable(PROJECT_ROOT, args.piloto_escenas, args.referencia)
+            print(f"Piloto activado en {done['video']} (referencia: {done['reference'] or 'ninguna: usa --referencia'}). "
+                  "Solo ese vídeo busca por escenas.")
+        elif args.quitar_piloto:
+            piloto.disable(PROJECT_ROOT, args.quitar_piloto)
+            print(f"{args.quitar_piloto}: vuelve a la búsqueda por plano.")
+        else:
+            print(piloto.markdown(piloto.report(PROJECT_ROOT, args.informe_piloto, args.referencia)))
+        return
+    if args.comparar_escenas:
+        from pipeline import scenebench
+
+        print(scenebench.report(scenebench.run(PROJECT_ROOT)))
+        return
+    if args.radar:
+        from pipeline import radar
+
+        print(f"Radar en {radar.run(PROJECT_ROOT, force=True)}")
+        return
+    if args.mi_canal:
+        from pipeline import mychannel
+
+        report = mychannel.run(PROJECT_ROOT, args.mi_canal)
+        print("\n".join(report["tips"]) or "Hecho")
+        print(f"Guardado en out/_canal/{args.mi_canal}.json")
+        return
+    if args.youtube_stats is not None:
+        from pipeline import ytstats
+
+        path = ytstats.report(PROJECT_ROOT, args.youtube_stats)
+        print(path.read_text("utf-8"))
+        print(f"Guardado en {path}")
+        return
+    if args.probar_youtube:
+        from pipeline import ytcheck
+
+        ytcheck.run(RunContext.create("_ytcheck"))
+        return
+    if args.formatos:
+        from pipeline import formats
+
+        print(formats.listing(PROJECT_ROOT))
+        print("\nÚsalo con `format: <nombre>` en materiales/<vídeo>/config.yaml (o en el canal / la serie).")
+        return
+    if args.semana:
+        from pipeline import ideas
+
+        print(f"Plan de la semana en {ideas.weekly(args.semana)}")
+        return
+    if args.series:
+        from pipeline import series_report
+
+        try:
+            path = series_report.report(args.series)
+        except (ConfigError, ValueError) as error:
+            raise SystemExit(f"Error: {error}") from error
+        print(path.read_text("utf-8"))
+        print(f"(guardado en {path})")
+        return
+    if args.all:
+        failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)
+        sys.exit(1 if failures else 0)
+    from pipeline.budget import ApiSearchesShort
+    from pipeline.sin_youtube import WaitingForYouTube
+
     try:
-        run_pipeline(args)
-    except (
-        ConfigError,
-        FileNotFoundError,
-        PipelineQualityError,
-        RenderPostflightError,
-        RuntimeError,
-        ValueError,
-    ) as error:
+        run_one(args.slug, force=set(args.force), until=args.until, review=args.review)
+    except ApiSearchesShort as error:          # the queue (also the parallel one) goes on without this video
+        wait_for_quota(PROJECT_ROOT, args.slug, error)
+        print(f"⏸ {error}")
+        sys.exit(QUOTA_EXIT)
+    except WaitingForYouTube as error:         # made without YouTube it fell short: it waits for YouTube
+        print(f"⏸ {error}")
+        sys.exit(YOUTUBE_EXIT)
+    except StageNotImplemented as error:
+        raise SystemExit(f"Parada: {error}") from error
+    except QABlocked as error:
+        raise SystemExit(f"Render bloqueado por la QA: {error}. Revisa out/{args.slug}/qa/report.md") from error
+    except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as error:
         raise SystemExit(f"Error: {error}") from error
 
 

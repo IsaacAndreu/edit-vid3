@@ -1,0 +1,19 @@
+# Formato «Cronología». Úsalo con `format: cronologia` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Cronología / evolución"
+descripcion: "La historia completa de algo por épocas (un deporte, un producto, una empresa, un récord), con año en pantalla."
+ejemplos: "La evolución del maillot en 70 años, la historia de los robots humanoides, de Pescanova a la quiebra."
+guion: |
+  ESTE VÍDEO ES UNA CRONOLOGÍA: cuenta cómo cambió algo a lo largo del tiempo, época a época.
+  - "subject": "" salvo que sea la vida de una sola persona o empresa.
+  - "peak": búsqueda EN INGLÉS del momento de mayor cambio, o "".
+  - "events": uno por cada época o salto (un año, una década, un modelo, una generación), SIEMPRE con el año en el
+    "label" y el objeto concreto de ESA época ('Nadia Comaneci leotard Montreal 1976', 'Honda ASIMO robot
+    demonstration 2000'); "tag" = 'AÑO' o 'DÉCADA · LUGAR' ('1976 · MONTREAL', 'AÑOS 80').
+  - Los eventos en orden de fecha; si el guion salta en el tiempo, sigue el guion.
+  - Capítulos: las épocas ('LOS ORÍGENES', 'LA REVOLUCIÓN', 'HOY').
+graficos: |
+  Este vídeo es una cronología: usa "timeline" para las fechas clave (al menos una vez por capítulo), "chart" o
+  "race" para lo que sube o baja con los años, "compare" para antes frente a ahora y "specs" para la ficha de cada
+  modelo o generación.
+segundos_por_grafico: 60
+titulos: "patrón de título de cronología: 'La evolución de <X> en <N> años', 'La historia completa de <X>' o 'De <inicio> a <final>'."

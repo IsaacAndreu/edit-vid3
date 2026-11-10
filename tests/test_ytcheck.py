@@ -1,0 +1,64 @@
+from pipeline.ytcheck import verdict
+
+OK = {"yt-dlp": "2026.8.19", "ejs": "0.8.0", "js": "deno"}
+
+
+def run(label, seconds, error="", warnings=None):
+    return {"label": label, "seconds": seconds, "mb": 2.7, "error": error, "warnings": warnings or {},
+            "cookies": label.startswith("con cookies"), "ipv4": "IPv6" not in label}
+
+
+def test_missing_solver_comes_first():
+    lines = verdict({**OK, "js": ""}, [run("sin cookies", 60)])
+    assert "deno" in lines[0] and len(lines) == 1
+
+
+def test_slow_account_is_spotted():
+    lines = verdict(OK, [run("con cookies", 70), run("sin cookies", 5)])
+    assert any("ESA cuenta" in line for line in lines)
+
+
+def test_fast_machine_points_to_the_nightly_log():
+    assert "descarga bien" in verdict(OK, [run("con cookies", 4), run("sin cookies", 5)])[0]
+
+
+def test_bot_check_only_without_cookies_is_not_an_alarm():
+    lines = verdict(OK, [run("con cookies", 6), run("sin cookies", 3, "SourceUnavailable: Sign in to confirm")])
+    assert any("no las quites" in line for line in lines) and not any("renueva" in line for line in lines)
+
+
+def test_slow_everywhere_is_the_connection():
+    assert "conexión" in verdict(OK, [run("con cookies", 80), run("sin cookies", 75)])[0]
+
+
+def test_slow_info_points_to_deno():
+    slow = {**run("con cookies", 300), "phases": {"info": 280, "download": 12}}
+    assert "deno" in verdict({**OK, "line": 8.0}, [slow, {**slow, "label": "sin cookies"}])[0]
+
+
+def test_fast_line_but_slow_download_is_youtube_throttling():
+    slow = {**run("con cookies", 330), "phases": {"info": 5, "download": 320}}
+    assert "frena a tu IP" in verdict({**OK, "line": 9.5}, [slow, {**slow, "label": "sin cookies"}])[0]
+
+
+def test_slow_line_is_the_connection():
+    slow = {**run("con cookies", 330), "phases": {"info": 5, "download": 320}}
+    assert "conexión va lenta" in verdict({**OK, "line": 0.4}, [slow])[0]
+
+
+def test_ipv6_is_the_culprit():
+    lines = verdict({**OK, "line": 9.0}, [run("con cookies, IPv4", 6), run("con cookies, red por defecto (IPv6)", 90)])
+    assert lines[0].startswith("¡Era IPv6!")
+
+
+def test_everything_cut_off_with_a_good_line_is_the_home_ip():
+    cut = {"timeout": True, "phases": {}}
+    runs = [{**run("con cookies, IPv4", 90), **cut}, {**run("con cookies, red por defecto (IPv6)", 90), **cut},
+            {**run("sin cookies, IPv4", 90), **cut}]
+    assert "router" in verdict({**OK, "line": 11.0}, runs)[0]
+
+
+def test_slow_hls_download_through_a_proxy_is_not_blamed_on_deno():
+    slow = {**run("con cookies, IPv6", 52.2), "proxy": True, "phases": {"metadata": 6.1, "download (HLS)": 45.8}}
+    lines = verdict({**OK, "line": 42.5}, [slow])
+    assert any("proxy" in line and "46 s" in line for line in lines) and not any("deno" in line for line in lines)

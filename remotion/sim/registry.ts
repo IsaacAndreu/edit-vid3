@@ -1,0 +1,25 @@
+// Every world the program can simulate: its name in worlds.json → how it draws and sounds (remotion/sim/worlds/).
+import type {World} from './world';
+import {aeropuerto} from './worlds/aeropuerto';
+import {anillo} from './worlds/anillo';
+import {apagon} from './worlds/apagon';
+import {aparcamiento} from './worlds/aparcamiento';
+import {ascensores} from './worlds/ascensores';
+import {autovia} from './worlds/autovia';
+import {carretera} from './worlds/carretera';
+import {colas} from './worlds/colas';
+import {contagio} from './worlds/contagio';
+import {cruces} from './worlds/cruces';
+import {embarque} from './worlds/embarque';
+import {explica} from './worlds/explica';
+import {incendio} from './worlds/incendio';
+import {inundacion} from './worlds/inundacion';
+import {manada} from './worlds/manada';
+import {metro} from './worlds/metro';
+import {multitud} from './worlds/multitud';
+import {red} from './worlds/red';
+import {restaurante} from './worlds/restaurante';
+import {segregacion} from './worlds/segregacion';
+
+export const WORLDS: Record<string, World> = {cruces, anillo, autovia, carretera, contagio, red, incendio, inundacion, segregacion, colas, embarque, multitud, manada,
+  ascensores, aparcamiento, aeropuerto, metro, restaurante, apagon, explica};

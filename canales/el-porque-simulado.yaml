@@ -1,0 +1,71 @@
+# «El Porqué Simulado» (español): el canal de simulación general. Cualquier cosa cotidiana o del mundo explicada con
+# simulaciones dibujadas en código (tráfico, colas, epidemias, incendios, manadas, la red eléctrica…): ni YouTube ni
+# metraje de terceros. Uno por idioma con el mismo molde: simulated-why (inglés), porque-simulado-pt (portugués) y
+# simuliertes-warum (alemán) lo toman con `base: el-porque-simulado` y solo cambian el idioma.
+# Los canales por subnicho (hora-punta, cola-de-al-lado…) siguen ahí, ocultos (`oculto: true`), por si un día subnichas.
+# Úsalo con `canal: el-porque-simulado`. Cada frase del guion recibe una escena (pipeline/simulacion.py); mundos y
+# parámetros en remotion/sim/worlds.json. Lo que no se pone aquí sale de config.yaml.
+
+video:
+  fps: 30                          # los vídeos largos a 30 (el render de 60 tarda el doble); los Shorts nuevos van a 60
+
+visual:
+  style: simulacion
+  worlds: [anillo, carretera, autovia, cruces, colas, embarque, multitud, contagio, red, incendio, inundacion, segregacion, manada,
+            ascensores, aparcamiento, aeropuerto, metro, restaurante, apagon, explica]
+  theme: day                       # un solo aspecto en todos los vídeos, reconocible: de día (hierba, casas, árboles); dark, night o sepia si un vídeo lo pide
+  # La guía del canal: cómo se convierte un guion en escenas (la lee la IA que elige cada escena). Para un vídeo
+  # concreto, una lista de escenas propia va en materiales/<vídeo>/escenas.txt (o en «Nuevo vídeo»): manda sobre esto.
+  guide: |
+    - Una idea por escena: la pantalla enseña ocurriendo lo que dice la voz, nunca de relleno. Mismo mundo mientras
+      dure la idea; un mundo nuevo solo cuando cambia la idea.
+    - «Tú», «tu coche», «tu cola», un consejo práctico: escenas con el protagonista (colas: eleccion, cambiar, contar;
+      carretera: hueco, carril). El amarillo es solo para él o para lo que lo cambia todo (el coche que conduce solo).
+    - Si el guion enumera reglas: "rules" con cada regla en la frase que la nombra. Apagar una regla es el momento más
+      importante del vídeo: "rules" con esa regla en "off": true y en "params" el cambio que la quita (anillo
+      driver: calma; colas scene: iguales), y deja ese plano largo, sin título ni cifra encima.
+    - Umbrales, puntos de inflexión, «si subes X pasa Y»: el mismo mundo cambiando ese parámetro (el dial sale solo).
+    - Comparaciones (antes/después, A contra B, con y sin): las escenas de pantalla partida (colas comparar, iguales,
+      rapida; carretera rampa; autovía; cruces; anillo compare).
+    - Probabilidades («una de cada tres»): colas eleccion. Un estudio con datos: el panel o gráfico del mundo.
+    - «En tal año unos investigadores…»: la reconstrucción del experimento (anillo con 22 coches, Sugiyama 2008…) con
+      su "source" y su "stat".
+    - Toda cifra que dice la voz va en "stat" (aparece cuando se dice).
+    - Resumen final: "list" con las ideas, en el orden del vídeo.
+
+brand:
+  accent: "#e8ecf3"                # paneles y cifras en blanco: el amarillo queda solo para «tú» y lo que lo cambia todo
+
+align:
+  language: es
+
+graphics:
+  types: [chart, compare, timeline]   # solo con graphics.over_simulation: true; si no, todo lo enseña la simulación
+  extra_types: []
+
+dubbing:                           # cada vídeo en español sale también en los otros tres canales (misma simulación,
+  enabled: true                    # voz y rótulos en su idioma, sus propios Shorts); voces: Ajustes → Voces por canal
+  languages: [en, pt, de]
+  channels: {en: simulated-why, pt: porque-simulado-pt, de: simuliertes-warum}
+  review: false                    # true: la voz espera a que apruebes el guion adaptado en la página del vídeo
+
+ideas:
+  about: 'un canal de YouTube en español que explica cosas cotidianas y del mundo con simulaciones vistas desde arriba
+    (por qué hay atascos sin motivo, por qué la cola de al lado va más rápida, cómo se propaga un bulo o un incendio),
+    vídeos de ~10 min con un experimento que se ve'
+  niches: [tráfico, colas, epidemias, desastres, sociedad, animales, ciencia cotidiana]
+
+# --- series (en materiales/<vídeo>/config.yaml: `serie: y-si`) ---
+series:
+  y-si:                            # «¿Y si todos los coches fueran autónomos?»: un mundo, un dial, una pregunta
+    visual:
+      serie: |
+        ESTE VÍDEO ES DE LA SERIE «¿Y SI…?»: UNA pregunta, UN mundo y UN dial (un parámetro de ese mundo que se gira).
+        - El título y la primera frase son la pregunta: «¿Y si <el cambio>?» (¿y si todos los coches fueran autónomos?,
+          ¿y si hubiera una caja más?, ¿y si nadie bloqueara las puertas del metro?).
+        - Todo el vídeo en ese mundo: primero cómo es hoy (el dial en su valor real), luego el dial se gira paso a paso
+          (dos o tres valores, cada uno una frase con el nuevo valor en "params": el dial sale solo en pantalla) y la voz
+          narra qué cambia en cada paso; el giro es el punto donde todo cambia de golpe (el umbral).
+        - Un «¿tú qué crees que pasará?» antes del paso más fuerte ("ask").
+        - Cierra con la respuesta en una frase y el valor del dial donde está el truco.
+        - 4-6 minutos: corto y directo; nada de otros mundos.

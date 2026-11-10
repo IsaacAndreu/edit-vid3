@@ -1,0 +1,14 @@
+# Formato «Técnica». Úsalo con `format: tecnica` en la config.yaml del vídeo, del canal o de la serie.
+nombre: Técnica
+descripcion: Cómo se hace un movimiento y por qué es tan difícil, con estroboscopia y repeticiones anotadas.
+ejemplos: Cómo se hace el Yurchenko doble carpa.
+guion: |
+  ESTE VÍDEO EXPLICA UNA TÉCNICA O UN MOVIMIENTO (cómo se hace, por qué es tan difícil):
+  - "subject": la persona que lo creó o lo hace mejor si el vídeo gira en torno a ella; si no, "".
+  - "events": uno por cada ejecución o fase que se cuenta; "label" = búsqueda EN INGLÉS que encuentre ese
+    movimiento bien visible y con la cámara lo más quieta posible (p. ej. 'Yurchenko double pike vault
+    Simone Biles slow motion side view'); "tag" = nombre del movimiento y año si se dice.
+  - Capítulos: las partes de la explicación (origen, cómo se hace, por qué es difícil, quién lo domina).
+graficos: |
+  Este vídeo explica cómo se hace un movimiento/técnica: usa "strobe" y "replay" cada vez que se describe una fase del movimiento, y "specs" para la ficha del elemento (dificultad, año, quién lo creó).
+segundos_por_grafico: 55

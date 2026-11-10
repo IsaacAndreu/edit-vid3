@@ -1,0 +1,63 @@
+# Formato «Viaje a un lugar» (documental contemplativo de 25-30 min, estilo Sin Coordenadas). Úsalo con
+# `format: viaje-lugar` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Viaje a un lugar (documental contemplativo)"
+descripcion: "Un lugar remoto, salvaje o extremo contado como un viaje en calma: origen, por qué nadie lo dominó,
+  sus criaturas, su gente y lo que te une a él. Gancho de peligro en el título, tono de documental de sobremesa."
+ejemplos: "CONGO | La selva más salvaje y peligrosa que África mantiene oculta; SIBERIA -68 °C: cómo sobrevive la
+  gente donde todo se congela; ISLAS FEROE: el último refugio vikingo del Atlántico."
+escritura: |
+  FORMATO VIAJE A UN LUGAR. El título vende peligro; la narración vende ASOMBRO Y CALMA: un viaje contemplativo, casi
+  relajante, para alguien que lo ve de noche buscando un rato de paz y que lo deja puesto de compañía. Nada de miedo
+  ni de dramatismo barato. Frases cortas, ritmo de narración, español neutro y cercano, segunda persona inmersiva
+  («imagina», «detente a pensarlo», «estás en»). NADA de listas ni de «dato número N»: todo fluye como una historia.
+  Sin indicaciones visuales en el texto. Los títulos de capítulo («## ») van en los cambios de acto.
+  1. APERTURA EN FRÍO (1-2 min): empieza con «Imagina…» y cuatro imágenes sensoriales que van subiendo: el tamaño,
+     un récord, un misterio y una riqueza oculta. Remata con «Estás en <lugar>.» Después, los superlativos
+     comparados con cosas familiares («cabrían Francia, España, Alemania y Suecia juntas»).
+  2. BIENVENIDA Y LLAMADA TEMPRANA: el nombre del canal, la suscripción y «cuéntanos desde qué país nos acompañas».
+  3. LA PARADOJA CENTRAL: la contradicción que recorre el vídeo (p. ej. tierra riquísima con una vida durísima) y un
+     anticipo de una conexión personal con el espectador («el teléfono con el que estás viendo esto») que NO se
+     resuelve hasta el acto 5: es el bucle abierto que retiene.
+  4. ACTO 1, EL ORIGEN: tiempo profundo y geografía (cómo se formó el lugar), récords naturales cada uno con su
+     «por qué», y un tesoro escondido.
+  5. ACTO 2, POR QUÉ NADIE PUDO DOMINARLO: primero los «guardianes» naturales (rápidos, selva, hielo, enfermedades),
+     después la historia humana. Las tragedias con respeto, sin morbo. Termina con una lección («aquí la tierra manda»).
+  6. ACTO 3, LAS CRIATURAS: cada animal con su mini-arco: lo que se creía frente a la realidad, lo que lo hace único
+     en el mundo y una reflexión; animales con personalidad («el gorila de mirada mansa»). Cierra con un espectáculo
+     natural (un lago de lava, una aurora, una migración) que repite la paradoja.
+  7. ACTO 4, LA GENTE: los que sí supieron vivir allí (conocimiento ancestral, cultura, música) y la ciudad o el
+     pueblo de hoy (un dato sorprendente, su energía, su resistencia).
+  8. ACTO 5, LA CONEXIÓN CONTIGO: se cierra la paradoja con un dato que toca al espectador (el cobalto de su teléfono,
+     el aire que respira, lo que come).
+  9. CIERRE EMOCIONAL: una reflexión («no existen los lugares lejanos»), una pregunta abierta, «hoy viajaste sin
+     pagar un pasaje», otra vez el comentario de desde qué país nos ven, like y suscripción, y una despedida corta
+     que sirva de firma del canal (la misma en todos los vídeos).
+  TÉCNICAS: puentes entre actos con pregunta y respuesta («¿Hubo alguien que sí supiera vivir en ella? Sí.»); cada
+  acto termina anticipando el siguiente; cada dato con su «por qué» (no basta con que el río nunca se seque: cruza el
+  ecuador dos veces y siempre llueve en alguna parte de su cuenca); escala humana (tamaños con países, pesos con
+  personas, edades con hitos que el espectador conoce); la paradoja vuelve en la apertura, a mitad y en el cierre.
+  RIGOR: cada récord y cada cifra comprobables; di SIEMPRE de qué país o región hablas (la República Democrática del
+  Congo y la República del Congo son países distintos); nada de inventar especies, cifras o leyendas: una leyenda se
+  dice como leyenda («cuentan que…»). Marca con [COMPROBAR] lo que no sea seguro.
+  DURACIÓN: 25-30 min de narración (30.000-35.000 caracteres, unas 5.000 palabras).
+guion: |
+  ESTE VÍDEO ES UN VIAJE CONTEMPLATIVO A UN LUGAR (documental de 25-30 min sin protagonista):
+  - "subject": "" y "peak": búsqueda EN INGLÉS de la imagen más espectacular del lugar ('Nyiragongo lava lake
+    drone 4K', 'Congo river aerial 4K').
+  - "events": uno por cada tema que cambia (una región, un río, un animal, un pueblo, una ciudad, un momento
+    histórico). "label" = búsqueda EN INGLÉS de METRAJE REAL de ESE LUGAR con lo que se ve: 'Congo rainforest
+    aerial drone 4K', 'Inga rapids Congo river', 'mountain gorilla Virunga 4K', 'Kinshasa street life', 'bonobo
+    Lola ya Bonobo sanctuary'. Documentales de naturaleza, vlogs de viaje, tomas de dron y reportajes del lugar.
+    Para lo universal (lluvia sobre hojas, un cielo estrellado, un río al amanecer) vale metraje general bonito.
+    "tag" = 'LUGAR · REGIÓN' cuando cambia de sitio (máx. 30 caracteres), si no null.
+  - Capítulos = los actos ('EL ORIGEN', 'LOS GUARDIANES', 'LAS CRIATURAS', 'LA GENTE', 'TÚ Y EL CONGO').
+  - Imágenes que respiran: paisajes, dron, fauna y vida cotidiana; nunca tragedias explícitas (heridos, cadáveres):
+    para la historia dura, mapas, fotos de archivo y lugares.
+graficos: |
+  Es un documental contemplativo: pocos gráficos y bonitos, solo donde la imagen no basta: "map" para situar el
+  lugar y cada región o ruta (el mapa vale mucho en este formato), "satellite" para acercarse desde el espacio,
+  "scale" y "compare" para los superlativos frente a países o cosas conocidas, "timeline" para el tiempo profundo.
+  Nada de gráficos encima de los mejores planos de naturaleza.
+segundos_por_grafico: 150
+tipos: [map, satellite, scale, compare, timeline]
+titulos: "patrón de título de viaje: '<LUGAR> | La <superlativo> Más <Salvaje/Peligrosa/Aislada> que <contexto> | Documental 4K' o '<LUGAR> <cifra extrema>: Cómo Sobrevive la Gente <condición>'. Lugar en MAYÚSCULAS. Miniatura: un paisaje imponente y 0-3 palabras."

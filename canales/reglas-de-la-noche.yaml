@@ -1,0 +1,52 @@
+# «Las Reglas» (español, vertical): thrillers de 60-90 s en segunda persona con monigotes: «Imagina que…», un reloj
+# que avanza, 3-4 reglas, el móvil, la mirilla, una amenaza que se ve y una elección final («¿Abres?» → «Sigue para
+# el día 2»). Es una serie: cada vídeo es un día. Todo dibujado en código (pipeline/cine.py → CineScene.tsx).
+
+video:
+  fps: 30
+  width: 1080
+  height: 1920
+
+visual:
+  style: cine
+  mode: reglas
+  mark: scar                       # la X roja en la frente: el que eres tú (y tu doble)
+  mark_color: "#e5322d"
+  accent: "#ffd400"
+  captions: palabra                # subtítulos palabra a palabra, las palabras clave en amarillo
+  series_name: "EL MENSAJE DE MAÑANA"   # sale en la tarjeta final encima de «DÍA 1»
+  end_seconds: 2.0
+
+brand:
+  accent: "#ffd400"
+  motion: clean
+
+align:
+  language: es
+
+render:
+  hybrid: false                    # todo con Remotion (vertical)
+
+timeline:
+  captions: false                  # los subtítulos los pone la propia escena
+  endscreen_seconds: 0
+  music_default: tension
+  music_volume: 0.18
+  questions: false
+  labels: false
+
+people:
+  enabled: false
+
+graphics:
+  types: []
+  extra_types: []
+  max: 0
+
+ideas:
+  about: 'un canal de Shorts en español: thrillers de 60-90 segundos en segunda persona con monigotes y reglas que hay que cumplir (no abras la puerta, no mires por la ventana después de las 3), con una elección final y una serie por días'
+  niches: [terror, misterio, reglas, supervivencia, suspense]
+  words: 190
+
+shorts:
+  enabled: false

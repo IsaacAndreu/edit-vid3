@@ -1,0 +1,4 @@
+# Canal de aviación (estilo Beyond Sky / Jet Crumbs). Todo vídeo dentro de esta carpeta
+# (materiales/aviacion/<vídeo>/ con guion.txt y voz.mp3) se hace con el perfil canales/aviacion.yaml.
+# Para una serie concreta, en el config.yaml del vídeo: serie: fracasos (o rivalidades, por-que, dinero, tamanos)
+canal: aviacion

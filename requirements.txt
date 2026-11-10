@@ -2,3 +2,18 @@ openai>=1.0.0,<2.0.0
 python-dotenv>=1.0.0,<2.0.0
 requests>=2.31.0,<3.0.0
 yt-dlp[default]
+deno                # runtime JS que yt-dlp necesita para los retos de YouTube
+pydantic>=2.6,<3
+PyYAML>=6.0
+faster-whisper>=1.0
+# Etapa 4 (análisis local, sin APIs de pago)
+numpy
+opencv-python-headless
+torch               # en CPU basta; en Windows/Mac el wheel por defecto sirve
+open_clip_torch
+scenedetect
+rapidocr-onnxruntime
+ddgs                # fotos web sin clave (DuckDuckGo) cuando no hay SERPER_API_KEY
+rembg[cpu]          # recorte de atletas sin fondo (tarjetas de presentación); opcional
+fonttools           # convierte la fuente Inter a TTF para los subtítulos de los Shorts
+av<19                    # faster-whisper 1.2 + PyAV 19: open(metadata_errors) ya no existe

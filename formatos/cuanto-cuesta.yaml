@@ -1,0 +1,19 @@
+# Formato «Cuánto cuesta». Úsalo con `format: cuanto-cuesta` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Cuánto cuesta / desglose"
+descripcion: "Lo que cuesta de verdad algo, partida a partida, con tickets que se imprimen y la cifra final."
+ejemplos: "Cuánto cuesta un robot humanoide, cuánto cuesta ser gimnasta olímpica, cuánto cuesta abrir un Mercadona."
+guion: |
+  ESTE VÍDEO DESGLOSA LO QUE CUESTA ALGO (fabricarlo, montarlo, mantenerlo), partida a partida:
+  - "subject": "" salvo que sea el coste de una persona o empresa concreta.
+  - "peak": búsqueda EN INGLÉS de la imagen que resume el resultado final (el producto terminado, la inauguración).
+  - "events": uno por cada partida del coste, desde la frase que la presenta. "label" = búsqueda EN INGLÉS que
+    ENSEÑE esa partida (la fábrica, los materiales, los sueldos en una oficina concreta, el local) con la empresa o
+    el lugar ('Tesla Gigafactory battery production line'); "tag" solo si se dice lugar o año.
+  - Capítulos: las fases del gasto ('LA INVERSIÓN', 'LO QUE CUESTA CADA MES', 'LA CUENTA FINAL').
+graficos: |
+  Este vídeo desglosa costes: usa "receipt" cada vez que el guion suma varias partidas (al menos 2 tickets en el
+  vídeo), "scale" o "compare" para dar tamaño a la cifra final frente a algo conocido, y "chart" para en qué se va
+  más dinero.
+segundos_por_grafico: 55
+tipos: [receipt, scale, compare, chart]   # gráficos que este formato usa aunque el canal no los tenga en su lista
+titulos: "patrón de título de desglose: 'Cuánto cuesta <X> (de verdad)' o 'Lo que nadie te dice de lo que cuesta <X>', con la cifra final si es sorprendente."

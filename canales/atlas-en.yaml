@@ -1,0 +1,46 @@
+# «Atlas» (English): explicaciones de mapas sobre un globo dibujado en código, estilo «mira más de cerca»: página de
+# papel, globo ortográfico que gira de frase en frase, rutas de círculo máximo, círculos de alcance, tarjetas de papel,
+# sello, algún gráfico limpio y dibujos lineales; barra de capítulos I-V (pipeline/atlas.py → Atlas.tsx). Sin metraje:
+# va por el carril rápido de la cola. Dubbed from atlas-es, or written in English. Cambia el nombre en brand.name.
+
+video:
+  fps: 30
+
+visual:
+  style: atlas
+
+brand:
+  name: Atlas
+  accent: "#B8322A"
+  motion: clean
+  endStyle: paper                  # la pantalla final en papel, como el resto del vídeo
+
+align:
+  language: en
+
+timeline:
+  music_default: intriga
+  music_volume: 0.12
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'an English YouTube channel of map deep dives on a globe: why something in the world is the way it is (routes no airline flies, borders, seas, climates, the most remote place), five reasons per video, every fact sourced, 8-10 min videos'
+  niches: [geography, aviation, routes, borders, oceans, map curiosities]
+  words: 1200
+  # canales del mismo formato: el radar trae cada día sus vídeos que más superan a su canal → ideas para el piloto
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions", "@PolyMatter"]
+
+lab:
+  queries: ["why do planes avoid", "why nobody lives in", "strangest border in the world", "why this map looks"]
+
+dubbing:
+  enabled: false
+
+shorts:
+  enabled: false

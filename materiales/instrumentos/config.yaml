@@ -1,0 +1,4 @@
+# Canal de instrumentos (comparativas y rankings de compra). Todo vídeo dentro de esta carpeta
+# (materiales/instrumentos/<vídeo>/ con guion.txt) se hace con el perfil canales/instrumentos.yaml.
+# Para una serie concreta, en el config.yaml del vídeo: serie: ranking (o versus, cuanto-cuesta)
+canal: instrumentos

@@ -156,8 +156,8 @@ def _scene_visual_intent(scene: SceneDraft, keyword: str | None = None) -> str:
 
 def _scene_selection_guidance(scene: SceneDraft) -> str:
     guidance: list[str] = []
-    must_contain = [str(item).strip() for item in scene.get("mustContain", []) if str(item).strip()]
-    avoid = [str(item).strip() for item in scene.get("avoid", []) if str(item).strip()]
+    must_contain = [str(item).strip() for item in (scene.get("mustContain") or []) if str(item).strip()]
+    avoid = [str(item).strip() for item in (scene.get("avoid") or []) if str(item).strip()]
     preferred_shot = str(scene.get("preferredShot") or "").strip()
     if must_contain:
         guidance.append("Must visibly include: " + ", ".join(must_contain))

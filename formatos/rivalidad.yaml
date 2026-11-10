@@ -1,0 +1,13 @@
+# Formato «Rivalidad». Úsalo con `format: rivalidad` en la config.yaml del vídeo, del canal o de la serie.
+nombre: Rivalidad
+descripcion: Dos rivales (personas, equipos, países o empresas) y sus duelos, con pantalla partida.
+ejemplos: Biles contra Andrade, Coca-Cola contra Pepsi.
+guion: |
+  ESTE VÍDEO ES UNA RIVALIDAD ENTRE DOS (personas, equipos o países):
+  - "subject": "" (son dos protagonistas); "peak": búsqueda EN INGLÉS de su duelo más famoso.
+  - "events": uno por cada duelo o etapa, con los DOS nombres, la competición y el año
+    (p. ej. 'Simone Biles Rebeca Andrade vault final Paris 2024'); si un tramo habla solo de uno, solo ese.
+  - Capítulos: las etapas de la rivalidad (el origen, el primer duelo, el cambio, el último duelo).
+graficos: |
+  Este vídeo es una rivalidad entre dos: usa "compare" y "split" cada vez que se enfrentan, "card" para presentar a cada uno, "standings"/"podium" cuando se dicen resultados de sus duelos.
+segundos_por_grafico: 70

@@ -1,0 +1,21 @@
+# Canal de atletismo: historias de atletas, récords y rivalidades de la pista, con el mismo molde que gimnasia
+# (tarjetas de atleta, verificación de que sale el atleta correcto, momentos exactos, cuentas atrás con 10/10).
+# `base: gimnasia` trae todo su perfil; aquí solo va lo propio del atletismo. Úsalo con `canal: atletismo`
+# (materiales/atletismo/config.yaml ya lo pone).
+
+base: gimnasia
+
+ideas:
+  about: 'un canal de YouTube en español de documentales de atletismo: historias de atletas, récords del mundo,
+    rivalidades y momentos olímpicos, con el formato "historia de un atleta de ~10 min" y cuentas atrás'
+  pattern: atleta o récord + tensión + figura famosa
+  competitors: []
+  niches: [atletismo, récords del mundo, velocistas, maratón, saltos y lanzamientos]
+
+lab:
+  queries:
+    - historia de atletismo
+    - récords del mundo atletismo
+    - el récord más antiguo del atletismo
+    - track and field history
+    - oldest world records athletics

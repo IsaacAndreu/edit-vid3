@@ -1,0 +1,24 @@
+# Formato «Qué pasaría si…». Úsalo con `format: que-pasaria-si` en la config.yaml del vídeo, del canal o de la serie.
+nombre: "Qué pasaría si…"
+descripcion: "Un escenario que no ocurrió, contado con datos: lo real con metraje real y lo hipotético con ilustraciones generadas, marcadas en pantalla."
+ejemplos: "¿Y si la crisis de 2008 nunca hubiese ocurrido?, ¿y si Biles no se hubiese retirado en Tokio?, ¿y si los robots cobrasen sueldo?"
+guion: |
+  ESTE VÍDEO ES UN «¿QUÉ PASARÍA SI…?»: mezcla lo que pasó de verdad (el punto de partida, los datos) con un escenario
+  hipotético que no ocurrió.
+  - "subject": el protagonista real si lo hay; si no, "".
+  - "peak": búsqueda EN INGLÉS del hecho REAL que se cambia (p. ej. 'Lehman Brothers collapse September 2008 news').
+  - "events": para lo REAL, como siempre (persona/hecho + año + lugar, con noticias y metraje real). Para cada tramo
+    HIPOTÉTICO (lo que habría pasado, lo imaginado), un evento cuyo "label" EMPIECE por 'WHAT IF:' seguido de la escena
+    concreta que se imagina, en inglés y visual ('WHAT IF: crowded Spanish bank branches with no crisis, 2010, people
+    queuing to get mortgages'); "tag" = 'HIPOTÉTICO'.
+  - Nunca 'WHAT IF' para algo que pasó de verdad.
+  - Capítulos: 'LO QUE PASÓ', 'EL PUNTO DE GIRO', 'EL MUNDO ALTERNATIVO', 'LO QUE NOS DICE'.
+graficos: |
+  Este vídeo es un «¿qué pasaría si…?»: usa "compare" o "split" para la realidad frente al escenario hipotético,
+  "chart" para las cifras reales y "timeline" para el momento en que la historia se separa. Una cifra hipotética solo
+  si el guion la da como estimación.
+segundos_por_grafico: 60
+titulos: "patrón de título hipotético: '¿Y si <hecho real> nunca hubiese ocurrido?' o '¿Qué pasaría si <escenario>?', con el nombre conocido."
+ajustes:
+  fallback:
+    hypothetical_images: true      # los tramos 'WHAT IF' se ilustran con una imagen generada (marcada en pantalla)

@@ -57,7 +57,9 @@ def master_audio(output_path: Path) -> None:
             temporary_path.unlink()
 
 
-def inspect_render(output_path: Path, expected_duration_seconds: float) -> list[dict[str, Any]]:
+def inspect_render(
+    output_path: Path, expected_duration_seconds: float, size: tuple[int, int] = (1920, 1080)
+) -> list[dict[str, Any]]:
     """Check container, streams, resolution and A/V duration after rendering."""
 
     ffprobe = shutil.which("ffprobe")
@@ -93,7 +95,7 @@ def inspect_render(output_path: Path, expected_duration_seconds: float) -> list[
     if video is None:
         issues.append({"code": "missing-video", "message": "El render no contiene stream de vídeo."})
     else:
-        if video.get("width") != 1920 or video.get("height") != 1080:
+        if (video.get("width"), video.get("height")) != size:
             issues.append(
                 {
                     "code": "invalid-resolution",

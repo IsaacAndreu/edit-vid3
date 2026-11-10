@@ -1,0 +1,120 @@
+# Perfil del canal de motos: el NEGOCIO de las marcas de motos (auges, quiebras, rescates, rivalidades, dónde se
+# fabrican y por qué cuestan lo que cuestan), documentales de 10-14 min. Mismo molde que aviacion.yaml.
+# Referencias del nicho: un vídeo de KTM «a punto de quebrar» con 119 mil visitas y uno de Harley-Davidson con 609 mil.
+# Úsalo con `canal: motos` y `serie: <serie>` en materiales/<vídeo>/config.yaml (las series están al final).
+
+format: historia
+
+brand:                             # asfalto y escape: rojo carreras sobre gris carbón
+  accent: "#ff3b30"                # rojo: cifras, capítulos, títulos
+  accent2: "#ffb020"               # ámbar: lado B de comparativas (Honda frente a Harley, Japón frente a China)
+  canvas: "#0d0f12"
+  glow: "rgba(255,59,48,0.22)"
+  label: "#5a1410"
+  wipe: "#ff3b30"
+  panel: "#15181d"
+  panelRaised: "#1d2128"
+  muted: "#a8b0bc"
+  ocean: "#1b2733"
+  land: "#3a4655"
+  mapStyle: flat
+  mapHighlight: "#b3261e"
+  border: "#2a313b"
+  chapterStyle: numbered
+  statStyle: bare                  # la cifra gigante directamente sobre la moto
+  motion: editorial
+  articleStyle: paper
+
+graphics:
+  seconds_per_graphic: 70          # cifras de ventas, cuotas, precios y fábricas en el mapa
+  cover_weak: true
+  types: [map, satellite, article, compare, chart, timeline, specs, scale, kinetic, press, race, receipt, split]
+
+people:
+  max: 3                           # fundadores y directivos (Soichiro Honda, Stefan Pierer, Rajiv Bajaj…)
+
+timeline:
+  narrow_layout: archive           # archivo de los 50-80 a pantalla completa con aspecto de película
+  moments: 0
+  sound_bites: 2                   # 2 golpes de sonido real: un motor arrancando, una aceleración
+  music_default: intriga
+  moods:
+    auge: "crecimiento, éxito, expansión, la marca que se come el mundo"
+    caida: "quiebra, despidos, ventas que se hunden, el rescate"
+
+quotes:
+  count: 2                         # declaraciones originales de directivos
+
+fallback:
+  pexels: true                     # una moto genérica en carretera es b-roll válido (sin protagonista)
+
+judge:
+  trusted_bonus: 0.05              # prioridad a las marcas y a los medios
+  trusted_channels: [Honda, Honda Powersports, Yamaha, Yamaha Motor, Kawasaki, Suzuki, KTM, Husqvarna, Bajaj Auto,
+                     Royal Enfield, Harley-Davidson, Ducati, BMW Motorrad, Triumph, Hero MotoCorp, TVS Motor, Italika,
+                     CFMOTO, Bloomberg, CNBC, Reuters, Financial Times, Wall Street Journal, DW, Business Insider,
+                     CNBC-TV18, Autocar India, Motorcycle News, Cycle World, RideApart]
+
+content:                           # nunca material ya montado por otros creadores, ni MotoGP (Dorna reclama todo)
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox, fortnite,
+                    red dead, videojuego, video game, sims 4, simulator, speedrun,
+                    motogp, dorna, "ride 4", "ride 5", tourist trophy game, mxgp game, moto gp 24,
+                    motogp official, wsbk, superbike world championship]
+
+planner:
+  shots_note: |
+    - METRAJE: motos REALES y concretas, con marca, modelo, fábrica y año: 'KTM factory Mattighofen production line',
+      'Honda Super Cub 1958 commercial', 'Bajaj Auto Chakan plant', 'Royal Enfield Classic 350 factory Chennai',
+      'Harley-Davidson York plant assembly'. Vídeos oficiales de las marcas, anuncios antiguos, reportajes de
+      noticias (CNBC, Bloomberg, Reuters), concesionarios y tiendas reales de LatAm, carreteras y ciudades del país
+      del que se habla. Nunca videojuegos ni vídeos de MotoGP/Superbikes (reclamaciones), ni reviews de otros
+      youtubers con su cara o su voz.
+    - CIFRAS: ventas anuales, cuota de mercado, precio de cada moto, deuda, empleados: cada cifra fuerte en un plano
+      "stat" con su unidad ('20 M motos/año', '3.000 M€ de deuda', '1.650 $').
+    - PAÍSES Y FÁBRICAS: dónde se fabrica cada cosa va en un mapa; la búsqueda incluye el país y la ciudad.
+
+package:
+  thumbnail_style: concept         # la moto reconocible + 0-4 palabras ('CASI QUIEBRA', 'NADIE LA ALCANZA')
+  hint: "los protagonistas son marcas y motos reconocibles (Honda, KTM, Harley, Royal Enfield, Bajaj, Italika).
+    Título con la marca + un conflicto o una pregunta: 'KTM casi quiebra: qué pasó con la marca naranja',
+    'Por qué Harley-Davidson pierde ventas cada año', 'Cómo Honda se convirtió en…'."
+
+ideas:
+  about: "un canal de YouTube en español sobre el negocio de las motos: historias de marcas (auges, quiebras,
+    rescates), rivalidades, dónde se fabrican y por qué cuestan lo que cuestan, con foco en Latinoamérica y
+    España, documentales de 10-14 min"
+  pattern: "marca de motos famosa + conflicto o pregunta sorprendente (casi quiebra, por qué nadie la alcanza,
+    quién se la está comiendo)"
+  my_channel: ""
+  competitors: []                  # pon los @ de los canales del vídeo de KTM (119 mil) y de Harley (609 mil)
+  niches: [historias de marcas de motos, quiebras y rescates, motos chinas, mercado de motos en Latinoamérica,
+           fábricas de motos]
+
+lab:
+  queries: [historia de honda motos, ktm quiebra, harley davidson ventas, royal enfield historia, motos chinas
+            latinoamerica, bajaj ktm, motorcycle brand history, why harley davidson is failing]
+
+grade:
+  look: cine
+
+# --- series (en materiales/<vídeo>/config.yaml: `serie: marcas`) ------------------------------------------------
+series:
+  marcas:                          # «Cómo Honda se convirtió en…», «Royal Enfield: de casi muerta a…»
+    format: cronologia
+    planner:
+      outline: "ESTE VÍDEO CUENTA LA HISTORIA DE UNA MARCA DE MOTOS: el origen, la apuesta que la hizo grande, la
+        crisis y dónde está hoy. Cada evento con su año en 'tag' ('HAMAMATSU · 1948'); los 'label' buscan esa marca
+        en esa época ('Honda Super Cub 1958 commercial', 'Royal Enfield Chennai factory 1990s')."
+  quiebras:                        # «KTM casi quiebra», «Las marcas que quebraron» (Indian, Norton, Buell…)
+    format: cronologia
+    planner:
+      outline: "ESTE VÍDEO CUENTA UNA QUIEBRA O UN RESCATE: las señales, la deuda, el día que todo cae, quién la
+        compra y qué queda. Cifras de deuda, empleados y ventas siempre con su fecha y su fuente."
+  rivalidades:                     # «Por qué Harley pierde ventas y quién se lo está comiendo», chinas contra japonesas
+    format: rivalidad
+  por-que:                         # «Por qué las motos japonesas ya casi no se hacen en Japón»
+    format: explicativo
+  dinero:                          # «Por qué una Honda 125 y una Italika no cuestan lo mismo»
+    format: cuanto-cuesta
+  lista:                           # «Las marcas de motos que quebraron y sus lecciones»
+    format: ranking

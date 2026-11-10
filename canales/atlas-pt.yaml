@@ -1,0 +1,52 @@
+# «Atlas» (português do Brasil): explicaciones de mapas sobre un globo dibujado en código, como atlas-es (página de
+# papel, globo que gira de frase en frase, rutas, círculos de alcance, tarjetas, satélite, banderas; pipeline/atlas.py →
+# Atlas.tsx). Sin metraje: va por el carril rápido de la cola. Su voz: estudio → Ajustes → Voces por canal → atlas-pt.
+
+video:
+  fps: 30
+
+visual:
+  style: atlas
+
+brand:
+  name: Atlas
+  accent: "#B8322A"
+  motion: clean
+  endStyle: paper                  # la pantalla final en papel, como el resto del vídeo
+
+align:
+  language: pt
+
+localize: |                       # cómo adaptar cada guion al público de Brasil
+  Público de Brasil: reais, quilômetros, comparações com lugares que todo brasileiro conhece (a Amazônia, a BR-163,
+  São Paulo–Rio). Tom: próximo e com ritmo, como se fala no Brasil.
+
+factcheck:
+  block_voice: false               # la verificación avisa (verificacion.md) pero no para la voz
+
+timeline:
+  music_default: intriga
+  music_volume: 0.12
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'um canal do YouTube em português do Brasil de explicações com mapas sobre um globo: por que algo do mundo é como é (rotas que ninguém voa, fronteiras, mares, climas, estradas que não existem, o lugar mais remoto), com cinco motivos por vídeo, dados com fonte, vídeos de 8-10 min'
+  niches: [geografia, aviação, rotas, fronteiras, oceanos, curiosidades do mapa]
+  words: 1200
+  # canales del mismo formato: el radar trae cada día sus vídeos que más superan a su canal → ideas para el piloto
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions", "@PolyMatter"]
+
+lab:
+  queries: ["por que os aviões não voam", "por que ninguém mora", "fronteira mais estranha do mundo", "por que este mapa"]
+
+dubbing:
+  enabled: false
+
+shorts:
+  enabled: false

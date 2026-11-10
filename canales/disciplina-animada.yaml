@@ -1,0 +1,39 @@
+# «Día Uno» (español): cortos animados sobre disciplina, tentación y empezar de nuevo, con un monigote (el formato de
+# Day One Films / Monk Mode Films, pero con historias propias y en español: nada de copiar sus títulos). 2-5 min,
+# pocas frases, música que manda. Todo dibujado en código (pipeline/cine.py → CineScene.tsx).
+
+video:
+  fps: 30
+
+visual:
+  style: cine
+  mode: disciplina
+  mark: hood                       # sudadera con capucha: el chico que se encierra
+  mark_color: "#2c3550"
+  accent: "#ffd400"
+  captions: clave                  # solo las palabras que pesan, cuando se dicen
+
+brand:
+  accent: "#ffd400"
+  motion: clean
+
+align:
+  language: es
+
+timeline:
+  music_default: remontada
+  music_volume: 0.32               # aquí la música manda: más alta que en los documentales
+  duck_db: 8
+  endscreen_seconds: 12
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'un canal de YouTube en español de cortos animados con un monigote sobre disciplina, la tentación del móvil, la comodidad, la soledad y empezar de nuevo: historias propias, emotivas, de 2 a 5 minutos, sin sermones'
+  niches: [disciplina, hábitos, dopamina, soledad, motivación, superación, autocontrol]
+  words: 380
+
+shorts:
+  enabled: false
