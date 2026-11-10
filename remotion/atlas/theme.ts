@@ -3,7 +3,7 @@
  * Único sitio con colores: los componentes leen de aquí, el storyboard sólo nombra `Accent`.
  */
 export type ThemeName = 'paper' | 'night';
-export type Accent = 'danger' | 'data' | 'good' | 'amber';
+export type Accent = 'danger' | 'data' | 'good' | 'amber' | 'ink';
 
 export interface ThemeTokens {
   bg: string;
@@ -38,6 +38,7 @@ export const themes: Record<ThemeName, ThemeTokens> = {
       data: '#2F5673',
       good: '#3D7A5C',
       amber: '#C98A2B',
+      ink: '#2A2118',
     },
   },
   night: {
@@ -57,6 +58,7 @@ export const themes: Record<ThemeName, ThemeTokens> = {
       data: '#EDE6D3',
       good: '#7FB394',
       amber: '#E0A84A',
+      ink: '#EDE6D3',
     },
   },
 };

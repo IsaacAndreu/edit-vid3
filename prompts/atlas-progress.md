@@ -8,7 +8,7 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 | 0 — Cimientos | ✅ completada |
 | 1 — Texto y superposiciones | ✅ completada |
 | 2 — Gráficos sin geografía | ✅ completada |
-| 3 — Datos y mapa de relieve (puerta) | pendiente |
+| 3 — Datos y mapa de relieve (puerta) | ⏸ hecha, esperando la revisión del usuario (puerta) |
 | 4 — Perfiles y rejilla | pendiente |
 | 5 — Globo y terreno 3D | pendiente |
 | 6 — Diagramas | pendiente |
@@ -105,3 +105,44 @@ Storyboard de prueba: `storyboards/test-phase2.json` (6 escenas, 36 s).
 - Icono genérico de avión cenital en `remotion/atlas/icons.tsx` (se reutilizará en mapas).
 
 **Diferencias conocidas**: el avión de la pista no deja la estela de humo del original.
+
+## Integración con el proyecto real (tras fusionar main)
+
+- `templates/atlas` → `remotion/atlas`; `AtlasVideo` registrada en `remotion/Root.tsx` (el Root.tsx de la raíz
+  y `templates/` son el esqueleto antiguo). Fuentes Fraunces e IBM Plex Mono desde `@fontsource` (render sin red).
+- El Atlas automático (`pipeline/atlas.py` → `remotion/components/graphics/Atlas.tsx`) usa ya el aspecto de
+  referencia: fuentes, paleta, tarjetas con doble filete, sello, titular centrado con halo, barras verticales.
+- Vista `"scene"` en `pipeline/atlas.py`: la IA puede pedir dial, compare, density, runway, agenda, recap y cards;
+  `remotion/atlas/embed.tsx` las dibuja con los mismos componentes que `AtlasVideo`. Cifras sólo del guion
+  (`check_scene`). VERSION 21.
+- Marca: nunca MANICULE ni su manecilla (son del canal de referencia).
+
+## Fase 3 — Datos y mapa de relieve
+
+Scripts (`npm run atlas:data -- …`): `region <id>` (Terrarium z7 → textura proyectada día/noche + alturas 16 bits),
+`contour <id> <m>`, `country <nombre>`. Paquete `tibet` (cónica conforme, 5600×3413 px), contorno de 3 000 m
+(≈2,98 M km², una forma con el hueco de Qaidam), silueta de Groenlandia.
+Fórmula Terrarium comprobada en tilezen/joerd `docs/formats.md`; Everest en z12 = 8 749 m (real 8 849 m).
+
+Escena `atlas-relief-map`: textura con cámara por keyframes (geodésica + zoom logarítmico + deriva 3 %),
+siluetas (relleno + contorno, o movida por la esfera a escala real con `moveTo`), rutas que se trazan (rectas o
+de círculo máximo, con avión opcional), puntos (ciudad, aeropuerto, suceso) con nombres que no se pisan,
+etiquetas y flechas. Acento nuevo `ink`.
+
+Storyboard de prueba: `storyboards/test-phase3.json` (5 escenas). Comparativa: `out/stills/test-phase3/cmp3.jpg`.
+
+**Criterios**
+- ✅ Réplicas de `0-21`, `0-24` (Groenlandia a escala: ~0,7 del ancho de la meseta, como el original),
+  `0-44/0-46`, `2-04`, `6-47`; silueta de la meseta, costas y ciudades en su sitio real.
+- ✅ Las rutas se dibujan; la cámara panea por keyframes.
+- ✅ Clip de 15 s (`out/test-phase3-clip.mp4`, sin versionar) sin saltos: la detección de cortes de ffmpeg no encuentra ninguno.
+- Rendimiento: el papel y el grano eran filtros SVG de ruido recalculados por fotograma (~2 s/fotograma sin GPU);
+  ahora usan la tesela `remotion/data/grain.png` como el Atlas automático: texto ~0,45 s y relieve ~0,75 s por
+  fotograma en este contenedor de 4 núcleos (el globo del Atlas automático, >3,6 s).
+
+**Datos no verificados (marcados en pantalla como ILLUSTRATIVE)**: el trazado de las aerovías L888 e Y1 y las
+distancias a los aeropuertos de reserva son aproximados en el storyboard de prueba; para un vídeo real deben salir
+de una fuente (AIP de China). Las coordenadas de ciudades son las reales.
+
+**Pendiente para usar el relieve en el pipeline automático**: el render del pipeline usa `--public-dir=work/<slug>`;
+habrá que copiar el paquete de región a esa carpeta (o servir `public/atlas-data` desde allí).

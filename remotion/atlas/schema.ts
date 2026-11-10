@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 
-export const accentSchema = z.enum(['danger', 'data', 'good', 'amber']);
+export const accentSchema = z.enum(['danger', 'data', 'good', 'amber', 'ink']);
 export type Accent = z.infer<typeof accentSchema>;
 
 export const lonLatSchema = z.tuple([

@@ -1,6 +1,7 @@
 /** Capas globales: fondo papel/noche, viñeta, grano, marca e indicador de capítulos. */
 import type { FC } from 'react';
 import { AbsoluteFill, Img, staticFile, useCurrentFrame } from 'remotion';
+import GRAIN from '../../data/grain.png';
 import { progress } from '../anim';
 import { useAtlasTime, useScene, useTheme } from '../context';
 import { fonts } from '../fonts';
@@ -8,25 +9,14 @@ import type { ThemeName } from '../theme';
 import { LAYOUT, themes } from '../theme';
 import { Mono } from '../ui';
 
-/** Fondo liso + textura de papel muy sutil (estática). */
+/** Fondo liso + textura de papel muy sutil: la misma tesela de grano que el Atlas automático, ampliada y fija. */
 export const Background: FC<{ theme: ThemeName }> = ({ theme }) => {
   const t = themes[theme];
   return (
     <AbsoluteFill style={{ backgroundColor: t.bg }}>
-      <svg width="100%" height="100%" style={{ position: 'absolute', opacity: theme === 'paper' ? 0.3 : 0.35 }}>
-        <filter id={`paper-${theme}`} x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.02" numOctaves={3} seed={7} />
-          <feColorMatrix
-            type="matrix"
-            values={
-              theme === 'paper'
-                ? '0 0 0 0 0.55  0 0 0 0 0.48  0 0 0 0 0.38  0 0 0 0.10 0'
-                : '0 0 0 0 0.02  0 0 0 0 0.05  0 0 0 0 0.08  0 0 0 0.25 0'
-            }
-          />
-        </filter>
-        <rect width="100%" height="100%" filter={`url(#paper-${theme})`} />
-      </svg>
+      <AbsoluteFill
+        style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '1024px 1024px', opacity: theme === 'paper' ? 0.1 : 0.06, mixBlendMode: 'multiply' }}
+      />
       {/* El centro del original es un poco más claro que el token de fondo (bajo el contenido). */}
       <AbsoluteFill
         style={{
@@ -48,24 +38,23 @@ export const Vignette: FC<{ theme: ThemeName }> = ({ theme }) => (
 );
 
 /**
- * Grano fino animado (~4 %). Una textura de ruido fija que salta de posición cada fotograma:
- * evita recalcular el filtro de ruido por fotograma, que es caro.
+ * Grano fino animado (~4 %): una tesela PNG fija que salta de posición cada fotograma. Un filtro de ruido SVG
+ * recalculado por fotograma costaba casi 2 s por fotograma en render sin GPU.
  */
 export const Grain: FC = () => {
   const frame = useCurrentFrame();
   const seed = (frame * 7919) % 997;
-  const dx = (seed * 37) % 256;
-  const dy = (seed * 53) % 256;
   return (
-    <AbsoluteFill style={{ pointerEvents: 'none', opacity: 0.05, mixBlendMode: 'multiply', overflow: 'hidden' }}>
-      <svg width={1920 + 256} height={1080 + 256} style={{ position: 'absolute', left: -dx, top: -dy }}>
-        <filter id="atlas-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves={2} seed={3} stitchTiles="stitch" />
-          <feColorMatrix type="saturate" values="0" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#atlas-grain)" />
-      </svg>
-    </AbsoluteFill>
+    <AbsoluteFill
+      style={{
+        pointerEvents: 'none',
+        opacity: 0.08,
+        mixBlendMode: 'multiply',
+        backgroundImage: `url(${GRAIN})`,
+        backgroundSize: '256px 256px',
+        backgroundPosition: `${(seed * 37) % 256}px ${(seed * 53) % 256}px`,
+      }}
+    />
   );
 };
 
