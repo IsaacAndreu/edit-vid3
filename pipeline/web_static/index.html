@@ -902,16 +902,19 @@ async function newVideo() {
 async function checkHook() {
   const msg = $("#hookmsg"); msg.textContent = "Leyendo el arranque… (~15 s)"; $("#hookbtn").disabled = true;
   try {
-    const r = await post("/api/hook", {title: $("#title").value, script: $("#script").value, channel: $("#channel").value});
+    const sent = $("#script").value;
+    const r = await post("/api/hook", {title: $("#title").value, script: sent, channel: $("#channel").value});
+    window.hookResult = {...r, script: sent};
     msg.textContent = "";
     const cls = r.ok ? "ok" : r.verdict.startsWith("❌") ? "bad" : "";
     $("#hookbox").innerHTML = `<div class="notice ${cls}"><b>${esc(r.verdict)}</b>
       <div class="small" style="margin-top:6px"><b>Lo que promete el título:</b> ${esc(r.promise)}</div>
+      ${(r.rules || []).length ? `<div class="small" style="margin-top:6px">${r.rules.map((x) => `<div>${x.ok ? "✅" : "❌"} ${esc(x.rule)}${x.detail ? ` <span class="muted">— ${esc(x.detail)}</span>` : ""}</div>`).join("")}</div>` : ""}
       ${r.payoffSentence ? `<div class="small"><b>Se cumple por primera vez (≈${Math.round(r.payoffSeconds)} s):</b> «${esc(r.payoffSentence)}»</div>` : ""}
       ${r.strongestSentence ? `<div class="small"><b>Lo más fuerte del guion (≈${Math.round(r.strongestSeconds)} s):</b> «${esc(r.strongestSentence)}»</div>` : ""}
       ${r.problems.length ? `<ul class="small">${r.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
       ${r.newOpening ? `<div class="small" style="margin-top:8px"><b>Apertura propuesta (~15 s):</b></div><blockquote id="newopen" style="margin:6px 0;padding-left:10px;border-left:3px solid var(--accent)">${esc(r.newOpening)}</blockquote>
-        <div class="row"><button onclick="useOpening()">Poner esta apertura al principio del guion</button><button onclick="navigator.clipboard.writeText(document.getElementById('newopen').innerText)">Copiar</button></div>` : ""}
+        <div class="row"><button onclick="useOpening()">${r.scriptWithOpening ? "Cambiar el arranque del guion por esta apertura" : "Poner esta apertura al principio del guion"}</button><button onclick="navigator.clipboard.writeText(document.getElementById('newopen').innerText)">Copiar</button></div>` : ""}
       ${r.tips.length ? `<ul class="small">${r.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
       ${r.topicFit ? `<div class="small" style="margin-top:10px"><b>${({bien: "✅", dudoso: "🟡", mal: "🔴"})[r.topicFit] || "•"} El tema y el título frente a lo que funciona en tu canal:</b> ${esc(r.topicWhy)}</div>
         ${r.lengthNote ? `<div class="small"><b>Duración (~${r.minutes} min):</b> ${esc(r.lengthNote)}</div>` : ""}
@@ -1047,6 +1050,11 @@ async function checkScenes() {
 }
 function useOpening() {
   const box = $("#script"), text = document.getElementById("newopen").innerText.trim();
+  if (window.hookResult && window.hookResult.scriptWithOpening && window.hookResult.script === box.value) {
+    box.value = window.hookResult.scriptWithOpening;          // the old opening sentences go, the new ones in their place
+    $("#hookmsg").textContent = "Arranque cambiado: léelo y vuelve a revisar.";
+    return;
+  }
   if (!box.value.startsWith(text)) box.value = text + "\n\n" + box.value;
   $("#hookmsg").textContent = "Añadida al principio: ajusta el resto del arranque para que no se repita y vuelve a revisar.";
 }
