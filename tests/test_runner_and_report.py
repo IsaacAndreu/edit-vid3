@@ -206,6 +206,39 @@ class RenderOnlyTests(unittest.TestCase):
             render_only(self.output, skip_preflight=True)
 
 
+class RenderCommandTests(unittest.TestCase):
+    def test_concurrency_and_browser_are_optional_flags(self) -> None:
+        from pipeline.render import render_command
+
+        with patch.dict("os.environ", {"REMOTION_BROWSER_EXECUTABLE": ""}):
+            plain = render_command(Path("v.props.json"), Path("v.mp4"))
+            tuned = render_command(Path("v.props.json"), Path("v.mp4"), concurrency="75%")
+        self.assertEqual(plain[1:5], ["remotion", "render", "src/index.ts", "YoutubeVideo"])
+        self.assertNotIn("--concurrency", plain)
+        self.assertNotIn("--browser-executable", plain)
+        self.assertEqual(tuned[tuned.index("--concurrency") + 1], "75%")
+
+        with patch.dict("os.environ", {"REMOTION_BROWSER_EXECUTABLE": "/opt/chrome"}):
+            custom = render_command(Path("v.props.json"), Path("v.mp4"))
+        self.assertEqual(custom[custom.index("--browser-executable") + 1], "/opt/chrome")
+
+    def test_render_failure_says_how_to_retry_only_the_render(self) -> None:
+        import subprocess
+
+        from pipeline.render import RenderError, render_remotion
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = make_settings(Path(temp_dir))
+            with patch(
+                "pipeline.render.subprocess.run", side_effect=subprocess.CalledProcessError(1, ["npx"])
+            ):
+                with self.assertRaisesRegex(RenderError, "python main.py render"):
+                    render_remotion(Path("v.props.json"), Path("v.mp4"), settings)
+            with patch("pipeline.render.subprocess.run", side_effect=FileNotFoundError("npx")):
+                with self.assertRaisesRegex(RenderError, "npm install"):
+                    render_remotion(Path("v.props.json"), Path("v.mp4"), settings)
+
+
 class ReportTests(unittest.TestCase):
     def test_report_is_built_from_sidecars_and_escapes_content(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

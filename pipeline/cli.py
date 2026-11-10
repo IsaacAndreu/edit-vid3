@@ -27,6 +27,7 @@ from .postflight import RenderPostflightError
 from .qa import PipelineQualityError
 from .render import studio_command
 from .report import write_report
+from .runlog import log
 from .runner import RunRequest, render_only, resolve_render_target, run_pipeline, sidecar
 from .templates import PROJECT_ROOT
 
@@ -414,10 +415,12 @@ def main(argv: list[str] | None = None) -> int:
         ValueError,
         OSError,
     ) as error:
+        log.debug("El comando %s terminó con error", command, exc_info=True)
         print(f"Error: {error}", file=sys.stderr)
         return 1
     except Exception as error:
         # Network/SDK errors (requests, openai) have no common base with the above.
+        log.debug("El comando %s terminó con un error inesperado", command, exc_info=True)
         print(f"Error inesperado ({type(error).__name__}): {error}", file=sys.stderr)
         print("El detalle completo está en el .log junto a la salida.", file=sys.stderr)
         return 1

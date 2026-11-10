@@ -294,9 +294,8 @@ def select_third_party_clip(
     trace.best_visual_score = ranked[0][1]
     if ranked[0][1] < MIN_VISUAL_SCORE:
         trace.outcome = OUTCOME_BELOW_THRESHOLD
-        log.info(
-            f"Aviso: ningún clip de terceros superó relevancia visual suficiente ({ranked[0][1]:.2f})."
-        )
+        # The per-scene progress line already reports this; keep the detail for the log file.
+        log.debug("Ningún clip de terceros superó la relevancia visual mínima (%.2f).", ranked[0][1])
         return None
 
     selected: tuple[int, float, str] | None = None

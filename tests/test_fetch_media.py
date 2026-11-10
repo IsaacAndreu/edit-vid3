@@ -21,9 +21,13 @@ class _Base(unittest.TestCase):
         self.settings = make_settings(self.root)
         self.assets = assets_dir_for(self.root)
         self.checkpoint = self.root / "out" / "video.media.json"
-        patcher = patch("pipeline.fetch_media.time.sleep")
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for target, value in (
+            ("pipeline.media_stock_phase.time.sleep", None),
+            ("pipeline.media_stock_phase.probe_duration_seconds", 11.64),
+        ):
+            patcher = patch(target, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def run_media(
         self,
@@ -41,7 +45,7 @@ class _Base(unittest.TestCase):
             checkpoint_path=self.checkpoint,
             **option_overrides,  # type: ignore[arg-type]
         )
-        with patch("pipeline.fetch_media.select_third_party_clip", side_effect=selector or FakeSelector()):
+        with patch("pipeline.media_youtube_phase.select_third_party_clip", side_effect=selector or FakeSelector()):
             return fetch_media(
                 scenes,  # type: ignore[arg-type]
                 self.settings,
@@ -109,6 +113,8 @@ class FallbackTests(_Base):
         self.assertTrue(item["mediaRemoteUrl"].startswith("https://videos.pexels.com/"))
         self.assertEqual(item["mediaPhotographer"], "Ana")
         self.assertEqual(pexels.downloads, [item["mediaRemoteUrl"]])
+        # The API said 12 s; the loop in the render must use the measured length.
+        self.assertEqual(item["videoDurationInSeconds"], 11.64)
 
     def test_failed_local_copy_keeps_remote_url(self) -> None:
         pexels = FakePexels(download_error=PexelsError("boom"))
@@ -240,7 +246,7 @@ class ParallelAndHealthTests(_Base):
             return None
 
         scenes = [scene("lower-third", text=f"Escena {index}") for index in range(8)]
-        with patch("pipeline.fetch_media.select_third_party_clip", side_effect=failing_selector):
+        with patch("pipeline.media_youtube_phase.select_third_party_clip", side_effect=failing_selector):
             resolved = fetch_media(
                 scenes,  # type: ignore[arg-type]
                 self.settings,
@@ -267,7 +273,7 @@ class OverrideTests(_Base):
         source = self.root / "plano.mp4"
         source.write_bytes(b"video")
         selector, pexels = FakeSelector(), FakePexels()
-        with patch("pipeline.fetch_media.probe_duration_seconds", return_value=7.5):
+        with patch("pipeline.media_local.probe_duration_seconds", return_value=7.5):
             resolved = self.run_media(
                 [scene("lower-third", mediaOverride=str(source))], selector=selector, pexels=pexels
             )
