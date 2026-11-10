@@ -126,5 +126,92 @@ class ThirdPartyMediaSelectionTests(unittest.TestCase):
         self.assertEqual(len(youtube.download_calls), 1)
 
 
+
+class SelectionRobustnessTests(unittest.TestCase):
+    def _select(self, judge: object, youtube: FakeYouTube, segments: list[ScoredSegment], **extra: object):
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "pipeline.third_party_media.score_candidate_segments", side_effect=[[segment] for segment in segments]
+        ), patch(
+            "pipeline.third_party_media.create_contact_sheet", side_effect=lambda _clip, path, **_kw: path
+        ), patch("pipeline.third_party_media.time.sleep"):
+            return select_third_party_clip(
+                visual_intent="robots assembling cars",
+                keywords=["robot factory"],
+                youtube=youtube,  # type: ignore[arg-type]
+                judge=judge,  # type: ignore[arg-type]
+                assets_dir=Path(temp_dir),
+                **extra,  # type: ignore[arg-type]
+            )
+
+    def test_one_judge_failure_does_not_waste_downloaded_clips(self) -> None:
+        from pipeline.third_party_media import SelectionTrace
+
+        candidate = make_candidate(1)
+
+        class FlakyJudge:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def judge(self, *_args: object) -> list[tuple[int, float, str]]:
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("DeepSeek visual judging failed with HTTP 502.")
+                return [(0, 0.9, "robot arm visible")]
+
+        judge = FlakyJudge()
+        youtube = FakeYouTube([candidate])
+        trace = SelectionTrace()
+        selected = self._select(
+            judge, youtube, [ScoredSegment(candidate, 1, 4, 0.8, "robot assembly")], used_video_ids=set(), trace=trace
+        )
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(judge.calls, 2)
+        self.assertEqual(len(youtube.download_calls), 1)
+        self.assertEqual(trace.outcome, "selected")
+        self.assertTrue(trace.finalists[0]["selected"])
+        self.assertEqual(trace.finalists[0]["visualScore"], 0.9)
+
+    def test_winner_claimed_by_another_scene_falls_to_next_valid_candidate(self) -> None:
+        candidates = [make_candidate(1), make_candidate(2)]
+        used: set[str] = set()
+
+        class RacingJudge:
+            def judge(self, *_args: object) -> list[tuple[int, float, str]]:
+                used.add(candidates[0].video_id)  # another scene takes the best one meanwhile
+                return [(0, 0.95, "best"), (1, 0.7, "good enough")]
+
+        segments = [ScoredSegment(candidate, 1, 4, 0.8, "robot assembly") for candidate in candidates]
+        selected = self._select(RacingJudge(), FakeYouTube(candidates), segments, used_video_ids=used)
+
+        assert selected is not None
+        self.assertEqual(selected.candidate.video_id, candidates[1].video_id)
+
+    def test_excluded_videos_are_never_shortlisted(self) -> None:
+        candidates = [make_candidate(1), make_candidate(2)]
+        youtube = FakeYouTube(candidates)
+        judge = FakeJudge([(0, 0.9, "ok")])
+        segments = [ScoredSegment(candidates[1], 1, 4, 0.8, "robot assembly")]
+        selected = self._select(
+            judge, youtube, segments, used_video_ids=set(), excluded_video_ids={candidates[0].video_id}
+        )
+        assert selected is not None
+        self.assertEqual(selected.candidate.video_id, candidates[1].video_id)
+        self.assertEqual([call[0] for call in youtube.download_calls], [candidates[1].video_id])
+
+    def test_trace_marks_total_search_failure(self) -> None:
+        from pipeline.third_party_media import SelectionTrace
+
+        class DownYouTube(FakeYouTube):
+            def search(self, query: str, *, limit: int) -> list[YouTubeCandidate]:
+                raise RuntimeError("network unreachable")
+
+        trace = SelectionTrace()
+        selected = self._select(FakeJudge([]), DownYouTube([]), [], used_video_ids=set(), trace=trace)
+        self.assertIsNone(selected)
+        self.assertEqual(trace.outcome, "search-failed")
+        self.assertTrue(trace.all_searches_failed)
+        self.assertIn("network unreachable", trace.search_errors[0])
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import json
 import math
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 from .build_props import DEFAULT_ACCENT_COLORS
-from .segment import MAX_WHIP_DURATION_IN_FRAMES, VALID_TEMPLATE_NAMES
+from .cache import atomic_write_json
+from .config import REMOTION_FPS
+from .templates import MEDIA_SHOTS, NUMERIC_VALUE_PATTERN, load_manifest
 from .types import SceneDraft
 
 
-_NUMERIC_PATTERN = re.compile(r"[+-]?\d[\d.,]*(?:\s*[-–—]\s*[+-]?\d[\d.,]*)?(?:\s*[%€$£])?")
+_MANIFEST = load_manifest()
+VALID_TEMPLATE_NAMES = _MANIFEST.valid_template_names
+_NUMERIC_PATTERN = NUMERIC_VALUE_PATTERN
 MAX_THIRD_PARTY_CLIP_SECONDS = 5.0
 
 
@@ -41,7 +43,7 @@ def validate_scene_plan(
     scenes: list[SceneDraft],
     audio_duration_seconds: float,
     *,
-    fps: int = 30,
+    fps: int = REMOTION_FPS,
 ) -> list[QAIssue]:
     """Validate render-critical invariants before Remotion is started."""
 
@@ -62,6 +64,7 @@ def validate_scene_plan(
 
     for index, scene in enumerate(scenes, start=1):
         template_name = str(scene.get("templateName") or "")
+        spec = _MANIFEST.get(template_name)
         duration_in_frames = int(scene.get("durationInFrames", 0))
         text = str(scene.get("text") or "").strip()
 
@@ -78,22 +81,33 @@ def validate_scene_plan(
         if not str(effective_accent_color).strip():
             issues.append(_issue("error", "missing-accent", "La escena no tiene accentColor.", index))
 
-        if template_name == "whip-transition" and duration_in_frames > MAX_WHIP_DURATION_IN_FRAMES:
+        max_frames = spec.max_duration_in_frames if spec else None
+        if max_frames is not None and duration_in_frames > max_frames:
             issues.append(
                 _issue(
                     "error",
                     "long-whip",
-                    f"WhipTransition de {duration_in_frames} frames; el máximo permitido es {MAX_WHIP_DURATION_IN_FRAMES}.",
+                    f"{template_name} de {duration_in_frames} frames; el máximo permitido es {max_frames}.",
                     index,
                 )
             )
 
-        if template_name in {"number-callout", "stat-overlay"} and not _NUMERIC_PATTERN.search(text):
+        if spec and spec.requires_number and not _NUMERIC_PATTERN.search(text):
             issues.append(
                 _issue(
                     "error",
                     "numeric-template-without-number",
                     f"{template_name} no puede recibir una frase sin cifra: {text!r}.",
+                    index,
+                )
+            )
+
+        if spec and spec.requires_field and not scene.get(spec.requires_field):
+            issues.append(
+                _issue(
+                    "error",
+                    "missing-structured-data",
+                    f"{template_name} necesita el campo {spec.requires_field}.",
                     index,
                 )
             )
@@ -108,10 +122,14 @@ def validate_scene_plan(
                 )
             )
 
-        if template_name == "kenburns-image" and not scene.get("imageUrl"):
-            issues.append(_issue("error", "missing-image", "KenBurnsImage necesita imageUrl.", index))
+        # Root.tsx plays a video background when kenburns-image has videoUrl and
+        # no imageUrl (YouTube clip or Pexels video), so either one is enough.
+        if template_name == "kenburns-image" and not (scene.get("imageUrl") or scene.get("videoUrl")):
+            issues.append(
+                _issue("error", "missing-image", "KenBurnsImage necesita imageUrl o videoUrl.", index)
+            )
 
-        if template_name in {"multi-shot-montage", "news-image-montage"}:
+        if spec and spec.media == MEDIA_SHOTS:
             shots = scene.get("shots")
             if not isinstance(shots, list) or not shots:
                 issues.append(_issue("error", "missing-shots", f"{template_name} necesita shots.", index))
@@ -175,7 +193,7 @@ def _warn_if_video_is_short(
     scene_duration_in_frames: int,
     scene_index: int,
     media_label: str,
-    fps: int = 30,
+    fps: int = REMOTION_FPS,
 ) -> None:
     duration = media.get("videoDurationInSeconds")
     if duration is None:
@@ -196,7 +214,7 @@ def _warn_if_video_is_short(
             _issue(
                 "warning",
                 "short-third-party-video" if is_youtube else "short-video-looped",
-                f"{media_label} dura {duration_seconds:.2f}s y la escena {scene_duration_in_frames / 30:.2f}s; {ending}.",
+                f"{media_label} dura {duration_seconds:.2f}s y la escena {scene_duration_in_frames / fps:.2f}s; {ending}.",
                 scene_index,
             )
         )
@@ -207,11 +225,16 @@ def write_qa_report(path: Path, issues: list[QAIssue]) -> None:
         "status": "error" if any(issue.level == "error" for issue in issues) else "ok",
         "issues": [asdict(issue) for issue in issues],
     }
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_json(path, payload)
 
 
 def enforce_qa(issues: list[QAIssue]) -> None:
     errors = [issue for issue in issues if issue.level == "error"]
     if errors:
-        details = " ".join(f"[QA:{issue.code}] {issue.message}" for issue in errors)
-        raise PipelineQualityError(f"QA pre-render bloqueada: {details}")
+        lines = []
+        for issue in errors:
+            where = f"escena {issue.scene_index}: " if issue.scene_index is not None else ""
+            lines.append(f"  - {where}[QA:{issue.code}] {issue.message}")
+        raise PipelineQualityError(
+            f"QA pre-render bloqueada por {len(errors)} error(es):\n" + "\n".join(lines)
+        )

@@ -12,6 +12,8 @@ from pathlib import Path
 import requests
 
 from .clients.youtube_client import YouTubeCandidate
+from .media_tools import MediaToolError, probe_duration_seconds
+from .timing import METRICS
 
 
 @dataclass(frozen=True)
@@ -194,25 +196,10 @@ def create_contact_sheet(
         raise ValueError("The contact-sheet output path must differ from the clip path.")
 
     try:
-        probe = subprocess.run(
-            [
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "json", str(clip_path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError("ffprobe was not found; install ffmpeg/ffprobe and add it to PATH.") from exc
-    if probe.returncode != 0:
-        detail = (probe.stderr or "").strip()[:400]
-        raise RuntimeError(f"Could not read clip duration with ffprobe. {detail}".strip())
-    try:
-        duration = float(json.loads(probe.stdout)["format"]["duration"])
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeError("ffprobe returned no valid clip duration.") from exc
-    if not math.isfinite(duration) or duration <= 0:
+        duration = probe_duration_seconds(clip_path)
+    except MediaToolError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if duration <= 0:
         raise RuntimeError("ffprobe returned a non-positive clip duration.")
 
     columns = math.ceil(math.sqrt(frame_count))
@@ -346,6 +333,7 @@ class DeepSeekVisualJudge:
                 }
             },
         }
+        METRICS.count("deepseek.vision_calls")
         try:
             response = requests.post(
                 f"{self._base_url}/v1/responses",
@@ -361,7 +349,14 @@ class DeepSeekVisualJudge:
                 "DeepSeek visual judging request failed; check connectivity, credentials, and model availability."
             ) from None
         if response.status_code >= 400:
-            raise RuntimeError(f"DeepSeek visual judging failed with HTTP {response.status_code}.")
+            # The body explains quota/model/key problems; it never echoes the request headers.
+            body = " ".join(str(getattr(response, "text", "") or "").split())[:240]
+            if self._api_key and self._api_key in body:
+                body = body.replace(self._api_key, "***")
+            detail = f" {body}" if body else ""
+            raise RuntimeError(
+                f"DeepSeek visual judging failed with HTTP {response.status_code}.{detail}"
+            )
         try:
             response_payload = response.json()
         except (ValueError, json.JSONDecodeError) as exc:

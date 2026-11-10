@@ -1,0 +1,123 @@
+{
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "defaultTemplateBySceneType": {
+    "hook": "kinetic-text-hook",
+    "narrative": "kenburns-image",
+    "stat": "number-callout",
+    "transition": "title-card",
+    "avatar": "placeholder"
+  },
+  "templates": {
+    "kinetic-text-hook": {
+      "sceneTypes": ["hook"],
+      "media": "single",
+      "background": true,
+      "thirdParty": true,
+      "preferVideo": true,
+      "llm": true
+    },
+    "kenburns-image": {
+      "sceneTypes": ["narrative"],
+      "media": "single",
+      "background": false,
+      "thirdParty": true,
+      "preferVideo": false,
+      "llm": true
+    },
+    "lower-third": {
+      "sceneTypes": ["narrative"],
+      "media": "single",
+      "background": true,
+      "thirdParty": true,
+      "preferVideo": true,
+      "llm": true
+    },
+    "multi-shot-montage": {
+      "sceneTypes": ["narrative"],
+      "media": "shots",
+      "background": false,
+      "thirdParty": true,
+      "preferVideo": false,
+      "llm": true
+    },
+    "news-image-montage": {
+      "sceneTypes": ["narrative"],
+      "media": "shots",
+      "background": false,
+      "thirdParty": true,
+      "preferVideo": true,
+      "llm": true
+    },
+    "number-callout": {
+      "sceneTypes": ["stat"],
+      "media": "single",
+      "background": false,
+      "thirdParty": true,
+      "preferVideo": true,
+      "requiresNumber": true,
+      "llm": true
+    },
+    "stat-overlay": {
+      "sceneTypes": ["stat"],
+      "media": "single",
+      "background": true,
+      "thirdParty": true,
+      "preferVideo": true,
+      "requiresNumber": true,
+      "llm": true
+    },
+    "blueprint-data-panel": {
+      "sceneTypes": ["stat"],
+      "media": "none",
+      "background": false,
+      "thirdParty": false,
+      "preferVideo": false,
+      "llm": true
+    },
+    "timeline-graphic": {
+      "sceneTypes": ["narrative", "stat"],
+      "media": "none",
+      "background": false,
+      "thirdParty": false,
+      "preferVideo": false,
+      "requiresField": "timelinePoints",
+      "llm": true
+    },
+    "comparison-panel": {
+      "sceneTypes": ["narrative", "stat"],
+      "media": "none",
+      "background": false,
+      "thirdParty": false,
+      "preferVideo": false,
+      "requiresField": "comparisonColumns",
+      "llm": true
+    },
+    "title-card": {
+      "sceneTypes": ["hook", "transition"],
+      "media": "none",
+      "background": false,
+      "thirdParty": false,
+      "preferVideo": false,
+      "llm": true
+    },
+    "whip-transition": {
+      "sceneTypes": ["transition"],
+      "media": "none",
+      "background": false,
+      "thirdParty": false,
+      "preferVideo": false,
+      "maxDurationInFrames": 10,
+      "llm": true
+    },
+    "placeholder": {
+      "sceneTypes": [],
+      "media": "none",
+      "background": false,
+      "thirdParty": false,
+      "preferVideo": false,
+      "llm": false
+    }
+  }
+}

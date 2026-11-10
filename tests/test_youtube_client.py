@@ -70,7 +70,7 @@ class YouTubeClientTests(unittest.TestCase):
         ]
         search_ydl = FakeYoutubeDL({}, entries)
         subtitle_ydl = FakeYoutubeDL({"outtmpl": "%(id)s.%(ext)s"})
-        client = YouTubeClient()
+        client = YouTubeClient(single_pass_subtitles=False)
         created: list[FakeYoutubeDL] = []
 
         def make_ydl(options: dict) -> FakeYoutubeDL:
@@ -103,7 +103,7 @@ class YouTubeClientTests(unittest.TestCase):
             client.search("query", limit=6)
 
     def test_search_caches_subtitles_for_repeated_video_results(self) -> None:
-        client = YouTubeClient()
+        client = YouTubeClient(single_pass_subtitles=False)
         entry = {
             "id": VIDEO_ID,
             "title": "Example",

@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from .cache import atomic_write_json
+from .config import REMOTION_FPS
 from .types import SceneDraft
 
 
-def write_timeline_manifest(scenes: list[SceneDraft], output_path: Path) -> None:
+def write_timeline_manifest(
+    scenes: list[SceneDraft],
+    output_path: Path,
+    *,
+    fps: int = REMOTION_FPS,
+) -> None:
     """Write scene markers that can be compared with YouTube retention later."""
 
     cursor_frames = 0
     markers: list[dict[str, Any]] = []
     for index, scene in enumerate(scenes, start=1):
         duration_in_frames = int(scene.get("durationInFrames", 0))
-        start_seconds = cursor_frames / 30
-        end_seconds = (cursor_frames + duration_in_frames) / 30
+        start_seconds = cursor_frames / fps
+        end_seconds = (cursor_frames + duration_in_frames) / fps
         marker = {
             "sceneIndex": index,
             "startSeconds": round(start_seconds, 3),
             "endSeconds": round(end_seconds, 3),
-            "durationSeconds": round(duration_in_frames / 30, 3),
+            "durationSeconds": round(duration_in_frames / fps, 3),
             "templateName": scene.get("templateName"),
             "sceneType": scene.get("sceneType"),
             "text": scene.get("text", ""),
@@ -43,6 +49,13 @@ def write_timeline_manifest(scenes: list[SceneDraft], output_path: Path) -> None
             "mediaVisualScore",
             "mediaSelectionReason",
             "mediaTranscriptExcerpt",
+            "mediaVideoId",
+            "mediaContactSheet",
+            "mediaRemoteUrl",
+            "mediaThumbnailUrl",
+            "mediaSelectionTrace",
+            "imageUrl",
+            "videoUrl",
             "visualIntent",
             "mustContain",
             "avoid",
@@ -53,9 +66,7 @@ def write_timeline_manifest(scenes: list[SceneDraft], output_path: Path) -> None
         markers.append(marker)
         cursor_frames += duration_in_frames
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps({"fps": 30, "totalDurationSeconds": round(cursor_frames / 30, 3), "scenes": markers}, ensure_ascii=False, indent=2)
-        + "\n",
-        encoding="utf-8",
+    atomic_write_json(
+        output_path,
+        {"fps": fps, "totalDurationSeconds": round(cursor_frames / fps, 3), "scenes": markers},
     )

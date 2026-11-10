@@ -42,6 +42,12 @@ class SceneDraft(TypedDict, total=False):
     mediaVisualScore: float
     mediaSelectionReason: str
     mediaTranscriptExcerpt: str
+    mediaVideoId: str
+    mediaContactSheet: str
+    mediaRemoteUrl: str
+    mediaThumbnailUrl: str
+    mediaSelectionTrace: list[dict[str, Any]]
+    mediaOverride: str
     durationInFrames: int
     accentColor: str
     sceneType: SceneType

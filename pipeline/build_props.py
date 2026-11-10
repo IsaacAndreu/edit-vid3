@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from .cache import atomic_write_json
 from .types import SceneDraft
 
 
@@ -48,6 +48,8 @@ def _scene_props(scene: SceneDraft) -> dict[str, Any]:
         "mediaVisualScore",
         "mediaSelectionReason",
         "mediaTranscriptExcerpt",
+        "mediaVideoId",
+        "mediaRemoteUrl",
         "keywords",
         "shots",
         "timelinePoints",
@@ -69,6 +71,5 @@ def build_props(
     if audio_url:
         props["audioUrl"] = audio_url
     if output_path:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(props, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        atomic_write_json(output_path, props)
     return props

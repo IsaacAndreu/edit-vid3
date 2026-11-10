@@ -6,6 +6,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .cache import atomic_write_json
+from .templates import load_manifest
+
 
 class RenderPostflightError(RuntimeError):
     """Raised when a rendered file fails the final technical checks."""
@@ -93,7 +96,8 @@ def inspect_render(output_path: Path, expected_duration_seconds: float) -> list[
     if video is None:
         issues.append({"code": "missing-video", "message": "El render no contiene stream de vídeo."})
     else:
-        if video.get("width") != 1920 or video.get("height") != 1080:
+        manifest = load_manifest()
+        if video.get("width") != manifest.width or video.get("height") != manifest.height:
             issues.append(
                 {
                     "code": "invalid-resolution",
@@ -123,10 +127,7 @@ def inspect_render(output_path: Path, expected_duration_seconds: float) -> list[
 
 
 def write_postflight_report(path: Path, issues: list[dict[str, Any]]) -> None:
-    path.write_text(
-        json.dumps({"status": "error" if issues else "ok", "issues": issues}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, {"status": "error" if issues else "ok", "issues": issues})
 
 
 def enforce_postflight(issues: list[dict[str, Any]]) -> None:

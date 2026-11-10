@@ -3,13 +3,17 @@ from __future__ import annotations
 import json
 from typing import Any, Sequence
 
-from openai import OpenAI
-
 from ..config import Settings
+from ..templates import load_manifest
+from ..timing import METRICS
 from ..types import WordTimestamp
 
 
-SEGMENTATION_SYSTEM_PROMPT = """
+# Bump when the prompt contract changes in a way the text itself does not capture.
+SEGMENTATION_PROMPT_VERSION = "2"
+SEGMENTATION_MAX_TOKENS = 16000
+
+_SEGMENTATION_SYSTEM_PROMPT_TEMPLATE = """
 Eres un servicio de segmentación para un pipeline de vídeo. Devuelve únicamente
 JSON válido, sin Markdown ni texto antes o después del objeto JSON.
 
@@ -24,7 +28,7 @@ Devuelve exactamente esta forma:
       "avoid": ["presentador", "logo", "intro"],
       "preferredShot": "wide | medium | close-up | action | archive",
       "sceneType": "hook | narrative | stat | transition",
-      "templateName": "kinetic-text-hook | kenburns-image | lower-third | multi-shot-montage | news-image-montage | number-callout | stat-overlay | blueprint-data-panel | timeline-graphic | comparison-panel | title-card | whip-transition",
+      "templateName": "__TEMPLATE_NAMES__",
       "start_word_index": 0,
       "end_word_index": 10,
       "timelinePoints": [{"label": "2008", "value": "...", "position": 0.0}],
@@ -74,8 +78,16 @@ anterior y la última termina en la última palabra. No resumas ni saltees bloqu
 de narración para reducir el número de escenas; apunta a bloques de 5-15 segundos.
 """.strip()
 
+# The template list comes from templates/manifest.json so the prompt, the
+# validator and the Remotion registry can never drift apart.
+SEGMENTATION_SYSTEM_PROMPT = _SEGMENTATION_SYSTEM_PROMPT_TEMPLATE.replace(
+    "__TEMPLATE_NAMES__", " | ".join(load_manifest().llm_template_names)
+)
+
 
 def _timed_words_json(words: Sequence[WordTimestamp]) -> str:
+    """Legacy payload: one object per word with index, word, start and end."""
+
     return json.dumps(
         [
             {"index": index, "word": word["word"], "start": word["start"], "end": word["end"]}
@@ -85,10 +97,57 @@ def _timed_words_json(words: Sequence[WordTimestamp]) -> str:
     )
 
 
+def _compact_words_json(words: Sequence[WordTimestamp]) -> str:
+    """Compact payload: ``[index, word, start]`` per word (about a third of the size)."""
+
+    return json.dumps(
+        [[index, word["word"], round(float(word["start"]), 2)] for index, word in enumerate(words)],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def build_segmentation_user_prompt(
+    script_text: str,
+    words: Sequence[WordTimestamp],
+    *,
+    words_format: str = "compact",
+) -> str:
+    header = (
+        "Segmenta el siguiente guion. Responde en JSON siguiendo exactamente el esquema indicado.\n\n"
+        f"GUION:\n{script_text.strip()}\n\n"
+    )
+    if words_format == "full":
+        return header + f"PALABRAS CON TIMESTAMP:\n{_timed_words_json(words)}"
+    audio_end = float(words[-1]["end"]) if words else 0.0
+    return header + (
+        "PALABRAS CON TIMESTAMP (cada elemento es [índice, palabra, segundo_de_inicio]; "
+        f"la última palabra termina en el segundo {audio_end:.2f}):\n{_compact_words_json(words)}"
+    )
+
+
+def segmentation_cache_fingerprint(settings: Settings) -> str:
+    """Everything, besides script and words, that changes the model's answer."""
+
+    return "|".join(
+        [
+            SEGMENTATION_PROMPT_VERSION,
+            settings.llm_model,
+            settings.segment_words_format,
+            str(SEGMENTATION_MAX_TOKENS),
+            SEGMENTATION_SYSTEM_PROMPT,
+        ]
+    )
+
+
 class DeepSeekClient:
     def __init__(self, settings: Settings) -> None:
+        # Imported lazily so QA, tests and `doctor` work without the SDK loaded.
+        from openai import OpenAI
+
         self._client = OpenAI(api_key=settings.llm_api_key, base_url=settings.deepseek_base_url)
         self._model = settings.llm_model
+        self._words_format = settings.segment_words_format
 
     def segment_script(
         self,
@@ -100,12 +159,11 @@ class DeepSeekClient:
         if not words:
             raise ValueError("No hay timestamps de palabras para segmentar el guion.")
 
-        user_prompt = (
-            "Segmenta el siguiente guion. Responde en JSON siguiendo exactamente el esquema indicado.\n\n"
-            f"GUION:\n{script_text.strip()}\n\n"
-            f"PALABRAS CON TIMESTAMP:\n{_timed_words_json(words)}"
+        user_prompt = build_segmentation_user_prompt(
+            script_text, words, words_format=self._words_format
         )
 
+        METRICS.count("deepseek.segmentation_calls")
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -116,7 +174,7 @@ class DeepSeekClient:
             temperature=0,
             # A full 8-9 minute narration can require dozens of scene objects.
             # This is an output cap for this request, not an account quota.
-            max_tokens=16000,
+            max_tokens=SEGMENTATION_MAX_TOKENS,
             # DeepSeek V4 enables thinking by default. Disable it explicitly
             # because this call only needs fast structured JSON output.
             extra_body={"thinking": {"type": "disabled"}},
@@ -124,7 +182,12 @@ class DeepSeekClient:
 
         choice = response.choices[0]
         if choice.finish_reason == "length":
-            raise RuntimeError("DeepSeek truncó la segmentación; aumenta max_tokens o reduce el guion.")
+            raise RuntimeError(
+                "DeepSeek truncó la segmentación al llegar a "
+                f"{SEGMENTATION_MAX_TOKENS} tokens de salida. Divide el guion en dos vídeos o sube "
+                "SEGMENTATION_MAX_TOKENS en pipeline/clients/deepseek_client.py. "
+                "La transcripción ya está en caché: relanzar no vuelve a pagar Whisper."
+            )
 
         content = choice.message.content
         if not content:

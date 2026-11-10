@@ -1,68 +1,34 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from typing import Any
 
-from .clients.deepseek_client import segment_with_deepseek
+from .cache import JsonCache, sha256_text
+from .clients.deepseek_client import segmentation_cache_fingerprint, segment_with_deepseek
 from .config import REMOTION_FPS, Settings
+from .runlog import log
+from .templates import NUMERIC_VALUE_PATTERN, load_manifest
+from .timing import METRICS
 from .types import SceneDraft, SceneType, Transcript
 
 
+_MANIFEST = load_manifest()
 VALID_SCENE_TYPES: set[str] = {"hook", "narrative", "stat", "transition"}
-VALID_TEMPLATES_BY_TYPE: dict[str, set[str]] = {
-    "hook": {"kinetic-text-hook", "title-card"},
-    "narrative": {
-        "kenburns-image",
-        "lower-third",
-        "multi-shot-montage",
-        "news-image-montage",
-        "timeline-graphic",
-        "comparison-panel",
-    },
-    "stat": {
-        "number-callout",
-        "stat-overlay",
-        "blueprint-data-panel",
-        "timeline-graphic",
-        "comparison-panel",
-    },
-    "transition": {"title-card", "whip-transition"},
-}
-
-VALID_TEMPLATE_NAMES: set[str] = {
-    "kinetic-text-hook",
-    "kenburns-image",
-    "number-callout",
-    "stat-overlay",
-    "blueprint-data-panel",
-    "title-card",
-    "whip-transition",
-    "lower-third",
-    "multi-shot-montage",
-    "news-image-montage",
-    "timeline-graphic",
-    "comparison-panel",
-}
-DEFAULT_TEMPLATE_BY_TYPE: dict[SceneType, str] = {
-    "hook": "kinetic-text-hook",
-    "narrative": "kenburns-image",
-    "stat": "number-callout",
-    "transition": "title-card",
-    # AvatarScene is not present in the checked-out registry yet.
-    "avatar": "placeholder",
-}
+VALID_TEMPLATES_BY_TYPE: dict[str, set[str]] = _MANIFEST.templates_by_scene_type
+VALID_TEMPLATE_NAMES: set[str] = _MANIFEST.valid_template_names
+# AvatarScene is not present in the registry yet, so "avatar" maps to the placeholder.
+DEFAULT_TEMPLATE_BY_TYPE: dict[SceneType, str] = dict(_MANIFEST.default_by_scene_type)  # type: ignore[arg-type]
 
 MAX_VISUAL_TEXT_WORDS = 10
-MAX_WHIP_DURATION_IN_FRAMES = 10
+MAX_WHIP_DURATION_IN_FRAMES = _MANIFEST.templates["whip-transition"].max_duration_in_frames or 10
 LOWER_THIRD_STOPWORDS = {
     "a", "al", "cada", "como", "con", "de", "del", "el", "en", "es",
     "la", "las", "los", "más", "para", "por", "que", "se", "una", "un", "y",
     "pero", "tienes", "luego", "solo", "si", "también", "porque", "puede", "eso", "lo",
 }
-STAT_VALUE_PATTERN = re.compile(
-    r"[+-]?\d[\d.,]*(?:\s*[-–—]\s*[+-]?\d[\d.,]*)?(?:\s*[%€$£])?"
-)
+STAT_VALUE_PATTERN = NUMERIC_VALUE_PATTERN
 
 
 def _scene_type(value: Any) -> SceneType:
@@ -234,15 +200,45 @@ def _normalize_timeline(scenes: list[SceneDraft], audio_duration_seconds: float,
         cursor_frame = target_frame
 
 
+def _raw_scenes(
+    script_text: str,
+    transcript: Transcript,
+    settings: Settings,
+    cache: JsonCache | None,
+) -> list[dict[str, Any]]:
+    """Ask DeepSeek for the scene plan, reusing the stored answer for identical inputs."""
+
+    words = transcript["words"]
+    if cache is None:
+        return segment_with_deepseek(script_text, words, settings)
+
+    key = sha256_text(
+        script_text.strip(),
+        json.dumps(words, ensure_ascii=False, sort_keys=True),
+        segmentation_cache_fingerprint(settings),
+    )
+    cached = cache.get("segmentation", key)
+    if isinstance(cached, dict) and isinstance(cached.get("scenes"), list) and cached["scenes"]:
+        METRICS.count("segmentation.cache_hits")
+        log.info("   Segmentación reutilizada de la caché (sin llamada a DeepSeek).")
+        return [scene for scene in cached["scenes"] if isinstance(scene, dict)]
+
+    raw_scenes = segment_with_deepseek(script_text, words, settings)
+    if raw_scenes:
+        cache.put("segmentation", key, {"scenes": raw_scenes})
+    return raw_scenes
+
+
 def segment_script(
     script_text: str,
     transcript: Transcript,
     settings: Settings,
     *,
     fps: int = REMOTION_FPS,
+    cache: JsonCache | None = None,
 ) -> list[SceneDraft]:
     words = transcript["words"]
-    raw_scenes = segment_with_deepseek(script_text, words, settings)
+    raw_scenes = _raw_scenes(script_text, transcript, settings, cache)
     if not raw_scenes:
         raise RuntimeError("DeepSeek no devolvió escenas.")
 
