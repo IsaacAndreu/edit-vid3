@@ -99,7 +99,8 @@ export const BarCompareScene: FC = () => {
   const right = scene.side ? 1500 : 1540;
   const y = (v: number) => base - (v / axis.max) * (base - top);
   const n = bars.length;
-  const slot = scene.labels === 'above' ? Math.min(200, (right - left) / (n + 1.6)) : (right - left) / (n + 0.6);
+  // con el nombre encima, cada barra necesita sitio para su rótulo (hasta ~22 caracteres)
+  const slot = scene.labels === 'above' ? Math.min(Math.max(200, 520 - 80 * n), (right - left) / (n + 1.6)) : (right - left) / (n + 0.6);
   const barW = scene.labels === 'above' ? Math.min(100, slot * 0.5) : Math.min(280, slot * 0.62);
   const cx = (i: number) => left + slot * (0.8 + i);
   const axisIn = reveal(time, atOr(undefined, 0.15));

@@ -22,7 +22,7 @@ interface ProfileData {
   samples: [number, number][];
 }
 
-const FT = 3.28084;
+const FT_PER_M = 3.28084;
 const X0 = 300;
 const X1 = 1680;
 const Y0 = 900; // 0 ft
@@ -54,6 +54,10 @@ export const ElevationProfileScene: FC = () => {
   if (!data) return null;
   const [profile] = data;
   const { axis } = scene;
+  // alturas del terreno (metros en los datos) en la unidad del eje
+  const metric = axis.unit === 'm';
+  const FT = metric ? 1 : FT_PER_M;
+  const unitLabel = metric ? 'M' : 'FT';
   const X = (f: number) => X0 + (X1 - X0) * f;
   const Y = (ft: number) => Y0 - ((Y0 - TOP) * Math.min(ft, axis.maxFt * 1.08)) / axis.maxFt;
   const n = profile.samples.length;
@@ -72,7 +76,8 @@ export const ElevationProfileScene: FC = () => {
     const s = progress(time, sec(scene.swap.at), 1.4);
     land = scene.swap.to === 'terrain' ? Math.max(land, s) : land * (1 - s);
   }
-  const seaVisible = 1 - land;
+  const aboutSea = scene.ground === 'sea' || scene.swap?.to === 'sea';
+  const seaVisible = aboutSea ? 1 - land : 0;
 
   // altitud mínima segura escalonada, calculada del perfil
   const msaSteps: { a: number; b: number; ft: number }[] = [];
@@ -130,11 +135,11 @@ export const ElevationProfileScene: FC = () => {
           <g key={ft}>
             {ft > 0 ? <line x1={X0} x2={X1} y1={Y(ft)} y2={Y(ft)} stroke={tokens.inkSoft} strokeOpacity={0.45} strokeWidth={2} strokeDasharray="2 8" /> : null}
             <text x={X0 - 20} y={Y(ft) + 7} textAnchor="end" fontFamily={fonts.mono} fontWeight={500} fontSize={21} letterSpacing={2.5} fill={tokens.inkSoft}>
-              {ft.toLocaleString('en-US')} FT
+              {ft.toLocaleString('en-US')} {unitLabel}
             </text>
-            {axis.km && ft > 0 ? (
+            {axis.km && !metric && ft > 0 ? (
               <text x={X0 - 20} y={Y(ft) + 33} textAnchor="end" fontFamily={fonts.mono} fontSize={16} letterSpacing={2} fill={tokens.inkSoft} opacity={0.8}>
-                {((ft / FT) / 1000).toFixed(1)} KM
+                {((ft / FT_PER_M) / 1000).toFixed(1)} KM
               </text>
             ) : null}
           </g>
@@ -231,9 +236,11 @@ export const ElevationProfileScene: FC = () => {
       <Label x={X0 + 10} y={Y0 + 22} anchor="start" text={scene.ends.left} color={tokens.ink} />
       {middle ? <Label x={(X0 + X1) / 2} y={Y0 + 22} anchor="middle" text={middle} color={tokens.inkSoft} /> : null}
       <Label x={X1} y={Y0 + 22} anchor="end" text={scene.ends.right} color={tokens.ink} />
-      {seaVisible > 0.05 ? (
+      {seaVisible > 0.05 && scene.seaLabel ? (
         <div style={{ position: 'absolute', left: X0, width: X1 - X0, top: Y0 + 14, textAlign: 'center', opacity: seaVisible }}>
-          <span style={{ fontFamily: fonts.serifItalic, fontStyle: 'italic', fontSize: 32, letterSpacing: '0.24em', color: tokens.accents.data }}>open sea</span>
+          <span style={{ fontFamily: fonts.serifItalic, fontStyle: 'italic', fontSize: 32, letterSpacing: '0.24em', color: tokens.accents.data }}>
+            {scene.seaLabel}
+          </span>
         </div>
       ) : null}
       {scene.msa ? (

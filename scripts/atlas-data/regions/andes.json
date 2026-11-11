@@ -1,0 +1,26 @@
+{
+  "id": "andes",
+  "bbox": [
+    [
+      -82,
+      -28
+    ],
+    [
+      -58,
+      -6
+    ]
+  ],
+  "projection": {
+    "type": "conicConformal",
+    "rotate": [
+      70,
+      0
+    ],
+    "parallels": [
+      -24,
+      -10
+    ]
+  },
+  "width": 5600,
+  "zoom": 7
+}

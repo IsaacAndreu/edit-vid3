@@ -13,7 +13,7 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 | 5 — Globo y terreno 3D | ✅ completada |
 | 6 — Diagramas | ✅ completada |
 | 7 — Vídeo de referencia completo | ⏭ la hace el usuario con el programa, fuera de la nube |
-| 8 — Producción de vídeos nuevos | pendiente |
+| 8 — Producción de vídeos nuevos | ✅ completada |
 
 ## Fase 0 — Cimientos
 
@@ -240,3 +240,34 @@ Storyboard: `storyboards/test-phase6.json`. Comparativa: `docs/atlas/fase6.jpg`.
 
 **Diferencias**: la figura del pasajero es más esquemática que la del original; las trayectorias de la cabina son
 líneas discontinuas fijas (el original las anima).
+
+## Fase 8 — Producción de vídeos nuevos
+
+`python main.py --atlas-guion <carpeta> [--atlas-hasta storyboard|stills|render]` (`pipeline/atlas_guion.py`), con
+`materiales/<carpeta>/guion.txt`, `voz.mp3` (opcional) y `escenas.md` (texto libre: la IA escribe el storyboard) o
+`escenas.json` (storyboard ya escrito + `data`):
+1. tiempos de la voz con Whisper; sin voz, borrador mudo con tiempos estimados del guion (2,6 palabras/s + pausas);
+2. storyboard: la IA (DeepSeek por `pipeline/llm.complete_json`, sección `atlas_guion` de la config) recibe el guion,
+   las escenas y el catálogo `docs/atlas-authoring.md`; devuelve `{storyboard, data}`;
+3. validación con el esquema zod y las anclas (`npm run atlas:validate`); los errores vuelven a la IA (2 intentos);
+4. datos: cada elemento de `data` → `npm run atlas:data` (región, contorno, país, perfil, celdas, bloque 3D), con caché;
+5. hoja de contactos (`out/stills/<slug>/contact-sheet.jpg`); 6. render (`out/<slug>/atlas.mp4`, `--gl=swangle`).
+La voz, la transcripción y la duración las pone el pipeline, no la IA.
+
+Catálogo para personas y para la IA: `docs/atlas-authoring.md` (una imagen y un JSON por escena, en
+`docs/atlas/catalogo/`). Tests: `tests/test_atlas_guion.py` (4; incluye el bucle de corrección con el validador real).
+
+**Criterio de aceptación**
+- ✅ Segundo vídeo de otro tema y otra región: `materiales/AtlasAltiplano` (el Altiplano andino, 2 min, 11 escenas:
+  terreno 3D de noche, globo, titular, mapa de relieve con contorno de 3.500 m, perfil Arica–La Paz, barras,
+  densidad del aire, pistas, bloque 3D con umbral, comparación con el Aneto y cierre). Salió del pipeline con
+  `escenas.json` sin tocar componentes para hacerlo. La prueba destapó tres fallos genéricos que se arreglaron:
+  el perfil tenía «open sea» escrito en el código (ahora `seaLabel` del storyboard), sólo admitía pies (ahora
+  `axis.unit: "m"`), y los nombres de barras con rótulo encima se pisaban. También `build-terrain` reventaba la pila
+  con rejillas grandes (`Math.max(...array)`).
+- No se pudo probar aquí la vía `escenas.md` → IA ni la transcripción con voz real: el contenedor no tiene
+  `LLM_API_KEY` ni `OPENAI_API_KEY`. Está cubierta por el test con una IA falsa y el validador real.
+
+Cifras del vídeo de prueba y su origen: Titicaca 3.812 m, aeropuerto de El Alto 4.061 m, Aneto 3.404 m (datos
+públicos conocidos, en el guion); densidad del aire 68 % / 66 % (atmósfera estándar internacional, calculada); la
+distancia Arica–La Paz (318 km) y todas las alturas del terreno, de los datos Terrarium.

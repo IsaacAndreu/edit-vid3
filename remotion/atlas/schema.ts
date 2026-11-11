@@ -319,13 +319,16 @@ export const elevationProfileSceneSchema = z
     type: z.literal('atlas-elevation-profile'),
     /** JSON de build-profile (ruta relativa a public/). */
     profile: z.string(),
-    axis: z.object({ maxFt: z.number().positive(), stepFt: z.number().positive(), km: z.boolean().optional() }).strict(),
+    /** Eje vertical. `unit` 'm' = todas las alturas de la escena (maxFt, stepFt, ft…) en metros; 'ft' (por defecto) en pies. */
+    axis: z.object({ maxFt: z.number().positive(), stepFt: z.number().positive(), km: z.boolean().optional(), unit: z.enum(['ft', 'm']).optional() }).strict(),
     /** Extremos del eje x y texto central; `{km}` se sustituye por la distancia real del perfil. */
     ends: z.object({ left: z.string(), right: z.string(), middle: z.string().optional() }).strict(),
     /** Terreno del perfil: 'terrain' (datos) o 'sea' (mar abierto); `swap` lo cambia en vivo. */
     ground: z.enum(['terrain', 'sea']),
     groundAt: atSchema.optional(),
     swap: z.object({ to: z.enum(['terrain', 'sea']), at: atSchema, label: z.string().optional() }).strict().optional(),
+    /** Rótulo bajo la línea de mar cuando el terreno es mar abierto («open sea», «mar abierto»). */
+    seaLabel: z.string().optional(),
     flight: z
       .object({
         points: z.array(flightPointSchema).min(2),

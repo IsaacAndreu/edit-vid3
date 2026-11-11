@@ -107,7 +107,7 @@ run(async () => {
     }
     await sharp(rgb, { raw: { width: TW, height: TH, channels: 3 } }).jpeg({ quality: 85, mozjpeg: true }).toFile(join(dir, `tex-${theme}.jpg`));
   }
-  const maxM = Math.max(...heights);
+  const maxM = heights.reduce((m, h) => (h > m ? h : m), 0);
   writeFileSync(join(dir, 'heights.json'), JSON.stringify(heights));
   writeFileSync(
     join(dir, 'meta.json'),

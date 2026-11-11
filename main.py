@@ -64,6 +64,10 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--editor", metavar="SLUG",
                         help="Editor antes del render: ver el montaje, cambiar planos, gráficos y textos, y renderizar "
                              "(http://127.0.0.1:8766). Mejor con el vídeo lanzado antes con --review.")
+    target.add_argument("--atlas-guion", metavar="CARPETA",
+                        help="Atlas desde guion + escenas: materiales/CARPETA/{guion.txt, escenas.md|escenas.json, voz.mp3}.")
+    parser.add_argument("--atlas-hasta", choices=("storyboard", "stills", "render"), default="render",
+                        help="Con --atlas-guion: se detiene tras el storyboard, la hoja de contactos o el render.")
     target.add_argument("--panel", action="store_true",
                         help="Panel web local (outliers, análisis de canales, guardados, ideas) en http://127.0.0.1:8765.")
     parser.add_argument(
@@ -1397,6 +1401,26 @@ def main() -> None:
     args = _parser().parse_args()
     _stop_signals()
     _more_open_files()
+    if args.atlas_guion:
+        from pipeline import atlas_guion
+
+        slug = args.atlas_guion
+
+        def ask(system: str, user: str) -> dict:
+            from pipeline.llm import complete_json
+
+            ctx = RunContext.create(slug, root=PROJECT_ROOT)
+            return complete_json(ctx, stage="atlas_guion", system=system, user=user, section="atlas_guion", max_tokens=16000)
+
+        def transcribe(audio: Path) -> dict:
+            from pipeline.config import load_settings
+            from pipeline.transcribe import transcribe_audio
+
+            return dict(transcribe_audio(audio, load_settings()))
+
+        out = atlas_guion.run(slug, ask=ask, transcribe=transcribe, until=args.atlas_hasta)
+        print(f"Hecho: {out.relative_to(PROJECT_ROOT)}")
+        return
     if args.informe_analisis is not None:
         from pipeline import informe_analisis
 
