@@ -8,7 +8,7 @@ async function route() {
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
   const slow = setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
-    if (!$("#app").firstElementChild) $("#app").innerHTML = '<div class="skel"><div style="width:40%"></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>'; }, 250);
+    if (!$("#app").firstElementChild) $("#app").innerHTML = '<div class="skel"><div></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>'; }, 250);
   try {
     if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
@@ -41,7 +41,7 @@ async function route() {
       if (!window.codeId) window.codeId = s.code.id;
       else if (window.codeId !== s.code.id) { location.reload(); return; }
     }
-    $("#service").textContent = window.partner ? "👤 " + window.partner : s ? (s.paused ? "⏸ en pausa" : s.watching ? "● vigilando" : "") : "";
+    $("#service").textContent = window.partner ? window.partner : s ? (s.paused ? "en pausa" : s.watching ? "vigilando" : "") : "";
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
   } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
   clearTimeout(slow); $("#app").classList.remove("loading");
@@ -74,9 +74,9 @@ async function start() {
     if (spend) spend.lastChild.textContent = "Mi gasto";
     const nav = document.querySelector("header nav");
     nav.querySelectorAll(".sec").forEach((sec) => sec.remove());
-    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>
-      <a href="#/cuenta"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Mi cuenta</a>`);
-    $("#service").textContent = "👤 " + window.partner;
+    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voces</a>
+      <a href="#/cuenta"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Mi cuenta</a>`);
+    $("#service").textContent = window.partner;
   }
   $("#top").classList.remove("hide");
   document.body.classList.add("authed");

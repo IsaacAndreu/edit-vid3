@@ -1,3 +1,8 @@
+// a state mark in a list: the icon with the colour of the state (the label is what a screen reader says)
+const vMark = (cls, name, label) => `<span class="${cls}">${icon(name, label)}</span>`;
+const V_FIT = {bien: vMark("t-ok", "check", "Bien"), dudoso: vMark("t-warn", "alert", "Dudoso"), regular: vMark("t-warn", "alert", "Regular"),
+  mal: vMark("t-bad", "x", "Mal"), no: vMark("t-bad", "x", "No")};
+
 async function newVideo() {
   window.opening = null; window.openings = [];
   data = data || await api("/api/overview");
@@ -6,49 +11,74 @@ async function newVideo() {
   window.prefill = pre;
   const idea = pre && pre.idea;
   $("#app").innerHTML = `<h1>Nuevo vídeo</h1>
-    ${idea ? `<div class="notice"><div class="row" style="justify-content:space-between"><b>Idea: ${esc(idea.title)}</b>
+    ${idea ? `<div class="notice"><div class="row between"><b>Idea: ${esc(idea.title)}</b>
         <button onclick="window.prefill=null;try{sessionStorage.removeItem('prefill')}catch(e){};route()">Quitar idea</button></div>
       <div class="small">${esc(idea.angle || "")}</div>${idea.hook ? `<div class="small"><b>Gancho:</b> ${esc(idea.hook)}</div>` : ""}
       ${idea.outline && idea.outline.length ? `<ol class="small">${idea.outline.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
       ${idea.research ? `<div class="small muted"><b>Comprobar antes:</b> ${esc(idea.research)}</div>` : ""}
-      <div class="small muted" style="margin-top:6px">Se guarda como idea.md junto al guion. Escribe el guion con este esquema y graba la voz.</div></div>` : ""}
+      <div class="small muted mt-2">Se guarda como idea.md junto al guion. Escribe el guion con este esquema y graba la voz.</div></div>` : ""}
     <div class="card">
-      <div class="two">
-        <div><label>Canal <a class="small" href="#/canal-nuevo" style="font-weight:400">+ nuevo canal</a></label><select id="channel">${channelOptions(data)}</select></div>
-        <div><label>Nombre <span class="muted">(sin espacios: avion2, olga-korbut…)</span></label><input id="name" placeholder="nombre-del-video"></div>
+      <div class="fset"><div class="legend">Vídeo</div>
+        <div class="two">
+          ${field("Canal", `<select id="channel">${channelOptions(data)}</select>`, `<a href="#/canal-nuevo">+ nuevo canal</a>`, "channel")}
+          ${field("Nombre", `<input id="name" placeholder="nombre-del-video">`, "Sin espacios: avion2, olga-korbut…", "name")}
+        </div>
+        <div class="two">
+          ${field("Formato", `<select id="format"><option value="">Automático según el guion</option>
+            ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select>`, "Si no eliges, lo decide según el guion", "format")}
+          ${field(`Serie <span class="opt">opcional</span>`, `<input id="serie" placeholder="p. ej. fracasos">`, "", "serie")}
+        </div>
+        <div class="two">
+          ${field("Idioma del vídeo", `<select id="language"><option value="es">Español</option><option value="pt">Português (Brasil)</option><option value="en">English</option>
+            <option value="fr">Français</option><option value="it">Italiano</option><option value="de">Deutsch</option></select>`,
+            "El guion ya en ese idioma: se lee con la voz de ese idioma del canal, la de «Doblaje»", "language")}
+          ${field(`Título de trabajo <span class="opt">opcional</span>`, `<input id="title">`, "Los títulos de YouTube se escriben solos", "title")}
+        </div>
       </div>
-      <div class="two">
-        <div><label>Formato <span class="muted">(si no eliges, lo decide según el guion)</span></label><select id="format"><option value="">🤖 Automático según el guion</option>
-          ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select></div>
-        <div><label>Serie <span class="muted">(opcional)</span></label><input id="serie" placeholder="p. ej. fracasos"></div>
+      <div class="fset"><div class="legend">Guion</div>
+        <div class="field"><label for="script">Guion</label>
+          <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
+          <div class="row"><label for="scriptfile" class="help n4">Pégalo o</label><input type="file" id="scriptfile" class="w-auto" accept=".txt,.md"></div></div>
+        ${field(`Lista de escenas <span class="opt">opcional</span>`,
+          `<textarea id="scenelist" class="mid" placeholder="Escena 1 · bloque 1 · ~30 s · tráfico&#10;Qué se ve: …&#10;Momento clave: …"></textarea>`,
+          "Canales de simulación: la escena de cada bloque del guion; el programa la sigue", "scenelist")}
       </div>
-      <label>Idioma del vídeo <span class="muted">(el guion ya en ese idioma: se lee con la voz de ese idioma del canal, la de «Doblaje»)</span></label>
-      <select id="language"><option value="es">Español</option><option value="pt">Português (Brasil)</option><option value="en">English</option>
-        <option value="fr">Français</option><option value="it">Italiano</option><option value="de">Deutsch</option></select>
-      <label>Título de trabajo <span class="muted">(opcional: los títulos de YouTube se escriben solos)</span></label><input id="title">
-      <label>Guion <span class="muted">— pégalo o</span> <input type="file" id="scriptfile" accept=".txt,.md" style="width:auto;display:inline;padding:4px"></label>
-      <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
-      <label>Lista de escenas <span class="muted">(opcional, canales de simulación: la escena de cada bloque del guion; el programa la sigue)</span></label>
-      <textarea id="scenelist" style="min-height:120px" placeholder="Escena 1 · bloque 1 · ~30 s · tráfico&#10;Qué se ve: …&#10;Momento clave: …"></textarea>
-      <div id="dubbox"></div>
-      <label>Voz <span class="muted">(mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola)</span></label><input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">
-      <div class="row" style="margin-top:18px"><button id="hookbtn" onclick="checkHook()">Revisar el gancho (antes de grabar)</button><span id="hookmsg" class="small muted"></span></div>
-      <div id="hookbox"></div>
-      <label style="margin-top:18px">🎬 Clip de apertura <span class="muted">(opcional: un momento real con su sonido y subtítulos traducidos, antes de la voz. Lo ves aquí antes de crear el vídeo)</span></label>
-      <input id="opask" placeholder="Qué momento: «Simone Biles respondiendo en Instagram si hace falta un tipo de cuerpo» · vacío: lo propone según el título y el guion">
-      <div class="two"><div><input id="opurl" placeholder="o el enlace de YouTube (opcional)"></div>
-        <div class="two"><div><input id="opstart" placeholder="desde (1:15, opcional)"></div><div><input id="opend" placeholder="hasta (1:32, opcional)"></div></div></div>
-      <div class="two"><div><label class="small" style="margin:6px 0 2px">o sube tú el vídeo entero (lo recorto yo)</label><input type="file" id="opfile" accept="video/*,.mp4,.mov,.mkv,.webm"></div>
-        <div><label class="small" style="margin:6px 0 2px">Fuente en pantalla <span class="muted">(opcional: «Vogue»; vacío = el canal de YouTube o quien habla)</span></label><input id="opcredit"></div></div>
-      <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-top:8px"><input type="checkbox" id="opsubs" checked style="width:auto">
-        Poner subtítulos traducidos <span class="small muted">(quítalo si el clip ya los lleva)</span></label>
-      <div class="row"><button id="opbtn" onclick="findOpening()">Buscar clip de apertura</button><span id="opmsg" class="small muted"></span></div>
-      <div class="bar hide" id="opbar"><i style="width:0"></i></div>
-      <div id="opbox"></div>
-      <div class="row" style="margin-top:10px"><button id="scenebtn" onclick="checkScenes()">Revisar escenas (canales de simulación)</button><span id="scenemsg" class="small muted"></span></div>
-      <div id="scenebox"></div>
-      <div class="row" style="margin-top:18px"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><b id="msg" style="color:var(--accent)"></b></div>
-      <div class="bar hide" id="upbar"><i style="width:0"></i></div>
+      <div class="fset"><div class="legend">Voz y doblaje</div>
+        <div id="dubbox"></div>
+        ${field("Voz", `<input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">`,
+          "Mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola", "voice")}
+      </div>
+      <div class="fset"><div class="legend">Clip de apertura</div>
+        <p class="help mt-2">Opcional: un momento real con su sonido y subtítulos traducidos, antes de la voz. Lo ves aquí antes de crear el vídeo</p>
+        ${field("Qué momento", `<input id="opask" placeholder="«Simone Biles respondiendo en Instagram si hace falta un tipo de cuerpo»">`,
+          "Vacío: lo propone según el título y el guion", "opask")}
+        <div class="two">
+          ${field(`O el enlace de YouTube <span class="opt">opcional</span>`, `<input id="opurl">`, "", "opurl")}
+          <div class="two">
+            ${field(`Desde <span class="opt">opcional</span>`, `<input id="opstart" placeholder="1:15">`, "", "opstart")}
+            ${field(`Hasta <span class="opt">opcional</span>`, `<input id="opend" placeholder="1:32">`, "", "opend")}
+          </div>
+        </div>
+        <div class="two">
+          ${field("O sube tú el vídeo entero", `<input type="file" id="opfile" accept="video/*,.mp4,.mov,.mkv,.webm">`, "Lo recorto yo", "opfile")}
+          ${field(`Fuente en pantalla <span class="opt">opcional</span>`, `<input id="opcredit">`, "«Vogue»; vacío = el canal de YouTube o quien habla", "opcredit")}
+        </div>
+        <div class="field"><label class="check"><input type="checkbox" id="opsubs" checked> Poner subtítulos traducidos</label>
+          <p class="help">Quítalo si el clip ya los lleva</p></div>
+        <div class="actions"><button id="opbtn" onclick="findOpening()">Buscar clip de apertura</button><span id="opmsg" class="small muted"></span></div>
+        <div class="bar acc hide" id="opbar"><i></i></div>
+        <div id="opbox"></div>
+      </div>
+      <div class="fset"><div class="legend">Comprobaciones</div>
+        <div class="actions"><button id="hookbtn" onclick="checkHook()">Revisar el gancho</button><span class="help">Antes de grabar</span><span id="hookmsg" class="small muted"></span></div>
+        <div id="hookbox"></div>
+        <div class="actions"><button id="scenebtn" onclick="checkScenes()">Revisar escenas</button><span class="help">Canales de simulación</span><span id="scenemsg" class="small muted"></span></div>
+        <div id="scenebox"></div>
+      </div>
+      <div class="fset">
+        <div class="actions"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><b id="msg" class="t-warn"></b></div>
+        <div class="bar acc hide" id="upbar"><i></i></div>
+      </div>
     </div>`;
   $("#opsubs").onchange = $("#opcredit").oninput = () => {
     if (window.opening) Object.assign(window.opening, {subtitles: $("#opsubs").checked, credit: $("#opcredit").value});
@@ -61,11 +91,11 @@ async function newVideo() {
   api("/api/voices").then((v) => { window.dubOptions = v.dubOptions || {}; showDub(); }).catch(() => {});
   window.showDub = () => {
     const list = window.dubOptions[$("#channel").value] || [];
-    $("#dubbox").innerHTML = list.length ? `<label>Doblar a <span class="muted">(el mismo vídeo con su voz y sus rótulos en ese idioma, en su canal, con sus Shorts)</span></label>
-      <div class="row">${list.map((d) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0 14px 0 0">
-        <input type="checkbox" class="dublang" value="${esc(d.lang)}" ${d.voice ? "checked" : "disabled"} style="width:auto">
+    $("#dubbox").innerHTML = list.length ? `<div class="field"><div class="b small">Doblar a</div>
+      <div class="row gap-4">${list.map((d) => `<label class="check"><input type="checkbox" class="dublang" value="${esc(d.lang)}" ${d.voice ? "checked" : "disabled"}>
         ${esc(d.name)} ${d.voice ? `<span class="small muted">· voz ${esc(d.voice)}${d.channel ? " · " + esc(d.channel) : ""}</span>`
-          : `<span class="small" style="color:var(--bad, #e5484d)">sin voz de GenAIPro: ponla en Ajustes → Voces (canal ${esc(d.channel || "—")})</span>`}</label>`).join("")}</div>` : "";
+          : `<span class="small t-bad">sin voz de GenAIPro: ponla en Ajustes → Voces (canal ${esc(d.channel || "—")})</span>`}</label>`).join("")}</div>
+      <p class="help">El mismo vídeo con su voz y sus rótulos en ese idioma, en su canal, con sus Shorts</p></div>` : "";
   };
   $("#channel").addEventListener("change", () => showDub());
   if (idea) {
@@ -85,21 +115,21 @@ async function checkHook() {
     msg.textContent = "";
     const cls = r.ok ? "ok" : r.verdict.startsWith("❌") ? "bad" : "";
     $("#hookbox").innerHTML = `<div class="notice ${cls}"><b>${esc(r.verdict)}</b>
-      <div class="small" style="margin-top:6px"><b>Lo que promete el título:</b> ${esc(r.promise)}</div>
-      ${(r.rules || []).length ? `<div class="small" style="margin-top:6px">${r.rules.map((x) => `<div>${x.ok ? "✅" : "❌"} ${esc(x.rule)}${x.detail ? ` <span class="muted">— ${esc(x.detail)}</span>` : ""}</div>`).join("")}</div>` : ""}
+      <div class="small mt-2"><b>Lo que promete el título:</b> ${esc(r.promise)}</div>
+      ${(r.rules || []).length ? `<div class="small mt-2">${r.rules.map((x) => `<div>${x.ok ? vMark("t-ok", "check", "Cumple") : vMark("t-bad", "x", "No cumple")} ${esc(x.rule)}${x.detail ? ` <span class="muted">— ${esc(x.detail)}</span>` : ""}</div>`).join("")}</div>` : ""}
       ${r.payoffSentence ? `<div class="small"><b>Se cumple por primera vez (≈${Math.round(r.payoffSeconds)} s):</b> «${esc(r.payoffSentence)}»</div>` : ""}
       ${r.strongestSentence ? `<div class="small"><b>Lo más fuerte del guion (≈${Math.round(r.strongestSeconds)} s):</b> «${esc(r.strongestSentence)}»</div>` : ""}
       ${r.problems.length ? `<ul class="small">${r.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
-      ${r.newOpening ? `<div class="small" style="margin-top:8px"><b>Apertura propuesta (~15 s):</b></div><blockquote id="newopen" style="margin:6px 0;padding-left:10px;border-left:3px solid var(--accent)">${esc(r.newOpening)}</blockquote>
-        <div class="row"><button onclick="useOpening()">${r.scriptWithOpening ? "Cambiar el arranque del guion por esta apertura" : "Poner esta apertura al principio del guion"}</button><button onclick="navigator.clipboard.writeText(document.getElementById('newopen').innerText)">Copiar</button></div>` : ""}
+      ${r.newOpening ? `<div class="small mt-2"><b>Apertura propuesta (~15 s):</b></div><blockquote id="newopen">${esc(r.newOpening)}</blockquote>
+        <div class="row"><button onclick="useOpening()">${r.scriptWithOpening ? "Cambiar el arranque del guion por esta apertura" : "Poner esta apertura al principio del guion"}</button><button onclick="navigator.clipboard.writeText(document.getElementById('newopen').innerText)">${icon("copy")} Copiar</button></div>` : ""}
       ${r.tips.length ? `<ul class="small">${r.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
-      ${r.topicFit ? `<div class="small" style="margin-top:10px"><b>${({bien: "✅", dudoso: "🟡", mal: "🔴"})[r.topicFit] || "•"} El tema y el título frente a lo que funciona en tu canal:</b> ${esc(r.topicWhy)}</div>
+      ${r.topicFit ? `<div class="small mt-3"><b>${V_FIT[r.topicFit] || "•"} El tema y el título frente a lo que funciona en tu canal:</b> ${esc(r.topicWhy)}</div>
         ${r.lengthNote ? `<div class="small"><b>Duración (~${r.minutes} min):</b> ${esc(r.lengthNote)}</div>` : ""}
-        ${r.titles.length ? `<div class="small" style="margin-top:6px"><b>Títulos con el patrón que funciona:</b></div><ul class="small">${r.titles.map((t) => `<li>${esc(t)} <button onclick="$('#title').value=this.parentElement.firstChild.textContent.trim()">Usar</button></li>`).join("")}</ul>` : ""}` : ""}</div>`;
+        ${r.titles.length ? `<div class="small mt-2"><b>Títulos con el patrón que funciona:</b></div><ul class="small">${r.titles.map((t) => `<li>${esc(t)} <button class="sm" onclick="$('#title').value=this.parentElement.firstChild.textContent.trim()">Usar</button></li>`).join("")}</ul>` : ""}` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
   $("#hookbtn").disabled = false;
 }
-// 🎬 the opening clip: searched in the background, each candidate playing with its translated subtitles on top
+// the opening clip: searched in the background, each candidate playing with its translated subtitles on top
 function opClock(s) { s = Math.max(0, +s || 0); return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`; }
 function ytApi() {
   if (window.YT && window.YT.Player) return Promise.resolve();
@@ -118,7 +148,7 @@ function uploadOpening(file) {     // the same file is uploaded once, however ma
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/apertura/subir");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#opbar i").style.width = (100 * e.loaded / e.total) + "%"; };
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#opbar i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
     xhr.onload = () => {
       $("#opbar").classList.add("hide");
       if (xhr.status >= 300) return reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));
@@ -158,17 +188,17 @@ function showOpenings(result) {
   window.openings = list; window.opening = null; list.max = result.maxSeconds;
   $("#opbox").innerHTML = `<div class="notice">
     <div class="small"><b>Busca:</b> ${esc(plan.about || "")}${plan.speaker ? ` · <b>Habla:</b> ${esc(plan.speaker)}${plan.role ? " (" + esc(plan.role) + ")" : ""}` : ""}</div>
-    ${list.length ? "" : `<div class="small" style="margin-top:6px">No he encontrado el momento en ningún vídeo. Prueba a describirlo de otra forma o pega el enlace (y el segundo).</div>`}
-    ${list.map((c, i) => `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #333)">
+    ${list.length ? "" : `<div class="small mt-2">No he encontrado el momento en ningún vídeo. Prueba a describirlo de otra forma o pega el enlace (y el segundo).</div>`}
+    ${list.map((c, i) => `<div class="cand">
       <div class="small"><b>${i + 1}. ${c.file ? "Tu vídeo" : esc(c.title || c.id)}</b>${c.file ? "" : ` <span class="muted">· ${esc(c.channel || "")} · <a href="${esc(c.url)}&t=${Math.floor(c.start)}s" target="_blank">abrir en YouTube</a></span>`}</div>
       <div class="small muted">${esc(c.why || "")}</div>
-      <div style="position:relative;max-width:640px;aspect-ratio:16/9;margin-top:6px;background:#000">${c.file
-        ? `<video id="opv${i}" src="${window.opUpload ? window.opUpload.src : ""}#t=${c.start}" controls playsinline style="width:100%;height:100%"></video>`
-        : `<div id="opv${i}" style="width:100%;height:100%"></div>`}
-        <div id="ops${i}" style="position:absolute;left:5%;right:5%;bottom:8%;text-align:center;font-weight:700;font-size:18px;color:#fff;text-shadow:0 0 4px #000,0 2px 6px #000;pointer-events:none"></div></div>
-      <div class="row small" style="margin-top:6px">desde <input id="opa${i}" value="${c.start}" style="width:80px"> hasta <input id="opb${i}" value="${c.end}" style="width:80px"> s
-        <button onclick="replayOpening(${i})">▶ Ver este tramo</button> <button class="main" onclick="useOpeningClip(${i})">Usar esta</button> <b id="opok${i}" style="color:var(--accent)"></b></div>
-      <details class="small" style="margin-top:4px"><summary>Subtítulos</summary><div id="opl${i}"></div></details></div>`).join("")}</div>`;
+      <div class="player">${c.file
+        ? `<video id="opv${i}" src="${window.opUpload ? window.opUpload.src : ""}#t=${c.start}" controls playsinline preload="metadata"></video>`
+        : `<div id="opv${i}"></div>`}
+        <div id="ops${i}" class="subs"></div></div>
+      <div class="row small mt-2"><label for="opa${i}" class="n4">desde</label> <input id="opa${i}" class="w-xs" value="${c.start}"> <label for="opb${i}" class="n4">hasta</label> <input id="opb${i}" class="w-xs" value="${c.end}"> s
+        <button onclick="replayOpening(${i})">${icon("play")} Ver este tramo</button> <button class="main" onclick="useOpeningClip(${i})">Usar esta</button> <b id="opok${i}" class="t-warn"></b></div>
+      <details class="small mt-1"><summary>Subtítulos</summary><div id="opl${i}"></div></details></div>`).join("")}</div>`;
   list.forEach((c, i) => { listLines(i); $("#opa" + i).oninput = $("#opb" + i).oninput = () => listLines(i); });
   window.opPlayers = [];
   list.forEach((c, i) => {        // your own video: the browser plays the file you picked, stopping at «hasta»
@@ -197,7 +227,7 @@ function showOpenings(result) {
 }
 function listLines(i) {
   const c = window.openings[i], a = +$("#opa" + i).value, b = +$("#opb" + i).value;
-  $("#opl" + i).innerHTML = (c.lines || []).map((l) => `<div style="${l.to < a || l.from > b ? "opacity:.4" : ""}">
+  $("#opl" + i).innerHTML = (c.lines || []).map((l) => `<div class="${l.to < a || l.from > b ? "dim" : ""}">
     <span class="muted">${opClock(l.from)}</span> ${esc(l.text)} <span class="muted">· ${esc(l.original)}</span></div>`).join("")
     + `<div class="muted">${(b - a).toFixed(1)} s${b - a > (window.openings.max || 30) ? " (se recorta al máximo)" : ""}</div>`;
 }
@@ -215,11 +245,10 @@ async function checkScenes() {
   try {
     const r = await post("/api/scenes", {script: $("#script").value, channel: $("#channel").value});
     msg.textContent = "";
-    const icon = {bien: "✅", regular: "🟡", no: "🔴"};
     window.proposedScenes = r.escenas || "";
     $("#scenebox").innerHTML = `<div class="notice ${r.coverage >= 85 && !r.warnings.length ? "ok" : ""}"><b>${esc(r.verdict)}</b>
-      ${r.warnings.length ? `<ul class="small">${r.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}
-      <ul class="small">${(r.blocks || []).map((b) => `<li>${icon[b.fit] || "•"} <b>[${b.n}]</b> ${esc(b.world || "—")} ${esc(b.scene || "")}
+      ${r.warnings.length ? `<ul class="small">${r.warnings.map((w) => `<li>${vMark("t-warn", "alert", "Aviso")} ${esc(w)}</li>`).join("")}</ul>` : ""}
+      <ul class="small">${(r.blocks || []).map((b) => `<li>${V_FIT[b.fit] || "•"} <b>[${b.n}]</b> ${esc(b.world || "—")} ${esc(b.scene || "")}
         <span class="muted">· ~${b.seconds} s · «${esc(b.text.slice(0, 90))}…»</span>${b.why ? `<br><i>Falta:</i> ${esc(b.why)}` : ""}</li>`).join("")}</ul>
       ${r.escenas ? `<button onclick="$('#scenelist').value = window.proposedScenes; this.textContent = 'Lista de escenas puesta ✓'">Usar esta lista de escenas</button>` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
@@ -271,7 +300,7 @@ async function createVideo() {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `/api/video/${encodeURIComponent(made.slug)}/voz`);
       xhr.setRequestHeader("Content-Type", "application/octet-stream");
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#upbar i").style.width = (100 * e.loaded / e.total) + "%"; };
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#upbar i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
       xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));
       xhr.onerror = () => reject(new Error("Fallo de red al subir"));
       xhr.send(voice);
@@ -292,13 +321,13 @@ async function videoPage(slug) {
   const failedAt = !st && (v.error || v.lastError) ? ORDER.find((n) => !done[n]) : null;
   const totalMin = v.stages.reduce((a, x) => a + (x.seconds || 0), 0) / 60;
   const cls = (n) => st && st.stage === n ? "now" : done[n] ? "done" : n === failedAt ? "failed" : "";
-  const stagesView = `<div class="card"><div class="row" style="justify-content:space-between"><b>${st ? `Haciendo ${esc(STAGES[st.stage] || st.stage)} (${st.number}/${st.of}) · desde hace ${ago(st.started)}`
-      : v.status === "hecho" ? `Terminado · ${v.stages.length} etapas` : `${v.stages.length} de ${ORDER.length} etapas hechas${failedAt ? ` · se paró en <span style="color:var(--bad)">${esc(STAGES[failedAt] || failedAt)}</span>` : ""}`}</b>
+  const stagesView = `<div class="card"><div class="row between"><b>${st ? `Haciendo ${esc(STAGES[st.stage] || st.stage)} (${st.number}/${st.of}) · desde hace ${ago(st.started)}`
+      : v.status === "hecho" ? `Terminado · ${v.stages.length} etapas` : `${v.stages.length} de ${ORDER.length} etapas hechas${failedAt ? ` · se paró en <span class="t-bad">${esc(STAGES[failedAt] || failedAt)}</span>` : ""}`}</b>
       <span class="small muted">${totalMin ? `${Math.round(totalMin)} min de trabajo` : ""}${v.costUsd ? ` · ${v.costUsd} $ de API` : ""}</span></div>
     <div class="stages">${ORDER.map((n) => `<div class="${cls(n)}" title="${esc(STAGES[n] || n)}${done[n] ? " · " + mins(done[n].seconds) : ""}"></div>`).join("")}</div>
-    <details><summary class="small muted" style="cursor:pointer">Ver las etapas una a una</summary><div class="stagelist">${ORDER.map((n) => {
+    <details><summary class="small muted">Ver las etapas una a una</summary><div class="stagelist">${ORDER.map((n) => {
       const d = done[n]; const now = st && st.stage === n;
-      return `<div class="${now ? "now" : d ? "" : "pend"}"><span>${now ? "▶ " : d ? "✓ " : "· "}${esc(STAGES[n] || n)}</span><span class="n">${now ? ago(st.started) : d ? mins(d.seconds) + (costs[n] ? ` · ${costs[n].toFixed(2)} $` : "") : ""}</span></div>`; }).join("")}</div></details></div>`;
+      return `<div class="${now ? "now" : d ? "" : "pend"}"><span>${now ? icon("play", "En curso") : d ? vMark("t-ok", "check", "Hecha") : icon("minus", "Pendiente")} ${esc(STAGES[n] || n)}</span><span class="n">${now ? ago(st.started) : d ? mins(d.seconds) + (costs[n] ? ` · ${costs[n].toFixed(2)} $` : "") : ""}</span></div>`; }).join("")}</div></details></div>`;
   const doing = stagesView;
   // what happened, in plain words, with the whole text one click away
   const rawError = v.error || v.lastError || "";
@@ -306,42 +335,42 @@ async function videoPage(slug) {
   const whyView = !ex ? "" : `<div class="card why ${ex.kind}"><h3>${esc(ex.title)}</h3>
       ${v.lastError ? `<p>En cola: ${v.retryAt ? `el vigilante lo reintenta solo a las <b>${esc(v.retryAt)}</b>, antes si pulsas «Hacer ahora».` : "el vigilante lo hará en su turno."}</p>` : ""}
       ${ex.hint ? `<p>${esc(ex.hint)}</p>` : ""}
-      <div class="row" style="margin-top:8px">${ex.actions.map(ACT).join("")}</div>
-      <details class="full"><summary>El error completo</summary><pre>${esc(rawError)}</pre></details></div>`;
+      <div class="row mt-2">${ex.actions.map(ACT).join("")}</div>
+      <details><summary>El error completo</summary><pre>${esc(rawError)}</pre></details></div>`;
   const y = v.youtube;
   const pct = y && y.requests ? Math.round(100 * y.ok / y.requests) : 0;
-  const ytView = !y ? "" : `<div class="card"><div class="row" style="justify-content:space-between"><b>YouTube y proxy en este vídeo${y.hours ? ` <span class="muted" style="font-weight:500">· últimas ${y.hours} h</span>` : ""}</b><span class="small muted">${y.proxy && y.proxy.length ? "por " + esc(y.proxy.join(", ")) : "sin proxy"}</span></div>
+  const ytView = !y ? "" : `<div class="card"><div class="row between"><b>YouTube y proxy en este vídeo${y.hours ? ` <span class="muted n4">· últimas ${y.hours} h</span>` : ""}</b><span class="small muted">${y.proxy && y.proxy.length ? "por " + esc(y.proxy.join(", ")) : "sin proxy"}</span></div>
     <div class="facts">
-      <div><b style="color:${pct >= 85 ? "var(--ok)" : pct >= 60 ? "var(--accent)" : "var(--bad)"}">${pct} %</b><span>peticiones bien (${y.ok} de ${y.requests})</span></div>
+      <div><b class="${pct >= 85 ? "t-ok" : pct >= 60 ? "t-warn" : "t-bad"}">${pct} %</b><span>peticiones bien (${y.ok} de ${y.requests})</span></div>
       <div><b>${y.files_ok}/${y.files}</b><span>clips descargados</span></div>
       <div><b>${(y.proxy_gb || 0).toFixed(2)} GB</b><span>por el proxy${y.sessions ? ` · ${y.sessions} sesiones` : ""}</span></div>
       <div><b>${(y.errors || {}).bot || 0}</b><span>«no eres un bot»</span></div></div>
-    ${(y.details || []).length ? `<div class="small muted" style="margin-top:10px">Errores más frecuentes:</div><ul class="small" style="margin:4px 0 0;padding-left:18px">${y.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul>` : ""}
-    ${y.allTime ? `<div class="small muted" style="margin-top:10px">Desde el principio: ${y.allTime.requests} peticiones (${y.allTime.requests ? Math.round(100 * y.allTime.ok / y.allTime.requests) : 0} % bien) · ${y.allTime.files_ok}/${y.allTime.files} clips · ${(y.allTime.proxy_gb || 0).toFixed(2)} GB. Incluye intentos de otros días, con proxies y fallos que ya no están.</div>` : ""}</div>`;
+    ${(y.details || []).length ? `<div class="small muted mt-3">Errores más frecuentes:</div><ul class="small m-0 mt-1">${y.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul>` : ""}
+    ${y.allTime ? `<div class="small muted mt-3">Desde el principio: ${y.allTime.requests} peticiones (${y.allTime.requests ? Math.round(100 * y.allTime.ok / y.allTime.requests) : 0} % bien) · ${y.allTime.files_ok}/${y.allTime.files} clips · ${(y.allTime.proxy_gb || 0).toFixed(2)} GB. Incluye intentos de otros días, con proxies y fallos que ya no están.</div>` : ""}</div>`;
   const titles = v.youtubeTxt ? `<h2>Para YouTube</h2><div class="card"><pre id="yt">${esc(v.youtubeTxt)}</pre>
-      <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">Copiar</button></div>` : "";
+      <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">${icon("copy")} Copiar</button></div>` : "";
   const scenesPreview = v.scenesPreview ? `<h2>Vista previa de las escenas</h2><div class="card"><a href="${base + v.scenesPreview}" target="_blank">
-      <img src="${base + v.scenesPreview}" style="max-width:100%;border-radius:8px"></a><div class="small muted">Una imagen de cada escena, sacada antes del render.</div></div>` : "";
+      <img class="sheet" src="${base + v.scenesPreview}" alt="Vista previa de las escenas" loading="lazy" decoding="async"></a><div class="small muted mt-2">Una imagen de cada escena, sacada antes del render.</div></div>` : "";
   const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
-      `<a href="${base + t}?download" title="Descargar"><img src="${base + t}"></a>`).join("")}</div>` : "";
-  const dubState = (d) => d.skipped && !d.done && !d.manual ? "⏸ no se dobla a este idioma (pulsa «Doblar a " + esc(d.name) + "»)"
-    : d.old && !d.done && !d.manual && !d.voice && !d.script ? "⏸ vídeo anterior al doblaje (en Ajustes: «solo los nuevos»): pulsa «Doblar a " + esc(d.name) + "»"
-    : d.manual ? "✅ doblado por ti (la cola no lo hace)" : d.done ? `✅ hecho · <a href="#/video/${encodeURIComponent(d.slug)}">ver ${esc(d.slug)}</a>`
-    : d.voice ? "🎙️ voz lista: la cola hará el vídeo doblado" : d.review ? "👀 adaptado: espera tu revisión antes de grabar la voz"
-    : d.script ? (d.own ? "📝 tu guion: falta la voz (se hace sola en unos minutos)" : "📝 traducido: falta la voz")
+      `<a href="${base + t}?download" title="Descargar">${thumb(base + t, "shot", "Miniatura")}</a>`).join("")}</div>` : "";
+  const dubState = (d) => d.skipped && !d.done && !d.manual ? icon("pause") + " no se dobla a este idioma (pulsa «Doblar a " + esc(d.name) + "»)"
+    : d.old && !d.done && !d.manual && !d.voice && !d.script ? icon("pause") + " vídeo anterior al doblaje (en Ajustes: «solo los nuevos»): pulsa «Doblar a " + esc(d.name) + "»"
+    : d.manual ? vMark("t-ok", "check") + " doblado por ti (la cola no lo hace)" : d.done ? `${vMark("t-ok", "check")} hecho · <a href="#/video/${encodeURIComponent(d.slug)}">ver ${esc(d.slug)}</a>`
+    : d.voice ? icon("mic") + " voz lista: la cola hará el vídeo doblado" : d.review ? icon("eye") + " adaptado: espera tu revisión antes de grabar la voz"
+    : d.script ? icon("pen") + (d.own ? " tu guion: falta la voz (se hace sola en unos minutos)" : " traducido: falta la voz")
     : "sin guion todavía (se traducirá solo, o pega el tuyo)";
   const dubs = (v.dubs || []).length ? `<h2>Doblaje</h2>${v.dubs.map((d) => `<details class="card" ${d.done || d.manual ? "" : "open"}>
       <summary><b>${esc(d.name)}</b> · <span class="small">${dubState(d)}</span>${d.voiceId ? "" : ' <span class="pill error">sin voz elegida para este idioma</span>'}</summary>
       ${d.error ? `<div class="notice bad small">${esc(d.error)}</div>` : ""}
       ${d.done || d.manual ? "" : (d.skipped || d.old) && !d.voice && !d.script
-        ? `<div class="row" style="margin:8px 0"><button class="main" onclick="dubChoose('${d.lang}', true, this)">Doblar a ${esc(d.name)}</button></div>`
-        : !d.voice ? `<div class="row" style="margin:8px 0"><button onclick="dubChoose('${d.lang}', false, this)">No doblar a ${esc(d.name)}</button></div>` : ""}
-      ${d.adapted ? `<div class="small" style="margin:6px 0"><b>Adaptado a su público:</b><div class="md">${md(d.adapted.split("\n").slice(2).join("\n"), "")}</div></div>` : ""}
-      ${d.done ? "" : `<div class="small muted" style="margin:6px 0">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
-        <input id="dubt-${d.lang}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" style="margin-bottom:6px">
+        ? `<div class="row my-2"><button class="main" onclick="dubChoose('${d.lang}', true, this)">Doblar a ${esc(d.name)}</button></div>`
+        : !d.voice ? `<div class="row my-2"><button onclick="dubChoose('${d.lang}', false, this)">No doblar a ${esc(d.name)}</button></div>` : ""}
+      ${d.adapted ? `<div class="small my-2"><b>Adaptado a su público:</b><div class="md">${md(d.adapted.split("\n").slice(2).join("\n"), "")}</div></div>` : ""}
+      ${d.done ? "" : `<div class="small muted my-2">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
+        <input id="dubt-${d.lang}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" class="mb-2">
         <textarea id="dubs-${d.lang}" rows="${d.review ? 14 : 8}" placeholder="Guion en ${esc(d.name)}…">${esc(d.own || d.review ? d.script : "")}</textarea>
-        ${d.review ? `<div class="small muted" style="margin:6px 0">Revísalo (o pásaselo a un corrector nativo): si está bien, apruébalo; si lo corriges aquí, «Usar mi guion y doblar».</div>` : ""}
-        <div class="row" style="margin-top:8px;gap:6px">${d.review ? `<button class="main" onclick="dubApprove('${d.lang}', this)">Aprobar y grabar la voz</button>` : ""}
+        ${d.review ? `<div class="small muted my-2">Revísalo (o pásaselo a un corrector nativo): si está bien, apruébalo; si lo corriges aquí, «Usar mi guion y doblar».</div>` : ""}
+        <div class="row mt-2">${d.review ? `<button class="main" onclick="dubApprove('${d.lang}', this)">Aprobar y grabar la voz</button>` : ""}
         <button class="${d.review ? "" : "main"}" onclick="dubScript('${d.lang}', this)">Usar mi guion y doblar</button>`}
         <button onclick="dubManual('${d.lang}', ${!d.manual})">${d.manual ? "Deshacer «lo doblé yo»" : "Ya lo doblé yo"}</button>${d.done ? "" : "</div>"}</details>`).join("")}` : "";
   window.dubScript = async (lang, button) => {
@@ -354,7 +383,7 @@ async function videoPage(slug) {
   window.dubChoose = async (lang, on, button) => { button.disabled = true;
     try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, on}); route(); } catch (e) { alert(e.message); button.disabled = false; } };
   window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
-  const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
+  const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${icon("download")} ${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics], rhythm: ["Ritmo", v.rhythm],
                 retention: ["Retención", null], audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
   window.uploadRetention = async () => {
@@ -367,7 +396,7 @@ async function videoPage(slug) {
   const body = tab === "retention" ? `<div class="small muted">Cuando el vídeo lleve unos días publicado: YouTube Studio → Estadísticas → <b>Modo avanzado</b>
         → este vídeo → <b>Retención de audiencia</b> → Exportar la vista actual → <b>CSV</b>. Súbelo aquí: te digo dónde se va la gente,
         qué se decía y qué se veía en ese momento, y qué cambiar en el próximo guion.</div>
-        <div class="row" style="margin:10px 0"><input type="file" id="retfile" accept=".csv,.txt,.tsv" style="width:auto">
+        <div class="row my-2"><input type="file" id="retfile" class="w-auto" accept=".csv,.txt,.tsv">
         <button class="main" onclick="uploadRetention()">Analizar retención</button><span id="retmsg" class="small muted"></span></div>
         ${v.retention ? `<div class="md">${md(v.retention, base)}</div>` : ""}`
     : tab === "log" ? (() => {
@@ -375,27 +404,27 @@ async function videoPage(slug) {
         const important = lines.filter((l) => /AVISO|ERROR|Error|Traceback|Tráfico|sesión|descarta|siguiente candidato|=====|\[\d+\/15\]/.test(l));
         const paint = (l) => /ERROR|Traceback|FALLO/.test(l) ? `<span class="err">${esc(l)}</span>` : /AVISO|descarta/.test(l) ? `<span class="warn">${esc(l)}</span>` : /hecho en/.test(l) ? `<span class="ok">${esc(l)}</span>` : esc(l);
         const all = window.logAll;
-        return `<div class="logtools"><span class="small muted">${all ? `${lines.length} líneas` : `${important.length} líneas con avisos, errores y etapas (de ${lines.length})`}</span>
+        return `<div class="tools"><span class="small muted">${all ? `${lines.length} líneas` : `${important.length} líneas con avisos, errores y etapas (de ${lines.length})`}</span>
           <button onclick="window.logAll=!window.logAll;route()">${all ? "Solo lo importante" : "Ver todo el registro"}</button>
           <button onclick="navigator.clipboard.writeText(document.getElementById('log').innerText);this.textContent='Copiado ✓'">Copiar</button></div>
           <pre id="log" class="log">${(all ? lines : important).map(paint).join("\n") || "Todavía no hay registro."}</pre>`; })()
     : tab === "audit" ? (v.audit ? `<div class="small muted">Minuto · lo que se dice → de dónde sale la imagen · quién la eligió. Cópialo y pégalo en el chat para revisarlo.</div>
-        <button style="margin:8px 0" onclick="navigator.clipboard.writeText(document.getElementById('audit').innerText);this.textContent='Copiado ✓'">Copiar todo</button><pre id="audit">${esc(v.audit)}</pre>`
+        <div class="tools"><button onclick="navigator.clipboard.writeText(document.getElementById('audit').innerText);this.textContent='Copiado ✓'">${icon("copy")} Copiar todo</button></div><pre id="audit">${esc(v.audit)}</pre>`
         : "Todavía no hay montaje (sale después de la etapa «timeline»).")
-    : tab === "script" ? `<div class="row" style="margin:8px 0"><audio controls preload="none" src="/api/video/${encodeURIComponent(v.slug)}/voz.mp3"></audio>
-        <a class="btn" href="/api/video/${encodeURIComponent(v.slug)}/voz.mp3?download">Descargar voz</a></div><pre>${esc(v.script)}</pre>`
-    : tab === "stages" ? `<table><tr><th>Etapa</th><th>Tiempo</th><th>RAM máx.</th><th>CPU máx.</th></tr>${v.stages.map((s) =>
-        `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td>${mins(s.seconds)}</td><td>${s.ram ?? "—"} GB</td><td>${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
+    : tab === "script" ? `<div class="row mb-2"><audio controls preload="none" src="/api/video/${encodeURIComponent(v.slug)}/voz.mp3"></audio>
+        <a class="btn" href="/api/video/${encodeURIComponent(v.slug)}/voz.mp3?download">${icon("download")} Descargar voz</a></div><pre>${esc(v.script)}</pre>`
+    : tab === "stages" ? `<table><tr><th>Etapa</th><th class="r">Tiempo</th><th class="r">RAM máx.</th><th class="r">CPU máx.</th></tr>${v.stages.map((s) =>
+        `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td class="r nw">${mins(s.seconds)}</td><td class="r nw">${s.ram ?? "—"} GB</td><td class="r nw">${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
     : `<div class="md">${md(docs[tab][1], base)}</div>`;
   const primary = v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>'
     : v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>'
     : v.status === "haciendo" ? '<button onclick="if(confirm(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\'))act(\'stop\')">Parar</button>'
     : v.status === "en pausa" ? '<button class="main" onclick="act(\'unhold\')">Volver a la cola</button>'
-    : v.hasVideo ? `<a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a>` : "";
+    : v.hasVideo ? `<a class="btn main" href="${base}video-final.mp4?download">${icon("download")} Descargar vídeo</a>` : "";
   const secondary = [
     v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : "",
     v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : "",
-    `<button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">📋 Copiar para Claude</button>`,
+    `<button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">${icon("copy")} Copiar para Claude</button>`,
     v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : "",
     !v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : "",
     v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom(this)" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
@@ -404,25 +433,25 @@ async function videoPage(slug) {
     `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
   ].filter(Boolean);
   $("#app").innerHTML = `
-    <div class="vhead"><div style="min-width:0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
+    <div class="vhead"><div class="mw0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
         <div class="meta">${esc(v.channel)}${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">(elegido por el guion)</span>` : ""}` : ""}
           ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API</div></div>
       <div class="primary">${primary}
-        <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ▾</button><div>${secondary.join("")}</div></span></div></div>
+        <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ${icon("down")}</button><div>${secondary.join("")}</div></span></div></div>
     ${whyView}${doing}${ytView}
-    <div class="row" style="margin:8px 0"><span id="pilotBox"></span></div><div id="pilotReport"></div>
-    ${v.quotaWait ? `<div class="notice">⏸ En espera: ${esc(v.quotaWait)}. La cola sigue con los demás vídeos y este se reintenta solo.</div>` : ""}
-    ${v.published ? `<div class="notice ok">✅ Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
+    <div class="row my-2" id="pilotBox"></div><div id="pilotReport"></div>
+    ${v.quotaWait ? `<div class="notice">${icon("pause")} En espera: ${esc(v.quotaWait)}. La cola sigue con los demás vídeos y este se reintenta solo.</div>` : ""}
+    ${v.published ? `<div class="notice ok">${vMark("t-ok", "check")} Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
-      <button style="margin-left:8px" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
-    ${v.hasVideo ? `<h2>Vídeo</h2><video controls playsinline preload="metadata" style="width:100%;background:#000;border-radius:8px"
+      <button class="sm ml-2" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
+    ${v.hasVideo ? `<h2>Vídeo</h2><video controls playsinline preload="metadata"
         ${v.thumbnails.length ? `poster="${base + v.thumbnails[0]}"` : ""} src="${base}${v.preview ? "preview.mp4" : "video-final.mp4"}"></video>
-      <div class="small muted" style="margin-top:4px">${v.preview ? `Copia ligera en 720p para verlo rápido (también en el móvil) · <a href="${base}video-final.mp4" target="_blank" rel="noopener">ver el original en 1080p</a>`
+      <div class="small muted mt-1">${v.preview ? `Copia ligera en 720p para verlo rápido (también en el móvil) · <a href="${base}video-final.mp4" target="_blank" rel="noopener">ver el original en 1080p</a>`
         : "Preparando una copia ligera para verlo sin cortes en el móvil (unos minutos); mientras tanto, el original pesa mucho y puede ir a trompicones."}</div>
-      <div class="row" style="margin-top:8px"><a class="btn main" href="${base}video-final.mp4?download">Descargar vídeo</a>
-        <button onclick="exportPremiere(this)" title="Una carpeta con timeline.xml, los clips en pistas, la voz, la música, los efectos y los subtítulos">🎞️ Proyecto para Premiere / DaVinci</button>
+      <div class="row mt-2"><a class="btn main" href="${base}video-final.mp4?download">${icon("download")} Descargar vídeo</a>
+        <button onclick="exportPremiere(this)" title="Una carpeta con timeline.xml, los clips en pistas, la voz, la música, los efectos y los subtítulos">${icon("film")} Proyecto para Premiere / DaVinci</button>
         <span id="exportBox" class="small"></span>
-        <button onclick="exportCapcut(this)" title="Clips limpios por plano, voz, música, efectos sueltos y rótulos editables, para montarlo a tu manera en CapCut">✂️ Proyecto para CapCut</button>
+        <button onclick="exportCapcut(this)" title="Clips limpios por plano, voz, música, efectos sueltos y rótulos editables, para montarlo a tu manera en CapCut">${icon("scissors")} Proyecto para CapCut</button>
         <span id="capcutBox" class="small"></span></div>` : ""}
     ${scenesPreview}${titles}${thumbs}${shorts}${dubs}
     ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
@@ -433,11 +462,11 @@ async function videoPage(slug) {
     const box = $("#repBox");
     if (!box) return;
     const r = await api(`/api/video/${encodeURIComponent(slug)}/repeticion`);
-    const icon = {ok: "✅", warn: "⚠️", skip: "➖"};
-    box.innerHTML = `<h2>Riesgo de repetición: ${{bajo: "bajo ✅", medio: "medio ⚠️", alto: "alto ⛔"}[r.risk]}</h2>
-      <div class="card small"><div class="muted" style="margin-bottom:6px">YouTube no castiga la voz de IA sino los vídeos que parecen copias unos de otros
+    const mark = {ok: vMark("t-ok", "check", "Bien"), warn: vMark("t-warn", "alert", "Aviso"), skip: vMark("muted", "minus", "No se comprueba")};
+    box.innerHTML = `<h2>Riesgo de repetición: <span class="${{bajo: "t-ok", medio: "t-warn", alto: "t-bad"}[r.risk]}">${{bajo: "bajo", medio: "medio", alto: "alto"}[r.risk]}</span></h2>
+      <div class="card small"><div class="muted mb-2">YouTube no castiga la voz de IA sino los vídeos que parecen copias unos de otros
         (actualización del programa de socios de julio de 2025). Comparado con los ${r.compared} últimos vídeos del canal.</div>
-        ${r.checks.map((c) => `<div style="margin-top:4px">${icon[c.status]} <b>${esc(c.name)}:</b> ${esc(c.text)}</div>`).join("")}</div>`;
+        ${r.checks.map((c) => `<div class="mt-1">${mark[c.status]} <b>${esc(c.name)}:</b> ${esc(c.text)}</div>`).join("")}</div>`;
   };
   repLoad();
   const whyLoad = async () => {
@@ -454,19 +483,19 @@ async function videoPage(slug) {
       <polyline points="${c.normal.map((b) => `${x(b.hours)},${y(b.median)}`).join(" ")}" fill="none" stroke="#d6a400" stroke-width="2" stroke-dasharray="6 5"/>` : "";
     const ticks = [[1, "1 h"], [6, "6 h"], [24, "1 d"], [168, "7 d"], [720, "30 d"]].filter(([h]) => h <= maxH * 1.01);
     const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".", ",") + " K" : String(n);
-    const line = (k, label) => r && r[k] ? `<div style="margin-top:4px"><b style="color:var(--accent)">${label}:</b> ${esc(r[k])}</div>` : "";
+    const line = (k, label) => r && r[k] ? `<div class="mt-1"><b class="t-warn">${label}:</b> ${esc(r[k])}</div>` : "";
     box.innerHTML = `<h2>¿Por qué funcionó?</h2><div class="card">
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">${band}
+      <svg class="chart" viewBox="0 0 ${W} ${H}">${band}
         <polyline points="${c.points.map((p) => `${x(p[0])},${y(p[1])}`).join(" ")}" fill="none" stroke="#2bb3e6" stroke-width="3"/>
         ${c.points.map((p) => `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="3.5" fill="#2bb3e6"/>`).join("")}
-        <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="#999"/>
-        ${ticks.map(([h, t]) => `<text x="${x(h)}" y="${H - P + 16}" font-size="11" text-anchor="middle" fill="#888">${t}</text>`).join("")}
-        <text x="${P}" y="${P - 10}" font-size="11" fill="#888">${fmt(maxV)}</text></svg>
+        <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" class="muted" stroke="currentColor"/>
+        ${ticks.map(([h, t]) => `<text x="${x(h)}" y="${H - P + 16}" font-size="11" text-anchor="middle" class="muted" fill="currentColor">${t}</text>`).join("")}
+        <text x="${P}" y="${P - 10}" font-size="11" class="muted" fill="currentColor">${fmt(maxV)}</text></svg>
       <div class="small muted">— este vídeo · - - lo normal del canal · gris: lo normal (la mitad central de sus vídeos)</div>
-      <div style="margin-top:6px"><b>${fmt(c.views)}</b> visitas a ${c.age < 48 ? Math.round(c.age) + " h" : Math.round(c.age / 24) + " días"}${c.usual ? ` · lo normal del canal a esa edad: ${fmt(c.usual)} (<b>${String(c.ratio).replace(".", ",")}x</b>)` : " · aún pocos vídeos del canal para comparar"}</div>
+      <div class="mt-2"><b>${fmt(c.views)}</b> visitas a ${c.age < 48 ? Math.round(c.age) + " h" : Math.round(c.age / 24) + " días"}${c.usual ? ` · lo normal del canal a esa edad: ${fmt(c.usual)} (<b>${String(c.ratio).replace(".", ",")}x</b>)` : " · aún pocos vídeos del canal para comparar"}</div>
       ${r ? `${line("topic", "tema")}${line("title", "título")}${line("length", "duración")}${line("hook", "gancho")}${line("lesson", "lección")}
-        <div class="small muted" style="margin-top:6px">Analizado el ${esc(r.at.slice(0, 10))}: la lección entra en los próximos guiones del canal.</div>` : ""}
-      <button style="margin-top:8px" onclick="whyAnalyse(this)">${r ? "Volver a analizar" : "Analizar ahora"}</button></div>`;
+        <div class="small muted mt-2">Analizado el ${esc(r.at.slice(0, 10))}: la lección entra en los próximos guiones del canal.</div>` : ""}
+      <button class="mt-2" onclick="whyAnalyse(this)">${r ? "Volver a analizar" : "Analizar ahora"}</button></div>`;
   };
   window.whyAnalyse = async (button) => {
     button.disabled = true; button.textContent = "Analizando…";
@@ -516,14 +545,13 @@ async function videoPage(slug) {
     const box = document.createElement("div");
     box.id = "redobox";
     box.className = "notice";
-    box.style.cssText = "margin:10px 0";
     box.innerHTML = `<b>¿Desde dónde lo rehago?</b>
-      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+      <div class="row mt-2">
         <button onclick="redoGo(['timeline'])">Solo el montaje (rápido)</button>
         <button class="main" onclick="redoGo(['judge'])">Elegir imágenes otra vez (juez y relleno)</button>
         <button onclick="redoGo(['planner'])">Todo (planificación, búsqueda y montaje)</button>
         <button onclick="document.getElementById('redobox').remove()">Cancelar</button></div>
-      <div id="redomsg" class="small muted" style="margin-top:6px">Reaprovecha las descargas y la voz.</div>`;
+      <div id="redomsg" class="small muted mt-2">Reaprovecha las descargas y la voz.</div>`;
     const head = document.querySelector(".vhead");          // under the title, not inside the «Más ▾» menu
     head ? head.insertAdjacentElement("afterend", box) : $("#app").prepend(box);
     document.querySelectorAll(".more.open").forEach((m) => m.classList.remove("open"));
@@ -556,12 +584,12 @@ async function pilotBox(slug, v) {
   const p = await api(`/api/video/${encodeURIComponent(slug)}/pilot`).catch(() => null); if (!p) return;
   const url = `/api/video/${encodeURIComponent(slug)}/pilot`;
   if (p.pilot) {
-    box.innerHTML = `<span class="pill">🧪 Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
+    box.innerHTML = `<span class="pill">${icon("flask")} Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
       ${v.status === "hecho" ? `<button onclick="pilotReport('${esc(slug)}')">Informe del piloto</button>` : ""}
       <button onclick="if(confirm('¿Volver este vídeo a la búsqueda por plano?'))post('${url}', {on: false}).then(() => route())">Quitar piloto</button>`;
     if (p.report) showPilot(p.report);
   } else if (!p.others.length && !v.stagesDone) {
-    box.innerHTML = `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">🧪 Hacer de piloto por escenas</button>`;
+    box.innerHTML = `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">${icon("flask")} Hacer de piloto por escenas</button>`;
   }
 }
 window.startPilot = async (slug, refs) => {
@@ -575,9 +603,9 @@ window.pilotReport = async (slug) => {
 };
 function showPilot(r) {
   const show = (x) => x == null ? "—" : (typeof x === "number" && x > 0 && x < 1 && !Number.isInteger(x)) ? Math.round(x * 100) + " %" : x;
-  $("#pilotReport").innerHTML = `<div class="card"><b>🧪 Piloto: ${esc(r.pilot.video)} frente a ${esc(r.reference.video)}</b>
-    <div style="overflow-x:auto"><table style="margin-top:6px"><tr><th></th><th>Referencia</th><th>Piloto</th><th></th></tr>
-    ${r.rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${show(x.reference)}</td><td><b>${show(x.pilot)}</b></td><td>${x.better == null ? "" : x.better ? "✅" : "⚠️"}</td></tr>`).join("")}</table></div>
+  $("#pilotReport").innerHTML = `<div class="card"><b>Piloto: ${esc(r.pilot.video)} frente a ${esc(r.reference.video)}</b>
+    <div class="scroll-x mt-2"><table><tr><th></th><th>Referencia</th><th>Piloto</th><th></th></tr>
+    ${r.rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${show(x.reference)}</td><td><b>${show(x.pilot)}</b></td><td>${x.better == null ? "" : x.better ? vMark("t-ok", "check", "Mejor") : vMark("t-warn", "alert", "Peor")}</td></tr>`).join("")}</table></div>
     ${r.pending.map((p) => `<div class="notice">${esc(p)}</div>`).join("")}</div>`;
 }
 
@@ -585,7 +613,7 @@ function showPilot(r) {
 async function changeChannel(slug, current, el) {
   const list = (await api("/api/settings")).channels || [];
   const select = document.createElement("select");
-  select.style.width = "auto";
+  select.className = "w-auto";
   select.innerHTML = list.map((c) => `<option ${c === current ? "selected" : ""}>${esc(c)}</option>`).join("");
   select.onchange = async () => { await post(`/api/video/${encodeURIComponent(slug)}/channel`, {channel: select.value}); route(); };
   el.replaceWith(select); select.focus();
@@ -599,10 +627,10 @@ async function copyForClaude(slug, button) {
   catch (e) {}                                     // Safari refuses the clipboard after waiting for the server
   const modal = document.createElement("div");
   modal.className = "modal"; modal.id = "modal";
-  modal.innerHTML = `<div><div class="row" style="justify-content:space-between"><b>Para Claude</b>
+  modal.innerHTML = `<div><div class="row between"><b>Para Claude</b>
     <button onclick="document.getElementById('modal').remove()">Cerrar</button></div>
-    <div class="small muted" style="margin:6px 0">Mantén pulsado el texto → Seleccionar todo → Copiar, y pégalo en el chat.</div>
-    <textarea readonly style="min-height:50vh">${esc(text)}</textarea></div>`;
+    <div class="small muted my-2">Mantén pulsado el texto → Seleccionar todo → Copiar, y pégalo en el chat.</div>
+    <textarea readonly class="tall">${esc(text)}</textarea></div>`;
   document.body.appendChild(modal);
   const box = modal.querySelector("textarea"); box.focus(); box.select();
 }
@@ -618,7 +646,7 @@ async function reviewPage(slug) {
   const options = Object.entries(r.reasons).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("");
   const card = (sh, i) => { const v = verdictOf(sh); return `<div class="card ${v || ""}" id="r-${sh.id}" data-i="${i}" tabindex="0" onclick="focusCard(${i})">
         <span class="n">${i + 1}</span>
-        <img loading="lazy" src="/api/review/${encodeURIComponent(slug)}/frame/${sh.id}.jpg" alt="">
+        ${thumb(`/api/review/${encodeURIComponent(slug)}/frame/${sh.id}.jpg`)}
         <div class="body">
           <div class="quote">«${esc(sh.text || "—")}»</div>
           <div class="src">${clock(sh.at)} · ${esc(sh.title || sh.credit || sh.source || "")}${sh.url ? ` · <a href="${esc(sh.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
@@ -627,20 +655,20 @@ async function reviewPage(slug) {
             <select id="why-${sh.id}" onclick="event.stopPropagation()">${options}</select>
             <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','incorrecta')" title="tecla 3">Incorrecta</button>
             <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','dudosa')" title="tecla 2">Dudosa</button>
-            ${v ? `<button onclick="event.stopPropagation();mark('${sh.id}',null)" title="Quitar (tecla 0)">↺</button>` : ""}
+            ${v ? `<button onclick="event.stopPropagation();mark('${sh.id}',null)" class="icon" aria-label="Quitar (tecla 0)" title="Quitar (tecla 0)">${icon("undo")}</button>` : ""}
           </div></div></div>`; };
   const header = () => { const c = counts(), left = shots.length - c.correcta - c.incorrecta - c.dudosa; return `
-    <div class="row"><h1 style="margin:0">Revisar clips <span class="small muted" style="font-weight:600">${esc(slug)}</span></h1>
-      <span class="row" style="gap:6px"><a class="btn" href="#/video/${encodeURIComponent(slug)}">Ficha del vídeo</a>
+    <div class="row between"><h1 class="m-0">Revisar clips <span class="small muted n4">${esc(slug)}</span></h1>
+      <span class="row"><a class="btn" href="#/video/${encodeURIComponent(slug)}">Ficha del vídeo</a>
       ${c.incorrecta ? `<button class="main" onclick="fixVideo()" ${r.job.running ? "disabled" : ""}>Rehacer con correcciones (${c.incorrecta})</button>` : ""}</span></div>
-    <div class="row" style="margin-top:6px;gap:12px"><div class="bar" style="flex:1;margin:0"><i style="width:${Math.round(100 * (shots.length - left) / Math.max(1, shots.length))}%;background:var(--ok)"></i></div>
+    <div class="row gap-3 mt-2"><div class="bar ok grow m-0"><i style="--v:${Math.round(100 * (shots.length - left) / Math.max(1, shots.length))}%"></i></div>
       <span class="small muted">${shots.length - left} de ${shots.length} revisados</span></div>
-    <div class="tabs" style="margin:8px 0 0">${[["todos", `Todos (${shots.length})`], ["pendientes", `Sin revisar (${left})`], ["incorrecta", `Incorrectos (${c.incorrecta})`],
+    <div class="row between"><div class="tabs">${[["todos", `Todos (${shots.length})`], ["pendientes", `Sin revisar (${left})`], ["incorrecta", `Incorrectos (${c.incorrecta})`],
       ["dudosa", `Dudosos (${c.dudosa})`], ["correcta", `Correctos (${c.correcta})`]].map(([k, n]) =>
-      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}
-      <span class="keys" style="margin-left:auto;align-self:center"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>1</kbd> correcta · <kbd>2</kbd> dudosa · <kbd>3</kbd> incorrecta · <kbd>0</kbd> quitar</span></div>`; };
+      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}</div>
+      <span class="keys"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>1</kbd> correcta · <kbd>2</kbd> dudosa · <kbd>3</kbd> incorrecta · <kbd>0</kbd> quitar</span></div>`; };
   $("#app").innerHTML = `<div class="rtool" id="rtool">${header()}</div>
-    <div class="small muted" style="margin-bottom:8px">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
+    <div class="small muted mb-2">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
     ${jobLine(r.job, "Rehaciendo el vídeo con tus correcciones")}
     <div class="review" id="review">${shownList().map(card).join("") || '<div class="notice">Nada en este filtro.</div>'}</div>`;
   shots.forEach((sh) => { const sel = document.getElementById("why-" + sh.id); if (sel && sh.label && sh.label.reason) sel.value = sh.label.reason; });
@@ -689,34 +717,34 @@ async function decisionsPage(slug) {
   const picks = r.items.filter((i) => i.pick).length;
   const img = (shot, key) => `/api/decisions/${encodeURIComponent(slug)}/frame?shot=${shot}&key=${encodeURIComponent(key)}`;
   $("#app").innerHTML = `
-    <div class="row" style="justify-content:space-between"><h1>Decisiones del relleno · <a href="#/video/${encodeURIComponent(slug)}">${esc(slug)}</a></h1>
+    <div class="row between"><h1>Decisiones del relleno · <a href="#/video/${encodeURIComponent(slug)}">${esc(slug)}</a></h1>
       <button class="main" onclick="applyPicks()" ${r.job.running ? "disabled" : ""}>Aplicar y rehacer${picks ? ` (${picks})` : ""}</button></div>
     <div class="small muted">Planos donde el programa no pudo usar la primera elección y buscó otra cosa. Mira lo que puso: si está bien, «Bien así»; si no, elige la opción que debería ir. Aprende de ello: lo que recuperas no vuelve a descartarse y te dice qué comprobación es demasiado estricta.</div>
-    ${r.summary.tips.length ? `<div class="elf">🧝 ${r.summary.tips.map(esc).join("<br>")}</div>` : ""}
+    ${r.summary.tips.length ? `<div class="notice elf">${icon("bulb")} ${r.summary.tips.map(esc).join("<br>")}</div>` : ""}
     ${jobLine(r.job, "Rehaciendo el vídeo con tus elecciones")}
-    <div class="keys" style="margin-top:8px"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>Enter</kbd> bien así · <kbd>1</kbd>…<kbd>9</kbd> usar esa opción</div>
-    ${r.items.map((i) => `<div class="card" style="margin-top:14px" data-shot="${esc(i.shot)}" data-options="${esc(i.options.map((o) => o.key).join("\t"))}">
-      <div class="row" style="justify-content:space-between"><b>${esc(i.shot)} · «${esc(i.text)}»</b>
+    <div class="keys mt-2"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>Enter</kbd> bien así · <kbd>1</kbd>…<kbd>9</kbd> usar esa opción</div>
+    ${r.items.map((i) => `<div class="card mt-4" data-shot="${esc(i.shot)}" data-options="${esc(i.options.map((o) => o.key).join("\t"))}">
+      <div class="row between nowrap top"><b class="mw0">${esc(i.shot)} · «${esc(i.text)}»</b>
         <span class="pill ${i.verdict === "correcta" ? "hecho" : i.pick ? "haciendo" : ""}">${i.verdict === "correcta" ? "bien así" : i.pick ? "elegida otra" : "sin revisar"}</span></div>
-      <div class="small" style="margin:6px 0"><b>Por qué buscó otra cosa:</b> ${esc(i.kind)}${i.reason && i.kind !== i.reason ? ` <span class="muted">(${esc(i.reason.slice(0, 140))}${i.reason.length > 140 ? "…" : ""})</span>` : ""}</div>
+      <div class="small my-2"><b>Por qué buscó otra cosa:</b> ${esc(i.kind)}${i.reason && i.kind !== i.reason ? ` <span class="muted">(${esc(i.reason.slice(0, 140))}${i.reason.length > 140 ? "…" : ""})</span>` : ""}</div>
       ${i.judgeReason ? `<details class="small muted"><summary>Lo que dijo el juez</summary>${esc(i.judgeReason)}</details>` : ""}
-      <div class="vids" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
-        <div class="card" style="border-color:var(--work)"><img loading="lazy" src="${img(i.shot, "final")}" alt="">
+      <div class="vids sm mt-3">
+        <div class="card pick">${thumb(img(i.shot, "final"))}
           <div class="body small"><b>Lo que puso</b>${i.method ? ` · ${esc(i.method)}` : ""}${i.resolved ? "" : " · (no encontró nada)"}
-          <div class="row" style="margin-top:6px"><button class="b-ok" onclick="decide('${i.shot}', {ok: true})">Bien así</button></div></div></div>
-        ${i.options.map((o) => `<div class="card ${i.pick === o.key ? "correcta" : ""}" style="${i.pick === o.key ? "border-color:var(--ok)" : ""}">
-          <img loading="lazy" src="${img(i.shot, o.key)}" alt="">
+          <div class="row mt-2"><button class="b-ok" onclick="decide('${i.shot}', {ok: true})">Bien así</button></div></div></div>
+        ${i.options.map((o) => `<div class="card ${i.pick === o.key ? "correcta" : ""}">
+          ${thumb(img(i.shot, o.key))}
           <div class="body small">${o.original ? '<b>La que eligió el juez</b> (descartada) · ' : ""}${esc(o.title).slice(0, 80)}
             <div class="muted">${esc(o.channel)}${o.score != null ? ` · nota ${o.score}` : ""}${o.kind === "image" ? " · foto" : ""}</div>
-            <div class="row" style="margin-top:6px"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? "✓ Elegida" : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
-      </div></div>`).join("") || '<div class="notice ok">En este vídeo el relleno no tuvo que decidir nada.</div>'}`;
+            <div class="row mt-2"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? `${icon("check")} Elegida` : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
+      </div></div>`).join("") || empty("check", "En este vídeo el relleno no tuvo que decidir nada.")}`;
   window.decide = async (shot, body) => { const y = window.scrollY; await post(`/api/decisions/${encodeURIComponent(slug)}/${shot}`, body); await route(); window.scrollTo(0, y); };
   window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { alert(e.message); } };
   // keyboard: ←/→ between shots, Enter = «bien así», 1-9 = that option
   let at = -1;
   const blocks = () => [...document.querySelectorAll("#app > .card[data-shot]")];
   const go = (i) => { const list = blocks(); if (!list.length) return; at = Math.max(0, Math.min(list.length - 1, i));
-    list.forEach((b, j) => b.style.outline = j === at ? "2px solid var(--accent)" : ""); list[at].scrollIntoView({block: "center", behavior: "smooth"}); };
+    list.forEach((b, j) => b.classList.toggle("focus", j === at)); list[at].scrollIntoView({block: "center", behavior: "smooth"}); };
   const keys = (e) => {
     if (!location.hash.startsWith("#/decisiones/")) { document.removeEventListener("keydown", keys); return; }
     if (e.target.matches("input, textarea, select")) return;

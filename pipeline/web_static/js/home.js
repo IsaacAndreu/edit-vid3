@@ -10,15 +10,15 @@ function splitBlock(title, list, opts = {}) {
   const longs = list.filter((v) => !v.short), shorts = list.filter((v) => v.short);
   const key = opts.hideShorts;
   if (key && shorts.length && hiddenShorts[key]) {
-    const line = `<div class="block"><div class="bh"><b>${title} · 📱 Shorts<span class="count">${shorts.length}</span></b>
-      <span class="small"><span class="muted">ocultos</span> <button onclick="toggleShorts('${key}')">Mostrar</button></span></div></div>`;
-    return (longs.length ? block(longs.length && shorts.length ? `${title} · 🎬 Vídeos` : title, longs, opts) : "") + line;
+    const line = `<div class="block"><div class="bh"><b>${title} · Shorts<span class="count">${shorts.length}</span></b>
+      <span class="small"><span class="muted">ocultos</span> <button class="sm" onclick="toggleShorts('${key}')">Mostrar</button></span></div></div>`;
+    return (longs.length ? block(longs.length && shorts.length ? `${title} · Vídeos` : title, longs, opts) : "") + line;
   }
-  const hide = key ? ` <button onclick="event.preventDefault();event.stopPropagation();toggleShorts('${key}')">Ocultar</button>` : "";
-  if (!shorts.length || !longs.length) return block(`${title}${shorts.length ? " · 📱 Shorts" : ""}`, list,
+  const hide = key ? ` <button class="sm" onclick="event.preventDefault();event.stopPropagation();toggleShorts('${key}')">Ocultar</button>` : "";
+  if (!shorts.length || !longs.length) return block(`${title}${shorts.length ? " · Shorts" : ""}`, list,
     shorts.length && key ? {...opts, more: (opts.more || "") + hide} : opts);
-  return block(`${title} · 🎬 Vídeos`, longs, opts)
-    + block(`${title} · 📱 Shorts`, shorts, {...opts, id: opts.id ? opts.id + "-s" : "", more: key ? hide.trim() : opts.more});
+  return block(`${title} · Vídeos`, longs, opts)
+    + block(`${title} · Shorts`, shorts, {...opts, id: opts.id ? opts.id + "-s" : "", more: key ? hide.trim() : opts.more});
 }
 let homeChannel = (() => { try { return localStorage.getItem("inicio:canal") || ""; } catch (e) { return ""; } })();
 
@@ -26,13 +26,13 @@ function vrow(v, right = "") {
   const st = v.stage;
   const sub = [v.title && v.title !== v.slug ? v.slug : "", v.channel, v.minutes ? v.minutes + " min" : "", v.costUsd ? v.costUsd + " $" : ""]
     .filter(Boolean).join(" · ");
-  const extra = st ? `<div class="small" style="margin-top:4px;color:var(--work)">${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · desde hace ${ago(st.started)}</div>
-      <div class="bar"><i style="width:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div>`
-    : v.error ? `<div class="small" style="color:var(--bad);margin-top:3px">${esc(String(v.error).slice(0, 160))}</div>`
-    : v.voice ? `<div class="small muted" style="margin-top:3px">🎙️ ${v.voice === "generando" ? "generando la voz…" : "voz: " + esc(v.voice)}</div>`
-    : v.lastError ? `<div class="small muted" style="margin-top:3px">↻ ${v.retryAt ? "reintento a las " + esc(v.retryAt) : "se reintenta en su turno"} · falló la última vez</div>` : "";
-  return `<a class="vrow" href="#/video/${encodeURIComponent(v.slug)}"><span class="dot" style="background:${chColor(v.channel)}"></span>
-    <div style="min-width:0"><div class="t">${esc(v.title || v.slug)}</div><div class="s">${esc(sub)}</div>${extra}</div>
+  const extra = st ? `<div class="small t-work mt-1">${st.number}/${st.of} · ${esc(STAGES[st.stage] || st.stage)} · desde hace ${ago(st.started)}</div>
+      <div class="bar"><i style="--v:${Math.round(100 * (st.number - 1) / st.of)}%"></i></div>`
+    : v.error ? `<div class="small t-bad mt-1">${esc(String(v.error).slice(0, 160))}</div>`
+    : v.voice ? `<div class="small muted mt-1">${icon("mic")} ${v.voice === "generando" ? "generando la voz…" : "voz: " + esc(v.voice)}</div>`
+    : v.lastError ? `<div class="small muted mt-1">${icon("repeat")} ${v.retryAt ? "reintento a las " + esc(v.retryAt) : "se reintenta en su turno"} · falló la última vez</div>` : "";
+  return `<a class="vrow" href="#/video/${encodeURIComponent(v.slug)}">${dot(v.channel)}
+    <div class="mw0"><div class="t">${esc(v.title || v.slug)}</div><div class="s">${esc(sub)}</div>${extra}</div>
     <div class="r">${right || pill(v.status)}</div></a>`;
 }
 
@@ -40,7 +40,7 @@ function block(title, list, {cls = "", right = null, more = "", open = true, col
   if (!list.length) return "";
   const shown = limit ? list.slice(0, limit) : list;
   const rows = shown.map((v) => vrow(v, right ? right(v) : "")).join("")
-    + (limit && list.length > limit ? `<div class="vrow" style="cursor:default"><span></span><span class="small muted">y ${list.length - limit} más…</span><span></span></div>` : "");
+    + (limit && list.length > limit ? `<div class="vrow"><span></span><span class="small muted">y ${list.length - limit} más…</span><span></span></div>` : "");
   const head = `<b>${title}<span class="count">${list.length}</span></b>${more ? `<span class="small">${more}</span>` : ""}`;
   const anchor = id ? ` id="${id}"` : "";
   return collapsible ? `<details${anchor} class="block ${cls}" ${open ? "open" : ""}><summary>${head}</summary>${rows}</details>`
@@ -103,12 +103,12 @@ function drawHome(force = false) {               // the channel buttons redraw f
   const failed = all.filter((v) => (v.status === "error" || v.lastError) && !v.quotaWait).length;
   const late = toUpload.filter((v) => (slot[v.slug] || {}).date && slot[v.slug].date < today).length;
   const when = (v) => { const d = (slot[v.slug] || {}).date; if (!d) return '<span class="muted">sin día</span>';
-    return d < today ? `<span style="color:var(--bad)">⚠️ tocaba ${DAY(d)}</span>` : d === today ? `<b style="color:var(--accent)">hoy · ${esc(slot[v.slug].time || "")}</b>` : `📅 ${DAY(d)}`; };
+    return d < today ? `<span class="t-bad">${icon("alert")} tocaba ${DAY(d)}</span>` : d === today ? `<b class="t-warn">hoy · ${esc(slot[v.slug].time || "")}</b>` : `${icon("calendar")} ${DAY(d)}`; };
   // the server in one sentence, and what to do if it is not working
   const state = s.youtubeBlocked ? ["bad", "YouTube bloquea", `desde las ${esc(s.youtubeBlocked)} · se prueba cada hora`, '<a href="#/servidor">ver →</a>']
     : s.paused ? ["warn", "En pausa", "no empieza vídeos nuevos", '<a href="#/servidor">quitar la pausa →</a>']
     : s.watching ? ["ok", "Trabajando", making.length ? `${making.length} vídeo(s) haciéndose` : queue.length ? "entre vídeos: el siguiente empieza solo" : "vigilando: nada pendiente", ""]
-    : s.queueRunning ? ["ok", "Cola en marcha", "sin vigilante: acabará la ronda y parará", ""] : ["bad", "Parado", "no hay vigilante", '<button onclick="startQueue()">Arrancar la cola</button>'];
+    : s.queueRunning ? ["ok", "Cola en marcha", "sin vigilante: acabará la ronda y parará", ""] : ["bad", "Parado", "no hay vigilante", '<button class="sm" onclick="startQueue()">Arrancar la cola</button>'];
   if (window.partner) state[3] = "";                    // the server is the owner's: a partner only sees how it is
   // YouTube / proxy, the last 24 h: one number that says whether downloads are healthy
   const p24 = (yt && yt.byProxy || []).find((x) => /rainproxy|resi|residencial/.test(x.proxy)) || (yt && yt.byProxy || [])[0];
@@ -131,11 +131,11 @@ function drawHome(force = false) {               // the channel buttons redraw f
     const next = list.map((v) => v.retryAt).filter(Boolean).sort()[0];
     return `<div class="cause"><div><div class="t"><b>${esc(title)}</b> <span class="muted">· ${list.length === 1 ? "1 vídeo" : list.length + " vídeos"}${next ? ` · el vigilante reintenta a las ${esc(next)}` : ""}</span></div>
       ${e.hint ? `<div class="hint">${esc(e.hint)}</div>` : ""}
-      <div class="vids">${list.map((v) => `<a href="#/video/${encodeURIComponent(v.slug)}" title="${esc(String(v.error || v.lastError || v.voice || "").slice(0, 300))}"><span class="dot" style="background:${chColor(v.channel)};width:8px;height:8px;margin-right:5px"></span>${esc(v.slug)}</a>`).join("")}</div></div>
+      <div class="vids">${list.map((v) => `<a href="#/video/${encodeURIComponent(v.slug)}" title="${esc(String(v.error || v.lastError || v.voice || "").slice(0, 300))}">${dot(v.channel, "sm")}${esc(v.slug)}</a>`).join("")}</div></div>
       <div class="act">${retry}${unhold}${links}${list.length === 1 && e.actions.some((a) => /decisiones/.test(a.href || "")) ? `<a class="btn" href="#/decisiones/${encodeURIComponent(slugs[0])}">Decisiones del relleno</a>` : ""}</div></div>`;
   };
   // the compact table: one line per video
-  const chan = (v) => `<span class="chan"><span class="dot" style="background:${chColor(v.channel)};width:8px;height:8px"></span>${esc(v.channel || "")}</span>`;
+  const chan = (v) => `<span class="chan">${dot(v.channel, "sm")}${esc(v.channel || "")}</span>`;
   const row = (v, extra) => `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.slug)}${v.minutes ? ` · ${v.minutes} min` : ""}${v.costUsd ? ` · ${v.costUsd} $` : ""}</div></td>
     <td class="wide">${chan(v)}</td>${extra}</tr>`;
   const table = (head, list, extra, opts = {}) => {
@@ -143,20 +143,20 @@ function drawHome(force = false) {               // the channel buttons redraw f
     const key = opts.key || head;
     const open = openSections[key] !== false;
     const shown = opts.limit && list.length > opts.limit && !expanded[key] ? list.slice(0, opts.limit) : list;
-    return `<div class="block ${opts.cls || ""}" id="${opts.id || ""}"><div class="bh" style="cursor:pointer" onclick="toggleSection('${esc(key)}')"><b>${head}<span class="count">${list.length}</span></b><span class="small">${opts.more || ""} <span class="muted">${open ? "▴" : "▾"}</span></span></div>
-      ${open ? `<div style="overflow:auto"><table class="vt"><thead><tr><th>Vídeo</th><th class="wide">Canal</th>${opts.cols.map((c) => `<th class="${c.cls || ""}">${c.name}</th>`).join("")}</tr></thead>
+    return `<div class="block ${opts.cls || ""}"${opts.id ? ` id="${opts.id}"` : ""}><div class="bh click" onclick="toggleSection('${esc(key)}')"><b>${head}<span class="count">${list.length}</span></b><span class="small">${opts.more || ""} <span class="muted">${open ? "▴" : "▾"}</span></span></div>
+      ${open ? `<div class="scroll-x"><table class="vt"><thead><tr><th>Vídeo</th><th class="wide">Canal</th>${opts.cols.map((c) => `<th class="${c.cls || ""}">${c.name}</th>`).join("")}</tr></thead>
       <tbody>${shown.map((v) => row(v, extra(v))).join("")}</tbody></table></div>
-      ${shown.length < list.length ? `<div class="vrow" style="cursor:pointer;justify-content:center" onclick="expandSection('${esc(key)}')"><span></span><span class="small muted">y ${list.length - shown.length} más: ver todos</span><span></span></div>` : ""}` : ""}</div>`;
+      ${shown.length < list.length ? `<div class="vrow click" onclick="expandSection('${esc(key)}')"><span></span><span class="small muted">y ${list.length - shown.length} más: ver todos</span><span></span></div>` : ""}` : ""}</div>`;
   };
-  const makingRows = (v) => { const st = v.stage || {}; return `<td><span style="color:var(--work)">${esc(STAGES[st.stage] || st.stage || "")}</span> <span class="muted small">${st.number}/${st.of}</span></td>
-    <td class="r"><span class="mini"><i style="width:${Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))}%"></i></span></td><td class="r wide">${ago(st.started)}</td>`; };
-  const uploadRows = (v) => `<td>${when(v)}</td><td class="r wide">${v.minutes || "—"} min</td><td class="r"><a class="btn" href="#/video/${encodeURIComponent(v.slug)}" style="padding:4px 10px;font-size:12.5px">Abrir</a></td>`;
-  const queueRows = (v) => `<td>${v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : v.stagesDone ? `${v.stagesDone}/15 pasos` : '<span class="muted">por empezar</span>'}</td>
-    <td class="r wide">${v.stagesDone ? `<span class="mini"><i style="width:${Math.round(100 * v.stagesDone / 15)}%;background:var(--wait)"></i></span>` : ""}</td>`;
+  const makingRows = (v) => { const st = v.stage || {}; return `<td><span class="t-work">${esc(STAGES[st.stage] || st.stage || "")}</span> <span class="muted small">${st.number}/${st.of}</span></td>
+    <td class="r"><span class="mini"><i style="--v:${Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))}%"></i></span></td><td class="r wide">${ago(st.started)}</td>`; };
+  const uploadRows = (v) => `<td>${when(v)}</td><td class="r wide">${v.minutes || "—"} min</td><td class="r"><a class="btn sm" href="#/video/${encodeURIComponent(v.slug)}">Abrir</a></td>`;
+  const queueRows = (v) => `<td>${v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : v.stagesDone ? `${v.stagesDone}/15 pasos` : '<span class="muted">por empezar</span>'}</td>
+    <td class="r wide">${v.stagesDone ? `<span class="mini wait"><i style="--v:${Math.round(100 * v.stagesDone / 15)}%"></i></span>` : ""}</td>`;
   const doneRows = (v) => `<td>${v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"}</td><td class="r wide">${v.published && v.published.url ? `<a href="${esc(v.published.url)}" target="_blank" rel="noopener">ver ↗</a>` : ""}</td>`;
   const channelPick = channels.length > 6
-    ? `<select onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
-    : channels.length > 1 ? `<div class="chiprow" style="margin:0">${["", ...channels].map((c) => `<button class="${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">${c ? `<span class="dot" style="background:${chColor(c)};margin-right:6px"></span>${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : "";
+    ? `<select class="w-auto" onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
+    : channels.length > 1 ? `<div class="tools">${["", ...channels].map((c) => `<button class="chip ${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">${c ? `${dot(c)}${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : "";
   const kindPick = all.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}</button>`).join("")}</span>` : "";
   const viewPick = `<span class="seg"><button class="${homeView === "tabla" ? "on" : ""}" onclick="pickView('tabla')">Tabla</button><button class="${homeView === "lista" ? "on" : ""}" onclick="pickView('lista')">Tarjetas</button></span>`;
   const sections = homeView === "tabla"
@@ -167,35 +167,35 @@ function drawHome(force = false) {               // the channel buttons redraw f
     : `${splitBlock("Haciéndose ahora", making, {cls: "now", id: "h-now"})}
        ${splitBlock("Para subir", toUpload, {hideShorts: "subir", more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
        ${splitBlock("En cola", queue, {hideShorts: "cola", more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
-         right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">⏸ ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
+         right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
        ${splitBlock("Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
          right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}`;
   $("#app").innerHTML = `
     <div class="glance">
-      <a href="#/servidor" class="${state[0] === "bad" ? "bad" : ""}"><div class="n">${state[0] === "ok" ? "●" : state[0] === "warn" ? "⏸" : "⛔"}</div><div class="l">${esc(state[1].toLowerCase())}</div></a>
+      <a href="#/servidor" class="${state[0] === "bad" ? "bad" : ""}"><div class="n ${state[0] === "ok" ? "t-ok" : state[0] === "warn" ? "t-warn" : ""}">${icon(state[0] === "ok" ? "check" : state[0] === "warn" ? "pause" : "block", state[1])}</div><div class="l">${esc(state[1].toLowerCase())}</div></a>
       <a href="javascript:void(0)" onclick="document.getElementById('h-now')?.scrollIntoView({behavior:'smooth'})"><div class="n">${making.length}</div><div class="l">haciéndose</div></a>
       <a href="javascript:void(0)" class="${attention.length ? "bad" : ""}" onclick="document.getElementById('h-warn')?.scrollIntoView({behavior:'smooth'})"><div class="n">${attention.length}</div><div class="l">con problemas</div></a>
-      <a href="#/subir"><div class="n">${toUpload.length}</div><div class="l">para subir${late ? ` · <span style="color:var(--bad)">${late} tarde</span>` : ""}</div></a></div>
+      <a href="#/subir"><div class="n">${toUpload.length}</div><div class="l">para subir${late ? ` · <span class="t-bad">${late} tarde</span>` : ""}</div></a></div>
     <form class="hero home-search" onsubmit="event.preventDefault();searchFrom(this.q.value)">
       <textarea name="q" placeholder="¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}"></textarea>
       <button class="main">Buscar</button></form>
     <div class="kpis home-kpis">
-      <a class="kpi" href="#/servidor"><div class="k">Servidor</div><div class="v ${state[0]}" style="font-size:20px;margin:6px 0 2px">${state[1]}</div><div class="d">${state[2]}${state[3] ? " · " + state[3] : ""}</div></a>
+      <div class="kpi"><a class="plain" href="#/servidor"><div class="k">Servidor</div><div class="v txt ${state[0]}">${state[1]}</div></a><div class="d">${[state[2], state[3]].filter(Boolean).join(" · ")}</div></div>
       ${ytKpi}
       <a class="kpi" href="#/subir"><div class="k">Para subir</div><div class="v ${late ? "bad" : ""}">${toUpload.length}</div>
         <div class="d">${late ? `${late} atrasado(s)` : toUpload.length ? "al día" : "nada pendiente"}${queue.length ? ` · ${queue.length} en cola` : ""}</div></a>
       <a class="kpi" href="#/gasto"><div class="k">Gasto de hoy</div><div class="v">${b.today.toFixed(2)} $</div>
         <div class="d">${b.limit ? "de " + b.limit.toFixed(2) + " $ de API" : "API, sin límite"}${b.proxyGbToday != null ? ` · proxy ${b.proxyGbToday.toFixed(2)} GB${b.proxyGbLimit ? ` de ${b.proxyGbLimit} GB` : ""} hoy` : yt && yt.proxy_gb ? ` · proxy ${yt.proxy_gb.toFixed(2)} GB/semana` : ""}</div>
-        ${b.proxyGbLimit ? `<div class="bar"><i style="width:${Math.min(100, 100 * (b.proxyGbToday || 0) / b.proxyGbLimit)}%;background:${(b.proxyGbToday || 0) / b.proxyGbLimit > 0.9 ? "var(--bad)" : "var(--work)"}"></i></div>`
-          : b.limit ? `<div class="bar"><i style="width:${Math.min(100, 100 * b.today / b.limit)}%;background:var(--accent)"></i></div>` : ""}</a>
+        ${b.proxyGbLimit ? `<div class="bar ${(b.proxyGbToday || 0) / b.proxyGbLimit > 0.9 ? "bad" : ""}"><i style="--v:${Math.min(100, 100 * (b.proxyGbToday || 0) / b.proxyGbLimit)}%"></i></div>`
+          : b.limit ? `<div class="bar acc"><i style="--v:${Math.min(100, 100 * b.today / b.limit)}%"></i></div>` : ""}</a>
     </div>
     ${attention.length ? `<div class="block warn" id="h-warn"><div class="bh"><b>Necesitan tu atención<span class="count">${attention.length}</span></b>
-      ${failed > 1 ? `<span class="small"><button onclick="retryAll()">Reintentar todos (${failed})</button> <span id="retrymsg" class="muted"></span></span>` : ""}</div>
+      ${failed > 1 ? `<span class="small"><button class="sm" onclick="retryAll()">Reintentar todos (${failed})</button> <span id="retrymsg" class="muted"></span></span>` : ""}</div>
       ${[...groups.entries()].sort((a, b) => b[1].vids.length - a[1].vids.length).map(causeRow).join("")}</div>` : ""}
     <div class="hb"><div class="tools">${channelPick}${kindPick}</div><div class="tools">${viewPick}</div></div>
     ${sections}
-    ${vids.length ? "" : '<div class="notice">Aún no hay vídeos aquí. <a href="#/nuevo">Crea uno</a>.</div>'}`;
+    ${vids.length ? "" : empty("film", "Aún no hay vídeos aquí", "", '<a class="btn main" href="#/nuevo">Crear uno</a>')}`;
   schedule(home, making.length ? 10000 : 30000);
 }
 window.retryOne = async (slug, button) => {
@@ -228,21 +228,21 @@ async function searchPage(q) {
     <form class="hero" onsubmit="event.preventDefault();searchFrom(this.q.value)">
       <textarea name="q" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}">${pasted ? "" : esc(q)}</textarea>
       <button class="main">Buscar</button></form>
-    <div class="small muted" style="margin-bottom:8px">${r.whole ? "Has pegado un guion: comparo sus nombres, lugares y cifras con todos tus guiones." : `Busco «${esc(q)}» en títulos y guiones de todos los vídeos (también los archivados y subidos).`}</div>
+    <div class="small muted mb-2">${r.whole ? "Has pegado un guion: comparo sus nombres, lugares y cifras con todos tus guiones." : `Busco «${esc(q)}» en títulos y guiones de todos los vídeos (también los archivados y subidos).`}</div>
     ${r.results.length ? `<div class="block">${r.results.map((v) => `<a class="vrow hit" href="#/video/${encodeURIComponent(v.slug)}">
-        <span class="dot" style="background:${chColor(v.channel)}"></span>
-        <div style="min-width:0"><div class="t">${esc(v.title || v.slug)}</div>
+        ${dot(v.channel)}
+        <div class="mw0"><div class="t">${esc(v.title || v.slug)}</div>
           <div class="s">${esc([v.title ? v.slug : "", v.channel, v.archived ? "archivado" : ""].filter(Boolean).join(" · "))}</div>
-          ${v.snippet ? `<div class="small" style="margin-top:4px;white-space:normal">${r.whole ? esc(v.snippet) : marked(v.snippet, words)}</div>` : ""}</div>
-        <div class="r">${r.whole ? `<b style="font-size:15px;color:${v.score >= 0.5 ? "var(--bad)" : "var(--accent)"}">${Math.round(v.score * 100)}% parecido</b><br>` : ""}
+          ${v.snippet ? `<div class="small mt-1 ws">${r.whole ? esc(v.snippet) : marked(v.snippet, words)}</div>` : ""}</div>
+        <div class="r">${r.whole ? `<b class="lg ${v.score >= 0.5 ? "t-bad" : "t-warn"}">${Math.round(v.score * 100)}% parecido</b><br>` : ""}
           ${v.published ? '<span class="pill hecho">en YouTube</span>' : pill(v.status)}</div></a>`).join("")}</div>`
-      : `<div class="notice ok">✅ No hay ningún vídeo con eso. ${r.whole ? "Este guion es nuevo." : "No lo has hecho todavía."} <a href="#/nuevo">Crear vídeo →</a></div>`}
+      : empty("check", "No hay ningún vídeo con eso", r.whole ? "Este guion es nuevo." : "No lo has hecho todavía.", '<a class="btn main" href="#/nuevo">Crear vídeo →</a>')}
     ${(r.ideas || []).length ? `<h2>En tus ideas (sin hacer todavía)</h2><div class="block">${r.ideas.map((i) => `<a class="vrow hit" href="#/tablero">
-        <span class="dot" style="background:${chColor(i.channel)}"></span>
-        <div style="min-width:0"><div class="t">${marked(i.title, words)}</div>
+        ${dot(i.channel)}
+        <div class="mw0"><div class="t">${marked(i.title, words)}</div>
           <div class="s">${esc([i.channel || "sin canal", i.where].join(" · "))}</div>
-          ${i.note ? `<div class="small" style="margin-top:4px;white-space:normal">${marked(i.note, words)}</div>` : ""}</div>
-        <div class="r"><span class="pill">💡 idea</span></div></a>`).join("")}</div>` : ""}`;
+          ${i.note ? `<div class="small mt-1 ws">${marked(i.note, words)}</div>` : ""}</div>
+        <div class="r"><span class="pill">${icon("bulb")} idea</span></div></a>`).join("")}</div>` : ""}`;
 }
 
 

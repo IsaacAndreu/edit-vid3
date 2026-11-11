@@ -4,21 +4,22 @@ let spendSort = "last", spendChannel = "", invoiceMonth = "";
 async function doctorCard(refresh) {
   const d = await api("/api/doctor" + (refresh ? "?refresh=1" : "")).catch(() => null), box = $("#doctor");
   if (!d || !box) return;
-  const icon = {ok: "✅", aviso: "⚠️", error: "❌"}, bad = d.rows.filter((r) => r.level !== "ok");
-  box.innerHTML = `<div class="card" style="border-left:3px solid ${bad.some((r) => r.level === "error") ? "var(--bad)" : bad.length ? "#f2cc60" : "#3fb950"}">
-    <div class="row" style="justify-content:space-between"><b>Chequeo ${bad.length ? `· ${bad.length} aviso(s)` : "· todo listo"}</b>
-    <button onclick="doctorCard(true)">↻ Revisar ahora</button></div>
-    ${(bad.length ? bad : d.rows).map((r) => `<div class="small">${icon[r.level]} <b>${esc(r.area)}</b>: ${esc(r.text)}</div>`).join("")}
-    <div class="small muted">${new Date(d.at * 1000).toLocaleTimeString("es-ES")} · sin peticiones a YouTube ni a las IAs</div></div>`;
+  const mark = {ok: `<span class="t-ok">${icon("check", "Bien")}</span>`, aviso: `<span class="t-warn">${icon("alert", "Aviso")}</span>`,
+    error: `<span class="t-bad">${icon("x", "Error")}</span>`}, bad = d.rows.filter((r) => r.level !== "ok");
+  box.innerHTML = `<div class="card side" style="--c:${bad.some((r) => r.level === "error") ? "var(--bad)" : bad.length ? "var(--accent)" : "var(--ok)"}">
+    <div class="row between"><b>Chequeo ${bad.length ? `· ${bad.length} aviso(s)` : "· todo listo"}</b>
+    <button onclick="doctorCard(true)">${icon("refresh")} Revisar ahora</button></div>
+    ${(bad.length ? bad : d.rows).map((r) => `<div class="small mt-1">${mark[r.level]} <b>${esc(r.area)}</b>: ${esc(r.text)}</div>`).join("")}
+    <div class="small muted mt-2">${new Date(d.at * 1000).toLocaleTimeString("es-ES")} · sin peticiones a YouTube ni a las IAs</div></div>`;
 }
 
 async function serverPage() {
   const [s, px] = await Promise.all([api("/api/servidor"), api("/api/proxy?days=7").catch(() => null)]);
   const m = s.machine || {}, a = s.api, p = s.proxy, b = s.backup;
-  const bar = (x, of, warn) => `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, 100 * (x || 0) / Math.max(0.01, of || 0))}%;background:${(x || 0) / Math.max(0.01, of || 0) > warn ? "var(--bad)" : "var(--accent)"}"></i></div>`;
+  const bar = (x, of, warn) => `<div class="bar ${(x || 0) / Math.max(0.01, of || 0) > warn ? "bad" : "acc"}"><i style="--v:${Math.min(100, 100 * (x || 0) / Math.max(0.01, of || 0))}%"></i></div>`;
   const kinds = {haciendo: "haciendo", turno: "", cuota: "", youtube: "error", cola: "", error: "error", falta: "", pausa: ""};
   $("#app").innerHTML = `<h1>Estado del servidor</h1>
-    <div class="small muted" style="margin:-4px 0 12px">Se actualiza solo cada 15 s · ${esc(s.at)}</div>
+    <div class="small muted">Se actualiza solo cada 15 s · ${esc(s.at)}</div>
     <div id="doctor"></div>
     <h2>Máquina</h2>
     <div class="kpis">
@@ -32,8 +33,8 @@ async function serverPage() {
     ${a ? `<div class="kpis">
       <div class="kpi"><div class="k">Búsquedas hoy</div><div class="v">${fmt(a.searches)} / ${fmt(a.searchesPerDay)}</div>
         <div class="d">quedan ${fmt(a.searchesLeft)} · ${fmt(a.perHour)}/hora · ${a.keys} claves</div>${bar(a.searches, a.searchesPerDay, 0.9)}</div>
-      <div class="kpi"><div class="k">Se acaba</div><div class="v" style="font-size:20px">${esc(a.runsOut || "—")}</div><div class="d">al ritmo de hoy</div></div>
-      <div class="kpi"><div class="k">Se renueva</div><div class="v" style="font-size:20px">${esc(a.reset)}</div><div class="d">hora de España</div></div></div>`
+      <div class="kpi"><div class="k">Se acaba</div><div class="v txt">${esc(a.runsOut || "—")}</div><div class="d">al ritmo de hoy</div></div>
+      <div class="kpi"><div class="k">Se renueva</div><div class="v txt">${esc(a.reset)}</div><div class="d">hora de España</div></div></div>`
       : '<div class="card muted">Sin claves de la API de YouTube.</div>'}
     ${proxySection(px)}
     ${p ? `<h2>Proxy de metadatos (saldo apuntado)</h2><div class="kpis">
@@ -41,30 +42,29 @@ async function serverPage() {
         <div class="d">${p.videosLeft != null ? `≈ ${p.videosLeft} vídeos` : "apunta abajo los GB comprados"}</div>${p.bought ? bar(p.usedGb, p.bought, 0.85) : ""}</div>
       <div class="kpi"><div class="k">Gastado${p.since ? " desde " + esc(p.since) : ""}</div><div class="v">${fmt(p.usedGb)} GB</div>
         <div class="d">${fmt(p.requests)} peticiones · ${p.videos} vídeos · ${fmt(p.perVideoGb)} GB/vídeo</div></div></div>
-      <form class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap" onsubmit="event.preventDefault();post('/api/settings',{proxy_gb:this.gb.value,proxy_since:this.day.value}).then(serverPage)">
-        <span class="small">Recarga: GB comprados</span><input name="gb" inputmode="decimal" style="width:80px" value="${p.bought ?? ""}">
-        <span class="small">el día</span><input name="day" type="date" style="width:auto" value="${esc(p.since || new Date().toISOString().slice(0, 10))}">
+      <form class="tools mt-3" onsubmit="event.preventDefault();post('/api/settings',{proxy_gb:this.gb.value,proxy_since:this.day.value}).then(serverPage)">
+        <div class="unit"><label for="px-gb">Recarga: GB comprados</label><input id="px-gb" name="gb" inputmode="decimal" value="${p.bought ?? ""}"></div>
+        <label for="px-day">el día</label><input id="px-day" name="day" type="date" class="w-auto" value="${esc(p.since || new Date().toISOString().slice(0, 10))}">
         <button>Guardar</button></form>
-      <div class="small muted" style="margin-top:4px">Estimado con las peticiones de cada vídeo (el proveedor no da el saldo por API): si no cuadra con su panel, apunta allí lo que queda como una recarga de hoy. Avisa por Telegram cuando queden menos de 10 vídeos.</div>`
+      <p class="help">Estimado con las peticiones de cada vídeo (el proveedor no da el saldo por API): si no cuadra con su panel, apunta allí lo que queda como una recarga de hoy. Avisa por Telegram cuando queden menos de 10 vídeos.</p>`
       : ""}
     <h2>Conexiones a YouTube</h2>
-    <div class="card" style="padding:4px 14px">${(s.ways || []).map((w) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
-        <div class="row" style="justify-content:space-between;gap:8px"><b style="word-break:break-all">${esc(w.name)}</b>
+    <div class="card rows">${(s.ways || []).map((w) => `<div class="rowline">
+        <div class="row between nowrap"><b class="break">${esc(w.name)}</b>
         <span class="pill ${w.state === "libre" ? "hecho" : "error"}">${esc(w.state)}</span></div>
         <div class="small muted">última hora ${fmt(w.hour)}${w.perHour ? " / " + fmt(w.perHour) : ""} peticiones</div></div>`).join("")}</div>
     <h2>Cola</h2>
-    ${(s.queue || []).length ? `<div class="card" style="padding:4px 14px">${s.queue.map((v) => `<a href="#/video/${encodeURIComponent(v.slug)}"
-        style="display:block;padding:8px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none">
-        <div class="row" style="justify-content:space-between;gap:8px"><span class="row" style="gap:6px"><span class="dot" style="background:${chColor(v.channel)}"></span>
+    ${(s.queue || []).length ? `<div class="card rows">${s.queue.map((v) => `<a class="rowline" href="#/video/${encodeURIComponent(v.slug)}">
+        <div class="row between nowrap"><span class="row gap-2 grow">${dot(v.channel)}
           <b>${esc(v.slug)}</b> <span class="small muted">${esc(v.channel)}</span></span>
           <span class="pill ${kinds[v.kind] || ""}">${esc(v.kind)}</span></div>
-        <div class="small" style="margin-top:2px;white-space:normal">${esc(v.why)}</div></a>`).join("")}</div>`
-      : '<div class="card muted">No hay vídeos pendientes.</div>'}
+        <div class="small mt-1">${esc(v.why)}</div></a>`).join("")}</div>`
+      : empty("inbox", "No hay vídeos pendientes")}
     <h2>Copia de seguridad</h2>
     <div class="card">${b ? `Última: <b>${esc(b.name)}</b> · ${fmt(b.mb)} MB · ${new Date(b.at * 1000).toLocaleString("es-ES")}
         <div class="small muted">En ${esc(b.folder)} del servidor. Lleva tus claves (.env): guárdala en un sitio privado.</div>`
         : '<span class="muted">Aún no hay ninguna (se hace sola cada semana).</span>'}
-      <div class="row" style="gap:8px;margin-top:8px">${b ? '<a class="btn" href="/api/copia">⬇️ Descargar</a>' : ""}
+      <div class="actions">${b ? `<a class="btn" href="/api/copia">${icon("download")} Descargar</a>` : ""}
         <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`;
   doctorCard();
   schedule(serverPage, 15000);
@@ -74,20 +74,20 @@ async function serverPage() {
 function proxySection(px, title = "Proxy") {
   if (!px || !px.proxies.length) return `<h2>${title}</h2><div class="card muted small">Sin peticiones por proxy en los últimos ${px ? px.days : 7} días.</div>`;
   const main = px.proxies.slice().sort((a, b) => b.requests - a.requests)[0];
-  const share = main.ok_share, col = share >= 85 ? "var(--ok)" : share >= 60 ? "var(--accent)" : "var(--bad)";
+  const share = main.ok_share, col = share >= 85 ? "ok" : share >= 60 ? "warn" : "bad";
   const maxDay = Math.max(0.01, ...px.perDay.map((d) => d.gb));
   const e = main.errors || {};
   return `<h2>${title} · últimos ${px.days} días</h2>
     <div class="kpis">
-      <div class="kpi"><div class="k">Éxito</div><div class="v" style="color:${col}">${share} %</div><div class="d">${main.requests} peticiones por ${esc(main.proxy)}${main.sessions ? ` · ${main.sessions} sesiones` : ""}</div></div>
+      <div class="kpi"><div class="k">Éxito</div><div class="v ${col}">${share} %</div><div class="d">${main.requests} peticiones por ${esc(main.proxy)}${main.sessions ? ` · ${main.sessions} sesiones` : ""}</div></div>
       <div class="kpi"><div class="k">GB por el proxy</div><div class="v">${px.totalGb.toFixed(2)}</div><div class="d">≈ ${px.usd.toFixed(2)} $ a ${px.usdPerGb} $/GB</div></div>
       <div class="kpi"><div class="k">Por vídeo terminado</div><div class="v">${px.gbPerFinished != null ? px.gbPerFinished.toFixed(2) + " GB" : "—"}</div>
         <div class="d">${px.finished} terminados de ${px.videos} con descargas${px.gbPerFinished != null ? ` · ${(px.gbPerFinished * px.usdPerGb).toFixed(2)} $/vídeo` : ""}</div></div>
-      <div class="kpi"><div class="k">Errores</div><div class="v" style="font-size:20px">${["bot", "403", "429", "timeout"].filter((k) => e[k]).map((k) => `${e[k]} ${k === "bot" ? "bot" : k}`).join(" · ") || "ninguno"}</div>
+      <div class="kpi"><div class="k">Errores</div><div class="v txt">${["bot", "403", "429", "timeout"].filter((k) => e[k]).map((k) => `${e[k]} ${k === "bot" ? "bot" : k}`).join(" · ") || "ninguno"}</div>
         <div class="d">${e.other ? `${e.other} otros` : "bot = «no eres un bot»"}</div></div></div>
-    ${px.perDay.length > 1 ? `<div class="card" style="margin-top:10px;padding:12px 16px"><div class="small muted" style="margin-bottom:6px">GB por día</div>
-      <div class="spend" style="height:90px">${px.perDay.map((d) => `<div style="height:${Math.max(2, 100 * d.gb / maxDay)}%" title="${d.day}: ${d.gb.toFixed(2)} GB"><span>${d.day.slice(5)}</span></div>`).join("")}</div></div>` : ""}
-    ${main.details && main.details.length ? `<div class="card small" style="margin-top:10px"><b>Errores más frecuentes</b><ul style="margin:6px 0 0;padding-left:18px">${main.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul></div>` : ""}`;
+    ${px.perDay.length > 1 ? `<div class="card mt-3"><div class="small muted">GB por día</div>
+      <div class="spend sm">${px.perDay.map((d) => `<div style="--v:${Math.max(2, 100 * d.gb / maxDay)}%" title="${d.day}: ${d.gb.toFixed(2)} GB"><span>${d.day.slice(5)}</span></div>`).join("")}</div></div>` : ""}
+    ${main.details && main.details.length ? `<div class="card small mt-3"><b>Errores más frecuentes</b><ul>${main.details.map(([t, n]) => `<li>${n}× ${esc(t)}</li>`).join("")}</ul></div>` : ""}`;
 }
 
 // «Factura»: each person's month (you see everyone, a partner only their own), with a CSV to send
@@ -97,16 +97,16 @@ function invoiceBlock(g, usd) {
   const m = months.find((x) => x.month === invoiceMonth) || months[0];
   const name = (w) => w ? esc(w) : "Tú";
   return `<h2>${window.partner ? "Tu factura del mes" : "Factura por persona"}</h2>
-    <div class="yt-tools">${months.map((x) => `<button class="yt-chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth='${x.month}';spendPage()">${x.month}</button>`).join("")}</div>
-    <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
+    <div class="tools">${months.map((x) => `<button class="chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth='${x.month}';spendPage()">${x.month}</button>`).join("")}</div>
+    <div class="card flush"><table class="ytt">
       <thead><tr><th>Persona</th><th>API</th><th>Voz</th><th>Proxy</th><th>Servidor</th><th>Total</th><th></th></tr></thead>
       <tbody>${m.people.map((p) => `<tr class="v"><td><b>${name(p.who)}</b><div class="sub">${p.videos.length} vídeo${p.videos.length === 1 ? "" : "s"}</div></td>
         <td data-k="API">${usd(p.api)}</td><td data-k="Voz">${usd(p.voice)}</td>
         <td data-k="Proxy">${usd(p.proxyUsd)}<div class="sub">${p.proxyGb.toFixed(2)} GB</div></td>
         <td data-k="Servidor">${usd(p.server)}</td><td data-k="Total"><b>${usd(p.total)}</b></td>
-        <td><a class="btn" style="padding:4px 10px;font-size:12.5px" href="/api/factura.csv?month=${m.month}&who=${encodeURIComponent(p.who)}">CSV</a></td></tr>`).join("")
-        || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">Sin gasto este mes.</td></tr>'}</tbody></table></div>
-    <div class="small muted" style="margin-top:4px">API y voz por el día de cada llamada · proxy por los GB que llevó cada vídeo ·
+        <td><a class="btn sm" href="/api/factura.csv?month=${m.month}&who=${encodeURIComponent(p.who)}">CSV</a></td></tr>`).join("")
+        || '<tr><td colspan="7" class="empty-row">Sin gasto este mes.</td></tr>'}</tbody></table></div>
+    <div class="small muted mt-2">API y voz por el día de cada llamada · proxy por los GB que llevó cada vídeo ·
       servidor: ${fmt(m.serverUsd)} al mes a partes iguales entre ${m.parts || 1} (${fmt(Math.round(100 * m.serverUsd / (m.parts || 1)) / 100)} cada uno).
       ${!window.partner && !m.serverUsd ? 'Pon lo que cuesta el servidor en <a href="#/ajustes">Ajustes</a>.' : ""}</div>`;
 }
@@ -122,7 +122,7 @@ async function spendPage() {
       : spendSort === "work" ? (b.workSeconds || 0) - (a.workSeconds || 0) : b.last.localeCompare(a.last));
   $("#app").innerHTML = `<h1>${window.partner ? "Mi gasto" : "Gasto de API"}</h1>
     <div class="small muted">Lo que cuestan las APIs de pago (guion, planos, juez, voz…). Las medias cuentan solo vídeos terminados; lo de vídeos a medias va aparte («en curso»).</div>
-    <div class="kpis" style="margin-top:12px">
+    <div class="kpis">
       <div class="kpi"><div class="k">Hoy</div><div class="v">${usd(g.today)}</div><div class="d">desde las 00:00 (UTC)</div></div>
       <div class="kpi"><div class="k">Media por vídeo</div><div class="v">${usd(o.average)}</div><div class="d">mediana ${usd(o.median)} · ${o.done} terminados</div></div>
       <div class="kpi"><div class="k">Por minuto de vídeo</div><div class="v">${usd(o.perMinute, 3)}</div><div class="d">coste / minutos de vídeo final</div></div>
@@ -142,20 +142,20 @@ async function spendPage() {
       return `<h2>Ahorro por reutilizar</h2>
     <div class="small muted">Lo que no se pagó otra vez, valorado con lo que cuesta aquí lo mismo: un veredicto del juez ${usd(s.perVerdict, 4)},
       1.000 caracteres de voz ${usd(s.perKChars, 3)}.</div>
-    <div class="kpis" style="margin-top:8px">
+    <div class="kpis">
       <div class="kpi"><div class="k">Ahorrado</div><div class="v">${usd(s.usd)}</div><div class="d">${Math.round(100 * s.share)} % de lo que habría costado</div></div>
       <div class="kpi"><div class="k">Veredictos del juez reutilizados</div><div class="v">${fmt(s.verdicts)}</div><div class="d">${usd(s.verdictsUsd)} (los mismos fotogramas ya juzgados)</div></div>
       <div class="kpi"><div class="k">Voz reutilizada</div><div class="v">${fmt(s.voiceChars)}</div><div class="d">caracteres · ${usd(s.voiceUsd, 3)} (trozos ya hechos)</div></div></div>
 
     <h2>Tiempo de pipeline</h2>
     <div class="small muted">Vídeos terminados: lo que tardó cada etapa trabajando (sin contar la espera de su turno en la cola).</div>
-    <div class="kpis" style="margin-top:8px">
+    <div class="kpis">
       <div class="kpi"><div class="k">Vídeos medidos</div><div class="v">${p.videos}</div><div class="d">terminados con sus tiempos</div></div>
       <div class="kpi"><div class="k">Tiempo total</div><div class="v">${hm(p.seconds)}</div><div class="d">coste total ${usd(p.usd)}</div></div>
       <div class="kpi"><div class="k">Tiempo medio</div><div class="v">${hm(p.averageSeconds)}</div><div class="d">coste medio ${usd(p.averageUsd)}</div></div></div>
-    ${(p.stages || []).length ? `<div class="card" style="margin-top:8px"><b>Tiempo por etapa</b>
-      ${p.stages.map((x) => `<div style="margin-top:6px"><div class="row small" style="justify-content:space-between"><span>${esc(x.name)}</span><b>${hm(x.seconds)}</b></div>
-        <div class="bar"><i style="width:${100 * x.seconds / most}%;background:var(--accent)"></i></div></div>`).join("")}</div>` : ""}`; })()}
+    ${(p.stages || []).length ? `<div class="card mt-3"><b>Tiempo por etapa</b>
+      ${p.stages.map((x) => `<div class="mt-3"><div class="row between small"><span>${esc(x.name)}</span><b>${hm(x.seconds)}</b></div>
+        <div class="bar acc mt-1"><i style="--v:${100 * x.seconds / most}%"></i></div></div>`).join("")}</div>` : ""}`; })()}
 
     <h2>Cuota de la API de YouTube</h2>
     <div class="kpis">
@@ -163,11 +163,11 @@ async function spendPage() {
         <div class="d">unidades · ${o.ytSearches ?? "—"} búsquedas · ≈ ${o.ytKeys ?? "—"} claves</div></div>
       ${g.ytToday ? `<div class="kpi"><div class="k">Hoy</div><div class="v">${kfmt(g.ytToday.used)}</div>
         <div class="d">de ${kfmt(g.ytToday.total)} unidades · ${g.ytToday.searches}/${g.ytToday.searchesPerDay} búsquedas</div>
-        <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, 100 * g.ytToday.used / Math.max(1, g.ytToday.total))}%;background:var(--accent)"></i></div></div>
+        <div class="bar acc"><i style="--v:${Math.min(100, 100 * g.ytToday.used / Math.max(1, g.ytToday.total))}%"></i></div></div>
       <div class="kpi"><div class="k">Da para</div><div class="v">${o.ytUnits ? fmt(Math.floor(g.ytToday.total / o.ytUnits * 10) / 10) : "—"}</div>
         <div class="d">vídeos al día con ${g.ytToday.keys} claves</div></div>
-      <div class="kpi"><div class="k">Se renueva</div><div class="v" style="font-size:20px">${esc(g.ytToday.reset)}</div><div class="d">hora de España</div></div>` : ""}</div>
-    <div class="small muted" style="margin-top:4px">Cada búsqueda (search.list) cuesta 100 unidades y cada clave da 10.000 al día (y 100 búsquedas). Gratis en dinero, pero limita cuántos vídeos salen al día.
+      <div class="kpi"><div class="k">Se renueva</div><div class="v txt">${esc(g.ytToday.reset)}</div><div class="d">hora de España</div></div>` : ""}</div>
+    <div class="small muted mt-2">Cada búsqueda (search.list) cuesta 100 unidades y cada clave da 10.000 al día (y 100 búsquedas). Gratis en dinero, pero limita cuántos vídeos salen al día.
       Los vídeos de antes del registro se estiman por sus búsquedas (marcados con ≈).</div>
 
     ${g.proxy ? `<h2>Proxy, desde el principio</h2>
@@ -175,52 +175,51 @@ async function spendPage() {
       <div class="kpi"><div class="k">Por vídeo</div><div class="v">${usd(o.proxyUsd, 2)}</div><div class="d">media de los terminados${o.proxyGb != null ? ` · ${o.proxyGb.toFixed(2)} GB` : ""}</div></div>
       <div class="kpi"><div class="k">Total</div><div class="v">${usd(g.proxy.usd)}</div>
         <div class="d">${g.proxy.gb.toFixed(2)} GB · ${fmt(g.proxy.requests)} peticiones · ${g.proxy.videos} vídeos</div></div>
-      <div class="kpi"><div class="k">Desde</div><div class="v" style="font-size:20px">${g.proxy.since ? new Date(g.proxy.since * 1000).toLocaleString("es-ES", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "—"}</div>
+      <div class="kpi"><div class="k">Desde</div><div class="v txt">${g.proxy.since ? new Date(g.proxy.since * 1000).toLocaleString("es-ES", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "—"}</div>
         <div class="d">primera petición por el proxy</div></div></div>
-    <div class="small muted" style="margin-top:4px">Los GB del proxy residencial son los medidos en cada petición, a ${g.proxy.usdPerGb} $/GB (sourcing.youtube.proxy_usd_per_gb).
+    <div class="small muted mt-2">Los GB del proxy residencial son los medidos en cada petición, a ${g.proxy.usdPerGb} $/GB (sourcing.youtube.proxy_usd_per_gb).
       ${g.proxy.estimatedVideos ? `Los ${g.proxy.estimatedVideos} vídeos marcados con ≈ usaron el proxy de metadatos antiguo, que no guardaba tamaños: se estima con ${g.proxy.mbPerRequest} MB por petición y ${g.proxy.metadataUsdPerGb} $/GB.` : ""}</div>` : ""}
 
     <h2>Media por canal</h2>
-    <div class="card" style="overflow-x:auto;padding:0"><table class="ytt">
+    <div class="card flush"><table class="ytt">
       <thead><tr><th>Canal</th><th>Media por vídeo</th><th>Mediana</th><th>Por minuto</th><th>Cuota YT / vídeo</th><th>Proxy / vídeo</th><th>Terminados</th><th>Total</th><th>En curso</th><th>Más caro</th></tr></thead>
-      <tbody>${g.channels.map((c) => `<tr class="v" style="cursor:pointer" onclick="spendChannel='${esc(c.channel)}';spendPage()">
-        <td><span class="row" style="gap:8px"><i class="dot" style="background:${chColor(c.channel)};width:10px;height:10px;border-radius:50%;display:inline-block"></i><b>${esc(c.channel)}</b></span></td>
-        <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="width:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
+      <tbody>${g.channels.map((c) => `<tr class="v click" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+        <td><span class="row nowrap">${dot(c.channel)}<b>${esc(c.channel)}</b></span></td>
+        <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="--v:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
         <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td>
         <td data-k="Cuota YT" title="${c.ytSearches ?? "—"} búsquedas">${c.ytUnits != null ? kfmt(c.ytUnits) + " u · " + c.ytKeys + " claves" : "—"}</td>
         <td data-k="Proxy">${c.proxyUsd != null ? usd(c.proxyUsd, 2) + (c.proxyGb != null ? ` <span class="muted small">${c.proxyGb.toFixed(2)} GB</span>` : "") : "—"}</td><td data-k="Terminados">${c.done} de ${c.videos}</td>
         <td data-k="Total">${usd(c.total)}</td><td data-k="En curso" class="wide">${usd(c.inProgress)}</td>
         <td data-k="Más caro" class="wide">${c.dearest ? `${esc(c.dearest.slug)} · ${usd(c.dearest.usd)}` : "—"}</td></tr>`).join("")}
-      <tr class="group"><td>Todos los canales</td><td style="text-align:right">${usd(o.average)}</td><td style="text-align:right">${usd(o.median)}</td>
-        <td style="text-align:right">${usd(o.perMinute, 3)}</td><td style="text-align:right">${o.ytUnits != null ? kfmt(o.ytUnits) + " u · " + o.ytKeys + " claves" : "—"}</td>
-        <td style="text-align:right">${o.proxyUsd != null ? usd(o.proxyUsd, 2) : "—"}</td>
-        <td style="text-align:right">${o.done} de ${o.videos}</td><td style="text-align:right">${usd(o.total)}</td>
-        <td style="text-align:right" class="wide">${usd(o.inProgress)}</td><td class="wide"></td></tr></tbody></table></div>
+      <tr class="group"><td>Todos los canales</td><td>${usd(o.average)}</td><td>${usd(o.median)}</td>
+        <td>${usd(o.perMinute, 3)}</td><td>${o.ytUnits != null ? kfmt(o.ytUnits) + " u · " + o.ytKeys + " claves" : "—"}</td>
+        <td>${o.proxyUsd != null ? usd(o.proxyUsd, 2) : "—"}</td>
+        <td>${o.done} de ${o.videos}</td><td>${usd(o.total)}</td>
+        <td class="wide">${usd(o.inProgress)}</td><td class="wide"></td></tr></tbody></table></div>
 
-    <div class="grid" style="margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="grid2 mt-3">
       <div class="card"><b>En qué se va</b><div class="small muted">Todo el gasto, por servicio</div>
-        ${Object.entries(g.providers).map(([k, v]) => `<div style="margin-top:8px"><div class="row small" style="justify-content:space-between"><span>${esc(k)}</span>
+        ${Object.entries(g.providers).map(([k, v]) => `<div class="mt-3"><div class="row between small"><span>${esc(k)}</span>
           <span><b>${usd(v)}</b> <span class="muted">${Math.round(100 * v / provTotal)} %</span></span></div>
-          <div class="bar"><i style="width:${100 * v / provTotal}%;background:var(--accent)"></i></div></div>`).join("")}</div>
+          <div class="bar acc mt-1"><i style="--v:${100 * v / provTotal}%"></i></div></div>`).join("")}</div>
       <div class="card"><b>Por día</b><div class="small muted">Últimos 30 días · máximo ${usd(max)}</div>
-        <div style="display:flex;align-items:flex-end;gap:2px;height:140px;margin-top:10px">${g.days.map((d) => `<div title="${esc(d.day)}: ${usd(d.usd)}"
-          style="flex:1;height:${Math.max(d.usd ? 2 : 0, 100 * d.usd / max)}%;background:var(--accent);border-radius:3px 3px 0 0;opacity:.85"></div>`).join("")}</div>
-        <div class="row small muted" style="justify-content:space-between;margin-top:4px"><span>${esc(g.days[0].day.slice(5))}</span><span>hoy</span></div></div></div>
+        <div class="spend tight">${g.days.map((d) => `<div title="${esc(d.day)}: ${usd(d.usd)}" style="--v:${Math.max(d.usd ? 2 : 0, 100 * d.usd / max)}%"></div>`).join("")}</div>
+        <div class="row between small muted mt-1"><span>${esc(g.days[0].day.slice(5))}</span><span>hoy</span></div></div></div>
 
     <h2>Por vídeo</h2>
-    <div class="yt-tools">
-      <button class="yt-chip ${spendChannel ? "" : "on"}" onclick="spendChannel='';spendPage()">Todos</button>
-      ${g.channels.map((c) => `<button class="yt-chip ${c.channel === spendChannel ? "on" : ""}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
-        <i class="dot" style="background:${chColor(c.channel)}"></i>${esc(c.channel)}</button>`).join("")}
-      <span class="row small" style="gap:4px;margin-left:auto">Ordenar:<select style="width:auto" onchange="spendSort=this.value;spendPage()">
-        ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"], ["work", "Más lento"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></span></div>
-    <div class="card" style="overflow:auto;padding:0;max-height:70vh"><table class="ytt">
-      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Ahorrado</th><th>Tiempo</th><th>Cuota YT</th><th>Proxy</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th style="text-align:left">Desglose</th></tr></thead>
-      <tbody>${rows.map((v) => `<tr class="v"><td><a href="#/video/${encodeURIComponent(v.slug)}" style="font-weight:600">${esc(v.slug)}</a>
-          <div class="sub"><i class="dot" style="background:${chColor(v.channel)}"></i>
-            <select style="width:auto;padding:1px 4px;font-size:12px" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
+    <div class="tools">
+      <button class="chip ${spendChannel ? "" : "on"}" onclick="spendChannel='';spendPage()">Todos</button>
+      ${g.channels.map((c) => `<button class="chip ${c.channel === spendChannel ? "on" : ""}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+        ${dot(c.channel, "sm")}${esc(c.channel)}</button>`).join("")}
+      <label class="row nowrap small gap-1 n4 push">Ordenar:<select class="sm w-auto" onchange="spendSort=this.value;spendPage()">
+        ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"], ["work", "Más lento"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+    <div class="card flush tall"><table class="ytt">
+      <thead><tr><th>Vídeo</th><th>Gasto</th><th>Ahorrado</th><th>Tiempo</th><th>Cuota YT</th><th>Proxy</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th class="l">Desglose</th></tr></thead>
+      <tbody>${rows.map((v) => `<tr class="v"><td><a class="t" href="#/video/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a>
+          <div class="sub">${dot(v.channel, "sm")}
+            <select class="sm w-auto" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
               ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
-            · ${esc(v.last)}</div></td>
+            <span class="nw">· ${esc(v.last)}</span></div></td>
         <td data-k="Gasto"><b>${usd(v.usd)}</b>${v.proxyUsd ? `<div class="sub" title="API + proxy">con proxy ${usd(v.usd + v.proxyUsd)}</div>` : ""}</td>
         <td data-k="Ahorrado" title="${fmt(v.reused?.judge || 0)} veredictos · ${fmt(v.reused?.voice || 0)} caracteres de voz">${v.savedUsd ? usd(v.savedUsd) : "—"}</td>
         <td data-k="Tiempo">${v.workSeconds ? (v.workSeconds >= 3600 ? `${Math.floor(v.workSeconds / 3600)} h ${String(Math.round(v.workSeconds % 3600 / 60)).padStart(2, "0")} min` : `${Math.round(v.workSeconds / 60)} min`) : "—"}</td>
@@ -228,8 +227,8 @@ async function spendPage() {
         <td data-k="Proxy" title="${v.proxyRequests ?? 0} peticiones por el proxy${v.proxyEstimated ? " · estimado por peticiones (proxy de metadatos antiguo)" : ""}">${v.proxyUsd ? (v.proxyEstimated ? "≈ " : "") + usd(v.proxyUsd, 2) + (v.proxyGb ? `<div class="sub">${v.proxyGb.toFixed(2)} GB</div>` : "") : "—"}</td><td data-k="Duración">${v.minutes ? fmt(v.minutes) + " min" : "—"}</td>
         <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
         <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
-        <td class="wide small muted" style="text-align:left">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
-        || '<tr><td colspan="10" class="muted" style="text-align:center;padding:20px">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
+        <td class="wide small muted l">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
+        || '<tr><td colspan="10" class="empty-row">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
 }
 
 async function restartQueue(button) {
@@ -252,10 +251,10 @@ async function updateNow(button) {
     alert(r.message);
     setTimeout(() => location.reload(), r.changed ? 4000 : 300);    // «ya al día» too: the tab may be older
   } catch (e) { alert(e.message); }
-  button.disabled = false; button.textContent = "🔄 Actualizar ahora";
+  button.disabled = false; button.innerHTML = `${icon("refresh")} Actualizar ahora`;
 }
 
-function movePrio(i, step) {                       // ▲ ▼ ✕ in «Prioridad en la cola»
+function movePrio(i, step) {                       // up, down and remove in «Prioridad en la cola»
   const list = [...(window.prioList || [])];
   if (step === 0) list.splice(i, 1);
   else [list[i], list[i + step]] = [list[i + step], list[i]];
@@ -267,9 +266,8 @@ let mineOpen = false, mineEmpty = false;
 async function peopleBlock(all) {
   const u = (await api("/api/users").catch(() => ({users: []}))).users;
   const owner = Object.fromEntries(u.flatMap((x) => x.channels.map((c) => [c, x.name])));
-  const boxes = (who, mine) => all.map((c) => `<label class="row small" style="gap:4px;margin:0;font-weight:400${owner[c] && owner[c] !== who ? ";opacity:.45" : ""}">
-    <input type="checkbox" class="pc-${esc(who || "_new")}" value="${esc(c)}" ${mine.includes(c) ? "checked" : ""} ${owner[c] && owner[c] !== who ? "disabled" : ""}
-      style="width:auto">${esc(c)}${owner[c] && owner[c] !== who ? ` <span class="muted">(${esc(owner[c])})</span>` : ""}</label>`).join("");
+  const boxes = (who, mine) => all.map((c) => `<label class="check small${owner[c] && owner[c] !== who ? " off" : ""}">
+    <input type="checkbox" class="pc-${esc(who || "_new")}" value="${esc(c)}" ${mine.includes(c) ? "checked" : ""} ${owner[c] && owner[c] !== who ? "disabled" : ""}>${esc(c)}${owner[c] && owner[c] !== who ? ` <span class="muted">(${esc(owner[c])})</span>` : ""}</label>`).join("");
   const picked = (who) => [...document.querySelectorAll(".pc-" + (who || "_new") + ":checked")].map((x) => x.value);
   window.savePerson = async (who) => {
     const msg = $("#pmsg-" + (who || "_new"));
@@ -282,24 +280,24 @@ async function peopleBlock(all) {
     if (!confirm(`¿Quitar a ${who}? No podrá entrar más; sus vídeos se quedan.`)) return;
     await post("/api/users", {remove: who}); settingsPage();
   };
-  return `<details class="block"${u.length ? " open" : ""}><summary><b>Personas que comparten el estudio</b>
-      <span class="small muted">${u.length ? u.length + (u.length === 1 ? " persona" : " personas") : "solo tú"}</span></summary>
-    <div class="small muted" style="margin:6px 0">Cada persona entra con su contraseña y solo ve sus canales: sus vídeos, su gasto y su factura.
-      Nada de lo tuyo (ni Ajustes, ni el servidor, ni los demás canales). Un canal es de una sola persona; los que no son de nadie, tuyos.</div>
-    ${u.map((x) => `<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between"><b>${esc(x.name)}</b>
-        <button class="small" onclick="removePerson('${esc(x.name)}')">Quitar</button></div>
-      <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes(x.name, x.channels)}</div>
-      <div class="row small" style="gap:8px;margin:6px 0;flex-wrap:wrap">Sus topes al día:
-        <input id="plim-usd-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}" style="max-width:90px"> $ de API
-        <input id="plim-gb-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}" style="max-width:90px"> GB de proxy
-        <span class="muted">(0 = sin tope) · Telegram: ${x.telegram ? "✅ conectado" : "sin conectar (sus avisos te llegan a ti)"}</span></div>
-      <div class="row"><input id="ppass-${esc(x.name)}" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)" style="max-width:260px">
-        <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small" style="color:var(--bad)"></span></div></div>`).join("")}
-    <div class="card" style="margin-top:8px"><b>Añadir persona</b>
-      <div class="row" style="margin-top:6px"><input id="pname" placeholder="nombre (p. ej. marc)" style="max-width:180px">
-        <input id="ppass-_new" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)" style="max-width:220px"></div>
-      <div class="row" style="flex-wrap:wrap;gap:4px 14px;margin:6px 0">${boxes("", [])}</div>
-      <div class="row"><button class="main" onclick="savePerson('')">Añadir</button><span id="pmsg-_new" class="small" style="color:var(--bad)"></span></div></div>
+  return `<details class="block"${u.length ? " open" : ""}><summary><b>Personas que comparten el estudio
+      <span class="count">${u.length ? u.length + (u.length === 1 ? " persona" : " personas") : "solo tú"}</span></b></summary>
+    <div class="in"><p class="help">Cada persona entra con su contraseña y solo ve sus canales: sus vídeos, su gasto y su factura.
+      Nada de lo tuyo (ni Ajustes, ni el servidor, ni los demás canales). Un canal es de una sola persona; los que no son de nadie, tuyos.</p>
+    ${u.map((x) => `<div class="card mt"><div class="row between"><b>${esc(x.name)}</b>
+        <button class="sm" onclick="removePerson('${esc(x.name)}')">Quitar</button></div>
+      <div class="row gap-4 mt-2">${boxes(x.name, x.channels)}</div>
+      <div class="setting mt-3"><div><div class="small b">Sus topes al día</div>
+          <p class="help">0 = sin tope · Telegram: ${x.telegram ? `<span class="t-ok">${icon("check")}</span> conectado` : "sin conectar (sus avisos te llegan a ti)"}</p></div>
+        <div class="row gap-4"><div class="unit"><input id="plim-usd-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}"><span class="nw">$ de API</span></div>
+          <div class="unit"><input id="plim-gb-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}"><span class="nw">GB de proxy</span></div></div></div>
+      <div class="actions"><input id="ppass-${esc(x.name)}" class="grow" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)">
+        <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small t-bad"></span></div></div>`).join("")}
+    <div class="card mt"><b>Añadir persona</b>
+      <div class="row mt-2"><input id="pname" class="w-md" placeholder="nombre (p. ej. marc)">
+        <input id="ppass-_new" class="w-md" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)"></div>
+      <div class="row gap-4 mt-3">${boxes("", [])}</div>
+      <div class="actions"><button class="main" onclick="savePerson('')">Añadir</button><span id="pmsg-_new" class="small t-bad"></span></div></div></div>
   </details>`;
 }
 
@@ -312,70 +310,71 @@ async function settingsPage() {
   const filled = s.channels.filter((c) => s.myChannels[c]).length;
   const people = await peopleBlock(s.channels);
   $("#app").innerHTML = `<h1>Ajustes</h1>
-    ${code ? `<div class="notice ok">🔄 Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
+    ${code ? `<div class="notice ok">Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
-      <button style="margin-top:8px" onclick="updateNow(this)">🔄 Actualizar ahora</button>
-      <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button>
-      <button style="margin-top:8px" onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">▶️ Reintentar YouTube ahora</button></div>` : ""}
-    <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
+      <div class="actions mt-3"><button onclick="updateNow(this)">${icon("refresh")} Actualizar ahora</button>
+      <button onclick="restartQueue(this)" title="Si la cola parece parada o colgada">${icon("restart")} Reiniciar la cola</button>
+      <button onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">${icon("play")} Reintentar YouTube ahora</button></div></div>` : ""}
+    <div class="notice">${icon("mic")} <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
     ${people}
+    <h2>Cola y límites</h2>
     <div class="card">
-      <label>Hacer vídeos</label>
-      <div class="row"><button class="${s.paused ? "main" : ""}" onclick="save({paused: ${!s.paused}})">${s.paused ? "▶ Reanudar" : "⏸ Pausar"}</button>
-        <span class="muted small">${s.paused ? "En pausa: no empieza vídeos nuevos (el que está en marcha termina)." : "Activo."}</span></div>
-      <label>Límite de gasto de API al día <span class="muted">(de tus vídeos; cada persona tiene el suyo en «Personas» · 0 = sin límite; al llegar, espera a mañana)</span></label>
-      <div class="row"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}" style="max-width:160px"><span>$</span>
-        <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div>
-      <label>Tope de proxy al día <span class="muted">(GB de tus vídeos por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope)</span></label>
-      <div class="row"><input id="proxyday" type="number" min="0" step="0.5" value="${s.proxy_gb_per_day ?? 0}" style="max-width:160px"><span>GB</span>
-        <button onclick="save({proxy_gb_per_day: parseFloat(document.getElementById('proxyday').value || 0)})">Guardar</button>
-        <span class="small muted">${data && data.budget && data.budget.proxyGbToday != null ? `hoy ${data.budget.proxyGbToday.toFixed(2)} GB` : ""}</span></div>
-      <label>Límite por vídeo <span class="muted">(lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite)</span></label>
-      <div class="row"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}" style="max-width:160px"><span>$</span>
-        <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div>
-      <label>Coste del servidor al mes <span class="muted">(para la factura de cada persona en «Gasto»: a partes iguales entre tú y cada persona)</span></label>
-      <div class="row"><input id="servermonth" type="number" min="0" step="0.5" value="${s.server_usd_month ?? 0}" style="max-width:160px"><span>$</span>
-        <button onclick="save({server_usd_month: parseFloat(document.getElementById('servermonth').value || 0)})">Guardar</button></div>
-      <p class="small muted" style="margin-top:20px">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
+      <div class="setting"><div><div class="small b">Hacer vídeos</div>
+          <p class="help">${s.paused ? "En pausa: no empieza vídeos nuevos (el que está en marcha termina)." : "Activo."}</p></div>
+        <div class="unit"><button class="${s.paused ? "main" : ""}" onclick="save({paused: ${!s.paused}})">${s.paused ? `${icon("play")} Reanudar` : `${icon("pause")} Pausar`}</button></div></div>
+      <div class="setting"><div><label for="limit">Límite de gasto de API al día</label><p class="help">De tus vídeos; cada persona tiene el suyo en «Personas» · 0 = sin límite; al llegar, espera a mañana</p></div>
+        <div class="unit"><input id="limit" type="number" min="0" step="0.5" value="${s.daily_usd ?? 0}"><span>$</span>
+          <button onclick="save({daily_usd: parseFloat(document.getElementById('limit').value || 0)})">Guardar</button></div></div>
+      <div class="setting"><div><label for="proxyday">Tope de proxy al día</label><p class="help">GB de tus vídeos por el proxy residencial; al llegar, los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen · 0 = sin tope</p></div>
+        <div class="unit">${data && data.budget && data.budget.proxyGbToday != null ? `<span class="small nw">hoy ${data.budget.proxyGbToday.toFixed(2)} GB</span>` : ""}
+          <input id="proxyday" type="number" min="0" step="0.5" value="${s.proxy_gb_per_day ?? 0}"><span>GB</span>
+          <button onclick="save({proxy_gb_per_day: parseFloat(document.getElementById('proxyday').value || 0)})">Guardar</button></div></div>
+      <div class="setting"><div><label for="pervideo">Límite por vídeo</label><p class="help">Lo que puede gastar un intento; si lo pasa, se para y sale de la cola para que lo mires · 0 = sin límite</p></div>
+        <div class="unit"><input id="pervideo" type="number" min="0" step="0.1" value="${s.per_video_usd ?? 1.5}"><span>$</span>
+          <button onclick="save({per_video_usd: parseFloat(document.getElementById('pervideo').value || 0)})">Guardar</button></div></div>
+      <div class="setting"><div><label for="servermonth">Coste del servidor al mes</label><p class="help">Para la factura de cada persona en «Gasto»: a partes iguales entre tú y cada persona</p></div>
+        <div class="unit"><input id="servermonth" type="number" min="0" step="0.5" value="${s.server_usd_month ?? 0}"><span>$</span>
+          <button onclick="save({server_usd_month: parseFloat(document.getElementById('servermonth').value || 0)})">Guardar</button></div></div>
+      <p class="help mt-3">Cada vídeo gasta normalmente 0,7-1,2 $ (sale en su diagnóstico).</p>
     </div>
     <h2>Avisos al móvil (Telegram)</h2>
     <div class="card">
       <div>${n.telegram ? '<span class="pill hecho">Conectado</span> Cada vídeo terminado te llega con su miniatura y un botón a «Revisar clips»; si uno falla, también.' : '<span class="pill">Sin conectar</span>'}</div>
-      ${n.telegram ? "" : `<ol class="small" style="margin:10px 0 0;padding-left:20px">
+      ${n.telegram ? "" : `<ol class="small mt-3">
         <li>En Telegram abre <b>@BotFather</b>, escribe <code>/newbot</code>, ponle un nombre y copia el <b>token</b> que te da.</li>
         <li>Abre tu bot nuevo (el enlace t.me/… que te da BotFather) y pulsa <b>Iniciar</b>.</li>
         <li>Pega el token aquí y pulsa «Conectar y probar».</li></ol>`}
-      ${n.token && n.telegram ? "" : `<label>Token del bot</label><input id="tg-token" placeholder="123456789:AA…" autocomplete="off">`}
-      <label>Dirección del estudio <span class="muted">(para el botón «Revisar clips»; en la VPS: https://…sslip.io)</span></label>
-      <input id="tg-url" placeholder="https://1-2-3-4.sslip.io" value="${esc(guessUrl)}">
-      ${!guessUrl ? '<div class="small muted" style="margin-top:6px">En tu PC el estudio solo se abre en el propio PC: los avisos llegan igual, pero el botón solo funciona con el estudio de la VPS.</div>' : ""}
-      <div class="row" style="margin-top:14px"><button class="main" id="tg-go">${n.telegram ? "Guardar y enviar prueba" : "Conectar y probar"}</button><span id="tg-msg" class="small muted"></span></div>
+      ${n.token && n.telegram ? "" : field("Token del bot", '<input id="tg-token" placeholder="123456789:AA…" autocomplete="off">', "", "tg-token")}
+      ${field("Dirección del estudio", `<input id="tg-url" placeholder="https://1-2-3-4.sslip.io" value="${esc(guessUrl)}">`, "Para el botón «Revisar clips»; en la VPS: https://…sslip.io", "tg-url")}
+      ${!guessUrl ? '<p class="help mt-2">En tu PC el estudio solo se abre en el propio PC: los avisos llegan igual, pero el botón solo funciona con el estudio de la VPS.</p>' : ""}
+      <div class="actions"><button class="main" id="tg-go">${n.telegram ? "Guardar y enviar prueba" : "Conectar y probar"}</button><span id="tg-msg" class="small muted"></span></div>
     </div>
     <h2>Canales</h2>
     <div class="card"><div class="row">${s.channels.map((c) => `<span class="pill">${esc(c)}</span>`).join("")}
-      <a class="btn main" href="#/canal-nuevo">+ Añadir canal</a></div>
-      <label style="margin-top:16px">Prioridad en la cola <span class="muted">(se hacen primero los vídeos de estos canales, en este orden; los demás, después)</span></label>
-      <div id="prio">${(s.channel_priority || []).map((c, i, all) => `<div class="row" style="gap:6px;margin-top:6px">
-        <b style="width:22px">${i + 1}.</b><span class="pill" style="border-left:4px solid ${chColor(c)}">${esc(c)}</span>
-        <button ${i ? "" : "disabled"} onclick="movePrio(${i}, -1)" title="Subir">▲</button>
-        <button ${i < all.length - 1 ? "" : "disabled"} onclick="movePrio(${i}, 1)" title="Bajar">▼</button>
-        <button onclick="movePrio(${i}, 0)" title="Quitar de la lista">✕</button></div>`).join("") || '<div class="small muted" style="margin-top:6px">Sin prioridad: la cola va por fecha de publicación y antigüedad.</div>'}</div>
-      <div class="row" style="margin-top:8px"><select id="prio-add" style="width:auto"><option value="">Añadir canal…</option>
+      <a class="btn main" href="#/canal-nuevo">${icon("plus")} Añadir canal</a></div>
+      <div class="field"><label for="prio-add">Prioridad en la cola</label>
+      <p class="help">Se hacen primero los vídeos de estos canales, en este orden; los demás, después</p>
+      <div id="prio">${(s.channel_priority || []).map((c, i, all) => `<div class="row mt-2">
+        <b>${i + 1}.</b><span class="pill ch" style="--c:${chColor(c)}">${esc(c)}</span>
+        <button class="icon sm" ${i ? "" : "disabled"} onclick="movePrio(${i}, -1)" title="Subir" aria-label="Subir">${icon("up")}</button>
+        <button class="icon sm" ${i < all.length - 1 ? "" : "disabled"} onclick="movePrio(${i}, 1)" title="Bajar" aria-label="Bajar">${icon("down")}</button>
+        <button class="icon sm" onclick="movePrio(${i}, 0)" title="Quitar de la lista" aria-label="Quitar de la lista">${icon("x")}</button></div>`).join("") || '<div class="small muted mt-2">Sin prioridad: la cola va por fecha de publicación y antigüedad.</div>'}</div>
+      <div class="row mt-2"><select id="prio-add" class="w-auto"><option value="">Añadir canal…</option>
         ${s.channels.filter((c) => !(s.channel_priority || []).includes(c)).map((c) => `<option>${esc(c)}</option>`).join("")}</select>
-        <button onclick="const c = document.getElementById('prio-add').value; if (c) save({channel_priority: [...(window.prioList || []), c]})">Añadir</button></div></div>
+        <button onclick="const c = document.getElementById('prio-add').value; if (c) save({channel_priority: [...(window.prioList || []), c]})">Añadir</button></div></div></div>
     <details class="block" ${mineOpen ? "open" : ""} ontoggle="mineOpen=this.open"><summary><b>Mi canal de YouTube en cada perfil <span class="count">${filled} de ${s.channels.length} con @canal</span></b></summary>
-      <div style="padding:10px 16px 14px">
-      <p class="small muted" style="margin:0 0 6px">Tu @canal o su URL: lo usan «Mi canal» y las ideas. ${s.channels.length - filled ? `<a href="javascript:mineEmpty=!mineEmpty;route()">${mineEmpty ? "Ver todos" : `Ver solo los ${s.channels.length - filled} sin rellenar`}</a>` : ""}</p>
-      ${s.channels.filter((c) => !mineEmpty || !s.myChannels[c]).map((c) => `<div class="mine-row"><span class="pill" style="border-left:4px solid ${chColor(c)};justify-self:start">${esc(c)}</span>
+      <div class="in">
+      <p class="help mb-2">Tu @canal o su URL: lo usan «Mi canal» y las ideas. ${s.channels.length - filled ? `<a href="javascript:mineEmpty=!mineEmpty;route()">${mineEmpty ? "Ver todos" : `Ver solo los ${s.channels.length - filled} sin rellenar`}</a>` : ""}</p>
+      ${s.channels.filter((c) => !mineEmpty || !s.myChannels[c]).map((c) => `<div class="mine-row"><div><span class="pill ch" style="--c:${chColor(c)}">${esc(c)}</span></div>
         <input class="mine" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}"></div>`).join("")}
-      <div class="row" style="margin-top:14px"><button class="main" onclick="save({my_channels: {...${JSON.stringify(s.myChannels || {}).replace(/"/g, "&quot;")}, ...Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))}})">Guardar</button></div>
+      <div class="actions"><button class="main" onclick="save({my_channels: {...${JSON.stringify(s.myChannels || {}).replace(/"/g, "&quot;")}, ...Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))}})">Guardar</button></div>
       </div></details>`;
   window.save = async (body) => { await post("/api/settings", body); route(); };
   $("#tg-go").onclick = async () => {
     const msg = $("#tg-msg"); msg.textContent = "Enviando…";
     try {
       const r = await post("/api/notify", {token: $("#tg-token") ? $("#tg-token").value : "", studio_url: $("#tg-url").value});
-      msg.textContent = r.ok ? "✅ Mira tu Telegram: te ha llegado un mensaje de prueba." : "No se pudo enviar";
+      msg.innerHTML = r.ok ? `<span class="t-ok">${icon("check")}</span> Mira tu Telegram: te ha llegado un mensaje de prueba.` : "No se pudo enviar";
       if (r.ok) setTimeout(route, 2500);
     } catch (e) { msg.textContent = e.message; }
   };
@@ -385,31 +384,32 @@ async function settingsPage() {
 async function voicesPage() {
   const v = await api("/api/voices");
   const row = (c) => { const x = v.voices[c] || {};
-    return `<div class="card" style="margin-bottom:10px"><b>${esc(c)}</b> ${x.voice_id ? `<span class="pill hecho">${esc(x.name || x.voice_id)}</span>` : '<span class="pill">sin voz: se graba a mano</span>'}
-      <div class="two" style="margin-top:6px">
-        <div><label>ID de la voz</label><input id="vid-${esc(c)}" value="${esc(x.voice_id || "")}" placeholder="p. ej. JBFqnCBsd6RMkjVDRZzb"></div>
-        <div><label>Nombre <span class="muted">(para reconocerla)</span></label><input id="vname-${esc(c)}" value="${esc(x.name || "")}"></div>
-        <div><label>Modelo</label><select id="vmodel-${esc(c)}">${v.models.map((m) => `<option ${m === (x.model_id || v.defaults.model_id) ? "selected" : ""}>${m}</option>`).join("")}</select></div>
-        <div><label>Velocidad <span class="muted">(0,7-1,2)</span></label><input id="vspeed-${esc(c)}" type="number" step="0.05" min="0.7" max="1.2" value="${x.speed ?? v.defaults.speed}"></div>
-        <div><label>Estabilidad <span class="muted">(0-1; más = más regular)</span></label><input id="vstab-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.stability ?? v.defaults.stability}"></div>
-        <div><label>Parecido <span class="muted">(0-1)</span></label><input id="vsim-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.similarity ?? v.defaults.similarity}"></div>
+    return `<div class="card"><div class="row"><b>${esc(c)}</b> ${x.voice_id ? `<span class="pill hecho">${esc(x.name || x.voice_id)}</span>` : '<span class="pill">sin voz: se graba a mano</span>'}</div>
+      <div class="three">
+        ${field("ID de la voz", `<input id="vid-${esc(c)}" value="${esc(x.voice_id || "")}" placeholder="p. ej. JBFqnCBsd6RMkjVDRZzb">`, "", "vid-" + esc(c))}
+        ${field("Nombre", `<input id="vname-${esc(c)}" value="${esc(x.name || "")}">`, "Para reconocerla", "vname-" + esc(c))}
+        ${field("Modelo", `<select id="vmodel-${esc(c)}">${v.models.map((m) => `<option ${m === (x.model_id || v.defaults.model_id) ? "selected" : ""}>${m}</option>`).join("")}</select>`, "", "vmodel-" + esc(c))}
+        ${field("Velocidad", `<input id="vspeed-${esc(c)}" type="number" step="0.05" min="0.7" max="1.2" value="${x.speed ?? v.defaults.speed}">`, "0,7-1,2", "vspeed-" + esc(c))}
+        ${field("Estabilidad", `<input id="vstab-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.stability ?? v.defaults.stability}">`, "0-1; más = más regular", "vstab-" + esc(c))}
+        ${field("Parecido", `<input id="vsim-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.similarity ?? v.defaults.similarity}">`, "0-1", "vsim-" + esc(c))}
       </div>
-      <div class="row" style="margin-top:10px"><button class="main" onclick="saveVoice('${esc(c)}')">Guardar</button>
-        <button onclick="testVoice('${esc(c)}')">▶ Probar</button>${x.voice_id ? `<button onclick="clearVoice('${esc(c)}')">Quitar voz</button>` : ""}
+      <div class="actions"><button class="main" onclick="saveVoice('${esc(c)}')">Guardar</button>
+        <button onclick="testVoice('${esc(c)}')">${icon("play")} Probar</button>${x.voice_id ? `<button onclick="clearVoice('${esc(c)}')">Quitar voz</button>` : ""}
         <span id="vmsg-${esc(c)}" class="small muted"></span></div><div id="vplay-${esc(c)}"></div>
       ${dubBox(c)}</div>`; };
   const LANGS = {pt: "Portugués", de: "Alemán", fr: "Francés", en: "Inglés", it: "Italiano"};
   const dubBox = (c) => { if (window.partner) return "";      // dubbing sends videos to other channels: set up by the owner
     const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
-    return `<details style="margin-top:12px" ${on.length ? "open" : ""}><summary><b>🌍 Doblaje</b> ${on.length ? `<span class="pill hecho">${on.map((l) => LANGS[l] || l).join(", ")}</span>` : '<span class="muted small">apagado</span>'}</summary>
-      <div class="small muted" style="margin:6px 0">Cada vídeo terminado de este canal se traduce y se vuelve a leer en esos idiomas; la cola monta el vídeo doblado
-        (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</div>
-      ${(v.dubLanguages || []).map((l) => `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap">
-        <label style="margin:0;display:flex;gap:6px;align-items:center;min-width:120px;font-weight:400"><input type="checkbox" class="dub-${esc(c)}" value="${l}" ${on.includes(l) ? "checked" : ""}> ${LANGS[l] || l}</label>
+    return `<details class="fset" ${on.length ? "open" : ""}><summary class="mt-3"><b>Doblaje</b> ${on.length ? `<span class="pill hecho">${on.map((l) => LANGS[l] || l).join(", ")}</span>` : '<span class="muted small">apagado</span>'}</summary>
+      <p class="help my-2">Cada vídeo terminado de este canal se traduce y se vuelve a leer en esos idiomas; la cola monta el vídeo doblado
+        (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</p>
+      ${(v.dubLanguages || []).map((l) => `<div class="mine-row">
+        <label class="check"><input type="checkbox" class="dub-${esc(c)}" value="${l}" ${on.includes(l) ? "checked" : ""}> ${LANGS[l] || l}</label>
         <input id="dubv-${esc(c)}-${l}" placeholder="ID de voz nativa (vacío = la voz del canal, modelo multilingüe)" value="${esc(((d.voices || {})[l] || {}).voice_id || "")}"></div>`).join("")}
-      <label style="margin-top:10px;display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="dubex-${esc(c)}" ${d.existing === false ? "" : "checked"}>
-        Doblar también los vídeos ya hechos <span class="muted small">(si no, solo los que se terminen a partir de ahora)</span></label>
-      <div class="row" style="margin-top:8px"><button class="main" onclick="saveDub('${esc(c)}')">Guardar doblaje</button><span id="dubmsg-${esc(c)}" class="small muted"></span></div></details>`; };
+      <label class="check mt-3"><input type="checkbox" id="dubex-${esc(c)}" ${d.existing === false ? "" : "checked"}>
+        Doblar también los vídeos ya hechos</label>
+      <p class="help">Si no, solo los que se terminen a partir de ahora</p>
+      <div class="actions"><button class="main" onclick="saveDub('${esc(c)}')">Guardar doblaje</button><span id="dubmsg-${esc(c)}" class="small muted"></span></div></details>`; };
   window.saveDub = async (c) => {
     const languages = [...document.querySelectorAll(".dub-" + CSS.escape(c))].filter((x) => x.checked).map((x) => x.value);
     const voices = {}; languages.forEach((l) => { const id = $("#dubv-" + CSS.escape(c) + "-" + l).value.trim(); if (id) voices[l] = {voice_id: id}; });
@@ -422,24 +422,25 @@ async function voicesPage() {
       <span id="credits"></span></p>
     ${v.channels.map(row).join("")}
     <h2>Buscar voces</h2>
-    <div class="card"><div class="row"><input id="vq" placeholder="nombre o estilo: narrator, documentary, deep…" style="flex:2;min-width:200px">
-      <select id="vlang" style="flex:1;min-width:120px"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
-        <option value="fr">francés</option><option value="en">inglés</option><option value="it">italiano</option><option value="">todas</option></select>
-      <select id="vgender" style="flex:1;min-width:120px"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select>
-      <button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" style="margin-top:10px"></div></div>`;
+    <div class="card"><div class="three">
+      <div class="field"><input id="vq" placeholder="nombre o estilo: narrator, documentary, deep…"></div>
+      <div class="field"><select id="vlang"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
+        <option value="fr">francés</option><option value="en">inglés</option><option value="it">italiano</option><option value="">todas</option></select></div>
+      <div class="field"><select id="vgender"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select></div></div>
+      <div class="actions"><button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" class="mt-3"></div></div>`;
   const read = (c) => ({channel: c, voice_id: $("#vid-" + c).value.trim(), name: $("#vname-" + c).value.trim(), model_id: $("#vmodel-" + c).value,
     speed: $("#vspeed-" + c).value, stability: $("#vstab-" + c).value, similarity: $("#vsim-" + c).value});
   window.saveVoice = async (c) => { try { await post("/api/voices", read(c)); voicesPage(); } catch (e) { $("#vmsg-" + c).textContent = e.message; } };
   window.clearVoice = async (c) => { await post("/api/voices", {channel: c, voice_id: ""}); voicesPage(); };
   window.testVoice = async (c) => { const m = $("#vmsg-" + c); m.textContent = "Generando la prueba… (10-40 s)";
     try { const r = await post("/api/voices/test", {...read(c), text: ""}); m.textContent = "";
-      $("#vplay-" + c).innerHTML = `<audio controls autoplay src="${r.url}" style="margin-top:8px;width:100%"></audio>`; } catch (e) { m.textContent = e.message; } };
+      $("#vplay-" + c).innerHTML = `<audio class="w-full mt-2" controls autoplay src="${r.url}"></audio>`; } catch (e) { m.textContent = e.message; } };
   window.searchVoices = async () => { const box = $("#vresults"); box.textContent = "Buscando…";
     try { const list = await api(`/api/voices/search?q=${encodeURIComponent($("#vq").value)}&language=${$("#vlang").value}&gender=${$("#vgender").value}`);
       box.innerHTML = list.map((x) => `<div class="slot"><b>${esc(x.name || "")}</b><span class="small muted">${esc([x.gender, x.age, x.accent, x.language, x.use_case, x.descriptive].filter(Boolean).join(" · "))}</span>
-        ${x.preview_url ? `<audio controls preload="none" src="${esc(x.preview_url)}" style="height:32px"></audio>` : ""}
+        ${x.preview_url ? `<audio class="sm" controls preload="none" src="${esc(x.preview_url)}"></audio>` : ""}
         <code class="small">${esc(x.voice_id)}</code>
-        <select style="margin-left:auto" onchange="if(this.value){document.getElementById('vid-'+this.value).value='${esc(x.voice_id)}';document.getElementById('vname-'+this.value).value='${esc(x.name || "")}';saveVoice(this.value)}">
+        <select class="sm w-auto push" onchange="if(this.value){document.getElementById('vid-'+this.value).value='${esc(x.voice_id)}';document.getElementById('vname-'+this.value).value='${esc(x.name || "")}';saveVoice(this.value)}">
           <option value="">Usar en canal…</option>${v.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>`).join("") || "Nada con eso.";
     } catch (e) { box.textContent = e.message; } };
   if (v.hasKey) api("/api/voices/credits").then((cr) => { const n = (cr || []).reduce((a, x) => a + (x.amount || 0), 0);
@@ -450,24 +451,23 @@ async function newChannelPage() {
   data = await api("/api/overview");
   $("#app").innerHTML = `<h1>Nuevo canal</h1>
     <div class="card">
-      <div class="two">
-        <div><label>Nombre <span class="muted">(minúsculas, sin espacios: coches, historia-f1…)</span></label><input id="ch-name" placeholder="coches"></div>
-        <div><label>Tu canal en YouTube <span class="muted">(opcional: @TuCanal)</span></label><input id="ch-mine" placeholder="@TuCanal"></div>
-      </div>
-      <label>¿De qué va? <span class="muted">(una frase; la usan las ideas y el radar)</span></label>
-      <input id="ch-about" placeholder="documentales sobre la historia de marcas de coches y sus fracasos, de ~10 min">
-      <div class="two">
-        <div><label>Aspecto copiado de <span class="muted">(colores, música, gráficos)</span></label><select id="ch-base"><option value="">— el de por defecto —</option>
-          ${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
-        <div><label>Formato habitual</label><select id="ch-format"><option value="">— historia (por defecto) —</option>
-          ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select></div>
-      </div>
-      <label>Competidores <span class="muted">(@canales separados por comas; el radar mira sus vídeos que mejor van)</span></label>
-      <input id="ch-comp" placeholder="@canal1, @canal2">
-      <label>Búsquedas del nicho <span class="muted">(una por línea; para el radar y las ideas)</span></label>
-      <textarea id="ch-queries" style="min-height:110px" placeholder="historia de marcas de coches&#10;car brand history&#10;why this car failed"></textarea>
-      <label>Patrón de títulos <span class="muted">(opcional, p. ej. «marca + fracaso + cifra»)</span></label><input id="ch-pattern">
-      <div class="row" style="margin-top:18px"><button class="main" id="ch-go">Crear canal</button><span id="ch-msg" class="small muted"></span></div>
+      <div class="fset"><div class="legend">Canal</div>
+        <div class="two">
+          ${field("Nombre", '<input id="ch-name" placeholder="coches">', "Minúsculas, sin espacios: coches, historia-f1…", "ch-name")}
+          ${field('Tu canal en YouTube <span class="opt">opcional</span>', '<input id="ch-mine" placeholder="@TuCanal">', "", "ch-mine")}
+        </div>
+        ${field("¿De qué va?", '<input id="ch-about" placeholder="documentales sobre la historia de marcas de coches y sus fracasos, de ~10 min">', "Una frase; la usan las ideas y el radar", "ch-about")}
+        <div class="two">
+          ${field("Aspecto copiado de", `<select id="ch-base"><option value="">— el de por defecto —</option>
+            ${data.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select>`, "Colores, música, gráficos", "ch-base")}
+          ${field("Formato habitual", `<select id="ch-format"><option value="">— historia (por defecto) —</option>
+            ${data.formats.map((f) => `<option>${esc(f)}</option>`).join("")}</select>`, "", "ch-format")}
+        </div></div>
+      <div class="fset"><div class="legend">Radar e ideas</div>
+        ${field("Competidores", '<input id="ch-comp" placeholder="@canal1, @canal2">', "@canales separados por comas; el radar mira sus vídeos que mejor van", "ch-comp")}
+        ${field("Búsquedas del nicho", '<textarea id="ch-queries" class="mid" placeholder="historia de marcas de coches&#10;car brand history&#10;why this car failed"></textarea>', "Una por línea; para el radar y las ideas", "ch-queries")}
+        ${field('Patrón de títulos <span class="opt">opcional</span>', '<input id="ch-pattern">', "P. ej. «marca + fracaso + cifra»", "ch-pattern")}</div>
+      <div class="actions"><button class="main" id="ch-go">Crear canal</button><span id="ch-msg" class="small muted"></span></div>
     </div>`;
   $("#ch-go").onclick = async () => {
     const msg = $("#ch-msg"); msg.textContent = "Creando…";
@@ -476,7 +476,7 @@ async function newChannelPage() {
         format: $("#ch-format").value, competitors: $("#ch-comp").value, queries: $("#ch-queries").value,
         pattern: $("#ch-pattern").value, my_channel: $("#ch-mine").value});
       if ($("#ch-mine").value.trim() && !window.partner) await post("/api/settings", {my_channels: {[r.channel]: $("#ch-mine").value.trim()}});
-      data = null; msg.textContent = `✅ Canal «${r.channel}» creado. Ya puedes elegirlo al crear un vídeo.`;
+      data = null; msg.innerHTML = `<span class="t-ok">${icon("check")}</span> Canal «${esc(r.channel)}» creado. Ya puedes elegirlo al crear un vídeo.`;
       setTimeout(() => { location.hash = "#/nuevo"; }, 1200);
     } catch (e) { msg.textContent = e.message; }
   };
@@ -488,24 +488,24 @@ async function accountPage() {
   const cap = (v, unit) => v ? `${v} ${unit}` : "sin tope propio";
   $("#app").innerHTML = `<h1>Mi cuenta</h1>
     <div class="small muted">${esc(a.name)} · tus canales: ${a.channels.map(esc).join(", ") || "ninguno todavía"}</div>
-    <div class="kpis" style="margin-top:12px">
+    <div class="kpis">
       <div class="kpi"><div class="k">Gasto de API hoy</div><div class="v">${a.spentToday.toFixed(2)} $</div><div class="d">tope: ${cap(a.limits.daily_usd, "$ al día")}</div>
-        ${a.limits.daily_usd ? `<div class="bar"><i style="width:${Math.min(100, 100 * a.spentToday / a.limits.daily_usd)}%"></i></div>` : ""}</div>
+        ${a.limits.daily_usd ? `<div class="bar acc"><i style="--v:${Math.min(100, 100 * a.spentToday / a.limits.daily_usd)}%"></i></div>` : ""}</div>
       <div class="kpi"><div class="k">Proxy hoy</div><div class="v">${a.proxyGbToday.toFixed(2)} GB</div><div class="d">tope: ${cap(a.limits.proxy_gb_per_day, "GB al día")}</div>
-        ${a.limits.proxy_gb_per_day ? `<div class="bar"><i style="width:${Math.min(100, 100 * a.proxyGbToday / a.limits.proxy_gb_per_day)}%"></i></div>` : ""}</div></div>
-    <div class="small muted" style="margin-top:4px">Al llegar a un tope, tus vídeos esperan a mañana (los de otros no cuentan). Los topes los pone quien administra el estudio.</div>
+        ${a.limits.proxy_gb_per_day ? `<div class="bar acc"><i style="--v:${Math.min(100, 100 * a.proxyGbToday / a.limits.proxy_gb_per_day)}%"></i></div>` : ""}</div></div>
+    <div class="small muted mt-2">Al llegar a un tope, tus vídeos esperan a mañana (los de otros no cuentan). Los topes los pone quien administra el estudio.</div>
     <h2>Avisos en Telegram</h2>
     <div class="card">${a.telegram
-      ? `✅ Conectado: te llegan los avisos de tus vídeos (terminado, error, falta la voz).
-         <div class="row" style="margin-top:10px"><button onclick="post('/api/telegram/unlink').then(accountPage)">Desconectar</button></div>`
+      ? `<span class="t-ok">${icon("check")}</span> Conectado: te llegan los avisos de tus vídeos (terminado, error, falta la voz).
+         <div class="actions"><button onclick="post('/api/telegram/unlink').then(accountPage)">Desconectar</button></div>`
       : `Recibe en el móvil cuándo termina o falla cada vídeo tuyo.
-         <div class="row" style="margin-top:10px"><button class="main" id="tglink">Conectar Telegram</button><span id="tgmsg" class="small muted"></span></div>`}</div>
+         <div class="actions"><button class="main" id="tglink">Conectar Telegram</button><span id="tgmsg" class="small muted"></span></div>`}</div>
     <h2>Contraseña</h2>
     <div class="card"><div class="two">
-      <div><label>Actual</label><input id="pw-old" type="password" autocomplete="current-password"></div>
-      <div><label>Nueva <span class="muted">(8 o más)</span></label><input id="pw-new" type="password" autocomplete="new-password"></div></div>
-      <div class="row" style="margin-top:12px"><button class="main" id="pw-go">Cambiar</button><span id="pw-msg" class="small muted"></span></div></div>
-    <div class="row" style="margin-top:22px"><button onclick="logout()">Cerrar sesión</button></div>`;
+      ${field("Actual", '<input id="pw-old" type="password" autocomplete="current-password">', "", "pw-old")}
+      ${field("Nueva", '<input id="pw-new" type="password" autocomplete="new-password">', "8 o más", "pw-new")}</div>
+      <div class="actions"><button class="main" id="pw-go">Cambiar</button><span id="pw-msg" class="small muted"></span></div></div>
+    <div class="actions mt-5"><button onclick="logout()">Cerrar sesión</button></div>`;
   if ($("#tglink")) $("#tglink").onclick = async () => {
     try {
       const r = await post("/api/telegram/link");
@@ -519,7 +519,7 @@ async function accountPage() {
     } catch (e) { $("#tgmsg").textContent = e.message; }
   };
   $("#pw-go").onclick = async () => {
-    try { await post("/api/password", {current: $("#pw-old").value, new: $("#pw-new").value}); $("#pw-msg").textContent = "✅ Cambiada";
+    try { await post("/api/password", {current: $("#pw-old").value, new: $("#pw-new").value}); $("#pw-msg").innerHTML = `<span class="t-ok">${icon("check")}</span> Cambiada`;
       $("#pw-old").value = $("#pw-new").value = ""; }
     catch (e) { $("#pw-msg").textContent = e.message; }
   };
