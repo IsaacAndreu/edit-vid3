@@ -87,6 +87,85 @@ const partial = (pts: [number, number][], p: number) => {
   return { d: out.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(''), tip, angle, mid };
 };
 
+interface CellsData {
+  cells: { lon: number; lat: number; m: number }[];
+}
+
+/** MSA de una celda: punto más alto en pies + margen, redondeado hacia arriba a 100 ft. */
+export const cellMsa = (m: number, marginFt: number) => Math.ceil((Math.max(0, m) * 3.28084 + marginFt) / 100) * 100;
+
+/**
+ * Rejilla de 1°×1° sobre el mapa: cada celda con su altitud mínima segura (31¹ = 31.100 ft), las que pasan del
+ * umbral en rojo (y rellenas si se pide), y una celda destacada con contorno rojo grueso.
+ */
+const Graticule: FC<{
+  g: NonNullable<Relief['graticule']>;
+  data: CellsData;
+  P: (ll: LonLat) => [number, number];
+  time: number;
+  theme: 'paper' | 'night';
+}> = ({ g, data, P, time, theme }) => {
+  const appear = progress(time, sec(g.at), 0.8);
+  if (appear <= 0) return null;
+  const numbers = progress(time, sec(g.numbersAt ?? g.at), 0.6);
+  const th = g.threshold;
+  const thP = th ? progress(time, sec(th.at), 0.8) : 0;
+  const ink = themes[theme].ink;
+  const danger = themes[theme].accents.danger;
+  const quad = (lon: number, lat: number) => {
+    const pts: [number, number][] = [];
+    for (let i = 0; i <= 4; i++) pts.push(P([lon + i / 4, lat]));
+    for (let i = 0; i <= 4; i++) pts.push(P([lon + 1, lat + i / 4]));
+    for (let i = 0; i <= 4; i++) pts.push(P([lon + 1 - i / 4, lat + 1]));
+    for (let i = 0; i <= 4; i++) pts.push(P([lon, lat + 1 - i / 4]));
+    return pts;
+  };
+  return (
+    <g>
+      {data.cells.map((c) => {
+        const pts = quad(c.lon, c.lat);
+        const xs = pts.map((p) => p[0]);
+        if (Math.max(...xs) < -50 || Math.min(...xs) > 1970) return null;
+        const msa = cellMsa(c.m, g.marginFt);
+        const high = th ? msa >= th.value : false;
+        const d = 'M' + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('L') + 'Z';
+        return (
+          <path key={`${c.lon},${c.lat}`} d={d} fill={high && th?.fill ? danger : 'none'} fillOpacity={high && th?.fill ? 0.42 * thP : 0}
+                stroke={ink} strokeOpacity={0.45 * appear} strokeWidth={1.3} />
+        );
+      })}
+      {numbers > 0
+        ? data.cells.map((c) => {
+            const [x0, y0] = P([c.lon, c.lat]);
+            const [x1, y1] = P([c.lon + 1, c.lat + 1]);
+            const size = Math.min(Math.abs(x1 - x0), Math.abs(y1 - y0));
+            if (size < 46) return null;
+            const [cx, cy] = P([c.lon + 0.5, c.lat + 0.5]);
+            if (cx < -40 || cx > 1960 || cy < -40 || cy > 1120) return null;
+            const msa = cellMsa(c.m, g.marginFt);
+            const high = th ? msa >= th.value && thP > 0.5 : false;
+            const fs = Math.min(30, size * 0.36);
+            return (
+              <text key={`n${c.lon},${c.lat}`} x={cx} y={cy + fs * 0.36} textAnchor="middle" fontFamily={fonts.mono} fontWeight={600} fontSize={fs}
+                    fill={high ? danger : ink} opacity={numbers}>
+                {Math.floor(msa / 1000)}
+                <tspan fontSize={fs * 0.6} dy={-fs * 0.42}>{Math.round((msa % 1000) / 100)}</tspan>
+              </text>
+            );
+          })
+        : null}
+      {g.highlight
+        ? (() => {
+            const lon = Math.floor(g.highlight[0]);
+            const lat = Math.floor(g.highlight[1]);
+            const pts = quad(lon, lat);
+            return <path d={'M' + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('L') + 'Z'} fill="none" stroke={danger} strokeWidth={4} opacity={numbers} />;
+          })()
+        : null}
+    </g>
+  );
+};
+
 const haloStyle = (bg: string, w = 7) => ({ stroke: bg, strokeWidth: w, paintOrder: 'stroke' as const, strokeLinejoin: 'round' as const });
 
 export const ReliefMapScene: FC = () => {
@@ -96,7 +175,7 @@ export const ReliefMapScene: FC = () => {
   const time = useAtlasTime();
   const regionDir = `atlas-data/regions/${scene.region}`;
   const shapeFiles = (scene.shapes ?? []).map((s) => s.source);
-  const data = useJsonFiles<unknown>([`${regionDir}/meta.json`, ...shapeFiles]);
+  const data = useJsonFiles<unknown>([`${regionDir}/meta.json`, ...shapeFiles, ...(scene.graticule ? [scene.graticule.cells] : [])]);
 
   const keys = useMemo(() => {
     const own = scene.camera.map((c) => ({ t: sec(c.at), center: c.center, zoom: c.zoom }));
@@ -109,7 +188,9 @@ export const ReliefMapScene: FC = () => {
   }, [scene, previous, start]);
 
   if (!data) return null;
-  const [metaJson, ...shapeJson] = data;
+  const [metaJson, ...rest] = data;
+  const shapeJson = rest.slice(0, shapeFiles.length);
+  const cellsJson = scene.graticule ? (rest[shapeFiles.length] as CellsData) : null;
   const meta = metaJson as RegionMeta;
   const base = makeProjection(meta.projection);
   const cam = cameraAt(keys, time, start, end);
@@ -172,6 +253,7 @@ export const ReliefMapScene: FC = () => {
             </g>
           );
         })}
+        {scene.graticule && cellsJson ? <Graticule g={scene.graticule} data={cellsJson} P={P} time={time} theme={name} /> : null}
         {(scene.arrows ?? []).map((arrow, i) => {
           const p = progress(time, sec(arrow.at), 0.7);
           if (p <= 0) return null;

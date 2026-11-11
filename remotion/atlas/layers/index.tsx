@@ -15,7 +15,7 @@ export const Background: FC<{ theme: ThemeName }> = ({ theme }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: t.bg }}>
       <AbsoluteFill
-        style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '1024px 1024px', opacity: theme === 'paper' ? 0.1 : 0.06, mixBlendMode: 'multiply' }}
+        style={{ backgroundImage: `url(${GRAIN})`, backgroundSize: '1024px 1024px', opacity: theme === 'paper' ? 0.045 : 0.05, mixBlendMode: 'multiply' }}
       />
       {/* El centro del original es un poco más claro que el token de fondo (bajo el contenido). */}
       <AbsoluteFill

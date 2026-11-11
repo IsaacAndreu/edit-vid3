@@ -10,7 +10,7 @@ import { fonts } from '../fonts';
 import type { Overlay } from '../schema';
 import { accentOn, themes } from '../theme';
 import { sec } from '../time';
-import { Caps, cornerStyle, Mono, PaperCard, RichTitle } from '../ui';
+import { Caps, cornerStyle, Mono, PaperCard, RichTitle, richText } from '../ui';
 
 type OverlayOf<K extends Overlay['kind']> = Extract<Overlay, { kind: K }>;
 
@@ -31,10 +31,19 @@ const InfoCard: FC<{ overlay: OverlayOf<'info-card'> }> = ({ overlay }) => {
             </Caps>
           </div>
         ) : null}
-        <RichTitle rich={overlay.title} theme={name} onCard size={overlay.lines?.length ? 38 : 60} />
+        {richText(overlay.title).text ? <RichTitle rich={overlay.title} theme={name} onCard size={overlay.lines?.length ? 38 : 60} /> : null}
         {overlay.lines?.map((line, i) => {
           const r = reveal(time, line.at ? sec(line.at) : start + 0.3 + i * 0.6, 0.5);
-          return (
+          // con titular, las líneas son datos en versalitas pequeñas; sin él, son la lista en serif grande
+          const small = Boolean(richText(overlay.title).text);
+          const color = line.accent ? accentOn('paper', line.accent) : small ? themes.paper.inkSoft : themes.paper.ink;
+          return small ? (
+            <div key={i} style={{ ...r.style, marginTop: 10, ...(line.accent ? { borderTop: `1.5px solid ${themes.paper.inkSoft}`, paddingTop: 10 } : {}) }}>
+              <Caps size={22} color={color} tracking="0.08em">
+                {line.text}
+              </Caps>
+            </div>
+          ) : (
             <div
               key={i}
               style={{
@@ -44,7 +53,7 @@ const InfoCard: FC<{ overlay: OverlayOf<'info-card'> }> = ({ overlay }) => {
                 fontWeight: 600,
                 fontSize: 36,
                 letterSpacing: '-0.01em',
-                color: line.accent ? accentOn('paper', line.accent) : themes.paper.ink,
+                color,
               }}
             >
               {line.text}
@@ -204,8 +213,9 @@ const Legend: FC<{ overlay: OverlayOf<'legend'> }> = ({ overlay }) => {
       <div
         style={{
           backgroundColor: night ? 'rgba(25,39,51,0.55)' : themes.paper.card,
-          border: `2px solid ${night ? 'rgba(237,230,211,0.35)' : themes.paper.inkSoft}`,
-          padding: '20px 28px',
+          border: `2px solid ${night ? 'rgba(237,230,211,0.35)' : themes.paper.ink}`,
+          ...(night ? {} : { outline: `2px solid ${themes.paper.ink}`, outlineOffset: -9 }),
+          padding: night ? '20px 28px' : '26px 36px',
           display: 'flex',
           flexDirection: 'column',
           gap: 14,
@@ -236,6 +246,11 @@ const Legend: FC<{ overlay: OverlayOf<'legend'> }> = ({ overlay }) => {
             </div>
           );
         })}
+        {overlay.sub ? (
+          <Caps size={17} color={night ? themes.night.inkSoft : themes.paper.inkSoft} tracking="0.1em">
+            {overlay.sub}
+          </Caps>
+        ) : null}
       </div>
     </div>
   );

@@ -76,6 +76,8 @@ export const overlaySchema = z.discriminatedUnion('kind', [
       kind: z.literal('legend'),
       at: atSchema,
       corner: cornerSchema,
+      /** Segunda línea pequeña (fuente o método: «CALCULATED FROM TERRAIN DATA · 1° SQUARES»). */
+      sub: z.string().optional(),
       items: z
         .array(
           z
@@ -304,6 +306,62 @@ export const runwayCompareSceneSchema = z
   })
   .strict();
 
+/* ── Fase 4: perfiles de altitud ───────────────────────────────────────────── */
+
+/** Punto de una trayectoria: x = fracción del perfil (0–1), altitud en pies; `curve` = cómo se llega a él. */
+const flightPointSchema = z
+  .object({ x: z.number().min(0).max(1), ft: z.number().min(0), curve: z.enum(['ease', 'linear', 'step']).optional() })
+  .strict();
+
+export const elevationProfileSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-elevation-profile'),
+    /** JSON de build-profile (ruta relativa a public/). */
+    profile: z.string(),
+    axis: z.object({ maxFt: z.number().positive(), stepFt: z.number().positive(), km: z.boolean().optional() }).strict(),
+    /** Extremos del eje x y texto central; `{km}` se sustituye por la distancia real del perfil. */
+    ends: z.object({ left: z.string(), right: z.string(), middle: z.string().optional() }).strict(),
+    /** Terreno del perfil: 'terrain' (datos) o 'sea' (mar abierto); `swap` lo cambia en vivo. */
+    ground: z.enum(['terrain', 'sea']),
+    groundAt: atSchema.optional(),
+    swap: z.object({ to: z.enum(['terrain', 'sea']), at: atSchema, label: z.string().optional() }).strict().optional(),
+    flight: z
+      .object({
+        points: z.array(flightPointSchema).min(2),
+        at: atSchema,
+        drawSeconds: z.number().positive(),
+        accent: accentSchema,
+        plane: z.boolean().optional(),
+        /** Recorta la trayectoria por debajo de la altitud mínima segura (el descenso se detiene en ella). */
+        stopAtMsa: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    /** Altitud mínima segura escalonada, calculada del propio perfil: máximo por tramo + margen, redondeado a 100 ft. */
+    msa: z
+      .object({ at: atSchema, label: z.string(), segmentKm: z.number().positive(), marginFt: z.number().min(0), accent: accentSchema.optional() })
+      .strict()
+      .optional(),
+    /** Línea paralela al terreno (p. ej. «al menos 2.000 ft por encima de las montañas»). */
+    clearance: z.object({ ft: z.number().positive(), label: z.string(), at: atSchema, accent: accentSchema.optional() }).strict().optional(),
+    thresholds: z
+      .array(z.object({ ft: z.number().min(0), label: z.string(), at: atSchema, accent: accentSchema, labelSide: z.enum(['left', 'right']).optional() }).strict())
+      .optional(),
+    bands: z
+      .array(z.object({ fromFt: z.number(), toFt: z.number(), label: z.string(), at: atSchema, accent: accentSchema.optional() }).strict())
+      .optional(),
+    /** Tramos donde la trayectoria queda por debajo de la MSA, rellenos en rojo. */
+    violations: z.object({ at: atSchema, label: z.string().optional() }).strict().optional(),
+    markers: z
+      .array(z.object({ x: z.number().min(0).max(1), label: z.string(), at: atSchema, accent: accentSchema, line: z.enum(['full', 'tick']).optional() }).strict())
+      .optional(),
+    notes: z
+      .array(z.object({ text: z.string(), x: z.number().min(0).max(1), ft: z.number(), at: atSchema, accent: accentSchema.optional() }).strict())
+      .optional(),
+  })
+  .strict();
+
 export const reliefMapSceneSchema = z
   .object({
     ...sceneBaseShape,
@@ -379,8 +437,14 @@ export const reliefMapSceneSchema = z
     graticule: z
       .object({
         at: atSchema,
+        /** JSON de build-cells (ruta relativa a public/). */
         cells: z.string(),
-        threshold: z.object({ value: z.number(), at: atSchema }).strict().optional(),
+        /** Margen sobre el punto más alto de cada celda, en pies (la MSA se redondea hacia arriba a 100 ft). */
+        marginFt: z.number().min(0),
+        /** Cuándo aparecen las cifras de cada celda. */
+        numbersAt: atSchema.optional(),
+        /** Celdas con MSA ≥ value (pies) en rojo; `fill` las rellena. */
+        threshold: z.object({ value: z.number(), at: atSchema, fill: z.boolean().optional() }).strict().optional(),
         highlight: lonLatSchema.optional(),
       })
       .strict()
@@ -406,6 +470,7 @@ export const sceneSchema = z.discriminatedUnion('type', [
   barCompareSceneSchema,
   dotDensitySceneSchema,
   runwayCompareSceneSchema,
+  elevationProfileSceneSchema,
   reliefMapSceneSchema,
 ]);
 export type AtlasScene = z.infer<typeof sceneSchema>;

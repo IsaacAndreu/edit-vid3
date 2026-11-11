@@ -19,3 +19,8 @@ export const PlaneTop: FC<{ size: number; fill: string; stroke: string; rotate?:
     <path d={PLANE_TOP_PATH} fill={fill} stroke={stroke} strokeWidth={4} strokeLinejoin="round" />
   </g>
 );
+
+/** Avión de perfil, apuntando a la derecha, en una caja de 100×40 (para los perfiles de altitud). */
+export const PLANE_SIDE_PATH =
+  'M5 22 C5 18 10 17 20 17 L82 17 C90 17 96 19 98 21 C96 23 90 24.5 82 24.5 L20 24.5 C10 24.5 5 23.5 5 22 Z ' +
+  'M8 18 L3 5 L11 5 L23 17 Z M44 21.5 L63 21.5 L51 31 L41 31 Z';

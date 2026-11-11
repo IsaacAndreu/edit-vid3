@@ -16,6 +16,7 @@ import {
   TitleOverlayScene,
 } from './text';
 import { ReliefMapScene } from './relief';
+import { ElevationProfileScene } from './profile';
 import { BarCompareScene, DialScene, DotDensityScene, RunwayCompareScene } from './charts';
 
 export const atlasScenes: Partial<Record<SceneType, FC>> = {
@@ -33,4 +34,5 @@ export const atlasScenes: Partial<Record<SceneType, FC>> = {
   'atlas-dot-density': DotDensityScene,
   'atlas-runway-compare': RunwayCompareScene,
   'atlas-relief-map': ReliefMapScene,
+  'atlas-elevation-profile': ElevationProfileScene,
 };

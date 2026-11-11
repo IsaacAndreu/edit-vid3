@@ -1,0 +1,525 @@
+{
+  "meta": {
+    "slug": "test-phase4",
+    "title": "Prueba fase 4",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [
+      {
+        "numeral": "I",
+        "label": "Ground"
+      },
+      {
+        "numeral": "II",
+        "label": "Pressure"
+      },
+      {
+        "numeral": "III",
+        "label": "Engines"
+      },
+      {
+        "numeral": "IV",
+        "label": "Airports"
+      },
+      {
+        "numeral": "V",
+        "label": "Cost"
+      }
+    ],
+    "duration": 49
+  },
+  "audio": {},
+  "scenes": [
+    {
+      "id": "cruise",
+      "type": "atlas-elevation-profile",
+      "start": {
+        "t": 0
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "profile": "atlas-data/profiles/karakoram-hengduan.json",
+      "axis": {
+        "maxFt": 40000,
+        "stepFt": 10000,
+        "km": true
+      },
+      "ends": {
+        "left": "KARAKORAM",
+        "right": "HENGDUAN",
+        "middle": "{km} KM · HEIGHTS FROM TERRAIN DATA"
+      },
+      "ground": "terrain",
+      "groundAt": {
+        "t": 0.2
+      },
+      "flight": {
+        "points": [
+          {
+            "x": 0,
+            "ft": 37000
+          },
+          {
+            "x": 1,
+            "ft": 37000,
+            "curve": "linear"
+          }
+        ],
+        "at": {
+          "t": 1
+        },
+        "drawSeconds": 12,
+        "accent": "data"
+      }
+    },
+    {
+      "id": "sea",
+      "type": "atlas-elevation-profile",
+      "start": {
+        "t": 7
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "OVER OPEN SEA",
+      "profile": "atlas-data/profiles/karakoram-hengduan.json",
+      "axis": {
+        "maxFt": 40000,
+        "stepFt": 10000,
+        "km": true
+      },
+      "ends": {
+        "left": "",
+        "right": ""
+      },
+      "ground": "sea",
+      "flight": {
+        "points": [
+          {
+            "x": 0,
+            "ft": 37000
+          },
+          {
+            "x": 0.11,
+            "ft": 37000,
+            "curve": "linear"
+          },
+          {
+            "x": 0.29,
+            "ft": 10000
+          },
+          {
+            "x": 0.72,
+            "ft": 10000,
+            "curve": "linear"
+          }
+        ],
+        "at": {
+          "t": 7.4
+        },
+        "drawSeconds": 3.6,
+        "accent": "data"
+      },
+      "thresholds": [
+        {
+          "ft": 10000,
+          "label": "NO MASKS NEEDED · ~3 KM",
+          "at": {
+            "t": 9.5
+          },
+          "accent": "good"
+        }
+      ]
+    },
+    {
+      "id": "plateau",
+      "type": "atlas-elevation-profile",
+      "start": {
+        "t": 13
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "ACROSS THE PLATEAU · TRUE HEIGHTS",
+      "profile": "atlas-data/profiles/karakoram-hengduan.json",
+      "axis": {
+        "maxFt": 40000,
+        "stepFt": 10000,
+        "km": true
+      },
+      "ends": {
+        "left": "KARAKORAM",
+        "right": "HENGDUAN",
+        "middle": "{km} KM · HEIGHTS FROM TERRAIN DATA"
+      },
+      "ground": "sea",
+      "swap": {
+        "to": "terrain",
+        "at": {
+          "t": 13.4
+        }
+      },
+      "thresholds": [
+        {
+          "ft": 10000,
+          "label": "NO MASKS NEEDED · ~3 KM",
+          "at": {
+            "t": 13.2
+          },
+          "accent": "good"
+        }
+      ],
+      "notes": [
+        {
+          "text": "THE GROUND ALONE IS HIGHER",
+          "x": 0.4,
+          "ft": 4500,
+          "at": {
+            "t": 15
+          },
+          "accent": "ink"
+        }
+      ],
+      "msa": {
+        "at": {
+          "t": 15.6
+        },
+        "label": "MINIMUM SAFE ALTITUDE",
+        "segmentKm": 110,
+        "marginFt": 2000
+      },
+      "flight": {
+        "points": [
+          {
+            "x": 0,
+            "ft": 37000
+          },
+          {
+            "x": 0.12,
+            "ft": 37000,
+            "curve": "linear"
+          },
+          {
+            "x": 0.34,
+            "ft": 10000
+          }
+        ],
+        "at": {
+          "t": 16.4
+        },
+        "drawSeconds": 2.2,
+        "accent": "danger",
+        "stopAtMsa": true
+      }
+    },
+    {
+      "id": "incident",
+      "type": "atlas-elevation-profile",
+      "start": {
+        "t": 20
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "UNDER FLIGHT 3U8633 · TRUE HEIGHTS",
+      "sourceNote": "FLIGHT PATH SIMPLIFIED",
+      "profile": "atlas-data/profiles/chongqing-lhasa.json",
+      "axis": {
+        "maxFt": 40000,
+        "stepFt": 10000,
+        "km": true
+      },
+      "ends": {
+        "left": "CHONGQING",
+        "right": "TOWARDS LHASA",
+        "middle": "{km} KM · HEIGHTS FROM TERRAIN DATA"
+      },
+      "ground": "terrain",
+      "msa": {
+        "at": {
+          "t": 20.4
+        },
+        "label": "MINIMUM SAFE ALTITUDE",
+        "segmentKm": 60,
+        "marginFt": 2000
+      },
+      "flight": {
+        "points": [
+          {
+            "x": 0,
+            "ft": 1000
+          },
+          {
+            "x": 0.07,
+            "ft": 20000,
+            "curve": "linear"
+          },
+          {
+            "x": 0.26,
+            "ft": 32000,
+            "curve": "linear"
+          },
+          {
+            "x": 0.56,
+            "ft": 32000,
+            "curve": "linear"
+          }
+        ],
+        "at": {
+          "t": 21
+        },
+        "drawSeconds": 3,
+        "accent": "data"
+      },
+      "markers": [
+        {
+          "x": 0.54,
+          "label": "WINDSHIELD OUT · XIAOJIN",
+          "at": {
+            "t": 24.2
+          },
+          "accent": "danger",
+          "line": "full"
+        }
+      ]
+    },
+    {
+      "id": "driftdown",
+      "type": "atlas-elevation-profile",
+      "start": {
+        "t": 26
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 2,
+      "kicker": "ACROSS THE PLATEAU · TRUE HEIGHTS",
+      "sourceNote": "EXAMPLE LEVEL: BOEING 767-300ER AT 155 T, 22,630 FT (BOEING, 2002)",
+      "profile": "atlas-data/profiles/karakoram-hengduan.json",
+      "axis": {
+        "maxFt": 40000,
+        "stepFt": 10000,
+        "km": true
+      },
+      "ends": {
+        "left": "KARAKORAM",
+        "right": "HENGDUAN",
+        "middle": "{km} KM · HEIGHTS FROM TERRAIN DATA"
+      },
+      "ground": "terrain",
+      "msa": {
+        "at": {
+          "t": 26.2
+        },
+        "label": "MINIMUM SAFE ALTITUDE",
+        "segmentKm": 110,
+        "marginFt": 2000
+      },
+      "clearance": {
+        "ft": 2000,
+        "label": "FAA RULE · AT LEAST 2,000 FT ABOVE THE MOUNTAINS ALONG THE WAY",
+        "at": {
+          "t": 26.6
+        }
+      },
+      "bands": [
+        {
+          "fromFt": 20000,
+          "toFt": 25000,
+          "label": "ONE ENGINE, HEAVY TWIN: OFTEN ~20,000–25,000 FT",
+          "at": {
+            "t": 28.6
+          }
+        }
+      ],
+      "flight": {
+        "points": [
+          {
+            "x": 0,
+            "ft": 37000
+          },
+          {
+            "x": 0.06,
+            "ft": 37000,
+            "curve": "linear"
+          },
+          {
+            "x": 0.2,
+            "ft": 22630
+          },
+          {
+            "x": 0.8,
+            "ft": 22630,
+            "curve": "linear"
+          }
+        ],
+        "at": {
+          "t": 27
+        },
+        "drawSeconds": 3.2,
+        "accent": "data"
+      },
+      "markers": [
+        {
+          "x": 0.055,
+          "label": "ENGINE FAILS",
+          "at": {
+            "t": 27.3
+          },
+          "accent": "danger",
+          "line": "tick"
+        }
+      ],
+      "violations": {
+        "at": {
+          "t": 30.5
+        },
+        "label": "BELOW THE SAFE ALTITUDE"
+      }
+    },
+    {
+      "id": "cells",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 33
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "region": "tibet",
+      "camera": [
+        {
+          "at": {
+            "t": 33
+          },
+          "center": [
+            88,
+            31
+          ],
+          "zoom": 2.0
+        },
+        {
+          "at": {
+            "t": 33.6
+          },
+          "center": [
+            87.7,
+            29.5
+          ],
+          "zoom": 5.4
+        }
+      ],
+      "graticule": {
+        "at": {
+          "t": 33.3
+        },
+        "cells": "atlas-data/cells/tibet-plateau.json",
+        "marginFt": 2000,
+        "numbersAt": {
+          "t": 36.2
+        },
+        "threshold": {
+          "value": 20000,
+          "at": {
+            "t": 36.4
+          }
+        },
+        "highlight": [
+          86.925,
+          27.988
+        ]
+      },
+      "overlays": [
+        {
+          "kind": "info-card",
+          "corner": "tl",
+          "at": {
+            "t": 35
+          },
+          "kicker": "One square · 1° × 1°",
+          "title": {
+            "text": "Highest point *Everest*",
+            "accent": "ink"
+          },
+          "lines": [
+            {
+              "text": "8,849 M = 29,032 FT",
+              "at": {
+                "t": 35.4
+              }
+            },
+            {
+              "text": "+ 2,000 FT SAFETY MARGIN",
+              "at": {
+                "t": 35.8
+              }
+            },
+            {
+              "text": "MINIMUM SAFE ALTITUDE 31,100 FT",
+              "at": {
+                "t": 36.2
+              },
+              "accent": "danger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cells-fill",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 41
+      },
+      "theme": "paper",
+      "enter": "continuous",
+      "chapter": 0,
+      "region": "tibet",
+      "camera": [
+        {
+          "at": {
+            "t": 41.2
+          },
+          "center": [
+            89,
+            32
+          ],
+          "zoom": 1.75
+        }
+      ],
+      "graticule": {
+        "at": {
+          "t": 41
+        },
+        "cells": "atlas-data/cells/tibet-plateau.json",
+        "marginFt": 2000,
+        "threshold": {
+          "value": 20000,
+          "at": {
+            "t": 43
+          },
+          "fill": true
+        }
+      },
+      "overlays": [
+        {
+          "kind": "legend",
+          "corner": "bl",
+          "at": {
+            "t": 43.6
+          },
+          "items": [
+            {
+              "style": "fill",
+              "accent": "danger",
+              "label": "Safe altitude above 20,000 ft"
+            }
+          ],
+          "sub": "CALCULATED FROM TERRAIN DATA · 1° SQUARES"
+        }
+      ]
+    }
+  ]
+}
