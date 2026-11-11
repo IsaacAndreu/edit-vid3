@@ -345,6 +345,18 @@ Colores en `#RRGGBB` sacados de fotos del avión real; los logos son PNG con fon
 `public/accidentes/<caso>/livery/` (el sistema no los descarga). `titles` se pinta delante de las alas. Bloque de terreno grande (que no se vea el borde): `"cols": 800, "zoom": 14` con
 `"region"`. Render lento: ~10 s por fotograma en el cloud; úsala en tramos cortos.
 
+### Dónde va el 3D de cerca en un vídeo de accidente
+Es lento de renderizar: solo en los momentos fuertes, 5-15 s cada uno, ~60-90 s por cada 10 min de vídeo.
+
+| Momento | Cámara | Encima |
+|---|---|---|
+| Gancho (primeros 10 s) | `chase` u `orbit` en el momento crítico | nada: que se vea el avión |
+| El fallo (aves, motor, aviso) | `chase` o `side` | `pfd` en una esquina |
+| La decisión en cabina | `cockpit` + `cockpitPanel` | la voz cita el CVR |
+| Aproximación final | `ground` (teleobjetivo) o `side` | `hud` con hora y altitud |
+| Desenlace | si hubo víctimas, el 3D acaba **antes** del impacto y sigue un mapa o `atlas-known`; nunca el choque | |
+| Short | 20-30 s de 3D con `pfd` | `meta.short` |
+
 ### atlas-pfd
 ![pfd](atlas/catalogo/atlas-pfd.jpg)
 ```json

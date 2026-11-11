@@ -48,6 +48,17 @@ Reglas:
 - Toda geografía que uses (paquetes de región, contornos, perfiles, rejillas, bloques 3D, países) la declaras en "data"
   para que se genere; las rutas de archivo del storyboard deben coincidir con lo que genera "data".
 - meta.brand: {"name": "ATLAS", "icon": "✦"} salvo que se pida otra marca. meta.slug: el que te doy.
+- Vídeos de accidentes aéreos (hay un vuelo en "data"): el 3D de cerca (atlas-flight-cam) va SOLO en los momentos
+  fuertes, 5-15 s cada uno y unos 60-90 s en total por cada 10 min de vídeo (es lento de renderizar):
+    1) gancho, en los primeros 10 s: el avión en el momento crítico, cámara chase u orbit, sin explicar aún;
+    2) el fallo (aves, motor, aviso): chase o side, con "pfd" en una esquina;
+    3) la decisión en cabina: mode cockpit con cockpitPanel, mientras la voz cita el CVR;
+    4) la aproximación final: ground (teleobjetivo, desde la orilla o un testigo) o side;
+    5) el desenlace: si hubo víctimas, el 3D termina ANTES del impacto (to = unos segundos antes) y se pasa a un
+       mapa, un perfil o atlas-known; nunca se muestra el choque en 3D. Si no las hubo, puede terminar en el contacto.
+  Lo demás (contexto, datos, causas, recomendaciones) con mapas, perfiles, cabina en texto y gráficos.
+  El bloque 3D de cerca: {"kind": "terrain", ..., "cols": 800, "zoom": 14, "smooth": 1, "region": "<región del caso>"}.
+  Pon "model" (el tipo del informe), "registration" (la del informe) y "livery" si el caso la trae.
 
 Devuelve SOLO JSON: {"storyboard": {...}, "data": [...]}
 
