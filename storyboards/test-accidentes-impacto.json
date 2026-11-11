@@ -1,0 +1,58 @@
+{
+ "meta": {
+  "slug": "test-accidentes-impacto",
+  "title": "Prueba accidentes B2",
+  "brand": {
+   "name": "ATLAS",
+   "icon": "✦"
+  },
+  "chapters": [],
+  "duration": 8
+ },
+ "audio": {},
+ "scenes": [
+  {
+   "id": "cabina",
+   "type": "atlas-flight-cam",
+   "start": {
+    "t": 0
+   },
+   "theme": "paper",
+   "enter": "fade",
+   "terrain": "hudson-cerca",
+   "model": "narrowbody",
+   "livery": "white",
+   "registration": "N106US",
+   "flight": {
+    "data": "accidentes/us1549/vuelo.json",
+    "at": {
+     "t": 0
+    },
+    "from": "15:30:30",
+    "to": "15:30:42",
+    "rate": 2
+   },
+   "camera": [
+    {
+     "at": {
+      "t": 0
+     },
+     "mode": "ground",
+     "pos": [
+      -74.016,
+      40.77
+     ],
+     "heightM": 4,
+     "fov": 12
+    }
+   ],
+   "cockpitFrame": true,
+   "cockpitPanel": false,
+   "sourceNote": "DATOS: FDR DE LA NTSB · AVIÓN Y CABINA GENÉRICOS",
+   "impact": {
+    "clock": "15:30:42",
+    "label": "15:30:43 · CONTACTO CON EL AGUA"
+   }
+  }
+ ]
+}

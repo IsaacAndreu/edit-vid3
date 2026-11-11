@@ -329,7 +329,8 @@ El avión (modelo genérico en código: `narrowbody` | `bizjet`) se mueve con la
 alabeo y el rumbo del FDR a escala real (sin exageración). Cámaras: `chase` (detrás), `side` (`left` para el lado
 izquierdo), `orbit` (`degPerSecond`), `ground` (`pos` en el suelo, `fov` pequeño = teleobjetivo) y `cockpit` (desde el
 asiento del piloto, el horizonte se inclina con el alabeo; `cockpitFrame` dibuja parabrisas y panel). Cambian en 1,6 s.
-`pfd` pone el PFD en una esquina; `cockpitPanel: true` añade en la vista cockpit el panel de instrumentos (PFD de los
+`impact: {"clock", "label", "fadeSeconds"}` = a la hora del contacto el avión se desvanece y queda un anillo en el
+punto real con el rótulo (informar sin mostrar daños). `pfd` pone el PFD en una esquina; `cockpitPanel: true` añade en la vista cockpit el panel de instrumentos (PFD de los
 dos pilotos y N1 de los dos motores en esfera, leídos de los datos).
 Personalización: `model` = `narrowbody` (pasillo único) | `widebody` (fuselaje ancho) | `regionaljet` (motores en la
 cola, cola en T) | `turboprop` (ala alta, hélices) | `bizjet`; `livery` = `white` | `grey` | `stripe-blue` |
@@ -354,7 +355,7 @@ Es lento de renderizar: solo en los momentos fuertes, 5-15 s cada uno, ~60-90 s 
 | El fallo (aves, motor, aviso) | `chase` o `side` | `pfd` en una esquina |
 | La decisión en cabina | `cockpit` + `cockpitPanel` | la voz cita el CVR |
 | Aproximación final | `ground` (teleobjetivo) o `side` | `hud` con hora y altitud |
-| Desenlace | si hubo víctimas, el 3D acaba **antes** del impacto y sigue un mapa o `atlas-known`; nunca el choque | |
+| Desenlace | cualquiera, hasta el contacto, con `impact` | el avión se desvanece en el punto real y queda una marca con la hora; nunca fuego, restos ni víctimas |
 | Short | 20-30 s de 3D con `pfd` | `meta.short` |
 
 ### atlas-pfd

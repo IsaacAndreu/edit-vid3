@@ -54,8 +54,9 @@ Reglas:
     2) el fallo (aves, motor, aviso): chase o side, con "pfd" en una esquina;
     3) la decisión en cabina: mode cockpit con cockpitPanel, mientras la voz cita el CVR;
     4) la aproximación final: ground (teleobjetivo, desde la orilla o un testigo) o side;
-    5) el desenlace: si hubo víctimas, el 3D termina ANTES del impacto (to = unos segundos antes) y se pasa a un
-       mapa, un perfil o atlas-known; nunca se muestra el choque en 3D. Si no las hubo, puede terminar en el contacto.
+    5) el desenlace: el 3D puede llegar al impacto para informar, con "impact": {"clock": hora del contacto del
+       informe, "label": "HH:MM:SS · IMPACTO"}: el avión se desvanece en el punto real y queda una marca. Nunca fuego,
+       restos, víctimas ni repeticiones del choque; después, un mapa, un perfil o atlas-known.
   Lo demás (contexto, datos, causas, recomendaciones) con mapas, perfiles, cabina en texto y gráficos.
   El bloque 3D de cerca: {"kind": "terrain", ..., "cols": 800, "zoom": 14, "smooth": 1, "region": "<región del caso>"}.
   Pon "model" (el tipo del informe), "registration" (la del informe) y "livery" si el caso la trae.

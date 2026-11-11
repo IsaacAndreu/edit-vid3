@@ -710,6 +710,11 @@ export const flightCamSceneSchema = z
     cockpitFrame: z.boolean().optional(),
     /** En la vista cockpit, el panel de instrumentos con el PFD y los motores (N1) leídos de los datos. */
     cockpitPanel: z.boolean().optional(),
+    /**
+     * Momento del impacto, para informar: el avión llega al punto real de contacto y a esa hora se desvanece en
+     * `fadeSeconds`; queda una marca en el suelo con `label`. Nunca fuego, restos ni víctimas.
+     */
+    impact: z.object({ clock: clockSchema, label: z.string().optional(), fadeSeconds: z.number().positive().optional() }).strict().optional(),
   })
   .strict();
 

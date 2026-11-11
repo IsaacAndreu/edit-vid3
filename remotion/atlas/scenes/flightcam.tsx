@@ -16,7 +16,7 @@ import { BackSide, Color, DoubleSide, Euler, PerspectiveCamera, Quaternion, Shad
 import { ease, reveal } from '../anim';
 import { useAtlasTime, useTheme } from '../context';
 import { aircraftLength, buildAircraft, liveryOf } from '../flight/aircraft3d';
-import { flightClock, FlightHud, sampleAt, sToClock, trackAt, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
+import { clockToS, flightClock, FlightHud, sampleAt, sToClock, trackAt, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
 import { Pfd } from '../flight/pfd';
 import { fonts } from '../fonts';
 import { useJsonFiles } from '../geo/useData';
@@ -189,6 +189,22 @@ export const FlightCamScene: FC = () => {
       inside: pose.inside + (b.inside - pose.inside) * f,
     };
   }
+  // impacto: el avión se desvanece a la hora del contacto y queda un anillo en el punto real (sin fuego ni restos)
+  const impact = scene.impact;
+  const impactS = impact ? clockToS(impact.clock) : Infinity;
+  const impactVideoT = impact ? videoTimeOf(scene.flight, impact.clock) : Infinity;
+  const planeFade = impact ? 1 - Math.max(0, Math.min(1, (time - impactVideoT) / (impact.fadeSeconds ?? 0.8))) : 1;
+  const impactP = impact ? Math.max(0, Math.min(1, (time - impactVideoT) / 1.2)) : 0;
+  const impactPt = impact ? sampleAt(flight, impactS) : pt;
+  const [ix, iz] = local([impactPt.lon, impactPt.lat]);
+  const impactPos = new Vector3(ix, groundKm([impactPt.lon, impactPt.lat]), iz);
+  plane.traverse((o) => {
+    const m = (o as { material?: { transparent: boolean; opacity: number } }).material;
+    if (m) {
+      m.transparent = true;
+      m.opacity = planeFade;
+    }
+  });
   const camDist = pose.pos.distanceTo(P);
   const near = Math.max(0.0002, Math.min(0.02, camDist * 0.05));
   const sky = FLIGHT.sky[name];
@@ -219,14 +235,25 @@ export const FlightCamScene: FC = () => {
           position={[P.x, P.y, P.z]}
           quaternion={q}
           scale={[0.001, 0.001, 0.001]}
-          visible={pose.inside < 0.98}
+          visible={pose.inside < 0.98 && planeFade > 0.01}
         />
+        {impactP > 0 ? (
+          <mesh position={[impactPos.x, impactPos.y + 0.0005, impactPos.z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.03 + 0.05 * impactP, 0.036 + 0.05 * impactP, 48]} />
+            <meshBasicMaterial color={FLIGHT.pfd.amber} transparent opacity={0.9 * Math.min(1, impactP * 2)} side={DoubleSide} toneMapped={false} />
+          </mesh>
+        ) : null}
       </ThreeCanvas>
       {frameIn > 0.01 ? <CockpitFrame opacity={frameIn} /> : null}
       {scene.cockpitPanel && pose.inside > 0.01 ? <CockpitPanel opacity={pose.inside} point={pt} /> : null}
       {pfd && pfdIn && pfdIn.opacity > 0 ? (
         <div style={{ ...cornerStyle(pfd.corner), ...pfdIn.style }}>
           <Pfd point={pt} size={pfd.size ?? 520} />
+        </div>
+      ) : null}
+      {impact?.label && impactP > 0 ? (
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 860, textAlign: 'center', opacity: impactP }}>
+          <Mono size={30} color={FLIGHT.pfd.ink} style={{ backgroundColor: FLIGHT.pfd.box, padding: '10px 22px' }}>{impact.label}</Mono>
         </div>
       ) : null}
       {scene.hud ? <FlightHud show={scene.hud.show} point={pt} theme={name} corner={scene.hud.corner} labels={scene.hud.labels} /> : null}
