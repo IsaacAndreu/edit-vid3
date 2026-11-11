@@ -1,0 +1,52 @@
+# «Atlas» (alemán): el mismo formato que atlas-es/atlas-pt (página de papel, globo que gira de frase en frase, relieve,
+# escenas de remotion/atlas; pipeline/atlas.py → Atlas.tsx). Sin metraje: va por el carril rápido de la cola.
+# Puede llegar doblado desde atlas-es (dubbing.channels de: atlas-de) o con guiones propios.
+# Su voz: estudio → Ajustes → Voces por canal → atlas-de.
+
+video:
+  fps: 30
+
+visual:
+  style: atlas
+
+brand:
+  name: Atlas
+  accent: "#B8322A"
+  motion: clean
+  endStyle: paper                  # la pantalla final en papel, como el resto del vídeo
+
+align:
+  language: de
+
+localize: |                       # cómo adaptar cada guion al público de habla alemana
+  Público de Alemania, Austria y Suiza. Kilómetros, metros, euros; las cifras como allí (3.812 Meter). Si viene a
+  cuento, una comparación de allí (la Zugspitze con 2.962 m, el Großglockner, los Alpes, el Bodensee). Tono claro y preciso.
+
+factcheck:
+  block_voice: false               # la verificación avisa (verificacion.md) pero no para la voz
+
+timeline:
+  music_default: intriga
+  music_volume: 0.12
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'ein deutscher YouTube-Kanal mit Karten und Relief: warum ein Ort der Erde so ist, wie er ist (Hochebenen, Gebirge, Grenzen, Flüsse, der abgelegenste Ort), mit Daten und Quellen, Videos von 8-10 Minuten'
+  niches: [Geografie, Gebirge, Hochebenen, Grenzen, Flüsse, Kuriositäten der Karte]
+  words: 1200
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions"]
+
+lab:
+  queries: ["verheimlicht etwas worüber niemand spricht", "warum niemand lebt", "seltsamste Grenze der Welt", "Geografie ergibt keinen Sinn"]
+
+dubbing:
+  enabled: false
+
+shorts:
+  enabled: false
