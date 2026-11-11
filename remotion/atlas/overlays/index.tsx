@@ -212,10 +212,12 @@ const Legend: FC<{ overlay: OverlayOf<'legend'> }> = ({ overlay }) => {
     <div style={{ ...cornerStyle(overlay.corner), ...enter.style }}>
       <div
         style={{
-          backgroundColor: night ? 'rgba(25,39,51,0.55)' : themes.paper.card,
-          border: `2px solid ${night ? 'rgba(237,230,211,0.35)' : themes.paper.ink}`,
-          ...(night ? {} : { outline: `2px solid ${themes.paper.ink}`, outlineOffset: -9 }),
-          padding: night ? '20px 28px' : '26px 36px',
+          backgroundColor: themes.paper.card,
+          border: `2px solid ${themes.paper.ink}`,
+          outline: `2px solid ${themes.paper.ink}`,
+          outlineOffset: -9,
+          boxShadow: night ? '0 10px 30px rgba(0,0,0,0.35)' : undefined,
+          padding: '26px 36px',
           display: 'flex',
           flexDirection: 'column',
           gap: 14,
@@ -226,6 +228,7 @@ const Legend: FC<{ overlay: OverlayOf<'legend'> }> = ({ overlay }) => {
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
               <svg width={64} height={30}>
+                {night ? <rect x={0} y={0} width={64} height={30} rx={3} fill={themes.night.bg} /> : null}
                 {item.style === 'fill' ? (
                   <rect x={4} y={3} width={56} height={24} fill={color} opacity={0.65} stroke={color} />
                 ) : (
@@ -240,14 +243,14 @@ const Legend: FC<{ overlay: OverlayOf<'legend'> }> = ({ overlay }) => {
                   />
                 )}
               </svg>
-              <Caps size={22} color={night ? themes.night.ink : themes.paper.ink}>
+              <Caps size={22} color={themes.paper.ink}>
                 {item.label}
               </Caps>
             </div>
           );
         })}
         {overlay.sub ? (
-          <Caps size={17} color={night ? themes.night.inkSoft : themes.paper.inkSoft} tracking="0.1em">
+          <Caps size={17} color={themes.paper.inkSoft} tracking="0.1em">
             {overlay.sub}
           </Caps>
         ) : null}

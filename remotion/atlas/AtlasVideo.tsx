@@ -93,8 +93,10 @@ const SceneSlot: FC<{
   const frame = useCurrentFrame();
   const scene = storyboard.scenes[index];
   const Component = sceneComponent(scene.type, scene.id);
+  // 'continuous' hereda la cámara y también se funde: el encuadre coincide, así que sólo se ve desvanecerse lo que
+  // cambia (sin el fundido, lo que la escena nueva ya no dibuja desaparecería de golpe)
   const opacity =
-    scene.enter === 'fade' && index > 0
+    index > 0
       ? interpolate(frame, [0, fadeFrames], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })
       : 1;
   const backdrop = 'backdrop' in scene && scene.backdrop === 'previous' && index > 0;

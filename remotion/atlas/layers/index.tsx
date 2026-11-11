@@ -96,11 +96,13 @@ export const Brand: FC = () => {
  * etiqueta en cursiva, pendientes en gris. Sólo aparece en escenas con `chapter`.
  */
 export const ChapterIndicator: FC = () => {
-  const { storyboard, scene, start } = useScene();
+  const { storyboard, scene, start, previous } = useScene();
   const { name, tokens } = useTheme();
   const time = useAtlasTime();
   const chapters = storyboard.meta.chapters;
   if (scene.chapter === undefined || chapters.length === 0) return null;
+  // si la escena anterior no lo tenía, entra con fundido (en una entrada 'continuous' no hay fundido de escena)
+  const fadeIn = previous?.chapter === undefined ? progress(time, start, 0.6) : 1;
   const current = scene.chapter;
   const underline = progress(time, start + 0.2, 0.6);
   const danger = tokens.accents.danger;
@@ -113,6 +115,7 @@ export const ChapterIndicator: FC = () => {
         top: LAYOUT.hudTop - 6,
         display: 'flex',
         gap: 54,
+        opacity: fadeIn,
       }}
     >
       {chapters.map((c, i) => {

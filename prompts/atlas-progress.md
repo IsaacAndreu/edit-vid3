@@ -10,7 +10,7 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 | 2 — Gráficos sin geografía | ✅ completada |
 | 3 — Datos y mapa de relieve (puerta) | ✅ completada (el usuario pidió seguir) |
 | 4 — Perfiles y rejilla | ✅ completada |
-| 5 — Globo y terreno 3D | pendiente |
+| 5 — Globo y terreno 3D | ✅ completada |
 | 6 — Diagramas | pendiente |
 | 7 — Vídeo de referencia completo | pendiente |
 | 8 — Producción de vídeos nuevos | pendiente |
@@ -179,3 +179,40 @@ Storyboard: `storyboards/test-phase4.json`. Comparativa: `docs/atlas/fase4.jpg`.
 - `3-42`: una sola trayectoria (el original dibuja también la vuelta a Chengdu). La posición de Xiaojin en el perfil
   es aproximada (`FLIGHT PATH SIMPLIFIED`).
 - Papel: grano del fondo bajado a 4,5 % (salía grisáceo).
+
+## Fase 5 — Globo y terreno 3D
+
+WebGL sin GPU: funciona con `--gl=swangle` (SwiftShader sobre ANGLE); `angle` y `swiftshader` a secas fallan en el
+contenedor. `scripts/atlas/stills.ts` ya lo pasa, y `pipeline/render.py` usa `swangle` por defecto.
+
+Scripts: `npm run atlas:data -- globe [ancho] [zoom]` (textura equirectangular del mundo, día y noche, con relieve,
+mar por profundidad e hielo de Natural Earth) y `terrain <id> <bbox> <columnas> <zoom> <curvas_m> [suavizado]`
+(rejilla de alturas en km + textura con sombreado y curvas de nivel). Datos: `globe/earth-{paper,night}.jpg`,
+`terrain/everest` (49×27 km), `terrain/tibet-3d` (2.988×1.548 km, suavizado 3 celdas para ×30).
+
+`atlas-globe`: esfera de three.js con cámara ortográfica a escala de píxel; las capas vectoriales (siluetas, rutas de
+círculo máximo que se trazan sólo en la cara visible, puntos con nombre, etiquetas) usan d3 `geoOrthographic` con la
+misma rotación y escala: el contorno de la meseta cae sobre su relieve en la textura. Deriva lenta (0,25°/s, +3 %).
+La región destacada es roja también de noche. La leyenda es tarjeta de papel en ambos temas.
+
+`atlas-terrain-3d`: malla de la rejilla con exageración vertical, paredes y filetes de tinta, cámara por keyframes
+(inclinación, giro, distancia, objetivo), extrusión animada desde el mapa plano, umbral teñido en rojo con su borde
+(shader), rótulos de cordillera, cumbre con línea guía, cifras, línea de crucero, avión con línea de altitud y
+estela, eje en km y rótulo de base. Todo lo 2D se proyecta con una copia de la misma cámara.
+
+Storyboard: `storyboards/test-phase5.json`. Comparativa: `docs/atlas/fase5.jpg`.
+
+**Criterios**
+- ✅ Réplicas de `0-12_globe-routes-legend`, `7-28_globe-light-card`, `0-06_terrain3d-night-hook`,
+  `0-28_terrain3d-threshold`, `1-19_terrain3d-labels` (y `8-23` de cierre). Tres rondas de bucle visual.
+- ✅ El render sin pantalla funciona.
+- ✅ Clip de 10 s (meseta: extrusión, inclinación, umbral y paso a la escena encadenada) sin parpadeo: sin cortes
+  detectados por ffmpeg y sin picos aislados en la diferencia entre fotogramas (máx. 3,1 fuera del fundido de tema).
+  Arreglos hechos para ello: la deriva de cámara continúa entre escenas encadenadas del mismo bloque; el objetivo de
+  cámara se interpola desde el centro del bloque; el indicador de capítulos entra con fundido; las entradas
+  `continuous` también se funden (el encuadre coincide, así que sólo se desvanece lo que cambia).
+- Render: ~0,95 s por fotograma con 3D en este contenedor de 4 núcleos sin GPU.
+
+**Diferencias**
+- El relieve 3D del original está más suavizado; aquí se ve más detalle del DEM (ajustable con el suavizado).
+- El Everest del DEM es 8.665 m a esta resolución; el rótulo dice 8.849 m (el dato oficial, del storyboard).

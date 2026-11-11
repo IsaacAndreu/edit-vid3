@@ -452,6 +452,91 @@ export const reliefMapSceneSchema = z
   })
   .strict();
 
+/* ── Fase 5: globo y terreno 3D ────────────────────────────────────────────── */
+
+/** Globo ortográfico (three.js) con textura del mundo y las mismas capas vectoriales que el mapa de relieve. */
+export const globeSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-globe'),
+    /** zoom 1 = el globo entero con margen; 3 ≈ un continente llena la pantalla. */
+    camera: reliefMapSceneSchema.shape.camera,
+    shapes: reliefMapSceneSchema.shape.shapes,
+    routes: reliefMapSceneSchema.shape.routes,
+    points: reliefMapSceneSchema.shape.points,
+    labels: reliefMapSceneSchema.shape.labels,
+  })
+  .strict();
+
+const tiltKeySchema = z
+  .object({
+    at: atSchema,
+    /** Grados sobre el horizonte: 90 = cenital, 0 = rasante. */
+    tilt: z.number().min(2).max(89.5),
+    /** Grados de giro alrededor del bloque: 0 = mirando hacia el norte desde el sur. */
+    yaw: z.number(),
+    /** Distancia de la cámara en múltiplos del lado mayor del bloque. */
+    distance: z.number().positive(),
+    /** Punto mirado, en lon/lat (por defecto el centro del bloque). */
+    target: lonLatSchema.optional(),
+    /** Altura del punto mirado, en km reales. */
+    targetKm: z.number().optional(),
+  })
+  .strict();
+
+export const terrain3dSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-terrain-3d'),
+    /** Bloque en public/atlas-data/terrain/<terrain>. */
+    terrain: z.string(),
+    /** Exageración vertical (1 = escala real). */
+    exaggeration: z.number().positive(),
+    /** El mapa plano se extruye hasta su altura en este momento (si falta, ya está extruido). */
+    extrude: z.object({ at: atSchema, seconds: z.number().positive() }).strict().optional(),
+    camera: z.array(tiltKeySchema).min(1),
+    threshold: z
+      .object({ m: z.number(), at: atSchema, accent: accentSchema.optional(), label: z.string().optional(), labelPos: lonLatSchema.optional() })
+      .strict()
+      .optional(),
+    labels: z
+      .array(
+        z
+          .object({
+            text: z.string(),
+            pos: lonLatSchema,
+            at: atSchema,
+            /** 'range' = nombre de cordillera sobre el terreno; 'peak' = punto con línea guía; 'value' = cifra mono. */
+            style: z.enum(['range', 'peak', 'value']),
+            sub: z.string().optional(),
+            accent: accentSchema.optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    /** Línea horizontal a una altitud (p. ej. crucero de los aviones), de lado a lado. */
+    cruise: z.object({ km: z.number().positive(), label: z.string(), at: atSchema, accent: accentSchema.optional() }).strict().optional(),
+    /** Avión que cruza a una altitud, con línea vertical hasta el suelo. */
+    plane: z
+      .object({
+        from: lonLatSchema,
+        to: lonLatSchema,
+        km: z.number().positive(),
+        at: atSchema,
+        seconds: z.number().positive(),
+        dropLine: z.boolean().optional(),
+        accent: accentSchema.optional(),
+        trail: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    /** Eje vertical en km a la derecha del bloque. */
+    axis: z.object({ maxKm: z.number().positive(), stepKm: z.number().positive(), at: atSchema }).strict().optional(),
+    /** Rótulo en la base del bloque («SEA LEVEL»). */
+    base: z.object({ label: z.string(), at: atSchema }).strict().optional(),
+  })
+  .strict();
+
 /**
  * Registro de esquemas de escena. Cada fase añade aquí los suyos.
  * La clave `type` debe coincidir con la del registro de componentes (scenes/index.ts).
@@ -472,6 +557,8 @@ export const sceneSchema = z.discriminatedUnion('type', [
   runwayCompareSceneSchema,
   elevationProfileSceneSchema,
   reliefMapSceneSchema,
+  globeSceneSchema,
+  terrain3dSceneSchema,
 ]);
 export type AtlasScene = z.infer<typeof sceneSchema>;
 export type SceneType = AtlasScene['type'];
