@@ -9,7 +9,7 @@ reconstrucciones), con su fecha y su descripción, sacado de cada expediente pú
 
 Resultado en out/_accidentes/casos.json y casos.md (los que tienen tabla del FDR primero). Nada se inventa: cada fila
 sale de la página del expediente; un número que no existe simplemente no aparece. El escaneo pide una página por
-número (1 por segundo) y para un año tras 120 números seguidos vacíos (van salteados): ~5 min por año.
+número (1 por segundo) y recorre del 1 al 300 de cada año (van salteados): ~5 min por año.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def scan(first: int, last: int) -> list[dict]:
     rows = []
     for year in range(first, last + 1):
         empty = 0
-        for n in range(1, 400):
+        for n in range(1, 301):
             number = f"DCA{year % 100:02d}MA{n:03d}"
             try:
                 row = docket(number)
@@ -85,10 +85,8 @@ def scan(first: int, last: int) -> list[dict]:
                 print(f"{number}: {error}")
                 row = None
             time.sleep(1)
-            if row is None:
+            if row is None:               # los números van salteados (MA142 en 2018): se recorren todos
                 empty += 1
-                if empty >= 120:          # los números van salteados (MA142 en 2018)
-                    break
                 continue
             empty = 0
             rows.append(row)
