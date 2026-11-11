@@ -205,7 +205,7 @@ def dub_voice(root: Path, target: str | None, given: dict[str, Any]) -> dict[str
         own = tts.voices(root).get(target)
         if own and own.get("voice_id"):
             return own
-    return {**tts.DEFAULTS, **given} if given.get("voice_id") else None
+    return tts.with_defaults(given) if given.get("voice_id") else None
 
 
 def options(root: Path, channel: str) -> list[dict[str, Any]]:
@@ -312,15 +312,18 @@ def voice(ctx: RunContext, lang: str) -> bool:
         if found and found != lang[:2]:
             raise RuntimeError(f"guion-{lang}.txt está en {IN_SPANISH.get(found, found)}, no en {IN_SPANISH.get(lang, lang)}: "
                                "no se graba (pega el bueno en la página del vídeo, o bórralo y se adapta de nuevo)")
-        print(f"Doblaje {ctx.slug} → {lang}: voz con GenAIPro ({len(text)} caracteres)")
-        result = tts.generate(ctx.env("GENAIPRO_API_KEY", required=False), text, {**tts.DEFAULTS, **spec}, target)
+        voice = tts.with_defaults(spec)
+        if tts.is_minimax(voice) and not voice.get("language_boost") and lang[:2] in tts.LANGUAGE_BOOST:
+            voice["language_boost"] = tts.LANGUAGE_BOOST[lang[:2]]
+        print(f"Doblaje {ctx.slug} → {lang}: voz con {tts.provider_name(voice)} ({len(text)} caracteres)")
+        result = tts.generate(tts.keys(ctx.root), text, voice, target)
         try:
             from .costs import record_cost
 
             paid = result.get("paidChars", result["chars"])
-            record_cost(ctx, stage="doblaje", provider="genaipro", operation=f"voz-{lang}",
-                        usd=tts.usd_per_1k_chars(ctx, spec) * paid / 1000,
-                        details={"chars": paid, "lang": lang})
+            record_cost(ctx, stage="doblaje", provider=result.get("provider", "genaipro"), operation=f"voz-{lang}",
+                        usd=tts.voice_usd(ctx, voice, paid, result),
+                        details={"chars": paid, "lang": lang, "credits": result.get("credits", 0)})
             if result.get("reusedChars"):
                 from .ahorro import record
 

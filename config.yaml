@@ -474,4 +474,7 @@ without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue a
   max_unfilled_share: 0
 
 tts:
+  provider: ""                    # ai84 | genaipro: con quién se buscan y guardan las voces nuevas ("" = AI84 si está AI84_API_KEY)
   usd_per_1k_chars: 0.022         # GenAIPro: lo que cuestan 1.000 caracteres de voz (22 $ el millón), para «Gasto de API»
+  ai84_usd_per_1k_credits: 0      # AI84: $ por 1.000 créditos (lo que pagaste ÷ créditos × 1000); 0 = el gasto de voz sale a 0
+  ai84_credits_per_char: 1.0      # AI84: créditos por carácter, solo para avisar de créditos antes de medir el primer vídeo

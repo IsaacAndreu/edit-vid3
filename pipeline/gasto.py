@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 OTHERS = "Otros (radar, ideas, guiones…)"
-NAMES = {"deepseek": "DeepSeek (guion y planos)", "openai": "OpenAI (juez)", "genaipro": "GenAIPro (voz)",
+NAMES = {"deepseek": "DeepSeek (guion y planos)", "openai": "OpenAI (juez)", "genaipro": "GenAIPro (voz)", "ai84": "AI84 (voz)",
          "elevenlabs": "ElevenLabs (voz)", "anthropic": "Anthropic", "gemini": "Gemini", "serper": "Búsqueda web"}
 
 
@@ -210,7 +210,7 @@ def report(root: Path, days: int = 30, channels: set[str] | None = None) -> dict
             if entry.get("stage") == "judge" and entry.get("provider") == "openai":
                 judge_calls += 1
                 judge_usd += usd
-            if entry.get("provider") == "genaipro" and chars:
+            if entry.get("provider") in ("genaipro", "ai84") and chars:
                 voice_chars += chars
                 voice_usd += usd
         seconds = _seconds(root, slug) if is_video else 0.0
@@ -366,8 +366,8 @@ def invoices(root: Path, months: int = 3) -> list[dict[str, Any]]:
                 continue
             usd = float(entry.get("usd") or 0)
             chars = float((entry.get("details") or {}).get("chars") or 0)
-            voice = entry.get("provider") == "genaipro"
-            if voice and not usd and chars:
+            voice = entry.get("provider") in ("genaipro", "ai84")
+            if entry.get("provider") == "genaipro" and not usd and chars:
                 usd = chars / 1000 * voice_rate
             row = person(m, who)
             row["voice" if voice else "api"] += usd

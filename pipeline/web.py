@@ -82,6 +82,17 @@ def channel_kinds(root: Path) -> dict[str, str]:
     return out
 
 
+def _voice_options(root: Path) -> dict[str, Any]:
+    """What the «Voces» page offers: the providers with a key, their models and defaults."""
+
+    from . import tts
+
+    have = {p: bool(k) for p, k in tts.keys(root).items()}
+    return {"models": list(tts.MODELS), "minimaxModels": list(tts.MINIMAX_MODELS), "defaults": tts.DEFAULTS,
+            "minimaxDefaults": tts.MINIMAX_DEFAULTS, "hasKey": any(have.values()), "keys": have,
+            "provider": tts.default_provider(root), "boosts": tts.LANGUAGE_BOOST}
+
+
 def _dub_options(root: Path, channel: str) -> list[dict[str, Any]]:
     try:
         from .doblaje import options
@@ -1432,9 +1443,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if path == "/api/voices":
                         from . import tts
 
-                        key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
                         return self._ok({"voices": {c: v for c, v in tts.voices(root).items() if c in mine}, "channels": mine,
-                                         "models": list(tts.MODELS), "defaults": tts.DEFAULTS, "hasKey": bool(key),
+                                         **_voice_options(root),
                                          "dubbing": {c: tts.dubbing_for(root, c) for c in mine},
                                          "dubLanguages": list(tts.DUB_LANGUAGES),
                                          "speaks": {c: tts.voice_for(root, c) is not None for c in mine},
@@ -1515,9 +1525,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if path == "/api/voices":                  # GenAIPro voices per channel (pipeline/tts.py)
                     from . import tts
 
-                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
-                    return self._ok({"voices": tts.voices(root), "channels": channels(root), "models": list(tts.MODELS),
-                                     "defaults": tts.DEFAULTS, "hasKey": bool(key),
+                    return self._ok({"voices": tts.voices(root), "channels": channels(root), **_voice_options(root),
                                      "dubbing": {c: tts.dubbing_for(root, c) for c in channels(root)},
                                      "dubLanguages": list(tts.DUB_LANGUAGES),
                                      # who speaks a new video with no mp3: its own voice or its base channel's
@@ -1528,17 +1536,28 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import tts
 
                     query = urllib.parse.parse_qs(url.query)
-                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
-                    found = tts.GenAIPro(key).search((query.get("q") or [""])[0], (query.get("language") or [""])[0],
-                                                     (query.get("gender") or [""])[0])
+                    provider = (query.get("provider") or [tts.default_provider(root)])[0]
+                    api = tts.client_for({"provider": provider}, tts.keys(root))
+                    found = api.search((query.get("q") or [""])[0], (query.get("language") or [""])[0],
+                                       (query.get("gender") or [""])[0])
                     keep = ("voice_id", "name", "gender", "age", "accent", "language", "descriptive", "use_case",
-                            "category", "preview_url", "description")
-                    return self._ok([{k: v.get(k) for k in keep} for v in found if isinstance(v, dict)])
+                            "category", "preview_url", "description", "tags", "cloned", "engine")
+                    return self._ok([{**{k: v.get(k) for k in keep}, "provider": provider} for v in found if isinstance(v, dict)])
                 if path == "/api/voices/credits":
                     from . import tts
 
-                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
-                    return self._ok(tts.GenAIPro(key).credits())
+                    out = {}
+                    for provider, key in tts.keys(root).items():
+                        if not key:
+                            continue
+                        try:
+                            got = tts.client_for({"provider": provider}, key if provider == "genaipro" else {provider: key}).credits()
+                            out[provider] = got if isinstance(got, (int, float)) else \
+                                sum(float(r.get("amount") or 0) for r in (got if isinstance(got, list) else [got]) if isinstance(r, dict))
+                        except Exception as error:
+                            out[provider] = None
+                            out[provider + "Error"] = str(error)[:160]
+                    return self._ok(out)
                 if path == "/api/library":                 # «Biblioteca»: people and topics (pipeline/library.py)
                     from . import library
 
@@ -1961,15 +1980,33 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     from . import tts
 
                     voice = tts.voice_for(root, str(body.get("channel") or "")) or {}
-                    if body.get("voice_id"):
-                        voice = {**tts.DEFAULTS, **voice, "voice_id": str(body["voice_id"])}
+                    if body.get("voice_id"):                # what the page has now, saved or not: provider, model, speed…
+                        given = {k: body[k] for k in ("voice_id", "provider", "engine", "model_id", "language_boost")
+                                 if body.get(k) not in (None, "")}
+                        for k in ("speed", "pitch", "volume", "stability", "similarity", "style"):
+                            if body.get(k) not in (None, ""):
+                                given[k] = float(body[k])
+                        if given.get("provider") != voice.get("provider"):
+                            voice = {}
+                        if given.get("provider") == "ai84":
+                            given.setdefault("engine", "minimax")
+                            if given.get("model_id") not in tts.MINIMAX_MODELS:
+                                given.pop("model_id", None)
+                        voice = tts.with_defaults({**voice, **given})
+                        if tts.is_minimax(voice) and not voice.get("language_boost"):
+                            lang = str(body.get("language") or "es")[:2]
+                            voice["language_boost"] = tts.LANGUAGE_BOOST.get(lang, "auto")
                     if not voice.get("voice_id"):
                         raise ValueError("Pon el ID de la voz")
-                    text = str(body.get("text") or "").strip()[:600] or \
+                    samples = {"pt": "Este é um teste da voz do canal. É assim que vai soar a narração dos seus vídeos.",
+                               "en": "This is a test of the channel's voice. This is how your videos will sound.",
+                               "de": "Das ist ein Test der Kanalstimme. So wird die Erzählung deiner Videos klingen.",
+                               "fr": "Ceci est un test de la voix de la chaîne. Voici comment sonnera la narration de tes vidéos.",
+                               "it": "Questa è una prova della voce del canale. Così suonerà la narrazione dei tuoi video."}
+                    text = str(body.get("text") or "").strip()[:600] or samples.get(str(body.get("language") or "")[:2]) or \
                         "Esta es una prueba de la voz del canal. Así sonará la narración de tus vídeos."
                     name = f"prueba-{re.sub(r'[^a-z0-9-]', '', str(body.get('channel') or 'voz').lower())}-{int(time.time())}.mp3"
-                    key = RunContext.create("_web", root=root).env("GENAIPRO_API_KEY", required=False)
-                    tts.generate(key, text, voice, root / "out" / "_voces" / name, log=lambda *_: None)
+                    tts.generate(tts.keys(root), text, voice, root / "out" / "_voces" / name, log=lambda *_: None)
                     return self._ok({"url": f"/files/_voces/{name}"})
                 if match := re.fullmatch(r"/api/library/([a-z0-9-]+)/remove", path):    # {id} or {} (all of it)
                     from . import library
