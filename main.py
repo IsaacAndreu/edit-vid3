@@ -946,6 +946,14 @@ def _clear_stale_lock(lock: Path) -> None:
     try:
         pid = int(lock.read_text().split()[0])
     except (OSError, ValueError, IndexError):
+        # vacío o ilegible: el proceso murió entre crearlo y escribir su pid (un reinicio en ese instante). Pasado un
+        # minuto ya no es una cola arrancando: fuera, o la cola esperaría para siempre
+        try:
+            if lock.is_file() and time.time() - lock.stat().st_mtime > 60:
+                print(f"(Quito {QUEUE_LOCK}: estaba vacío, de una cola que no llegó a arrancar)")
+                lock.unlink(missing_ok=True)
+        except OSError:
+            pass
         return
     if pid != os.getpid() and not _alive(pid):
         print(f"(Quito {QUEUE_LOCK}: era de un proceso que ya no existe, pid {pid})")
