@@ -15,8 +15,8 @@ import { useThree } from '@react-three/fiber';
 import { BackSide, Color, DoubleSide, Euler, PerspectiveCamera, Quaternion, ShaderMaterial, Vector3, type Group } from 'three';
 import { ease, reveal } from '../anim';
 import { useAtlasTime, useTheme } from '../context';
-import { aircraftLength, buildAircraft, liveryOf } from '../flight/aircraft3d';
-import { clockToS, flightClock, FlightHud, sampleAt, sToClock, trackAt, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
+import { aircraftLength, buildAircraft, liveryOf, poseAircraft } from '../flight/aircraft3d';
+import { clockToS, EngineAudio, flightClock, FlightHud, sampleAt, sToClock, trackAt, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
 import { Pfd } from '../flight/pfd';
 import { fonts } from '../fonts';
 import { useJsonFiles } from '../geo/useData';
@@ -205,6 +205,7 @@ export const FlightCamScene: FC = () => {
       m.opacity = planeFade;
     }
   });
+  poseAircraft(plane, pt.flap, pt.gear);
   const camDist = pose.pos.distanceTo(P);
   const near = Math.max(0.0002, Math.min(0.02, camDist * 0.05));
   const sky = FLIGHT.sky[name];
@@ -244,6 +245,7 @@ export const FlightCamScene: FC = () => {
           </mesh>
         ) : null}
       </ThreeCanvas>
+      {scene.engineSound ? <EngineAudio playback={scene.flight} data={flight} file={scene.engineSound.file} volume={scene.engineSound.volume} /> : null}
       {frameIn > 0.01 ? <CockpitFrame opacity={frameIn} /> : null}
       {scene.cockpitPanel && pose.inside > 0.01 ? <CockpitPanel opacity={pose.inside} point={pt} /> : null}
       {pfd && pfdIn && pfdIn.opacity > 0 ? (
@@ -338,6 +340,7 @@ export const PfdScene: FC = () => {
   return (
     <AbsoluteFill>
       <Header top={92} />
+      {scene.engineSound ? <EngineAudio playback={scene.flight} data={flight} file={scene.engineSound.file} volume={scene.engineSound.volume} /> : null}
       <div style={{ position: 'absolute', top: 230, left: scene.lines ? 140 : (W - size) / 2 }}>
         <Pfd point={pt} size={size} />
         <div style={{ marginTop: 14 }}>

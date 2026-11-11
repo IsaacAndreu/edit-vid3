@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COLUMNS = {
     "lat": "Latitude", "lon": "Longitude", "palt": "Altitude Press", "ra": "Altitude Radio 1", "kias": "Airspeed Ind",
     "gs": "Ground Speed", "hdg": "Heading", "pitch": "Pitch", "roll": "Roll", "n1l": "Eng1 N1 Act", "n1r": "Eng2 N1 Act",
-    "flap": "Flap Pos", "wow": "Gear WOW-N",
+    "flap": "Flap Pos", "wow": "Gear WOW-N", "gearDown": "Gear Down Locked", "gearUp": "Gear Up Locked",
 }
 
 
@@ -62,8 +62,8 @@ def read_fdr(path: Path) -> dict[str, list[tuple[float, Any]]]:
         rows = list(csv.reader(f))
     start = next(i for i, r in enumerate(rows) if r and r[0].strip() == "EST")
     header = [h.strip() for h in rows[start]]
-    idx = {key: header.index(col) for key, col in COLUMNS.items()}
-    series: dict[str, list[tuple[float, Any]]] = {k: [] for k in COLUMNS}
+    idx = {key: header.index(col) for key, col in COLUMNS.items() if col in header}
+    series: dict[str, list[tuple[float, Any]]] = {k: [] for k in COLUMNS}      # vacía si el FDR no la tiene
     for row in rows[start + 2:]:
         t = number(row[0]) if row else None
         if t is None:
@@ -72,7 +72,8 @@ def read_fdr(path: Path) -> dict[str, list[tuple[float, Any]]]:
             if i >= len(row) or not row[i].strip() or row[i].strip() == "NUMBER":
                 continue
             raw = row[i].strip()
-            v: Any = dms(raw) if key in ("lat", "lon") else raw == "Grnd" if key == "wow" else number(raw)
+            v: Any = (dms(raw) if key in ("lat", "lon") else raw == "Grnd" if key == "wow"
+                      else raw.startswith(("Dn", "Up")) if key in ("gearDown", "gearUp") else number(raw))
             if key == "kias" and v is not None and v >= 511:
                 v = None            # 511,875 = el máximo del código: por debajo de ~30 kt el anemómetro no da lectura
             if v is not None:
@@ -165,9 +166,12 @@ def build(series: dict[str, list[tuple[float, Any]]], case: dict[str, Any]) -> d
         }
         if ra is not None and -20 < ra < 2600:
             p["ra"] = round(ra)
-        flap = at(series["flap"], t, "step")
+        flap = at(series["flap"], t)
         if flap is not None:
-            p["flap"] = round(flap)
+            p["flap"] = round(flap, 1)
+        down, up = at(series["gearDown"], t, "step"), at(series["gearUp"], t, "step")
+        if down is not None or up is not None:
+            p["gear"] = 1.0 if down else 0.0 if up else 0.5          # bajado y blocado, recogido, o en tránsito
         pts.append(p)
         t += 1
     return {

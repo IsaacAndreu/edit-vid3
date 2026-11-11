@@ -59,7 +59,8 @@ Reglas:
        restos, víctimas ni repeticiones del choque; después, un mapa, un perfil o atlas-known.
   Lo demás (contexto, datos, causas, recomendaciones) con mapas, perfiles, cabina en texto y gráficos.
   El bloque 3D de cerca: {"kind": "terrain", ..., "cols": 800, "zoom": 14, "smooth": 1, "region": "<región del caso>"}.
-  Pon "model" (el tipo del informe), "registration" (la del informe) y "livery" si el caso la trae.
+  Pon "model" (el tipo del informe), "registration" (la del informe) y "livery" si el caso la trae; en los tramos a
+  tiempo real (rate 1) añade "engineSound": {"file": "accidentes/<caso>/motores.mp3", "volume": 0.5}.
 
 Devuelve SOLO JSON: {"storyboard": {...}, "data": [...]}
 
@@ -202,6 +203,11 @@ def build_flight(spec: dict[str, Any], log: Callable[[str], None] = print) -> No
         ground = _npm(*cmd, check=False)
         if ground.returncode != 0:
             raise RuntimeError(f"flight-ground falló ({case}): {(ground.stderr or ground.stdout).strip()[-600:]}")
+    log(f"   python scripts/accidentes/sonido.py public/accidentes/{case}/vuelo.json")
+    sound = subprocess.run(["python3", "scripts/accidentes/sonido.py", f"public/accidentes/{case}/vuelo.json"],
+                           cwd=PROJECT_ROOT, text=True, capture_output=True)
+    if sound.returncode != 0:                 # sin sonido el vídeo se hace igual
+        log(f"   (sin sonido de motores: {(sound.stderr or sound.stdout).strip()[-200:]})")
 
 
 def build_data(specs: list[dict[str, Any]], slug: str, log: Callable[[str], None] = print) -> None:

@@ -336,6 +336,10 @@ Personalización: `model` = `narrowbody` (pasillo único) | `widebody` (fuselaje
 cola, cola en T) | `turboprop` (ala alta, hélices) | `bizjet`; `livery` = `white` | `grey` | `stripe-blue` |
 `stripe-red` | `tail-blue` | `tail-red` | `tail-amber` (pinturas genéricas, nunca la de una compañía);
 `registration` = la matrícula del informe pintada en el fuselaje («N106US»).
+Flaps y tren se mueven solos con el FDR (posición de flaps; tren bajado, recogido o en tránsito).
+`engineSound: {"file": "accidentes/<caso>/motores.mp3", "volume": 0.5}` (también en atlas-cockpit y atlas-pfd): el
+sonido de los motores sintetizado del N1 (`python3 scripts/accidentes/sonido.py public/accidentes/<caso>/vuelo.json`,
+o solo con `{"kind": "flight"}`), sincronizado con el reloj del vuelo; suena natural con `rate` 1.
 Decoración real de la compañía (decisión del usuario, que asume el riesgo de marca): `livery` como objeto,
 ```json
 "livery": { "body": "#F2F0EA", "belly": "#3B4F6B", "tail": "#1F3554", "engine": "#3B4F6B", "text": "#1F3554",

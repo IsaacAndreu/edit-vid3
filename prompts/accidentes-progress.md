@@ -76,6 +76,15 @@ Por decisión del usuario (asume el riesgo de marca): `livery` como objeto con c
 rótulo del fuselaje y logos PNG que aporta el usuario en `public/accidentes/<caso>/livery/`. Probado con un logo y un
 nombre de prueba (`public/accidentes/_prueba/`, `docs/accidentes/b3-decoracion.jpg`); ningún logo real en el repo.
 
+## C — Automático y más realismo ✅
+- La cola hace los vídeos de guion + escenas (`atlas_guion.make_in_queue`: voz del canal, vídeo, `video-final.mp4`) y
+  después sus doblajes (`pipeline/atlas_doblaje.py`: guion, textos y anclas traducidos, comprobados).
+- Shorts de última hora (`pipeline/accidente_rapido.py`, `rapido:` en el canal): noticias cada hora → si es un
+  accidente aéreo que cubren ≥ 2 canales → guion «lo que se sabe» (confirmado solo con dos canales) → aeropuerto de
+  OurAirports → Short vertical `.urgente`, primero en la cola, aviso por Telegram; nunca se sube solo.
+- Flaps y tren animados con el FDR; sonido de motores sintetizado del N1 (`scripts/accidentes/sonido.py`).
+- Ejemplos fuera de la cola con `.en-espera` (Hudson1549, AtlasAltiplano).
+
 ## Pendiente / decisiones para el usuario
 - Elegir los siguientes casos (informes con tabla del FDR pública: la NTSB suele publicarla; BEA/AAIB a veces no).
 - Trayectorias ADS-B para casos sin FDR público: OpenSky solo no comercial; ADS-B Exchange con licencia.

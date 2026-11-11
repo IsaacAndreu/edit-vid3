@@ -134,6 +134,8 @@ export const buildAircraft = (model: AircraftModel, paint: LiverySpec = LIVERIES
   const engine = mat(paint.engine, 0.35);
   const dark = mat(FLIGHT.aircraft.window, 0.2);
   const group = new Group();
+  const flaps: Mesh[] = [];
+  const gears: Group[] = [];
 
   // fuselaje: perfil (radio, posición) de la cola (y = 0) al morro (y = L), torneado y tumbado sobre X
   const L = p.length;
@@ -181,7 +183,42 @@ export const buildAircraft = (model: AircraftModel, paint: LiverySpec = LIVERIES
     w.rotation.x = side === 1 ? (-p.dihedral * Math.PI) / 180 : Math.PI + (p.dihedral * Math.PI) / 180;
     if (side === -1) w.scale.y = -1; // el ala izquierda es el espejo de la derecha (la cara de arriba sigue arriba)
     group.add(w);
+    // flap: panel del borde de salida interior, con su bisagra a lo largo del borde (poseAircraft lo baja)
+    const semi = p.span / 2 - R * 0.6;
+    const lead = Math.tan((p.sweep * Math.PI) / 180) * semi;
+    const xTE = (z: number) => -p.rootChord + (p.rootChord - lead - p.tipChord) * (z / semi);
+    const z0 = semi * 0.05;
+    const z1 = semi * 0.6;
+    const cf = 0.27 * (p.rootChord + (p.tipChord - p.rootChord) * ((z0 + z1) / 2 / semi));
+    const dx = xTE(z1) - xTE(z0);
+    const len = Math.hypot(dx, z1 - z0);
+    const hinge = new Group();
+    hinge.position.set(xTE(z0) + cf, wingThick * 0.5, z0);
+    hinge.rotation.y = Math.atan2(dx, z1 - z0);
+    const flapGeo = new BoxGeometry(cf, wingThick * 0.6, len);
+    flapGeo.translate(-cf / 2, 0, len / 2);
+    const flap = new Mesh(flapGeo, mat(paint.belly, 0.5));
+    hinge.add(flap);
+    w.add(hinge);
+    flaps.push(flap);
   }
+  // tren: dos patas principales bajo el encastre del ala y la de morro; poseAircraft las saca o las recoge
+  const wheelR = Math.max(0.35, R * 0.28);
+  const leg = (x: number, z: number, h: number) => {
+    const g = new Group();
+    g.position.set(x, -R * 0.75, z);
+    const strutGeo = new CylinderGeometry(wheelR * 0.18, wheelR * 0.18, h, 10);
+    strutGeo.translate(0, -h / 2, 0);
+    g.add(new Mesh(strutGeo, engine));
+    const wheel = new Mesh(new CylinderGeometry(wheelR, wheelR, wheelR * 0.8, 16), mat(FLIGHT.aircraft.window, 0.8));
+    wheel.rotation.x = Math.PI / 2;
+    wheel.position.y = -h;
+    g.add(wheel);
+    group.add(g);
+    gears.push(g);
+  };
+  for (const side of [1, -1]) leg(xLead - p.rootChord * 0.55, side * R * 1.15, R * 1.1);
+  leg(L / 2 - L * 0.12, 0, R * 0.95);
   // deriva
   const finShape = new Shape();
   const fr = p.rootChord * (p.tTail ? 0.95 : 0.75);
@@ -284,5 +321,17 @@ export const buildAircraft = (model: AircraftModel, paint: LiverySpec = LIVERIES
       group.add(d);
     }
   }
+  group.userData = { flaps, gears };
   return group;
+};
+
+/** Flaps (grados del FDR) y tren (0 recogido, 1 bajado; en tránsito, a medias) en cada fotograma. */
+export const poseAircraft = (group: Group, flapDeg: number | undefined, gear: number | undefined) => {
+  const { flaps, gears } = group.userData as { flaps?: Mesh[]; gears?: Group[] };
+  for (const f of flaps ?? []) f.rotation.z = ((flapDeg ?? 0) * Math.PI) / 180;
+  const g = gear ?? 0;
+  for (const leg of gears ?? []) {
+    leg.visible = g > 0.04;
+    leg.scale.set(1, Math.max(0.04, g), 1);
+  }
 };

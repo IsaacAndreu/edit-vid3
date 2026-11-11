@@ -3,6 +3,8 @@
  * del tiempo del vídeo, interpolación entre muestras y los instrumentos que leen los datos en cada fotograma.
  */
 import type { FC } from 'react';
+import { Audio, Sequence, staticFile } from 'remotion';
+import { useScene } from '../context';
 import { fonts } from '../fonts';
 import type { FlightPlayback } from '../schema';
 import { themes, type ThemeName } from '../theme';
@@ -23,6 +25,8 @@ export interface FlightPoint {
   n1: [number | null, number | null];
   ground: boolean;
   flap?: number;
+  /** Tren: 1 bajado y blocado, 0 recogido, 0,5 en tránsito. */
+  gear?: number;
   /** Altura del terreno bajo el avión en pies (accidentes:data suelo). */
   terrain?: number;
 }
@@ -100,6 +104,8 @@ export const sampleAt = (data: FlightData, t: number): FlightPoint => {
     n1: [lerpNull(a.n1[0], b.n1[0], f), lerpNull(a.n1[1], b.n1[1], f)],
     ground: f < 0.5 ? a.ground : b.ground,
     terrain: a.terrain !== undefined && b.terrain !== undefined ? lerp(a.terrain, b.terrain, f) : undefined,
+    flap: a.flap !== undefined && b.flap !== undefined ? lerp(a.flap, b.flap, f) : a.flap,
+    gear: a.gear !== undefined && b.gear !== undefined ? lerp(a.gear, b.gear, f) : a.gear,
   };
 };
 
@@ -183,5 +189,25 @@ export const FlightHud: FC<{
         })}
       </PaperCard>
     </div>
+  );
+};
+
+/**
+ * El sonido de los motores (scripts/accidentes/sonido.py) sincronizado con el reloj del vuelo de la escena: suena
+ * desde que el reloj arranca hasta `to`. A `rate` distinto de 1 el sonido se acelera (y sube de tono) con él.
+ */
+export const EngineAudio: FC<{ playback: FlightPlayback; data: FlightData; file: string; volume?: number }> = ({ playback, data, file, volume }) => {
+  const { start, origin } = useScene();
+  const fps = 30;
+  const at = sec(playback.at);
+  const rate = playback.rate ?? 1;
+  const begin = Math.max(at, start);
+  const flightAtBegin = clockToS(playback.from) + Math.max(0, start - at) * rate;
+  const seconds = (clockToS(playback.to) - flightAtBegin) / rate;
+  if (seconds <= 0) return null;
+  return (
+    <Sequence from={Math.round((begin - origin) * fps)} durationInFrames={Math.max(1, Math.round(seconds * fps))} layout="none">
+      <Audio src={staticFile(file)} startFrom={Math.max(0, Math.round((flightAtBegin - data.points[0].s) * fps))} playbackRate={rate} volume={volume ?? 0.5} />
+    </Sequence>
   );
 };

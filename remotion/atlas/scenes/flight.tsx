@@ -7,7 +7,7 @@ import type { FC } from 'react';
 import { AbsoluteFill } from 'remotion';
 import { progress, reveal } from '../anim';
 import { useAtlasTime, useTheme } from '../context';
-import { clockToS, flightClock, FlightHud, fmtInt, sampleAt, sToClock, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
+import { clockToS, EngineAudio, flightClock, FlightHud, fmtInt, sampleAt, sToClock, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
 import { fonts } from '../fonts';
 import { useJsonFiles } from '../geo/useData';
 import { PLANE_SIDE_PATH } from '../icons';
@@ -181,6 +181,7 @@ export const CockpitScene: FC = () => {
   return (
     <AbsoluteFill>
       <Header top={92} />
+      {scene.engineSound ? <EngineAudio playback={scene.flight} data={flight} file={scene.engineSound.file} volume={scene.engineSound.volume} /> : null}
       <div style={{ position: 'absolute', left: 120, top: 250, width: 1080 }}>
         {visible.map((l, i) => {
           const at = videoTimeOf(scene.flight, l.clock);

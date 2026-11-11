@@ -405,6 +405,9 @@ export const flightHudSchema = z
   })
   .strict();
 
+/** Sonido de los motores sintetizado del N1 (scripts/accidentes/sonido.py → accidentes/<caso>/motores.mp3). */
+export const engineSoundSchema = z.object({ file: z.string(), volume: z.number().min(0).max(1).optional() }).strict();
+
 const flightLayerSchema = flightPlaybackSchema
   .extend({
     accent: accentSchema.optional(),
@@ -627,6 +630,7 @@ export const cockpitSceneSchema = z
       .array(z.object({ clock: clockSchema, who: z.string(), text: z.string(), ref: z.string(), accent: accentSchema.optional() }).strict())
       .min(1),
     instruments: z.array(z.enum(['alt', 'kias', 'n1'])).min(1),
+    engineSound: engineSoundSchema.optional(),
     labels: flightHudSchema.shape.labels,
     /** Cuántas frases caben a la vez (las más viejas se van). */
     visible: z.number().int().min(1).max(8).optional(),
@@ -715,6 +719,7 @@ export const flightCamSceneSchema = z
      * `fadeSeconds`; queda una marca en el suelo con `label`. Nunca fuego, restos ni víctimas.
      */
     impact: z.object({ clock: clockSchema, label: z.string().optional(), fadeSeconds: z.number().positive().optional() }).strict().optional(),
+    engineSound: engineSoundSchema.optional(),
   })
   .strict();
 
@@ -726,6 +731,7 @@ export const pfdSceneSchema = z
     flight: flightPlaybackSchema,
     size: z.number().min(400).max(1000).optional(),
     lines: cockpitSceneSchema.shape.lines.optional(),
+    engineSound: engineSoundSchema.optional(),
   })
   .strict();
 
