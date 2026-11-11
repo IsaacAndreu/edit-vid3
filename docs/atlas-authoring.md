@@ -24,6 +24,11 @@ Con `escenas.md` hace falta `LLM_API_KEY` (DeepSeek, como el resto del pipeline)
 "2 × ANTARCTICA" sobre la barra del Tíbet». La IA sólo puede usar cifras, fechas y nombres que estén en el guion o en
 `escenas.md`.
 
+**Sin escenas** (canales con `visual: {style: atlas, engine: storyboard}`: atlas-pt, atlas-de, atlas-fr, atlas-it):
+basta `guion.txt` en `materiales/<canal>/<vídeo>/`. La cola pone la voz, la IA escribe primero `escenas.md` (la lista
+de escenas, con la geografía ya generada en `public/atlas-data` para reutilizarla) y después el storyboard. Para
+cambiar algo: edita `escenas.md` y «Rehacer»; o escribe tú `escenas.json` y se usa tal cual.
+
 Comandos sueltos: `npm run atlas:validate <sb.json>`, `npm run atlas:stills -- <sb.json> [--at 12.5,30]`,
 `npm run atlas:render -- out.mp4 --props=<sb.json> --gl=swangle`, `npm run atlas:compare -- …`.
 

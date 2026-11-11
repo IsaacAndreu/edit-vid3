@@ -182,7 +182,7 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
                                "no se hace (escribe el guion en ese idioma o cámbialo de canal)")
     from pipeline import atlas_guion
 
-    if atlas_guion.is_atlas_folder(ctx.materials_dir):    # guion + escenas: the Atlas path, not the footage one
+    if atlas_guion.is_atlas_folder(ctx.materials_dir, ctx.config):    # guion + escenas: the Atlas path, not the footage one
         with _one_process(ctx):
             def ask(system: str, user: str) -> dict:
                 from pipeline.llm import complete_json

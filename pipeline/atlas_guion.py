@@ -7,6 +7,7 @@ La carpeta lleva:
   voz.mp3        la voz grabada (opcional: sin ella se hace un borrador mudo con tiempos estimados)
   escenas.md     qué debe salir en pantalla, escena a escena, en texto libre    ┐ una de las dos
   escenas.json   el storyboard ya escrito (remotion/atlas/schema.ts) + "data"   ┘
+  (ninguna)      en un canal con visual.engine: storyboard la IA escribe antes escenas.md a partir del guion
 
 Pasos: tiempos de la voz (Whisper, o estimados) → storyboard (la IA lo escribe a partir de escenas.md con el catálogo
 docs/atlas-authoring.md, o escenas.json tal cual) → validación con el esquema zod y las anclas (los errores vuelven a la
@@ -80,6 +81,55 @@ El globo (atlas-data/globe) existe siempre.
 
 CATÁLOGO
 """.strip()
+
+
+PLAN_SYSTEM = """
+Eres el director visual del sistema Atlas (Remotion): vídeos explicativos de mapas en papel, relieve, globo, gráficos
+sobrios y tarjetas. Te dan un guion de voz en off y escribes la LISTA DE ESCENAS: qué sale en pantalla, en orden.
+
+Reglas:
+- Una escena por idea; un revelado nuevo cada ~5-8 s (una etiqueta, un punto, una barra, una tarjeta).
+- Cada escena empieza con la frase LITERAL del guion (2-6 palabras, copiadas tal cual) en la que entra, entre comillas.
+- Lugares → mapas (atlas-relief-map con una región, o atlas-globe para distancias entre continentes) con las ciudades y
+  lugares que se nombran; cifras comparables → atlas-bar-compare o atlas-dot-density; listas de pasos → atlas-checklist;
+  2-4 datos sueltos → atlas-card-row; frases fuertes → atlas-statement; relieve → atlas-terrain-3d o
+  atlas-elevation-profile; si el guion anuncia N motivos/partes: atlas-agenda, atlas-chapter-card al empezar cada parte
+  y atlas-recap al final; la llamada a suscribirse o comentar → atlas-cta.
+- Varía: no más de dos escenas seguidas del mismo tipo.
+- SOLO cifras, fechas y nombres del guion. Nada inventado. Textos en pantalla en el idioma del guion, cortos.
+- Di qué geografía hace falta (región y su recuadro aproximado, contornos de altura, país, perfil, bloque 3D) y
+  reutiliza la que ya existe (te la doy abajo) siempre que sirva.
+
+Devuelve SOLO JSON: {"escenas": "<la lista en markdown: una línea numerada por escena>"}
+
+CATÁLOGO
+""".strip()
+
+
+def existing_data() -> str:
+    """Lo que ya está generado en public/atlas-data: la IA lo reutiliza en vez de pedirlo otra vez."""
+
+    base = PUBLIC / "atlas-data"
+    lines = []
+    for region in sorted((base / "regions").glob("*/meta.json")):
+        meta = json.loads(region.read_text(encoding="utf-8"))
+        contours = sorted(p.stem for p in region.parent.glob("contour-*.geojson"))
+        lines.append(f"- región {region.parent.name}: bbox {meta.get('bbox')}; {', '.join(contours) or 'sin contornos'}")
+    for kind, pattern in (("país", "shapes/*.geojson"), ("perfil", "profiles/*.json"), ("bloque 3D", "terrain/*/meta.json")):
+        names = sorted((p.parent.name if p.name == "meta.json" else p.stem) for p in base.glob(pattern))
+        if names:
+            lines.append(f"- {kind}: {', '.join(names)}")
+    return "\n".join(lines) or "(nada todavía)"
+
+
+def plan(ask: Callable[[str, str], dict[str, Any]], script: str) -> str:
+    """La lista de escenas escrita por la IA a partir del guion solo (cuando el vídeo no trae escenas.md ni .json)."""
+
+    answer = ask(f"{PLAN_SYSTEM}\n\n{catalog()}", f"GUION:\n{script}\n\nGEOGRAFÍA YA GENERADA:\n{existing_data()}")
+    scenes = answer.get("escenas") if isinstance(answer, dict) else None
+    if not isinstance(scenes, str) or not scenes.strip():
+        raise RuntimeError("La IA no devolvió {\"escenas\": …}")
+    return scenes.strip()
 
 
 def _npm(*args: str, check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -249,7 +299,8 @@ def draft(ask: Callable[[str, str], dict[str, Any]], slug: str, script: str, sce
     """Storyboard escrito por la IA; los errores de validación se le devuelven para que los corrija."""
 
     system = f"{SYSTEM}\n\n{catalog()}"
-    user = f"slug: {slug}\n\nGUION:\n{script}\n\nESCENAS (qué debe salir):\n{scenes}"
+    user = (f"slug: {slug}\n\nGUION:\n{script}\n\nESCENAS (qué debe salir):\n{scenes}\n\n"
+            f"GEOGRAFÍA YA GENERADA (reutilízala; en \"data\" sólo lo que falte):\n{existing_data()}")
     for attempt in range(tries + 1):
         answer = ask(system, user)
         board = answer.get("storyboard") if isinstance(answer, dict) else None
@@ -332,9 +383,12 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
         error = validate(storyboard_path)
         if error:
             raise SystemExit(error)
-    elif (folder / "escenas.md").is_file():
+    elif (folder / "escenas.md").is_file() or ask is not None:
         if ask is None:
             raise SystemExit("escenas.md necesita la IA (LLM_API_KEY); o escribe escenas.json")
+        if not (folder / "escenas.md").is_file():
+            log("2. Escenas: la IA las elige a partir del guion → escenas.md (edítalo y «Rehacer» si quieres cambiar algo)")
+            (folder / "escenas.md").write_text(plan(ask, script) + "\n", encoding="utf-8")
         log("2. Storyboard: la IA lo escribe a partir de escenas.md")
         result = draft(ask, slug, script, (folder / "escenas.md").read_text(encoding="utf-8"), duration,
                        storyboard_path, transcript_rel, voice_rel)
@@ -372,10 +426,15 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
     return out
 
 
-def is_atlas_folder(folder: Path) -> bool:
-    """Un vídeo de --atlas-guion: la cola lo hace con este camino, no con el de metraje."""
+def is_atlas_folder(folder: Path, config: dict[str, Any] | None = None) -> bool:
+    """Un vídeo de --atlas-guion: la cola lo hace con este camino, no con el de metraje. Lo es si trae escenas, o si
+    su canal tiene visual.engine: storyboard (entonces basta el guion: la IA escribe las escenas)."""
 
-    return (folder / "guion.txt").is_file() and ((folder / "escenas.json").is_file() or (folder / "escenas.md").is_file())
+    if not (folder / "guion.txt").is_file():
+        return False
+    if (folder / "escenas.json").is_file() or (folder / "escenas.md").is_file():
+        return True
+    return ((config or {}).get("visual") or {}).get("engine") == "storyboard"
 
 
 def make_in_queue(root: Path, slug: str, ask: Callable[[str, str], dict[str, Any]] | None, log: Callable[[str], None] = print) -> Path:

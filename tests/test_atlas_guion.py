@@ -86,3 +86,25 @@ def test_chapter_lines_are_not_spoken():
     assert atlas_guion.spoken_script(text) == "Primera frase.\n\n\nSegunda frase."
     words = [w["word"] for w in atlas_guion.estimated_transcript(atlas_guion.spoken_script(text))["words"]]
     assert "##" not in words and "MANCHA" not in words
+
+
+def test_a_storyboard_channel_needs_only_the_script(tmp_path):
+    (tmp_path / "guion.txt").write_text("Hola.")
+    engine = {"visual": {"style": "atlas", "engine": "storyboard"}}
+    assert atlas_guion.is_atlas_folder(tmp_path, engine)
+    assert not atlas_guion.is_atlas_folder(tmp_path, {"visual": {"style": "atlas"}})   # el Atlas de globo de siempre
+    (tmp_path / "escenas.md").write_text("1. …")
+    assert atlas_guion.is_atlas_folder(tmp_path)
+
+
+def test_the_model_plans_the_scenes_from_the_script_and_reuses_the_data():
+    seen = []
+
+    def ask(system, user):
+        seen.append((system, user))
+        return {"escenas": "1. «El suelo es alto»: atlas-statement"}
+
+    assert atlas_guion.plan(ask, "El suelo es alto.") == "1. «El suelo es alto»: atlas-statement"
+    system, user = seen[0]
+    assert "LITERAL" in system and "atlas-relief-map" in system
+    assert "GEOGRAFÍA YA GENERADA" in user and "región andes" in user
