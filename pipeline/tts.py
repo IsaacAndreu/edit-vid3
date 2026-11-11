@@ -591,7 +591,9 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
         state = json.loads(state_file.read_text("utf-8"))
     except (OSError, ValueError):
         state = {}
-    settings = json.dumps({k: voice.get(k) for k in ("voice_id", *DEFAULTS, *MINIMAX_DEFAULTS, "language_boost")}, sort_keys=True)
+    # the pieces' names: GenAIPro's as always (a narration half made before an update is not paid again)
+    fields = ("voice_id", *MINIMAX_DEFAULTS, "language_boost") if voice.get("provider") == "ai84" else ("voice_id", *DEFAULTS)
+    settings = json.dumps({k: voice.get(k) for k in fields}, sort_keys=True)
     tasks, files = [], []
     reused = 0
     for number, part in enumerate(parts, start=1):
@@ -619,10 +621,11 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
         partial_piece = piece.with_suffix(".bajando")
         api.download(url, partial_piece)
         if partial_piece.stat().st_size == 0:
-            raise TTSError(f"{api.NAME} devolvió un audio vacío (tarea {task_id})")
+            raise TTSError(f"{getattr(api, 'NAME', 'GenAIPro')} devolvió un audio vacío (tarea {task_id})")
         partial_piece.replace(piece)
-    cues: list[list[tuple[float, float, str]]] | None = [] if api.subtitles else None
-    for number, (task_id, piece) in enumerate(zip(tasks, files) if api.subtitles else [], start=1):
+    timed = getattr(api, "subtitles", True)
+    cues: list[list[tuple[float, float, str]]] | None = [] if timed else None
+    for number, (task_id, piece) in enumerate(zip(tasks, files) if timed else [], start=1):
         vtt = piece.with_suffix(".vtt")
         try:
             if not vtt.is_file():
@@ -659,7 +662,7 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
     total = sum(len(p) for p in parts)
     # «chars» is the whole narration; only paidChars were generated (and billed) this time
     return {"chars": total, "paidChars": total - reused, "reusedChars": reused, "pieces": len(parts), "tasks": tasks,
-            "provider": str(voice.get("provider") or "genaipro"), "credits": api.spent}
+            "provider": str(voice.get("provider") or "genaipro"), "credits": getattr(api, "spent", 0.0)}
 
 
 # --- word timings from the subtitles (instead of Whisper) ---------------------------------------------------------
