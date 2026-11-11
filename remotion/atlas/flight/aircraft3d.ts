@@ -1,10 +1,14 @@
 /**
- * Aviones 3D genéricos construidos en código (sin modelos de terceros ni libreas): fuselaje torneado, alas con
- * flecha y diedro, estabilizadores, motores. Medidas en metros con el morro hacia +X, arriba +Y y el ala derecha
- * hacia +Z; quien los usa los escala a km y los orienta con el cabeceo, el alabeo y el rumbo del FDR.
+ * Aviones 3D genéricos construidos en código (sin modelos de terceros ni libreas de compañías): fuselaje torneado,
+ * alas con flecha y diedro, estabilizadores, motores o hélices. Medidas en metros con el morro hacia +X, arriba +Y y
+ * el ala derecha hacia +Z; quien los usa los escala a km y los orienta con el cabeceo, el alabeo y el rumbo del FDR.
+ *
+ * Personalización: tipo de avión, pintura genérica (LIVERIES de theme.ts: colores lisos, franja, cola de color; nunca
+ * los logos ni los colores de una compañía) y la matrícula pintada en el fuselaje (es un dato del informe).
  */
 import {
   BoxGeometry,
+  CanvasTexture,
   CylinderGeometry,
   DoubleSide,
   ExtrudeGeometry,
@@ -12,12 +16,14 @@ import {
   LatheGeometry,
   Mesh,
   MeshStandardMaterial,
+  PlaneGeometry,
   Shape,
+  SRGBColorSpace,
   Vector2,
 } from 'three';
-import { FLIGHT } from '../theme';
+import { FLIGHT, LIVERIES, type LiveryName } from '../theme';
 
-export type AircraftModel = 'narrowbody' | 'bizjet';
+export type AircraftModel = 'narrowbody' | 'widebody' | 'regionaljet' | 'turboprop' | 'bizjet';
 
 interface Spec {
   length: number;
@@ -26,22 +32,35 @@ interface Spec {
   rootChord: number;
   tipChord: number;
   sweep: number; // grados (borde de ataque)
-  wingX: number; // posición del borde de ataque en la raíz, desde el morro hacia atrás
+  wingX: number; // borde de ataque en la raíz, desde el morro hacia atrás
   dihedral: number;
+  wing: 'low' | 'high';
   tailSpan: number;
   finHeight: number;
-  engines: 'wing' | 'rear';
+  tTail: boolean;
+  engines: 'wing' | 'rear' | 'prop';
   engineRadius: number;
   engineLength: number;
+  /** Fracción de la semienvergadura donde van los motores de ala. */
+  engineAt: number;
 }
 
 const SPECS: Record<AircraftModel, Spec> = {
-  // proporciones de un bimotor de pasillo único (≈ 37,6 m de largo, 34 m de envergadura)
-  narrowbody: { length: 37.6, radius: 1.98, span: 34.1, rootChord: 6.1, tipChord: 1.5, sweep: 27, wingX: 13.5, dihedral: 5,
-    tailSpan: 12.5, finHeight: 6.2, engines: 'wing', engineRadius: 1.05, engineLength: 4.4 },
+  // bimotor de pasillo único (≈ 37,6 m de largo, 34 m de envergadura)
+  narrowbody: { length: 37.6, radius: 1.98, span: 34.1, rootChord: 6.1, tipChord: 1.5, sweep: 27, wingX: 13.5, dihedral: 5, wing: 'low',
+    tailSpan: 12.5, finHeight: 6.2, tTail: false, engines: 'wing', engineRadius: 1.05, engineLength: 4.4, engineAt: 0.34 },
+  // bimotor de fuselaje ancho (≈ 63,7 m de largo, 60,9 m de envergadura)
+  widebody: { length: 63.7, radius: 3.1, span: 60.9, rootChord: 10.5, tipChord: 2.6, sweep: 31, wingX: 24, dihedral: 6, wing: 'low',
+    tailSpan: 21.5, finHeight: 9.5, tTail: false, engines: 'wing', engineRadius: 1.85, engineLength: 7.2, engineAt: 0.32 },
+  // reactor regional con motores en la cola y cola en T (≈ 26,8 m de largo, 23,2 m de envergadura)
+  regionaljet: { length: 26.8, radius: 1.35, span: 23.2, rootChord: 4.4, tipChord: 1.2, sweep: 26, wingX: 11, dihedral: 4, wing: 'low',
+    tailSpan: 8.5, finHeight: 4.6, tTail: true, engines: 'rear', engineRadius: 0.75, engineLength: 3.6, engineAt: 0 },
+  // turbohélice de ala alta con cola en T (≈ 27,2 m de largo, 27 m de envergadura)
+  turboprop: { length: 27.2, radius: 1.42, span: 27.05, rootChord: 2.6, tipChord: 1.5, sweep: 3, wingX: 11.2, dihedral: 1, wing: 'high',
+    tailSpan: 7.3, finHeight: 4.8, tTail: true, engines: 'prop', engineRadius: 0.62, engineLength: 4.0, engineAt: 0.3 },
   // reactor ejecutivo de tamaño medio (≈ 17,9 m de largo, 13,3 m de envergadura)
-  bizjet: { length: 17.9, radius: 0.95, span: 13.3, rootChord: 3.2, tipChord: 1.0, sweep: 15, wingX: 7.6, dihedral: 3,
-    tailSpan: 4.6, finHeight: 2.8, engines: 'rear', engineRadius: 0.55, engineLength: 2.9 },
+  bizjet: { length: 17.9, radius: 0.95, span: 13.3, rootChord: 3.2, tipChord: 1.0, sweep: 15, wingX: 7.6, dihedral: 3, wing: 'low',
+    tailSpan: 4.6, finHeight: 2.8, tTail: true, engines: 'rear', engineRadius: 0.55, engineLength: 2.9, engineAt: 0 },
 };
 
 export const aircraftLength = (model: AircraftModel) => SPECS[model].length;
@@ -64,16 +83,37 @@ const surface = (semi: number, root: number, tip: number, sweep: number, thick: 
   return g;
 };
 
-export const buildAircraft = (model: AircraftModel): Group => {
+/** Matrícula pintada: textura de lienzo con el texto, en un plano pegado al costado del fuselaje. */
+const registrationDecal = (text: string, color: string, height: number) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 120px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  }
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  const m = new MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.5, side: DoubleSide, depthWrite: false });
+  return new Mesh(new PlaneGeometry(height * (canvas.width / canvas.height), height), m);
+};
+
+export const buildAircraft = (model: AircraftModel, livery: LiveryName = 'white', registration?: string): Group => {
   const p = SPECS[model];
-  const C = FLIGHT.aircraft;
-  const body = mat(C.body, 0.45);
-  const belly = mat(C.belly, 0.6);
-  const engine = mat(C.engine, 0.35);
-  const dark = mat(C.window, 0.2);
+  const paint = LIVERIES[livery];
+  const body = mat(paint.body, 0.45);
+  const belly = mat(paint.belly, 0.6);
+  const tailMat = mat(paint.tail, 0.45);
+  const engine = mat(paint.engine, 0.35);
+  const dark = mat(FLIGHT.aircraft.window, 0.2);
   const group = new Group();
 
-  // fuselaje: perfil (radio, posición) del morro (y = L) a la cola (y = 0), torneado y tumbado sobre X
+  // fuselaje: perfil (radio, posición) de la cola (y = 0) al morro (y = L), torneado y tumbado sobre X
   const L = p.length;
   const R = p.radius;
   const prof: Vector2[] = [];
@@ -90,43 +130,57 @@ export const buildAircraft = (model: AircraftModel): Group => {
   fus.rotateZ(-Math.PI / 2); // eje y → +X (morro hacia +X)
   fus.translate(-L / 2, 0, 0);
   group.add(new Mesh(fus, body));
-  // ventanillas de la cabina: una banda oscura en el morro
+  // ventanillas de la cabina de mando
   const cockpit = new Mesh(new BoxGeometry(L * 0.05, R * 0.35, R * 1.5), dark);
   cockpit.position.set(L / 2 - L * 0.085, R * 0.45, 0);
   group.add(cockpit);
-  // panza más oscura para que el volumen se lea desde abajo
-  const keel = new Mesh(new BoxGeometry(L * 0.3, R * 0.25, R * 1.2), belly);
-  keel.position.set(L / 2 - p.wingX - p.rootChord * 0.4, -R * 0.85, 0);
+  // fila de ventanillas de pasaje (una banda fina) y franja de la pintura
+  const windows = new Mesh(new BoxGeometry(L * 0.62, R * 0.1, R * 2.02), dark);
+  windows.position.set(L * 0.02, R * 0.3, 0);
+  group.add(windows);
+  if (paint.stripe) {
+    const stripe = new Mesh(new BoxGeometry(L * 0.74, R * 0.16, R * 2.03), mat(paint.stripe, 0.4));
+    stripe.position.set(L * 0.0, -R * 0.05, 0);
+    group.add(stripe);
+  }
+  // panza
+  const keel = new Mesh(new BoxGeometry(L * 0.55, R * 0.3, R * 1.5), belly);
+  keel.position.set(0, -R * 0.82, 0);
   group.add(keel);
 
-  // alas con diedro
+  // alas con diedro (bajas o altas)
   const xLead = L / 2 - p.wingX;
+  const wingY = p.wing === 'high' ? R * 0.85 : -R * 0.45;
+  const wingThick = 0.35 * (p.rootChord / 6);
   for (const side of [1, -1]) {
-    const w = new Mesh(surface(p.span / 2 - R * 0.6, p.rootChord, p.tipChord, p.sweep, 0.35 * (p.rootChord / 6)), body);
-    w.position.set(xLead, -R * 0.45, side * R * 0.6);
+    const w = new Mesh(surface(p.span / 2 - R * 0.6, p.rootChord, p.tipChord, p.sweep, wingThick), body);
+    w.position.set(xLead, wingY, side * R * 0.6);
     w.rotation.x = side === 1 ? (-p.dihedral * Math.PI) / 180 : Math.PI + (p.dihedral * Math.PI) / 180;
     if (side === -1) w.scale.y = -1; // el ala izquierda es el espejo de la derecha (la cara de arriba sigue arriba)
     group.add(w);
   }
-  // estabilizador horizontal
-  const tailX = -L / 2 + L * 0.13;
+  // deriva
+  const finShape = new Shape();
+  const fr = p.rootChord * (p.tTail ? 0.95 : 0.75);
+  const finSweep = Math.tan(((p.sweep + 12) * Math.PI) / 180) * p.finHeight;
+  finShape.moveTo(0, 0);
+  finShape.lineTo(-finSweep, p.finHeight);
+  finShape.lineTo(-finSweep - fr * 0.55, p.finHeight);
+  finShape.lineTo(-fr, 0);
+  const fin = new Mesh(new ExtrudeGeometry(finShape, { depth: 0.3, bevelEnabled: false }), tailMat);
+  const finX = -L / 2 + L * 0.2;
+  fin.position.set(finX, R * 0.6, -0.15);
+  group.add(fin);
+  // estabilizador horizontal: abajo, o arriba de la deriva (cola en T)
+  const stabX = p.tTail ? finX - finSweep : -L / 2 + L * 0.13;
+  const stabY = p.tTail ? R * 0.6 + p.finHeight * 0.97 : R * 0.2;
   for (const side of [1, -1]) {
-    const t = new Mesh(surface(p.tailSpan / 2, p.rootChord * 0.55, p.tipChord * 0.8, p.sweep + 5, 0.18 * (p.rootChord / 6)), body);
-    t.position.set(tailX, p.engines === 'rear' ? p.finHeight * 0.95 : R * 0.2, 0);
+    const t = new Mesh(surface(p.tailSpan / 2, p.rootChord * (p.tTail ? 0.5 : 0.55), p.tipChord * 0.8, p.sweep + 5, 0.18 * (p.rootChord / 6)), body);
+    t.position.set(stabX + (p.tTail ? 0 : 0), stabY, 0);
     t.rotation.x = side === 1 ? 0 : Math.PI;
     if (side === -1) t.scale.y = -1;
     group.add(t);
   }
-  // deriva
-  const finShape = new Shape();
-  const fr = p.rootChord * 0.75;
-  finShape.moveTo(0, 0);
-  finShape.lineTo(-Math.tan(((p.sweep + 12) * Math.PI) / 180) * p.finHeight, p.finHeight);
-  finShape.lineTo(-Math.tan(((p.sweep + 12) * Math.PI) / 180) * p.finHeight - fr * 0.45, p.finHeight);
-  finShape.lineTo(-fr, 0);
-  const fin = new Mesh(new ExtrudeGeometry(finShape, { depth: 0.3, bevelEnabled: false }), body);
-  fin.position.set(-L / 2 + L * 0.2, R * 0.6, -0.15);
-  group.add(fin);
 
   // motores
   const nacelle = () => {
@@ -139,11 +193,25 @@ export const buildAircraft = (model: AircraftModel): Group => {
     m.add(intake);
     return m;
   };
-  if (p.engines === 'wing') {
+  if (p.engines === 'wing' || p.engines === 'prop') {
     for (const side of [1, -1]) {
       const e = nacelle();
-      const zOut = side * p.span * 0.17;
-      e.position.set(xLead + p.engineLength * 0.35 - Math.tan((p.sweep * Math.PI) / 180) * Math.abs(zOut), -R * 0.45 - p.engineRadius * 1.15, zOut);
+      const zOut = side * (p.span / 2) * p.engineAt;
+      const sweepBack = Math.tan((p.sweep * Math.PI) / 180) * Math.abs(zOut);
+      if (p.engines === 'prop') {
+        e.position.set(xLead + p.engineLength * 0.25 - sweepBack, wingY - p.engineRadius * 0.35, zOut);
+        // hélice: un disco translúcido (girando, a la vista no se distinguen las palas) y el buje
+        const disc = new Mesh(new CylinderGeometry(p.engineRadius * 3.1, p.engineRadius * 3.1, 0.04, 40), new MeshStandardMaterial({ color: FLIGHT.aircraft.window, transparent: true, opacity: 0.22, side: DoubleSide }));
+        disc.rotation.z = Math.PI / 2;
+        disc.position.x = p.engineLength / 2 + 0.25;
+        e.add(disc);
+        const hub = new Mesh(new CylinderGeometry(0.05, p.engineRadius * 0.45, 0.6, 16), engine);
+        hub.rotation.z = -Math.PI / 2;
+        hub.position.x = p.engineLength / 2 + 0.3;
+        e.add(hub);
+      } else {
+        e.position.set(xLead + p.engineLength * 0.35 - sweepBack, wingY - p.engineRadius * 1.15, zOut);
+      }
       group.add(e);
     }
   } else {
@@ -151,6 +219,16 @@ export const buildAircraft = (model: AircraftModel): Group => {
       const e = nacelle();
       e.position.set(-L / 2 + L * 0.27, R * 0.55, side * (R + p.engineRadius * 1.1));
       group.add(e);
+    }
+  }
+
+  // matrícula en los dos costados, delante de la cola
+  if (registration) {
+    for (const side of [1, -1]) {
+      const d = registrationDecal(registration, paint.text, R * 0.42);
+      d.position.set(-L * 0.24, R * 0.25, side * (R + 0.03));
+      if (side === -1) d.rotation.y = Math.PI;
+      group.add(d);
     }
   }
   return group;

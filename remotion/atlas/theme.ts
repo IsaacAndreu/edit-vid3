@@ -95,3 +95,18 @@ export const FLIGHT = {
   sky: { paper: { top: '#8FB3CF', horizon: '#E7E2D4' }, night: { top: '#0F1A26', horizon: '#3A4B5A' } },
   aircraft: { body: '#F2F0EA', belly: '#C9CCD1', engine: '#B7BBC2', window: '#1E2630', trim: '#2A2118' },
 } as const;
+
+/**
+ * Pinturas genéricas del avión 3D: colores lisos, franja y cola de color. Ninguna reproduce la librea ni el logo de
+ * una compañía (son marcas): sirven para distinguir aviones o dar un tono al vídeo.
+ */
+export const LIVERIES = {
+  white: { body: '#F2F0EA', belly: '#C9CCD1', tail: '#F2F0EA', engine: '#B7BBC2', text: '#2A2118', stripe: null },
+  grey: { body: '#C9CDD2', belly: '#9EA4AB', tail: '#C9CDD2', engine: '#8E949B', text: '#1E2630', stripe: null },
+  'stripe-blue': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#2F5673', engine: '#B7BBC2', text: '#2F5673', stripe: '#2F5673' },
+  'stripe-red': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#B8322A', engine: '#B7BBC2', text: '#B8322A', stripe: '#B8322A' },
+  'tail-blue': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#2F5673', engine: '#B7BBC2', text: '#2A2118', stripe: null },
+  'tail-red': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#B8322A', engine: '#B7BBC2', text: '#2A2118', stripe: null },
+  'tail-amber': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#C98A2B', engine: '#B7BBC2', text: '#2A2118', stripe: null },
+} as const;
+export type LiveryName = keyof typeof LIVERIES;

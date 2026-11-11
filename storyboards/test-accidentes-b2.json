@@ -1,0 +1,26 @@
+{
+  "meta": {"slug": "test-accidentes-b2", "title": "Prueba accidentes B2", "brand": {"name": "ATLAS", "icon": "✦"}, "chapters": [], "duration": 24},
+  "audio": {},
+  "scenes": [
+    {"id": "cabina", "type": "atlas-flight-cam", "start": {"t": 0}, "theme": "paper", "enter": "fade",
+     "terrain": "hudson-cerca", "model": "narrowbody", "livery": "stripe-blue", "registration": "N106US",
+     "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 0}, "from": "15:28:30", "to": "15:30:43", "rate": 6},
+     "camera": [{"at": {"t": 0}, "mode": "cockpit", "fov": 62}, {"at": {"t": 5}, "mode": "side", "distanceM": 70, "heightM": 3}],
+     "cockpitFrame": true, "cockpitPanel": true, "sourceNote": "DATOS: FDR DE LA NTSB · AVIÓN Y CABINA GENÉRICOS"},
+    {"id": "fuselaje-ancho", "type": "atlas-flight-cam", "start": {"t": 9}, "theme": "paper", "enter": "fade",
+     "terrain": "hudson-cerca", "model": "widebody", "livery": "tail-red",
+     "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 9}, "from": "15:28:00", "to": "15:29:00", "rate": 4},
+     "camera": [{"at": {"t": 9}, "mode": "side", "distanceM": 150, "heightM": 10, "left": true}],
+     "kicker": "PRUEBA DE MODELO · FUSELAJE ANCHO"},
+    {"id": "turbohelice", "type": "atlas-flight-cam", "start": {"t": 14}, "theme": "paper", "enter": "fade",
+     "terrain": "hudson-cerca", "model": "turboprop", "livery": "tail-amber",
+     "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 14}, "from": "15:28:00", "to": "15:29:00", "rate": 4},
+     "camera": [{"at": {"t": 14}, "mode": "orbit", "distanceM": 70, "heightM": 10, "degPerSecond": 25}],
+     "kicker": "PRUEBA DE MODELO · TURBOHÉLICE"},
+    {"id": "regional", "type": "atlas-flight-cam", "start": {"t": 19}, "theme": "paper", "enter": "fade",
+     "terrain": "hudson-cerca", "model": "regionaljet", "livery": "grey",
+     "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 19}, "from": "15:28:00", "to": "15:29:00", "rate": 4},
+     "camera": [{"at": {"t": 19}, "mode": "orbit", "distanceM": 60, "heightM": 8, "degPerSecond": 30}],
+     "kicker": "PRUEBA DE MODELO · REGIONAL"}
+  ]
+}

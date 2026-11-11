@@ -329,7 +329,12 @@ El avión (modelo genérico en código: `narrowbody` | `bizjet`) se mueve con la
 alabeo y el rumbo del FDR a escala real (sin exageración). Cámaras: `chase` (detrás), `side` (`left` para el lado
 izquierdo), `orbit` (`degPerSecond`), `ground` (`pos` en el suelo, `fov` pequeño = teleobjetivo) y `cockpit` (desde el
 asiento del piloto, el horizonte se inclina con el alabeo; `cockpitFrame` dibuja parabrisas y panel). Cambian en 1,6 s.
-`pfd` pone el PFD en una esquina. Bloque de terreno grande (que no se vea el borde): `"cols": 800, "zoom": 14` con
+`pfd` pone el PFD en una esquina; `cockpitPanel: true` añade en la vista cockpit el panel de instrumentos (PFD de los
+dos pilotos y N1 de los dos motores en esfera, leídos de los datos).
+Personalización: `model` = `narrowbody` (pasillo único) | `widebody` (fuselaje ancho) | `regionaljet` (motores en la
+cola, cola en T) | `turboprop` (ala alta, hélices) | `bizjet`; `livery` = `white` | `grey` | `stripe-blue` |
+`stripe-red` | `tail-blue` | `tail-red` | `tail-amber` (pinturas genéricas, nunca la de una compañía);
+`registration` = la matrícula del informe pintada en el fuselaje («N106US»). Bloque de terreno grande (que no se vea el borde): `"cols": 800, "zoom": 14` con
 `"region"`. Render lento: ~10 s por fotograma en el cloud; úsala en tramos cortos.
 
 ### atlas-pfd

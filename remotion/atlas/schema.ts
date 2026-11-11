@@ -653,7 +653,12 @@ export const flightCamSceneSchema = z
     type: z.literal('atlas-flight-cam'),
     terrain: z.string(),
     flight: flightPlaybackSchema,
-    model: z.enum(['narrowbody', 'bizjet']),
+    /** Tipo genérico: pasillo único, fuselaje ancho, regional (motores en la cola), turbohélice, ejecutivo. */
+    model: z.enum(['narrowbody', 'widebody', 'regionaljet', 'turboprop', 'bizjet']),
+    /** Pintura genérica (theme.ts LIVERIES); nunca la librea de una compañía. */
+    livery: z.enum(['white', 'grey', 'stripe-blue', 'stripe-red', 'tail-blue', 'tail-red', 'tail-amber']).optional(),
+    /** Matrícula pintada en el fuselaje (dato del informe, p. ej. «N106US»). */
+    registration: z.string().max(10).optional(),
     camera: z
       .array(
         z
@@ -679,6 +684,8 @@ export const flightCamSceneSchema = z
     hud: flightHudSchema.optional(),
     /** Marco de la cabina (parabrisas y panel) en la vista cockpit. */
     cockpitFrame: z.boolean().optional(),
+    /** En la vista cockpit, el panel de instrumentos con el PFD y los motores (N1) leídos de los datos. */
+    cockpitPanel: z.boolean().optional(),
   })
   .strict();
 

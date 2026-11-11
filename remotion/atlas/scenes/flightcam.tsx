@@ -102,7 +102,7 @@ export const FlightCamScene: FC = () => {
   const heights = data?.[1] as number[] | undefined;
   const flight = data?.[2] as FlightData | undefined;
   const built = useMemo(() => (meta && heights && texture ? buildTerrain(meta, heights, texture, name) : null), [meta, heights, texture, name]);
-  const plane = useMemo(() => buildAircraft(scene.model), [scene.model]);
+  const plane = useMemo(() => buildAircraft(scene.model, scene.livery, scene.registration), [scene.model, scene.livery, scene.registration]);
   const skyMat = useMemo(() => skyMaterial(FLIGHT.sky[name].top, FLIGHT.sky[name].horizon), [name]);
   const offset = useMemo(() => (flight ? headingOffset(flight) : 0), [flight]);
   if (!meta || !heights || !built || !flight) return null;
@@ -215,6 +215,7 @@ export const FlightCamScene: FC = () => {
         />
       </ThreeCanvas>
       {frameIn > 0.01 ? <CockpitFrame opacity={frameIn} /> : null}
+      {scene.cockpitPanel && pose.inside > 0.01 ? <CockpitPanel opacity={pose.inside} point={pt} /> : null}
       {pfd && pfdIn && pfdIn.opacity > 0 ? (
         <div style={{ ...cornerStyle(pfd.corner), ...pfdIn.style }}>
           <Pfd point={pt} size={pfd.size ?? 520} />
@@ -237,6 +238,52 @@ const CockpitFrame: FC<{ opacity: number }> = ({ opacity }) => {
       <path d={`M 0 0 L ${W} 0 L ${W} 70 C 1400 110 520 110 0 70 Z`} fill={c} />
       <path d={`M 935 92 L 985 92 L 975 780 L 945 780 Z`} fill={c} />
     </svg>
+  );
+};
+
+/**
+ * Panel de instrumentos genérico bajo el parabrisas: PFD del comandante y del copiloto y, en el centro, los dos
+ * motores (N1) en esfera, todo leído de los datos del instante. No reproduce el panel de un fabricante.
+ */
+const CockpitPanel: FC<{ opacity: number; point: FlightPoint }> = ({ opacity, point }) => {
+  const c = FLIGHT.pfd;
+  const top = 760;
+  const gauge = (v: number | null, label: string, x: number) => {
+    const r = 54;
+    const cy = top + 150;
+    const frac = Math.max(0, Math.min(1.1, (v ?? 0) / 100));
+    const a0 = Math.PI * 0.75;
+    const a = a0 + frac * Math.PI * 1.5 * (1 / 1.1);
+    const arc = (from: number, to: number) =>
+      `M ${x + r * Math.cos(from)} ${cy + r * Math.sin(from)} A ${r} ${r} 0 ${to - from > Math.PI ? 1 : 0} 1 ${x + r * Math.cos(to)} ${cy + r * Math.sin(to)}`;
+    return (
+      <g key={label}>
+        <path d={arc(a0, a0 + Math.PI * 1.5)} fill="none" stroke={c.ink} strokeOpacity={0.35} strokeWidth={6} />
+        <path d={arc(a0, Math.max(a0 + 0.001, a))} fill="none" stroke={(v ?? 0) < 50 ? c.amber : c.green} strokeWidth={6} />
+        <line x1={x} y1={cy} x2={x + (r - 8) * Math.cos(a)} y2={cy + (r - 8) * Math.sin(a)} stroke={c.ink} strokeWidth={3} />
+        <text x={x} y={cy + 66} textAnchor="middle" fill={c.ink} fontSize={26} fontFamily={fonts.mono} fontWeight={600}>
+          {v === null ? '--' : v.toFixed(1)}
+        </text>
+        <text x={x} y={cy - r - 14} textAnchor="middle" fill={c.ink} fillOpacity={0.7} fontSize={18} fontFamily={fonts.mono}>{label}</text>
+      </g>
+    );
+  };
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity }}>
+      <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
+        <path d={`M 0 ${top - 40} C 520 ${top - 90} 1400 ${top - 90} ${W} ${top - 40} L ${W} ${H} L 0 ${H} Z`} fill={c.frame} />
+        <path d={`M 0 ${top - 40} C 520 ${top - 90} 1400 ${top - 90} ${W} ${top - 40} L ${W} ${top - 22} C 1400 ${top - 72} 520 ${top - 72} 0 ${top - 22} Z`} fill={c.bg} />
+        <rect x={810} y={top + 40} width={300} height={230} rx={8} fill={c.box} stroke={c.bg} strokeWidth={6} />
+        {gauge(point.n1[0], 'N1 1', 885)}
+        {gauge(point.n1[1], 'N1 2', 1035)}
+      </svg>
+      <div style={{ position: 'absolute', left: 300, top: top + 10 }}>
+        <Pfd point={point} size={300} />
+      </div>
+      <div style={{ position: 'absolute', left: W - 300 - 300, top: top + 10 }}>
+        <Pfd point={point} size={300} />
+      </div>
+    </div>
   );
 };
 

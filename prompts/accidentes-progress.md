@@ -65,6 +65,12 @@ recalculan. **Antes de publicar**: una persona revisa las cifras y las traduccio
 - **Límites**: ~10 s por fotograma en el cloud (render de software); sin edificios (solo relieve); el avión no lleva
   librea ni detalle de fabricante; la cabina es un marco genérico, no el interior de un modelo concreto.
 
+### B2 — Personalización ✅
+- Cinco tipos genéricos: pasillo único, fuselaje ancho, regional (motores en la cola, cola en T), turbohélice (ala
+  alta, hélices como disco), ejecutivo. Pinturas genéricas (`LIVERIES` en theme.ts) y matrícula pintada.
+- Panel de cabina (`cockpitPanel`): PFD de los dos pilotos y N1 en esfera, con los datos del instante.
+- Fotogramas: `docs/accidentes/b2-*.jpg`. Pendiente: edificios (necesita OSM vía Overpass, host no permitido aún).
+
 ## Pendiente / decisiones para el usuario
 - Elegir los siguientes casos (informes con tabla del FDR pública: la NTSB suele publicarla; BEA/AAIB a veces no).
 - Trayectorias ADS-B para casos sin FDR público: OpenSky solo no comercial; ADS-B Exchange con licencia.
