@@ -404,7 +404,7 @@ export const ReliefMapScene: FC = () => {
               </div>
             ) : null}
             {shape.sub ? (
-              <div style={{ position: 'absolute', left: x - 400, width: 800, top: Math.min(H - 80, ySouth - 30), textAlign: 'center', ...reveal(time, at + 0.9, 0.6).style }}>
+              <div style={{ position: 'absolute', left: x - 400, width: 800, top: Math.min(H - (scene.sourceNote ? 140 : 80), ySouth - 30), textAlign: 'center', ...reveal(time, at + 0.9, 0.6).style }}>
                 <Caption text={shape.sub} color={color} bg={bg} size={23} mono />
               </div>
             ) : null}
