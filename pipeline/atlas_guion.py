@@ -86,6 +86,26 @@ def estimated_transcript(script: str) -> dict[str, Any]:
     return {"text": script, "words": words, "duration_seconds": round(t + 1.5, 2), "estimated": True}
 
 
+def spoken_script(text: str) -> str:
+    """El guion tal como se dice: sin las líneas de capítulo («## LA MANCHA SOBRE EL MAPA», pipeline/capitulos.py)."""
+
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#")).strip()
+
+
+def voice_timings(voice: Path) -> dict[str, Any] | None:
+    """Los tiempos por palabra que ya dejó la voz sintética (voz.palabras.json de GenAIPro, pipeline/tts.py), si son
+    de este voz.mp3: así no hace falta Whisper."""
+
+    try:
+        from pipeline import tts
+    except Exception:          # sin las dependencias del pipeline de voz: se transcribe
+        return None
+    found = tts.timings(voice)
+    if not found:
+        return None
+    return {"words": found["words"], "duration_seconds": found["duration"], "source": "genaipro"}
+
+
 def data_commands(spec: dict[str, Any], slug: str) -> list[list[str]]:
     """Las órdenes de npm run atlas:data para un elemento de "data". Lanza ValueError si está incompleto."""
 
@@ -205,7 +225,7 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
     folder = PROJECT_ROOT / "materiales" / slug
     if not (folder / "guion.txt").is_file():
         raise SystemExit(f"Falta {folder.relative_to(PROJECT_ROOT)}/guion.txt")
-    script = (folder / "guion.txt").read_text(encoding="utf-8").strip()
+    script = spoken_script((folder / "guion.txt").read_text(encoding="utf-8"))
     clean = re.sub(r"[^a-z0-9-]+", "-", slug.lower()).strip("-")
     work = PUBLIC / "atlas-work" / clean
     work.mkdir(parents=True, exist_ok=True)
@@ -215,10 +235,15 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
     voice = next((p for p in folder.iterdir() if p.stem == "voz" and p.suffix.lower() in (".mp3", ".wav", ".m4a")), None)
     if voice is not None:
         shutil.copy2(voice, work / f"voz{voice.suffix.lower()}")
-        if transcribe is None:
-            raise SystemExit("Hay voz pero no hay transcriptor (OPENAI_API_KEY para Whisper)")
-        log("1. Transcribiendo la voz…")
-        transcript = transcribe(voice)
+        known = voice_timings(voice)
+        if known:
+            log(f"1. Tiempos de la voz de voz.palabras.json ({len(known['words'])} palabras, sin Whisper)")
+            transcript = known
+        else:
+            if transcribe is None:
+                raise SystemExit("Hay voz pero no hay transcriptor (OPENAI_API_KEY para Whisper)")
+            log("1. Transcribiendo la voz…")
+            transcript = transcribe(voice)
         voice_rel: str | None = f"atlas-work/{clean}/voz{voice.suffix.lower()}"
         duration = None
     else:

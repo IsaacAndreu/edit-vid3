@@ -79,3 +79,10 @@ def test_validation_errors_go_back_to_the_model_until_it_fixes_them():
     finally:
         path.unlink(missing_ok=True)
         shutil.rmtree(work, ignore_errors=True)
+
+
+def test_chapter_lines_are_not_spoken():
+    text = "Primera frase.\n\n## LA MANCHA SOBRE EL MAPA\n\nSegunda frase."
+    assert atlas_guion.spoken_script(text) == "Primera frase.\n\n\nSegunda frase."
+    words = [w["word"] for w in atlas_guion.estimated_transcript(atlas_guion.spoken_script(text))["words"]]
+    assert "##" not in words and "MANCHA" not in words
