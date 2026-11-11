@@ -471,7 +471,8 @@ const FlightTrack: FC<{
       return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join('');
   const flown = flownUntil(data, from, now);
-  const all = data.points.filter((p) => p.s >= from && p.s <= to);
+  // 'full': el vuelo entero en tenue (también lo que pasó antes de `from`), hasta `to`
+  const all = data.points.filter((p) => p.s <= to);
   const tip = flown[flown.length - 1];
   const [x, y] = P([tip.lon, tip.lat]);
   // ángulo en pantalla: proyectar un punto un poco más adelante en la dirección de la trayectoria

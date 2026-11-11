@@ -25,3 +25,7 @@ Este repo construye vídeos de estilo "Atlas" con Remotion. El plan está en
 - `npm run atlas:anchors <storyboard.json> <transcript.json>` → storyboard con tiempos absolutos
 - `npm run atlas:stills <storyboard.json>` → `out/stills/<slug>/` (2 fotogramas por escena + hoja de contactos)
 - `npx remotion still remotion/index.ts AtlasVideo out.png --props=<storyboard.json> --frame=N`
+- `python3 scripts/accidentes/vuelo.py <tabla_fdr.csv> scripts/accidentes/casos/<caso>.json` → `public/accidentes/<caso>/vuelo.json`
+- `npm run atlas:data -- flight-ground public/accidentes/<caso>/vuelo.json` → terreno bajo la trayectoria
+- `npx remotion still remotion/index.ts AtlasShort out.png --props=<storyboard.json> --frame=N` → versión vertical
+- Plan y progreso de los accidentes aéreos: `prompts/accidentes-plan.md`, `prompts/accidentes-progress.md`

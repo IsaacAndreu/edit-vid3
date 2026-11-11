@@ -1,0 +1,56 @@
+# «Accidentes aéreos» (español): reconstrucciones de accidentes de avión reales con el sistema Atlas
+# (prompts/accidentes-plan.md): trayectoria del FDR sobre el mapa de relieve, perfiles de altitud, velocidad y motores,
+# vuelo en 3D sobre el terreno, cabina en texto y «lo que se sabe». Sin sangre ni morbo: siluetas, datos y mapas.
+# Todo sale de informes oficiales (NTSB, BEA, AAIB, CIAIAC…): cada dato con su fuente en pantalla.
+#
+# Cómo se hace un vídeo: materiales/<Caso>/guion.txt + escenas.json (o escenas.md) → python main.py --atlas-guion <Caso>.
+# El vuelo: scripts/accidentes/casos/<caso>.json (fuentes, hechos con página) y en "data" {"kind": "flight", "case",
+# "table": URL de la tabla del FDR del expediente}. Ejemplo completo: materiales/Hudson1549.
+# Su voz: estudio → Ajustes → Voces por canal → accidentes-aereos.
+
+video:
+  fps: 30
+
+visual:
+  style: atlas
+
+brand:
+  name: Atlas
+  accent: "#B8322A"
+  motion: clean
+  endStyle: paper
+
+align:
+  language: es
+
+factcheck:
+  block_voice: true                # aquí sí: un dato sin fuente no pasa a la voz
+
+timeline:
+  music_default: intriga
+  music_volume: 0.10
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'un canal de YouTube en español que explica accidentes aéreos reales con reconstrucciones a partir de los datos oficiales (FDR, CVR, informes de la NTSB, BEA, CIAIAC): qué pasó segundo a segundo, por qué y qué cambió después; sin morbo, con respeto a las víctimas, cada dato con su fuente; casos cerrados de 8-15 min y «lo que se sabe» de accidentes recientes'
+  niches: [accidentes aéreos, aviación, seguridad aérea, investigación de accidentes]
+  words: 1400
+
+lab:
+  queries: ["accidente de avión explicado", "lo que se sabe del accidente", "últimos segundos del vuelo", "informe final accidente aéreo"]
+
+radar:
+  # noticias del día (pipeline/noticias.py): un accidente reciente con mucha atención → borrador «lo que se sabe»
+  news_queries: ["accidente avión", "plane crash", "accidente aéreo", "NTSB preliminary report"]
+
+dubbing:
+  enabled: false                   # los vídeos de --atlas-guion no pasan por el doblaje automático
+
+shorts:
+  enabled: false                   # la versión vertical se renderiza con la composición AtlasShort

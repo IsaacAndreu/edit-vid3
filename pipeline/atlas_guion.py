@@ -61,6 +61,8 @@ Formato de "data" (cada elemento):
   {"kind": "cells", "id": "altiplano", "bbox": [lonMin, latMin, lonMax, latMax]}  → atlas-data/cells/<id>.json
   {"kind": "terrain", "id": "altiplano-3d", "bbox": [lonMin, latMin, lonMax, latMax], "cols": 400, "zoom": 8,
    "contourStep": 1000, "smooth": 2}  → atlas-data/terrain/<id>/  (usa "terrain": "<id>" en atlas-terrain-3d)
+  {"kind": "flight", "case": "us1549", "table": "<URL de la tabla del FDR del expediente público, .zip o .csv>"}
+     → accidentes/<case>/vuelo.json (necesita scripts/accidentes/casos/<case>.json escrito a mano, con sus fuentes)
 El globo (atlas-data/globe) existe siempre.
 
 CATÁLOGO
@@ -114,6 +116,7 @@ def data_commands(spec: dict[str, Any], slug: str) -> list[list[str]]:
         region = {k: spec[k] for k in ("id", "bbox", "projection")}
         region["width"] = int(spec.get("width", 5600))
         region["zoom"] = int(spec.get("zoom", 7))
+        region.update({k: spec[k] for k in ("margin", "water") if k in spec})      # mapas de ciudad (accidentes)
         path = PROJECT_ROOT / "scripts" / "atlas-data" / "regions" / f"{spec['id']}.json"
         path.write_text(json.dumps(region, indent=2) + "\n", encoding="utf-8")
         return [["atlas:data", "--", "region", spec["id"]]]
@@ -131,7 +134,10 @@ def data_commands(spec: dict[str, Any], slug: str) -> list[list[str]]:
         return [cmd]
     if kind == "terrain":
         return [["atlas:data", "--", "terrain", spec["id"], ",".join(str(v) for v in spec["bbox"]), str(int(spec.get("cols", 400))),
-                 str(int(spec.get("zoom", 8))), str(int(spec.get("contourStep", 1000))), str(int(spec.get("smooth", 1)))]]
+                 str(int(spec.get("zoom", 8))), str(int(spec.get("contourStep", 1000))), str(int(spec.get("smooth", 1))),
+                 *([spec["region"]] if spec.get("region") else [])]]
+    if kind == "flight-ground":
+        return [["atlas:data", "--", "flight-ground", f"public/accidentes/{spec['case']}/vuelo.json"]]
     raise ValueError(f"data: tipo desconocido {kind!r} en {spec}")
 
 
@@ -147,15 +153,55 @@ def data_output(spec: dict[str, Any]) -> Path:
         "profile": lambda: base / "profiles" / f"{spec['id']}.json",
         "cells": lambda: base / "cells" / f"{spec['id']}.json",
         "terrain": lambda: base / "terrain" / spec["id"] / "meta.json",
+        "flight": lambda: PUBLIC / "accidentes" / spec["case"] / "vuelo.json",
     }[kind]()
+
+
+def build_flight(spec: dict[str, Any], log: Callable[[str], None] = print) -> None:
+    """Un vuelo real: la tabla del FDR (URL del expediente público o ruta local, .csv o .zip) → vuelo.py con el caso
+    scripts/accidentes/casos/<case>.json → el terreno bajo la trayectoria (atlas:data flight-ground)."""
+
+    import urllib.request
+    import zipfile
+
+    case = spec["case"]
+    table = str(spec["table"])
+    cache = PROJECT_ROOT / ".cache" / "accidentes" / case
+    cache.mkdir(parents=True, exist_ok=True)
+    if table.startswith("http"):
+        local = cache / ("tabla.zip" if "zip" in table.lower() else "tabla.csv")
+        if not local.exists():
+            log(f"   descargando la tabla del FDR: {table}")
+            urllib.request.urlretrieve(table, local)
+    else:
+        local = PROJECT_ROOT / table
+    if local.suffix == ".zip" or zipfile.is_zipfile(local):
+        with zipfile.ZipFile(local) as z:
+            name = next(n for n in z.namelist() if n.lower().endswith(".csv"))
+            z.extract(name, cache)
+            local = cache / name
+    log(f"   python scripts/accidentes/vuelo.py {local.relative_to(PROJECT_ROOT)} scripts/accidentes/casos/{case}.json")
+    done = subprocess.run(["python3", "scripts/accidentes/vuelo.py", str(local), f"scripts/accidentes/casos/{case}.json"],
+                          cwd=PROJECT_ROOT, text=True, capture_output=True)
+    if done.returncode != 0:
+        raise RuntimeError(f"vuelo.py falló ({case}): {(done.stderr or done.stdout).strip()[-600:]}")
+    for cmd in data_commands({"kind": "flight-ground", "case": case}, case):
+        log(f"   npm run {' '.join(cmd)}")
+        ground = _npm(*cmd, check=False)
+        if ground.returncode != 0:
+            raise RuntimeError(f"flight-ground falló ({case}): {(ground.stderr or ground.stdout).strip()[-600:]}")
 
 
 def build_data(specs: list[dict[str, Any]], slug: str, log: Callable[[str], None] = print) -> None:
     # las regiones antes que sus contornos
-    order = {"region": 0, "country": 1, "profile": 1, "cells": 1, "terrain": 1, "contour": 2}
+    # las regiones antes que sus contornos y que los bloques 3D que toman su textura
+    order = {"region": 0, "flight": 0, "country": 1, "profile": 1, "cells": 1, "terrain": 2, "contour": 2}
     for spec in sorted(specs, key=lambda s: order.get(str(s.get("kind")), 9)):
         if data_output(spec).exists():
             log(f"   datos ya generados: {data_output(spec).relative_to(PROJECT_ROOT)}")
+            continue
+        if spec.get("kind") == "flight":
+            build_flight(spec, log)
             continue
         for cmd in data_commands(spec, slug):
             log(f"   npm run {' '.join(cmd)}")

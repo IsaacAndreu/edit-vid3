@@ -241,6 +241,83 @@ label `style: "value"` (cifra junto a una cumbre). `tilt` 90 = cenital; `distanc
 Datos: `{"kind": "terrain", "id": "…", "bbox": [...], "cols": 400, "zoom": 8, "contourStep": 1000, "smooth": 2}`
 (`exaggeration` 1 = escala real; con 20-30 usa `smooth` 2-3).
 
+## Vuelos reales (accidentes aéreos)
+
+Todo sale de `accidentes/<caso>/vuelo.json`, que genera `scripts/accidentes/vuelo.py` desde la tabla del FDR de un
+expediente oficial (NTSB…) y el caso `scripts/accidentes/casos/<caso>.json` (fuente, corrección de altitud y hechos
+con su página). Datos: `{"kind": "flight", "case": "us1549", "table": "<URL de la tabla del FDR>"}`. Nunca escribas
+posiciones, altitudes ni velocidades a mano: las escenas las leen de los datos en cada fotograma.
+
+Un vuelo se reproduce con `"flight": {"data": "accidentes/<caso>/vuelo.json", "at": …, "from": "15:25:00", "to":
+"15:30:42", "rate": 30}`: desde `at`, el reloj del vuelo corre de `from` a `to` a `rate` segundos de vuelo por segundo
+de vídeo (1 = tiempo real) y se queda en `to`. Elige `rate` ≈ (to − from) / segundos que dura la frase. Los hitos
+(`marks: [{"clock", "label", "sub", "accent"}]`) aparecen cuando el reloj llega a su hora. Las horas son las del
+informe (hora local).
+
+### Trayectoria en el mapa (`flight` de atlas-relief-map)
+![flight-track](atlas/catalogo/flight-track.jpg)
+```json
+"flight": { "data": "accidentes/us1549/vuelo.json", "at": {"say": "así que gira"}, "from": "15:25:00", "to": "15:30:42",
+            "rate": 30, "trail": "flown", "follow": false,
+            "marks": [{ "clock": "15:27:11", "label": "Aves", "sub": "15:27:11", "accent": "danger" }],
+            "hud": { "show": ["clock", "alt", "kias", "n1"], "corner": "tl" } }
+```
+`trail`: `flown` (la estela crece) o `full` (el vuelo entero en tenue debajo). `follow`: la cámara sigue al avión.
+`hud`: instrumentos leídos de los datos (hora, altitud, velocidad, N1 de los motores como barras).
+Región de ciudad: `{"kind": "region", …, "projection": {"type": "mercator"}, "zoom": 14, "margin": 0.03,
+"water": {"seas": true, "riversBelowM": 1.0}}` (costa de OSM; los ríos conectados al mar por altura).
+
+### atlas-flight-profile
+![flight-profile](atlas/catalogo/atlas-flight-profile.jpg)
+```json
+{ "type": "atlas-flight-profile", "kicker": "ALTITUD", "title": {"text": "Tres minutos, *hasta el agua*"},
+  "flight": { "data": "accidentes/us1549/vuelo.json", "at": {"say": "en tres minutos"}, "from": "15:25:00", "to": "15:30:42", "rate": 60 },
+  "series": "alt", "axis": { "max": 4000, "step": 1000, "unit": "FT" }, "terrain": true,
+  "marks": [{ "clock": "15:27:11", "label": "Aves" }],
+  "refs": [{ "value": 300, "label": "300 KT: VELOCIDAD PARA REENCENDER", "at": {"t": 1}, "accent": "danger" }] }
+```
+`series`: `alt` (ft, con `terrain`: el suelo bajo la trayectoria), `kias` (kt) o `n1` (los dos motores; `legend`:
+`["MOTOR 1", "MOTOR 2"]`). `refs` = líneas horizontales con su fuente en `sourceNote`.
+
+### Vuelo en 3D (`flight` de atlas-terrain-3d)
+![flight-3d](atlas/catalogo/flight-3d.jpg)
+Mismo `flight` que el mapa (sin `trail`/`follow`; `dropLines: false` quita la cortina de líneas al suelo). La altitud
+usa la misma `exaggeration` que el terreno. Bloque con la textura de la región (misma agua):
+`{"kind": "terrain", "id": "…", "bbox": [...], "cols": 520, "zoom": 14, "contourStep": 1000, "smooth": 1, "region": "nueva-york"}`.
+
+### atlas-cockpit
+![cockpit](atlas/catalogo/atlas-cockpit.jpg)
+```json
+{ "type": "atlas-cockpit", "kicker": "CABINA", "sourceNote": "FRASES: CVR, NTSB AAR-10/03, PP. 2-3 (TRADUCIDAS)",
+  "flight": { "data": "accidentes/us1549/vuelo.json", "at": {"say": "en la cabina"}, "from": "15:27:08", "to": "15:28:50", "rate": 4 },
+  "instruments": ["alt", "kias", "n1"], "visible": 3,
+  "lines": [{ "clock": "15:27:10", "who": "COMANDANTE", "text": "Pájaros.", "ref": "AAR-10/03 p. 2", "accent": "danger" }] }
+```
+Cada frase, citada del informe (traducida si hace falta) con `ref`; entra cuando el reloj llega a su `clock`.
+
+### atlas-aircraft
+![aircraft](atlas/catalogo/atlas-aircraft.jpg)
+```json
+{ "type": "atlas-aircraft", "model": "narrowbody", "view": "top", "kicker": "AIRBUS A320 · SILUETA GENÉRICA",
+  "highlights": [{ "part": "engines", "at": {"say": "los dos motores"}, "label": "Los dos motores", "sub": "PIERDEN EMPUJE", "accent": "danger" }] }
+```
+`model`: `narrowbody` | `bizjet`; `view`: `top` | `side`. `part`: `engines`, `engine-left`, `engine-right`, `wings`,
+`flaps`, `tail`, `elevator`, `rudder`, `nose`, `gear`, `fuselage`. Siluetas genéricas: dilo en el `kicker`.
+
+### atlas-known
+![known](atlas/catalogo/atlas-known.jpg)
+```json
+{ "type": "atlas-known", "kicker": "LO QUE SE SABE", "title": {"text": "Tres datos, *con su fuente*"},
+  "asOf": "ACTUALIZADO: 15 ENE 2009, 18:00",
+  "items": [{ "status": "confirmed", "text": "155 personas a bordo", "source": "NTSB AAR-10/03, TABLA 1", "at": {"t": 1} }] }
+```
+`status`: `confirmed` | `unconfirmed` | `unknown` (rótulos en `statusLabels` para otros idiomas). Para noticias recientes:
+lo no confirmado se dice como tal y nunca se adelanta una causa.
+
+### Versión vertical (Shorts)
+`meta.short: {"top": {"text": "El avión que *amerizó en el Hudson*"}, "bottom": "Datos reales del FDR"}` y la
+composición `AtlasShort` (1080×1920): el vídeo 16:9 entero en el centro, con el titular arriba y el pie abajo.
+
 ## Diagramas
 
 ### atlas-diagram
