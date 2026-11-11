@@ -2,19 +2,23 @@
  * Bloque de terreno para atlas-terrain-3d: rejilla de alturas en un plano local (km) y su textura con sombreado y
  * curvas de nivel, día y noche.
  *
- *   npm run atlas:data -- terrain <id> <lonMin,latMin,lonMax,latMax> <columnas> <zoom> <curvas_m> [suavizado=1]
+ *   npm run atlas:data -- terrain <id> <lonMin,latMin,lonMax,latMax> <columnas> <zoom> <curvas_m> [suavizado=1] [region]
  *     → public/atlas-data/terrain/<id>/{meta.json, heights.json, tex-paper.jpg, tex-night.jpg}
+ *
+ * Con `region` (un paquete de atlas:data region), la textura se toma de su relieve: así el bloque lleva la misma
+ * agua (ríos, estuarios) y los mismos colores que el mapa plano; sin él, tinte por altura y curvas de nivel.
  *
  * x = km hacia el este y z = km hacia el norte desde el centro (aproximación local, buena para bloques < 3.500 km).
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { makeProjection, type RegionMeta } from '../../remotion/atlas/geo/projection';
 import { buildMosaic, ensureDir, OUT, run, sampleMosaic, TERRARIUM_SOURCE } from './lib';
 import { FLAT, lambert, PALETTES, ramp } from './palette';
 
 run(async () => {
-  const [id, bboxArg, colsArg, zoomArg, stepArg, smoothArg] = process.argv.slice(2);
+  const [id, bboxArg, colsArg, zoomArg, stepArg, smoothArg, regionArg] = process.argv.slice(2);
   // radio de suavizado de la malla en celdas: con exageraciones grandes el ruido del DEM se vuelve agujas
   const smoothR = Number(smoothArg ?? 1);
   const bbox = (bboxArg ?? '').split(',').map(Number);
@@ -80,7 +84,30 @@ run(async () => {
   }
   const dir = join(OUT, 'terrain', id);
   ensureDir(dir);
+  // textura desde el relieve de una región: mismo píxel geográfico, misma agua y mismos colores
+  const fromRegion = async (theme: 'paper' | 'night') => {
+    const rdir = join(OUT, 'regions', regionArg);
+    const meta = JSON.parse(readFileSync(join(rdir, 'meta.json'), 'utf8')) as RegionMeta;
+    const img = await sharp(join(rdir, theme === 'paper' ? meta.files.relief : meta.files.reliefNight)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const proj = makeProjection(meta.projection);
+    const rgb = Buffer.alloc(TW * TH * 3);
+    for (let y = 0; y < TH; y++) {
+      const lat = latMax - ((y + 0.5) / TH) * (latMax - latMin);
+      for (let x = 0; x < TW; x++) {
+        const xy = proj([lonMin + ((x + 0.5) / TW) * (lonMax - lonMin), lat]);
+        const px = Math.max(0, Math.min(img.info.width - 1, Math.round(xy ? xy[0] : 0)));
+        const py = Math.max(0, Math.min(img.info.height - 1, Math.round(xy ? xy[1] : 0)));
+        const j = (py * img.info.width + px) * img.info.channels;
+        rgb.set([img.data[j], img.data[j + 1], img.data[j + 2]], (y * TW + x) * 3);
+      }
+    }
+    return rgb;
+  };
   for (const theme of ['paper', 'night'] as const) {
+    if (regionArg) {
+      await sharp(await fromRegion(theme), { raw: { width: TW, height: TH, channels: 3 } }).jpeg({ quality: 85, mozjpeg: true }).toFile(join(dir, `tex-${theme}.jpg`));
+      continue;
+    }
     const pal = PALETTES[theme];
     const rgb = Buffer.alloc(TW * TH * 3);
     const lineInk = theme === 'paper' ? [90, 72, 50] : [235, 240, 244];
@@ -111,7 +138,7 @@ run(async () => {
   writeFileSync(join(dir, 'heights.json'), JSON.stringify(heights));
   writeFileSync(
     join(dir, 'meta.json'),
-    JSON.stringify({ id, bbox: [lonMin, latMin, lonMax, latMax], smooth: smoothR, lat0, kmLon, kmLat, widthKm, depthKm, cols, rows, maxM, contourStep: step, zoom: z, source: TERRARIUM_SOURCE }, null, 2) + '\n',
+    JSON.stringify({ id, bbox: [lonMin, latMin, lonMax, latMax], smooth: smoothR, textureRegion: regionArg ?? null, lat0, kmLon, kmLat, widthKm, depthKm, cols, rows, maxM, contourStep: step, zoom: z, source: TERRARIUM_SOURCE }, null, 2) + '\n',
   );
   console.log(`${dir}: ${Math.round(widthKm)}×${Math.round(depthKm)} km, ${cols}×${rows}, máx ${maxM} m, textura ${TW}×${TH}`);
 });

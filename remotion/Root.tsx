@@ -12,6 +12,7 @@ import type { Media } from "./types";
 import { applyBrand, type Brand } from "./theme";
 import { Documentary } from "./Documentary";
 import { AtlasVideo, calculateAtlasMetadata, type AtlasVideoProps } from "./atlas/AtlasVideo";
+import { AtlasShort } from "./atlas/AtlasShort";
 import { atlasCompositionSchema } from "./atlas/schema";
 import type { TimelineProps } from "./types";
 
@@ -185,6 +186,17 @@ export const RemotionRoot: FC = () => (
       fps={30}
       width={1920}
       height={1080}
+      calculateMetadata={calculateAtlasMetadata}
+    />
+    <Composition
+      id="AtlasShort"
+      component={AtlasShort}
+      schema={atlasCompositionSchema}
+      defaultProps={atlasEmpty}
+      durationInFrames={1}
+      fps={30}
+      width={1080}
+      height={1920}
       calculateMetadata={calculateAtlasMetadata}
     />
     <Composition

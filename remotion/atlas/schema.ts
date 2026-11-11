@@ -791,6 +791,8 @@ const storyboardShape = {
         chapters: z.array(z.object({ numeral: z.string(), label: z.string() }).strict()),
         /** Duración total en segundos. Si falta, se toma de la duración de `audio.voice`. */
         duration: z.number().positive().optional(),
+        /** Versión vertical (composición AtlasShort, 1080×1920): titular arriba y pie abajo del vídeo. */
+        short: z.object({ top: richSchema, bottom: z.string().optional() }).strict().optional(),
       })
       .strict(),
     audio: z

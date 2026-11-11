@@ -26,11 +26,12 @@ import { useAtlasTime, useScene, useTheme } from '../context';
 import { fonts } from '../fonts';
 import { useJsonFiles } from '../geo/useData';
 import { useTexture } from '../geo/useTexture';
-import { PLANE_SIDE_PATH } from '../icons';
+import { PLANE_SIDE_PATH, PLANE_TOP_PATH } from '../icons';
 import type { AtlasScene, LonLat } from '../schema';
 import { accentOn, themes } from '../theme';
 import { sec } from '../time';
 import { Header, useSceneOf } from './text';
+import { clockToS, flightClock, FlightHud, flownUntil, sampleAt, videoTimeOf, type FlightData } from '../flight';
 
 type Terrain3d = Extract<AtlasScene, { type: 'atlas-terrain-3d' }>;
 interface TerrainMeta {
@@ -140,10 +141,11 @@ export const Terrain3dScene: FC = () => {
   const { name, tokens } = useTheme();
   const time = useAtlasTime();
   const dir = `atlas-data/terrain/${scene.terrain}`;
-  const data = useJsonFiles<unknown>([`${dir}/meta.json`, `${dir}/heights.json`]);
+  const data = useJsonFiles<unknown>([`${dir}/meta.json`, `${dir}/heights.json`, ...(scene.flight ? [scene.flight.data] : [])]);
   const texture = useTexture(`${dir}/tex-${name}.jpg`);
   const meta = data?.[0] as TerrainMeta | undefined;
   const heights = data?.[1] as number[] | undefined;
+  const flightData = scene.flight ? (data?.[2] as FlightData | undefined) : undefined;
 
   const built = useMemo(() => {
     if (!meta || !heights || !texture) return null;
@@ -343,6 +345,66 @@ export const Terrain3dScene: FC = () => {
               );
             })()
           : null}
+        {scene.flight && flightData
+          ? (() => {
+              const fl = scene.flight;
+              const now = flightClock(fl, time);
+              const from = clockToS(fl.from);
+              const flown = flownUntil(flightData, from, now);
+              const KM = 0.0003048;
+              const air = flown.map((q) => {
+                const [lx, lz] = local([q.lon, q.lat]);
+                return project(lx, Math.max(0, q.alt) * KM, lz);
+              });
+              const ground = flown.map((q) => {
+                const [lx, lz] = local([q.lon, q.lat]);
+                return project(lx, groundKm([q.lon, q.lat]), lz);
+              });
+              const d = (pts: readonly (readonly [number, number, number])[]) => pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('');
+              const color = accentOn(name, fl.accent ?? 'danger');
+              const appear = progress(time, sec(fl.at) - 0.6, 0.6);
+              const tip = air[air.length - 1];
+              const next = sampleAt(flightData, now + 2);
+              const [nx, nz] = local([next.lon, next.lat]);
+              const ahead = project(nx, Math.max(0, next.alt) * KM, nz);
+              const angle = (Math.atan2(ahead[1] - tip[1], ahead[0] - tip[0]) * 180) / Math.PI;
+              return (
+                <g opacity={appear}>
+                  <path d={d(ground)} fill="none" stroke={tokens.ink} strokeOpacity={0.45} strokeWidth={2.5} strokeDasharray="6 7" />
+                  {fl.dropLines !== false
+                    ? air.map((q, i) =>
+                        i % 8 === 0 ? <line key={`dl${i}`} x1={q[0]} y1={q[1]} x2={ground[i][0]} y2={ground[i][1]} stroke={color} strokeOpacity={0.35} strokeWidth={1.5} /> : null,
+                      )
+                    : null}
+                  <path d={d(air)} fill="none" stroke={bg} strokeOpacity={0.8} strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={d(air)} fill="none" stroke={color} strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />
+                  <line x1={tip[0]} y1={tip[1]} x2={ground[ground.length - 1][0]} y2={ground[ground.length - 1][1]} stroke={color} strokeWidth={2.5} strokeDasharray="5 5" />
+                  {(fl.marks ?? []).map((m, i) => {
+                    const r = reveal(time, videoTimeOf(fl, m.clock), 0.5);
+                    if (r.opacity <= 0) return null;
+                    const q = sampleAt(flightData, clockToS(m.clock));
+                    const [lx, lz] = local([q.lon, q.lat]);
+                    const [x, y] = project(lx, Math.max(0, q.alt) * KM, lz);
+                    const mc = accentOn(name, m.accent ?? 'ink');
+                    return (
+                      <g key={`m${i}`} opacity={r.opacity}>
+                        <circle cx={x} cy={y} r={9} fill={themes.paper.card} stroke={mc} strokeWidth={3.5} />
+                        <text x={x + 26} y={y - 8} fontFamily={fonts.serif} fontWeight={600} fontSize={30} fill={mc} stroke={bg} strokeWidth={7} paintOrder="stroke">
+                          {m.label}
+                        </text>
+                        <text x={x + 26} y={y + 22} fontFamily={fonts.mono} fontSize={20} letterSpacing={2} fill={tokens.inkSoft} stroke={bg} strokeWidth={6} paintOrder="stroke">
+                          {m.sub ?? m.clock}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  <g transform={`translate(${tip[0]} ${tip[1]}) rotate(${angle}) translate(-26 -26) scale(0.52)`}>
+                    <path d={PLANE_TOP_PATH} fill="#F4EFE2" stroke={themes.paper.ink} strokeWidth={5} strokeLinejoin="round" />
+                  </g>
+                </g>
+              );
+            })()
+          : null}
         {(scene.labels ?? []).map((label, i) => {
           if (label.style === 'range') return null;
           const r = progress(time, sec(label.at), 0.5);
@@ -434,6 +496,9 @@ export const Terrain3dScene: FC = () => {
             );
           })()
         : null}
+      {scene.flight?.hud && flightData ? (
+        <FlightHud show={scene.flight.hud.show} point={sampleAt(flightData, flightClock(scene.flight, time))} theme={name} corner={scene.flight.hud.corner} labels={scene.flight.hud.labels} />
+      ) : null}
       <Header top={92} />
     </AbsoluteFill>
   );
