@@ -434,7 +434,10 @@ def is_atlas_folder(folder: Path, config: dict[str, Any] | None = None) -> bool:
         return False
     if (folder / "escenas.json").is_file() or (folder / "escenas.md").is_file():
         return True
-    return ((config or {}).get("visual") or {}).get("engine") == "storyboard"
+    config = config or {}
+    if config.get("dub"):              # el doblaje de un vídeo del Atlas de globo (pipeline/dub.py) se hace como su original
+        return False
+    return (config.get("visual") or {}).get("engine") == "storyboard"
 
 
 def make_in_queue(root: Path, slug: str, ask: Callable[[str, str], dict[str, Any]] | None, log: Callable[[str], None] = print) -> Path:

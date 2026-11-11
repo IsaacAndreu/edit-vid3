@@ -93,6 +93,7 @@ def test_a_storyboard_channel_needs_only_the_script(tmp_path):
     engine = {"visual": {"style": "atlas", "engine": "storyboard"}}
     assert atlas_guion.is_atlas_folder(tmp_path, engine)
     assert not atlas_guion.is_atlas_folder(tmp_path, {"visual": {"style": "atlas"}})   # el Atlas de globo de siempre
+    assert not atlas_guion.is_atlas_folder(tmp_path, {**engine, "dub": {"of": "x", "lang": "pt"}})   # como su original
     (tmp_path / "escenas.md").write_text("1. …")
     assert atlas_guion.is_atlas_folder(tmp_path)
 
