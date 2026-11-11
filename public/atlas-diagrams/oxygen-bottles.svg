@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600">
+<!-- Capas (ids) de oxygen-bottles:
+  bottle-1: botella 1
+  bottle-2: botella 2
+  bottle-3: botella 3
+  bottle-4: botella 4
+  bottle-5: botella 5
+  bottle-6: botella 6
+-->
+<g id="bottle-1"><rect class="good ink" x="60" y="120" width="100" height="420" rx="40"/><rect class="grey ink" x="90" y="80" width="40" height="50" rx="6"/></g><g id="bottle-2"><rect class="good ink" x="210" y="120" width="100" height="420" rx="40"/><rect class="grey ink" x="240" y="80" width="40" height="50" rx="6"/></g><g id="bottle-3"><rect class="good ink" x="360" y="120" width="100" height="420" rx="40"/><rect class="grey ink" x="390" y="80" width="40" height="50" rx="6"/></g><g id="bottle-4"><rect class="good ink" x="510" y="120" width="100" height="420" rx="40"/><rect class="grey ink" x="540" y="80" width="40" height="50" rx="6"/></g><g id="bottle-5"><rect class="good ink" x="660" y="120" width="100" height="420" rx="40"/><rect class="grey ink" x="690" y="80" width="40" height="50" rx="6"/></g><g id="bottle-6"><rect class="good ink" x="810" y="120" width="100" height="420" rx="40"/><rect class="grey ink" x="840" y="80" width="40" height="50" rx="6"/></g>
+</svg>

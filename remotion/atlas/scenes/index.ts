@@ -19,6 +19,7 @@ import { ReliefMapScene } from './relief';
 import { ElevationProfileScene } from './profile';
 import { GlobeScene } from './globe';
 import { Terrain3dScene } from './terrain3d';
+import { DiagramScene } from './diagram';
 import { BarCompareScene, DialScene, DotDensityScene, RunwayCompareScene } from './charts';
 
 export const atlasScenes: Partial<Record<SceneType, FC>> = {
@@ -39,4 +40,5 @@ export const atlasScenes: Partial<Record<SceneType, FC>> = {
   'atlas-elevation-profile': ElevationProfileScene,
   'atlas-globe': GlobeScene,
   'atlas-terrain-3d': Terrain3dScene,
+  'atlas-diagram': DiagramScene,
 };

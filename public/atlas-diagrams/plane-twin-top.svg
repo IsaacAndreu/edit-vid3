@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 860" width="1300" height="860">
+<!-- Capas (ids) de plane-twin-top:
+  fuselage: fuselaje
+  wings: alas
+  tail: estabilizadores
+  engine-top: motor del ala de arriba
+  engine-bottom: motor del ala de abajo
+-->
+
+<g id="wings" class="earth ink">
+  <path d="M600,388 L520,40 L620,40 L820,388 Z"/>
+  <path d="M600,472 L520,820 L620,820 L820,472 Z"/>
+</g>
+<g id="tail" class="earth ink">
+  <path d="M250,392 L180,250 L225,250 L345,392 Z"/>
+  <path d="M250,468 L180,610 L225,610 L345,468 Z"/>
+</g>
+<path id="fuselage" class="paper ink" d="M190,430 C190,410 215,390 270,388 L1050,388 C1135,388 1180,410 1190,430 C1180,450 1135,472 1050,472 L270,472 C215,470 190,450 190,430 Z"/>
+<rect id="engine-top" class="grey ink" x="640" y="200" width="120" height="48" rx="24"/>
+<rect id="engine-bottom" class="grey ink" x="640" y="612" width="120" height="48" rx="24"/>
+
+</svg>

@@ -537,6 +537,79 @@ export const terrain3dSceneSchema = z
   })
   .strict();
 
+/* ── Fase 6: diagramas ──────────────────────────────────────────────────────── */
+
+/** Color de una capa: un acento del tema o un relleno de la paleta de dibujo. */
+const layerColorSchema = z.union([accentSchema, z.enum(['paper', 'earth', 'glass', 'grey', 'amber', 'none'])]);
+const pointSchema = z.tuple([z.number(), z.number()]);
+
+export const diagramSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-diagram'),
+    /** SVG en public/ con un id por capa (ver public/atlas-diagrams/*.svg y docs/atlas-authoring.md). */
+    diagram: z.string(),
+    /** Rectángulo de pantalla (px) donde cabe el dibujo; por defecto, bajo el titular. */
+    box: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).strict().optional(),
+    /** Cambios de estado de capas: cada uno anima desde el estado anterior de esa capa. */
+    states: z
+      .array(
+        z
+          .object({
+            layer: z.string(),
+            at: atSchema,
+            opacity: z.number().min(0).max(1).optional(),
+            fill: layerColorSchema.optional(),
+            stroke: layerColorSchema.optional(),
+            dashed: z.boolean().optional(),
+            /** Desplazamiento en unidades del SVG. */
+            x: z.number().optional(),
+            y: z.number().optional(),
+            rotate: z.number().optional(),
+            scale: z.number().positive().optional(),
+            seconds: z.number().positive().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    /** Llamadas: línea guía desde un punto del dibujo hasta el texto (coordenadas del SVG). */
+    callouts: z
+      .array(
+        z
+          .object({
+            text: z.string(),
+            sub: z.string().optional(),
+            at: atSchema,
+            anchor: pointSchema.optional(),
+            label: pointSchema,
+            align: z.enum(['left', 'right', 'center']).optional(),
+            accent: accentSchema.optional(),
+            size: z.number().positive().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    /** Barras que se llenan o se vacían (tiempo de oxígeno…), en px de pantalla. */
+    meters: z
+      .array(
+        z
+          .object({
+            label: z.string(),
+            at: atSchema,
+            from: z.number().min(0).max(1),
+            to: z.number().min(0).max(1),
+            seconds: z.number().positive(),
+            x: z.number(),
+            y: z.number(),
+            w: z.number().positive(),
+            accent: accentSchema.optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
 /**
  * Registro de esquemas de escena. Cada fase añade aquí los suyos.
  * La clave `type` debe coincidir con la del registro de componentes (scenes/index.ts).
@@ -559,6 +632,7 @@ export const sceneSchema = z.discriminatedUnion('type', [
   reliefMapSceneSchema,
   globeSceneSchema,
   terrain3dSceneSchema,
+  diagramSceneSchema,
 ]);
 export type AtlasScene = z.infer<typeof sceneSchema>;
 export type SceneType = AtlasScene['type'];

@@ -11,8 +11,8 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 | 3 — Datos y mapa de relieve (puerta) | ✅ completada (el usuario pidió seguir) |
 | 4 — Perfiles y rejilla | ✅ completada |
 | 5 — Globo y terreno 3D | ✅ completada |
-| 6 — Diagramas | pendiente |
-| 7 — Vídeo de referencia completo | pendiente |
+| 6 — Diagramas | ✅ completada |
+| 7 — Vídeo de referencia completo | ⏭ la hace el usuario con el programa, fuera de la nube |
 | 8 — Producción de vídeos nuevos | pendiente |
 
 ## Fase 0 — Cimientos
@@ -216,3 +216,27 @@ Storyboard: `storyboards/test-phase5.json`. Comparativa: `docs/atlas/fase5.jpg`.
 **Diferencias**
 - El relieve 3D del original está más suavizado; aquí se ve más detalle del DEM (ajustable con el suavizado).
 - El Everest del DEM es 8.665 m a esta resolución; el rótulo dice 8.849 m (el dato oficial, del storyboard).
+
+## Fase 6 — Diagramas
+
+`atlas-diagram`: carga un SVG de `public/atlas-diagrams/` y lo dibuja dentro de un rectángulo de pantalla. Las capas
+(ids) cambian de estado con la voz —opacidad, relleno, trazo, discontinuo, desplazamiento, giro, escala—, cada cambio
+interpolado desde el anterior; los colores salen del tema por clases (`ink`, `paper`, `earth`, `glass`, `body`,
+`amber`, `grey`, `seat`, `red`…), así que el SVG no lleva colores de un vídeo. Llamadas con línea guía desde un punto
+del dibujo y barras que se vacían o se llenan (`meters`).
+
+Ilustraciones (`python3 scripts/atlas-diagrams/build.py`), cada una con sus capas documentadas en un comentario:
+`seat-oxygen` (maletero, generador, trampilla, tubo, mascarilla colgando/puesta, pasajero, asiento),
+`cockpit-top` (morro, parabrisas izq./dcho., panel, pedestal, asientos con pilotos, cinturón, trayectorias),
+`plane-twin-top` (fuselaje, alas, cola, motor de arriba/abajo), `widebody-cabin` (asientos, tripulación),
+`cargo-cabin` (contenedores, tripulación), `oxygen-bottles` (botella-1…6), `plane-side`.
+Para usar dibujos propios: un SVG cualquiera con los mismos ids (o ids nuevos que nombre el storyboard).
+
+Storyboard: `storyboards/test-phase6.json`. Comparativa: `docs/atlas/fase6.jpg`.
+
+**Criterios**
+- ✅ Réplicas reconocibles de `2-54`, `3-30`, `4-18`, `7-16`, `7-21`.
+- La calidad de las ilustraciones generadas llega para estas cinco; para dibujos más finos, sustituir el SVG.
+
+**Diferencias**: la figura del pasajero es más esquemática que la del original; las trayectorias de la cabina son
+líneas discontinuas fijas (el original las anima).

@@ -11,9 +11,10 @@ const load = (path: string): Promise<unknown> => {
       path,
       fetch(staticFile(path)).then(async (res) => {
         if (!res.ok) throw new Error(`No se pudo leer ${path} (HTTP ${res.status}): ¿falta npm run atlas:data?`);
-        const json = await res.json();
-        cache.set(path, json);
-        return json;
+        // .svg y .txt como texto; el resto, JSON
+        const value = /\.(svg|txt)$/i.test(path) ? await res.text() : await res.json();
+        cache.set(path, value);
+        return value;
       }),
     );
   }

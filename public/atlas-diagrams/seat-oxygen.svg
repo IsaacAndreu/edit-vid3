@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 820" width="1100" height="820">
+<!-- Capas (ids) de seat-oxygen:
+  bin: maletero superior
+  psu: panel bajo el maletero
+  generator: generador químico de oxígeno
+  door: trampilla (gira al caer las mascarillas)
+  tube: tubo de oxígeno
+  mask-hanging: mascarilla colgando
+  mask-face: mascarilla puesta
+  flow: puntos de oxígeno por el tubo
+  person: pasajero sentado
+  seat: asiento
+  floor: suelo
+-->
+
+<rect id="bin" class="paper ink" x="60" y="30" width="560" height="90" rx="14"/>
+<line class="line" x1="90" y1="70" x2="590" y2="70" style="stroke-opacity:0.35"/>
+<g id="psu"><rect class="paper ink" x="190" y="120" width="430" height="44"/></g>
+<rect id="generator" class="amber ink" x="215" y="128" width="170" height="26" rx="13"/>
+<line id="door" class="line" x1="620" y1="164" x2="590" y2="330" style="transform-box:view-box;transform-origin:620px 164px"/>
+<path id="tube" class="line" d="M455,150 C452,240 458,320 445,400" style="stroke:#3D7A5C"/>
+<g id="flow" class="good-dots"><circle cx="455" cy="200" r="6"/><circle cx="454" cy="260" r="6"/><circle cx="452" cy="320" r="6"/></g>
+<g id="mask-hanging"><path class="amber ink" d="M425,400 L465,400 L470,440 C460,455 430,455 420,440 Z"/></g>
+<rect id="seat" class="seat ink" x="300" y="300" width="50" height="320" rx="20"/>
+<path class="seat ink" d="M310,600 L520,600 L520,630 L310,630 Z"/>
+<line class="line" x1="340" y1="630" x2="340" y2="780"/><line class="line" x1="500" y1="630" x2="500" y2="780"/>
+<g id="person" class="body ink">
+  <circle cx="400" cy="380" r="44"/>
+  <path d="M360,430 C350,500 350,560 360,610 L540,610 L540,570 L440,560 C450,520 455,470 440,430 Z"/>
+  <path d="M520,570 L600,570 L620,760 L580,760 L565,610 Z"/>
+  <path d="M575,760 L640,760 L640,780 L575,780 Z"/>
+  <path d="M430,450 C470,470 480,470 470,430" class="body ink"/>
+</g>
+<g id="mask-face"><path class="amber ink" d="M432,372 L470,366 L478,404 C468,418 446,418 436,406 Z"/></g>
+<line id="floor" class="line" x1="40" y1="780" x2="760" y2="780"/>
+
+</svg>
