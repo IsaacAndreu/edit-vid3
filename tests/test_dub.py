@@ -114,3 +114,10 @@ def test_atlas_scene_texts_are_translated_and_vocabulary_kept():
     out = dub._set_graphic_strings(graphic, "graphic:g", {k: v + "!" for k, v in texts.items()})["scene"]
     assert out["title"] == {"text": "Más alto que *el Aneto*!", "accent": "danger"}
     assert out["bars"][0]["style"] == "earth" and out["theme"] == "paper" and out["kicker"] == "ALTURA!"
+
+
+def test_atlas_satellite_credit_follows_the_dub_language():
+    from pipeline.atlas import SAT_CREDIT
+    timeline = {"groups": [{"id": "g", "graphic": {"type": "atlas", "view": "sat", "sat": {"credit": SAT_CREDIT["es"]}}}]}
+    dub.sat_credits(timeline, "fr")
+    assert timeline["groups"][0]["graphic"]["sat"]["credit"] == SAT_CREDIT["fr"]

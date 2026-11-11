@@ -438,6 +438,17 @@ def _set_graphic_strings(value: Any, path: str, texts: dict[str, str]) -> Any:
     return texts.get(path, value) if isinstance(value, str) else value
 
 
+def sat_credits(timeline: dict[str, Any], lang: str) -> None:
+    """An Atlas satellite view's licence line («credit» is never sent to translate) in the dub's language."""
+
+    from .atlas import SAT_CREDIT
+
+    for group in timeline["groups"]:
+        g = group.get("graphic")
+        if isinstance(g, dict) and g.get("type") == "atlas" and isinstance(g.get("sat"), dict) and g["sat"].get("credit"):
+            g["sat"]["credit"] = SAT_CREDIT.get(lang[:2], SAT_CREDIT["en"])
+
+
 def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
     timeline["title"] = texts.get("title", timeline["title"])
     for shot in timeline["shots"]:
@@ -708,6 +719,7 @@ def run(ctx: RunContext) -> None:
         translated.update(complete_json(ctx, stage=STAGE, section="planner", max_tokens=8000, system=system,
                                         user=json.dumps(batch, ensure_ascii=False)).get("texts", {}))
     apply_texts(timeline, {k: str(v) for k, v in translated.items() if k in texts and str(v).strip()})
+    sat_credits(timeline, lang)
     if not (ctx.materials_dir / "titulo.txt").is_file():
         (ctx.materials_dir / "titulo.txt").write_text(timeline["title"] + "\n", encoding="utf-8")
     Timeline.model_validate(timeline)

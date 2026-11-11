@@ -1397,7 +1397,10 @@ def _as_written(ctx: RunContext, title: str) -> str:
 
 SAT_CREDIT = {"es": "Imagen: Sentinel-2 cloudless de EOX (CC BY 4.0), datos Copernicus Sentinel modificados",
               "en": "Imagery: Sentinel-2 cloudless by EOX (CC BY 4.0), contains modified Copernicus Sentinel data",
-              "pt": "Imagem: Sentinel-2 cloudless da EOX (CC BY 4.0), dados Copernicus Sentinel modificados"}
+              "pt": "Imagem: Sentinel-2 cloudless da EOX (CC BY 4.0), dados Copernicus Sentinel modificados",
+              "de": "Bild: Sentinel-2 cloudless von EOX (CC BY 4.0), enthält veränderte Copernicus-Sentinel-Daten",
+              "fr": "Image : Sentinel-2 cloudless par EOX (CC BY 4.0), contient des données Copernicus Sentinel modifiées",
+              "it": "Immagine: Sentinel-2 cloudless di EOX (CC BY 4.0), contiene dati Copernicus Sentinel modificati"}
 
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 

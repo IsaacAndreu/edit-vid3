@@ -1,0 +1,52 @@
+# «Atlas» (francés): el mismo formato que atlas-es/atlas-pt/atlas-de (página de papel, globo que gira de frase en
+# frase, relieve, escenas de remotion/atlas; pipeline/atlas.py → Atlas.tsx). Sin metraje: va por el carril rápido de la
+# cola. Llega doblado desde atlas-es (dubbing.channels fr: atlas-fr) o con guiones propios.
+# Su voz: estudio → Ajustes → Voces por canal → atlas-fr.
+
+video:
+  fps: 30
+
+visual:
+  style: atlas
+
+brand:
+  name: Atlas
+  accent: "#B8322A"
+  motion: clean
+  endStyle: paper                  # la pantalla final en papel, como el resto del vídeo
+
+align:
+  language: fr
+
+localize: |                       # cómo adaptar cada guion a su público
+  Público de Francia, Bélgica, Suiza y Quebec. Kilómetros, metros, euros; las cifras como allí (3 812 mètres). Si viene
+  a cuento, una comparación de allí (el Mont Blanc con 4 806 m, los Alpes, los Pirineos, el Macizo Central). Tono claro.
+
+factcheck:
+  block_voice: false               # la verificación avisa (verificacion.md) pero no para la voz
+
+timeline:
+  music_default: intriga
+  music_volume: 0.12
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'une chaîne YouTube française de cartes et de relief : pourquoi un lieu du monde est comme il est (hauts plateaux, montagnes, frontières, fleuves, le lieu le plus isolé), avec des données et des sources, vidéos de 8-10 minutes'
+  niches: [géographie, montagnes, hauts plateaux, frontières, fleuves, curiosités de la carte]
+  words: 1200
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions"]
+
+lab:
+  queries: ["cache quelque chose dont personne ne parle", "pourquoi personne ne vit", "frontière la plus étrange du monde", "géographie absurde"]
+
+dubbing:
+  enabled: false
+
+shorts:
+  enabled: false
