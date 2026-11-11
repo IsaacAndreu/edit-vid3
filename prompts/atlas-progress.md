@@ -8,8 +8,8 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 | 0 — Cimientos | ✅ completada |
 | 1 — Texto y superposiciones | ✅ completada |
 | 2 — Gráficos sin geografía | ✅ completada |
-| 3 — Datos y mapa de relieve (puerta) | ⏸ hecha, esperando la revisión del usuario (puerta) |
-| 4 — Perfiles y rejilla | pendiente |
+| 3 — Datos y mapa de relieve (puerta) | ✅ completada (el usuario pidió seguir) |
+| 4 — Perfiles y rejilla | ✅ completada |
 | 5 — Globo y terreno 3D | pendiente |
 | 6 — Diagramas | pendiente |
 | 7 — Vídeo de referencia completo | pendiente |
@@ -146,3 +146,36 @@ de una fuente (AIP de China). Las coordenadas de ciudades son las reales.
 
 **Pendiente para usar el relieve en el pipeline automático**: el render del pipeline usa `--public-dir=work/<slug>`;
 habrá que copiar el paquete de región a esa carpeta (o servir `public/atlas-data` desde allí).
+
+## Fase 4 — Perfiles de altitud y rejilla
+
+Scripts: `npm run atlas:data -- profile <id> <lon,lat> <lon,lat>` (círculo máximo, Terrarium z9; cada muestra es el
+máximo en ±2 km a los lados) y `cells <id> <bbox> [zoom] --peaks <json>` (máximo por celda de 1°×1°; las cumbres
+medidas con fuente mandan si el DEM las suaviza: Everest 8.849 m, K2 8.611 m en
+`scripts/atlas-data/peaks/himalaya-karakoram.json`).
+Datos: `profiles/karakoram-hengduan` (2.462 km), `profiles/chongqing-lhasa` (780 km), `cells/tibet-plateau`
+(70–105 E, 25–42 N, 595 celdas).
+
+Escena `atlas-elevation-profile`: terreno real (o mar abierto, con cambio en vivo), ejes en pies y km, trayectoria
+por puntos con curva suave o lineal y avión de perfil, umbrales, bandas, altitud mínima segura escalonada calculada
+del propio perfil (máximo por tramo + margen, redondeado a 100 ft), descenso que se detiene en ella, línea de despeje
+sobre el terreno, tramos por debajo de la MSA en rojo, marcas verticales y notas.
+Capa `graticule` del mapa: MSA por celda con el formato del original (31¹ = 31.100 ft), cifras rojas por encima del
+umbral, relleno, celda destacada. La leyenda admite `sub`; las líneas de una info-card con titular van en versalitas.
+
+Storyboard: `storyboards/test-phase4.json`. Comparativa: `docs/atlas/fase4.jpg`.
+
+**Criterios**
+- ✅ Réplicas de `2-10`, `2-37`, `2-45`, `3-42`, `4-45`, `1-33`, `1-37` (dos rondas de bucle visual).
+- ✅ El perfil Karakórum–Hengduan sale de datos reales y su forma se parece a la del original.
+- ✅ La rejilla da las mismas cifras que el original en la zona del Everest (31¹ en su celda; 28⁹, 29⁹, 30²… al lado)
+  y el relleno por encima de 20.000 ft dibuja la misma forma.
+
+**Diferencias**
+- Los extremos exactos del perfil del original no se conocen: con los elegidos sale 2.462 km (el rótulo usa la
+  distancia real del perfil, no los 2.760 km del original).
+- En `4-45` la MSA calculada queda casi siempre por debajo de 22.630 ft, así que apenas hay tramos rojos; el original
+  usa un escalón más alto. Se respeta el dato.
+- `3-42`: una sola trayectoria (el original dibuja también la vuelta a Chengdu). La posición de Xiaojin en el perfil
+  es aproximada (`FLIGHT PATH SIMPLIFIED`).
+- Papel: grano del fondo bajado a 4,5 % (salía grisáceo).
