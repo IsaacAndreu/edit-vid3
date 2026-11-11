@@ -1,0 +1,1879 @@
+{
+  "meta": {
+    "slug": "bolivianoalto",
+    "title": "Por que a Bolívia vive lá no alto",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [
+      {
+        "numeral": "I",
+        "label": "A prata"
+      },
+      {
+        "numeral": "II",
+        "label": "A mesa"
+      },
+      {
+        "numeral": "III",
+        "label": "A comida"
+      },
+      {
+        "numeral": "IV",
+        "label": "O corpo"
+      },
+      {
+        "numeral": "V",
+        "label": "O território"
+      }
+    ],
+    "duration": 662.37
+  },
+  "audio": {
+    "transcript": "atlas-work/bolivianoalto/transcript.json"
+  },
+  "scenes": [
+    {
+      "id": "mapa",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 0
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "kicker": "BOLÍVIA",
+      "camera": [
+        {
+          "at": {
+            "t": 0
+          },
+          "center": [
+            -65.0,
+            -16.6
+          ],
+          "zoom": 1.25
+        }
+      ],
+      "shapes": [
+        {
+          "id": "bolivia",
+          "source": "atlas-data/shapes/bolivia.geojson",
+          "at": {
+            "say": "Olhe para a Bolívia"
+          },
+          "stroke": "ink",
+          "fill": false
+        },
+        {
+          "id": "alto",
+          "source": "atlas-data/regions/andes/contour-3500.geojson",
+          "at": {
+            "say": "uma faixa alta e seca"
+          },
+          "stroke": "danger",
+          "fill": true
+        }
+      ],
+      "labels": [
+        {
+          "text": "Cordilheira Ocidental",
+          "pos": [
+            -69.1,
+            -19.2
+          ],
+          "at": {
+            "say": "entre duas cordilheiras"
+          },
+          "style": "region"
+        },
+        {
+          "text": "Cordilheira Oriental",
+          "pos": [
+            -66.2,
+            -18.4
+          ],
+          "at": {
+            "say": "entre duas cordilheiras",
+            "offset": 0.4
+          },
+          "style": "region"
+        },
+        {
+          "text": "Planícies e florestas",
+          "pos": [
+            -63.4,
+            -14.6
+          ],
+          "at": {
+            "say": "um mar verde de planícies"
+          },
+          "style": "region",
+          "accent": "good"
+        },
+        {
+          "text": "Brasil",
+          "pos": [
+            -60.2,
+            -12.0
+          ],
+          "at": {
+            "say": "a fronteira com o Brasil"
+          },
+          "style": "region"
+        }
+      ]
+    },
+    {
+      "id": "rinconada",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Agora suba até o canto"
+      },
+      "theme": "paper",
+      "enter": "continuous",
+      "region": "andes",
+      "camera": [
+        {
+          "at": {
+            "say": "Agora suba até o canto"
+          },
+          "center": [
+            -68.4,
+            -14.3
+          ],
+          "zoom": 5
+        }
+      ],
+      "points": [
+        {
+          "name": "La Rinconada",
+          "pos": [
+            -69.445,
+            -14.631
+          ],
+          "at": {
+            "say": "Chama-se La Rinconada"
+          },
+          "marker": "event",
+          "accent": "danger",
+          "value": "≈ 5.100 M"
+        }
+      ],
+      "labels": [
+        {
+          "text": "Peru",
+          "pos": [
+            -70.6,
+            -14.0
+          ],
+          "at": {
+            "say": "perto do Peru"
+          },
+          "style": "region"
+        },
+        {
+          "text": "Bolívia",
+          "pos": [
+            -68.6,
+            -15.3
+          ],
+          "at": {
+            "say": "perto do Peru"
+          },
+          "style": "region"
+        }
+      ],
+      "overlays": [
+        {
+          "kind": "info-card",
+          "at": {
+            "say": "Chama-se La Rinconada"
+          },
+          "corner": "tr",
+          "kicker": "LA RINCONADA · PERU",
+          "title": "O lugar habitado *mais alto do mundo*",
+          "lines": [
+            {
+              "text": "≈ 5.100 m de altitude",
+              "at": {
+                "say": "Chama-se La Rinconada",
+                "offset": 0.6
+              }
+            },
+            {
+              "text": "≈ 30 mil pessoas",
+              "at": {
+                "say": "Ali vivem cerca de"
+              }
+            },
+            {
+              "text": "Sem rede de esgoto",
+              "at": {
+                "say": "Não há rede de esgoto"
+              }
+            },
+            {
+              "text": "Média anual pouco acima de 0 °C",
+              "at": {
+                "say": "a temperatura média do ano"
+              }
+            }
+          ]
+        }
+      ],
+      "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
+    },
+    {
+      "id": "metade",
+      "type": "atlas-statement",
+      "start": {
+        "say": "cada respiração traz quase"
+      },
+      "theme": "night",
+      "enter": "fade",
+      "title": {
+        "text": "Cada respiração: *quase metade* do oxigênio",
+        "accent": "danger"
+      }
+    },
+    {
+      "id": "altiplano",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "La Rinconada fica do lado"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "camera": [
+        {
+          "at": {
+            "say": "La Rinconada fica do lado"
+          },
+          "center": [
+            -67.9,
+            -17.6
+          ],
+          "zoom": 2.3
+        }
+      ],
+      "shapes": [
+        {
+          "id": "alto2",
+          "source": "atlas-data/regions/andes/contour-3500.geojson",
+          "at": {
+            "say": "o Altiplano. Um planalto"
+          },
+          "stroke": "danger",
+          "fill": true,
+          "label": "Altiplano",
+          "sub": "Altitude média: 3.750 m"
+        }
+      ],
+      "sourceNote": "ALTIPLANO: TERRA ACIMA DE 3.500 M (DADOS DO TERRENO)"
+    },
+    {
+      "id": "tibete",
+      "type": "atlas-globe",
+      "start": {
+        "say": "o mais extenso do planeta"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "camera": [
+        {
+          "at": {
+            "say": "o mais extenso do planeta"
+          },
+          "center": [
+            -67,
+            -17
+          ],
+          "zoom": 1.5
+        },
+        {
+          "at": {
+            "say": "depois do Tibete"
+          },
+          "center": [
+            88,
+            32
+          ],
+          "zoom": 1.5
+        }
+      ],
+      "shapes": [
+        {
+          "id": "and",
+          "source": "atlas-data/regions/andes/contour-3500.geojson",
+          "at": {
+            "say": "o mais extenso do planeta"
+          },
+          "fill": true
+        },
+        {
+          "id": "tib",
+          "source": "atlas-data/regions/tibet/contour-3000.geojson",
+          "at": {
+            "say": "depois do Tibete"
+          },
+          "fill": true
+        }
+      ],
+      "points": [
+        {
+          "name": "Altiplano",
+          "pos": [
+            -67.5,
+            -18
+          ],
+          "at": {
+            "say": "o mais extenso do planeta"
+          },
+          "marker": "event"
+        },
+        {
+          "name": "Tibete",
+          "pos": [
+            88,
+            32
+          ],
+          "at": {
+            "say": "depois do Tibete"
+          },
+          "marker": "event"
+        }
+      ]
+    },
+    {
+      "id": "censo",
+      "type": "atlas-bar-compare",
+      "start": {
+        "say": "Veja os números"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "CENSO DE 2024 · HABITANTES",
+      "title": {
+        "text": "Censo de *2024*"
+      },
+      "axis": {
+        "max": 12,
+        "step": 2,
+        "format": "{v} MI",
+        "style": "grid"
+      },
+      "labels": "below",
+      "bars": [
+        {
+          "label": "Bolívia",
+          "value": 11.3,
+          "display": "11,3 mi",
+          "at": {
+            "say": "a Bolívia tinha 11,3"
+          },
+          "style": "earth"
+        },
+        {
+          "label": "La Paz, Oruro e Potosí",
+          "value": 4.5,
+          "display": "≈ 4,5 mi",
+          "at": {
+            "say": "somam cerca de 4,5"
+          },
+          "style": "earth",
+          "valueAccent": "danger"
+        }
+      ],
+      "sourceNote": "CENSO DE 2024 (INE DA BOLÍVIA), SEGUNDO O ROTEIRO"
+    },
+    {
+      "id": "elalto",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Só El Alto"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "camera": [
+        {
+          "at": {
+            "say": "Só El Alto"
+          },
+          "center": [
+            -66.2,
+            -14.2
+          ],
+          "zoom": 2.1
+        }
+      ],
+      "points": [
+        {
+          "name": "El Alto",
+          "pos": [
+            -68.192,
+            -16.505
+          ],
+          "at": {
+            "say": "Só El Alto"
+          },
+          "marker": "city",
+          "accent": "danger",
+          "value": "> 4.000 M"
+        }
+      ],
+      "shapes": [
+        {
+          "id": "bolivia-b",
+          "source": "atlas-data/shapes/bolivia.geojson",
+          "at": {
+            "say": "Só El Alto"
+          },
+          "stroke": "ink",
+          "fill": false
+        }
+      ],
+      "labels": [
+        {
+          "text": "Beni",
+          "pos": [
+            -64.8,
+            -14.2
+          ],
+          "at": {
+            "say": "tem mais gente que Beni"
+          },
+          "style": "region",
+          "accent": "good"
+        },
+        {
+          "text": "Pando",
+          "pos": [
+            -67.4,
+            -11.3
+          ],
+          "at": {
+            "say": "tem mais gente que Beni",
+            "offset": 0.3
+          },
+          "style": "region",
+          "accent": "good"
+        },
+        {
+          "text": "Um quarto do país",
+          "pos": [
+            -65.8,
+            -12.6
+          ],
+          "at": {
+            "say": "ocupam um quarto do país"
+          },
+          "style": "mono",
+          "accent": "good"
+        }
+      ],
+      "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
+    },
+    {
+      "id": "escolha",
+      "type": "atlas-statement",
+      "start": {
+        "say": "A resposta que todo mundo"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "title": "Eles vivem lá porque *não têm escolha*",
+      "overlays": [
+        {
+          "kind": "stamp",
+          "at": {
+            "say": "Errado"
+          },
+          "text": "ERRADO",
+          "x": 0.5,
+          "y": 0.62
+        }
+      ]
+    },
+    {
+      "id": "agenda",
+      "type": "atlas-agenda",
+      "start": {
+        "say": "E existem cinco motivos"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "title": "Cinco *motivos*",
+      "numerals": [
+        {
+          "say": "E existem cinco motivos",
+          "offset": 0.2
+        },
+        {
+          "say": "E existem cinco motivos",
+          "offset": 0.45
+        },
+        {
+          "say": "E existem cinco motivos",
+          "offset": 0.7
+        },
+        {
+          "say": "E existem cinco motivos",
+          "offset": 0.95
+        },
+        {
+          "say": "E existem cinco motivos",
+          "offset": 1.2
+        }
+      ],
+      "notes": [
+        {
+          "text": "I · UMA MONTANHA QUE ENCHEU OS COFRES DA ESPANHA",
+          "at": {
+            "say": "O primeiro saiu de"
+          }
+        },
+        {
+          "text": "V · POR QUE O ACRE É BRASILEIRO",
+          "at": {
+            "say": "E o último explica"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "cap1",
+      "type": "atlas-chapter-card",
+      "start": {
+        "say": "Motivo número um"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "of": 0,
+      "title": "Uma montanha *de prata*"
+    },
+    {
+      "id": "potosi",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Em 1545, os espanhóis"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "chapter": 0,
+      "camera": [
+        {
+          "at": {
+            "say": "Em 1545, os espanhóis"
+          },
+          "center": [
+            -65.75,
+            -19.6
+          ],
+          "zoom": 6
+        }
+      ],
+      "points": [
+        {
+          "name": "Cerro Rico",
+          "pos": [
+            -65.749,
+            -19.619
+          ],
+          "at": {
+            "say": "Chamaram-no de Cerro Rico"
+          },
+          "marker": "event",
+          "accent": "amber",
+          "value": "PRATA · 1545"
+        },
+        {
+          "name": "Potosí",
+          "pos": [
+            -65.753,
+            -19.583
+          ],
+          "at": {
+            "say": "Ao pé dele, nasceu"
+          },
+          "marker": "city"
+        }
+      ]
+    },
+    {
+      "id": "potosi-dados",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Em poucas décadas"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "kicker": "POTOSÍ",
+      "title": "Uma das maiores *cidades do mundo*",
+      "cards": [
+        {
+          "heading": "Começo do séc. XVII",
+          "text": "*≈ 160 mil* habitantes",
+          "at": {
+            "say": "teria chegado a cerca"
+          }
+        },
+        {
+          "heading": "Na Europa",
+          "text": "Mais que a *maioria das cidades*",
+          "at": {
+            "say": "mais do que a maioria"
+          }
+        },
+        {
+          "heading": "A essa altitude",
+          "text": "A água ferve *antes dos 90 °C*",
+          "at": {
+            "say": "a água ferve antes"
+          }
+        }
+      ],
+      "sourceNote": "POPULAÇÃO: ESTIMATIVA HISTÓRICA, SEGUNDO O ROTEIRO"
+    },
+    {
+      "id": "mita",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Só que a prata não"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "kicker": "A MITA",
+      "title": "A prata *não saía sozinha*",
+      "cards": [
+        {
+          "heading": "1573",
+          "text": "Toledo organiza *a mita*",
+          "at": {
+            "say": "organizou a mita"
+          }
+        },
+        {
+          "heading": "Todo ano",
+          "text": "*≈ 13 mil* homens indígenas",
+          "at": {
+            "say": "cerca de 13 mil homens"
+          },
+          "accent": "danger"
+        },
+        {
+          "heading": "Nas minas",
+          "text": "Muitos *não voltavam*",
+          "at": {
+            "say": "Muitos não voltavam"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "imperio",
+      "type": "atlas-globe",
+      "start": {
+        "say": "A prata de Potosí atravessou"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "camera": [
+        {
+          "at": {
+            "say": "A prata de Potosí atravessou"
+          },
+          "center": [
+            -40,
+            -5
+          ],
+          "zoom": 1.2
+        }
+      ],
+      "routes": [
+        {
+          "id": "prata",
+          "path": [
+            [
+              -65.753,
+              -19.583
+            ],
+            [
+              -5.984,
+              37.389
+            ]
+          ],
+          "at": {
+            "say": "atravessou o oceano"
+          },
+          "drawSeconds": 2.2,
+          "style": "dashed",
+          "accent": "amber",
+          "label": "PRATA",
+          "greatCircle": true
+        }
+      ],
+      "points": [
+        {
+          "name": "Potosí",
+          "pos": [
+            -65.753,
+            -19.583
+          ],
+          "at": {
+            "say": "A prata de Potosí atravessou"
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Espanha",
+          "pos": [
+            -5.984,
+            37.389
+          ],
+          "at": {
+            "say": "ajudou a financiar um"
+          },
+          "marker": "city"
+        }
+      ]
+    },
+    {
+      "id": "em-cima",
+      "type": "atlas-statement",
+      "start": {
+        "say": "O dinheiro estava em"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "title": "O dinheiro estava *em cima*"
+    },
+    {
+      "id": "antes",
+      "type": "atlas-statement",
+      "start": {
+        "say": "Mas os espanhóis não inventaram"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "title": "A vida no planalto já existia *havia milhares de anos*"
+    },
+    {
+      "id": "cap2",
+      "type": "atlas-chapter-card",
+      "start": {
+        "say": "Motivo número dois"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "of": 1,
+      "title": "Lá em cima, *o terreno é plano*"
+    },
+    {
+      "id": "mesa",
+      "type": "atlas-terrain-3d",
+      "start": {
+        "say": "Parece contraditório"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "O ALTIPLANO · ALTURAS ×20",
+      "terrain": "altiplano-3d",
+      "exaggeration": 20,
+      "camera": [
+        {
+          "at": {
+            "say": "Parece contraditório"
+          },
+          "tilt": 70,
+          "yaw": 0,
+          "distance": 1.6
+        },
+        {
+          "at": {
+            "say": "formam uma imensa mesa"
+          },
+          "tilt": 30,
+          "yaw": -14,
+          "distance": 1.45
+        }
+      ],
+      "labels": [
+        {
+          "text": "Cordilheira Ocidental",
+          "pos": [
+            -69.0,
+            -18.8
+          ],
+          "at": {
+            "say": "Entre a Cordilheira Ocidental"
+          },
+          "style": "range",
+          "accent": "amber"
+        },
+        {
+          "text": "Cordilheira Oriental",
+          "pos": [
+            -66.6,
+            -17.4
+          ],
+          "at": {
+            "say": "e a Cordilheira Oriental"
+          },
+          "style": "range",
+          "accent": "amber"
+        },
+        {
+          "text": "Titicaca",
+          "pos": [
+            -69.35,
+            -15.8
+          ],
+          "at": {
+            "say": "o Titicaca, a cerca"
+          },
+          "style": "value",
+          "sub": "≈ 3.800 M"
+        }
+      ],
+      "threshold": {
+        "m": 3500,
+        "at": {
+          "say": "São centenas de quilômetros"
+        },
+        "label": "Acima de 3.500 m",
+        "labelPos": [
+          -67.8,
+          -19.0
+        ]
+      }
+    },
+    {
+      "id": "tiwanaku",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Perto desse lago"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "chapter": 1,
+      "camera": [
+        {
+          "at": {
+            "say": "Perto desse lago"
+          },
+          "center": [
+            -68.9,
+            -16.1
+          ],
+          "zoom": 5
+        }
+      ],
+      "labels": [
+        {
+          "text": "Lago Titicaca",
+          "pos": [
+            -69.35,
+            -15.8
+          ],
+          "at": {
+            "say": "Perto desse lago"
+          },
+          "style": "mono",
+          "accent": "data"
+        }
+      ],
+      "points": [
+        {
+          "name": "Tiwanaku",
+          "pos": [
+            -68.673,
+            -16.554
+          ],
+          "at": {
+            "say": "floresceu Tiwanaku"
+          },
+          "marker": "event",
+          "value": "HÁ + DE 1.000 ANOS"
+        }
+      ]
+    },
+    {
+      "id": "leste",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Agora compare com o leste"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "chapter": 1,
+      "camera": [
+        {
+          "at": {
+            "say": "Agora compare com o leste"
+          },
+          "center": [
+            -65.5,
+            -15.5
+          ],
+          "zoom": 2.4
+        }
+      ],
+      "arrows": [
+        {
+          "from": [
+            -68.0,
+            -16.8
+          ],
+          "to": [
+            -65.2,
+            -14.6
+          ],
+          "at": {
+            "say": "Agora compare com o leste"
+          },
+          "accent": "data"
+        }
+      ],
+      "labels": [
+        {
+          "text": "Planícies de Beni",
+          "pos": [
+            -65.0,
+            -14.0
+          ],
+          "at": {
+            "say": "Nas planícies de Beni"
+          },
+          "style": "region",
+          "accent": "good"
+        },
+        {
+          "text": "Cheias durante meses",
+          "pos": [
+            -65.0,
+            -13.3
+          ],
+          "at": {
+            "say": "os rios transbordam e alagam"
+          },
+          "style": "mono",
+          "accent": "data"
+        }
+      ]
+    },
+    {
+      "id": "malaria",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Na floresta, o calor"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "title": "Embaixo, *a malária*",
+      "cards": [
+        {
+          "heading": "Floresta",
+          "text": "Calor, umidade e *malária*",
+          "at": {
+            "say": "Na floresta, o calor"
+          },
+          "accent": "danger"
+        },
+        {
+          "heading": "Altiplano",
+          "text": "Ar frio e seco: *sem mosquitos*",
+          "at": {
+            "say": "o ar frio e seco"
+          },
+          "accent": "data"
+        }
+      ]
+    },
+    {
+      "id": "vazias",
+      "type": "atlas-statement",
+      "start": {
+        "say": "E não é que as planícies"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "title": "As planícies *não estavam vazias*, mas o poder estava *no alto*"
+    },
+    {
+      "id": "cap3",
+      "type": "atlas-chapter-card",
+      "start": {
+        "say": "Motivo número três"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 2,
+      "of": 2,
+      "title": "A comida *nasceu na altitude*"
+    },
+    {
+      "id": "batata",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "A batata não veio"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 2,
+      "kicker": "A BATATA",
+      "title": "Ela não veio *da Europa*",
+      "cards": [
+        {
+          "heading": "Origem",
+          "text": "Domesticada perto *do Titicaca*",
+          "at": {
+            "say": "Ela foi domesticada"
+          }
+        },
+        {
+          "heading": "Hoje",
+          "text": "*Milhares* de variedades",
+          "at": {
+            "say": "Hoje existem milhares"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chuno",
+      "type": "atlas-checklist",
+      "start": {
+        "say": "E os povos do Altiplano"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 2,
+      "title": "Como se faz *o chuño*",
+      "items": [
+        {
+          "text": "À noite: *abaixo de zero*",
+          "at": {
+            "say": "À noite, a temperatura"
+          }
+        },
+        {
+          "text": "De dia: sol forte e *ar seco*",
+          "at": {
+            "say": "De dia, o sol"
+          }
+        },
+        {
+          "text": "Pisar para *tirar a água*",
+          "at": {
+            "say": "pisam nelas para tirar"
+          }
+        },
+        {
+          "text": "Repetir *por dias*",
+          "at": {
+            "say": "repetem o processo por"
+          }
+        },
+        {
+          "text": "Dura *anos*",
+          "at": {
+            "say": "pode durar anos"
+          },
+          "accent": "good"
+        }
+      ]
+    },
+    {
+      "id": "geladeira",
+      "type": "atlas-statement",
+      "start": {
+        "say": "Ou seja, o frio"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 2,
+      "title": "O frio virou *uma geladeira natural*"
+    },
+    {
+      "id": "inscreva",
+      "type": "atlas-cta",
+      "start": {
+        "say": "Se você gosta de entender"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "layout": "card",
+      "chapter": 2,
+      "title": "Se você gosta de entender *por que o mundo é assim*",
+      "button": {
+        "label": "INSCREVA-SE",
+        "at": {
+          "say": "se inscreva no canal"
+        },
+        "doneLabel": "INSCRITO",
+        "clickAt": {
+          "say": "se inscreva no canal",
+          "offset": 1.2
+        }
+      }
+    },
+    {
+      "id": "cap4",
+      "type": "atlas-chapter-card",
+      "start": {
+        "say": "Motivo número quatro"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "of": 3,
+      "title": "O corpo *se adaptou*"
+    },
+    {
+      "id": "futebol",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Em julho de 1993"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "kicker": "ELIMINATÓRIAS DA COPA",
+      "title": "O Brasil *na altitude*",
+      "cards": [
+        {
+          "heading": "1993 · La Paz",
+          "text": "Bolívia *2 × 0* Brasil",
+          "at": {
+            "say": "Perdeu por dois a zero"
+          },
+          "accent": "danger"
+        },
+        {
+          "heading": "2009",
+          "text": "Bolívia *2 × 1* Brasil",
+          "at": {
+            "say": "perdeu de novo, por"
+          }
+        },
+        {
+          "heading": "2025 · El Alto",
+          "text": "Bolívia *1 × 0* Brasil",
+          "at": {
+            "say": "a Bolívia venceu o Brasil"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "oxigenio",
+      "type": "atlas-dot-density",
+      "start": {
+        "say": "Por quê? Porque na altitude"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "kicker": "A MESMA RESPIRAÇÃO",
+      "title": {
+        "text": "Mesmo ar, *menos oxigênio*",
+        "accent": "danger"
+      },
+      "grid": 9,
+      "boxes": [
+        {
+          "label": "NÍVEL DO MAR",
+          "percent": 100,
+          "display": "100 %",
+          "at": {
+            "say": "o ar continua tendo"
+          }
+        },
+        {
+          "label": "≈ 4.000 M",
+          "percent": 60,
+          "display": "≈ 60 %",
+          "at": {
+            "say": "cada respiração entrega só"
+          },
+          "accent": "danger"
+        }
+      ],
+      "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
+    },
+    {
+      "id": "fifa",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "O assunto ficou tão sério"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "kicker": "FIFA",
+      "cards": [
+        {
+          "heading": "2007",
+          "text": "*Proíbe* jogos na altitude",
+          "at": {
+            "say": "a FIFA chegou a proibir"
+          },
+          "accent": "danger"
+        },
+        {
+          "heading": "2008",
+          "text": "Proibição *suspensa*",
+          "at": {
+            "say": "no ano seguinte a proibição"
+          }
+        }
+      ]
+    },
+    {
+      "id": "adaptacao",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Agora, quem nasce lá"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "title": "Duas soluções *para o mesmo problema*",
+      "cards": [
+        {
+          "heading": "Andinos",
+          "text": "*Mais hemoglobina* no sangue",
+          "at": {
+            "say": "têm mais hemoglobina no"
+          }
+        },
+        {
+          "heading": "Tibetanos",
+          "text": "Respiram *mais rápido*",
+          "at": {
+            "say": "respirando mais rápido"
+          }
+        }
+      ]
+    },
+    {
+      "id": "casa",
+      "type": "atlas-statement",
+      "start": {
+        "say": "Então, para quem nasceu"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "title": "Hostil é *a floresta lá embaixo*"
+    },
+    {
+      "id": "cap5",
+      "type": "atlas-chapter-card",
+      "start": {
+        "say": "Motivo número cinco"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "of": 4,
+      "title": "Quem não ocupa, *perde*"
+    },
+    {
+      "id": "mar",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Primeiro, o mar"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "chapter": 4,
+      "camera": [
+        {
+          "at": {
+            "say": "Primeiro, o mar"
+          },
+          "center": [
+            -68.4,
+            -21.6
+          ],
+          "zoom": 2.6
+        }
+      ],
+      "shapes": [
+        {
+          "id": "bolivia2",
+          "source": "atlas-data/shapes/bolivia.geojson",
+          "at": {
+            "say": "Primeiro, o mar"
+          },
+          "stroke": "ink",
+          "fill": false
+        }
+      ],
+      "labels": [
+        {
+          "text": "Chile",
+          "pos": [
+            -70.4,
+            -26.0
+          ],
+          "at": {
+            "say": "perdeu para o Chile"
+          },
+          "style": "region"
+        },
+        {
+          "text": "Litoral perdido · 1879",
+          "pos": [
+            -71.6,
+            -22.4
+          ],
+          "at": {
+            "say": "perdeu para o Chile",
+            "offset": 0.5
+          },
+          "style": "mono",
+          "accent": "danger"
+        },
+        {
+          "text": "≈ 400 km de costa",
+          "pos": [
+            -71.6,
+            -23.1
+          ],
+          "at": {
+            "say": "400 quilômetros de litoral"
+          },
+          "style": "mono",
+          "accent": "danger"
+        }
+      ],
+      "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
+    },
+    {
+      "id": "acre",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Depois, a borracha"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "chapter": 4,
+      "camera": [
+        {
+          "at": {
+            "say": "Depois, a borracha"
+          },
+          "center": [
+            -67.0,
+            -11.6
+          ],
+          "zoom": 1.9
+        }
+      ],
+      "labels": [
+        {
+          "text": "Acre",
+          "pos": [
+            -69.6,
+            -9.4
+          ],
+          "at": {
+            "say": "cresciam no Acre"
+          },
+          "style": "region",
+          "accent": "danger"
+        },
+        {
+          "text": "Seringueiros brasileiros",
+          "pos": [
+            -69.6,
+            -8.7
+          ],
+          "at": {
+            "say": "eram seringueiros brasileiros"
+          },
+          "style": "mono",
+          "accent": "data"
+        }
+      ],
+      "points": [
+        {
+          "name": "La Paz",
+          "pos": [
+            -68.119,
+            -16.5
+          ],
+          "at": {
+            "say": "O governo boliviano ficava"
+          },
+          "marker": "city"
+        }
+      ],
+      "arrows": [
+        {
+          "from": [
+            -68.1,
+            -16.2
+          ],
+          "to": [
+            -68.9,
+            -10.3
+          ],
+          "at": {
+            "say": "dificuldade para chegar até"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "petropolis",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Os brasileiros se rebelaram"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "kicker": "1903",
+      "title": "O Tratado de *Petrópolis*",
+      "cards": [
+        {
+          "heading": "O Brasil fica",
+          "text": "com *o Acre*",
+          "at": {
+            "say": "O Brasil ficou com"
+          }
+        },
+        {
+          "heading": "E paga",
+          "text": "*2 milhões* de libras",
+          "at": {
+            "say": "pagou 2 milhões de"
+          }
+        },
+        {
+          "heading": "E constrói",
+          "text": "a ferrovia *Madeira-Mamoré*",
+          "at": {
+            "say": "construir a ferrovia Madeira-Mamoré"
+          }
+        }
+      ]
+    },
+    {
+      "id": "perdas",
+      "type": "atlas-card-row",
+      "start": {
+        "say": "Foram cerca de 190"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "title": "O que a Bolívia *perdeu*",
+      "cards": [
+        {
+          "heading": "Acre · 1903",
+          "text": "*≈ 190 mil* km²",
+          "at": {
+            "say": "Foram cerca de 190"
+          },
+          "accent": "danger"
+        },
+        {
+          "heading": "Chaco · anos 30",
+          "text": "Uma área *ainda maior*",
+          "at": {
+            "say": "na Guerra do Chaco"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "decisao",
+      "type": "atlas-statement",
+      "start": {
+        "say": "Agora imagine que a"
+      },
+      "theme": "night",
+      "enter": "fade",
+      "chapter": 4,
+      "title": "É 1942. *Você* governa a Bolívia. Manda descer a montanha?"
+    },
+    {
+      "id": "estrada",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "A Bolívia decidiu descer"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "chapter": 4,
+      "camera": [
+        {
+          "at": {
+            "say": "A Bolívia decidiu descer"
+          },
+          "center": [
+            -64.8,
+            -17.7
+          ],
+          "zoom": 3.2
+        }
+      ],
+      "points": [
+        {
+          "name": "Cochabamba",
+          "pos": [
+            -66.157,
+            -17.389
+          ],
+          "at": {
+            "say": "A Bolívia decidiu descer"
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Santa Cruz",
+          "pos": [
+            -63.182,
+            -17.784
+          ],
+          "at": {
+            "say": "A Bolívia decidiu descer",
+            "offset": 0.4
+          },
+          "marker": "city",
+          "accent": "good"
+        }
+      ],
+      "routes": [
+        {
+          "id": "estrada",
+          "path": [
+            [
+              -66.157,
+              -17.389
+            ],
+            [
+              -63.182,
+              -17.784
+            ]
+          ],
+          "at": {
+            "say": "A estrada entre Cochabamba"
+          },
+          "drawSeconds": 2,
+          "style": "solid",
+          "accent": "good",
+          "label": "1954"
+        }
+      ]
+    },
+    {
+      "id": "santacruz",
+      "type": "atlas-bar-compare",
+      "start": {
+        "say": "E veja o resultado"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "kicker": "DEPARTAMENTO DE SANTA CRUZ · HABITANTES",
+      "title": {
+        "text": "De *244 mil* a *mais de 3 milhões*",
+        "accent": "good"
+      },
+      "axis": {
+        "max": 3.5,
+        "step": 0.5,
+        "format": "{v} MI",
+        "style": "grid"
+      },
+      "labels": "below",
+      "bars": [
+        {
+          "label": "1950",
+          "value": 0.244,
+          "display": "≈ 244 mil",
+          "at": {
+            "say": "Em 1950, o departamento"
+          },
+          "style": "earth"
+        },
+        {
+          "label": "2024",
+          "value": 3.0,
+          "display": "> 3 mi",
+          "at": {
+            "say": "passou de 3 milhões"
+          },
+          "style": "earth",
+          "valueAccent": "good"
+        }
+      ],
+      "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
+    },
+    {
+      "id": "rinconada2",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Mas o Altiplano não esvaziou"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "camera": [
+        {
+          "at": {
+            "say": "Mas o Altiplano não esvaziou"
+          },
+          "center": [
+            -67.4,
+            -16.0
+          ],
+          "zoom": 2.6
+        },
+        {
+          "at": {
+            "say": "La Rinconada continua recebendo"
+          },
+          "center": [
+            -68.4,
+            -14.3
+          ],
+          "zoom": 5
+        }
+      ],
+      "points": [
+        {
+          "name": "El Alto",
+          "pos": [
+            -68.192,
+            -16.505
+          ],
+          "at": {
+            "say": "El Alto não parou"
+          },
+          "marker": "city"
+        },
+        {
+          "name": "La Rinconada",
+          "pos": [
+            -69.445,
+            -14.631
+          ],
+          "at": {
+            "say": "La Rinconada continua recebendo"
+          },
+          "marker": "event",
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "cachorreo",
+      "type": "atlas-checklist",
+      "start": {
+        "say": "Lá, muitos mineiros"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "title": "O *cachorreo*",
+      "items": [
+        {
+          "text": "≈ 30 dias *sem salário*",
+          "at": {
+            "say": "trabalham sem salário"
+          }
+        },
+        {
+          "text": "No último dia: *uma pedra* nos ombros",
+          "at": {
+            "say": "No último dia"
+          }
+        },
+        {
+          "text": "Com ouro: *ganham*",
+          "at": {
+            "say": "Se houver ouro nela"
+          },
+          "accent": "good"
+        },
+        {
+          "text": "Sem ouro: *perdem o mês*",
+          "at": {
+            "say": "Se não houver"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "metal",
+      "type": "atlas-statement",
+      "start": {
+        "say": "Pense nisso"
+      },
+      "theme": "night",
+      "enter": "fade",
+      "title": "Cinco séculos depois: *metal dentro da montanha*"
+    },
+    {
+      "id": "recap",
+      "type": "atlas-recap",
+      "start": {
+        "say": "Recapitulando"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "title": "Os cinco *motivos*",
+      "items": [
+        {
+          "text": "A prata de Potosí",
+          "at": {
+            "say": "A prata de Potosí atraiu"
+          }
+        },
+        {
+          "text": "O planalto plano",
+          "at": {
+            "say": "O planalto plano já"
+          }
+        },
+        {
+          "text": "A batata e o chuño",
+          "at": {
+            "say": "A batata e o chuño"
+          }
+        },
+        {
+          "text": "O corpo adaptado",
+          "at": {
+            "say": "O corpo dos andinos"
+          }
+        },
+        {
+          "text": "O leste vazio",
+          "at": {
+            "say": "E o leste vazio"
+          }
+        }
+      ]
+    },
+    {
+      "id": "volta",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "Volte agora ao mapa"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "andes",
+      "camera": [
+        {
+          "at": {
+            "say": "Volte agora ao mapa"
+          },
+          "center": [
+            -65.0,
+            -16.6
+          ],
+          "zoom": 1.25
+        }
+      ],
+      "shapes": [
+        {
+          "id": "bolivia3",
+          "source": "atlas-data/shapes/bolivia.geojson",
+          "at": {
+            "say": "Volte agora ao mapa"
+          },
+          "stroke": "ink",
+          "fill": false
+        },
+        {
+          "id": "alto3",
+          "source": "atlas-data/regions/andes/contour-3500.geojson",
+          "at": {
+            "say": "A faixa alta à esquerda"
+          },
+          "stroke": "danger",
+          "fill": true
+        }
+      ],
+      "labels": [
+        {
+          "text": "Mais povoado a cada censo",
+          "pos": [
+            -62.8,
+            -16.6
+          ],
+          "at": {
+            "say": "O verde à direita"
+          },
+          "style": "mono",
+          "accent": "good"
+        }
+      ],
+      "points": [
+        {
+          "name": "La Rinconada",
+          "pos": [
+            -69.445,
+            -14.631
+          ],
+          "at": {
+            "say": "no canto de cima, a"
+          },
+          "marker": "event",
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "fim",
+      "type": "atlas-cta",
+      "start": {
+        "say": "E você, aguentaria"
+      },
+      "theme": "night",
+      "enter": "fade",
+      "layout": "stack",
+      "kicker": "CONTE NOS COMENTÁRIOS",
+      "title": "Você aguentaria viver *a mais de 4 mil metros*?",
+      "button": {
+        "label": "INSCREVA-SE",
+        "at": {
+          "say": "Me conta nos comentários"
+        }
+      }
+    }
+  ]
+}
