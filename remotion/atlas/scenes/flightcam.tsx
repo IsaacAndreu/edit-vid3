@@ -1,0 +1,280 @@
+/**
+ * atlas-flight-cam: un vuelo real de cerca y a escala real. El avión (modelo genérico en código) se coloca en cada
+ * fotograma con la posición, la altitud, el cabeceo, el alabeo y el rumbo del FDR sobre el bloque de terreno; la cámara
+ * va por keyframes (detrás, al lado, desde el suelo, desde la cabina, girando) y pasa de una a otra en 1,6 s.
+ *
+ * Orientación: el FDR da rumbo magnético; para colocar el avión en el terreno (norte geográfico) se le suma la
+ * diferencia mediana entre la trayectoria (posiciones) y ese rumbo en vuelo, calculada de los propios datos.
+ * atlas-pfd: el PFD a pantalla grande con las frases del informe.
+ */
+import type { FC } from 'react';
+import { useMemo } from 'react';
+import { AbsoluteFill } from 'remotion';
+import { ThreeCanvas } from '@remotion/three';
+import { useThree } from '@react-three/fiber';
+import { BackSide, Color, DoubleSide, Euler, PerspectiveCamera, Quaternion, ShaderMaterial, Vector3, type Group } from 'three';
+import { ease, reveal } from '../anim';
+import { useAtlasTime, useTheme } from '../context';
+import { aircraftLength, buildAircraft } from '../flight/aircraft3d';
+import { flightClock, FlightHud, sampleAt, sToClock, trackAt, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
+import { Pfd } from '../flight/pfd';
+import { fonts } from '../fonts';
+import { useJsonFiles } from '../geo/useData';
+import { useTexture } from '../geo/useTexture';
+import type { AtlasScene, LonLat } from '../schema';
+import { accentOn, FLIGHT } from '../theme';
+import { sec } from '../time';
+import { cornerStyle, Mono } from '../ui';
+import { Header, useSceneOf } from './text';
+import { buildTerrain, type TerrainMeta } from './terrain3d';
+
+type FlightCam = Extract<AtlasScene, { type: 'atlas-flight-cam' }>;
+type Key = FlightCam['camera'][number];
+
+const W = 1920;
+const H = 1080;
+const MOVE = 1.6;
+const DEG = Math.PI / 180;
+const FT_KM = 0.0003048;
+
+interface Pose {
+  pos: Vector3;
+  target: Vector3;
+  up: Vector3;
+  fov: number;
+  inside: number; // 1 = cámara dentro de la cabina
+}
+
+/** Diferencia mediana (grados) entre la trayectoria y el rumbo magnético del FDR, solo en vuelo. */
+const headingOffset = (data: FlightData): number => {
+  const diffs: number[] = [];
+  for (const p of data.points) {
+    if (p.ground || p.hdg === null || p.gs < 80) continue;
+    diffs.push((((trackAt(data, p.s) - p.hdg + 540) % 360) - 180));
+  }
+  diffs.sort((a, b) => a - b);
+  return diffs.length ? diffs[diffs.length >> 1] : 0;
+};
+
+/** Cúpula de cielo centrada en la cámara: degradado por elevación, así el horizonte coincide con el del terreno. */
+const skyMaterial = (top: string, horizon: string) =>
+  new ShaderMaterial({
+    uniforms: { top: { value: new Color(top) }, horizon: { value: new Color(horizon) } },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 top;
+      uniform vec3 horizon;
+      varying vec3 vDir;
+      void main() {
+        gl_FragColor = vec4(mix(horizon, top, smoothstep(0.0, 0.22, vDir.y)), 1.0);
+        #include <colorspace_fragment>
+      }`,
+    side: BackSide,
+    depthWrite: false,
+  });
+
+const Rig: FC<{ pose: Pose; near: number }> = ({ pose, near }) => {
+  const camera = useThree((s) => s.camera) as PerspectiveCamera;
+  camera.fov = pose.fov;
+  camera.near = near;
+  camera.far = 400;
+  camera.position.copy(pose.pos);
+  camera.up.copy(pose.up);
+  camera.lookAt(pose.target);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld();
+  return null;
+};
+
+export const FlightCamScene: FC = () => {
+  const scene = useSceneOf('atlas-flight-cam');
+  const { name } = useTheme();
+  const time = useAtlasTime();
+  const dir = `atlas-data/terrain/${scene.terrain}`;
+  const data = useJsonFiles<unknown>([`${dir}/meta.json`, `${dir}/heights.json`, scene.flight.data]);
+  const texture = useTexture(`${dir}/tex-${name}.jpg`);
+  const meta = data?.[0] as TerrainMeta | undefined;
+  const heights = data?.[1] as number[] | undefined;
+  const flight = data?.[2] as FlightData | undefined;
+  const built = useMemo(() => (meta && heights && texture ? buildTerrain(meta, heights, texture, name) : null), [meta, heights, texture, name]);
+  const plane = useMemo(() => buildAircraft(scene.model), [scene.model]);
+  const skyMat = useMemo(() => skyMaterial(FLIGHT.sky[name].top, FLIGHT.sky[name].horizon), [name]);
+  const offset = useMemo(() => (flight ? headingOffset(flight) : 0), [flight]);
+  if (!meta || !heights || !built || !flight) return null;
+
+  const { bbox, kmLon, kmLat, cols, rows } = meta;
+  const lonC = (bbox[0] + bbox[2]) / 2;
+  const latC = (bbox[1] + bbox[3]) / 2;
+  const local = (ll: LonLat): [number, number] => [(ll[0] - lonC) * kmLon, -(ll[1] - latC) * kmLat];
+  const groundKm = (ll: LonLat) => {
+    const c = ((ll[0] - bbox[0]) / (bbox[2] - bbox[0])) * (cols - 1);
+    const r = ((bbox[3] - ll[1]) / (bbox[3] - bbox[1])) * (rows - 1);
+    const c0 = Math.max(0, Math.min(cols - 2, Math.floor(c)));
+    const r0 = Math.max(0, Math.min(rows - 2, Math.floor(r)));
+    const tc = Math.max(0, Math.min(1, c - c0));
+    const tr = Math.max(0, Math.min(1, r - r0));
+    const h = (rr: number, cc: number) => heights[rr * cols + cc];
+    return ((h(r0, c0) * (1 - tc) + h(r0, c0 + 1) * tc) * (1 - tr) + (h(r0 + 1, c0) * (1 - tc) + h(r0 + 1, c0 + 1) * tc) * tr) / 1000;
+  };
+
+  const now = flightClock(scene.flight, time);
+  const pt: FlightPoint = sampleAt(flight, now);
+  const [px, pz] = local([pt.lon, pt.lat]);
+  const L = aircraftLength(scene.model) / 1000;
+  // el avión nunca por debajo del suelo (la altitud de presión corregida tiene unos metros de error)
+  const py = Math.max(pt.alt * FT_KM, groundKm([pt.lon, pt.lat]) + 0.004);
+  const P = new Vector3(px, py, pz);
+  const heading = (pt.hdg ?? trackAt(flight, now)) + offset;
+  const euler = new Euler(pt.roll * DEG, (90 - heading) * DEG, pt.pitch * DEG, 'YZX');
+  const q = new Quaternion().setFromEuler(euler);
+  const fwd = new Vector3(Math.sin(heading * DEG), 0, -Math.cos(heading * DEG));
+  const right = new Vector3(Math.cos(heading * DEG), 0, Math.sin(heading * DEG));
+  const UP = new Vector3(0, 1, 0);
+
+  const poseOf = (k: Key, kt: number): Pose => {
+    const d = (k.distanceM ?? 120) / 1000;
+    const h = (k.heightM ?? (k.mode === 'ground' ? 2 : k.mode === 'side' ? 4 : 22)) / 1000;
+    if (k.mode === 'cockpit') {
+      const eye = new Vector3(L * 0.42 * 1000, 1.3, -0.55).multiplyScalar(0.001).applyQuaternion(q).add(P);
+      const look = new Vector3(1, -0.04, 0).applyQuaternion(q).multiplyScalar(2).add(eye);
+      return { pos: eye, target: look, up: new Vector3(0, 1, 0).applyQuaternion(q), fov: k.fov ?? 55, inside: 1 };
+    }
+    if (k.mode === 'ground') {
+      const g = k.pos ?? [pt.lon, pt.lat];
+      const [gx, gz] = local(g);
+      return { pos: new Vector3(gx, groundKm(g) + h, gz), target: P.clone(), up: UP.clone(), fov: k.fov ?? 10, inside: 0 };
+    }
+    if (k.mode === 'side') {
+      const pos = P.clone().addScaledVector(right, k.left ? -d : d).addScaledVector(UP, h).addScaledVector(fwd, -d * 0.15);
+      return { pos, target: P.clone(), up: UP.clone(), fov: k.fov ?? 40, inside: 0 };
+    }
+    if (k.mode === 'orbit') {
+      const a = (k.degPerSecond ?? 12) * (time - kt) * DEG;
+      const dirV = fwd.clone().multiplyScalar(Math.cos(a)).addScaledVector(right, Math.sin(a));
+      return { pos: P.clone().addScaledVector(dirV, -d).addScaledVector(UP, h), target: P.clone(), up: UP.clone(), fov: k.fov ?? 40, inside: 0 };
+    }
+    // chase
+    return {
+      pos: P.clone().addScaledVector(fwd, -d).addScaledVector(UP, h),
+      target: P.clone().addScaledVector(fwd, L * 0.6),
+      up: UP.clone(),
+      fov: k.fov ?? 40,
+      inside: 0,
+    };
+  };
+  const keys = scene.camera.map((k) => ({ k, t: sec(k.at) }));
+  let pose = poseOf(keys[0].k, keys[0].t);
+  for (let i = 1; i < keys.length; i++) {
+    if (time <= keys[i].t) break;
+    const f = ease(Math.min(1, (time - keys[i].t) / MOVE));
+    const b = poseOf(keys[i].k, keys[i].t);
+    pose = {
+      pos: pose.pos.clone().lerp(b.pos, f),
+      target: pose.target.clone().lerp(b.target, f),
+      up: pose.up.clone().lerp(b.up, f).normalize(),
+      fov: pose.fov + (b.fov - pose.fov) * f,
+      inside: pose.inside + (b.inside - pose.inside) * f,
+    };
+  }
+  const camDist = pose.pos.distanceTo(P);
+  const near = Math.max(0.0002, Math.min(0.02, camDist * 0.05));
+  const sky = FLIGHT.sky[name];
+  built.material.uniforms.fogColor.value = new Color(sky.horizon);
+  built.material.uniforms.fogNear.value = 6;
+  built.material.uniforms.fogFar.value = 32;
+  const pfd = scene.pfd;
+  const pfdIn = pfd ? reveal(time, sec(pfd.at), 0.5) : null;
+  const frameIn = scene.cockpitFrame !== false ? pose.inside : 0;
+
+  return (
+    <AbsoluteFill>
+      <ThreeCanvas width={W} height={H} camera={{ fov: 40 }} style={{ position: 'absolute' }}>
+        <Rig pose={pose} near={near} />
+        <mesh position={[pose.pos.x, pose.pos.y, pose.pos.z]} material={skyMat} renderOrder={-1}>
+          <sphereGeometry args={[350, 32, 16]} />
+        </mesh>
+        <hemisphereLight args={['#FFFFFF', '#8A7F6A', 1.6]} />
+        <directionalLight position={[-30, 60, 20]} intensity={2.4} />
+        {/* suelo lejano alrededor del bloque, del color del horizonte: sin borde visible */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.003, 0]}>
+          <planeGeometry args={[400, 400]} />
+          <meshBasicMaterial color={sky.horizon} side={DoubleSide} toneMapped={false} />
+        </mesh>
+        <mesh geometry={built.top} material={built.material} />
+        <primitive
+          object={plane as Group}
+          position={[P.x, P.y, P.z]}
+          quaternion={q}
+          scale={[0.001, 0.001, 0.001]}
+          visible={pose.inside < 0.98}
+        />
+      </ThreeCanvas>
+      {frameIn > 0.01 ? <CockpitFrame opacity={frameIn} /> : null}
+      {pfd && pfdIn && pfdIn.opacity > 0 ? (
+        <div style={{ ...cornerStyle(pfd.corner), ...pfdIn.style }}>
+          <Pfd point={pt} size={pfd.size ?? 520} />
+        </div>
+      ) : null}
+      {scene.hud ? <FlightHud show={scene.hud.show} point={pt} theme={name} corner={scene.hud.corner} labels={scene.hud.labels} /> : null}
+      <Header top={92} />
+    </AbsoluteFill>
+  );
+};
+
+/** Marco genérico de cabina: parachoques del panel abajo y montantes del parabrisas (no es la cabina de un modelo). */
+const CockpitFrame: FC<{ opacity: number }> = ({ opacity }) => {
+  const c = FLIGHT.pfd.bg;
+  return (
+    <svg width={W} height={H} style={{ position: 'absolute', inset: 0, opacity }}>
+      <path d={`M 0 ${H} L 0 820 C 520 760 1400 760 ${W} 820 L ${W} ${H} Z`} fill={c} />
+      <path d={`M 0 0 L 230 0 L 120 790 L 0 805 Z`} fill={c} />
+      <path d={`M ${W} 0 L ${W - 230} 0 L ${W - 120} 790 L ${W} 805 Z`} fill={c} />
+      <path d={`M 0 0 L ${W} 0 L ${W} 70 C 1400 110 520 110 0 70 Z`} fill={c} />
+      <path d={`M 935 92 L 985 92 L 975 780 L 945 780 Z`} fill={c} />
+    </svg>
+  );
+};
+
+/* ── PFD a pantalla grande ─────────────────────────────────────────────────────────────────────────────────────── */
+
+export const PfdScene: FC = () => {
+  const scene = useSceneOf('atlas-pfd');
+  const { name, tokens } = useTheme();
+  const time = useAtlasTime();
+  const data = useJsonFiles<FlightData>([scene.flight.data]);
+  if (!data) return null;
+  const [flight] = data;
+  const now = flightClock(scene.flight, time);
+  const pt = sampleAt(flight, now);
+  const size = scene.size ?? (scene.lines ? 700 : 860);
+  const said = (scene.lines ?? []).filter((l) => videoTimeOf(scene.flight, l.clock) <= time).slice(-3);
+  return (
+    <AbsoluteFill>
+      <Header top={92} />
+      <div style={{ position: 'absolute', top: 230, left: scene.lines ? 140 : (W - size) / 2 }}>
+        <Pfd point={pt} size={size} />
+        <div style={{ marginTop: 14 }}>
+          <Mono size={22} color={tokens.inkSoft}>{sToClock(now)}</Mono>
+        </div>
+      </div>
+      {scene.lines ? (
+        <div style={{ position: 'absolute', left: 140 + size + 80, right: 100, top: 260 }}>
+          {said.map((l, i) => {
+            const r = reveal(time, videoTimeOf(scene.flight, l.clock), 0.45);
+            return (
+              <div key={l.clock + l.who} style={{ marginBottom: 34, ...r.style, opacity: r.opacity * (i < said.length - 1 ? 0.5 : 1) }}>
+                <Mono size={20} color={accentOn(name, l.accent ?? 'data')}>{`${l.clock} · ${l.who}`}</Mono>
+                <div style={{ fontFamily: fonts.serif, fontStyle: 'italic', fontSize: 40, lineHeight: 1.2, color: tokens.ink, marginTop: 6 }}>«{l.text}»</div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
+};

@@ -314,6 +314,34 @@ Cada frase, citada del informe (traducida si hace falta) con `ref`; entra cuando
 `status`: `confirmed` | `unconfirmed` | `unknown` (rótulos en `statusLabels` para otros idiomas). Para noticias recientes:
 lo no confirmado se dice como tal y nunca se adelanta una causa.
 
+### atlas-flight-cam (de cerca, a escala real)
+![flight-cam](atlas/catalogo/atlas-flight-cam.jpg) ![cockpit](atlas/catalogo/flight-cam-cockpit.jpg)
+```json
+{ "type": "atlas-flight-cam", "terrain": "hudson-cerca", "model": "narrowbody",
+  "kicker": "RECONSTRUCCIÓN A ESCALA REAL", "sourceNote": "POSICIÓN, ALTITUD, CABECEO, ALABEO Y RUMBO: FDR · AVIÓN GENÉRICO",
+  "flight": { "data": "accidentes/us1549/vuelo.json", "at": {"t": 0}, "from": "15:27:40", "to": "15:30:43", "rate": 6 },
+  "camera": [{ "at": {"t": 0}, "mode": "chase", "distanceM": 110, "heightM": 22 },
+             { "at": {"say": "en la cabina"}, "mode": "cockpit", "fov": 60 },
+             { "at": {"say": "desde la orilla"}, "mode": "ground", "pos": [-74.012, 40.762], "heightM": 3, "fov": 7 }],
+  "pfd": { "at": {"say": "en la cabina"}, "corner": "br", "size": 420 }, "cockpitFrame": true }
+```
+El avión (modelo genérico en código: `narrowbody` | `bizjet`) se mueve con la posición, la altitud, el cabeceo, el
+alabeo y el rumbo del FDR a escala real (sin exageración). Cámaras: `chase` (detrás), `side` (`left` para el lado
+izquierdo), `orbit` (`degPerSecond`), `ground` (`pos` en el suelo, `fov` pequeño = teleobjetivo) y `cockpit` (desde el
+asiento del piloto, el horizonte se inclina con el alabeo; `cockpitFrame` dibuja parabrisas y panel). Cambian en 1,6 s.
+`pfd` pone el PFD en una esquina. Bloque de terreno grande (que no se vea el borde): `"cols": 800, "zoom": 14` con
+`"region"`. Render lento: ~10 s por fotograma en el cloud; úsala en tramos cortos.
+
+### atlas-pfd
+![pfd](atlas/catalogo/atlas-pfd.jpg)
+```json
+{ "type": "atlas-pfd", "kicker": "PANTALLA PRINCIPAL DE VUELO · RECONSTRUIDA CON EL FDR",
+  "flight": { "data": "accidentes/us1549/vuelo.json", "at": {"t": 0}, "from": "15:27:05", "to": "15:27:45", "rate": 5 },
+  "lines": [{ "clock": "15:27:10", "who": "COMANDANTE", "text": "Pájaros.", "ref": "AAR-10/03 p. 2" }] }
+```
+PFD genérico (horizonte artificial, cintas de velocidad y altitud, rumbo magnético) movido por el FDR; `lines`
+opcionales a la derecha. Dilo en `sourceNote`: «PFD genérico».
+
 ### Versión vertical (Shorts)
 `meta.short: {"top": {"text": "El avión que *amerizó en el Hudson*"}, "bottom": "Datos reales del FDR"}` y la
 composición `AtlasShort` (1080×1920): el vídeo 16:9 entero en el centro, con el titular arriba y el pie abajo.

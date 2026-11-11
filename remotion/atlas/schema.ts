@@ -630,6 +630,69 @@ export const cockpitSceneSchema = z
   })
   .strict();
 
+/** PFD (pantalla principal de vuelo) dibujado con los datos: horizonte artificial, cintas de velocidad y altitud, rumbo. */
+export const pfdOverlaySchema = z
+  .object({
+    at: atSchema,
+    corner: cornerSchema,
+    /** Ancho en px (por defecto 520). */
+    size: z.number().min(280).max(900).optional(),
+  })
+  .strict();
+
+/**
+ * Vista 3D de cerca de un vuelo real a escala real: el avión (modelo dibujado en código, con el cabeceo, el alabeo y el
+ * rumbo del FDR) sobre el bloque de terreno, con cámaras que cambian por keyframes.
+ *   chase  = detrás y por encima del avión     side   = al lado, a la altura del avión
+ *   ground = desde un punto fijo del suelo      cockpit = desde el asiento del piloto, con el horizonte que se inclina
+ *   orbit  = girando alrededor del avión
+ */
+export const flightCamSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-flight-cam'),
+    terrain: z.string(),
+    flight: flightPlaybackSchema,
+    model: z.enum(['narrowbody', 'bizjet']),
+    camera: z
+      .array(
+        z
+          .object({
+            at: atSchema,
+            mode: z.enum(['chase', 'side', 'ground', 'cockpit', 'orbit']),
+            /** Distancia al avión en metros (chase, side, orbit). */
+            distanceM: z.number().positive().optional(),
+            /** Altura sobre el avión en metros (chase, side, orbit); sobre el suelo (ground). */
+            heightM: z.number().optional(),
+            /** ground: punto del suelo desde el que se mira. */
+            pos: lonLatSchema.optional(),
+            /** Ángulo de visión vertical en grados (por defecto 40; menos = teleobjetivo). */
+            fov: z.number().min(5).max(90).optional(),
+            /** side: true = lado izquierdo del avión. orbit: grados por segundo. */
+            left: z.boolean().optional(),
+            degPerSecond: z.number().optional(),
+          })
+          .strict(),
+      )
+      .min(1),
+    pfd: pfdOverlaySchema.optional(),
+    hud: flightHudSchema.optional(),
+    /** Marco de la cabina (parabrisas y panel) en la vista cockpit. */
+    cockpitFrame: z.boolean().optional(),
+  })
+  .strict();
+
+/** El PFD a pantalla completa (o grande) leyendo un vuelo real, con las frases del informe opcionales al lado. */
+export const pfdSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-pfd'),
+    flight: flightPlaybackSchema,
+    size: z.number().min(400).max(1000).optional(),
+    lines: cockpitSceneSchema.shape.lines.optional(),
+  })
+  .strict();
+
 /** Silueta de avión con piezas resaltadas (motores, timón de profundidad…). */
 export const aircraftSceneSchema = z
   .object({
@@ -778,6 +841,8 @@ export const sceneSchema = z.discriminatedUnion('type', [
   cockpitSceneSchema,
   aircraftSceneSchema,
   knownSceneSchema,
+  flightCamSceneSchema,
+  pfdSceneSchema,
 ]);
 export type AtlasScene = z.infer<typeof sceneSchema>;
 export type SceneType = AtlasScene['type'];

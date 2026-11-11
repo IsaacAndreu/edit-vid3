@@ -51,6 +51,20 @@ recalculan. **Antes de publicar**: una persona revisa las cifras y las traduccio
 - Catálogo para la IA: sección «Vuelos reales» en `docs/atlas-authoring.md`.
 - Tests: `tests/test_accidentes.py` (conversión, cruce del cero, validador, datos del caso, pipeline).
 
+## B — De cerca ✅  (atlas-flight-cam, atlas-pfd)
+- `remotion/atlas/flight/aircraft3d.ts`: bimotor de pasillo único y reactor ejecutivo construidos en código (fuselaje
+  torneado, alas con flecha y diedro, estabilizadores, motores), sin modelos de terceros ni libreas.
+- Orientación con el cabeceo, el alabeo y el rumbo del FDR. El rumbo es magnético: se le suma la diferencia mediana
+  entre la trayectoria y el rumbo en vuelo, calculada de los propios datos (incluye la deriva por viento).
+- Cámaras `chase`, `side`, `orbit`, `ground` (teleobjetivo) y `cockpit` (el horizonte se inclina con el alabeo; marco
+  genérico de parabrisas); transiciones de 1,6 s. Cúpula de cielo y niebla por distancia para que no se vea el borde
+  del bloque (`hudson-cerca`, 27×24 km, z14, textura de la región).
+- PFD genérico (`remotion/atlas/flight/pfd.tsx`): horizonte artificial, arco de alabeo, cintas de velocidad y altitud,
+  rumbo; en una esquina de la vista 3D o a pantalla grande con las frases del informe (`atlas-pfd`).
+- Fotogramas: `docs/accidentes/b-persecucion.jpg`, `b-lateral.jpg`, `b-cabina.jpg`, `b-desde-el-suelo.jpg`, `b-pfd.jpg`.
+- **Límites**: ~10 s por fotograma en el cloud (render de software); sin edificios (solo relieve); el avión no lleva
+  librea ni detalle de fabricante; la cabina es un marco genérico, no el interior de un modelo concreto.
+
 ## Pendiente / decisiones para el usuario
 - Elegir los siguientes casos (informes con tabla del FDR pública: la NTSB suele publicarla; BEA/AAIB a veces no).
 - Trayectorias ADS-B para casos sin FDR público: OpenSky solo no comercial; ADS-B Exchange con licencia.

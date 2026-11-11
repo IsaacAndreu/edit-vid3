@@ -85,3 +85,13 @@ export const LAYOUT = {
   monoSize: 22,
   monoTracking: '0.18em',
 } as const;
+
+/**
+ * Colores de los instrumentos de cabina (PFD) y del cielo de las vistas 3D de vuelo. El PFD usa la convención de
+ * aviación (cielo azul, tierra marrón, cifras blancas): es lo que el espectador reconoce como «la pantalla del piloto».
+ */
+export const FLIGHT = {
+  pfd: { sky: '#2F6FB0', ground: '#7A4F2A', ink: '#F4F4F0', bg: '#121418', frame: '#2A2D33', box: '#0A0B0D', magenta: '#D24BD8', amber: '#E7A63A', green: '#3FCF6A' },
+  sky: { paper: { top: '#8FB3CF', horizon: '#E7E2D4' }, night: { top: '#0F1A26', horizon: '#3A4B5A' } },
+  aircraft: { body: '#F2F0EA', belly: '#C9CCD1', engine: '#B7BBC2', window: '#1E2630', trim: '#2A2118' },
+} as const;

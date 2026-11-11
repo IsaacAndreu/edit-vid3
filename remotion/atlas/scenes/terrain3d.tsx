@@ -34,7 +34,7 @@ import { Header, useSceneOf } from './text';
 import { clockToS, flightClock, FlightHud, flownUntil, sampleAt, videoTimeOf, type FlightData } from '../flight';
 
 type Terrain3d = Extract<AtlasScene, { type: 'atlas-terrain-3d' }>;
-interface TerrainMeta {
+export interface TerrainMeta {
   bbox: [number, number, number, number];
   kmLon: number;
   kmLat: number;
@@ -80,7 +80,7 @@ const cameraAt = (keys: (Cam & { t: number })[], t: number, center: LonLat): Cam
   return cam;
 };
 
-const terrainShader = (map: Texture, side: string) =>
+export const terrainShader = (map: Texture, side: string) =>
   new ShaderMaterial({
     uniforms: {
       map: { value: map },
@@ -89,14 +89,21 @@ const terrainShader = (map: Texture, side: string) =>
       red: { value: new Color('#C8402F') },
       line: { value: new Color('#8E2A1E') },
       band: { value: 0.03 },
+      // niebla por distancia (vistas de cerca a escala real); lejos = sin niebla en las escenas de bloque
+      fogColor: { value: new Color('#E7E2D4') },
+      fogNear: { value: 1e9 },
+      fogFar: { value: 2e9 },
     },
     vertexShader: `
       varying vec2 vUv;
       varying float vElev;
+      varying float vDist;
       void main() {
         vUv = uv;
         vElev = position.y;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vDist = -mv.z;
+        gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `
       uniform sampler2D map;
@@ -105,8 +112,12 @@ const terrainShader = (map: Texture, side: string) =>
       uniform vec3 red;
       uniform vec3 line;
       uniform float band;
+      uniform vec3 fogColor;
+      uniform float fogNear;
+      uniform float fogFar;
       varying vec2 vUv;
       varying float vElev;
+      varying float vDist;
       void main() {
         vec3 col = texture2D(map, vUv).rgb;
         if (thr >= 0.0 && reveal > 0.0) {
@@ -115,12 +126,71 @@ const terrainShader = (map: Texture, side: string) =>
           float edge = 1.0 - smoothstep(0.0, band, abs(vElev - thr));
           col = mix(col, line, edge * reveal);
         }
+        col = mix(col, fogColor, smoothstep(fogNear, fogFar, vDist));
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,
     side: DoubleSide,
     name: `terrain-${side}`,
   });
+
+/** Malla del bloque (superficie, paredes, filetes) para cualquier escena 3D sobre un bloque de build-terrain. */
+export const buildTerrain = (meta: TerrainMeta, heights: number[], texture: Texture, name: 'paper' | 'night') => {
+  const { cols, rows, widthKm, depthKm } = meta;
+  const pos = new Float32Array(cols * rows * 3);
+  const uv = new Float32Array(cols * rows * 2);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      pos[i * 3] = (c / (cols - 1) - 0.5) * widthKm;
+      pos[i * 3 + 1] = heights[i] / 1000;
+      pos[i * 3 + 2] = (r / (rows - 1) - 0.5) * depthKm;
+      uv[i * 2] = c / (cols - 1);
+      uv[i * 2 + 1] = 1 - r / (rows - 1);
+    }
+  }
+  const idx: number[] = [];
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const a = r * cols + c;
+      idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+    }
+  }
+  const top = new BufferGeometry();
+  top.setAttribute('position', new BufferAttribute(pos, 3));
+  top.setAttribute('uv', new BufferAttribute(uv, 2));
+  top.setIndex(idx);
+  // paredes: de cada borde hasta el nivel 0
+  const edge = (cells: number[]) => cells.map((i) => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]] as [number, number, number]);
+  const north = edge(Array.from({ length: cols }, (_, c) => c));
+  const south = edge(Array.from({ length: cols }, (_, c) => (rows - 1) * cols + c));
+  const west = edge(Array.from({ length: rows }, (_, r) => r * cols));
+  const east = edge(Array.from({ length: rows }, (_, r) => r * cols + cols - 1));
+  const wall = (pts: [number, number, number][]) => {
+    const p = new Float32Array(pts.length * 6);
+    pts.forEach(([x, y, z], k) => {
+      p.set([x, y, z, x, 0, z], k * 6);
+    });
+    const ix: number[] = [];
+    for (let k = 0; k < pts.length - 1; k++) ix.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 2, k * 2 + 1, k * 2 + 3);
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(p, 3));
+    g.setIndex(ix);
+    return g;
+  };
+  const walls = [north, south, west, east].map(wall);
+  // filetes: borde superior, base y aristas verticales
+  const loop = [...north, ...east.slice(1), ...[...south].reverse().slice(1), ...[...west].reverse().slice(1)];
+  const lineGeom = (pts: [number, number, number][]) => new BufferGeometry().setFromPoints(pts.map((p) => new Vector3(...p)));
+  const hw = widthKm / 2;
+  const hd = depthKm / 2;
+  const outline = [
+    lineGeom(loop),
+    lineGeom([[-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd], [-hw, 0, -hd]]),
+    ...[north[0], north[cols - 1], south[0], south[cols - 1]].map(([x, y, z]) => lineGeom([[x, 0, z], [x, y, z]])),
+  ];
+  return { top, walls, outline, material: terrainShader(texture, name) };
+};
 
 /** Pone la cámara de three igual que la calculada (la capa 2D proyecta con la misma). */
 const Rig: FC<{ position: Vector3; target: Vector3; near: number; far: number }> = ({ position, target, near, far }) => {
@@ -147,63 +217,10 @@ export const Terrain3dScene: FC = () => {
   const heights = data?.[1] as number[] | undefined;
   const flightData = scene.flight ? (data?.[2] as FlightData | undefined) : undefined;
 
-  const built = useMemo(() => {
-    if (!meta || !heights || !texture) return null;
-    const { cols, rows, widthKm, depthKm } = meta;
-    const pos = new Float32Array(cols * rows * 3);
-    const uv = new Float32Array(cols * rows * 2);
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const i = r * cols + c;
-        pos[i * 3] = (c / (cols - 1) - 0.5) * widthKm;
-        pos[i * 3 + 1] = heights[i] / 1000;
-        pos[i * 3 + 2] = (r / (rows - 1) - 0.5) * depthKm;
-        uv[i * 2] = c / (cols - 1);
-        uv[i * 2 + 1] = 1 - r / (rows - 1);
-      }
-    }
-    const idx: number[] = [];
-    for (let r = 0; r < rows - 1; r++) {
-      for (let c = 0; c < cols - 1; c++) {
-        const a = r * cols + c;
-        idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
-      }
-    }
-    const top = new BufferGeometry();
-    top.setAttribute('position', new BufferAttribute(pos, 3));
-    top.setAttribute('uv', new BufferAttribute(uv, 2));
-    top.setIndex(idx);
-    // paredes: de cada borde hasta el nivel 0
-    const edge = (cells: number[]) => cells.map((i) => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]] as [number, number, number]);
-    const north = edge(Array.from({ length: cols }, (_, c) => c));
-    const south = edge(Array.from({ length: cols }, (_, c) => (rows - 1) * cols + c));
-    const west = edge(Array.from({ length: rows }, (_, r) => r * cols));
-    const east = edge(Array.from({ length: rows }, (_, r) => r * cols + cols - 1));
-    const wall = (pts: [number, number, number][]) => {
-      const p = new Float32Array(pts.length * 6);
-      pts.forEach(([x, y, z], k) => {
-        p.set([x, y, z, x, 0, z], k * 6);
-      });
-      const ix: number[] = [];
-      for (let k = 0; k < pts.length - 1; k++) ix.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 2, k * 2 + 1, k * 2 + 3);
-      const g = new BufferGeometry();
-      g.setAttribute('position', new BufferAttribute(p, 3));
-      g.setIndex(ix);
-      return g;
-    };
-    const walls = [north, south, west, east].map(wall);
-    // filetes: borde superior, base y aristas verticales
-    const loop = [...north, ...east.slice(1), ...[...south].reverse().slice(1), ...[...west].reverse().slice(1)];
-    const lineGeom = (pts: [number, number, number][]) => new BufferGeometry().setFromPoints(pts.map((p) => new Vector3(...p)));
-    const hw = widthKm / 2;
-    const hd = depthKm / 2;
-    const outline = [
-      lineGeom(loop),
-      lineGeom([[-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd], [-hw, 0, -hd]]),
-      ...[north[0], north[cols - 1], south[0], south[cols - 1]].map(([x, y, z]) => lineGeom([[x, 0, z], [x, y, z]])),
-    ];
-    return { top, walls, outline, material: terrainShader(texture, name) };
-  }, [meta, heights, texture, name]);
+  const built = useMemo(
+    () => (meta && heights && texture ? buildTerrain(meta, heights, texture, name) : null),
+    [meta, heights, texture, name],
+  );
 
   if (!meta || !heights || !built) return null;
 

@@ -107,7 +107,12 @@ Guion y escenas a mano, de principio a fin, con el informe final. Lo revisa una 
 Canal `accidentes-aereos` (y sus dobles por idioma); el radar de noticias detecta accidentes y abre un
 borrador «lo que se sabe» con los enlaces a las fuentes oficiales; doblaje como Atlas.
 
+### Fase B — De cerca: avión 3D, vista del piloto y PFD (pedida tras A7)
+Avión genérico en código movido por el FDR (cabeceo, alabeo, rumbo) a escala real sobre el terreno, cámaras por
+keyframes (persecución, lateral, órbita, desde el suelo, cabina), PFD dibujado en código. Escenas `atlas-flight-cam`
+y `atlas-pfd`.
+
 ## 7. Límites conocidos
-- No es CGI realista: siluetas y terreno, no aviones con texturas ni efectos.
+- Ni edificios ni texturas fotográficas: el avión es un modelo genérico sin librea y el terreno, el relieve real.
 - Cada caso exige leer el informe y extraer datos: la IA ayuda, una persona revisa las cifras.
 - En las primeras horas casi no hay datos fiables: el formato «lo que se sabe» se queda corto a propósito.
