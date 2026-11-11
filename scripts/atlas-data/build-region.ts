@@ -8,11 +8,11 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { geoPath } from 'd3-geo';
+import { geoArea, geoPath } from 'd3-geo';
 import type { Feature, Polygon } from 'geojson';
 import sharp from 'sharp';
 import { makeProjection, type ProjectionSpec, type RegionMeta } from '../../remotion/atlas/geo/projection';
-import { buildMosaic, ensureDir, landFeature, OUT, ROOT, run, sampleMosaic, TERRARIUM_SOURCE, WORLD_ATLAS_SOURCE } from './lib';
+import { buildMosaic, ensureDir, landFeature, loadSeas, OUT, ROOT, run, sampleMosaic, SEAS_SOURCE, TERRARIUM_SOURCE, WORLD_ATLAS_SOURCE } from './lib';
 
 interface RegionDef {
   id: string;
@@ -20,6 +20,10 @@ interface RegionDef {
   projection: Omit<ProjectionSpec, 'scale' | 'translate'>;
   width: number;
   zoom: number;
+  /** Margen en grados de las teselas alrededor de la vista (0,5 por defecto; menos en zonas pequeñas a mucho zoom). */
+  margin?: number;
+  /** Agua por altura en vez de la costa de Natural Earth (escala de ciudad: ríos y bahías que la costa 50m no tiene). */
+  water?: { belowM: number } | { seas: true; riversBelowM?: number };
 }
 
 export const HEIGHT_MIN = -11000;
@@ -110,7 +114,8 @@ run(async () => {
   for (let y = 0; y <= H; y += 32) (edge(0, y), edge(W, y));
   console.log(`Extensión: lon ${gLonMin.toFixed(1)}…${gLonMax.toFixed(1)}, lat ${gLatMin.toFixed(1)}…${gLatMax.toFixed(1)}`);
 
-  const mosaic = await buildMosaic(def.zoom, gLonMin - 0.5, gLonMax + 0.5, gLatMin - 0.5, gLatMax + 0.5);
+  const margin = def.margin ?? 0.5;
+  const mosaic = await buildMosaic(def.zoom, gLonMin - margin, gLonMax + margin, gLatMin - margin, gLatMax + margin);
 
   // Alturas en el espacio proyectado.
   console.log('Muestreando alturas…');
@@ -125,10 +130,80 @@ run(async () => {
   // Máscara de tierra de Natural Earth (el DEM tiene depresiones bajo el nivel del mar en tierra).
   console.log('Máscara de tierra…');
   const landPath = geoPath(projection)(landFeature('50m')) ?? '';
-  const mask = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><path d="${landPath}" fill="#fff"/></svg>`))
-    .greyscale()
-    .raw()
-    .toBuffer();
+  // agua por altura: sobre las alturas medianas de un entorno de 7×7 (los ríos del DEM traen manchas de 1-2 m)
+  const waterMask = (below = (def.water as { belowM: number }).belowM) => {
+    const r = 3;
+    const out = new Uint8Array(W * H);
+    const win: number[] = [];
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        win.length = 0;
+        for (let dy = -r; dy <= r; dy += 1) {
+          const yy = Math.max(0, Math.min(H - 1, y + dy));
+          for (let dx = -r; dx <= r; dx += 1) win.push(height[yy * W + Math.max(0, Math.min(W - 1, x + dx))]);
+        }
+        win.sort((a, b) => a - b);
+        out[y * W + x] = win[win.length >> 1] > below ? 255 : 0;
+      }
+    }
+    return Buffer.from(out);
+  };
+  // mares y estuarios de OSM: el océano es un polígono enorme con la tierra como agujeros; se pinta todo de agua y
+  // encima, en blanco, los agujeros (la tierra) que tocan la vista
+  const seasMask = async () => {
+    const seas = await loadSeas();
+    const near = (ring: number[][]) => ring.some(([lon, lat]) => lon >= gLonMin - 0.2 && lon <= gLonMax + 0.2 && lat >= gLatMin - 0.2 && lat <= gLatMax + 0.2);
+    const land: number[][][][] = [];
+    let sea = false;
+    for (const f of seas.features) {
+      const all = f.geometry.type === 'Polygon' ? [f.geometry.coordinates as unknown as number[][][]] : f.geometry.coordinates;
+      for (const poly of all) {
+        const holes = poly.slice(1).filter(near);
+        if (!holes.length && !near(poly[0])) continue;
+        sea = true;
+        for (const h of holes) {
+          // d3 toma como interior el lado de menor área: un anillo al revés sería «todo menos la isla»
+          const ring = geoArea({ type: 'Polygon', coordinates: [h] }) > 2 * Math.PI ? [...h].reverse() : h;
+          land.push([ring]);
+        }
+      }
+    }
+    if (!sea) throw new Error('La región no toca ningún mar de OSM: usa "water": {"belowM": …} o quita "water".');
+    const d = geoPath(projection.clipExtent([[-10, -10], [W + 10, H + 10]]))({ type: 'MultiPolygon', coordinates: land }) ?? '';
+    projection.clipExtent(null);
+    return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="#000"/><path d="${d}" fill="#fff"/></svg>`))
+      .greyscale()
+      .raw()
+      .toBuffer();
+  };
+  // el río más arriba de donde OSM cierra el mar: lo bajo (mediana del entorno) conectado con el mar, por inundación
+  const withRivers = (mask: Buffer, below: number) => {
+    const low = waterMask(below);
+    const queue: number[] = [];
+    for (let i = 0; i < W * H; i++) if (mask[i] === 0) queue.push(i);
+    while (queue.length) {
+      const i = queue.pop()!;
+      const x = i % W;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (j < 0 || j >= W * H || (j === i - 1 && x === 0) || (j === i + 1 && x === W - 1)) continue;
+        if (mask[j] !== 0 && low[j] === 0) {
+          mask[j] = 0;
+          queue.push(j);
+        }
+      }
+    }
+    return mask;
+  };
+  const mask = def.water && 'seas' in def.water
+    ? def.water.riversBelowM !== undefined
+      ? withRivers(await seasMask(), def.water.riversBelowM)
+      : await seasMask()
+    : def.water
+    ? waterMask()
+    : await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><path d="${landPath}" fill="#fff"/></svg>`))
+        .greyscale()
+        .raw()
+        .toBuffer();
 
   // Sombreado: luz del noroeste a 45°, exageración vertical moderada, mezcla de dos escalas.
   const metersPerPixel = 6371000 / projection.scale();
@@ -227,7 +302,7 @@ run(async () => {
     bbox: def.bbox,
     files: { relief: 'relief.jpg', reliefNight: 'relief-night.jpg', height: 'height.png' },
     heightEncoding: { min: HEIGHT_MIN, max: HEIGHT_MAX, note: 'PNG gris 16 bits a mitad de resolución; metros = MIN + v/65535·(MAX−MIN)' },
-    sources: [TERRARIUM_SOURCE, WORLD_ATLAS_SOURCE],
+    sources: [TERRARIUM_SOURCE, def.water && 'seas' in def.water ? SEAS_SOURCE : WORLD_ATLAS_SOURCE],
   };
   await import('node:fs').then((fs) => fs.writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n'));
   console.log(`Listo: ${dir}`);

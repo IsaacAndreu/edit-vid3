@@ -1,5 +1,6 @@
 /** Utilidades de los scripts de datos: teselas Terrarium con caché, mosaico de alturas, Natural Earth. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import sharp from 'sharp';
 import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';
@@ -128,6 +129,24 @@ export const sampleMosaic = (m: Mosaic, lon: number, lat: number): number => {
 
 /* ── Natural Earth vía world-atlas (TopoJSON) ── */
 type WorldTopo = Topology<{ land: GeometryCollection; countries: GeometryCollection }>;
+
+export const SEAS_URL = 'https://registry.npmjs.org/@geo-maps/earth-seas-100m/-/earth-seas-100m-0.6.0.tgz';
+export const SEAS_SOURCE = 'Mares y estuarios: © OpenStreetMap contributors (ODbL), vía el paquete npm @geo-maps/earth-seas-100m';
+
+/** Polígonos de mar de OSM con 100 m de detalle (para mapas de ciudad: estuarios y bahías); se baja una vez a .cache. */
+export const loadSeas = async (): Promise<{ type: 'FeatureCollection'; features: { type: 'Feature'; geometry: { type: string; coordinates: number[][][][] } }[] }> => {
+  const dir = join(CACHE, 'earth-seas-100m');
+  const file = join(dir, 'package', 'map.geo.json');
+  if (!existsSync(file)) {
+    ensureDir(dir);
+    const tgz = await cachedFetch(SEAS_URL, join(dir, 'seas.tgz'));
+    void tgz;
+    execFileSync('tar', ['xzf', join(dir, 'seas.tgz'), '-C', dir]);
+  }
+  const data = JSON.parse(readFileSync(file, 'utf8'));
+  const geoms = data.type === 'GeometryCollection' ? data.geometries : data.type === 'FeatureCollection' ? data.features.map((f: { geometry: unknown }) => f.geometry) : [data];
+  return { type: 'FeatureCollection', features: geoms.map((geometry: unknown) => ({ type: 'Feature', geometry })) };
+};
 
 export const WORLD_ATLAS_SOURCE = 'Costas y países: Natural Earth vía el paquete npm world-atlas (dominio público)';
 

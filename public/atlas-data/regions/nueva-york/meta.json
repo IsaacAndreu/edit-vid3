@@ -1,0 +1,38 @@
+{
+  "id": "nueva-york",
+  "width": 4200,
+  "height": 3917,
+  "projection": {
+    "type": "mercator",
+    "scale": 707771.3939851475,
+    "translate": [
+      915723.5294117813,
+      555066.188478858
+    ]
+  },
+  "metersPerPixel": 9.001494061702209,
+  "bbox": [
+    [
+      -74.13,
+      40.69
+    ],
+    [
+      -73.79,
+      40.93
+    ]
+  ],
+  "files": {
+    "relief": "relief.jpg",
+    "reliefNight": "relief-night.jpg",
+    "height": "height.png"
+  },
+  "heightEncoding": {
+    "min": -11000,
+    "max": 9000,
+    "note": "PNG gris 16 bits a mitad de resolución; metros = MIN + v/65535·(MAX−MIN)"
+  },
+  "sources": [
+    "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+    "Mares y estuarios: © OpenStreetMap contributors (ODbL), vía el paquete npm @geo-maps/earth-seas-100m"
+  ]
+}

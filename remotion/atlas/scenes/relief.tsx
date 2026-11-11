@@ -19,6 +19,7 @@ import type { AtlasScene, LonLat } from '../schema';
 import { accentOn, themes } from '../theme';
 import { sec } from '../time';
 import { Header, useSceneOf } from './text';
+import { clockToS, flightClock, FlightHud, flownUntil, sampleAt, trackAt, videoTimeOf, type FlightData } from '../flight';
 
 type Relief = Extract<AtlasScene, { type: 'atlas-relief-map' }>;
 type Cam = { center: LonLat; zoom: number };
@@ -175,7 +176,12 @@ export const ReliefMapScene: FC = () => {
   const time = useAtlasTime();
   const regionDir = `atlas-data/regions/${scene.region}`;
   const shapeFiles = (scene.shapes ?? []).map((s) => s.source);
-  const data = useJsonFiles<unknown>([`${regionDir}/meta.json`, ...shapeFiles, ...(scene.graticule ? [scene.graticule.cells] : [])]);
+  const data = useJsonFiles<unknown>([
+    `${regionDir}/meta.json`,
+    ...shapeFiles,
+    ...(scene.graticule ? [scene.graticule.cells] : []),
+    ...(scene.flight ? [scene.flight.data] : []),
+  ]);
 
   const keys = useMemo(() => {
     const own = scene.camera.map((c) => ({ t: sec(c.at), center: c.center, zoom: c.zoom }));
@@ -191,9 +197,17 @@ export const ReliefMapScene: FC = () => {
   const [metaJson, ...rest] = data;
   const shapeJson = rest.slice(0, shapeFiles.length);
   const cellsJson = scene.graticule ? (rest[shapeFiles.length] as CellsData) : null;
+  const flightJson = scene.flight ? (rest[shapeFiles.length + (scene.graticule ? 1 : 0)] as FlightData) : null;
   const meta = metaJson as RegionMeta;
   const base = makeProjection(meta.projection);
   const cam = cameraAt(keys, time, start, end);
+  const flightNow = scene.flight && flightJson ? flightClock(scene.flight, time) : 0;
+  const plane = scene.flight && flightJson ? sampleAt(flightJson, flightNow) : null;
+  if (scene.flight?.follow && plane) {
+    // la cámara pasa del keyframe al avión en 1,5 s desde que arranca el vuelo y luego lo sigue
+    const f = ease(Math.min(1, Math.max(0, (time - sec(scene.flight.at)) / 1.5)));
+    cam.center = geoInterpolate(cam.center, [plane.lon, plane.lat])(f) as LonLat;
+  }
   const baseK = Math.max(W / meta.width, H / meta.height);
   const k = baseK * cam.zoom;
   let [cx, cy] = base(cam.center) ?? [meta.width / 2, meta.height / 2];
@@ -325,6 +339,9 @@ export const ReliefMapScene: FC = () => {
             </g>
           );
         })}
+        {scene.flight && flightJson && plane ? (
+          <FlightTrack layer={scene.flight} data={flightJson} now={flightNow} P={P} time={time} theme={name} />
+        ) : null}
         {(() => {
           // nombres sin pisarse: a la derecha, a la izquierda, arriba o abajo del punto, el primer sitio libre
           const taken: [number, number, number, number][] = [];
@@ -425,8 +442,74 @@ export const ReliefMapScene: FC = () => {
           </div>
         );
       })}
+      {scene.flight?.hud && plane ? (
+        <FlightHud show={scene.flight.hud.show} point={plane} theme={name} corner={scene.flight.hud.corner} labels={scene.flight.hud.labels} />
+      ) : null}
       <Header top={92} />
     </AbsoluteFill>
+  );
+};
+
+type FlightLayer = NonNullable<Relief['flight']>;
+
+/** Trayectoria real: la parte volada en color, el resto en tenue (trail 'full'), el avión orientado y los hitos. */
+const FlightTrack: FC<{
+  layer: FlightLayer;
+  data: FlightData;
+  now: number;
+  P: (ll: LonLat) => [number, number];
+  time: number;
+  theme: 'paper' | 'night';
+}> = ({ layer, data, now, P, time, theme }) => {
+  const t = themes[theme];
+  const color = accentOn(theme, layer.accent ?? 'danger');
+  const from = clockToS(layer.from);
+  const to = clockToS(layer.to);
+  const d = (pts: { lon: number; lat: number }[]) =>
+    pts.map((p, i) => {
+      const [x, y] = P([p.lon, p.lat]);
+      return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join('');
+  const flown = flownUntil(data, from, now);
+  const all = data.points.filter((p) => p.s >= from && p.s <= to);
+  const tip = flown[flown.length - 1];
+  const [x, y] = P([tip.lon, tip.lat]);
+  // ángulo en pantalla: proyectar un punto un poco más adelante en la dirección de la trayectoria
+  const track = (trackAt(data, now) * Math.PI) / 180;
+  const ahead = P([tip.lon + Math.sin(track) * 0.002 / Math.cos((tip.lat * Math.PI) / 180), tip.lat + Math.cos(track) * 0.002]);
+  const angle = (Math.atan2(ahead[1] - y, ahead[0] - x) * 180) / Math.PI;
+  const appear = progress(time, sec(layer.at) - 0.6, 0.6);
+  return (
+    <g opacity={appear}>
+      {layer.trail === 'full' ? <path d={d(all)} fill="none" stroke={color} strokeOpacity={0.3} strokeWidth={3} strokeDasharray="10 8" /> : null}
+      <path d={d(flown)} fill="none" stroke={t.bg} strokeOpacity={0.8} strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d(flown)} fill="none" stroke={color} strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />
+      {(layer.marks ?? []).map((m, i) => {
+        const at = videoTimeOf(layer, m.clock);
+        const r = reveal(time, at, 0.5);
+        if (r.opacity <= 0) return null;
+        const p = sampleAt(data, clockToS(m.clock));
+        const [mx, my] = P([p.lon, p.lat]);
+        const mc = accentOn(theme, m.accent ?? 'ink');
+        const left = mx > 1920 * 0.62;
+        return (
+          <g key={`fm${i}`} opacity={r.opacity}>
+            <circle cx={mx} cy={my} r={9} fill={t.card} stroke={mc} strokeWidth={3.5} />
+            <text x={mx + (left ? -30 : 30)} y={my - 6} textAnchor={left ? 'end' : 'start'} fontFamily={fonts.serif} fontWeight={600}
+                  fontSize={28} fill={mc} {...haloStyle(t.bg)}>
+              {m.label}
+            </text>
+            <text x={mx + (left ? -30 : 30)} y={my + 24} textAnchor={left ? 'end' : 'start'} fontFamily={fonts.mono} fontWeight={600}
+                  fontSize={20} letterSpacing={2} fill={t.inkSoft} {...haloStyle(t.bg)}>
+              {m.sub ?? m.clock}
+            </text>
+          </g>
+        );
+      })}
+      <g transform={`translate(${x} ${y}) rotate(${angle}) translate(-26 -26) scale(0.52)`}>
+        <path d={PLANE_TOP_PATH} fill="#F4EFE2" stroke={t.ink} strokeWidth={5} strokeLinejoin="round" />
+      </g>
+    </g>
   );
 };
 

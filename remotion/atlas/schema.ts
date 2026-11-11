@@ -365,6 +365,53 @@ export const elevationProfileSceneSchema = z
   })
   .strict();
 
+
+/* ── Accidentes aéreos (prompts/accidentes-plan.md): vuelo real reproducido desde vuelo.json ─────────────────── */
+
+/** Hora local del vuelo, como en el informe: "15:27:11" (décimas opcionales). */
+export const clockSchema = z.string().regex(/^\d{2}:\d{2}:\d{2}(\.\d+)?$/, 'hora hh:mm:ss');
+
+/**
+ * Reproducción de un vuelo: desde `at` el reloj del vuelo corre de `from` a `to` a `rate` segundos de vuelo por
+ * segundo de vídeo (1 = tiempo real) y se queda en `to`. Los datos (public/<data>) los genera
+ * scripts/accidentes/vuelo.py desde la tabla del FDR, con su fuente.
+ */
+export const flightPlaybackSchema = z
+  .object({
+    data: z.string(),
+    at: atSchema,
+    from: clockSchema,
+    to: clockSchema,
+    rate: z.number().positive().optional(),
+  })
+  .strict();
+export type FlightPlayback = z.infer<typeof flightPlaybackSchema>;
+
+/** Hito sobre la trayectoria: aparece cuando el reloj del vuelo llega a su hora. */
+export const flightMarkSchema = z
+  .object({ clock: clockSchema, label: z.string(), sub: z.string().optional(), accent: accentSchema.optional() })
+  .strict();
+
+/** Instrumentos en pantalla, leídos de los datos en cada fotograma. */
+export const flightHudSchema = z
+  .object({
+    show: z.array(z.enum(['clock', 'alt', 'kias', 'n1'])).min(1),
+    corner: cornerSchema.optional(),
+    /** Rótulos de cada instrumento en el idioma del vídeo (por defecto: HORA, ALTITUD, VELOCIDAD, MOTORES). */
+    labels: z.object({ clock: z.string(), alt: z.string(), kias: z.string(), n1: z.string() }).partial().strict().optional(),
+  })
+  .strict();
+
+const flightLayerSchema = flightPlaybackSchema
+  .extend({
+    accent: accentSchema.optional(),
+    /** 'flown' = la estela crece con el avión; 'full' = la ruta entera en tenue y la volada encima. */
+    trail: z.enum(['flown', 'full']).optional(),
+    marks: z.array(flightMarkSchema).optional(),
+    hud: flightHudSchema.optional(),
+  })
+  .strict();
+
 export const reliefMapSceneSchema = z
   .object({
     ...sceneBaseShape,
@@ -452,6 +499,11 @@ export const reliefMapSceneSchema = z
       })
       .strict()
       .optional(),
+    /** Vuelo real que se dibuja mientras su reloj avanza (avión orientado, hitos, instrumentos). */
+    flight: flightLayerSchema
+      .extend({ /** La cámara sigue al avión (con el zoom del keyframe vigente). */ follow: z.boolean().optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -537,6 +589,92 @@ export const terrain3dSceneSchema = z
     axis: z.object({ maxKm: z.number().positive(), stepKm: z.number().positive(), at: atSchema }).strict().optional(),
     /** Rótulo en la base del bloque («SEA LEVEL»). */
     base: z.object({ label: z.string(), at: atSchema }).strict().optional(),
+    /** Vuelo real sobre el terreno: trayectoria en el aire con la misma exageración vertical, línea al suelo. */
+    flight: flightLayerSchema.extend({ dropLines: z.boolean().optional() }).strict().optional(),
+  })
+  .strict();
+
+/** Perfil de un vuelo real en el tiempo: altitud (con el terreno debajo), velocidad o motores. */
+export const flightProfileSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-flight-profile'),
+    flight: flightPlaybackSchema,
+    /** Qué se dibuja: altitud (ft), velocidad indicada (kt) o N1 de los dos motores (%). */
+    series: z.enum(['alt', 'kias', 'n1']),
+    axis: z.object({ max: z.number().positive(), step: z.number().positive(), unit: z.string() }).strict(),
+    /** Terreno bajo la trayectoria (solo con series 'alt'; necesita `ground` en vuelo.json: accidentes:data suelo). */
+    terrain: z.boolean().optional(),
+    marks: z.array(flightMarkSchema).optional(),
+    /** Líneas horizontales de referencia («300 kt para reencender»). */
+    refs: z.array(z.object({ value: z.number(), label: z.string(), at: atSchema, accent: accentSchema.optional() }).strict()).optional(),
+    /** Rótulos de las dos series de N1 («MOTOR 1», «MOTOR 2»). */
+    legend: z.tuple([z.string(), z.string()]).optional(),
+  })
+  .strict();
+
+/** Cabina en texto: reloj, frases del informe a su hora e instrumentos leídos de los datos. */
+export const cockpitSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-cockpit'),
+    flight: flightPlaybackSchema,
+    /** Frases citadas del informe (traducidas si hace falta), a la hora en que se dijeron. */
+    lines: z
+      .array(z.object({ clock: clockSchema, who: z.string(), text: z.string(), ref: z.string(), accent: accentSchema.optional() }).strict())
+      .min(1),
+    instruments: z.array(z.enum(['alt', 'kias', 'n1'])).min(1),
+    labels: flightHudSchema.shape.labels,
+    /** Cuántas frases caben a la vez (las más viejas se van). */
+    visible: z.number().int().min(1).max(8).optional(),
+  })
+  .strict();
+
+/** Silueta de avión con piezas resaltadas (motores, timón de profundidad…). */
+export const aircraftSceneSchema = z
+  .object({
+    ...sceneBaseShape,
+    type: z.literal('atlas-aircraft'),
+    model: z.enum(['narrowbody', 'bizjet']),
+    view: z.enum(['top', 'side']),
+    highlights: z
+      .array(
+        z
+          .object({
+            part: z.enum(['engines', 'engine-left', 'engine-right', 'wings', 'flaps', 'tail', 'elevator', 'rudder', 'nose', 'gear', 'fuselage']),
+            at: atSchema,
+            accent: accentSchema.optional(),
+            label: z.string().optional(),
+            sub: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
+/** «Lo que se sabe»: cada dato con su estado y su fuente, a la hora de la última actualización. */
+export const knownSceneSchema = z
+  .object({
+    ...textSceneShape,
+    type: z.literal('atlas-known'),
+    /** «Actualizado: 15 ene 2009, 18:00». */
+    asOf: z.string(),
+    items: z
+      .array(
+        z
+          .object({
+            status: z.enum(['confirmed', 'unconfirmed', 'unknown']),
+            text: richSchema,
+            source: z.string(),
+            at: atSchema,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(6),
+    /** Rótulos de los estados en el idioma del vídeo. */
+    statusLabels: z.object({ confirmed: z.string(), unconfirmed: z.string(), unknown: z.string() }).strict().optional(),
   })
   .strict();
 
@@ -636,6 +774,10 @@ export const sceneSchema = z.discriminatedUnion('type', [
   globeSceneSchema,
   terrain3dSceneSchema,
   diagramSceneSchema,
+  flightProfileSceneSchema,
+  cockpitSceneSchema,
+  aircraftSceneSchema,
+  knownSceneSchema,
 ]);
 export type AtlasScene = z.infer<typeof sceneSchema>;
 export type SceneType = AtlasScene['type'];
