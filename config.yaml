@@ -436,7 +436,7 @@ gancho:                            # revisión del principio del guion antes de 
 
 ritmo:                             # tras el render: tramos sin nada nuevo en pantalla y silencios (qa/ritmo.md; avisa, no bloquea)
   enabled: true
-  quiet_seconds: 12                # tramo quieto avisado (Manicule tiene 1-2 así en 5 min)
+  quiet_seconds: 12                # tramo quieto avisado (la referencia de Atlas tiene 1-2 así en 5 min)
   hook_seconds: 30                 # el arranque, más exigente:
   hook_quiet: 6                    # ya avisa a los 6 s quieto
   silence_seconds: 2.5             # la voz calla este tiempo o más

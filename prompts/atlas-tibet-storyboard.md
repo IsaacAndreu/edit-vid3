@@ -7,7 +7,7 @@ Los textos entre comillas son literales en pantalla.
 La narración no está transcrita aquí: hay que aportar guion y audio propios y ajustar los
 `at` de cada revelado a las marcas de tiempo de la voz.
 
-- Marca: icono de manecilla + "MANICULE" (sustituir por la propia).
+- Marca: ✦ ATLAS.
 - Capítulos: I Ground · II Pressure · III Engines · IV Airports · V Cost.
 - Región protagonista: meseta tibetana (contorno "land above 3,000 m").
 

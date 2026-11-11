@@ -52,8 +52,8 @@ Para continuar: `/atlas-goal` (siguiente fase pendiente) o `/atlas-goal N`.
 - Navegador: en el contenedor cloud se usa el Chromium completo de `/opt/pw-browsers`
   (el headless-shell no confía en el CA del proxy y no baja las fuentes). Fuera, `REMOTION_BROWSER`
   o el navegador de Remotion.
-- Icono de marca: admite un carácter o una ruta a imagen en `public/`. Nunca MANICULE ni su manecilla:
-  son la marca del canal de referencia. Cada vídeo usa la del canal.
+- Icono de marca: admite un carácter o una ruta a imagen en `public/`. Por defecto ✦ ATLAS;
+  cada vídeo usa la marca de su canal.
 
 ## Fase 1 — Escenas de texto y superposiciones
 
@@ -76,7 +76,7 @@ Comparativas: `npm run atlas:stills -- storyboards/test-phase1.json` y
   titulares largos (ocupan ~8 % más de ancho).
 - El fondo nocturno del CTA final lleva terreno 3D en el original; aquí el CTA admite
   `backdrop: "previous"` y lo tendrá cuando exista `atlas-terrain-3d` (fase 5).
-- Marca: ATLAS con ✦ en las pruebas (MANICULE y su manecilla son la marca del canal de referencia y no se usan).
+- Marca: ✦ ATLAS en todas las pruebas.
 
 **Esquema añadido**: `atlas-chapter-card {of}`, `atlas-agenda {numerals[], tagline, notes[]}`,
 `atlas-title-overlay {dim}`, `atlas-statement`, `atlas-card-row {cards[]}`,
@@ -115,7 +115,7 @@ Storyboard de prueba: `storyboards/test-phase2.json` (6 escenas, 36 s).
 - Vista `"scene"` en `pipeline/atlas.py`: la IA puede pedir dial, compare, density, runway, agenda, recap y cards;
   `remotion/atlas/embed.tsx` las dibuja con los mismos componentes que `AtlasVideo`. Cifras sólo del guion
   (`check_scene`). VERSION 21.
-- Marca: nunca MANICULE ni su manecilla (son del canal de referencia).
+- Marca: ✦ ATLAS en todas partes, también tapada en los fotogramas de referencia.
 
 ## Fase 3 — Datos y mapa de relieve
 

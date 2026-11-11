@@ -67,8 +67,7 @@ Tipografía (tres familias, nunca más):
 ### 3. Capas persistentes (HUD)
 
 - **Marca**: arriba a la izquierda, icono + nombre en mono mayúsculas, tamaño mínimo, siempre
-  visible. Parametrizable (`brand.name`, `brand.icon`). En la referencia: una manecilla
-  tipográfica (☞) y la palabra del canal.
+  visible. Parametrizable (`brand.name`, `brand.icon`). Por defecto: ✦ y ATLAS.
 - **Indicador de capítulos**: arriba a la derecha, números romanos `I II III IV V`. Los ya
   vistos en tinta, el actual en rojo con subrayado y una palabra-etiqueta en cursiva debajo
   (`Ground`, `Pressure`…), los pendientes en gris. Aparece tras la primera cortinilla y
