@@ -29,3 +29,6 @@ Este repo construye vídeos de estilo "Atlas" con Remotion. El plan está en
 - `npm run atlas:data -- flight-ground public/accidentes/<caso>/vuelo.json` → terreno bajo la trayectoria
 - `npx remotion still remotion/index.ts AtlasShort out.png --props=<storyboard.json> --frame=N` → versión vertical
 - Plan y progreso de los accidentes aéreos: `prompts/accidentes-plan.md`, `prompts/accidentes-progress.md`
+- `python3 scripts/accidentes/buscar_casos.py --escanear 2010 2024` → `out/_accidentes/casos.md` (expedientes de la NTSB con tabla del FDR)
+- `python3 scripts/accidentes/buscar_casos.py --preparar <NTSB> <caso>` → esqueleto de `scripts/accidentes/casos/<caso>.json`
+- `python3 scripts/accidentes/sonido.py public/accidentes/<caso>/vuelo.json` → sonido de motores sintetizado del N1

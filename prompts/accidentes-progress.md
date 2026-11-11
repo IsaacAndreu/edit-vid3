@@ -84,6 +84,8 @@ nombre de prueba (`public/accidentes/_prueba/`, `docs/accidentes/b3-decoracion.j
   OurAirports → Short vertical `.urgente`, primero en la cola, aviso por Telegram; nunca se sube solo.
 - Flaps y tren animados con el FDR; sonido de motores sintetizado del N1 (`scripts/accidentes/sonido.py`).
 - Ejemplos fuera de la cola con `.en-espera` (Hudson1549, AtlasAltiplano).
+- Buscador de casos (`scripts/accidentes/buscar_casos.py`): recorre los expedientes de la NTSB (DCAaaMAnnn) y lista
+  los que tienen la tabla del FDR publicada; `--preparar` descarga la tabla y deja el esqueleto del caso.
 
 ## Pendiente / decisiones para el usuario
 - Elegir los siguientes casos (informes con tabla del FDR pública: la NTSB suele publicarla; BEA/AAIB a veces no).
