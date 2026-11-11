@@ -294,6 +294,70 @@ def catalog() -> str:
     return re.sub(r"!\[[^\]]*\]\([^)]*\)\n?", "", text)
 
 
+def _tokens(text: str) -> list[str]:
+    """Como tokenize de remotion/atlas/time.ts: minúsculas, sin acentos ni signos, partiendo por espacios y guiones."""
+
+    import unicodedata
+
+    out = []
+    for part in re.split(r"[\s—–-]+", text):
+        part = unicodedata.normalize("NFD", part.lower())
+        part = "".join(c for c in part if not unicodedata.combining(c)).replace("’", "").replace("'", "")
+        part = "".join(c for c in part if c.isalnum())
+        if part:
+            out.append(part)
+    return out
+
+
+def _occurrences(words: list[dict[str, Any]], phrase: str) -> list[float]:
+    hay = [(tok, w["start"]) for w in words for tok in _tokens(str(w.get("word", "")))]
+    needle = _tokens(phrase)
+    if not needle:
+        return []
+    return [hay[i][1] for i in range(len(hay) - len(needle) + 1) if [t for t, _ in hay[i:i + len(needle)]] == needle]
+
+
+def fix_repeats(board: dict[str, Any], words: list[dict[str, Any]]) -> dict[str, Any]:
+    """Una frase de ancla que se repite en el guion y no trae "nth": la primera vez que suena desde que empieza su
+    escena (o, para el inicio de una escena, desde que empezó la anterior). Lo que el orden ya decide no se le pregunta
+    a la IA: es el error que más le cuesta corregir."""
+
+    def is_say(v: Any) -> bool:
+        return isinstance(v, dict) and isinstance(v.get("say"), str) and set(v) <= {"say", "nth", "offset"}
+
+    def settle(anchor: dict[str, Any], after: float) -> float:
+        hits = _occurrences(words, anchor["say"])
+        if not hits:
+            return after
+        if "nth" in anchor:
+            return hits[min(int(anchor["nth"]), len(hits)) - 1]
+        if len(hits) > 1:
+            pick = next((i for i, h in enumerate(hits) if h >= after - 0.05), len(hits) - 1)
+            anchor["nth"] = pick + 1
+            return hits[pick]
+        return hits[0]
+
+    def walk(value: Any, after: float) -> None:
+        if is_say(value):
+            settle(value, after)
+        elif isinstance(value, dict):
+            for v in value.values():
+                walk(v, after)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v, after)
+
+    previous = 0.0
+    for scene in board.get("scenes") or []:
+        start = scene.get("start")
+        here = settle(start, previous) if is_say(start) else float(start.get("t", previous)) if isinstance(start, dict) else previous
+        for key, v in scene.items():
+            if key != "start":
+                walk(v, here)
+        previous = here
+    return board
+
+
 def draft(ask: Callable[[str, str], dict[str, Any]], slug: str, script: str, scenes: str, duration: float | None,
           storyboard_path: Path, transcript_rel: str, voice_rel: str | None, tries: int = 2) -> dict[str, Any]:
     """Storyboard escrito por la IA; los errores de validación se le devuelven para que los corrija."""
@@ -307,6 +371,11 @@ def draft(ask: Callable[[str, str], dict[str, Any]], slug: str, script: str, sce
         if not isinstance(board, dict):
             raise RuntimeError("La IA no devolvió {\"storyboard\": …}")
         board = with_audio(board, slug, transcript_rel, voice_rel, duration)
+        try:
+            words = json.loads((PUBLIC / transcript_rel).read_text(encoding="utf-8")).get("words") or []
+        except (OSError, ValueError):
+            words = []
+        board = fix_repeats(board, words)
         storyboard_path.write_text(json.dumps(board, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         error = validate(storyboard_path)
         if error is None:

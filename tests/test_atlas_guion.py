@@ -109,3 +109,17 @@ def test_the_model_plans_the_scenes_from_the_script_and_reuses_the_data():
     system, user = seen[0]
     assert "LITERAL" in system and "atlas-relief-map" in system
     assert "GEOGRAFÍA YA GENERADA" in user and "región andes" in user
+
+
+def test_repeated_anchor_phrases_take_the_occurrence_after_their_scene():
+    script = "Em Varsóvia chove. Depois, o Reino Unido. Em Varsóvia, de novo, a mesma hora."
+    words = atlas_guion.estimated_transcript(script)["words"]
+    board = {"scenes": [
+        {"id": "a", "start": {"t": 0}, "points": [{"at": {"say": "Em Varsóvia"}}]},
+        {"id": "b", "start": {"say": "o Reino Unido"}},
+        {"id": "c", "start": {"say": "Em Varsóvia"}, "title": "x", "lines": [{"at": {"say": "Varsóvia"}}]},
+    ]}
+    out = atlas_guion.fix_repeats(board, words)
+    assert out["scenes"][0]["points"][0]["at"]["nth"] == 1
+    assert "nth" not in out["scenes"][1]["start"]
+    assert out["scenes"][2]["start"]["nth"] == 2 and out["scenes"][2]["lines"][0]["at"]["nth"] == 2
