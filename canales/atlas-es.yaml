@@ -1,7 +1,7 @@
 # «Atlas» (español): explicaciones de mapas sobre un globo dibujado en código, estilo «mira más de cerca»: página de
 # papel, globo ortográfico que gira de frase en frase, rutas de círculo máximo, círculos de alcance, tarjetas de papel,
 # sello, algún gráfico limpio y dibujos lineales; barra de capítulos I-V (pipeline/atlas.py → Atlas.tsx). Sin metraje:
-# va por el carril rápido de la cola. Se dobla al inglés en atlas-en. Cambia el nombre en brand.name.
+# va por el carril rápido de la cola. Se dobla al inglés (atlas-en), al portugués (atlas-pt) y al alemán (atlas-de). Cambia el nombre en brand.name.
 
 video:
   fps: 30
@@ -41,8 +41,8 @@ lab:
 
 dubbing:
   enabled: true
-  languages: [en]
-  channels: {en: atlas-en}
+  languages: [en, pt, de]
+  channels: {en: atlas-en, pt: atlas-pt, de: atlas-de}
   review: false
 
 shorts:
