@@ -180,6 +180,20 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
                 return
             raise RuntimeError(f"el guion de {slug} está en español y su canal es en {IN_SPANISH.get(lang, lang)}: "
                                "no se hace (escribe el guion en ese idioma o cámbialo de canal)")
+    from pipeline import atlas_guion
+
+    if atlas_guion.is_atlas_folder(ctx.materials_dir):    # guion + escenas: the Atlas path, not the footage one
+        with _one_process(ctx):
+            def ask(system: str, user: str) -> dict:
+                from pipeline.llm import complete_json
+
+                return complete_json(ctx, stage="atlas_guion", system=system, user=user, section="atlas_guion", max_tokens=16000)
+
+            atlas_guion.make_in_queue(root, slug, ask)
+            from pipeline import atlas_doblaje
+
+            atlas_doblaje.after_done(root, slug)          # its dubs (canal → dubbing), each one a new video in the queue
+        return
     with _one_process(ctx):                               # never two runs of one video at once
         from pipeline import formats
 
@@ -330,10 +344,13 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     # queue.drawn_first: the videos drawn in code (simulation, stick figures) before the footage ones
     drawn_first = bool(_queue_cfg(root).get("drawn_first", True))
     drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
-    order = [d.name for d in sorted(ready, key=lambda d: (d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
+    # «.urgente» (un Short de última hora, pipeline/accidente_rapido.py): antes que todo lo demás
+    urgent = {d.name for d in ready if (d / URGENT).is_file()}
+    shorts_set -= urgent
+    order = [d.name for d in sorted(ready, key=lambda d: (d.name not in urgent, d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
                                                           due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
-    longs = [n for n in order if n not in shorts_set]
-    return take_turns(root, longs) + take_turns(root, [n for n in order if n in shorts_set])
+    longs = [n for n in order if n not in shorts_set and n not in urgent]
+    return [n for n in order if n in urgent] + take_turns(root, longs) + take_turns(root, [n for n in order if n in shorts_set])
 
 
 def take_turns(root: Path, order: list[str]) -> list[str]:
@@ -503,6 +520,7 @@ def channel_rank(root: Path) -> dict[str, int]:
 
 
 HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»
+URGENT = ".urgente"                    # in a video's folder: made before everything else (breaking-news Shorts)
 QUOTA_WAIT = ".espera-cuota"           # in a video's folder: epoch of the API quota reset it waits for (the pilot)
 
 
@@ -738,6 +756,12 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                     radar.run_if_due(root)
                 except Exception as error:
                     print(f"Radar: {type(error).__name__}: {error}")
+                try:
+                    from pipeline import accidente_rapido
+
+                    accidente_rapido.run_if_due(root)             # rapido.enabled: breaking-news Shorts, first in the queue
+                except Exception as error:
+                    print(f"Última hora: {type(error).__name__}: {error}")
                 try:
                     from pipeline import autopilot
 

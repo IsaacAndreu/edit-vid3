@@ -280,7 +280,9 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
         until: str | None = None, log: Callable[[str], None] = print) -> Path:
     """Todo el camino de guion + escenas a vídeo. Devuelve el storyboard (o el vídeo si se renderiza)."""
 
-    folder = PROJECT_ROOT / "materiales" / slug
+    from .context import find_video
+
+    folder = find_video(PROJECT_ROOT, slug)          # materiales/<slug>/ o materiales/<canal>/<slug>/
     if not (folder / "guion.txt").is_file():
         raise SystemExit(f"Falta {folder.relative_to(PROJECT_ROOT)}/guion.txt")
     script = spoken_script((folder / "guion.txt").read_text(encoding="utf-8"))
@@ -349,10 +351,12 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
     if until == "stills":
         return PROJECT_ROOT / "out" / "stills" / clean / "contact-sheet.jpg"
 
-    # 6. render
+    # 6. render (vertical, composición AtlasShort, si escenas.json lo pide con "vertical": true)
+    vertical = bool((folder / "escenas.json").is_file() and json.loads((folder / "escenas.json").read_text(encoding="utf-8")).get("vertical"))
     out = PROJECT_ROOT / "out" / clean / "atlas.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["npx", "remotion", "render", "remotion/index.ts", "AtlasVideo", str(out), f"--props={storyboard_path}", "--gl=swangle"]
+    cmd = ["npx", "remotion", "render", "remotion/index.ts", "AtlasShort" if vertical else "AtlasVideo", str(out),
+           f"--props={storyboard_path}", "--gl=swangle"]
     browser = os.environ.get("REMOTION_BROWSER") or (str(PREINSTALLED_CHROME) if PREINSTALLED_CHROME.exists() else "")
     if browser:
         cmd.append(f"--browser-executable={browser}")
@@ -360,3 +364,29 @@ def run(slug: str, *, ask: Callable[[str, str], dict[str, Any]] | None = None, t
     subprocess.run(cmd, cwd=PROJECT_ROOT, check=True)
     log(f"   {out.relative_to(PROJECT_ROOT)}")
     return out
+
+
+def is_atlas_folder(folder: Path) -> bool:
+    """Un vídeo de --atlas-guion: la cola lo hace con este camino, no con el de metraje."""
+
+    return (folder / "guion.txt").is_file() and ((folder / "escenas.json").is_file() or (folder / "escenas.md").is_file())
+
+
+def make_in_queue(root: Path, slug: str, ask: Callable[[str, str], dict[str, Any]] | None, log: Callable[[str], None] = print) -> Path:
+    """Desde la cola: la voz del canal (GenAIPro) si falta, el vídeo y out/<slug>/video-final.mp4, que es lo que el
+    estudio y «Para subir» esperan de cualquier vídeo terminado."""
+
+    from . import tts
+    from .context import RunContext
+
+    ctx = RunContext.create(slug, root=root)
+    tts.ensure(ctx)                      # sin voz configurada sigue sin ella (borrador mudo)
+    try:
+        out = run(slug, ask=ask, log=log)
+    except SystemExit as error:          # un fallo del vídeo no para la cola entera
+        raise RuntimeError(str(error)) from None
+    final = root / "out" / slug / "video-final.mp4"
+    final.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(out, final)
+    log(f"   {final.relative_to(root)}")
+    return final

@@ -168,7 +168,8 @@ run(async () => {
         }
       }
     }
-    if (!sea) throw new Error('La región no toca ningún mar de OSM: usa "water": {"belowM": …} o quita "water".');
+    // tierra adentro (ningún mar cerca): todo es tierra, sin agua que pintar
+    if (!sea) return Buffer.alloc(W * H, 255);
     const d = geoPath(projection.clipExtent([[-10, -10], [W + 10, H + 10]]))({ type: 'MultiPolygon', coordinates: land }) ?? '';
     projection.clipExtent(null);
     return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="#000"/><path d="${d}" fill="#fff"/></svg>`))

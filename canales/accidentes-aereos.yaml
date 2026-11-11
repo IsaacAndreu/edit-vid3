@@ -49,8 +49,21 @@ radar:
   # noticias del día (pipeline/noticias.py): un accidente reciente con mucha atención → borrador «lo que se sabe»
   news_queries: ["accidente avión", "plane crash", "accidente aéreo", "NTSB preliminary report"]
 
+rapido:
+  # Shorts de última hora (pipeline/accidente_rapido.py): una búsqueda de noticias cada every_minutes; una historia que
+  # cubren min_channels canales a más de min_speed visitas/hora → Short vertical «lo que se sabe», primero en la cola.
+  # Nunca se sube solo: espera en «Para subir» a que lo revises (fuentes.json dice de dónde sale cada dato).
+  enabled: true
+  every_minutes: 60
+  min_channels: 2
+  min_speed: 2000
+  hours: 12
+
 dubbing:
-  enabled: false                   # los vídeos de --atlas-guion no pasan por el doblaje automático
+  # los vídeos de --atlas-guion se doblan al terminar (pipeline/atlas_doblaje.py) a los idiomas con canal y voz
+  enabled: false
+  languages: [en, pt, de, fr, it]
+  channels: {}                     # p. ej. {en: accidents-en, pt: acidentes-pt}: crea esos canales y sus voces primero
 
 shorts:
   enabled: false                   # la versión vertical se renderiza con la composición AtlasShort
