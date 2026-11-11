@@ -71,6 +71,11 @@ recalculan. **Antes de publicar**: una persona revisa las cifras y las traduccio
 - Panel de cabina (`cockpitPanel`): PFD de los dos pilotos y N1 en esfera, con los datos del instante.
 - Fotogramas: `docs/accidentes/b2-*.jpg`. Pendiente: edificios (necesita OSM vía Overpass, host no permitido aún).
 
+### B3 — Decoración real de la compañía ✅
+Por decisión del usuario (asume el riesgo de marca): `livery` como objeto con colores hex, franja, panza en su color,
+rótulo del fuselaje y logos PNG que aporta el usuario en `public/accidentes/<caso>/livery/`. Probado con un logo y un
+nombre de prueba (`public/accidentes/_prueba/`, `docs/accidentes/b3-decoracion.jpg`); ningún logo real en el repo.
+
 ## Pendiente / decisiones para el usuario
 - Elegir los siguientes casos (informes con tabla del FDR pública: la NTSB suele publicarla; BEA/AAIB a veces no).
 - Trayectorias ADS-B para casos sin FDR público: OpenSky solo no comercial; ADS-B Exchange con licencia.

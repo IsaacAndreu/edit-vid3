@@ -3,8 +3,8 @@
  * alas con flecha y diedro, estabilizadores, motores o hélices. Medidas en metros con el morro hacia +X, arriba +Y y
  * el ala derecha hacia +Z; quien los usa los escala a km y los orienta con el cabeceo, el alabeo y el rumbo del FDR.
  *
- * Personalización: tipo de avión, pintura genérica (LIVERIES de theme.ts: colores lisos, franja, cola de color; nunca
- * los logos ni los colores de una compañía) y la matrícula pintada en el fuselaje (es un dato del informe).
+ * Personalización: tipo de avión, pintura (una genérica de LIVERIES en theme.ts, o la decoración real de un caso:
+ * colores, rótulo de la compañía en el fuselaje y logos de cola que pone el usuario) y la matrícula del informe.
  */
 import {
   BoxGeometry,
@@ -21,7 +21,26 @@ import {
   SRGBColorSpace,
   Vector2,
 } from 'three';
+import type { Texture } from 'three';
 import { FLIGHT, LIVERIES, type LiveryName } from '../theme';
+
+/** Decoración completa de un avión: colores, franja, rótulo del fuselaje y logos (texturas ya cargadas). */
+export interface LiverySpec {
+  body: string;
+  belly: string;
+  tail: string;
+  engine: string;
+  text: string;
+  stripe?: string | null;
+  /** Rótulo pintado delante de las alas (p. ej. el nombre de la compañía). */
+  titles?: string;
+  titlesColor?: string;
+  tailLogo?: Texture | null;
+  titlesLogo?: Texture | null;
+}
+
+export const liveryOf = (livery: LiveryName | Omit<LiverySpec, 'tailLogo' | 'titlesLogo'> | undefined): LiverySpec =>
+  typeof livery === 'object' ? { ...LIVERIES.white, ...livery } : LIVERIES[livery ?? 'white'];
 
 export type AircraftModel = 'narrowbody' | 'widebody' | 'regionaljet' | 'turboprop' | 'bizjet';
 
@@ -86,13 +105,17 @@ const surface = (semi: number, root: number, tip: number, sweep: number, thick: 
 /** Matrícula pintada: textura de lienzo con el texto, en un plano pegado al costado del fuselaje. */
 const registrationDecal = (text: string, color: string, height: number) => {
   const canvas = document.createElement('canvas');
-  canvas.width = 1024;
+  const font = 'bold 120px "IBM Plex Mono", monospace';
+  const probe = canvas.getContext('2d');
+  if (probe) probe.font = font;
+  // el lienzo se ajusta al texto: un rótulo largo no se corta
+  canvas.width = Math.max(256, Math.ceil((probe?.measureText(text).width ?? text.length * 75) + 40));
   canvas.height = 160;
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = color;
-    ctx.font = 'bold 120px "IBM Plex Mono", monospace';
+    ctx.font = font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -103,9 +126,8 @@ const registrationDecal = (text: string, color: string, height: number) => {
   return new Mesh(new PlaneGeometry(height * (canvas.width / canvas.height), height), m);
 };
 
-export const buildAircraft = (model: AircraftModel, livery: LiveryName = 'white', registration?: string): Group => {
+export const buildAircraft = (model: AircraftModel, paint: LiverySpec = LIVERIES.white, registration?: string): Group => {
   const p = SPECS[model];
-  const paint = LIVERIES[livery];
   const body = mat(paint.body, 0.45);
   const belly = mat(paint.belly, 0.6);
   const tailMat = mat(paint.tail, 0.45);
@@ -143,10 +165,11 @@ export const buildAircraft = (model: AircraftModel, livery: LiveryName = 'white'
     stripe.position.set(L * 0.0, -R * 0.05, 0);
     group.add(stripe);
   }
-  // panza
-  const keel = new Mesh(new BoxGeometry(L * 0.55, R * 0.3, R * 1.5), belly);
-  keel.position.set(0, -R * 0.82, 0);
-  group.add(keel);
+  // panza: la mitad inferior del fuselaje en su color (mismo torneado, un pelo más grande, solo el arco de abajo)
+  const bellyGeo = new LatheGeometry(prof.map((v) => new Vector2(v.x * 1.004, v.y)), 32, Math.PI / 2 - 1.05, 2.1);
+  bellyGeo.rotateZ(-Math.PI / 2);
+  bellyGeo.translate(-L / 2, 0, 0);
+  group.add(new Mesh(bellyGeo, belly));
 
   // alas con diedro (bajas o altas)
   const xLead = L / 2 - p.wingX;
@@ -222,11 +245,41 @@ export const buildAircraft = (model: AircraftModel, livery: LiveryName = 'white'
     }
   }
 
+  // rótulo de la compañía y logos (decoración real de un caso)
+  const decal = (tex: Texture, w: number, h: number) =>
+    new Mesh(new PlaneGeometry(w, h), new MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.5, side: DoubleSide, depthWrite: false }));
+  for (const side of [1, -1]) {
+    if (paint.titles) {
+      const t = registrationDecal(paint.titles, paint.titlesColor ?? paint.text, R * 0.5);
+      t.position.set(L * 0.2, R * 0.62, side * (R * 0.96 + 0.03));
+      t.rotation.x = side * -0.25;
+      if (side === -1) t.rotation.y = Math.PI;
+      group.add(t);
+    }
+    if (paint.titlesLogo) {
+      const img = paint.titlesLogo.image as { width: number; height: number } | undefined;
+      const aspect = img ? img.width / img.height : 1;
+      const d = decal(paint.titlesLogo, R * 0.6 * aspect, R * 0.6);
+      d.position.set(L * 0.36, R * 0.6, side * (R * 0.95 + 0.04));
+      if (side === -1) d.rotation.y = Math.PI;
+      group.add(d);
+    }
+    if (paint.tailLogo) {
+      const img = paint.tailLogo.image as { width: number; height: number } | undefined;
+      const aspect = img ? img.width / img.height : 1;
+      const size = p.finHeight * 0.55;
+      const d = decal(paint.tailLogo, size * aspect, size);
+      d.position.set(finX - finSweep * 0.5 - fr * 0.3, R * 0.6 + p.finHeight * 0.5, side * 0.2);
+      if (side === -1) d.rotation.y = Math.PI;
+      group.add(d);
+    }
+  }
+
   // matrícula en los dos costados, delante de la cola
   if (registration) {
     for (const side of [1, -1]) {
       const d = registrationDecal(registration, paint.text, R * 0.42);
-      d.position.set(-L * 0.24, R * 0.25, side * (R + 0.03));
+      d.position.set(-L * 0.26, -R * 0.3, side * (R * 0.96 + 0.03));
       if (side === -1) d.rotation.y = Math.PI;
       group.add(d);
     }

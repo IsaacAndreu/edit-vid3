@@ -368,6 +368,9 @@ export const elevationProfileSceneSchema = z
 
 /* ── Accidentes aéreos (prompts/accidentes-plan.md): vuelo real reproducido desde vuelo.json ─────────────────── */
 
+/** Color hexadecimal «#RRGGBB» (solo para la decoración real de un avión en un caso concreto). */
+const hexSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'color #RRGGBB');
+
 /** Hora local del vuelo, como en el informe: "15:27:11" (décimas opcionales). */
 export const clockSchema = z.string().regex(/^\d{2}:\d{2}:\d{2}(\.\d+)?$/, 'hora hh:mm:ss');
 
@@ -655,8 +658,29 @@ export const flightCamSceneSchema = z
     flight: flightPlaybackSchema,
     /** Tipo genérico: pasillo único, fuselaje ancho, regional (motores en la cola), turbohélice, ejecutivo. */
     model: z.enum(['narrowbody', 'widebody', 'regionaljet', 'turboprop', 'bizjet']),
-    /** Pintura genérica (theme.ts LIVERIES); nunca la librea de una compañía. */
-    livery: z.enum(['white', 'grey', 'stripe-blue', 'stripe-red', 'tail-blue', 'tail-red', 'tail-amber']).optional(),
+    /**
+     * Pintura: una genérica (theme.ts LIVERIES) o la decoración de la compañía del caso: colores en hex, rótulo del
+     * fuselaje y logos (PNG con transparencia que aporta el usuario, rutas relativas a public/).
+     */
+    livery: z
+      .union([
+        z.enum(['white', 'grey', 'stripe-blue', 'stripe-red', 'tail-blue', 'tail-red', 'tail-amber']),
+        z
+          .object({
+            body: hexSchema,
+            belly: hexSchema,
+            tail: hexSchema,
+            engine: hexSchema,
+            text: hexSchema,
+            stripe: hexSchema.optional(),
+            titles: z.string().max(30).optional(),
+            titlesColor: hexSchema.optional(),
+            tailLogo: z.string().optional(),
+            titlesLogo: z.string().optional(),
+          })
+          .strict(),
+      ])
+      .optional(),
     /** Matrícula pintada en el fuselaje (dato del informe, p. ej. «N106US»). */
     registration: z.string().max(10).optional(),
     camera: z

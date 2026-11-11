@@ -1,0 +1,69 @@
+{
+ "meta": {
+  "slug": "test-accidentes-livery",
+  "title": "Prueba accidentes B2",
+  "brand": {
+   "name": "ATLAS",
+   "icon": "✦"
+  },
+  "chapters": [],
+  "duration": 9
+ },
+ "audio": {},
+ "scenes": [
+  {
+   "id": "cabina",
+   "type": "atlas-flight-cam",
+   "start": {
+    "t": 0
+   },
+   "theme": "paper",
+   "enter": "fade",
+   "terrain": "hudson-cerca",
+   "model": "narrowbody",
+   "livery": {
+    "body": "#F2F0EA",
+    "belly": "#3B4F6B",
+    "tail": "#1F3554",
+    "engine": "#3B4F6B",
+    "text": "#1F3554",
+    "stripe": "#C8402F",
+    "titles": "COMPAÑÍA DE PRUEBA",
+    "titlesColor": "#1F3554",
+    "tailLogo": "accidentes/_prueba/logo-cola.png"
+   },
+   "registration": "N106US",
+   "flight": {
+    "data": "accidentes/us1549/vuelo.json",
+    "at": {
+     "t": 0
+    },
+    "from": "15:28:30",
+    "to": "15:30:43",
+    "rate": 6
+   },
+   "camera": [
+    {
+     "at": {
+      "t": 0
+     },
+     "mode": "side",
+     "distanceM": 60,
+     "heightM": 2
+    },
+    {
+     "at": {
+      "t": 5
+     },
+     "mode": "orbit",
+     "distanceM": 55,
+     "heightM": 6,
+     "degPerSecond": -40
+    }
+   ],
+   "cockpitFrame": true,
+   "cockpitPanel": false,
+   "sourceNote": "DATOS: FDR DE LA NTSB · AVIÓN Y CABINA GENÉRICOS"
+  }
+ ]
+}

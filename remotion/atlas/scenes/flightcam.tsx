@@ -15,14 +15,14 @@ import { useThree } from '@react-three/fiber';
 import { BackSide, Color, DoubleSide, Euler, PerspectiveCamera, Quaternion, ShaderMaterial, Vector3, type Group } from 'three';
 import { ease, reveal } from '../anim';
 import { useAtlasTime, useTheme } from '../context';
-import { aircraftLength, buildAircraft } from '../flight/aircraft3d';
+import { aircraftLength, buildAircraft, liveryOf } from '../flight/aircraft3d';
 import { flightClock, FlightHud, sampleAt, sToClock, trackAt, videoTimeOf, type FlightData, type FlightPoint } from '../flight';
 import { Pfd } from '../flight/pfd';
 import { fonts } from '../fonts';
 import { useJsonFiles } from '../geo/useData';
-import { useTexture } from '../geo/useTexture';
+import { useOptionalTexture, useTexture } from '../geo/useTexture';
 import type { AtlasScene, LonLat } from '../schema';
-import { accentOn, FLIGHT } from '../theme';
+import { accentOn, FLIGHT, type LiveryName } from '../theme';
 import { sec } from '../time';
 import { cornerStyle, Mono } from '../ui';
 import { Header, useSceneOf } from './text';
@@ -102,10 +102,18 @@ export const FlightCamScene: FC = () => {
   const heights = data?.[1] as number[] | undefined;
   const flight = data?.[2] as FlightData | undefined;
   const built = useMemo(() => (meta && heights && texture ? buildTerrain(meta, heights, texture, name) : null), [meta, heights, texture, name]);
-  const plane = useMemo(() => buildAircraft(scene.model, scene.livery, scene.registration), [scene.model, scene.livery, scene.registration]);
+  const custom = typeof scene.livery === 'object' ? scene.livery : null;
+  const tailLogo = useOptionalTexture(custom?.tailLogo);
+  const titlesLogo = useOptionalTexture(custom?.titlesLogo);
+  const logosReady = (!custom?.tailLogo || tailLogo) && (!custom?.titlesLogo || titlesLogo);
+  const plane = useMemo(
+    () => buildAircraft(scene.model, { ...liveryOf(custom ?? (scene.livery as LiveryName | undefined)), tailLogo, titlesLogo }, scene.registration),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scene.model, JSON.stringify(scene.livery), scene.registration, tailLogo, titlesLogo],
+  );
   const skyMat = useMemo(() => skyMaterial(FLIGHT.sky[name].top, FLIGHT.sky[name].horizon), [name]);
   const offset = useMemo(() => (flight ? headingOffset(flight) : 0), [flight]);
-  if (!meta || !heights || !built || !flight) return null;
+  if (!meta || !heights || !built || !flight || !logosReady) return null;
 
   const { bbox, kmLon, kmLat, cols, rows } = meta;
   const lonC = (bbox[0] + bbox[2]) / 2;

@@ -97,16 +97,16 @@ export const FLIGHT = {
 } as const;
 
 /**
- * Pinturas genéricas del avión 3D: colores lisos, franja y cola de color. Ninguna reproduce la librea ni el logo de
- * una compañía (son marcas): sirven para distinguir aviones o dar un tono al vídeo.
+ * Pinturas genéricas del avión 3D: colores lisos, franja y cola de color. La decoración real de una compañía no va
+ * aquí: va en el storyboard de cada caso (`livery` como objeto, con los logos que aporta el usuario).
  */
-export const LIVERIES = {
-  white: { body: '#F2F0EA', belly: '#C9CCD1', tail: '#F2F0EA', engine: '#B7BBC2', text: '#2A2118', stripe: null },
+export const LIVERIES: Record<string, { body: string; belly: string; tail: string; engine: string; text: string; stripe: string | null }> = {
+  white: { body: '#F2F0EA', belly: '#E4E2DC', tail: '#F2F0EA', engine: '#B7BBC2', text: '#2A2118', stripe: null },
   grey: { body: '#C9CDD2', belly: '#9EA4AB', tail: '#C9CDD2', engine: '#8E949B', text: '#1E2630', stripe: null },
   'stripe-blue': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#2F5673', engine: '#B7BBC2', text: '#2F5673', stripe: '#2F5673' },
   'stripe-red': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#B8322A', engine: '#B7BBC2', text: '#B8322A', stripe: '#B8322A' },
   'tail-blue': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#2F5673', engine: '#B7BBC2', text: '#2A2118', stripe: null },
   'tail-red': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#B8322A', engine: '#B7BBC2', text: '#2A2118', stripe: null },
   'tail-amber': { body: '#F2F0EA', belly: '#C9CCD1', tail: '#C98A2B', engine: '#B7BBC2', text: '#2A2118', stripe: null },
-} as const;
-export type LiveryName = keyof typeof LIVERIES;
+};
+export type LiveryName = 'white' | 'grey' | 'stripe-blue' | 'stripe-red' | 'tail-blue' | 'tail-red' | 'tail-amber';

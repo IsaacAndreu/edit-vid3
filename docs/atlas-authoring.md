@@ -334,7 +334,15 @@ dos pilotos y N1 de los dos motores en esfera, leídos de los datos).
 Personalización: `model` = `narrowbody` (pasillo único) | `widebody` (fuselaje ancho) | `regionaljet` (motores en la
 cola, cola en T) | `turboprop` (ala alta, hélices) | `bizjet`; `livery` = `white` | `grey` | `stripe-blue` |
 `stripe-red` | `tail-blue` | `tail-red` | `tail-amber` (pinturas genéricas, nunca la de una compañía);
-`registration` = la matrícula del informe pintada en el fuselaje («N106US»). Bloque de terreno grande (que no se vea el borde): `"cols": 800, "zoom": 14` con
+`registration` = la matrícula del informe pintada en el fuselaje («N106US»).
+Decoración real de la compañía (decisión del usuario, que asume el riesgo de marca): `livery` como objeto,
+```json
+"livery": { "body": "#F2F0EA", "belly": "#3B4F6B", "tail": "#1F3554", "engine": "#3B4F6B", "text": "#1F3554",
+            "stripe": "#C8402F", "titles": "NOMBRE DE LA COMPAÑÍA", "titlesColor": "#1F3554",
+            "tailLogo": "accidentes/<caso>/livery/cola.png", "titlesLogo": "accidentes/<caso>/livery/logo.png" }
+```
+Colores en `#RRGGBB` sacados de fotos del avión real; los logos son PNG con fondo transparente que pone el usuario en
+`public/accidentes/<caso>/livery/` (el sistema no los descarga). `titles` se pinta delante de las alas. Bloque de terreno grande (que no se vea el borde): `"cols": 800, "zoom": 14` con
 `"region"`. Render lento: ~10 s por fotograma en el cloud; úsala en tramos cortos.
 
 ### atlas-pfd
