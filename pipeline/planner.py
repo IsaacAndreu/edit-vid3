@@ -69,6 +69,9 @@ Reglas de los capítulos:
 - "sentence" es el número de la frase donde empieza el capítulo. Deben ir en orden creciente
   y separados al menos 45 segundos. El gancho inicial (las primeras frases) no lleva capítulo:
   el primer capítulo empieza cuando arranca el desarrollo del tema.
+- Si el guion es una lista o una cuenta atrás ("los 5 momentos más…", "top 10"), cada capítulo es un puesto, con el
+  número que dice el guion delante: "#5 EL PADRE", "#4 …" (el vídeo los muestra como cuenta atrás). Aquí no hace falta
+  la separación de 45 s: un capítulo por puesto.
 """.strip()
 
 def outline_system(ctx: RunContext) -> str:
@@ -318,6 +321,10 @@ def _validate_outline(result: dict[str, Any], sentences: list[tuple[int, int]], 
             raise ValueError(f"capítulo mal formado: {item!r}") from None
         if 0 <= sentence < len(sentences) and title:
             parsed.append((sentence, title))
+    # a countdown («#5 EL PADRE», «#4 …»): one chapter per position, closer together, up to 12
+    countdown = len(parsed) >= 3 and sum(bool(re.match(r"#\s*\d{1,2}\b", t)) for _, t in parsed) >= 0.6 * len(parsed)
+    if countdown:
+        min_gap = min(min_gap, 20.0)
     chapters: list[PlanChapter] = []
     previous_start = hook - min_gap          # the first chapter may not start inside the hook
     for sentence, title in sorted(set(parsed)):
@@ -329,7 +336,7 @@ def _validate_outline(result: dict[str, Any], sentences: list[tuple[int, int]], 
     if len(chapters) < 2:
         raise ValueError(f"quedan {len(chapters)} capítulos válidos: hacen falta al menos 2, en orden, "
                          f"separados {min_gap:.0f} s y después del segundo {hook:.0f}")
-    return chapters[:7]
+    return chapters[:12 if countdown else 7]
 
 
 # --- 2. Cutting ------------------------------------------------------------------------

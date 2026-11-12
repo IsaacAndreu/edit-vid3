@@ -178,6 +178,14 @@ def ass(words: list[dict[str, Any]], hook: str, offset: float, total: float, fon
     return "\n".join(lines) + "\n"
 
 
+def source_video(ctx: RunContext) -> Path:
+    """The long video the Shorts are cut from: without the narration's subtitles (video-limpio.mp4) when the render
+    burned them in — a Short has its own captions."""
+
+    clean = ctx.out_dir / "video-limpio.mp4"              # render removes it when it burns no subtitles
+    return clean if clean.is_file() else ctx.out_dir / "video-final.mp4"
+
+
 def font_dir(ctx: RunContext) -> Path:
     """Inter Black as TTF (libass cannot read the woff2 the Remotion side uses)."""
 
@@ -290,7 +298,7 @@ def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict
             (work / "fonts" / f.name).write_bytes(f.read_bytes())
     seconds = (b - a) / fps
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw.resolve()), "-ss", f"{a / fps:.3f}", "-t", f"{seconds:.3f}",
-           "-i", str((ctx.out_dir / "video-final.mp4").resolve()),
+           "-i", str(source_video(ctx).resolve()),
            "-filter_complex", f"[0:v]ass=hook.ass:fontsdir=fonts,format=yuv420p[v];"
                               f"[1:a]afade=t=in:d=0.15,afade=t=out:st={max(0.0, seconds - 0.4):.2f}:d=0.4[a]",
            "-map", "[v]", "-map", "[a]", "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
@@ -318,7 +326,7 @@ def strong_sentences(timeline: dict[str, Any], sents: list[dict[str, Any]], fina
 
 
 def inputs(ctx: RunContext) -> list:
-    return [ctx.out_dir / "video-final.mp4", ctx.work_dir / "words.json"]
+    return [source_video(ctx), ctx.work_dir / "words.json"]
 
 
 def enabled(ctx: RunContext) -> bool:
@@ -492,7 +500,7 @@ def run(ctx: RunContext) -> None:
             except Exception as error:          # the blurred version is always possible
                 print(f"   short-{n}: vertical con Remotion no disponible ({str(error)[:120]}); va con fondo desenfocado")
         if not made:
-            render_short(ctx, ctx.out_dir / "video-final.mp4", start, length, subtitles, target)
+            render_short(ctx, source_video(ctx), start, length, subtitles, target)
         print(f"   short-{n}.mp4 · {length:.0f} s · {plain_hook(str(item.get('hook') or ''))}")
         notes += [f"short-{n}.mp4 ({length:.0f} s)", f"TÍTULO: {item.get('title', '')}",
                   f"DESCRIPCIÓN: {item.get('description', '')}", ""]

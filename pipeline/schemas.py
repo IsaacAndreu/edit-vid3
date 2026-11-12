@@ -635,6 +635,16 @@ class PanelStep(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class TimelineSubtitle(_Strict):
+    """A line of the narration's subtitles (timeline.subtitles, pipeline/subtitulos.py), burned in by the render."""
+
+    from_: int = Field(alias="from", ge=0)
+    durationInFrames: int = Field(ge=1)
+    text: str = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class TimelineCaption(_Strict):
     """A few words of big on-screen captions (native vertical shorts), each lit up as the voice says it."""
 
@@ -723,6 +733,7 @@ class Timeline(_Strict):
     groups: list[TimelineGroup]
     labels: list[TimelineLabel] = Field(default_factory=list)
     captions: list[TimelineCaption] = Field(default_factory=list)   # timeline.captions (native shorts)
+    subtitles: list[TimelineSubtitle] = Field(default_factory=list)   # timeline.subtitles (burned in by the render)
     transitions: list[TimelineTransition] = Field(default_factory=list)
     shakes: list[TimelineShake] = Field(default_factory=list)
     edited: dict[str, Any] | None = None                     # scenes reordered/deleted in the editor (time map for subtitles)

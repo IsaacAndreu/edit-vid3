@@ -486,6 +486,19 @@ def question_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> Non
         group["words"] = [{"text": w["text"], "from": max(0, at(w["start"]) - a)} for w in spoken]
 
 
+def subtitle_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> None:
+    """The narration's subtitles (pipeline/subtitulos.py) say what the new voice says, when the new voice says it."""
+
+    if not timeline.get("subtitles"):
+        return
+    from . import subtitulos
+
+    fps, vf = timeline["fps"], timeline["audio"].get("voiceFrom", 0)
+    gaps = timeline["audio"].get("voiceGaps", [])
+    blocked = [(g["from"], g["from"] + g["durationInFrames"]) for g in timeline["groups"] if g["kind"] == "question"]
+    timeline["subtitles"] = subtitulos.cues(words, lambda t: vf + final_frame(round(t * fps), gaps), fps, blocked)
+
+
 def drawn_words(timeline: dict[str, Any], words: list[dict[str, Any]]) -> None:
     """A stickman film's captions go word by word: in the dub, the new narration's words."""
 
@@ -654,6 +667,7 @@ def run(ctx: RunContext) -> None:
     simulacion.retime_sim(old_timeline, timeline, lang)          # its clock follows the new voice, its panels speak it
     question_words(timeline, new_words["words"])
     drawn_words(timeline, new_words["words"])
+    subtitle_words(timeline, new_words["words"])
     timeline["audio"]["speech"] = speech_spans(new_words["words"], timeline["fps"], timeline["audio"].get("voiceFrom", 0),
                                                pauses=timeline["audio"].get("voiceGaps", []))
     next_word, subscribe_word = ENDSCREEN.get(lang, ("NEXT STORY", "SUBSCRIBE"))

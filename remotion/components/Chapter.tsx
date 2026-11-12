@@ -58,8 +58,55 @@ const NumberedChapter: FC<{ title: string; number?: number | null; word?: string
  * Chapter card: "CAPÍTULO 01" in big heavy type with the chapter title under it, left-aligned
  * behind a yellow bar, over darkened footage. A colour wipe sweeps across as it comes in.
  */
+/** A ranking video («Los 5 momentos más…»): chapters titled «#3 …», «Nº 3 …», «NÚMERO 3: …» or «3. …» are positions
+ * of the countdown. Returns [position, title] or null. */
+export const countdownOf = (title: string): [number, string] | null => {
+  const m = /^\s*(?:#|N[ºo°.]+\s*|N[ÚU]MERO\s+|NUMBER\s+|NR\.?\s*)?(\d{1,2})\s*(?:[.:·—–\-)]\s*|\s+)(.+)$/i.exec(title);
+  if (!m) return null;
+  const marked = /^\s*(#|N[ºo°.]|N[ÚU]MERO|NUMBER|NR)/i.test(title) || /^\s*\d{1,2}\s*[.:·—–\-)]/.test(title);
+  return marked ? [Number(m[1]), m[2].trim()] : null;
+};
+
+/** A position of the countdown: the number huge in the accent colour behind a bar, the title beside it. */
+const CountdownChapter: FC<{ position: number; title: string }> = ({ position, title }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame: frame - 2, fps, config: { damping: 200, stiffness: 160 }, durationInFrames: 12 });
+  const text = spring({ frame: frame - 8, fps, config: { damping: 200, stiffness: 160 }, durationInFrames: 12 });
+  const dim = interpolate(frame, [0, 8], [0, 1], { extrapolateRight: 'clamp' });
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{ opacity: dim, background: 'linear-gradient(90deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.45) 100%)' }} />
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 150 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 48 }}>
+          <div style={{ width: 14, height: 300, backgroundColor: theme.accent, transform: `scaleY(${enter})` }} />
+          <div
+            style={{
+              fontFamily, fontWeight: 900, fontSize: 300, lineHeight: 0.9, color: theme.accent, letterSpacing: '-0.04em',
+              textShadow: theme.shadow, opacity: enter, transform: `translateX(${interpolate(enter, [0, 1], [-60, 0])}px)`,
+            }}
+          >
+            {`#${position}`}
+          </div>
+          <div
+            style={{
+              fontFamily, fontWeight: 800, fontSize: 76, lineHeight: 1.05, color: theme.text, textTransform: 'uppercase',
+              maxWidth: 1000, textShadow: theme.shadow, opacity: text,
+              transform: `translateY(${interpolate(text, [0, 1], [24, 0])}px)`,
+            }}
+          >
+            {title}
+          </div>
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
 export const Chapter: FC<{ title: string; number?: number | null; word?: string; frames?: number }> = (props) =>
-  theme.chapterStyle === 'numbered' ? (
+  countdownOf(props.title) ? (
+    <CountdownChapter position={countdownOf(props.title)![0]} title={countdownOf(props.title)![1]} />
+  ) : theme.chapterStyle === 'numbered' ? (
     <NumberedChapter {...props} />
   ) : theme.chapterStyle === 'scroll' ? (
     <ScrollChapter {...props} />
