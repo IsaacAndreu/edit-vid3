@@ -1,19 +1,47 @@
-# YouTube Video Templates
+# edit-vid3
 
-Skeleton for data-driven long-form video composition with Remotion, TypeScript, and React.
+An automated YouTube video studio: you give it a script (or an idea) and it produces a finished, narrated, edited
+video, ready for review. It runs on a server around the clock, manages several channels in several languages, and
+keeps every number and place on screen tied to the script or to a public source — nothing is invented.
 
-## Commands
+Made by **Isaac Andreu** and **Cesar Ferre Vasco**.
+
+## What it does
+
+- **Footage videos** — from the script and its voice-over it plans the shots, finds and vets clips (YouTube,
+  Wikimedia Commons, Openverse, Pixabay, Pexels), cuts them to the narration, adds data cards, chapters, lower thirds
+  and credits, checks the result and renders it with Remotion + ffmpeg. The full stage list is below.
+- **Atlas** (`docs/atlas-authoring.md`, `prompts/atlas-plan.md`) — explainer videos drawn in code: paper relief maps,
+  globes, 3D terrain, elevation profiles, charts and cards, all from public geographic data. A script is enough: the AI
+  writes the scene list and the storyboard, the pipeline validates every anchor against the voice and renders it.
+- **Air accident reconstructions** (`prompts/accidentes-plan.md`) — real flights rebuilt from the public flight data
+  recorder tables of NTSB dockets: track on the map, vertical profile, cockpit instruments, a 3D aircraft and
+  synthesized engine sound, with every event cited from the official report. Respectful by design: no victims, no
+  crash replays. Also one-minute "what we know" Shorts generated automatically from breaking news.
+- **Simulations and animated formats** — "what if" and "why" videos explained with simulated worlds and drawn scenes.
+- **Many channels, many languages** — each channel is a profile in `canales/` (style, voice, language, music,
+  branding). Finished videos can be dubbed automatically (English, Portuguese, German, French, Italian…), with the
+  on-screen texts translated too.
+- **Runs by itself** — a web studio to add scripts and review results, a queue that voices (GenAIPro), makes and dubs
+  videos as they appear, a daily radar of ideas from competitor outliers, fact-checking of every script, thumbnails and
+  title options, a Telegram bot, spend tracking and an autopilot per channel. Finished videos wait in «Para subir»
+  for a human to review before they go out.
+
+## Quick start
 
 ```bash
 npm install
-npm run start
+python -m pip install -r requirements.txt
 npm run typecheck
-npm run render
+python main.py --slug Video1                 # one video from materiales/Video1/
+python main.py --atlas-guion <folder>        # an Atlas video from materiales/<folder>/guion.txt
+python main.py --vigilar 5                   # the server: watches materiales/ and makes everything that appears
 ```
 
-`npm run render` uses `example-props.json` as the composition input.
+Running it on your own PC: [`docs/LOCAL.md`](docs/LOCAL.md). On a server: [`docs/VPS.md`](docs/VPS.md).
+Rules for working on the code: [`CLAUDE.md`](CLAUDE.md).
 
-## Automated pipeline
+## The footage pipeline
 
 Specification: `CLAUDE.md`. Inputs live in `materiales/<slug>/` (`titulo.txt`, `guion.txt`, `voz.mp3`).
 Running it on your own PC: see [`docs/LOCAL.md`](docs/LOCAL.md).
