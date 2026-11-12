@@ -81,3 +81,42 @@ def test_reorder_moves_everything_and_recuts_the_voice(tmp_path):
     deleted = edit_model.build(base(), {"deleted": ["sc-s001"]}, ctx, STORY)
     assert deleted["durationInFrames"] == 180 and [s["id"] for s in deleted["shots"]] == ["s003", "s004"]
     assert deleted["groups"] == []                                # the graphic was in the deleted scene
+
+
+# --- the CapCut-style tools: pieces, effects, transitions, inserts ---------------------------------------------------
+
+def test_old_edits_build_exactly_as_before():
+    old = {"cuts": {"s002": 70}, "timing": {"graphic-1": [200, 45]}}
+    assert edit_model.build(base(), old) == edit_model.build(base(), {**old, "splits": {}, "fx": {}, "trans": {}})
+
+
+def test_split_a_shot_in_pieces_that_go_on_in_the_same_clip():
+    t = edit_model.build(base(), {"splits": {"s002": [120, 150, 95, 179]}})   # 95 and 179: too close to the ends
+    pieces = [(s["id"], s["from"], s["durationInFrames"], s.get("offset"), s.get("fullDuration")) for s in t["shots"][1:4]]
+    assert pieces == [("s002", 90, 30, 0, 90), ("s002+2", 120, 30, 30, 90), ("s002+3", 150, 30, 60, 90)]
+    assert all(s["media"]["src"] == "media/s002.mp4" for s in t["shots"][1:4])
+    assert sum(s["durationInFrames"] for s in t["shots"]) == 360
+
+
+def test_effects_speed_and_transitions_per_piece():
+    t = edit_model.build(base(), {"splits": {"s003": [225]},
+                                  "fx": {"s003+2": {"look": "bn", "vignette": 3, "blur": "x", "move": "in", "speed": 2},
+                                         "s001": {"look": "nada"}},
+                                  "trans": {"s003+2": {"kind": "black", "frames": 20}, "s002": {"kind": "none"}}})
+    piece = next(s for s in t["shots"] if s["id"] == "s003+2")
+    assert piece["fx"] == {"vignette": 1, "look": "bn", "move": "in"} and piece["media"]["rate"] == 2
+    assert "fx" not in t["shots"][0]                                          # an unknown look is nothing
+    assert t["transitions"] == [{"kind": "black", "from": 215, "durationInFrames": 20}]   # the whip at s002 is gone
+
+
+def test_edited_timeline_is_a_valid_timeline_and_renders_in_remotion():
+    from pipeline.render import plan_segments
+    from pipeline.schemas import Timeline
+
+    t = edit_model.build({**base(), "width": 1920, "height": 1080},
+                         {"splits": {"s004": [300]}, "fx": {"s004+2": {"grain": 0.5}}, "trans": {"s003": {"kind": "flash"}},
+                          "added": [{"id": "user-1", "kind": "graphic", "from": 20, "durationInFrames": 60,
+                                     "graphic": {"type": "scene", "template": "title-card", "text": "CAPÍTULO 1"}}]})
+    Timeline.model_validate(t)
+    kinds = {(seg.kind, s["id"]) for seg in plan_segments(t) for s in seg.shots}
+    assert ("remotion", "s004+2") in kinds and not any(k == "ffmpeg" and i.startswith("s004+") for k, i in kinds)

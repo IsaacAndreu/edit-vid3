@@ -3,7 +3,7 @@
 // the pipeline's frames (edits.json) by the callbacks.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FC, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
-import { clock, groupName, toBase, toView, type Layout, type Scene, type Selection, type ShotInfo } from './model';
+import { at as urlOf, clock, groupName, toBase, toView, type Layout, type Scene, type Selection, type ShotInfo } from './model';
 
 export type Drag =
   | { what: 'cut'; shotId: string; base: number }
@@ -310,7 +310,7 @@ export const Tracks: FC<Props> = (props) => {
                   transform: swapping ? `translate(${drag!.dx}px, -6px)` : undefined, zIndex: swapping ? 6 : undefined, ...ring(on),
                 })}>
                 {s.media && s.durationInFrames * px > 26 ? (
-                  <img src={`/api/thumb/${s.id}?r=${props.reload}`} loading="lazy" draggable={false}
+                  <img src={urlOf(`/api/thumb/${s.id}?r=${props.reload}`)} loading="lazy" draggable={false}
                     style={{ height: '100%', width: Math.min(96, s.durationInFrames * px), objectFit: 'cover', float: 'left', pointerEvents: 'none' }} />
                 ) : null}
                 <span style={{ paddingLeft: 3, color: meta?.weak ? 'var(--warn)' : 'var(--muted)', fontSize: 10 }}>

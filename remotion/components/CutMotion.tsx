@@ -2,7 +2,8 @@ import type { FC, ReactNode } from 'react';
 import { AbsoluteFill, Easing, useCurrentFrame } from 'remotion';
 
 export interface Transition {
-  kind: 'zoom' | 'whip';
+  // zoom / whip: the pipeline's key cuts; black (dip to black), flash (to white) and blur: chosen in the editor
+  kind: 'zoom' | 'whip' | 'black' | 'flash' | 'blur';
   from: number; // the cut is in the middle: from + durationInFrames / 2
   durationInFrames: number;
 }
@@ -48,6 +49,23 @@ export const CutMotion: FC<{ transitions?: Transition[]; shakes?: Shake[]; child
   const half = t.durationInFrames / 2;
   const d = frame - (t.from + half); // -half … half-1
   const k = ease(Math.max(0, 1 - Math.abs(d + 0.5) / half)); // 0 at the edges, 1 at the cut
+  if (t.kind === 'black' || t.kind === 'flash') {
+    // the shot fades out to a colour and the next one fades in from it (linear: a dip reads better without easing)
+    const dip = Math.max(0, 1 - Math.abs(d + 0.5) / half);
+    return (
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
+        <AbsoluteFill style={{ transform: shake || undefined }}>{children}</AbsoluteFill>
+        <AbsoluteFill style={{ backgroundColor: t.kind === 'black' ? '#000' : '#fff', opacity: t.kind === 'black' ? dip : 0.9 * dip ** 1.5 }} />
+      </AbsoluteFill>
+    );
+  }
+  if (t.kind === 'blur') {
+    return (
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
+        <AbsoluteFill style={{ transform: `${shake}scale(${1 + 0.06 * k})`, filter: k > 0.02 ? `blur(${(28 * k).toFixed(1)}px)` : undefined }}>{children}</AbsoluteFill>
+      </AbsoluteFill>
+    );
+  }
   const blur = (t.kind === 'zoom' ? 12 : 18) * k;
   const transform =
     t.kind === 'zoom'

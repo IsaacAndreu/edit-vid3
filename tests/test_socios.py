@@ -80,13 +80,15 @@ def test_nothing_of_yours_opens_for_a_partner(studio):
     for path in ("/api/video/mio1", "/files/mio1/video-final.mp4", "/api/review/mio1", "/api/decisions/mio1",
                  "/api/video/mio1/repeticion", "/api/settings", "/api/users", "/api/servidor",
                  "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/voices/credits",
-                 "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia"):
+                 "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia", "/editor/mio1/", "/editor/mio1/api/state"):
         assert call(path)[0] == 403, path
+    assert call("/editor/suyo1/api/state")[0] == 404              # theirs, but it has no edit yet: nothing to open
     for path, body in (("/api/video/mio1/hold", {}), ("/api/video/mio1/retry", {}), ("/api/settings", {"daily_usd": 9}),
                        ("/api/users", {"name": "amigo", "channels": ["aviacion"]}), ("/api/update", {}),
                        ("/api/videos", {"name": "nuevo", "channel": "aviacion", "script": SCRIPT}),
                        ("/api/video/suyo1/channel", {"channel": "aviacion"}), ("/api/review/mio1/s001", {"verdict": "mala"})):
         assert call(path, body)[0] == 403, path
+    assert call("/editor/mio1/api/edits", {"edits": {}})[0] == 403
     assert call("/api/videos", {"name": "nuevo", "channel": "atletismo", "script": SCRIPT})[0] == 200
 
 

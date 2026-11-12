@@ -46,6 +46,7 @@ import { MapStory } from './MapStory';
 import { SimScene } from './SimScene';
 import { Post } from './Post';
 import { GraphicFrame } from './GraphicFrame';
+import { ClipInsert, SceneInsert } from './Insert';
 import { Grain } from './Paper';
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
 
@@ -60,7 +61,12 @@ const Fade: FC<{ durationInFrames: number; children: ReactNode }> = ({ durationI
 
 /** Full-screen animated graphic of any kind, brought in and out the channel's way (GraphicFrame). */
 export const GraphicScene: FC<{ graphic: Graphic; durationInFrames: number; seed?: string }> = ({ graphic, durationInFrames, seed }) =>
-  graphic.type === 'cine' ? (
+  graphic.type === 'scene' ? (
+    // a ready-made scene of templates/ (the editor's «Recursos»): it brings its own entrance
+    <SceneInsert graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'clip' ? (
+    <ClipInsert graphic={graphic} durationInFrames={durationInFrames} />
+  ) : graphic.type === 'cine' ? (
     <CineScene graphic={graphic} durationInFrames={durationInFrames} />
   ) : graphic.type === 'atlas' ? (
     <Atlas graphic={graphic} durationInFrames={durationInFrames} />

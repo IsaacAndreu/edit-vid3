@@ -1305,6 +1305,26 @@ def channels_health(root: Path, mine: list[str] | None = None) -> dict[str, Any]
     return {"channels": out, "weekdays": agenda.WEEKDAYS, "buffer": cfg["buffer"], "today": today.isoformat()}
 
 
+_EDITORS: dict[str, float] = {}          # videos whose editor was prepared, with their timeline's time
+
+
+def editor_context(root: Path, slug: str) -> Any:
+    """The editor of a video (pipeline/editor.py) as the studio serves it at /editor/<slug>/."""
+
+    from . import editor
+
+    if not NAME.match(slug) or not find_video(root, slug):
+        raise FileNotFoundError(slug)
+    ctx = RunContext.create(slug, root=root)
+    timeline = ctx.work_dir / "timeline.json"
+    if not timeline.is_file():
+        raise FileNotFoundError(f"{slug} aún no tiene montaje")
+    if _EDITORS.get(slug) != timeline.stat().st_mtime:      # the pipeline made a new edit since: on top of it again
+        editor.prepare(ctx)
+        _EDITORS[slug] = timeline.stat().st_mtime
+    return ctx
+
+
 def partner_agenda(root: Path, mine: list[str]) -> dict[str, Any]:
     """The publishing calendar of their channels only (days, slots, their videos, their ideas)."""
 
@@ -1515,9 +1535,35 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
         def do_HEAD(self) -> None:
             self.do_GET()
 
+        def _editor(self, method: str, path: str, query: str, who: str, body: Any = None, raw: bytes | None = None) -> None:
+            """/editor/<slug>/…: the CapCut-style editor of a video, with the studio's session (a partner: their videos)."""
+
+            from . import editor
+
+            parts = path.split("/")
+            slug, rest = urllib.parse.unquote(parts[2]) if len(parts) > 2 else "", "/" + "/".join(parts[3:])
+            if who and video_channel(root, slug) not in usuarios.channels_of(root, who):
+                return self._fail(403, "Ese vídeo no es tuyo")
+            if len(parts) == 3:                                # /editor/<slug> → /editor/<slug>/ (relative links)
+                return self._send(301, b"", "text/plain", {"Location": path + "/"})
+            try:
+                ctx = editor_context(root, slug)
+                if rest in ("/", "/index.html"):
+                    editor.build_app(root)                      # bundled again when its sources changed (esbuild)
+            except FileNotFoundError as error:
+                return self._fail(404, f"No hay montaje que editar: {error}")
+            except Exception as error:                          # no node_modules / esbuild on this machine
+                return self._fail(500, f"No se pudo preparar el editor: {error}")
+            editor.send(self, editor.respond(ctx, method, rest, query, body, raw))
+
         def do_GET(self) -> None:
             url = urllib.parse.urlparse(self.path)
             path = url.path
+            if path.startswith("/editor/"):
+                who = self._who()
+                if who is None:
+                    return self._fail(401, "Inicia sesión")
+                return self._editor("GET", path, url.query, who)
             if path in ("/", "/index.html"):
                 return self._static("index.html")
             if path.startswith("/static/"):              # css and js: kept for good when asked with the current ?v=
@@ -1876,6 +1922,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             if self.headers.get("Origin") and urllib.parse.urlparse(self.headers["Origin"]).netloc != self.headers.get("Host"):
                 return self._fail(403, "Origen no permitido")
             mine = usuarios.channels_of(root, who) if who else []
+            if path.startswith("/editor/"):                # the editor's changes, uploads, apply and render
+                data = self.rfile.read(length)
+                if self.headers.get("Content-Type") == "application/octet-stream":
+                    return self._editor("POST", path, url.query, who, raw=data)
+                try:
+                    body = json.loads(data or b"{}")
+                except ValueError:
+                    return self._fail(400, "JSON no válido")
+                return self._editor("POST", path, url.query, who, body)
             if path == "/api/password":                    # a partner changes their own password
                 if not who:
                     return self._fail(400, "Tu contraseña es WEB_PASSWORD, en el .env del servidor")

@@ -425,3 +425,9 @@ details.attn .causes { display: flex; gap: 6px; flex-wrap: wrap; align-items: ce
 .story .tl, .story .tr { position: absolute; top: 5px; font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 4px; background: rgba(0,0,0,.62); color: #fff; }
 .story .tl { left: 5px; } .story .tr { right: 5px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story .q { font-size: 12px; line-height: 1.35; color: var(--muted); padding: 6px 8px 8px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* the editor, full screen inside the studio (#/editor/<slug>) */
+body.editing header, body.editing .skip { display: none; } body.editing main { max-width: none; margin: 0; padding: 0; }
+.editbar { display: flex; align-items: center; gap: var(--s3); padding: 6px var(--s3); border-bottom: 1px solid var(--line); background: var(--panel); min-height: 44px; flex-wrap: wrap; }
+.editbar .btn > svg:first-child { transform: rotate(180deg); } .editbar .push > svg:first-child { transform: none; }
+.editframe { display: block; width: 100%; height: calc(100dvh - 45px); border: 0; background: #0e0f13; }
+.phone-only { display: none; } @media (max-width: 760px) { .phone-only { display: inline; } }

@@ -111,10 +111,12 @@ def shot_pieces(shot: dict[str, Any], overlays: list[dict[str, Any]], hybrid: bo
 
     a, b = shot["from"], shot["from"] + shot["durationInFrames"]
     media = shot.get("media") or {}
+    # effects chosen in the editor (colour, blur, camera move…) and pieces of a split shot are drawn by Remotion
+    edited = bool(shot.get("fx")) or bool(shot.get("offset"))
     plain = (shot["type"] == "broll" and media.get("kind") == "video" and media.get("layout", "full") in ("full", "archive")
-             and not shot.get("groupId"))
+             and not shot.get("groupId") and not edited)
     card = (shot["type"] == "broll" and media.get("kind") in ("video", "image") and media.get("layout") == "card"
-            and not shot.get("groupId"))
+            and not shot.get("groupId") and not edited)
     if hybrid and card:            # a framed card is composed by ffmpeg too, but only whole (its pop-in and push)
         return [("remotion" if _covered(a, b, overlays) else "ffmpeg", a, b)]
     if not hybrid or not plain:
@@ -200,9 +202,10 @@ def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment
                 segments.append(Segment("ffmpeg", x, y - x, [shot], offset=offset))
                 continue
             # a piece of a longer shot: Remotion draws only its frames, starting `offset` frames into the shot
+            # (a shot already split in the editor carries its own offset into the clip: the two add up)
             piece = shot if len(pieces) == 1 else {**shot, "id": f"{shot['id']}~{offset}", "from": x,
-                                                   "durationInFrames": y - x, "offset": offset,
-                                                   "fullDuration": shot["durationInFrames"]}
+                                                   "durationInFrames": y - x, "offset": int(shot.get("offset") or 0) + offset,
+                                                   "fullDuration": shot.get("fullDuration") or shot["durationInFrames"]}
             if segments and segments[-1].kind == "remotion":
                 segments[-1].shots.append(piece)
                 segments[-1].frames += y - x

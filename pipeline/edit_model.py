@@ -10,6 +10,10 @@ Changes, in the order they are applied:
 - labels: text changed or removed, retimed, new ones;
 - audio: another music track for a chapter, sound effects moved / removed / re-levelled / added;
 - scenes: reordered or deleted, narration included (the voice is re-cut by scene, see reorder()).
+- pieces and looks (the CapCut-style tools): a shot split in pieces at given frames (`splits`, each later piece
+  starts `offset` frames into the same clip), effects per shot or piece (`fx`: colour, look, blur, vignette, grain,
+  camera move, speed) and the transition into a shot (`trans`: black, flash, blur, zoom, whip, or none to drop the
+  pipeline's own). Older edits.json files simply have none of them.
 
 Coordinates: every change is stored in the pipeline's own frames (before any scene reordering), so a
 later reorder never breaks it. The page converts with the `timeMap` returned in the state.
@@ -29,7 +33,14 @@ from typing import Any
 MIN_SHOT = 12                     # frames: no shot shorter than this after a trim
 EMPTY: dict[str, Any] = {"footage": {}, "own": {}, "media": {}, "cuts": {}, "texts": {}, "removed": [], "timing": {},
                          "added": [], "labels": {}, "labelTiming": {}, "addedLabels": [], "music": {},
-                         "sfx": {"removed": [], "moved": {}, "volume": {}, "added": []}, "order": [], "deleted": []}
+                         "sfx": {"removed": [], "moved": {}, "volume": {}, "added": []}, "order": [], "deleted": [],
+                         "splits": {}, "fx": {}, "trans": {}}
+PIECE = "+"                       # a later piece of a split shot: «s012+2», «s012+3»
+FX_RANGES = {"brightness": (0.2, 2), "contrast": (0.2, 2), "saturation": (0, 3), "temperature": (-1, 1), "blur": (0, 40),
+             "vignette": (0, 1), "grain": (0, 1)}
+LOOKS = {"none", "bn", "sepia", "frio", "calido", "vintage", "dramatico"}
+MOVES = {"none", "in", "out", "left", "right"}
+TRANSITIONS = {"black", "flash", "blur", "zoom", "whip"}
 
 
 def normalise(edits: dict[str, Any] | None) -> dict[str, Any]:
@@ -101,6 +112,85 @@ def _follow_cut(frame: int, moved: dict[int, int], reach: int = 7) -> int:
         if abs(frame - old) <= reach:
             return frame + new - old
     return frame
+
+
+def base_id(shot_id: str) -> str:
+    return shot_id.split(PIECE, 1)[0]
+
+
+def _splits(t: dict[str, Any], e: dict[str, Any]) -> None:
+    """Shots cut in pieces at the frames chosen in the editor; the same clip goes on in each piece."""
+
+    out = []
+    for shot in t["shots"]:
+        points = e["splits"].get(shot["id"]) or []
+        start, end = shot["from"], shot["from"] + shot["durationInFrames"]
+        if shot["type"] not in ("broll", "split") or not points:
+            out.append(shot)
+            continue
+        cuts: list[int] = []
+        for f in sorted({int(x) for x in points}):
+            if start + MIN_SHOT <= f <= end - MIN_SHOT and (not cuts or f - cuts[-1] >= MIN_SHOT):
+                cuts.append(f)
+        if not cuts:
+            out.append(shot)
+            continue
+        whole = shot.get("fullDuration") or shot["durationInFrames"]
+        for k, (x, y) in enumerate(zip([start, *cuts], [*cuts, end])):
+            piece = copy.deepcopy(shot)
+            piece.update({"from": x, "durationInFrames": y - x, "offset": int(shot.get("offset") or 0) + x - start, "fullDuration": whole})
+            if k:
+                piece["id"] = f"{shot['id']}{PIECE}{k + 1}"
+                piece.pop("chapterTitle", None)
+            out.append(piece)
+    t["shots"] = out
+
+
+def _fx(t: dict[str, Any], e: dict[str, Any]) -> None:
+    """Effects of each shot or piece (out-of-range values are brought back in); speed is the clip's playback rate."""
+
+    for shot in t["shots"]:
+        chosen = e["fx"].get(shot["id"])
+        if not isinstance(chosen, dict):
+            continue
+        fx: dict[str, Any] = {}
+        for key, (low, high) in FX_RANGES.items():
+            try:
+                if chosen.get(key) is not None:
+                    fx[key] = round(max(low, min(high, float(chosen[key]))), 3)
+            except (TypeError, ValueError):
+                continue
+        if chosen.get("look") in LOOKS - {"none"}:
+            fx["look"] = chosen["look"]
+        if chosen.get("move") in MOVES - {"none"}:
+            fx["move"] = chosen["move"]
+        if fx:
+            shot["fx"] = fx
+        media = shot.get("media")
+        try:
+            speed = float(chosen.get("speed") or 0)
+        except (TypeError, ValueError):
+            speed = 0
+        if media and media.get("kind") == "video" and speed and abs(speed - 1) > 0.01:
+            media["rate"] = round(max(0.25, min(4.0, speed)), 3)
+
+
+def _trans(t: dict[str, Any], e: dict[str, Any]) -> None:
+    """The transition into a shot: the pipeline's one at that cut is replaced (or just dropped with «none»)."""
+
+    by_id = {s["id"]: s for s in t["shots"]}
+    transitions = list(t.get("transitions") or [])
+    for shot_id, chosen in e["trans"].items():
+        shot = by_id.get(shot_id)
+        if not shot or not shot["from"] or not isinstance(chosen, dict):
+            continue
+        cut = shot["from"]
+        transitions = [tr for tr in transitions if abs(tr["from"] + tr.get("durationInFrames", 12) // 2 - cut) > 7]
+        kind = chosen.get("kind")
+        if kind in TRANSITIONS:
+            frames = max(6, min(60, int(chosen.get("frames") or 12)))
+            transitions.append({"kind": kind, "from": max(0, cut - frames // 2), "durationInFrames": frames})
+    t["transitions"] = sorted(transitions, key=lambda tr: tr["from"])
 
 
 # --- groups and labels ---------------------------------------------------------------------------------
@@ -216,6 +306,8 @@ def scenes(timeline: dict[str, Any], story: dict[str, Any] | None, min_seconds: 
             owners.append(10_000)
         elif shot["id"] in words:
             owners.append(event_at(words[shot["id"]]))
+        elif base_id(shot["id"]) in words:           # a later piece of a split shot: with its first piece
+            owners.append(event_at(words[base_id(shot["id"])]))
         else:
             following = next((s for s in shot_list[i + 1:] if s["id"] in words), None)
             seen = any(s["id"] in words for s in shot_list[:i])
@@ -378,10 +470,13 @@ def stretch(ctx: Any, t: dict[str, Any]) -> None:
             continue
         source = ctx.work_dir / media["src"]
         length = _seconds(source)
-        need = shot["durationInFrames"] / fps
+        # a piece of a split shot needs the whole shot's clip; a faster clip (the editor's speed) uses more of it
+        need = (shot.get("fullDuration") or shot["durationInFrames"]) / fps * max(1.0, float(media.get("rate") or 1))
         if not length or need <= length + 0.04:
             continue
-        target = ctx.work_dir / "editor" / "stretched" / f"{source.stem}-{shot['durationInFrames']}.mp4"
+        if abs(float(media.get("rate") or 1) - 1) > 0.001:    # its speed was chosen: played as it is (a short
+            continue                                          # clip sped up holds its last frame)
+        target = ctx.work_dir / "editor" / "stretched" / f"{source.stem}-{shot.get('fullDuration') or shot['durationInFrames']}.mp4"
         if not target.is_file():
             slow_motion(source, target, need)
         media["src"] = str(target.relative_to(ctx.work_dir))
@@ -421,9 +516,12 @@ def build(base: dict[str, Any], edits: dict[str, Any], ctx: Any = None, story: d
     e = normalise(edits)
     t = copy.deepcopy(base)
     moved = _shots(t, e)
+    _splits(t, e)
+    _fx(t, e)
     shifts = _groups(t, e)
     _labels(t, e)
     _audio(t, e, moved, shifts)
+    _trans(t, e)
     if ctx is not None:
         ensure_assets(ctx, t)
         stretch(ctx, t)

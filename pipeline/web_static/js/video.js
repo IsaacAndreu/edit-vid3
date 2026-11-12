@@ -310,6 +310,15 @@ async function createVideo() {
 }
 
 let tab = "diagnosis";
+// «Editar»: the CapCut-style editor of the video (pipeline/editor.py), full screen, served at /editor/<slug>/
+async function editorPage(slug) {
+  const src = `/editor/${encodeURIComponent(slug)}/`;
+  show(`<div class="editbar"><a class="btn sm" href="#/video/${encodeURIComponent(slug)}">${icon("right")} Ficha del vídeo</a>
+      <b class="mw0">Editor · ${esc(slug)}</b><span class="small muted phone-only">El editor está pensado para pantallas grandes: aquí, cambios sencillos.</span>
+      <a class="btn sm push" href="${src}" target="_blank" rel="noopener">${icon("external")} Abrir en otra pestaña</a></div>
+    <iframe class="editframe" src="${src}" title="Editor de vídeo de ${esc(slug)}"></iframe>`);
+}
+
 async function videoPage(slug) {
   const v = await api("/api/video/" + encodeURIComponent(slug));
   if (tab === "diagnosis" && !window.tabPicked && (v.error || v.lastError) && v.log) tab = "log";   // the answer is in the log
@@ -436,7 +445,7 @@ async function videoPage(slug) {
     <div class="vhead"><div class="mw0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
         <div class="meta">${esc(v.channel)}${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">(elegido por el guion)</span>` : ""}` : ""}
           ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API</div></div>
-      <div class="primary">${primary}
+      <div class="primary">${primary}${done.timeline && v.status !== "haciendo" ? `<a class="btn" href="#/editor/${encodeURIComponent(v.slug)}" title="Cambiar planos, cortes, transiciones, efectos, textos y música antes del render">${icon("scissors")} Editar</a>` : ""}
         <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ${icon("down")}</button><div>${secondary.join("")}</div></span></div></div>
     ${whyView}
     ${v.quotaWait ? `<div class="notice">${icon("pause")} En espera: ${esc(v.quotaWait)}. La cola sigue con los demás vídeos y este se reintenta solo.</div>` : ""}

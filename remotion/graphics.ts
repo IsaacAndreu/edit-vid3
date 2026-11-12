@@ -475,7 +475,33 @@ export interface CambioGraphic {
   reason?: string | null;
 }
 
+/** A ready-made scene of templates/ inserted from the editor (props as templates/types.ts SceneProps). */
+export interface SceneGraphic {
+  type: 'scene';
+  template: string;
+  sceneType?: 'hook' | 'narrative' | 'stat' | 'transition' | 'avatar';
+  text?: string | null;
+  keywords?: string[] | null;
+  timelinePoints?: { label: string; value?: string; position: number }[] | null;
+  comparisonColumns?: { title: string; items: string[] }[] | null;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+  accentColor?: string | null;
+}
+
+/** A clip or photo of your own over the edit (uploaded in the editor). */
+export interface ClipGraphic {
+  type: 'clip';
+  src: string; // relative to work/<slug>/
+  kind: 'video' | 'image';
+  fit?: 'cover' | 'contain';
+  place?: 'full' | 'pip';
+  volume?: number | null; // its own sound (0 / none: muted)
+}
+
 export type Graphic =
+  | SceneGraphic
+  | ClipGraphic
   | AtlasGraphic
   | PlazoGraphic
   | CambioGraphic

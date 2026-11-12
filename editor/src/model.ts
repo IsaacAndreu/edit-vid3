@@ -169,8 +169,13 @@ export type Selection =
   | { kind: 'scene'; id: string }
   | null;
 
+/** Where the page lives: '' on its own server (python main.py --editor), '/editor/<slug>' inside the studio. */
+export const BASE = location.pathname.replace(/\/(index\.html)?$/, '');
+/** A path of the editor's server, from wherever the page is. */
+export const at = (path: string) => (path.startsWith('/') ? BASE + path : path);
+
 export const api = async <T,>(path: string, body?: unknown): Promise<T> => {
-  const response = await fetch(path, body === undefined ? undefined : {
+  const response = await fetch(at(path), body === undefined ? undefined : {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

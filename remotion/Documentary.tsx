@@ -6,6 +6,7 @@ import { BRoll } from './components/BRoll';
 import { Chapter } from './components/Chapter';
 import { CreditBadge } from './components/CreditBadge';
 import { CutMotion } from './components/CutMotion';
+import { ShotFxLayer } from './components/ShotFx';
 import { EndScreen } from './components/EndScreen';
 import { FilmBurn } from './components/FilmBurn';
 import { FilmFinish } from './components/FilmFinish';
@@ -27,10 +28,14 @@ import { verticalOf } from './sim/vertical';
 const ShotLayer: FC<{ shot: Shot }> = ({ shot }) =>
   shot.offset ? (
     <Sequence from={-shot.offset} name={`${shot.id} +${shot.offset}`}>
-      <ShotBackground shot={{ ...shot, durationInFrames: shot.fullDuration ?? shot.durationInFrames + shot.offset }} />
+      <ShotFxLayer fx={shot.fx && { ...shot.fx, durationInFrames: shot.fullDuration ?? shot.durationInFrames + shot.offset }}>
+        <ShotBackground shot={{ ...shot, durationInFrames: shot.fullDuration ?? shot.durationInFrames + shot.offset }} />
+      </ShotFxLayer>
     </Sequence>
   ) : (
-    <ShotBackground shot={shot} />
+    <ShotFxLayer fx={shot.fx && { ...shot.fx, durationInFrames: shot.durationInFrames }}>
+      <ShotBackground shot={shot} />
+    </ShotFxLayer>
   );
 
 /** What fills the frame under the overlays for one shot. */
@@ -265,7 +270,9 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
         <Sequence key={shot.id} from={shot.from} durationInFrames={shot.durationInFrames} name={`${shot.id} ${shot.type}`}>
           {shot.media && shot.type !== 'endscreen' ? (
             <Sequence from={-(shot.offset ?? 0)}>
-              <BRoll media={shot.media} durationInFrames={shot.fullDuration ?? shot.durationInFrames} seed={shot.id} />
+              <ShotFxLayer fx={shot.fx && { ...shot.fx, durationInFrames: shot.fullDuration ?? shot.durationInFrames }}>
+                <BRoll media={shot.media} durationInFrames={shot.fullDuration ?? shot.durationInFrames} seed={shot.id} />
+              </ShotFxLayer>
             </Sequence>
           ) : (
             <GridBackground />

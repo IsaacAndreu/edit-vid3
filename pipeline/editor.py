@@ -224,7 +224,9 @@ def state(ctx: RunContext) -> dict[str, Any]:
                       "candidateId": chosen.get("candidateId"), "start": chosen.get("start"), "end": chosen.get("end"),
                       "decidedBy": chosen.get("decidedBy"), "reason": judge.get("reason"), "weak": weak,
                       "swapped": shot["id"] in edits["footage"] or shot["id"] in edits["own"] or shot["id"] in edits["media"],
-                      "options": len(_options(ctx, shot["id"])[0])})
+                      "options": len(_options(ctx, edit_model.base_id(shot["id"]))[0]),
+                      "fx": shot.get("fx"), "rate": (shot.get("media") or {}).get("rate"), "offset": shot.get("offset") or 0,
+                      "piece": edit_model.PIECE in shot["id"]})
     labels = [{"original": label["text"], "text": edits["labels"].get(label["text"], label["text"]), "from": label["from"],
                "durationInFrames": label["durationInFrames"], "kind": label["kind"]} for label in (base.get("labels") or [])]
     removed = [{"id": g["id"], "kind": g["kind"], "type": (g.get("graphic") or {}).get("type"), "from": g["from"],
@@ -235,7 +237,7 @@ def state(ctx: RunContext) -> dict[str, Any]:
     return {"slug": ctx.slug, "timeline": timeline, "shots": shots, "edits": edits, "labels": labels, "removedGroups": removed,
             "layout": unedited, "scenes": edit_model.scenes(unedited, story(ctx)), "timeMap": edit_model.time_map(timeline),
             "words": _voice_frames(ctx, base), "baseDuration": base["durationInFrames"],
-            "rendered": (ctx.out_dir / "video-final.mp4").is_file(), "job": JOB.status()}
+            "rendered": (ctx.out_dir / "video-final.mp4").is_file(), "job": job(ctx).status()}
 
 
 def options(ctx: RunContext, shot_id: str) -> list[dict[str, Any]]:
@@ -345,6 +347,21 @@ TEMPLATES: list[dict[str, Any]] = [
                                                                                    {"label": "Medallas", "value": "8"}]}},
     {"type": "scale", "name": "Escala", "seconds": 6, "data": {"title": "Título", "axis": "height", "unit": "m", "items": [
         {"name": "La marca", "value": 2.45}, {"name": "Persona media", "value": 1.75, "reference": True}]}},
+    # «Recursos»: the ready-made scenes of templates/ (Remotion), drawn full frame over the edit with their own props
+    *({"type": "scene", "group": "Escenas", "name": name, "seconds": seconds, "data": {"template": template, **data}}
+      for template, name, seconds, data in [
+          ("title-card", "Título de capítulo", 4, {"text": "El título del capítulo"}),
+          ("kinetic-text-hook", "Gancho en texto", 3, {"text": "La frase que engancha", "keywords": ["engancha"]}),
+          ("number-callout", "Cifra destacada", 4, {"text": "12.000 pedidos el primer día", "keywords": ["12.000"]}),
+          ("stat-overlay", "Dato sobre la imagen", 4, {"text": "1,45 millones de unidades", "keywords": ["1,45 millones"]}),
+          ("lower-third", "Rótulo grande", 4, {"text": "Nombre Apellido · Lo que hace"}),
+          ("comparison-panel", "Comparación en columnas", 6, {"text": "Antes y después", "comparisonColumns": [
+              {"title": "Antes", "items": ["Primer dato", "Segundo dato"]}, {"title": "Después", "items": ["Primer dato", "Segundo dato"]}]}),
+          ("timeline-graphic", "Línea de tiempo animada", 6, {"text": "Cómo pasó", "timelinePoints": [
+              {"label": "1955", "position": 0}, {"label": "1962", "position": 0.5}, {"label": "1975", "position": 1}]}),
+          ("blueprint-data-panel", "Panel técnico", 6, {"text": "Ficha técnica", "keywords": ["Motor", "Velocidad", "Peso"]}),
+          ("whip-transition", "Transición rápida", 1, {"text": ""}),
+      ]),
 ]
 
 
@@ -481,17 +498,21 @@ class Job:
         return self.status()
 
 
-JOB = Job()
+JOBS: dict[str, Job] = {}                 # one per video: the studio opens the editor of many
+
+
+def job(ctx: RunContext) -> Job:
+    return JOBS.setdefault(str(ctx.work_dir), Job())
 
 
 def apply(ctx: RunContext) -> dict[str, Any]:
     changed = patch_selection(ctx)
-    JOB.start(ctx, "apply", ["--until", "timeline"])
-    return {**JOB.status(), "changed": changed}
+    job(ctx).start(ctx, "apply", ["--until", "timeline"])
+    return {**job(ctx).status(), "changed": changed}
 
 
 def render(ctx: RunContext) -> dict[str, Any]:
-    return JOB.start(ctx, "render", [])
+    return job(ctx).start(ctx, "render", [])
 
 
 # --- server ------------------------------------------------------------------------------------------------
@@ -500,14 +521,14 @@ def build_app(root: Path) -> Path:
     """Bundle editor/src/main.tsx (+ the Remotion components) into editor/dist/app.js when out of date."""
 
     out = APP_DIR / "dist" / "app.js"
-    sources = [*APP_DIR.joinpath("src").rglob("*.ts*"), *root.joinpath("remotion").rglob("*.ts*")]
+    sources = [*APP_DIR.joinpath("src").rglob("*.ts*"), *root.joinpath("remotion").rglob("*.ts*"), *root.joinpath("templates").rglob("*.ts*")]
     if out.is_file() and all(p.stat().st_mtime <= out.stat().st_mtime for p in sources):
         return out
     print("Preparando el editor (una vez)…")
     esbuild = root / "node_modules" / ".bin" / ("esbuild.cmd" if os.name == "nt" else "esbuild")
     subprocess.run([str(esbuild), str(APP_DIR / "src" / "main.tsx"), "--bundle", f"--outfile={out}", "--minify",
-                    "--format=iife", "--loader:.woff2=file", "--loader:.woff=file", "--loader:.ttf=file",
-                    "--public-path=/app/", "--define:process.env.NODE_ENV=\"production\"", "--jsx=automatic"],
+                    "--format=iife", "--loader:.woff2=file", "--loader:.woff=file", "--loader:.ttf=file", "--loader:.png=file", "--loader:.jpg=file",
+                    "--public-path=./app/", "--define:process.env.NODE_ENV=\"production\"", "--jsx=automatic"],
                    check=True, cwd=root)
     return out
 
@@ -555,6 +576,96 @@ def _inside(base: Path, relative: str) -> Path | None:
     return path if path.is_file() and base.resolve() in path.parents else None
 
 
+def prepare(ctx: RunContext) -> None:
+    """Before the first page: the pipeline's edit kept apart (timeline.base.json) and the changes on top of it."""
+
+    if not (ctx.work_dir / "timeline.json").is_file():
+        raise FileNotFoundError(f"{ctx.slug} aún no tiene montaje")
+    base = ctx.work_dir / "timeline.base.json"          # made by the timeline stage; older runs: the current one
+    if not base.is_file() and not any(load(ctx).values()):
+        base.write_text((ctx.work_dir / "timeline.json").read_text("utf-8"), encoding="utf-8")
+    if not edit_model.is_empty(load(ctx)):
+        refresh(ctx)                                     # the changes on top of the current pipeline edit
+
+
+Answer = tuple[str, Any, int]       # ("json", payload, status) | ("file", path, 200) | ("redirect", url, 302)
+
+
+def _call(action: Any) -> Answer:
+    try:
+        return "json", action(), 200
+    except FileNotFoundError:
+        return "json", {"error": "no existe"}, 404
+    except (ValueError, RuntimeError, KeyError) as error:
+        return "json", {"error": str(error)}, 400
+    except Exception as error:
+        traceback.print_exc()
+        return "json", {"error": f"{type(error).__name__}: {error}"}, 500
+
+
+def respond(ctx: RunContext, method: str, path: str, query: str = "", body: Any = None, raw: bytes | None = None) -> Answer:
+    """One request of the editor's page, `path` relative to where the page is (/ here, /editor/<slug>/ in the studio)."""
+
+    if method == "GET":
+        if path in ("/", "/index.html"):
+            return "file", APP_DIR / "index.html", 200
+        found: Path | None = None
+        if path.startswith("/app/"):
+            found = _inside(APP_DIR / "dist", path[len("/app/"):])
+        elif path.startswith("/work/"):              # the edit's media: staticFile() in the components
+            found = _inside(ctx.work_dir, path[len("/work/"):])
+        elif path.startswith("/root/cache/"):        # analysis clips of the alternatives
+            found = _inside(ctx.root / "cache", path[len("/root/cache/"):])
+        elif path.startswith("/api/thumb/"):
+            parts = path.split("/")[3:]
+            try:
+                found = shot_thumb(ctx, parts[0]) if len(parts) == 1 else option_thumb(ctx, parts[0], int(parts[1]))
+            except (OSError, ValueError, KeyError, IndexError):
+                found = None
+            if found is None and len(parts) == 2:     # no local frame: YouTube's own thumbnail
+                fallback = option_poster(ctx, parts[0], parts[1])
+                if fallback:
+                    return "redirect", fallback, 302
+        else:
+            q = (parse_qs(query).get("q") or [""])[0]
+            routes = {"/api/state": lambda: state(ctx), "/api/job": lambda: job(ctx).status(), "/api/templates": lambda: templates(ctx),
+                      "/api/assets": lambda: assets(ctx), "/api/waveform": lambda: waveform(ctx),
+                      "/api/geocode": lambda: geocode(ctx, q), "/api/search": lambda: search(ctx, q)}
+            if path in routes:
+                return _call(routes[path])
+            if path.startswith("/api/options/"):
+                return _call(lambda: options(ctx, path.rsplit("/", 1)[1]))
+            return "json", {"error": "no existe"}, 404
+        return ("file", found, 200) if found else ("json", {"error": "no existe"}, 404)
+    if path == "/api/upload" and raw is not None:
+        name = (parse_qs(query).get("name") or ["archivo"])[0]
+        return _call(lambda: upload(ctx, name, raw))
+    actions = {"/api/edit": lambda: edit(ctx, body or {}), "/api/edits": lambda: set_edits(ctx, (body or {}).get("edits") or {}),
+               "/api/apply": lambda: apply(ctx), "/api/render": lambda: render(ctx)}
+    if path in actions:
+        return _call(actions[path])
+    return "json", {"error": "no existe"}, 404
+
+
+def send(handler: BaseHTTPRequestHandler, answer: Answer) -> None:
+    kind, value, status = answer
+    if kind == "file":
+        return _file(handler, value)
+    if kind == "redirect":
+        handler.send_response(302)
+        handler.send_header("Location", value)
+        handler.end_headers()
+        return
+    data = json.dumps(value, ensure_ascii=False).encode()
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    if handler.command != "HEAD":
+        handler.wfile.write(data)
+
+
 def make_handler(ctx: RunContext, port: int) -> type[BaseHTTPRequestHandler]:
     allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
 
@@ -562,104 +673,26 @@ def make_handler(ctx: RunContext, port: int) -> type[BaseHTTPRequestHandler]:
         def log_message(self, *args: Any) -> None:
             pass
 
-        def _json(self, status: int, payload: Any) -> None:
-            data = json.dumps(payload, ensure_ascii=False).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
-
-        def _run(self, action: Any) -> None:
-            try:
-                self._json(200, action())
-            except FileNotFoundError:
-                self._json(404, {"error": "no existe"})
-            except (ValueError, RuntimeError, KeyError) as error:
-                self._json(400, {"error": str(error)})
-            except Exception as error:
-                traceback.print_exc()
-                self._json(500, {"error": f"{type(error).__name__}: {error}"})
-
         def do_GET(self) -> None:
             url = urlparse(self.path)
-            path = url.path
-            if path in ("/", "/index.html"):
-                data = (APP_DIR / "index.html").read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-                return
-            if path.startswith("/app/"):
-                found = _inside(APP_DIR / "dist", path[len("/app/"):])
-            elif path.startswith("/work/"):              # the edit's media: staticFile() in the components
-                found = _inside(ctx.work_dir, path[len("/work/"):])
-            elif path.startswith("/root/cache/"):        # analysis clips of the alternatives
-                found = _inside(ctx.root / "cache", path[len("/root/cache/"):])
-            elif path.startswith("/api/thumb/"):
-                parts = path.split("/")[3:]
-                try:
-                    found = (shot_thumb(ctx, parts[0]) if len(parts) == 1 else option_thumb(ctx, parts[0], int(parts[1])))
-                except (OSError, ValueError, KeyError):
-                    found = None
-                if found is None and len(parts) == 2:     # no local frame: YouTube's own thumbnail
-                    fallback = option_poster(ctx, parts[0], parts[1])
-                    if fallback:
-                        self.send_response(302)
-                        self.send_header("Location", fallback)
-                        self.end_headers()
-                        return
-            else:
-                query = parse_qs(url.query)
-                q = (query.get("q") or [""])[0]
-                routes = {"/api/state": lambda: state(ctx), "/api/job": JOB.status, "/api/templates": lambda: templates(ctx),
-                          "/api/assets": lambda: assets(ctx), "/api/waveform": lambda: waveform(ctx),
-                          "/api/geocode": lambda: geocode(ctx, q), "/api/search": lambda: search(ctx, q)}
-                if path in routes:
-                    self._run(routes[path])
-                elif path.startswith("/api/options/"):
-                    self._run(lambda: options(ctx, path.rsplit("/", 1)[1]))
-                else:
-                    self._json(404, {"error": "no existe"})
-                return
-            if found is None:
-                self._json(404, {"error": "no existe"})
-            else:
-                _file(self, found)
+            send(self, respond(ctx, "GET", url.path, url.query))
 
         def do_POST(self) -> None:
             if self.headers.get("Origin") not in allowed:
-                self._json(403, {"error": "origen no permitido"})
-                return
+                return send(self, ("json", {"error": "origen no permitido"}, 403))
             url = urlparse(self.path)
-            if url.path == "/api/upload" and self.headers.get("Content-Type") == "application/octet-stream":
-                length = int(self.headers.get("Content-Length") or 0)
-                if length > MAX_UPLOAD:
-                    self._json(400, {"error": "archivo demasiado grande"})
-                    return
-                name = (parse_qs(url.query).get("name") or ["archivo"])[0]
-                data = self.rfile.read(length)
-                self._run(lambda: upload(ctx, name, data))
-                return
-            if self.headers.get("Content-Type") != "application/json":
-                self._json(403, {"error": "tipo no permitido"})
-                return
             length = int(self.headers.get("Content-Length") or 0)
+            if url.path == "/api/upload" and self.headers.get("Content-Type") == "application/octet-stream":
+                if length > MAX_UPLOAD:
+                    return send(self, ("json", {"error": "archivo demasiado grande"}, 400))
+                return send(self, respond(ctx, "POST", url.path, url.query, raw=self.rfile.read(length)))
+            if self.headers.get("Content-Type") != "application/json":
+                return send(self, ("json", {"error": "tipo no permitido"}, 403))
             try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
-                self._json(400, {"error": "JSON no válido"})
-                return
-            path = urlparse(self.path).path
-            actions = {"/api/edit": lambda: edit(ctx, body), "/api/edits": lambda: set_edits(ctx, body.get("edits") or {}),
-                       "/api/apply": lambda: apply(ctx), "/api/render": lambda: render(ctx)}
-            if path in actions:
-                self._run(actions[path])
-            else:
-                self._json(404, {"error": "no existe"})
+                return send(self, ("json", {"error": "JSON no válido"}, 400))
+            send(self, respond(ctx, "POST", url.path, url.query, body))
 
     return Handler
 
@@ -667,11 +700,7 @@ def make_handler(ctx: RunContext, port: int) -> type[BaseHTTPRequestHandler]:
 def serve(ctx: RunContext, port: int = 8766, open_browser: bool = True) -> None:
     if not (ctx.work_dir / "timeline.json").is_file():
         raise SystemExit(f"{ctx.slug} aún no tiene montaje: lanza antes `python main.py --slug {ctx.slug} --review`")
-    base = ctx.work_dir / "timeline.base.json"          # made by the timeline stage; older runs: the current one
-    if not base.is_file() and not any(load(ctx).values()):
-        base.write_text((ctx.work_dir / "timeline.json").read_text("utf-8"), encoding="utf-8")
-    if not edit_model.is_empty(load(ctx)):
-        refresh(ctx)                                     # the changes on top of the current pipeline edit
+    prepare(ctx)
     build_app(ctx.root)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(ctx, port))
     url = f"http://127.0.0.1:{port}"

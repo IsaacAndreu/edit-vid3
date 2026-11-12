@@ -1,6 +1,7 @@
 import type { Graphic } from './graphics';
 import type { Brand } from './theme';
 import type { Shake, Transition } from './components/CutMotion';
+import type { ShotFx } from './components/ShotFx';
 
 export type ShotType = 'broll' | 'datacard' | 'stat' | 'chapter' | 'split' | 'endscreen';
 export type Sign = 'positive' | 'negative' | 'neutral';
@@ -36,6 +37,7 @@ export interface Shot {
   coldOpen?: boolean;
   offset?: number; // render: a piece of a longer shot that starts this many frames into it
   fullDuration?: number; // render: the whole shot's length (Ken Burns, zoom)
+  fx?: ShotFx | null; // effects chosen in the editor (components/ShotFx.tsx)
 }
 
 export interface DataRow {

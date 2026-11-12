@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, type FC, type ReactNode } from 'react';
 import {
-  api, clock, clone, groupName, setPath, type Asset, type Edits, type Option, type SearchResult,
+  api, at, clock, clone, groupName, setPath, type Asset, type Edits, type Option, type SearchResult,
   type Selection, type State, type Template,
 } from './model';
 
@@ -75,12 +75,12 @@ const OptionCard: FC<{ option: Option; chosen: boolean; onPick: () => void }> = 
       style={{ border: `2px solid ${chosen ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 8, overflow: 'hidden', background: 'var(--raised)' }}>
       <div style={{ position: 'relative', aspectRatio: '16 / 9', background: '#000' }}>
         {hover && option.preview && option.kind === 'video' ? (
-          <video ref={video} src={option.preview} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          <video ref={video} src={at(option.preview)} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (option.previewTo !== null && option.previewFrom !== null && v.currentTime > option.previewTo) v.currentTime = option.previewFrom;
             }} />
-        ) : <img src={option.thumb} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+        ) : <img src={at(option.thumb)} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
         <span style={{ position: 'absolute', left: 4, top: 4, fontSize: 10, background: 'rgba(0,0,0,.7)', padding: '1px 5px', borderRadius: 4 }}>
           {option.kind === 'video' ? 'VÍDEO' : 'FOTO'} · {option.score.toFixed(2)}
         </span>
@@ -168,7 +168,7 @@ export const Library: FC<Common & { selection: Selection; templates: Template[];
                 if (!file || !shot) return;
                 setBusy('Subiendo…');
                 try {
-                  const response = await fetch(`/api/upload?name=${encodeURIComponent(file.name)}`, {
+                  const response = await fetch(at(`/api/upload?name=${encodeURIComponent(file.name)}`), {
                     method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
                   });
                   const data = await response.json();

@@ -3,7 +3,8 @@
 // work/<slug>/timeline.json with the same components as the final render; every change goes to
 // pipeline/editor.py as the whole set of edits (that is how undo/redo work).
 
-(window as unknown as { remotion_staticBase: string }).remotion_staticBase = '/work';
+import { BASE } from './model';
+(window as unknown as { remotion_staticBase: string }).remotion_staticBase = BASE + '/work';
 
 import { Player, type PlayerRef } from '@remotion/player';
 import { StrictMode, useCallback, useEffect, useRef, useState, type CSSProperties, type FC } from 'react';
