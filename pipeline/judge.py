@@ -622,6 +622,8 @@ def run(ctx: RunContext) -> None:
     if cfg.get("portraits", True) and (ctx.work_dir / "people.json").is_file():
         for person in ctx.read_json("people.json").get("people") or []:
             image = ctx.work_dir / str(person.get("image") or "")
+            if person.get("verified") is not True:            # only a face several photos agree on (people.consensus)
+                continue
             data = portrait_bytes(image) if person.get("name") and image.is_file() else None
             if data:
                 portrait_of[str(person["name"])] = data

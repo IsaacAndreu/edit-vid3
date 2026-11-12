@@ -114,7 +114,29 @@ def video_frames(ctx: RunContext, person: str, detectors: Detectors, limit: int 
     return [(frame, meta) for _, frame, meta in found[:limit]]
 
 
-CUTOUT_VERSION = 3   # 2: best-scored upright portrait among the candidates (1: the first that worked)
+CUTOUT_VERSION = 4   # 4: the face most of the photos agree on (3/2: best-scored upright portrait; 1: the first that worked)
+
+
+def consensus(features: list[Any], same: float = 0.36) -> tuple[list[int], bool]:
+    """Which candidate photos show the person the search is about. A name search returns mostly that person and a
+    few intruders (a rival, a journalist, a fan): the face most photos agree on (SFace cosine ≥ `same`, the identity
+    check's face_accept) is them. Returns (indices of that group, verified). Verified only when at least two photos
+    agree; otherwise every photo is kept for the card but none is trusted as the person's face. A photo without a
+    readable face (None) never counts as agreeing."""
+
+    indices = [i for i, f in enumerate(features) if f is not None]
+    if not indices:
+        return list(range(len(features))), False
+    agree = {i: [j for j in indices if j != i and _cosine(features[i], features[j]) >= same] for i in indices}
+    best = max(indices, key=lambda i: (len(agree[i]), -i))
+    if not agree[best]:
+        return list(range(len(features))), False
+    return sorted([best, *agree[best]]), True
+
+
+def _cosine(a: Any, b: Any) -> float:
+    a, b = np.asarray(a, dtype=np.float32).ravel(), np.asarray(b, dtype=np.float32).ravel()
+    return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
 
 
 def upright(face: dict) -> bool:
@@ -175,6 +197,18 @@ def cutout_with_box(image: np.ndarray, session: Any) -> tuple[np.ndarray, tuple[
     return cv2.cvtColor(crop, cv2.COLOR_RGBA2BGRA), (int(top), int(bottom), int(left), int(right))
 
 
+def face_feature(checker: Any, image: np.ndarray) -> Any:
+    """The SFace vector of the biggest face in a photo, or None (no models, no face)."""
+
+    if checker is None:
+        return None
+    try:
+        found = checker.faces(image, 40)
+    except Exception:
+        return None
+    return max(found, key=lambda f: f[1])[0] if found else None
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "shots.json"]
 
@@ -191,6 +225,9 @@ def run(ctx: RunContext) -> None:
         print("   Sin tarjetas de personas: instala 'rembg[cpu]' para recortar a los atletas")
     session = new_session(str(cfg.get("model", "u2net_human_seg"))) if names else None
     detectors = Detectors(cache_dir=ctx.cache_dir)
+    from .identity import Checker
+
+    faces = Checker(ctx, []) if names else None             # SFace: do the candidate photos show the same face?
     http = requests.Session()
     http.headers["User-Agent"] = USER_AGENT
     out_dir = ctx.work_dir / CARD_DIR
@@ -203,6 +240,8 @@ def run(ctx: RunContext) -> None:
             meta = None
             notes: list[str] = []
             best: tuple[float, np.ndarray, dict[str, Any]] | None = None
+            usable: list[tuple[float, np.ndarray, dict[str, Any]]] = []
+            features: list[Any] = []
             for candidate in photo_candidates(ctx, person, notes)[: int(cfg.get("tries", 8))]:
                 original = ctx.cache_dir / "images" / "original" / f"{key(candidate.mediaUrl)}{Path(candidate.mediaUrl.split('?')[0]).suffix or '.jpg'}"
                 try:
@@ -220,11 +259,22 @@ def run(ctx: RunContext) -> None:
                 score = portrait_score(image, detectors, found[1])
                 if score is None:
                     continue
-                if best is None or score > best[0]:
-                    best = (score, found[0], {"credit": candidate.credit, "url": candidate.url,
-                                              "candidateId": candidate.id, "source": candidate.source})
+                usable.append((score, found[0], {"credit": candidate.credit, "url": candidate.url,
+                                                 "candidateId": candidate.id, "source": candidate.source}))
+                features.append(face_feature(faces, image))
+            group, verified = consensus(features, float(ctx.section("fallback").get("face_accept", 0.36)))
+            for i in group:
+                if best is None or usable[i][0] > best[0]:
+                    best = usable[i]
+            if usable:
+                agreed = f"{len(group)} de {len(usable)} fotos con la misma cara" if verified else "ninguna foto coincide con otra"
+                print(f"   {person}: {agreed}{'' if verified else ' → la foto vale para la tarjeta, no para comprobar caras'}")
             if best is None:
-                for frame, frame_meta in video_frames(ctx, person, detectors):
+                frames = video_frames(ctx, person, detectors)
+                group, verified = consensus([face_feature(faces, frame) for frame, _ in frames],
+                                            float(ctx.section("fallback").get("face_accept", 0.36)))
+                for i in group:
+                    frame, frame_meta = frames[i]
                     found = cutout_with_box(frame, session)
                     if found is not None and portrait_score(frame, detectors, found[1]) is not None:
                         best = (0.0, found[0], frame_meta)
@@ -232,7 +282,7 @@ def run(ctx: RunContext) -> None:
             if best is not None:
                 lib_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(stored), best[1])
-                meta = {**best[2], "v": CUTOUT_VERSION}
+                meta = {**best[2], "v": CUTOUT_VERSION, "verified": bool(verified)}
             if meta is not None:
                 full = library.load(ctx, person)
                 full["cutout"] = meta

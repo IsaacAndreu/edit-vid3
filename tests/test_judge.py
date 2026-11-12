@@ -129,7 +129,7 @@ class RunTests(unittest.TestCase):
             import cv2, numpy as np
             (ctx.work_dir / "people").mkdir()
             cv2.imwrite(str(ctx.work_dir / "people" / "ana.png"), np.full((600, 400, 4), 200, "uint8"))
-            ctx.write_json("people.json", {"slug": "t", "people": [{"name": "Ana Pérez", "image": "people/ana.png"}]})
+            ctx.write_json("people.json", {"slug": "t", "people": [{"name": "Ana Pérez", "image": "people/ana.png", "verified": True}]})
             seen = {}
 
             def fake_judge(ctx, shot, sheet, letters, *args, portraits=None, **kwargs):
