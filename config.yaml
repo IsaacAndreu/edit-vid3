@@ -136,6 +136,8 @@ analysis:
   max_frames_per_video: 40         # miniaturas del storyboard codificadas por vídeo (pasada gruesa)
   dedupe_difference: 4             # miniaturas consecutivas casi iguales se codifican una vez
   moments_per_video: 2             # mejores momentos por vídeo en la pasada gruesa
+  said_windows: true              # una ventana más donde los subtítulos de la fuente DICEN el momento del plano
+  said_videos: 3                   # en cuántos de sus mejores vídeos se busca
   fine_windows: 2                  # ventanas por plano que se descargan a 360p (pasada fina)
   extra_windows_with_entities: 1   # +1 si el plano nombra un lugar/persona/marca concreta
   window_padding: 2.0              # s alrededor del momento elegido

@@ -153,3 +153,13 @@ class FineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_the_moment_is_found_where_the_source_says_it():
+    from pipeline.analysis import said_moment
+
+    captions = [(0.0, 4.0, "the hearing resumed this morning"), (4.0, 8.0, "victims read statements"),
+                (30.0, 34.0, "then the father lunged at Nassar"), (34.0, 38.0, "deputies tackled him to the floor")]
+    assert said_moment(captions, "father lunges at Larry Nassar in court", ["Larry Nassar"], 3.0) == 30.0
+    assert said_moment(captions, "judge reads the sentence", [], 3.0) is None
+    assert said_moment([], "anything", [], 3.0) is None

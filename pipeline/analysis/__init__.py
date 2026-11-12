@@ -343,6 +343,23 @@ def moment_score(captions: list[tuple[float, float, str]], moment: str | None, s
     return round(0.6 * (stems[0] in heard) + 0.4 * (sum(s in heard for s in rest) / len(rest) if rest else stems[0] in heard), 3)
 
 
+def said_moment(captions: list[tuple[float, float, str]], moment: str | None, entities: list[str], needed: float,
+                min_score: float = 0.6) -> float | None:
+    """Where the source SAYS what the shot narrates: the news report or the commentator describes it as it shows it
+    («…and that is when she lunged at Nassar»). The second of the source whose words around it best match the shot's
+    moment (and its people), or None when nothing matches well enough. CLIP finds a courtroom; this finds THE moment."""
+
+    if not moment or not captions:
+        return None
+    best, at = 0.0, None
+    for start, _, _ in captions:
+        near = " ".join(text for a, b, text in captions if b >= start - 3 and a <= start + needed + 6)
+        score = moment_score(captions, moment, start, start + needed) + 0.4 * entity_match(near, entities)
+        if score > best + 1e-6:
+            best, at = score, start
+    return at if best >= min_score else None
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "shots.json", ctx.work_dir / "candidates"]
 
@@ -639,6 +656,43 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 if done % 50 == 0:
                     print(f"   ventanas: {done}/{total} ({time.monotonic() - started:.0f} s) · {len(written)} planos guardados")
 
+    # analysis.said_windows (true): for shots with a narrated moment, a window where the source's subtitles SAY it,
+    # in its best `said_videos` videos (their subtitles were already read for the scores: no new searches)
+    said = 0
+    if cfg.get("said_windows", True) and youtube is not None:
+        for shot in todo:
+            if not (shot.broll and shot.broll.moment):
+                continue
+            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            seen_videos: list[Candidate] = []
+            for option in coarse[shot.id]:
+                c = option["candidate"]
+                if c.kind == "video" and c.id.startswith("yt:") and c not in seen_videos:
+                    seen_videos.append(c)
+                if len(seen_videos) >= int(cfg.get("said_videos", 3)):
+                    break
+            for c in seen_videos:
+                try:
+                    captions = youtube.captions(c.id.removeprefix("yt:"))
+                except Exception:
+                    continue
+                t = said_moment(captions, shot.broll.moment, shot.broll.entities, needed)
+                if t is None:
+                    continue
+                duration = float(c.durationSeconds or 0)
+                margin = duration * float(cfg.get("edge_margin", 0.05))
+                a, b = round(max(margin, t - pad), 2), round(min(duration - margin, t + needed + pad), 2)
+                if b - a < needed or any(o.get("window") and o["candidate"].id == c.id and o["window"][0] < b and a < o["window"][1]
+                                         for o in coarse[shot.id]):
+                    continue
+                job = (c.id, a, b)
+                jobs.setdefault(job, []).append(shot.id)
+                coarse[shot.id].append({"candidate": c, "t": t, "clip": 0.0, "entity": 0.0, "window": (a, b), "said": True})
+                round_one.append(job)
+                said += 1
+                break                                    # one «said» window per shot
+        if said:
+            print(f"   Momentos localizados por lo que dice la fuente: {said} planos")
     print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
           + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
     for job in set(round_one):
