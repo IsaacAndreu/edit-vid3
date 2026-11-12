@@ -249,7 +249,7 @@ def fine_options(
             discarded = "fotograma negro"
         elif motion < float(cfg.get("frozen_difference", 0.5)):
             discarded = "imagen congelada"
-        elif text_area > float(cfg.get("max_text_area", 0.08)):
+        elif text_area > float(cfg.get("max_text_area", 0.08)) and not edge_text_only(detectors, frames, cfg):
             discarded = f"texto en pantalla ({text_area:.0%})"
         elif len(big_centred) >= 2:
             discarded = "presentador hablando a cámara"
@@ -267,6 +267,16 @@ def fine_options(
             "phash": det.phash(middle),
         })
     return results
+
+
+def edge_text_only(detectors: det.Detectors, frames: list[np.ndarray], cfg: dict[str, Any]) -> bool:
+    """analysis.crop_edge_text (true): the text is only on the edges (a news channel's subtitles, its tag on top) and
+    cutting it off zooms in by at most `max_edge_crop` (35 %): the fragment stays; ingest crops it (ingest.py)."""
+
+    if not cfg.get("crop_edge_text", True):
+        return False
+    edges = detectors.text_edges(frames)
+    return edges is not None and sum(edges) <= float(cfg.get("max_edge_crop", 0.35))
 
 
 def entity_match(text: str, entities: list[str]) -> float:

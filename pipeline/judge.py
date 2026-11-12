@@ -68,7 +68,8 @@ Reject (leave out of the ranking) a candidate that:
 - is a presenter/vlogger talking to camera, a reaction face, or a channel intro/outro (an interview
   of the very person the video is about is fine when the narration quotes or describes them);
 - is blurry, black, frozen, a cartoon/animation or video-game footage (unless asked), or a slide;
-- has burned-in subtitles or captions, even small ones;
+- has burned-in subtitles, captions or text over the MIDDLE of the picture. Text only along the bottom or top edge
+  (a news channel's subtitles or lower-third, its tag in a corner) is fine: it is cropped out automatically;
 - is a screen recording or tutorial of software, a spreadsheet, a form, a website or an app — UNLESS the narration
   is about that app, website or interface itself (how a service signs people up or makes it hard to cancel, an
   app's design, a platform's settings): then a clear recording of that screen IS the right footage, accept it;
