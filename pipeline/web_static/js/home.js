@@ -47,10 +47,13 @@ function block(title, list, {cls = "", right = null, more = "", open = true, col
     : `<div${anchor} class="block ${cls}"><div class="bh">${head}</div>${rows}</div>`;
 }
 
-let homeData = null;
+let homeData = null, homeIdeas = {at: 0, list: []};
 async function home() {
   if (homeData) { drawHome(); apiCache.delete("/api/overview"); }        // what we have, at once; then the fresh answer
   const [overview, dates] = await Promise.all([api("/api/overview"), api("/api/upload/dates").catch(() => ({}))]);
+  if (homeView === "tablero" && Date.now() - homeIdeas.at > 60000) {        // the ideas column: the board, once a minute
+    homeIdeas = {at: Date.now(), list: ((await api("/api/board").catch(() => null)) || {columns: {}}).columns.idea || []};
+  }
   homeData = {overview, dates};
   drawHome();
 }
@@ -59,7 +62,7 @@ async function unholdHome(slug) {      // «en pausa» (taken out of the queue):
 }
 
 let homeKey = "";
-let homeView = (() => { try { return localStorage.getItem("inicio:vista") || "tabla"; } catch (e) { return "tabla"; } })();
+let homeView = (() => { try { return localStorage.getItem("inicio:vista") || "tablero"; } catch (e) { return "tablero"; } })();
 let openSections = (() => { try { return JSON.parse(localStorage.getItem("inicio:secciones") || "{}"); } catch (e) { return {}; } })();
 const expanded = {};
 window.pickView = (v) => { homeView = v; try { localStorage.setItem("inicio:vista", v); } catch (e) {} drawHome(true); };
@@ -82,7 +85,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
   const s = data.service, b = data.budget, yt = data.youtube;
   const all = data.videos.filter((v) => !v.archived);
   // nothing changed since the last draw: leave the page alone (no flicker, no lost scroll) and look again later
-  const key = JSON.stringify([homeChannel, homeKind, homeView, openSections, expanded, hiddenShorts, s, b, yt && yt.requests, all.map((v) => [v.slug, v.status, v.stage, v.error, v.lastError, v.retryAt, v.published, v.voice, v.quotaWait])]);
+  const key = JSON.stringify([homeChannel, homeKind, homeView, openSections, expanded, hiddenShorts, s, b, yt && yt.requests, homeIdeas.list.length, (Date.now() / 3.6e6) | 0, all.map((v) => [v.slug, v.status, v.stage, v.error, v.lastError, v.retryAt, v.published, v.voice, v.quotaWait])]);
   if (!force && key === homeKey && $("#app")._hash === (location.hash || "#/")) { schedule(home, all.some((v) => v.status === "haciendo") ? 10000 : 30000); return; }
   homeKey = key;
   const channels = [...new Set(all.map((v) => v.channel).filter(Boolean))].sort();
@@ -158,8 +161,32 @@ function drawHome(force = false) {               // the channel buttons redraw f
     ? `<select class="w-auto" aria-label="Canal" onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
     : channels.length > 1 ? `<div class="tools">${["", ...channels].map((c) => `<button class="chip ${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">${c ? `${dot(c)}${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : "";
   const kindPick = all.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}</button>`).join("")}</span>` : "";
-  const viewPick = `<span class="seg"><button class="${homeView === "tabla" ? "on" : ""}" onclick="pickView('tabla')">Tabla</button><button class="${homeView === "lista" ? "on" : ""}" onclick="pickView('lista')">Tarjetas</button></span>`;
-  const sections = homeView === "tabla"
+  const viewPick = `<span class="seg">${[["tablero", "Tablero"], ["tabla", "Tabla"], ["lista", "Tarjetas"]].map(([k, n]) => `<button class="${homeView === k ? "on" : ""}" aria-pressed="${homeView === k}" onclick="pickView('${k}')">${n}</button>`).join("")}</span>`;
+  // the board: from the idea to YouTube, one column per step, a card per video
+  const week = Date.now() - 7 * 864e5;
+  const recent = uploaded.filter((v) => Date.parse((v.published || {}).at || 0) >= week);
+  const waiting = vids.filter((v) => v.status === "incompleto" || (v.voice && !v.stage && v.status !== "hecho"));
+  const steps = (v) => UPLOAD_STEPS.filter(([k]) => checked(v.slug, k)).length;
+  const pcard = (v, badge, meta, pct, tone = "") => `<a class="pcard" href="#/video/${encodeURIComponent(v.slug)}">
+      <span class="pthumb" style="--c:${chColor(v.channel)}">${v.thumb ? thumb(`/files/${encodeURIComponent(v.slug)}/${v.thumb}`, "", "") : `<span class="pin">${esc(String(v.channel || "").slice(0, 2).toUpperCase())}</span>`}
+        ${badge ? `<span class="tl ${tone}">${badge}</span>` : ""}${v.minutes ? `<span class="br">${v.minutes} min</span>` : v.short ? '<span class="br">Short</span>' : ""}</span>
+      <span class="pbody"><span class="t">${esc(v.title || v.slug)}</span>
+        <span class="s">${dot(v.channel, "sm")}<span class="grow mw0">${esc(v.channel || "")}</span>${meta ? `<span class="m">${meta}</span>` : ""}</span>
+        ${pct != null ? `<span class="bar"><i style="--v:${pct}%"></i></span>` : ""}</span></a>`;
+  const icard = (i) => `<a class="pcard idea" href="#/tablero"><span class="pbody"><span class="t">${esc(i.title)}</span>
+      <span class="s">${i.channel ? dot(i.channel, "sm") : ""}<span class="grow mw0">${esc(i.channel || "sin canal")}</span>${i.date ? `<span class="m">${esc(DAY(i.date))}</span>` : ""}</span></span></a>`;
+  const ideas = homeIdeas.list.filter((i) => !homeChannel || i.channel === homeChannel);
+  const col = (key, name, tone, list, card, more) => `<section class="pcol" aria-label="${name}"><h3><span class="dot" style="--c:var(--${tone})"></span>${name}<span class="count">${list.length}</span></h3>
+      ${list.slice(0, 6).map(card).join("") || '<p class="muted small m-0">Nada aquí.</p>'}${list.length > 6 ? `<a class="more" href="${more}">y ${list.length - 6} más</a>` : ""}</section>`;
+  const board = `<div class="pboard">
+      ${col("idea", "Ideas", "wait", ideas, icard, "#/tablero")}
+      ${col("voz", "Guion y voz", "accent", waiting, (v) => pcard(v, v.voice === "generando" ? "generando la voz" : v.status === "incompleto" ? "falta guion o voz" : "voz", v.stagesDone ? `${v.stagesDone}/15` : "", null, v.voice && v.voice.startsWith("error") ? "bad" : "warn"), "#/videos")}
+      ${col("cola", "En cola", "muted", queue, (v) => pcard(v, v.quotaWait ? "espera YouTube" : v.stagesDone ? `${v.stagesDone}/15` : "", v.retryAt ? "reintenta " + v.retryAt : v.stagesDone ? "" : "por empezar", v.stagesDone ? Math.round(100 * v.stagesDone / 15) : null), "#/videos")}
+      ${col("now", "Haciéndose", "work", making, (v) => { const st = v.stage || {}; return pcard(v, `${esc(STAGES[st.stage] || st.stage || "")} ${st.number}/${st.of}`, "hace " + ago(st.started), Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))); }, "#/videos")}
+      ${col("subir", "Para subir", "ok", toUpload, (v) => { const d = (slot[v.slug] || {}).date, lateOne = d && d < today;
+        return pcard(v, !d ? "sin día" : lateOne ? "tocaba " + DAY(d) : d === today ? "hoy " + esc(slot[v.slug].time || "") : DAY(d), `${steps(v)}/${UPLOAD_STEPS.length} pasos`, Math.round(100 * steps(v) / UPLOAD_STEPS.length), lateOne ? "bad" : d === today ? "warn" : ""); }, "#/subir")}
+      ${col("subidos", "Subidos · 7 días", "ok", recent, (v) => pcard(v, "subido", esc(String(v.published.at).slice(5, 10)), null), "#/videos")}</div>`;
+  const sections = homeView === "tablero" ? board : homeView === "tabla"
     ? `${table("Haciéndose ahora", making, makingRows, {cls: "now", id: "h-now", cols: [{name: "Etapa"}, {name: "Avance", cls: "r"}, {name: "Desde hace", cls: "r wide"}]})}
        ${table("Para subir", toUpload, uploadRows, {more: '<a href="#/subir" onclick="event.stopPropagation()">Abrir «Para subir» →</a>', limit: 8, cols: [{name: "Cuándo"}, {name: "Dura", cls: "r wide"}, {name: "", cls: "r"}]})}
        ${table("En cola", queue, queueRows, {limit: 10, more: !s.watching && !s.queueRunning ? '<button class="main" onclick="event.stopPropagation();startQueue()">Hacer la cola ahora</button>' : "", cols: [{name: "Estado"}, {name: "", cls: "r wide"}]})}
@@ -190,9 +217,12 @@ function drawHome(force = false) {               // the channel buttons redraw f
         ${b.proxyGbLimit ? `<div class="bar ${(b.proxyGbToday || 0) / b.proxyGbLimit > 0.9 ? "bad" : ""}"><i style="--v:${Math.min(100, 100 * (b.proxyGbToday || 0) / b.proxyGbLimit)}%"></i></div>`
           : b.limit ? `<div class="bar acc"><i style="--v:${Math.min(100, 100 * b.today / b.limit)}%"></i></div>` : ""}</a>
     </div>
-    ${attention.length ? `<div class="block warn" id="h-warn"><div class="bh"><b>Necesitan tu atención<span class="count">${attention.length}</span></b>
-      ${failed > 1 ? `<span class="small"><button class="sm" onclick="retryAll()">Reintentar todos (${failed})</button> <span id="retrymsg" class="muted"></span></span>` : ""}</div>
-      ${[...groups.entries()].sort((a, b) => b[1].vids.length - a[1].vids.length).map(causeRow).join("")}</div>` : ""}
+    ${attention.length ? (() => { const sorted = [...groups.entries()].sort((a, b) => b[1].vids.length - a[1].vids.length);
+      return `<details class="block warn attn" id="h-warn" ${openSections.atencion ? "open" : ""} ontoggle="openSections.atencion=this.open;try{localStorage.setItem('inicio:secciones',JSON.stringify(openSections))}catch(e){}">
+      <summary><span class="t-bad b">${icon("alert")} ${attention.length} necesitan tu atención</span>
+        <span class="causes">${sorted.slice(0, 4).map(([t, g]) => `<span class="chip">${esc(t)} <b class="t-bad">${g.vids.length}</b></span>`).join("")}${sorted.length > 4 ? `<span class="muted small">y ${sorted.length - 4} causas más</span>` : ""}</span>
+        ${failed > 1 ? `<button class="main sm" onclick="event.preventDefault();event.stopPropagation();retryAll()">Reintentar los ${failed}</button> <span id="retrymsg" class="muted small"></span>` : ""}</summary>
+      ${sorted.map(causeRow).join("")}</details>`; })() : ""}
     <div class="hb"><div class="tools">${channelPick}${kindPick}</div><div class="tools">${viewPick}</div></div>
     ${sections}
     ${vids.length ? "" : empty("film", "Aún no hay vídeos aquí", "", '<a class="btn main" href="#/nuevo">Crear uno</a>')}`);
@@ -204,7 +234,7 @@ window.retryOne = async (slug, button) => {
   catch (e) { oops(e); }
   setTimeout(() => { homeKey = ""; route(); }, 2000);
 };
-window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} drawHome(true); };
+window.pickChannel = (c) => setStudioChannel(c);       // the channel of the whole studio (shell.js)
 window.searchFrom = (q) => { q = String(q || "").trim(); if (!q) return;
   if (q.length > 1500) { window.pendingSearch = q; location.hash = "#/buscar/" + encodeURIComponent("(guion pegado)"); }
   else location.hash = "#/buscar/" + encodeURIComponent(q); };

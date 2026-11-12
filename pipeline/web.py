@@ -218,6 +218,18 @@ def running(current: dict[str, Any] | None) -> dict[str, Any] | None:
     return current
 
 
+def _thumb(out: Path) -> str | None:
+    """The video's first thumbnail (out/<slug>/miniatura*.png or miniaturas/*), for its card in the studio."""
+
+    if not out.is_dir():
+        return None
+    for pattern in ("miniatura*", "miniaturas/*"):
+        found = sorted(p for p in out.glob(pattern) if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"))
+        if found:
+            return found[0].relative_to(out).as_posix()
+    return None
+
+
 def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict[str, Any]:
     slug = folder.name
     out, work = root / "out" / slug, root / "work" / slug
@@ -282,6 +294,7 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
         "retryAt": time.strftime("%H:%M", time.localtime(retry_at)) if retry_at else None,
         "updated": max([p.stat().st_mtime for p in [folder, *(out.glob("*") if out.is_dir() else [])]]),
         "hasVideo": (out / "video-final.mp4").is_file(), "published": uploaded or None, "removed": removed,
+        "thumb": _thumb(out),
         "title": _first_line(folder / "titulo.txt"),
         "minutes": round(sum(float((_json(p) or {}).get("seconds") or 0) for p in stages) / 60),
     }

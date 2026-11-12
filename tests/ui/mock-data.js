@@ -173,6 +173,7 @@ function buildVideos() {
     }
     if (v.stagesDone) { v.minutes = Math.round(v.stagesDone * r.float(3, 9, 1) * (short ? 0.4 : 1)); v.costUsd = +(v.stagesDone / 15 * r.float(0.45, 1.6) * (short ? 0.3 : 1)).toFixed(2); }
     if (state.archived) v.archived = true;
+    v.thumb = v.stagesDone >= 15 ? "miniaturas/miniatura-1.jpg" : null;
     videos.push(v);
     return v;
   };

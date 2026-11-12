@@ -378,3 +378,25 @@ a.plain { color: inherit; display: block; } a.plain:hover { text-decoration: non
 dialog.dialog { border: 0; border-radius: var(--r-lg); background: var(--panel); color: var(--text); box-shadow: var(--pop); padding: var(--s5); width: min(460px, calc(100vw - 2 * var(--s4))); max-height: calc(100dvh - 2 * var(--s4)); }
 dialog.dialog::backdrop { background: rgba(0,0,0,.55); } .dialog p { margin: 0 0 var(--s3); white-space: pre-line; overflow-wrap: anywhere; } .dialog h3 { margin: 0 0 var(--s2); }
 dialog.sheet { background: var(--bg); width: min(860px, calc(100vw - 2 * var(--s3))); padding: var(--s4) var(--s4) var(--s5); }
+/* inicio: the board, from the idea to YouTube */
+.pboard { display: grid; grid-template-columns: repeat(6, minmax(160px, 1fr)); gap: var(--s3); overflow-x: auto; padding-bottom: var(--s2); margin-top: var(--s2); }
+.pcol { background: color-mix(in srgb, var(--panel2) 40%, transparent); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s2); display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.pcol h3 { margin: 2px 4px 2px; font-size: var(--sm); display: flex; align-items: center; gap: 8px; } .pcol h3 .count { margin-left: auto; color: var(--muted); font-weight: 600; }
+.pcol .more { font-size: 12.5px; color: var(--muted); padding: 2px 4px; } .pcol > p { padding: 4px; }
+.pcard { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; color: var(--text); }
+.pcard:hover { border-color: var(--muted); text-decoration: none; }
+.pthumb { position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 30%, var(--panel2)); overflow: hidden; }
+.pthumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
+.pthumb .pin { font-weight: 800; font-size: 20px; color: color-mix(in srgb, var(--c) 70%, var(--text)); letter-spacing: .02em; }
+.pthumb .tl, .pthumb .br { position: absolute; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: rgba(0,0,0,.62); color: #fff; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pthumb .tl { left: 6px; top: 6px; } .pthumb .br { right: 6px; bottom: 6px; border-radius: 4px; } .pthumb .tl.bad { background: #b8322c; } .pthumb .tl.warn { background: #8f5f00; }
+.pbody { display: flex; flex-direction: column; gap: 4px; padding: 7px 9px 9px; } .pbody .t { font-size: var(--sm); font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pbody .s { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); } .pbody .s .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pbody .m { white-space: nowrap; } .pbody .m.bad { color: var(--bad-fg); } .pbody .m.warn { color: var(--accent-fg); } .pbody .bar { margin-top: 2px; height: 4px; }
+.pcard.idea { border-style: dashed; }
+details.attn > summary { flex-wrap: wrap; justify-content: flex-start; } details.attn > summary::after { margin-left: auto; }
+details.attn .causes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } details.attn .chip { font-size: 12.5px; padding: 2px 9px; }
+@media (max-width: 760px) {
+  .pboard { grid-template-columns: 1fr; overflow: visible; } .pcol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pcol > h3, .pcol > .more, .pcol > p { grid-column: 1 / -1; } .pcol .pcard:nth-of-type(n+5) { display: none; }
+}
