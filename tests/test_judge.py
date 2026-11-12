@@ -113,6 +113,35 @@ class RunTests(unittest.TestCase):
         self.assertEqual(result[1]["candidateId"], "wm:1")
         self.assertEqual(result[1]["decidedBy"], "judge")
 
+    def test_the_judge_sees_the_photo_of_the_person_the_shot_is_about(self) -> None:
+        broll = {"visualIntent": "a gymnast", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+        texts = ["Ana Pérez ganó el oro", "el público aplaudía"]
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": t, "chapter": 0, "broll": broll} for i, t in enumerate(texts)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        video = {"id": "yt:a", "source": "youtube", "kind": "video", "url": "https://y/a", "title": "t", "channel": "A",
+                 "license": "l", "credit": "Fuente: A", "attribution": "a", "query": "q", "rankScore": 1,
+                 "durationSeconds": 100, "storyboard": board}
+        scores = {f"s00{i}": [opt("yt:a", 0.40, start=10 + 10 * i, end=12 + 10 * i), opt("yt:a", 0.399, start=50 + 10 * i, end=52 + 10 * i)]
+                  for i in range(2)}
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {s: [video] for s in scores}, scores)
+            import cv2, numpy as np
+            (ctx.work_dir / "people").mkdir()
+            cv2.imwrite(str(ctx.work_dir / "people" / "ana.png"), np.full((600, 400, 4), 200, "uint8"))
+            ctx.write_json("people.json", {"slug": "t", "people": [{"name": "Ana Pérez", "image": "people/ana.png"}]})
+            seen = {}
+
+            def fake_judge(ctx, shot, sheet, letters, *args, portraits=None, **kwargs):
+                seen[shot.id] = [(name, len(data)) for name, data in portraits or []]
+                return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+        self.assertEqual([n for n, _ in seen["s000"]], ["Ana Pérez"])        # her name in the shot: her photo goes along
+        self.assertTrue(seen["s000"][0][1] > 0)
+        self.assertEqual(seen["s001"], [])                                   # nobody named, no protagonist: no photo
+
     def test_second_round_then_fallback_never_blind_pick(self) -> None:
         broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
         shots = [{"id": "s000", "type": "broll", "startWord": 0, "endWord": 0, "start": 0.0, "end": 2.0,

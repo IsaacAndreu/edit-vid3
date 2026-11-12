@@ -361,8 +361,25 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
     return "\n".join(lines)
 
 
+def portrait_bytes(path: Path, side: int = 320) -> bytes | None:
+    """The person's cutout (people.json) as a small JPEG on white, for the judge to compare faces with."""
+
+    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        return None
+    if image.ndim == 3 and image.shape[2] == 4:            # rembg cutout: transparent background → white
+        alpha = image[:, :, 3:4].astype(np.float32) / 255.0
+        image = (image[:, :, :3].astype(np.float32) * alpha + 255.0 * (1 - alpha)).astype(np.uint8)
+    scale = side / max(image.shape[:2])
+    if scale < 1:
+        image = cv2.resize(image, (round(image.shape[1] * scale), round(image.shape[0] * scale)), interpolation=cv2.INTER_AREA)
+    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return encoded.tobytes() if ok else None
+
+
 def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, topic: str = "",
-               hook: bool = False, subject: str = "", sources: str = "", around: str = "") -> dict[str, Any]:
+               hook: bool = False, subject: str = "", sources: str = "", around: str = "",
+               portraits: list[tuple[str, bytes]] | None = None) -> dict[str, Any]:
     cfg = ctx.section("judge")
     model = str(cfg.get("model", "gpt-5-mini"))
     if not hook and cfg.get("model_rest"):   # judge.model_rest: a cheaper model outside the hook (the hook keeps `model`)
@@ -376,6 +393,13 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     prompt = f"{shot_brief(shot, topic, hook, subject, around)}\nCandidates on the sheet: {', '.join(letters)}."
     if sources:
         prompt += f"\nSource of each candidate:\n{sources}"
+    portraits = portraits or []
+    if portraits:
+        names = ", ".join(name for name, _ in portraits)
+        prompt += (f"\nREFERENCE PHOTO(S) after the sheet: {names} — who this shot is about. When a candidate's main person "
+                   "is clearly visible, compare the face, hair and build with the reference: if it is clearly a DIFFERENT "
+                   "person, reject the candidate, whatever its title says. If the person is small, turned away or "
+                   "masked, judge by the context instead.")
     # what is the same for every shot of the channel goes in the instructions, in front: OpenAI then reads that
     # prefix from its cache (a tenth of the price) instead of billing it again on each of the ~280 calls of a video
     instructions = JUDGE_INSTRUCTIONS
@@ -386,7 +410,7 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         instructions += ("\n\nThe editor's past corrections on this channel (learn the standard, not the clips):\n" + taught)
     cache_key = hashlib.sha256(
         json.dumps([model, instructions, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
-        + image_bytes
+        + image_bytes + b"".join(data for _, data in portraits)
     ).hexdigest()[:32]
 
     def produce() -> dict[str, Any]:
@@ -404,6 +428,10 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
                     {"type": "input_text", "text": prompt},
                     {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(image_bytes).decode(),
                      "detail": str(cfg.get("detail", "auto"))},
+                    *[part for name, data in portraits for part in (
+                        {"type": "input_text", "text": f"Reference photo: {name}"},
+                        {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(data).decode(),
+                         "detail": "low"})],
                 ],
             }],
             text={"format": {"type": "json_schema", "name": "shot_verdict", "strict": True, "schema": VERDICT_SCHEMA}},
@@ -587,6 +615,24 @@ def run(ctx: RunContext) -> None:
 
     verdicts: dict[str, tuple[dict[str, Any], list[Option]]] = {}
 
+    # judge.portraits (true): the photo of the person a shot is about (people.json) goes with its sheet. Without
+    # it the judge only had a name, and for anyone not world-famous it cannot tell one face from another
+    # («hablamos de X y sale otra persona»).
+    portrait_of: dict[str, bytes] = {}
+    if cfg.get("portraits", True) and (ctx.work_dir / "people.json").is_file():
+        for person in ctx.read_json("people.json").get("people") or []:
+            image = ctx.work_dir / str(person.get("image") or "")
+            data = portrait_bytes(image) if person.get("name") and image.is_file() else None
+            if data:
+                portrait_of[str(person["name"])] = data
+    portrait_names = list(portrait_of)
+
+    def portraits_for(shot: Shot) -> list[tuple[str, bytes]]:
+        if not portrait_of:
+            return []
+        who = expected_people(shot, portrait_names, protagonist, scope)
+        return [(name, portrait_of[name]) for name in who[:2] if name in portrait_of]
+
     rounds = int(cfg.get("rounds", 2))
 
     def judge(shot: Shot) -> None:
@@ -605,7 +651,8 @@ def run(ctx: RunContext) -> None:
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
             cv2.imwrite(str(sheets_dir / f"{shot.id}{suffix}.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 80])
             verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds,
-                                 subject, source_lines(options, candidates), around=surrounding(shots_file.shots, shot.id))
+                                 subject, source_lines(options, candidates), around=surrounding(shots_file.shots, shot.id),
+                                 portraits=portraits_for(shot))
             by_letter = dict(zip(LETTERS, options))
             seen += options
             accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
