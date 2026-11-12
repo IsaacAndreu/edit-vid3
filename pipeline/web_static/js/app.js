@@ -18,6 +18,7 @@ async function route() {
   if (navStop) navStop.abort();
   navStop = new AbortController();
   pageKeys = null;
+  syncChannelFilters();
   document.body.classList.remove("menu");
   $(".burger").setAttribute("aria-expanded", "false");
   let hash = location.hash || "#/";
@@ -102,6 +103,8 @@ async function start() {
   }
   $("#top").classList.remove("hide");
   document.body.classList.add("authed");
+  if (/Mac|iPhone|iPad/.test(navigator.platform)) $("#cmdkey").textContent = "⌘K";
+  loadStudioChannels();
   window.onhashchange = () => { tab = "diagnosis"; window.tabPicked = 0; window.logAll = 0; route(); };
   route();
 }

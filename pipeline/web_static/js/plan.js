@@ -90,7 +90,10 @@ async function calendarPage() {
 window.calPick = (key) => { calPicked = calPicked === key ? "" : key; drawCalendar(); };
 function drawCalendar() {
   if (!calData || location.hash !== "#/calendario") return;
-  const a = calData, st = a.settings, today = new Date().toISOString().slice(0, 10);
+  const one = (c) => !studioChannel || c === studioChannel;               // the studio's channel, if one is picked
+  const a = studioChannel ? {...calData, plan: calData.plan.filter((s) => one(s.channel)), reserve: Object.fromEntries(Object.entries(calData.reserve).filter(([c]) => one(c))),
+    settings: {...calData.settings, schedule: Object.fromEntries(Object.entries(calData.settings.schedule).filter(([c]) => one(c)))}} : calData;
+  const st = a.settings, today = new Date().toISOString().slice(0, 10);
   const slots = {};
   a.plan.forEach((s) => slots[s.channel + "|" + s.date] = s);
   const dates = a.plan.map((s) => s.date).sort();
@@ -180,7 +183,8 @@ document.addEventListener("keydown", (e) => {
 // --- Para subir: lo hecho y no subido, con todo lo que pide YouTube Studio (pipeline/organizar.py) ----------------
 const copyTexts = [];
 function copyBox(label, text, rows = 3) {
-  const n = copyTexts.push(text) - 1;
+  let n = copyTexts.indexOf(text);                  // the same text keeps its number: a refresh changes nothing
+  if (n < 0) n = copyTexts.push(text) - 1;
   const button = `<button class="sm" onclick="copyIt(${n}, this)">${icon("copy")}<span>Copiar</span></button>`;
   if (!label) return `<div class="row nowrap mt-2"><input readonly class="grow" aria-label="Texto para copiar" value="${esc(text)}">${button}</div>`;
   return `<div class="mt-4"><div class="row between mb-1"><b class="small">${esc(label)}</b>${button}</div>
@@ -272,8 +276,9 @@ async function uploadPage() {
 
 // --- Guiones: qué días del calendario siguen sin vídeo, ideas y borrador ----------------------------------------
 async function scriptsPage(days = 14) {
-  const r = await api(`/api/scripts?days=${days}`);
+  const r = {...await api(`/api/scripts?days=${days}`)};             // a copy: the channel filter below must not touch the cached answer
   data = data || await api("/api/overview");            // the formats of the drafts (the page can be the first one opened)
+  if (studioChannel) r.channels = r.channels.filter((c) => c.channel === studioChannel);   // the studio's channel, if one is picked
   const total = r.channels.reduce((n, c) => n + c.missing, 0);
   window.scriptIdeas = {};
   show(`<h1>Guiones</h1>
@@ -414,7 +419,7 @@ async function boardPage() {
       <div class="small muted">Ideas de vídeo que los mundos del canal saben enseñar, una por día desde mañana, con su gancho y sus escenas.</div>
       <div class="row mt-3"><select id="tc" class="w-md" aria-label="Canal de simulación">${b.channels.filter((c) => (b.kinds || {})[c] === "simulacion").map((c) => `<option>${esc(c)}</option>`).join("")}</select>
       <button class="main" id="tbtn" onclick="topicIdeas()">Llenar 10 días</button> <button id="tbtn2" onclick="topicIdeas('y-si')" title="Serie «¿Y si…?»: un mundo, un dial, una pregunta">Serie «¿Y si…?»</button><span id="tmsg" class="small muted"></span></div></div>
-    <div class="kanban mt-4">${Object.entries(b.columns).map(([k, items]) => `<div class="col"><h3>${names[k] || k} <span class="muted">${items.length}</span></h3>
+    <div class="kanban mt-4">${Object.entries(b.columns).map(([k, all]) => [k, all.filter((x) => !studioChannel || !x.channel || x.channel === studioChannel)]).map(([k, items]) => `<div class="col"><h3>${names[k] || k} <span class="muted">${items.length}</span></h3>
       ${items.map(card).join("") || '<div class="small muted">—</div>'}</div>`).join("")}</div>`);
   window.addIdea = async () => { try { await post("/api/board/idea", {title: $("#bt").value, channel: $("#bc").value, date: $("#bd").value, note: $("#bn").value}); boardPage(); }
     catch (e) { oops(e); } };
