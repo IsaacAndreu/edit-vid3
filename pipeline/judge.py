@@ -29,6 +29,7 @@ from .analysis import detectors as det
 from .context import RunContext
 from .costs import record_cost
 from .schemas import (
+    MAX_THIRD_PARTY_SECONDS,
     Candidate,
     JudgeVerdict,
     Option,
@@ -275,6 +276,43 @@ def event_masters(shots: list[Any], verdicts: dict[str, Any], candidates: dict[s
         if len(shots_for[event][best]) >= 2 or best in titled.get(event, set()):
             masters[event] = best
     return masters
+
+
+def continuation(shot: Any, shots: list[Any], selections: list[Any], picked: dict[str, Option], judged: list[Option],
+                 master: str | None, cfg: dict[str, Any]) -> Option | None:
+    """judge.continue_action (true): the previous shot took a strong moment of its event's master video (motion or the
+    narrated action heard), and the judge accepted that master for this shot too: this shot plays what comes right
+    after it, so the action runs on across the cut instead of jumping elsewhere. Both together never pass the 5 s a
+    third-party clip may last (MAX_THIRD_PARTY_SECONDS), so it is still one short excerpt."""
+
+    if not cfg.get("continue_action", True) or not master or not selections or not judged:
+        return None
+    index = next((i for i, s in enumerate(shots) if s.id == shot.id), 0)
+    if index == 0:
+        return None
+    before, last = shots[index - 1], selections[-1]
+    option = picked.get(before.id)
+    if (option is None or last.shotId != before.id or last.candidateId != master or last.kind != "video"
+            or last.start is None or _event_key(before) != _event_key(shot)
+            or not any(o.candidateId == master for o in judged)):
+        return None
+    if option.scores.motion < float(cfg.get("continue_motion", 0.3)) and option.scores.moment < 0.5:
+        return None
+    first = min(before.duration, MAX_THIRD_PARTY_SECONDS)
+    # the whole unbroken run so far (a run of three would be 2 + 2 + 2 s of one excerpt)
+    run, k = first, index - 1
+    while k > 0 and len(selections) >= index - k + 1:
+        prev_sel, cur_sel = selections[-(index - k + 1)], selections[-(index - k)]
+        prev_len = min(shots[k - 1].duration, MAX_THIRD_PARTY_SECONDS)
+        if (prev_sel.candidateId != cur_sel.candidateId or prev_sel.start is None or cur_sel.start is None
+                or abs(prev_sel.start + prev_len - cur_sel.start) > 0.05):
+            break
+        run += prev_len
+        k -= 1
+    if run + shot.duration > MAX_THIRD_PARTY_SECONDS:
+        return None
+    start = round(last.start + first, 3)
+    return option.model_copy(update={"start": start, "end": round(start + shot.duration, 3)})
 
 
 def own_event(title: str | None, shot: Any) -> bool:
@@ -726,6 +764,7 @@ def run(ctx: RunContext) -> None:
     for event, cid in masters.items():
         print(f"   Vídeo maestro de «{event[:60]}»: {(candidates[cid].title or cid)[:70]}")
     selections: list[Selection] = []
+    picked: dict[str, Option] = {}                       # shot → the option it took (its scores)
     for shot in shots:
         if shot.id in kept:
             selections.append(kept[shot.id])
@@ -739,11 +778,14 @@ def run(ctx: RunContext) -> None:
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
         master = masters.get(_event_key(shot))
-        usable = [o for o in preference if not is_repeat(o, selections, max_hamming)
+        if (follow := continuation(shot, shots, selections, picked, judged, master, cfg)) is not None:
+            preference = [follow, *preference]           # the strong moment of the shot before runs on (≤ 5 s in all)
+        usable = [o for o in preference if (o is follow or not is_repeat(o, selections, max_hamming))
                   and not overused(o.candidateId, selections,
                                    per_source * (3 if o.candidateId == master else
                                                  2 if own_event(candidates[o.candidateId].title, shot) else 1))]
-        chosen = next((o for o in usable if o.candidateId == master), None) if judged else None
+        chosen = follow if follow is not None and follow in usable else (
+            next((o for o in usable if o.candidateId == master), None) if judged else None)
         if chosen is None:
             chosen = prefer_variety(usable, selections, variety, back_to_back,
                                     lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
@@ -751,7 +793,8 @@ def run(ctx: RunContext) -> None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))
             continue
-        decided_by = "judge" if any(chosen is o for o in judged) else "score"
+        picked[shot.id] = chosen
+        decided_by = "judge" if (chosen is follow or any(chosen is o for o in judged)) else "score"
         candidate = candidates[chosen.candidateId]
         selections.append(Selection(
             shotId=shot.id,

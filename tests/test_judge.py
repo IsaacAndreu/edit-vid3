@@ -166,6 +166,32 @@ class RunTests(unittest.TestCase):
         self.assertEqual([r["candidateId"] for r in data["selections"]], ["yt:trial"] * 3)
         self.assertEqual(data["stats"]["fromMaster"], 3)
 
+    def test_a_strong_moment_runs_on_into_the_next_shot_within_five_seconds(self) -> None:
+        broll = {"visualIntent": "the attack", "queries": ["a", "b", "c"], "queriesLocal": ["d"], "event": "Nassar sentencing hearing 2018"}
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": "t", "chapter": 0, "broll": broll} for i in range(3)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        trial = {"id": "yt:trial", "source": "youtube", "kind": "video", "url": "https://y/t", "title": "Court hearing",
+                 "channel": "MLive", "license": "l", "credit": "Fuente: MLive", "attribution": "a", "query": "q",
+                 "rankScore": 1, "durationSeconds": 900, "storyboard": board}
+
+        def fast(start):
+            o = opt("yt:trial", 0.4, start=start, end=start + 2)
+            return o.model_copy(update={"scores": o.scores.model_copy(update={"motion": 0.8})})
+
+        scores = {f"s00{i}": [fast(100 + 40 * i)] for i in range(3)}
+
+        def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
+            return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {sid: [trial] for sid in scores}, scores, hook=100)   # all judged
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+            starts = [r["start"] for r in json.loads((ctx.work_dir / "selection.json").read_text())["selections"]]
+        # s001 continues s000 (2 s + 2 s ≤ 5 s); s002 would make 6 s: its own fragment again
+        self.assertEqual(starts, [100.0, 102.0, 180.0])
+
     def test_second_round_then_fallback_never_blind_pick(self) -> None:
         broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
         shots = [{"id": "s000", "type": "broll", "startWord": 0, "endWord": 0, "start": 0.0, "end": 2.0,

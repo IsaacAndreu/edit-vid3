@@ -202,6 +202,9 @@ def run(ctx: RunContext) -> None:
             else:
                 overlap = bool(same_source)
             close = a.get("phash") and b.get("phash") and det.hamming(a["phash"], b["phash"]) <= int(cfg.get("max_phash_distance", 6))
+            if (same_source and not overlap and a.get("sourceEnd") is not None and b.get("sourceStart") is not None
+                    and abs(float(b["sourceStart"]) - float(a["sourceEnd"])) < 0.6):
+                close = False        # the action running on across a cut (judge.continuation): one excerpt, not a repeat
             if overlap or close:
                 why = "mismo tramo de la misma fuente" if overlap else "imagen casi idéntica"
                 repeats.append(f"{a['shotId']} ↔ {b['shotId']}: {why}")

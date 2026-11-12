@@ -164,6 +164,8 @@ judge:
   all: true                        # el juez revisa todos los planos (~0,20 $/vídeo); false = solo los dudosos
   portraits: true                  # con cada hoja, la foto (people.json) de la persona de la que habla el plano: rechaza otra cara
   event_masters: true              # cada suceso, de su vídeo maestro (el que el juez aceptó en más planos de ese suceso)
+  continue_action: true            # un momento fuerte del vídeo maestro sigue en el plano siguiente (≤ 5 s en total, un solo fragmento)
+  continue_motion: 0.3             # movimiento mínimo (0-1) para contar como momento fuerte (o la acción oída en la fuente)
   provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
   model: gpt-5-mini
   reasoning_effort: low
