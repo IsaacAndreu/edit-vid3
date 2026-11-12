@@ -39,6 +39,7 @@ async function route() {
     else if (hash === "#/canal-nuevo") await newChannelPage();
     else if (hash === "#/nuevo") await newVideo();
     else if (hash === "#/calendario") await calendarPage();
+    else if (hash === "#/canales") await canalesPage();
     else if (hash === "#/subir") await uploadPage();
     else if (hash === "#/biblioteca") await libraryPage();
     else if (hash.startsWith("#/biblioteca/")) await libraryEntity(decodeURIComponent(hash.slice(13)));
@@ -81,7 +82,7 @@ document.addEventListener("click", (e) => {     // menus of the header: open on 
 async function logout() { await post("/api/logout").catch(() => {}); location.hash = "#/"; location.reload(); }
 
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
-const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero",
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/canales", "#/tablero",
   "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta"];
 const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }

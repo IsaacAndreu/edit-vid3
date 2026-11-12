@@ -1193,7 +1193,7 @@ def spending(root: Path, days: int = 14, owner: str | None = None) -> list[dict[
 # one of their channels; the ones with a channel in the body (a new video, moving one), that channel too.
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
                "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar",
-               "/api/stats", "/api/spending")
+               "/api/stats", "/api/spending", "/api/canales")
 PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
                 "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
                 "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas",
@@ -1242,6 +1242,67 @@ def _bot_name(token: str) -> str:
                    .get("username") or "")
     except Exception:
         return ""
+
+
+def channels_health(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
+    """«Canales»: each channel at a glance — its cushion of finished videos, the next two weeks of its calendar, what
+    is in the works or failed, and how its uploads did (YouTube views of the videos it published each of the last 8
+    weeks: the views of those videos so far, not the channel's views that week)."""
+
+    from datetime import date, timedelta
+
+    from . import agenda, estadisticas
+
+    listed = agenda.videos(root)
+    cfg = agenda.settings(root)
+    plan = agenda.plan(root, days=14, listed=listed)
+    reserve = agenda.reserve(root, listed)
+    try:
+        stats = estadisticas.report(root)
+    except Exception:                                   # no YouTube data yet: the rest still says a lot
+        stats = {"videos": [], "channels": []}
+    kinds = channel_kinds(root)
+    today = date.today()
+    weeks = [today - timedelta(days=7 * (8 - i)) for i in range(1, 9)]      # the start of each of the last 8 weeks
+    names = [c for c in channels(root) if mine is None or c in mine]
+    out = []
+    for name in names:
+        rule = cfg["schedule"].get(name) or {"enabled": False, "days": [], "time": ""}
+        mine_videos = [v for v in listed if v["channel"] == name]
+        slots = {s["date"]: s for s in plan if s["channel"] == name}
+        next14 = []
+        for n in range(14):
+            day = (today + timedelta(days=n)).isoformat()
+            s = slots.get(day)
+            kind = None if not s else "late" if s["late"] else "ok" if s["ok"] else "gap" if s["gap"] else "work"
+            next14.append({"date": day, "kind": kind, "video": s["video"]["slug"] if s and s.get("video") else None})
+        views = [0] * 8
+        for row in stats["videos"]:
+            if row.get("channel") != name or not row.get("youtube") or not row.get("publishedDay"):
+                continue
+            try:
+                published = date.fromisoformat(str(row["publishedDay"])[:10])
+            except ValueError:
+                continue
+            for i, start in enumerate(weeks):
+                if start <= published < start + timedelta(days=7):
+                    views[i] += int(row["youtube"].get("views") or 0)
+        before, after = sum(views[:4]), sum(views[4:])
+        c = next((x for x in stats["channels"] if x.get("channel") == name), {})
+        out.append({
+            "channel": name, "kind": kinds.get(name, "metraje"), "publishes": bool(rule.get("enabled")),
+            "days": rule.get("days") or [], "time": rule.get("time") or "",
+            "reserve": reserve.get(name), "buffer": cfg["buffer"],
+            "making": sum(1 for v in mine_videos if v["status"] == "haciendo"),
+            "queued": sum(1 for v in mine_videos if v["status"] == "en cola"),
+            "missing": sum(1 for v in mine_videos if v["status"] in ("falta guion", "falta voz")),
+            "errors": sum(1 for v in mine_videos if v["status"] == "error"),
+            "next": next14, "gaps": sum(1 for d in next14 if d["kind"] in ("gap", "late")),
+            "late": sum(1 for d in next14 if d["kind"] == "late"),
+            "views": c.get("views") or 0, "median": c.get("median"), "published": c.get("published") or 0,
+            "weeks": views, "trend": round((after - before) / before, 2) if before else None,
+        })
+    return {"channels": out, "weekdays": agenda.WEEKDAYS, "buffer": cfg["buffer"], "today": today.isoformat()}
 
 
 def partner_agenda(root: Path, mine: list[str]) -> dict[str, Any]:
@@ -1488,6 +1549,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
                     if path == "/api/agenda":
                         return self._ok(partner_agenda(root, mine))
+                    if path == "/api/canales":
+                        return self._ok(cached(f"canales:{root}:{','.join(mine)}", 30, lambda: channels_health(root, mine)))
                     if path == "/api/radar":
                         return self._ok(partner_radar(root, mine))
                     if path == "/api/spending":
@@ -1593,6 +1656,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(experimentos.report(root))
                 if path == "/api/settings":
                     return self._ok(settings(root))
+                if path == "/api/canales":                 # «Canales»: the health of every channel, 30 s in memory
+                    return self._ok(cached(f"canales:{root}", 30, lambda: channels_health(root)))
                 if path == "/api/agenda":                  # the publishing calendar (pipeline/agenda.py)
                     from . import agenda
 

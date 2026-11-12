@@ -11,16 +11,16 @@ const {chromium} = require("playwright");
 const mock = require("./mock");
 
 const S = mock.SLUGS;
-const OWNER_ROUTES = ["#/", "#/nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero", "#/competencia", "#/canal", "#/estadisticas",
+const OWNER_ROUTES = ["#/", "#/nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/canales", "#/tablero", "#/competencia", "#/canal", "#/estadisticas",
   "#/experimentos", "#/piloto", "#/biblioteca", `#/biblioteca/${S.library}`, "#/errores", "#/gasto", "#/servidor", "#/ajustes", "#/voces", "#/canal-nuevo",
   `#/buscar/${S.search}`, `#/video/${S.haciendo}`, `#/video/${S.reintento}`, `#/video/${S.error}`, `#/video/${S.hecho}`, `#/video/${S.publicado}`,
   `#/revisar/${S.review}`, `#/decisiones/${S.decisions}`];
 // PARTNER_PAGES + one of each PARTNER_PREFIXES of the app (index.html), plus #/cuenta
-const PARTNER_ROUTES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero", "#/competencia", "#/canal", "#/estadisticas",
+const PARTNER_ROUTES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/canales", "#/tablero", "#/competencia", "#/canal", "#/estadisticas",
   "#/gasto", "#/voces", "#/cuenta", `#/buscar/${S.search}`, `#/video/${S.haciendo}`, `#/video/${S.reintento}`, `#/video/${S.error}`, `#/video/${S.hecho}`,
   `#/video/${S.publicado}`, `#/revisar/${S.review}`, `#/decisiones/${S.decisions}`];
 const PARTNER_FORBIDDEN = ["#/servidor", "#/ajustes", "#/piloto", "#/experimentos", "#/biblioteca", "#/errores"];     // must land on #/
-const PARTNER_NAV = ["#/nuevo", "#/", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero", "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta"];
+const PARTNER_NAV = ["#/nuevo", "#/", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/canales", "#/tablero", "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta"];
 const VIEWPORTS = {desktop: {viewport: {width: 1440, height: 900}}, mobile: {viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true}};
 const SCHEMES = ["dark", "light"];
 const MAX_SHOT_HEIGHT = 5000, SETTLE_MS = 400, SETTLE_CAP_MS = 12000;

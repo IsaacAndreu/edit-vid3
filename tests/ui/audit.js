@@ -1,6 +1,6 @@
 const { chromium } = require('playwright'); const mock = require('./mock.js');
 const BASE = process.argv[2] || 'http://127.0.0.1:8099';
-const ROUTES = ['#/', '#/nuevo', '#/subir', '#/videos', '#/guiones', '#/calendario', '#/tablero', '#/competencia', '#/canal', '#/estadisticas', '#/experimentos', '#/piloto', '#/biblioteca', '#/biblioteca/niki-lauda', '#/errores', '#/gasto', '#/servidor', '#/ajustes', '#/voces', '#/canal-nuevo', '#/buscar/dingos', '#/video/delorean', '#/video/pegaso-z102', '#/video/saab-quiebra', '#/video/citroen-ds', '#/video/lancia-stratos', '#/revisar/citroen-ds', '#/decisiones/citroen-ds'];
+const ROUTES = ['#/', '#/nuevo', '#/subir', '#/videos', '#/guiones', '#/calendario', '#/canales', '#/tablero', '#/competencia', '#/canal', '#/estadisticas', '#/experimentos', '#/piloto', '#/biblioteca', '#/biblioteca/niki-lauda', '#/errores', '#/gasto', '#/servidor', '#/ajustes', '#/voces', '#/canal-nuevo', '#/buscar/dingos', '#/video/delorean', '#/video/pegaso-z102', '#/video/saab-quiebra', '#/video/citroen-ds', '#/video/lancia-stratos', '#/revisar/citroen-ds', '#/decisiones/citroen-ds'];
 (async () => {
   const b = await chromium.launch(); const all = {};
   await Promise.all([0, 1, 2, 3].map(async (w) => {

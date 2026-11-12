@@ -70,6 +70,8 @@ def test_a_partner_sees_only_their_channels(studio):
     assert voices["channels"] == ["atletismo"] and set(voices["speaks"]) == {"atletismo"}
     assert call("/api/voices", {"channel": "aviacion", "voice_id": "x"})[0] == 403
     assert call("/api/voices/credits")[0] == 403 and call("/api/dubbing", {"channel": "atletismo"})[0] == 403
+    health = json.loads(call("/api/canales")[1])["channels"]                  # «Canales»: theirs only
+    assert [c["channel"] for c in health] == ["atletismo"] and len(health[0]["next"]) == 14 and len(health[0]["weeks"]) == 8
 
 
 def test_nothing_of_yours_opens_for_a_partner(studio):
@@ -93,6 +95,7 @@ def test_you_still_see_everything_and_manage_partners(studio):
     assert login("clave") == 200
     data = json.loads(call("/api/overview")[1])
     assert {v["slug"] for v in data["videos"]} == {"mio1", "suyo1"} and "partner" not in data
+    assert {"aviacion", "atletismo"} <= {c["channel"] for c in json.loads(call("/api/canales")[1])["channels"]}
     listed = json.loads(call("/api/users")[1])["users"]
     assert [(u["name"], u["channels"], u["telegram"]) for u in listed] == [("amigo", ["atletismo"], False)]
     assert "hash" not in json.dumps(listed) and "salt" not in json.dumps(listed)

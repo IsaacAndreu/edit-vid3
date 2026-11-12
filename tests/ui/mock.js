@@ -31,7 +31,7 @@ const media = () => ({status: 204, contentType: "application/octet-stream", body
 
 // --- who may see what (pipeline/web.py: PARTNER_GET, PARTNER_POST, PARTNER_VIDEO_*) ---------------------------------
 const PARTNER_GET = ["/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv", "/api/voices", "/api/voices/search",
-  "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar", "/api/stats", "/api/spending"];
+  "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar", "/api/stats", "/api/spending", "/api/canales"];
 const PARTNER_POST = ["/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test", "/api/channels",
   "/api/telegram/link", "/api/telegram/unlink", "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas", "/api/ideas", "/api/ideas/save"];
 const PARTNER_VIDEO_GET = [/^\/api\/video\/([^/]+)$/, /^\/api\/video\/([^/]+)\/(?:repeticion|porque|capcut|exportar|voz\.mp3)$/, /^\/api\/review\/([^/]+)$/,
@@ -63,6 +63,33 @@ function agendaAnswer(st, mine) {
   return {settings: cfg, weekdays: D.WEEKDAYS, plan, reserve, videos: listed};
 }
 
+// «Canales» (web.channels_health): the same fields, from the same mock agenda and stats
+function canalesAnswer(st, mine) {
+  const listed = D.agendaVideos(st), cfg = st.agenda, plan = D.plan(st, 14, listed), reserve = D.reserve(st, listed);
+  const stats = D.stats(st, mine), today = D.day(0), DAY = 864e5;
+  const weekStart = (i) => new Date(Date.parse(today + "T12:00:00Z") - 7 * (8 - i) * DAY);
+  const channels = CHANNELS.filter((c) => !mine || mine.includes(c)).map((name) => {
+    const rule = cfg.schedule[name] || {enabled: false, days: [], time: ""};
+    const vids = listed.filter((v) => v.channel === name);
+    const next = Array.from({length: 14}, (_, n) => { const date = D.day(n), s = plan.find((x) => x.channel === name && x.date === date);
+      return {date, kind: !s ? null : s.late ? "late" : s.ok ? "ok" : s.gap ? "gap" : "work", video: s && s.video ? s.video.slug : null}; });
+    const weeks = Array(8).fill(0);
+    for (const row of stats.videos) {
+      if (row.channel !== name || !row.youtube || !row.publishedDay) continue;
+      const t = Date.parse(row.publishedDay + "T12:00:00Z");
+      for (let i = 1; i <= 8; i++) { const a = weekStart(i).getTime(); if (t >= a && t < a + 7 * DAY) weeks[i - 1] += row.youtube.views || 0; }
+    }
+    const before = weeks.slice(0, 4).reduce((a, b) => a + b, 0), after = weeks.slice(4).reduce((a, b) => a + b, 0);
+    const c = stats.channels.find((x) => x.channel === name) || {};
+    return {channel: name, kind: KINDS[name] || "metraje", publishes: !!rule.enabled, days: rule.days || [], time: rule.time || "",
+      reserve: reserve[name] ?? null, buffer: cfg.buffer, making: vids.filter((v) => v.status === "haciendo").length, queued: vids.filter((v) => v.status === "en cola").length,
+      missing: vids.filter((v) => v.status === "falta guion" || v.status === "falta voz").length, errors: vids.filter((v) => v.status === "error").length,
+      next, gaps: next.filter((d) => d.kind === "gap" || d.kind === "late").length, late: next.filter((d) => d.kind === "late").length,
+      views: c.views || 0, median: c.median ?? null, published: c.published || 0, weeks, trend: before ? +((after - before) / before).toFixed(2) : null};
+  });
+  return {channels, weekdays: D.WEEKDAYS, buffer: cfg.buffer, today};
+}
+
 function settingsAnswer(st) {
   const s = st.settings;
   return {daily_usd: s.daily_usd, per_video_usd: s.per_video_usd, proxy_gb_per_day: s.proxy_gb_per_day, server_usd_month: s.server_usd_month, paused: s.paused,
@@ -85,6 +112,7 @@ function get(st, path, query, who) {
   if (path === "/api/upload/dates") { const dates = D.uploadDates(st); return mine ? Object.fromEntries(Object.entries(dates).filter(([k]) => mine.includes((st.videos.find((v) => v.slug === k) || {}).channel))) : dates; }
   if (path === "/api/upload") return mine ? {videos: D.toUpload(st, mine), compilations: [], compilationJob: null} : {videos: D.toUpload(st), compilations: D.compilations(st), compilationJob: IDLE()};
   if (path === "/api/agenda") return agendaAnswer(st, mine);
+  if (path === "/api/canales") return canalesAnswer(st, mine);
   if (path === "/api/scripts") { const days = parseInt(query.get("days") || "14", 10); return {channels: D.scriptsNeeded(st, days, mine).map(({_r, ...e}) => e), days}; }
   if (path === "/api/board") { const columns = D.board(st); return mine ? {columns: Object.fromEntries(Object.entries(columns).map(([k, items]) => [k, items.filter((x) => mine.includes(x.channel))])), channels: mine, kinds: Object.fromEntries(mine.map((c) => [c, KINDS[c]]))}
     : {columns, channels: CHANNELS, kinds: KINDS}; }
