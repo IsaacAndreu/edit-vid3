@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 PROXY_STATE = "out/_proxy_saldo.json"
+_CPU: dict[str, Any] = {}                 # the last CPU counters: the use since the last look, without waiting 0.3 s each time
 
 
 def machine(root: Path) -> dict[str, Any]:
@@ -32,7 +33,8 @@ def machine(root: Path) -> dict[str, Any]:
         import psutil
 
         mem = psutil.virtual_memory()
-        out.update(ramTotal=mem.total / 1e9, ramUsed=(mem.total - mem.available) / 1e9, cpu=psutil.cpu_percent(interval=0.3))
+        out.update(ramTotal=mem.total / 1e9, ramUsed=(mem.total - mem.available) / 1e9, cpu=psutil.cpu_percent(interval=None if _CPU.get("psutil") else 0.1))
+        _CPU["psutil"] = True
     except ImportError:
         try:
             info = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines() if ":" in line)
@@ -45,9 +47,12 @@ def machine(root: Path) -> dict[str, Any]:
                 fields = [int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
                 return fields[3] + fields[4], sum(fields)
 
-            idle1, total1 = sample()
-            time.sleep(0.3)
-            idle2, total2 = sample()
+            before = _CPU.get("proc")
+            if not before:                           # the first time only: a short look
+                before = sample()
+                time.sleep(0.1)
+            _CPU["proc"] = idle2, total2 = sample()
+            idle1, total1 = before
             out["cpu"] = 100 * (1 - (idle2 - idle1) / max(1, total2 - total1))
         except (OSError, ValueError, IndexError):
             pass

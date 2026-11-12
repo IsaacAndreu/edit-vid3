@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -755,3 +756,39 @@ def test_a_very_long_script_does_not_look_like_every_new_one(tmp_path):
     assert all(r["score"] < 0.5 for r in web.search_videos(tmp_path, new)["results"])
     half = " ".join(vocabulary[:1500])                                      # half of it: really the same video
     assert web.search_videos(tmp_path, half)["results"][0]["score"] >= 0.5
+
+
+def test_the_page_is_revalidated_and_its_assets_are_kept_for_good(tmp_path):
+    """index.html: ETag + 304 (never a full download when nothing changed); css/js: a version in the URL, immutable."""
+
+    import gzip
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), web.make_handler(tmp_path, "clave"))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def get(path, **headers):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(base + path, headers=headers)) as response:
+                return response.status, dict(response.headers), response.read()
+        except urllib.error.HTTPError as error:
+            return error.code, dict(error.headers), error.read()
+
+    try:
+        status, headers, page = get("/")
+        assert status == 200 and headers["Cache-Control"] == "no-cache" and b"{{v}}" not in page
+        assert get("/", **{"If-None-Match": headers["ETag"]})[0] == 304
+        assert get("/", **{"If-Modified-Since": headers["Last-Modified"]})[0] == 304     # what Chromium sends to HTTP/1.0
+        assets = re.findall(rb'(?:src|href)="(/static/[^"]+)"', page)
+        assert assets and all(b"?v=" in a for a in assets)
+        for asset in assets:
+            status, headers, body = get(asset.decode())
+            assert status == 200 and "immutable" in headers["Cache-Control"] and body
+            assert get(asset.decode(), **{"If-None-Match": headers["ETag"]})[0] == 304
+        script = assets[-1].decode()
+        status, headers, packed = get(script, **{"Accept-Encoding": "gzip"})
+        assert headers["Content-Encoding"] == "gzip" and gzip.decompress(packed) == get(script)[2]
+        assert "immutable" not in get(script.split("?")[0] + "?v=viejo")[1]["Cache-Control"]    # an old tab asks again
+        assert get("/static/../web.py")[0] == 404 and get("/static/nada.js")[0] == 404
+    finally:
+        server.shutdown()

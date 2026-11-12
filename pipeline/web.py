@@ -18,6 +18,7 @@ does not come straight from this machine needs WEB_PASSWORD (.env). Standard lib
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import hmac
 import json
@@ -32,6 +33,7 @@ import threading
 import time
 from datetime import datetime, timezone
 import urllib.parse
+from email.utils import formatdate, parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,47 @@ from .context import RunContext, find_video, load_config, video_folders
 STATIC = Path(__file__).with_name("web_static")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$")
 MAX_UPLOAD = 400 * 1024 * 1024                # a 15-min voice in mp3 is ~15-30 MB; leave room for wav
+STATIC_KINDS = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
+
+
+# --- the page itself: index.html + css/js, each with an ETag; the assets carry a version in their URL ---------------
+
+_STATIC: dict[str, tuple[tuple[int, int, str], bytes, bytes, str, float]] = {}   # name → (mtime, size, version), body, gzip, etag, mtime
+_STATIC_LOCK = threading.Lock()
+
+
+def static_version() -> str:
+    """Changes when any file of the page changes (a `git pull` is enough: no build step)."""
+
+    stamp = sorted((p.relative_to(STATIC).as_posix(), p.stat().st_mtime_ns, p.stat().st_size)
+                   for p in STATIC.rglob("*") if p.is_file())
+    return hashlib.sha256(repr(stamp).encode()).hexdigest()[:12]
+
+
+def static_file(name: str) -> tuple[bytes, bytes, str, str, float] | None:
+    """(body, gzipped body, ETag, content type, modified) of a file of web_static, read once per version of the file.
+
+    index.html gets the version of the whole page in the URLs of its css and js ({{v}}), so the browser keeps those
+    for good and asks again only when they change."""
+
+    path = (STATIC / name).resolve()
+    if STATIC.resolve() not in path.parents or not path.is_file() or path.suffix not in STATIC_KINDS:
+        return None
+    version = static_version() if name == "index.html" else ""
+    stat = path.stat()
+    key = (stat.st_mtime_ns, stat.st_size, version)
+    with _STATIC_LOCK:
+        hit = _STATIC.get(name)
+    if not hit or hit[0] != key:
+        body = path.read_bytes()
+        if version:
+            body = body.replace(b"{{v}}", version.encode())
+        modified = max(p.stat().st_mtime for p in [STATIC, *STATIC.rglob("*")]) if version else stat.st_mtime   # a removed file moves its folder's date
+        hit = (key, body, gzip.compress(body, 6, mtime=0), hashlib.sha256(body).hexdigest()[:16], modified)
+        with _STATIC_LOCK:
+            _STATIC[name] = hit
+    return hit[1], hit[2], hit[3], STATIC_KINDS[path.suffix], hit[4]
 
 
 # --- what the pages show ----------------------------------------------------------------------------------------
@@ -1025,6 +1068,8 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
             current["proxy_gb"] = max(0.0, float(body["proxy_gb"] or 0))
             current["proxy_since"] = str(body.get("proxy_since") or datetime.now().date().isoformat())[:10]
             datetime.fromisoformat(current["proxy_since"])
+            with _CACHE_LOCK:
+                _CACHE.pop(f"servidor:{root}", None)             # «Estado del servidor» shows the top-up at once
         if "paused" in body:
             flag = root / "out" / "_pausa"
             flag.parent.mkdir(parents=True, exist_ok=True)
@@ -1327,6 +1372,32 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
         def _fail(self, code: int, message: str) -> None:
             self._ok({"error": message}, code)
 
+        def _static(self, name: str, forever: bool = False) -> None:
+            """A file of the page: 304 when the browser already has it, gzip when it takes it."""
+
+            found = static_file(name)
+            if not found:
+                return self._fail(404, "No existe")
+            body, packed, tag, kind, modified = found
+            zipped = "gzip" in (self.headers.get("Accept-Encoding") or "")
+            etag = f'"{tag}{"-gz" if zipped else ""}"'
+            headers = {"ETag": etag, "Last-Modified": formatdate(modified, usegmt=True), "Vary": "Accept-Encoding",
+                       "Cache-Control": "public, max-age=31536000, immutable" if forever else "no-cache"}
+            # ETag first; Last-Modified too, because Chromium revalidates an HTTP/1.0 answer (this server's) only by date
+            asked_tag, asked_date = self.headers.get("If-None-Match"), self.headers.get("If-Modified-Since")
+            try:
+                same_date = not asked_tag and bool(asked_date) and int(modified) <= parsedate_to_datetime(asked_date).timestamp()
+            except (TypeError, ValueError):
+                same_date = False
+            if (asked_tag and etag in asked_tag) or same_date:
+                self.send_response(304)
+                for k, v in headers.items():
+                    self.send_header(k, v)
+                return self.end_headers()
+            if zipped:
+                headers["Content-Encoding"] = "gzip"
+            self._send(200, packed if zipped else body, kind, headers)
+
         def _file(self, path: Path) -> None:
             """A file, with Range support so the video plays and seeks in the browser."""
 
@@ -1374,7 +1445,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             url = urllib.parse.urlparse(self.path)
             path = url.path
             if path in ("/", "/index.html"):
-                return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
+                return self._static("index.html")
+            if path.startswith("/static/"):              # css and js: kept for good when asked with the current ?v=
+                asked = urllib.parse.parse_qs(url.query).get("v", [""])[0]
+                return self._static(urllib.parse.unquote(path[8:]), forever=asked == static_version())
             if path == "/api/session":
                 who = self._who()
                 return self._ok({"authorised": who is not None, "needsPassword": bool(password) or not self._local(),
@@ -1487,7 +1561,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if path == "/api/servidor":                # «Estado del servidor» (pipeline/servidor.py)
                     from . import copia, servidor
 
-                    return self._ok({**servidor.status(root), "backup": copia.info(root)})
+                    status = cached(f"servidor:{root}", 5, lambda: servidor.status(root))    # every tab asks every 15 s
+                    return self._ok({**status, "backup": copia.info(root)})
                 if path == "/api/proxy":                   # the paid proxy, last days: success, GB, $ per finished video
                     days = float((urllib.parse.parse_qs(url.query).get("days") or ["7"])[0])
                     return self._ok(cached(f"proxy:{root}:{days}", 120, lambda: proxy_report(root, days)))
