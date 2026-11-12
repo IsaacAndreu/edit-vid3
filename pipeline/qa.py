@@ -30,7 +30,7 @@ from .context import RunContext
 from . import library, publish
 from .costs import COSTS_FILE
 from .judge import register_used
-from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, Timeline
+from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
 
 
 STAGE = "qa"
@@ -155,6 +155,8 @@ def run(ctx: RunContext) -> None:
             })
             if selection.judge:
                 entry["judge"] = selection.judge.model_dump(exclude_none=True)
+            if selection.master:
+                entry["master"] = True
         elif shot.id in fallback:
             item = fallback[shot.id]
             entry.update({
@@ -224,9 +226,28 @@ def run(ctx: RunContext) -> None:
         spend[f"{item['stage']} · {item['operation']}"] += float(item.get("usd", 0))
     total_usd = sum(spend.values())
 
+    # --- final review: one look at what will really be on screen (pipeline/revision.py) ------------------------
+    from . import revision
+
+    problems = revision.review(ctx, rows, ShotsFile.model_validate(ctx.read_json("shots.json")).context
+                               if (ctx.work_dir / "shots.json").is_file() else "")
+    if cfg.get("review", True):
+        revision.write(ctx, problems, sum(1 for r in rows if r.get("_frame") is not None))
+    for p in problems:
+        next(r for r in rows if r["shotId"] == p["shotId"]).setdefault("flag", "low")
+    if problems:
+        warnings.append(f"{len(problems)} planos a revisar según la revisión final (qa/revision.md): "
+                        + ", ".join(f"{mmss(p['start'])} {p['kind']}" for p in problems[:8]))
+
     # --- outputs ----------------------------------------------------------------------------
     sheet = contact_sheet(rows, timeline.shots, columns=int(cfg.get("columns", 14)))
     cv2.imwrite(str(qa_dir / "contact-sheet.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 82])
+    from . import informe_planos
+
+    try:                                  # out/<slug>/qa/planos.html: why each shot is what it is
+        informe_planos.write(qa_dir / "planos.html", ctx.slug, rows)
+    except Exception as error:            # a review aid: never blocks
+        print(f"   Informe de planos no escrito: {str(error)[:120]}")
     manifest = [{k: v for k, v in e.items() if not k.startswith("_") and v is not None} for e in rows]
     (ctx.out_dir / "manifest.json").write_text(
         json.dumps({"slug": ctx.slug, "title": timeline.title, "fps": fps, "shots": manifest}, ensure_ascii=False, indent=2) + "\n",

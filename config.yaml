@@ -379,6 +379,8 @@ qa:
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
   max_phash_distance: 6            # imágenes más parecidas → posible repetición
   columns: 14                      # hoja de contactos
+  review: true                     # revisión final: un fotograma de cada plano + su frase + las fotos de las personas → qa/revision.md
+  review_batch: 9                  # planos por hoja (≈0,01 $ cada una)
 
 # doctor: tras el render se mira el vídeo final una vez buscando negros y congelados, y se arreglan en su tramo
 # (un clip más corto que su plano se ralentiza para llenarlo en vez de quedarse en su último fotograma; otro tramo se

@@ -772,6 +772,7 @@ def run(ctx: RunContext) -> None:
             score=chosen.total,
             judge=_verdict(verdict_info, chosen, cfg),
             phash=chosen.phash,
+            master=bool(master) and chosen.candidateId == master,
         ))
 
     stats: dict[str, int | float] = {

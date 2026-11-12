@@ -21,7 +21,7 @@ class _Strict(BaseModel):
             for name in self._late:
                 field = type(self).model_fields.get(name)
                 for k in (name, field.alias if field else None):
-                    if k in data and data[k] in (None, {}, []):
+                    if k in data and (data[k] is None or data[k] is False or data[k] in ({}, [])):
                         del data[k]
         return data
 
@@ -382,6 +382,7 @@ class JudgeVerdict(_Strict):
 
 
 class Selection(_Strict):
+    _late = frozenset({'master'})
     shotId: str
     status: Literal["selected", "fallback"]                 # fallback → stage 7 (Pexels / GPT Image)
     decidedBy: Literal["score", "judge", "fallback", "editor"]    # editor: swapped by hand before the render
@@ -401,6 +402,7 @@ class Selection(_Strict):
     score: float | None = None                               # stage-4 total of the chosen option
     judge: JudgeVerdict | None = None
     phash: str | None = None
+    master: bool = False                                     # from its event's master video (judge.event_masters)
 
     @model_validator(mode="after")
     def _complete(self) -> "Selection":
