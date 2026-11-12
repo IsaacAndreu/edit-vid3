@@ -59,7 +59,7 @@ async function stats(refresh = false) {
     return `<div class="bar mix">${Object.entries(mix).map(([k, n]) =>
       `<i title="${esc(k)}: ${n} planos" style="--v:${100 * n / total}%;--c:${colors[k] || "#8b949e"}"></i>`).join("")}</div>`; };
   const head = (key, label) => `<th class="r" onclick="statsSort='${key}';stats()">${label}${statsSort === key ? " ▾" : ""}</th>`;
-  $("#app").innerHTML = `<div class="hb"><h1>Estadísticas</h1>
+  show(`<div class="hb"><h1>Estadísticas</h1>
       <div class="tools"><select class="w-auto" onchange="statsChannel=this.value;stats()"><option value="">Todos los canales</option>
         ${st.channels.map((c) => `<option ${c.channel === statsChannel ? "selected" : ""}>${esc(c.channel)}</option>`).join("")}</select>
       <button onclick="stats(true)">${icon("refresh")} Actualizar de YouTube</button></div></div>
@@ -120,7 +120,7 @@ async function stats(refresh = false) {
         <td>${p.errors.bot || 0}</td><td>${p.files_ok}/${p.files}</td><td><b>${p.mbps}</b></td><td>${p.seconds_per_file}</td></tr>`).join("")}</table></div></div>` : ""}
     ` : '<div class="notice">Todavía no hay datos de YouTube.</div>'}
     <div class="card mt-3"><div class="spend">${spend.map((d) => `<div style="--v:${100 * d.usd / max}%" title="${d.usd} $"><span>${d.day.slice(5)}</span></div>`).join("")}</div>
-      <div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`;
+      <div class="small muted">Total en estos días: ${spend.reduce((a, d) => a + d.usd, 0).toFixed(2)} $</div></div></details>`);
   statsRows = st.videos.filter((v) => v.youtube);
   drawYtTable();
   if (bench.job && bench.job.running) schedule(() => stats(), 15000);      // the speed test shows its progress
@@ -138,7 +138,7 @@ async function saveExperiment(slug, field, value) {
 async function pilotPage() {
   const g = await api("/api/piloto");
   const busy = g.channels.some((c) => c.job && c.job.running);
-  $("#app").innerHTML = `
+  show(`
     <h1>Piloto automático</h1>
     <div class="small muted">Ideas de lo que funciona hoy en el nicho de cada canal (radar del ${esc(g.radarDate || "—")}).
       «Hacer este vídeo» escribe un vídeo PROPIO sobre ese tema (otro ángulo, nunca una copia), con el guion en el formato del canal; la voz de
@@ -160,7 +160,7 @@ async function pilotPage() {
               <button onclick="pilotSkip('${esc(c.channel)}', '${esc(v.id)}')">No me interesa</button></div></div></div>`).join("")
         : '<div class="small muted mt-2">Sin ideas todavía: el radar las trae cada día (Crecer › Radar › Buscar ahora).</div>'}
       ${c.made.length ? `<h3>Hechos por el piloto</h3>${c.made.map((m) => `<div class="small">${esc(m.date)} · <a href="#/video/${encodeURIComponent(m.slug)}">${esc(m.title)}</a>
-        <span class="muted">· de «${esc(m.fromTitle || "")}»${m.angle ? " · ángulo: " + esc(m.angle) : ""}</span></div>`).join("")}` : ""}</div>`).join("")}`;
+        <span class="muted">· de «${esc(m.fromTitle || "")}»${m.angle ? " · ángulo: " + esc(m.angle) : ""}</span></div>`).join("")}` : ""}</div>`).join("")}`);
   window.pilotSet = async (channel, change) => { await post(`/api/piloto/${encodeURIComponent(channel)}`, change); pilotPage(); };
   window.pilotSkip = async (channel, id) => { await post(`/api/piloto/${encodeURIComponent(channel)}/saltar`, {id}); pilotPage(); };
   window.pilotMake = async (channel, id, button) => {
@@ -179,7 +179,7 @@ async function experimentsPage() {
   const rows = g.videos.filter((v) => !expChannel || v.channel === expChannel);
   const channelsList = [...new Set(g.videos.map((v) => v.channel))];
   const top = Math.max(1, ...g.comparisons.flatMap((c) => c.options.map((o) => o.score || 0)));
-  $("#app").innerHTML = `
+  show(`
     <h1>Experimentos</h1>
     <div class="small muted">Qué ha probado cada vídeo y cómo le ha ido: sus visitas a los 7 días frente a la mediana de su canal
       (1,4× = un 40 % más de lo habitual en ese canal). El formato, la búsqueda, la duración y el ritmo se anotan solos; añade tus etiquetas
@@ -212,7 +212,7 @@ async function experimentsPage() {
           onchange="saveExperiment('${esc(v.slug)}', 'tags', this.value).then(experimentsPage)"></td>
         ${["retention30", "retentionAvg", "ctr"].map((k) => `<td data-k="${k}"><input class="w-xs" inputmode="decimal" value="${v[k] ?? ""}"
           onchange="saveExperiment('${esc(v.slug)}', '${k}', this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
-        || '<tr><td colspan="8" class="empty-row">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`;
+        || '<tr><td colspan="8" class="empty-row">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`);
 }
 
 // «En YouTube»: sorted, filtered and grouped in the page, without asking the server again
@@ -252,7 +252,7 @@ function drawYtTable(typing = false) {
       return `<tr class="group"><td colspan="10"><span class="row">${dot(c)}${esc(c)}
         <span class="muted small n4">${g.length} vídeo(s) · ${kfmt(views)} visitas · ${kfmt(hours)} h (est.)</span></span></td></tr>${g.map(row).join("")}`; }).join("");
   } else body = rows.map(row).join("");
-  box.innerHTML = `<div class="tools">
+  fill(box, `<div class="tools">
       <input type="search" placeholder="Buscar título o carpeta…" value="${esc(statsQuery)}" oninput="statsQuery=this.value;drawYtTable(true)">
       <button class="chip ${statsChannel ? "" : "on"}" onclick="statsChannel='';drawYtTable()">Todos <span class="muted">${statsRows.length}</span></button>
       ${Object.keys(counts).sort().map((c) => `<button class="chip ${c === statsChannel ? "on" : ""}" onclick="statsChannel='${esc(c)}';drawYtTable()">
@@ -269,7 +269,7 @@ function drawYtTable(typing = false) {
         ${YT_COLS.map(([k, label]) => `<th class="${statsSort === k ? "on" : ""} ${["at48h", "at7d", "commentsPer1k"].includes(k) ? "wide" : ""}" onclick="ytSort('${k}')">${label}${arrow(k)}</th>`).join("")}</tr></thead>
       <tbody>${body || '<tr><td colspan="10" class="empty-row">Ningún vídeo con ese filtro.</td></tr>'}</tbody>
     </table></div>
-    <div class="small muted mt-1">${rows.length} de ${statsRows.length} vídeos · ${kfmt(rows.reduce((s, v) => s + (v.youtube.views || 0), 0))} visitas · ${kfmt(rows.reduce((s, v) => s + (v.youtube.watchHours || 0), 0))} h (est.) · toca una columna para ordenar (otra vez: al revés)</div>`;
+    <div class="small muted mt-1">${rows.length} de ${statsRows.length} vídeos · ${kfmt(rows.reduce((s, v) => s + (v.youtube.views || 0), 0))} visitas · ${kfmt(rows.reduce((s, v) => s + (v.youtube.watchHours || 0), 0))} h (est.) · toca una columna para ordenar (otra vez: al revés)</div>`);
   if (typing) { const input = box.querySelector("input[type=search]"); input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
 }
 
@@ -379,7 +379,7 @@ async function radarPage() {
   const scoreLook = (x) => x >= 7 ? ["t-ok", "var(--ok)"] : x >= 4 ? ["t-warn", "var(--accent-fill)"] : ["muted", "var(--muted)"];
   const filters = (list, current, name, labels = {}) => `<div class="tools">${list.map((f) =>
     `<a class="chip ${f === current ? "on" : ""}" href="javascript:${name}='${f}';route()">${labels[f] || f}</a>`).join("")}</div>`;
-  $("#app").innerHTML = `<div class="hb"><h1>Radar</h1>
+  show(`<div class="hb"><h1>Radar</h1>
       <div class="tools"><button onclick="runNews()" ${r.newsJob.running ? "disabled" : ""}>${icon("news")} Noticias ahora</button>
       <button class="main" onclick="runRadar()" ${r.job.running ? "disabled" : ""}>Buscar todo ahora</button></div></div>
     <div class="small muted">${latest ? `Radar del ${esc(latest.date)} · se hace solo cada día a las 13:00 y te llega el resumen por Telegram` : "Todavía no hay radar: pulsa «Buscar todo ahora» (necesita YOUTUBE_API_KEY)."}
@@ -484,7 +484,7 @@ async function radarPage() {
       ${n.why ? `<div class="small mt-2">${esc(n.why)}</div>` : ""}
       <div class="small muted">«${esc(n.query)}»</div>
       <div class="actions">${seedButton({kind: "niche", query: n.query, name: n.name, near: n.near}, icon("bulb") + (n.ideas ? ` Ver ideas (${n.ideas})` : " Ideas para este nicho"))}</div>
-    </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos en este filtro.</div>'}`;
+    </div>`).join("")}</div>` : '<div class="notice">Aún no hay nichos en este filtro.</div>'}`);
   if (window.partner) {          // a partner: their channels' competitors and news; the server-wide finds are the owner's
     for (const h of [...document.querySelectorAll("#app h2")].filter((x) => /^(Canales revelación|Huecos: |Nichos nuevos)/.test(x.textContent.trim()))) {
       let next = h.nextElementSibling;
@@ -548,13 +548,13 @@ async function channelPage() {
     ${jobLine(c.job, "Analizando el canal")}`;
   window.analyse = async () => { await post("/api/mychannel/" + encodeURIComponent(myChannel)); route(); };
   if (c.job.running) schedule(route, 6000);
-  if (!r) { $("#app").innerHTML = head + (c.handle ? '<div class="notice">Pulsa «Analizar ahora» (necesita YOUTUBE_API_KEY).</div>' : ""); return; }
+  if (!r) { show(head + (c.handle ? '<div class="notice">Pulsa «Analizar ahora» (necesita YOUTUBE_API_KEY).</div>' : "")); return; }
   const n = r.numbers, maxMonth = Math.max(1, ...r.months.map((m) => m.long + m.shorts));
   const maxDay = Math.max(2, ...r.perDay.map((d) => d.ratio || 0));
   const card = (label, value, sub) => `<div class="card"><div class="muted small">${label}</div><div class="stat">${value}</div><div class="small muted">${sub || ""}</div></div>`;
   const diverge = (f) => { const w = Math.min(50, Math.abs(Math.log2(f)) * 60);
     return `<div class="diverge"><i style="--l:${f >= 1 ? 50 : 50 - w}%;--v:${w}%;--c:${f >= 1 ? "#3b82f6" : "#e5534b"}"></i></div>`; };
-  $("#app").innerHTML = head + `
+  show(head + `
     <div class="chips">${["Números", "Evolución", "Ganadores", "Horarios", "Constancia", "Títulos", "Duración", "Temas"].map((t) => `<a href="javascript:document.getElementById('k-${t}').scrollIntoView({behavior:'smooth'})">${t}</a>`).join("")}</div>
     ${r.tips.length ? `<div class="notice elf">${icon("bulb")} ${r.tips.map(esc).join("<br>")}</div>` : ""}
 
@@ -604,5 +604,5 @@ async function channelPage() {
     <div class="card rows">${r.topics.map((t, i) => `<div class="topic"><b class="muted lg">${i + 1}</b>
       ${t.thumbnail ? thumb(t.thumbnail) : "<div></div>"}
       <div class="mw0"><b>${esc(t.name)}</b><div class="hbar"><i style="--v:${Math.min(100, 40 * (t.ratio || 0))}%;--c:${(t.ratio || 0) >= 1 ? "#3b82f6" : "#e5534b"}"></i></div>
-      <div class="small muted"><b>${times(t.ratio)}</b> lo normal · ${t.count} vídeos · ${t.hits} éxitos · mediana ${kfmt(t.medianViews)}</div></div></div>`).join("") || '<div class="muted my-2">Sin temas (pocos vídeos o sin IA configurada).</div>'}</div>`;
+      <div class="small muted"><b>${times(t.ratio)}</b> lo normal · ${t.count} vídeos · ${t.hits} éxitos · mediana ${kfmt(t.medianViews)}</div></div></div>`).join("") || '<div class="muted my-2">Sin temas (pocos vídeos o sin IA configurada).</div>'}</div>`);
 }

@@ -6,11 +6,11 @@ async function doctorCard(refresh) {
   if (!d || !box) return;
   const mark = {ok: `<span class="t-ok">${icon("check", "Bien")}</span>`, aviso: `<span class="t-warn">${icon("alert", "Aviso")}</span>`,
     error: `<span class="t-bad">${icon("x", "Error")}</span>`}, bad = d.rows.filter((r) => r.level !== "ok");
-  box.innerHTML = `<div class="card side" style="--c:${bad.some((r) => r.level === "error") ? "var(--bad)" : bad.length ? "var(--accent)" : "var(--ok)"}">
+  fill(box, `<div class="card side" style="--c:${bad.some((r) => r.level === "error") ? "var(--bad)" : bad.length ? "var(--accent)" : "var(--ok)"}">
     <div class="row between"><b>Chequeo ${bad.length ? `· ${bad.length} aviso(s)` : "· todo listo"}</b>
     <button onclick="doctorCard(true)">${icon("refresh")} Revisar ahora</button></div>
     ${(bad.length ? bad : d.rows).map((r) => `<div class="small mt-1">${mark[r.level]} <b>${esc(r.area)}</b>: ${esc(r.text)}</div>`).join("")}
-    <div class="small muted mt-2">${new Date(d.at * 1000).toLocaleTimeString("es-ES")} · sin peticiones a YouTube ni a las IAs</div></div>`;
+    <div class="small muted mt-2">${new Date(d.at * 1000).toLocaleTimeString("es-ES")} · sin peticiones a YouTube ni a las IAs</div></div>`);
 }
 
 async function serverPage() {
@@ -18,7 +18,7 @@ async function serverPage() {
   const m = s.machine || {}, a = s.api, p = s.proxy, b = s.backup;
   const bar = (x, of, warn) => `<div class="bar ${(x || 0) / Math.max(0.01, of || 0) > warn ? "bad" : "acc"}"><i style="--v:${Math.min(100, 100 * (x || 0) / Math.max(0.01, of || 0))}%"></i></div>`;
   const kinds = {haciendo: "haciendo", turno: "", cuota: "", youtube: "error", cola: "", error: "error", falta: "", pausa: ""};
-  $("#app").innerHTML = `<h1>Estado del servidor</h1>
+  show(`<h1>Estado del servidor</h1>
     <div class="small muted">Se actualiza solo cada 15 s · ${esc(s.at)}</div>
     <div id="doctor"></div>
     <h2>Máquina</h2>
@@ -65,7 +65,7 @@ async function serverPage() {
         <div class="small muted">En ${esc(b.folder)} del servidor. Lleva tus claves (.env): guárdala en un sitio privado.</div>`
         : '<span class="muted">Aún no hay ninguna (se hace sola cada semana).</span>'}
       <div class="actions">${b ? `<a class="btn" href="/api/copia">${icon("download")} Descargar</a>` : ""}
-        <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`;
+        <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`);
   doctorCard();
   schedule(serverPage, 15000);
 }
@@ -120,7 +120,7 @@ async function spendPage() {
   const rows = g.videos.filter((v) => !spendChannel || v.channel === spendChannel)
     .sort((a, b) => spendSort === "usd" ? b.usd - a.usd : spendSort === "minutes" ? b.minutes - a.minutes
       : spendSort === "work" ? (b.workSeconds || 0) - (a.workSeconds || 0) : b.last.localeCompare(a.last));
-  $("#app").innerHTML = `<h1>${window.partner ? "Mi gasto" : "Gasto de API"}</h1>
+  show(`<h1>${window.partner ? "Mi gasto" : "Gasto de API"}</h1>
     <div class="small muted">Lo que cuestan las APIs de pago (guion, planos, juez, voz…). Las medias cuentan solo vídeos terminados; lo de vídeos a medias va aparte («en curso»).</div>
     <div class="kpis">
       <div class="kpi"><div class="k">Hoy</div><div class="v">${usd(g.today)}</div><div class="d">desde las 00:00 (UTC)</div></div>
@@ -228,7 +228,7 @@ async function spendPage() {
         <td data-k="Por minuto">${v.minutes ? usd(v.usd / v.minutes, 3) : "—"}</td>
         <td data-k="Estado">${v.done ? '<span class="pill hecho">terminado</span>' : '<span class="pill">en curso</span>'}</td>
         <td class="wide small muted l">${Object.entries(v.providers).slice(0, 3).map(([k, x]) => `${esc(k.split(" (")[0])} ${usd(x)}`).join(" · ")}</td></tr>`).join("")
-        || '<tr><td colspan="10" class="empty-row">Sin gasto registrado.</td></tr>'}</tbody></table></div>`;
+        || '<tr><td colspan="10" class="empty-row">Sin gasto registrado.</td></tr>'}</tbody></table></div>`);
 }
 
 async function restartQueue(button) {
@@ -309,7 +309,7 @@ async function settingsPage() {
   const code = data && data.service && data.service.code;
   const filled = s.channels.filter((c) => s.myChannels[c]).length;
   const people = await peopleBlock(s.channels);
-  $("#app").innerHTML = `<h1>Ajustes</h1>
+  show(`<h1>Ajustes</h1>
     ${code ? `<div class="notice ok">Código del servidor: <b>${esc(code.what)}</b> · ${esc(code.at.slice(0, 16).replace("T", " "))}
       <div class="small muted">Se actualiza solo: el estudio cada 2 minutos y la cola entre vídeo y vídeo. No hace falta SSH.</div>
       <div class="actions mt-3"><button onclick="updateNow(this)">${icon("refresh")} Actualizar ahora</button>
@@ -368,7 +368,7 @@ async function settingsPage() {
       ${s.channels.filter((c) => !mineEmpty || !s.myChannels[c]).map((c) => `<div class="mine-row"><div><span class="pill ch" style="--c:${chColor(c)}">${esc(c)}</span></div>
         <input class="mine" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}"></div>`).join("")}
       <div class="actions"><button class="main" onclick="save({my_channels: {...${JSON.stringify(s.myChannels || {}).replace(/"/g, "&quot;")}, ...Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))}})">Guardar</button></div>
-      </div></details>`;
+      </div></details>`);
   window.save = async (body) => { await post("/api/settings", body); route(); };
   $("#tg-go").onclick = async () => {
     const msg = $("#tg-msg"); msg.textContent = "Enviando…";
@@ -416,7 +416,7 @@ async function voicesPage() {
     try { await post("/api/dubbing", {channel: c, languages, voices, existing: $("#dubex-" + CSS.escape(c)).checked});
       $("#dubmsg-" + CSS.escape(c)).textContent = languages.length ? "Guardado ✓ (empieza en unos minutos)" : "Doblaje apagado"; }
     catch (e) { $("#dubmsg-" + CSS.escape(c)).textContent = e.message; } };
-  $("#app").innerHTML = `<h1>Voces por canal</h1>
+  show(`<h1>Voces por canal</h1>
     ${v.hasKey ? "" : '<div class="notice bad">Falta <b>GENAIPRO_API_KEY</b> en el .env del servidor (genaipro.io → avatar → Manage Account → API Key). Ponla y reinicia el estudio.</div>'}
     <p class="muted small">Con una voz puesta, un vídeo de ese canal solo necesita el guion: la voz se genera al empezar el vídeo. Si subes tu voz.mp3, se usa la tuya.
       <span id="credits"></span></p>
@@ -427,7 +427,7 @@ async function voicesPage() {
       <div class="field"><select id="vlang"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
         <option value="fr">francés</option><option value="en">inglés</option><option value="it">italiano</option><option value="">todas</option></select></div>
       <div class="field"><select id="vgender"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select></div></div>
-      <div class="actions"><button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" class="mt-3"></div></div>`;
+      <div class="actions"><button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" class="mt-3"></div></div>`);
   const read = (c) => ({channel: c, voice_id: $("#vid-" + c).value.trim(), name: $("#vname-" + c).value.trim(), model_id: $("#vmodel-" + c).value,
     speed: $("#vspeed-" + c).value, stability: $("#vstab-" + c).value, similarity: $("#vsim-" + c).value});
   window.saveVoice = async (c) => { try { await post("/api/voices", read(c)); voicesPage(); } catch (e) { $("#vmsg-" + c).textContent = e.message; } };
@@ -437,11 +437,11 @@ async function voicesPage() {
       $("#vplay-" + c).innerHTML = `<audio class="w-full mt-2" controls autoplay src="${r.url}"></audio>`; } catch (e) { m.textContent = e.message; } };
   window.searchVoices = async () => { const box = $("#vresults"); box.textContent = "Buscando…";
     try { const list = await api(`/api/voices/search?q=${encodeURIComponent($("#vq").value)}&language=${$("#vlang").value}&gender=${$("#vgender").value}`);
-      box.innerHTML = list.map((x) => `<div class="slot"><b>${esc(x.name || "")}</b><span class="small muted">${esc([x.gender, x.age, x.accent, x.language, x.use_case, x.descriptive].filter(Boolean).join(" · "))}</span>
+      fill(box, list.map((x) => `<div class="slot"><b>${esc(x.name || "")}</b><span class="small muted">${esc([x.gender, x.age, x.accent, x.language, x.use_case, x.descriptive].filter(Boolean).join(" · "))}</span>
         ${x.preview_url ? `<audio class="sm" controls preload="none" src="${esc(x.preview_url)}"></audio>` : ""}
         <code class="small">${esc(x.voice_id)}</code>
         <select class="sm w-auto push" onchange="if(this.value){document.getElementById('vid-'+this.value).value='${esc(x.voice_id)}';document.getElementById('vname-'+this.value).value='${esc(x.name || "")}';saveVoice(this.value)}">
-          <option value="">Usar en canal…</option>${v.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>`).join("") || "Nada con eso.";
+          <option value="">Usar en canal…</option>${v.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>`).join("") || "Nada con eso.");
     } catch (e) { box.textContent = e.message; } };
   if (v.hasKey) api("/api/voices/credits").then((cr) => { const n = (cr || []).reduce((a, x) => a + (x.amount || 0), 0);
     $("#credits").textContent = ` · Créditos de voz: ${n.toLocaleString("es-ES")}`; }).catch(() => {});
@@ -449,7 +449,7 @@ async function voicesPage() {
 
 async function newChannelPage() {
   data = await api("/api/overview");
-  $("#app").innerHTML = `<h1>Nuevo canal</h1>
+  show(`<h1>Nuevo canal</h1>
     <div class="card">
       <div class="fset"><div class="legend">Canal</div>
         <div class="two">
@@ -468,7 +468,7 @@ async function newChannelPage() {
         ${field("Búsquedas del nicho", '<textarea id="ch-queries" class="mid" placeholder="historia de marcas de coches&#10;car brand history&#10;why this car failed"></textarea>', "Una por línea; para el radar y las ideas", "ch-queries")}
         ${field('Patrón de títulos <span class="opt">opcional</span>', '<input id="ch-pattern">', "P. ej. «marca + fracaso + cifra»", "ch-pattern")}</div>
       <div class="actions"><button class="main" id="ch-go">Crear canal</button><span id="ch-msg" class="small muted"></span></div>
-    </div>`;
+    </div>`);
   $("#ch-go").onclick = async () => {
     const msg = $("#ch-msg"); msg.textContent = "Creando…";
     try {
@@ -486,7 +486,7 @@ async function newChannelPage() {
 async function accountPage() {
   const a = await api("/api/cuenta");
   const cap = (v, unit) => v ? `${v} ${unit}` : "sin tope propio";
-  $("#app").innerHTML = `<h1>Mi cuenta</h1>
+  show(`<h1>Mi cuenta</h1>
     <div class="small muted">${esc(a.name)} · tus canales: ${a.channels.map(esc).join(", ") || "ninguno todavía"}</div>
     <div class="kpis">
       <div class="kpi"><div class="k">Gasto de API hoy</div><div class="v">${a.spentToday.toFixed(2)} $</div><div class="d">tope: ${cap(a.limits.daily_usd, "$ al día")}</div>
@@ -505,7 +505,7 @@ async function accountPage() {
       ${field("Actual", '<input id="pw-old" type="password" autocomplete="current-password">', "", "pw-old")}
       ${field("Nueva", '<input id="pw-new" type="password" autocomplete="new-password">', "8 o más", "pw-new")}</div>
       <div class="actions"><button class="main" id="pw-go">Cambiar</button><span id="pw-msg" class="small muted"></span></div></div>
-    <div class="actions mt-5"><button onclick="logout()">Cerrar sesión</button></div>`;
+    <div class="actions mt-5"><button onclick="logout()">Cerrar sesión</button></div>`);
   if ($("#tglink")) $("#tglink").onclick = async () => {
     try {
       const r = await post("/api/telegram/link");

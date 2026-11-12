@@ -10,7 +10,7 @@ async function newVideo() {
   if (!pre) { try { pre = JSON.parse(sessionStorage.getItem("prefill") || "null"); } catch (e) {} }
   window.prefill = pre;
   const idea = pre && pre.idea;
-  $("#app").innerHTML = `<h1>Nuevo vídeo</h1>
+  show(`<h1>Nuevo vídeo</h1>
     ${idea ? `<div class="notice"><div class="row between"><b>Idea: ${esc(idea.title)}</b>
         <button onclick="window.prefill=null;try{sessionStorage.removeItem('prefill')}catch(e){};route()">Quitar idea</button></div>
       <div class="small">${esc(idea.angle || "")}</div>${idea.hook ? `<div class="small"><b>Gancho:</b> ${esc(idea.hook)}</div>` : ""}
@@ -79,7 +79,7 @@ async function newVideo() {
         <div class="actions"><button class="main" id="create" onclick="createVideo()">Crear y poner en cola</button><b id="msg" class="t-warn"></b></div>
         <div class="bar acc hide" id="upbar"><i></i></div>
       </div>
-    </div>`;
+    </div>`);
   $("#opsubs").onchange = $("#opcredit").oninput = () => {
     if (window.opening) Object.assign(window.opening, {subtitles: $("#opsubs").checked, credit: $("#opcredit").value});
   };
@@ -432,7 +432,7 @@ async function videoPage(slug) {
       : v.status !== "haciendo" ? '<button onclick="if(confirm(\'¿Quitar este vídeo de la lista? No se borra nada: va a materiales/_hechos.\'))act(\'archive\')" title="Sin vídeo hecho: sale de la lista y de la cola (materiales/_hechos)">Quitar de la lista</button>' : "",
     `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
   ].filter(Boolean);
-  $("#app").innerHTML = `
+  show(`
     <div class="vhead"><div class="mw0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
         <div class="meta">${esc(v.channel)}${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">(elegido por el guion)</span>` : ""}` : ""}
           ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API</div></div>
@@ -457,23 +457,23 @@ async function videoPage(slug) {
     ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
     ${v.published ? '<div id="whyBox"></div>' : ""}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';window.tabPicked=1;route()">${name}</button>`).join("")}</div>
-    <div class="card">${body}</div>`;
+    <div class="card">${body}</div>`);
   const repLoad = async () => {
     const box = $("#repBox");
     if (!box) return;
     const r = await api(`/api/video/${encodeURIComponent(slug)}/repeticion`);
     const mark = {ok: vMark("t-ok", "check", "Bien"), warn: vMark("t-warn", "alert", "Aviso"), skip: vMark("muted", "minus", "No se comprueba")};
-    box.innerHTML = `<h2>Riesgo de repetición: <span class="${{bajo: "t-ok", medio: "t-warn", alto: "t-bad"}[r.risk]}">${{bajo: "bajo", medio: "medio", alto: "alto"}[r.risk]}</span></h2>
+    fill(box, `<h2>Riesgo de repetición: <span class="${{bajo: "t-ok", medio: "t-warn", alto: "t-bad"}[r.risk]}">${{bajo: "bajo", medio: "medio", alto: "alto"}[r.risk]}</span></h2>
       <div class="card small"><div class="muted mb-2">YouTube no castiga la voz de IA sino los vídeos que parecen copias unos de otros
         (actualización del programa de socios de julio de 2025). Comparado con los ${r.compared} últimos vídeos del canal.</div>
-        ${r.checks.map((c) => `<div class="mt-1">${mark[c.status]} <b>${esc(c.name)}:</b> ${esc(c.text)}</div>`).join("")}</div>`;
+        ${r.checks.map((c) => `<div class="mt-1">${mark[c.status]} <b>${esc(c.name)}:</b> ${esc(c.text)}</div>`).join("")}</div>`);
   };
   repLoad();
   const whyLoad = async () => {
     const box = $("#whyBox");
     if (!box) return;
     const w = await api(`/api/video/${encodeURIComponent(slug)}/porque`);
-    if (!w.curve || !w.curve.points.length) { box.innerHTML = '<h2>¿Por qué funcionó?</h2><div class="card small muted">Aún sin visitas registradas: el vigilante las apunta a la 1 h, 3 h, 6 h, 12 h, 1, 2, 4, 7, 14 y 30 días (hace falta el enlace de YouTube).</div>'; return; }
+    if (!w.curve || !w.curve.points.length) { fill(box, '<h2>¿Por qué funcionó?</h2><div class="card small muted">Aún sin visitas registradas: el vigilante las apunta a la 1 h, 3 h, 6 h, 12 h, 1, 2, 4, 7, 14 y 30 días (hace falta el enlace de YouTube).</div>'); return; }
     const c = w.curve, r = w.report, W = 640, H = 220, P = 34;
     const hours = [1, ...c.points.map((p) => p[0]), ...c.normal.map((b) => b.hours)];
     const maxH = Math.max(...hours), maxV = Math.max(1, ...c.points.map((p) => p[1]), ...c.normal.map((b) => b.high));
@@ -484,7 +484,7 @@ async function videoPage(slug) {
     const ticks = [[1, "1 h"], [6, "6 h"], [24, "1 d"], [168, "7 d"], [720, "30 d"]].filter(([h]) => h <= maxH * 1.01);
     const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".", ",") + " K" : String(n);
     const line = (k, label) => r && r[k] ? `<div class="mt-1"><b class="t-warn">${label}:</b> ${esc(r[k])}</div>` : "";
-    box.innerHTML = `<h2>¿Por qué funcionó?</h2><div class="card">
+    fill(box, `<h2>¿Por qué funcionó?</h2><div class="card">
       <svg class="chart" viewBox="0 0 ${W} ${H}">${band}
         <polyline points="${c.points.map((p) => `${x(p[0])},${y(p[1])}`).join(" ")}" fill="none" stroke="#2bb3e6" stroke-width="3"/>
         ${c.points.map((p) => `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="3.5" fill="#2bb3e6"/>`).join("")}
@@ -495,7 +495,7 @@ async function videoPage(slug) {
       <div class="mt-2"><b>${fmt(c.views)}</b> visitas a ${c.age < 48 ? Math.round(c.age) + " h" : Math.round(c.age / 24) + " días"}${c.usual ? ` · lo normal del canal a esa edad: ${fmt(c.usual)} (<b>${String(c.ratio).replace(".", ",")}x</b>)` : " · aún pocos vídeos del canal para comparar"}</div>
       ${r ? `${line("topic", "tema")}${line("title", "título")}${line("length", "duración")}${line("hook", "gancho")}${line("lesson", "lección")}
         <div class="small muted mt-2">Analizado el ${esc(r.at.slice(0, 10))}: la lección entra en los próximos guiones del canal.</div>` : ""}
-      <button class="mt-2" onclick="whyAnalyse(this)">${r ? "Volver a analizar" : "Analizar ahora"}</button></div>`;
+      <button class="mt-2" onclick="whyAnalyse(this)">${r ? "Volver a analizar" : "Analizar ahora"}</button></div>`);
   };
   window.whyAnalyse = async (button) => {
     button.disabled = true; button.textContent = "Analizando…";
@@ -512,9 +512,9 @@ async function videoPage(slug) {
     const box = $("#exportBox");
     if (!box) return;
     const e = await api(`/api/video/${encodeURIComponent(slug)}/exportar`);
-    if (e.zip) box.innerHTML = `<a class="btn" href="${base}${encodeURIComponent(e.zip)}?download">Descargar proyecto (${e.mb} MB)</a>`;
-    else if (e.job.failed) box.innerHTML = `<span class="pill error">No se pudo: ${esc((e.job.log || "").trim().split("\n").pop() || "error")}</span>`;
-    else if (e.job.running) { box.textContent = "Preparando el proyecto…"; setTimeout(exportWatch, 3000); }
+    if (e.zip) fill(box, `<a class="btn" href="${base}${encodeURIComponent(e.zip)}?download">Descargar proyecto (${e.mb} MB)</a>`);
+    else if (e.job.failed) fill(box, `<span class="pill error">No se pudo: ${esc((e.job.log || "").trim().split("\n").pop() || "error")}</span>`);
+    else if (e.job.running) { fill(box, "Preparando el proyecto…"); setTimeout(exportWatch, 3000); }
   };
   exportWatch();
   window.exportCapcut = async (button) => {
@@ -526,9 +526,9 @@ async function videoPage(slug) {
     const box = $("#capcutBox");
     if (!box) return;
     const e = await api(`/api/video/${encodeURIComponent(slug)}/capcut`);
-    if (e.zip) box.innerHTML = `<a class="btn" href="${base}${encodeURIComponent(e.zip)}?download">Descargar para CapCut (${e.mb} MB)</a>`;
-    else if (e.job.failed) box.innerHTML = `<span class="pill error">No se pudo: ${esc((e.job.log || "").trim().split("\n").pop() || "error")}</span>`;
-    else if (e.job.running) { box.textContent = "Preparando el proyecto de CapCut (unos minutos)…"; setTimeout(capcutWatch, 4000); }
+    if (e.zip) fill(box, `<a class="btn" href="${base}${encodeURIComponent(e.zip)}?download">Descargar para CapCut (${e.mb} MB)</a>`);
+    else if (e.job.failed) fill(box, `<span class="pill error">No se pudo: ${esc((e.job.log || "").trim().split("\n").pop() || "error")}</span>`);
+    else if (e.job.running) { fill(box, "Preparando el proyecto de CapCut (unos minutos)…"); setTimeout(capcutWatch, 4000); }
   };
   capcutWatch();
   window.markUploaded = async (value = true) => {
@@ -584,12 +584,12 @@ async function pilotBox(slug, v) {
   const p = await api(`/api/video/${encodeURIComponent(slug)}/pilot`).catch(() => null); if (!p) return;
   const url = `/api/video/${encodeURIComponent(slug)}/pilot`;
   if (p.pilot) {
-    box.innerHTML = `<span class="pill">${icon("flask")} Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
+    fill(box, `<span class="pill">${icon("flask")} Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
       ${v.status === "hecho" ? `<button onclick="pilotReport('${esc(slug)}')">Informe del piloto</button>` : ""}
-      <button onclick="if(confirm('¿Volver este vídeo a la búsqueda por plano?'))post('${url}', {on: false}).then(() => route())">Quitar piloto</button>`;
+      <button onclick="if(confirm('¿Volver este vídeo a la búsqueda por plano?'))post('${url}', {on: false}).then(() => route())">Quitar piloto</button>`);
     if (p.report) showPilot(p.report);
   } else if (!p.others.length && !v.stagesDone) {
-    box.innerHTML = `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">${icon("flask")} Hacer de piloto por escenas</button>`;
+    fill(box, `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">${icon("flask")} Hacer de piloto por escenas</button>`);
   }
 }
 window.startPilot = async (slug, refs) => {
@@ -603,10 +603,10 @@ window.pilotReport = async (slug) => {
 };
 function showPilot(r) {
   const show = (x) => x == null ? "—" : (typeof x === "number" && x > 0 && x < 1 && !Number.isInteger(x)) ? Math.round(x * 100) + " %" : x;
-  $("#pilotReport").innerHTML = `<div class="card"><b>Piloto: ${esc(r.pilot.video)} frente a ${esc(r.reference.video)}</b>
+  fill($("#pilotReport"), `<div class="card"><b>Piloto: ${esc(r.pilot.video)} frente a ${esc(r.reference.video)}</b>
     <div class="scroll-x mt-2"><table><tr><th></th><th>Referencia</th><th>Piloto</th><th></th></tr>
     ${r.rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${show(x.reference)}</td><td><b>${show(x.pilot)}</b></td><td>${x.better == null ? "" : x.better ? vMark("t-ok", "check", "Mejor") : vMark("t-warn", "alert", "Peor")}</td></tr>`).join("")}</table></div>
-    ${r.pending.map((p) => `<div class="notice">${esc(p)}</div>`).join("")}</div>`;
+    ${r.pending.map((p) => `<div class="notice">${esc(p)}</div>`).join("")}</div>`);
 }
 
 // «Cambiar de canal»: a select in place of the ✏️; the video is not made again, it is only counted elsewhere
@@ -667,10 +667,10 @@ async function reviewPage(slug) {
       ["dudosa", `Dudosos (${c.dudosa})`], ["correcta", `Correctos (${c.correcta})`]].map(([k, n]) =>
       `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}</div>
       <span class="keys"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>1</kbd> correcta · <kbd>2</kbd> dudosa · <kbd>3</kbd> incorrecta · <kbd>0</kbd> quitar</span></div>`; };
-  $("#app").innerHTML = `<div class="rtool" id="rtool">${header()}</div>
+  show(`<div class="rtool" id="rtool">${header()}</div>
     <div class="small muted mb-2">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
     ${jobLine(r.job, "Rehaciendo el vídeo con tus correcciones")}
-    <div class="review" id="review">${shownList().map(card).join("") || '<div class="notice">Nada en este filtro.</div>'}</div>`;
+    <div class="review" id="review">${shownList().map(card).join("") || '<div class="notice">Nada en este filtro.</div>'}</div>`);
   shots.forEach((sh) => { const sel = document.getElementById("why-" + sh.id); if (sel && sh.label && sh.label.reason) sel.value = sh.label.reason; });
   let focus = -1;
   const cards = () => [...document.querySelectorAll("#review .card[data-i]")];
@@ -689,13 +689,12 @@ async function reviewPage(slug) {
     sh.label = verdict ? {verdict, reason} : null;
     const old = document.getElementById("r-" + id);
     if (old) { const i = +old.dataset.i; old.outerHTML = card(sh, i); if (sel) { const again = document.getElementById("why-" + id); if (again) again.value = sel.value; } }
-    $("#rtool").innerHTML = header();
+    fill($("#rtool"), header());
     if (verdict && reviewFilter !== "todos") { const el = document.getElementById("r-" + id); if (el && (reviewFilter === "pendientes" || reviewFilter !== verdict)) el.remove(); focusCard(focus, true); }
     else focusCard(focus + 1, true);
   };
   window.fixVideo = async () => { await post(`/api/video/${encodeURIComponent(slug)}/fix`); route(); };
   const keys = (e) => {
-    if (!location.hash.startsWith("#/revisar/")) { document.removeEventListener("keydown", keys); return; }
     if (e.target.matches("input, textarea, select")) return;
     const list = cards(); if (!list.length) return;
     const current = list.find((c) => +c.dataset.i === focus);
@@ -707,7 +706,7 @@ async function reviewPage(slug) {
     else if (id && e.key === "3") mark(id, "incorrecta");
     else if (id && e.key === "0") mark(id, null);
   };
-  document.addEventListener("keydown", keys);
+  pageKeys = keys;
   if (r.job.running) schedule(route, 8000);
 }
 
@@ -716,7 +715,7 @@ async function decisionsPage(slug) {
   const r = await api("/api/decisions/" + encodeURIComponent(slug));
   const picks = r.items.filter((i) => i.pick).length;
   const img = (shot, key) => `/api/decisions/${encodeURIComponent(slug)}/frame?shot=${shot}&key=${encodeURIComponent(key)}`;
-  $("#app").innerHTML = `
+  show(`
     <div class="row between"><h1>Decisiones del relleno · <a href="#/video/${encodeURIComponent(slug)}">${esc(slug)}</a></h1>
       <button class="main" onclick="applyPicks()" ${r.job.running ? "disabled" : ""}>Aplicar y rehacer${picks ? ` (${picks})` : ""}</button></div>
     <div class="small muted">Planos donde el programa no pudo usar la primera elección y buscó otra cosa. Mira lo que puso: si está bien, «Bien así»; si no, elige la opción que debería ir. Aprende de ello: lo que recuperas no vuelve a descartarse y te dice qué comprobación es demasiado estricta.</div>
@@ -737,7 +736,7 @@ async function decisionsPage(slug) {
           <div class="body small">${o.original ? '<b>La que eligió el juez</b> (descartada) · ' : ""}${esc(o.title).slice(0, 80)}
             <div class="muted">${esc(o.channel)}${o.score != null ? ` · nota ${o.score}` : ""}${o.kind === "image" ? " · foto" : ""}</div>
             <div class="row mt-2"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? `${icon("check")} Elegida` : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
-      </div></div>`).join("") || empty("check", "En este vídeo el relleno no tuvo que decidir nada.")}`;
+      </div></div>`).join("") || empty("check", "En este vídeo el relleno no tuvo que decidir nada.")}`);
   window.decide = async (shot, body) => { const y = window.scrollY; await post(`/api/decisions/${encodeURIComponent(slug)}/${shot}`, body); await route(); window.scrollTo(0, y); };
   window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { alert(e.message); } };
   // keyboard: ←/→ between shots, Enter = «bien así», 1-9 = that option
@@ -746,7 +745,6 @@ async function decisionsPage(slug) {
   const go = (i) => { const list = blocks(); if (!list.length) return; at = Math.max(0, Math.min(list.length - 1, i));
     list.forEach((b, j) => b.classList.toggle("focus", j === at)); list[at].scrollIntoView({block: "center", behavior: "smooth"}); };
   const keys = (e) => {
-    if (!location.hash.startsWith("#/decisiones/")) { document.removeEventListener("keydown", keys); return; }
     if (e.target.matches("input, textarea, select")) return;
     const list = blocks(), b = list[at];
     if (e.key === "ArrowRight" || e.key === "j") { e.preventDefault(); go(at + 1); }
@@ -754,6 +752,6 @@ async function decisionsPage(slug) {
     else if (b && e.key === "Enter") decide(b.dataset.shot, {ok: true});
     else if (b && /^[1-9]$/.test(e.key)) { const key = (b.dataset.options || "").split("\t")[+e.key - 1]; if (key) decide(b.dataset.shot, {pick: key}); }
   };
-  document.addEventListener("keydown", keys);
+  pageKeys = keys;
   if (r.job.running) schedule(route, 8000);
 }

@@ -83,7 +83,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
   const all = data.videos.filter((v) => !v.archived);
   // nothing changed since the last draw: leave the page alone (no flicker, no lost scroll) and look again later
   const key = JSON.stringify([homeChannel, homeKind, homeView, openSections, expanded, hiddenShorts, s, b, yt && yt.requests, all.map((v) => [v.slug, v.status, v.stage, v.error, v.lastError, v.retryAt, v.published, v.voice, v.quotaWait])]);
-  if (!force && key === homeKey && $("#app").firstElementChild) { schedule(home, all.some((v) => v.status === "haciendo") ? 10000 : 30000); return; }
+  if (!force && key === homeKey && $("#app")._hash === (location.hash || "#/")) { schedule(home, all.some((v) => v.status === "haciendo") ? 10000 : 30000); return; }
   homeKey = key;
   const channels = [...new Set(all.map((v) => v.channel).filter(Boolean))].sort();
   if (homeChannel && !channels.includes(homeChannel)) homeChannel = "";
@@ -170,7 +170,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
          right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
        ${splitBlock("Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
          right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}`;
-  $("#app").innerHTML = `
+  show(`
     <div class="glance">
       <a href="#/servidor" class="${state[0] === "bad" ? "bad" : ""}"><div class="n ${state[0] === "ok" ? "t-ok" : state[0] === "warn" ? "t-warn" : ""}">${icon(state[0] === "ok" ? "check" : state[0] === "warn" ? "pause" : "block", state[1])}</div><div class="l">${esc(state[1].toLowerCase())}</div></a>
       <a href="javascript:void(0)" onclick="document.getElementById('h-now')?.scrollIntoView({behavior:'smooth'})"><div class="n">${making.length}</div><div class="l">haciéndose</div></a>
@@ -195,7 +195,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
       ${[...groups.entries()].sort((a, b) => b[1].vids.length - a[1].vids.length).map(causeRow).join("")}</div>` : ""}
     <div class="hb"><div class="tools">${channelPick}${kindPick}</div><div class="tools">${viewPick}</div></div>
     ${sections}
-    ${vids.length ? "" : empty("film", "Aún no hay vídeos aquí", "", '<a class="btn main" href="#/nuevo">Crear uno</a>')}`;
+    ${vids.length ? "" : empty("film", "Aún no hay vídeos aquí", "", '<a class="btn main" href="#/nuevo">Crear uno</a>')}`);
   schedule(home, making.length ? 10000 : 30000);
 }
 window.retryOne = async (slug, button) => {
@@ -221,10 +221,10 @@ function marked(text, words) {
 async function searchPage(q) {
   const pasted = q === "(guion pegado)" && window.pendingSearch;
   const query = pasted ? window.pendingSearch : q;
-  $("#app").innerHTML = `<h1>¿Ya lo hice?</h1><div class="muted">Buscando…</div>`;
+  show(`<h1>¿Ya lo hice?</h1><div class="muted">Buscando…</div>`);
   const r = await post("/api/search", {q: query});
   const words = query.split(/\s+/);
-  $("#app").innerHTML = `<h1>¿Ya lo hice?</h1>
+  show(`<h1>¿Ya lo hice?</h1>
     <form class="hero" onsubmit="event.preventDefault();searchFrom(this.q.value)">
       <textarea name="q" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}">${pasted ? "" : esc(q)}</textarea>
       <button class="main">Buscar</button></form>
@@ -242,7 +242,7 @@ async function searchPage(q) {
         <div class="mw0"><div class="t">${marked(i.title, words)}</div>
           <div class="s">${esc([i.channel || "sin canal", i.where].join(" · "))}</div>
           ${i.note ? `<div class="small mt-1 ws">${marked(i.note, words)}</div>` : ""}</div>
-        <div class="r"><span class="pill">${icon("bulb")} idea</span></div></a>`).join("")}</div>` : ""}`;
+        <div class="r"><span class="pill">${icon("bulb")} idea</span></div></a>`).join("")}</div>` : ""}`);
 }
 
 

@@ -17,7 +17,7 @@ async function allVideosPage() {
   const th = (key, name, cls = "") => `<th class="${cls}" onclick="allSortBy('${key}')">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
   const state = (v) => v.published ? `<span class="pill hecho">subido</span> <span class="small muted">${esc(String(v.published.at || "").slice(0, 10))}</span>${v.published.url ? ` <a href="${esc(v.published.url)}" target="_blank" rel="noopener">↗</a>` : ""}`
     : v.archived ? '<span class="pill">archivado</span>' : pill(v.lastError && v.status === "en cola" ? "reintento" : v.status);
-  $("#app").innerHTML = `<h1>Todos los vídeos</h1>
+  show(`<h1>Todos los vídeos</h1>
     <div class="hb mt-2"><div class="tools grow">
       <input type="search" placeholder="Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)">
       <select class="w-auto" onchange="allFilter.channel=this.value;allVideosPage()"><option value="">Todos los canales (${data.videos.length})</option>${[...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) =>
@@ -30,7 +30,7 @@ async function allVideosPage() {
         <td class="wide"><select class="sm w-auto" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch((e)=>alert(e.message))">
           ${v.channel ? (data.channels.includes(v.channel) ? "" : `<option selected>${esc(v.channel)}</option>`) : "<option selected>(sin canal)</option>"}${data.channels.map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td>
         <td>${state(v)}</td><td class="r wide">${v.minutes ? v.minutes + " min" : "—"}</td><td class="r wide">${v.costUsd ? v.costUsd + " $" : "—"}</td></tr>`).join("")
-        || '<tr><td colspan="5" class="empty-row">Ninguno con estos filtros.</td></tr>'}</tbody></table></div>`;
+        || '<tr><td colspan="5" class="empty-row">Ninguno con estos filtros.</td></tr>'}</tbody></table></div>`);
 }
 
 let errFilter = "todos";
@@ -44,7 +44,7 @@ async function errorsPage() {
   const maxReason = Math.max(1, ...e.reasons.map((r) => r.count));
   const acc = (r) => r.accuracy == null ? "—" : `<b class="${r.accuracy >= 90 ? "t-ok" : r.accuracy < 70 ? "t-bad" : ""}">${r.accuracy} %</b>`;
   const verdicts = (r) => `<span class="t-ok">${r.correcta}</span> · <span class="t-bad">${r.incorrecta}</span> · <span class="muted">${r.dudosa}</span>`;
-  $("#app").innerHTML = `<h1>Clips marcados</h1>
+  show(`<h1>Clips marcados</h1>
     <div class="small muted">Marca los clips de cada vídeo terminado (bien / mal / dudoso) y el programa aprende qué comprobaciones aflojar o apretar.</div>
     <div class="kpis">
       <div class="kpi"><div class="k">Clips bien</div><div class="v ${e.accuracy == null ? "" : e.accuracy >= 90 ? "ok" : e.accuracy < 70 ? "bad" : "warn"}">${e.accuracy == null ? "—" : e.accuracy + " %"}</div>
@@ -73,7 +73,7 @@ async function errorsPage() {
         <div class="hbar bad"><i style="--v:${100 * r.count / maxReason}%"></i></div>`).join("")}</div></div>` : ""}
       ${e.methods.length ? `<div class="block"><div class="bh"><b>Acierto por cómo se encontró el clip</b></div><div class="scroll-x"><table class="vt"><thead><tr><th>Método</th><th class="r">Bien</th><th class="r">Mal</th><th class="r">Dudosos</th><th class="r">Acierto</th></tr></thead>
         <tbody>${[...e.methods].sort((a, b) => a.accuracy - b.accuracy).map((m) => `<tr><td>${esc(m.name)}</td><td class="r">${m.correcta}</td><td class="r">${m.incorrecta}</td><td class="r">${m.dudosa}</td><td class="r">${acc(m)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
-    </div>` : ""}`;
+    </div>` : ""}`);
 }
 
 // --- Calendario: días de publicación por canal y qué vídeo sale en cada uno --------------------------------------
@@ -109,7 +109,7 @@ async function calendarPage() {
         onchange="toggleDay('${esc(c)}', ${i}, this.checked)"> ${d.slice(0, 3)}</label>`).join("")}
         <input type="time" value="${esc(r.time)}" style="width:auto;margin-left:8px" onchange="rule('${esc(c)}', {time: this.value})"></div></div>`).join("");
   window.agendaRules = st.schedule;
-  $("#app").innerHTML = `<h1>Calendario</h1>
+  show(`<h1>Calendario</h1>
     <div class="small muted">Lo que sale cada día en cada canal, y los huecos que aún no tienen vídeo.</div>
     ${reserve}
     ${Object.keys(byDay).sort().map((d) => `<div class="cal-day ${d === today ? "today" : ""}">${DAY(d)}${d === today ? " · hoy" : ""}</div>${byDay[d].map(slot).join("")}`).join("")
@@ -121,7 +121,7 @@ async function calendarPage() {
       <div><label>Vídeos de reserva por canal <span class="muted">(aviso si hay menos)</span></label>
         <input type="number" min="0" step="1" value="${st.buffer}" onchange="option({buffer: +this.value})"></div>
       <div><label>Hora del resumen de la mañana <span class="muted">(Telegram)</span></label>
-        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`}`;
+        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`}`);
   window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
   window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
     try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
@@ -158,7 +158,7 @@ async function uploadPage() {
   const r = await api("/api/upload");
   copyTexts.length = 0;
   const today = new Date().toISOString().slice(0, 10);
-  $("#app").innerHTML = `<h1>Para subir</h1>
+  show(`<h1>Para subir</h1>
     <div class="small muted">Vídeos terminados que aún no están en YouTube, por el día que les toca en el calendario.
       Copia cada parte en YouTube Studio, marca los pasos y al final pulsa «Ya está subido».</div>
     ${r.videos.length ? "" : empty("check", "No hay nada pendiente de subir.", 'Mira <a href="#/guiones">Guiones</a> para preparar los siguientes.')}
@@ -205,7 +205,7 @@ async function uploadPage() {
         ${v.shortsText ? copyBox("Shorts (títulos y textos)", v.shortsText, 4) : ""}
         <div class="actions"><button class="main" onclick="doneUpload('${esc(v.slug)}')">Ya está subido</button></div>
       </div></details>`;
-    }).join("")}`;
+    }).join("")}`);
   window.makeCompilation = async (channel, button) => {
     if (!confirm(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`)) return;
     button.disabled = true; await post("/api/compilations", {channel}); uploadPage();
@@ -225,7 +225,7 @@ async function scriptsPage(days = 14) {
   data = data || await api("/api/overview");            // the formats of the drafts (the page can be the first one opened)
   const total = r.channels.reduce((n, c) => n + c.missing, 0);
   window.scriptIdeas = {};
-  $("#app").innerHTML = `<h1>Guiones</h1>
+  show(`<h1>Guiones</h1>
     <div class="row between nowrap top mb-3"><div class="small muted grow">Los días de tu calendario que aún no tienen vídeo.
       Elige una idea, pide un borrador y revísalo: al crearlo, la voz y los capítulos se hacen solos.</div>
       <select class="w-auto" onchange="scriptsPage(+this.value)">${[7, 14, 30].map((d) => `<option value="${d}" ${d === days ? "selected" : ""}>${d} días</option>`).join("")}</select></div>
@@ -253,7 +253,7 @@ async function scriptsPage(days = 14) {
           ${(data.formats || []).map((f) => `<option ${f === "caso-real" ? "" : ""}>${esc(f)}</option>`).join("")}</select></div>
         <div class="row nowrap mt-2"><input id="quick-${esc(c.channel)}" class="grow" placeholder="Idea rápida: un título…">
           <button onclick="quickDraft('${esc(c.channel)}', this)">${icon("pen")} Borrador</button></div></div>` : ""}
-    </div>`).join("")}`;
+    </div>`).join("")}`);
   const toNew = (channel, idea, draft) => {
     const pre = {channel, idea: {...idea, title: (draft && draft.title) || idea.title, format: (draft && draft.format) || idea.format || ""},
       script: draft ? draft.script : ""};
@@ -301,18 +301,18 @@ async function libraryPage() {
     <b>${esc(e.name)}</b>${e.cutout ? ' <span class="small muted">· recorte</span>' : ""}
     <div class="small muted">${e.videos} vídeo(s) · ${e.photos} foto(s) · usada en ${e.inVideos} vídeo(s)</div></a>`;
   const grid = (list) => `<div class="cards sm">${list.map(tile).join("")}</div>`;
-  $("#app").innerHTML = `<h1>Biblioteca</h1>
+  show(`<h1>Biblioteca</h1>
     <div class="small muted">Lo que ha funcionado de cada persona y tema. El próximo vídeo que hable de ellos parte de aquí
       (otros momentos de las mismas fuentes: nunca repite un fragmento). Se llena sola con cada vídeo terminado; «Correcta» en Errores sube una fuente.</div>
     <div class="tools"><input id="libfilter" type="search" placeholder="Buscar persona o tema…" oninput="document.querySelectorAll('#libgrid a.card').forEach((a) => a.classList.toggle('hide', !a.textContent.toLowerCase().includes(this.value.toLowerCase())))"></div>
     <div id="libgrid">
       <h2>Personas (${people.length})</h2>${people.length ? grid(people) : empty("user", "Aún ninguna.")}
       <h2>Temas, empresas, lugares (${topics.length})</h2>${topics.length ? grid(topics) : empty("inbox", "Se llenan con los próximos vídeos terminados.")}
-    </div>`;
+    </div>`);
 }
 async function libraryEntity(key) {
   const e = await api(`/api/library/${encodeURIComponent(key)}`);
-  $("#app").innerHTML = `<div class="small"><a href="#/biblioteca">← Biblioteca</a></div>
+  show(`<div class="small"><a href="#/biblioteca">← Biblioteca</a></div>
     <div class="hb mt-2"><h1>${esc(e.name)}</h1>
       <button onclick="libRemove('${esc(key)}', null)">Borrar todo</button></div>
     <div class="small muted mb-3">${e.kind === "person" ? "Persona" : "Tema"} · ${e.sources.length} fuente(s). Quita las que no quieras volver a ver con «Quitar».</div>
@@ -328,7 +328,7 @@ async function libraryEntity(key) {
         <div class="small muted">${esc(x.channel)} · ${x.kind === "videos" ? "vídeo" : "foto"}</div></div>
       ${x.used || x.approved || x.right ? `<div class="small row gap-4">${x.used ? `<span class="nw"><span class="t-ok">${icon("check")}</span> usada ${x.used}</span>` : ""}${x.approved ? `<span class="nw"><span class="t-ok">${icon("thumb")}</span> buena ${x.approved}</span>` : ""}${x.right ? `<span class="nw"><span class="t-warn">${icon("spark")}</span> correcta ${x.right}</span>` : ""}</div>` : ""}
       ${x.videos.length ? `<div class="small muted">${x.videos.map(esc).join(", ")}</div>` : ""}
-      <div class="row"><button class="sm" onclick="libRemove('${esc(key)}', '${esc(x.id)}')">Quitar</button></div></div>`).join("")}</div>`;
+      <div class="row"><button class="sm" onclick="libRemove('${esc(key)}', '${esc(x.id)}')">Quitar</button></div></div>`).join("")}</div>`);
 }
 window.libRemove = async (key, id) => {
   if (!confirm(id ? "¿Quitar esta fuente? No volverá a ofrecerse para este tema." : "¿Borrar toda la biblioteca de este tema?")) return;
@@ -351,7 +351,7 @@ async function boardPage() {
     return `<div class="item"><a href="#/video/${encodeURIComponent(x.slug)}"><b>${esc(x.title || x.slug)}</b></a>
       <div class="small muted">${esc(x.channel)} · ${esc(x.status)}${x.date ? " · sale el " + esc(DAY(x.date)) : x.published ? " · " + esc(x.published) : ""}</div></div>`;
   };
-  $("#app").innerHTML = `<h1>Tablero</h1>
+  show(`<h1>Tablero</h1>
     <div class="card"><div class="fset"><div class="legend">Nueva idea</div>
       <div class="three">
         ${field("Título", '<input id="bt">', "", "bt")}
@@ -364,7 +364,7 @@ async function boardPage() {
       <div class="row mt-3"><select id="tc" class="w-md">${b.channels.filter((c) => (b.kinds || {})[c] === "simulacion").map((c) => `<option>${esc(c)}</option>`).join("")}</select>
       <button class="main" id="tbtn" onclick="topicIdeas()">Llenar 10 días</button> <button id="tbtn2" onclick="topicIdeas('y-si')" title="Serie «¿Y si…?»: un mundo, un dial, una pregunta">Serie «¿Y si…?»</button><span id="tmsg" class="small muted"></span></div></div>
     <div class="kanban mt-4">${Object.entries(b.columns).map(([k, items]) => `<div class="col"><h3>${names[k] || k} <span class="muted">${items.length}</span></h3>
-      ${items.map(card).join("") || '<div class="small muted">—</div>'}</div>`).join("")}</div>`;
+      ${items.map(card).join("") || '<div class="small muted">—</div>'}</div>`).join("")}</div>`);
   window.addIdea = async () => { try { await post("/api/board/idea", {title: $("#bt").value, channel: $("#bc").value, date: $("#bd").value, note: $("#bn").value}); boardPage(); }
     catch (e) { alert(e.message); } };
   window.topicIdeas = async (serie) => { $("#tbtn").disabled = true; $("#tbtn2").disabled = true; $("#tmsg").textContent = "Pensando ideas… (~30 s)";

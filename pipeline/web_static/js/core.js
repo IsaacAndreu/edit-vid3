@@ -5,6 +5,7 @@ const STAGES = {factcheck: "Verificar datos", align: "Alinear la voz", planner: 
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 let timer = null, data = null;
+let navStop = null, navId = 0;                 // the page being opened: its requests are dropped when another one is
 
 // stroke icons, the same family as the sidebar's: icon("search"), or icon("alert", "Aviso") when it stands alone
 const ICONS = {
@@ -60,7 +61,13 @@ async function api(path, options = {}) {
   const isGet = !options.method || options.method === "GET";
   const hit = isGet && apiCache.get(path);
   if (hit && Date.now() - hit.at < 8000) return hit.body;
-  const res = await fetch(path, {credentials: "same-origin", ...options});
+  // a GET belongs to the page that asked for it: when another page is opened its answer never arrives (the promise
+  // stays pending), so a slow answer cannot paint the old page over the new one
+  const stop = isGet ? navStop : null;
+  let res;
+  try { res = await fetch(path, {credentials: "same-origin", ...(stop ? {signal: stop.signal} : {}), ...options}); }
+  catch (e) { if (stop && stop.signal.aborted) return new Promise(() => {}); throw e; }
+  if (stop && stop.signal.aborted) return new Promise(() => {});
   if (res.status === 401) { showLogin(); throw new Error("login"); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || res.statusText);
@@ -70,7 +77,7 @@ async function api(path, options = {}) {
 }
 const post = (path, body) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
 
-function showLogin() { $("#login").classList.remove("hide"); $("#top").classList.add("hide"); $("#app").innerHTML = ""; $("#pw").focus(); }
+function showLogin() { $("#login").classList.remove("hide"); $("#top").classList.add("hide"); paint($("#app"), "", true); $("#pw").focus(); }
 async function login() {
   try { await post("/api/login", {password: $("#pw").value}); $("#login").classList.add("hide"); start(); }
   catch (e) { $("#loginmsg").textContent = e.message; }

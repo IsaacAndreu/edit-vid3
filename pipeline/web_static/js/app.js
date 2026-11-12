@@ -1,14 +1,25 @@
-function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (!document.hidden) fn(); else schedule(fn, ms); }, ms); }
+// a page refreshes itself: `quiet` (paint.js) until the user touches something, so nothing they left is disturbed
+function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (!document.hidden) { quiet = true; fn(); } else schedule(fn, ms); }, ms); }
+
+// the keys of the page on screen (←/→, 1-3 in «Revisar»): one handler at a time, gone with its page
+let pageKeys = null;
+document.addEventListener("keydown", (e) => { if (pageKeys) pageKeys(e); });
 
 async function route() {
   clearTimeout(timer);
+  const id = ++navId;                            // this navigation: an older one still waiting is dropped
+  if (navStop) navStop.abort();
+  navStop = new AbortController();
+  pageKeys = null;
   document.body.classList.remove("menu");
+  $(".burger").setAttribute("aria-expanded", "false");
   let hash = location.hash || "#/";
   if (window.partner && !partnerMay(hash)) { hash = "#/"; history.replaceState(null, "", "#/"); }
   document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
-  const slow = setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
-    if (!$("#app").firstElementChild) $("#app").innerHTML = '<div class="skel"><div></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>'; }, 250);
+  if (hash !== $("#app")._hash) quiet = false;
+  const slow = quiet ? 0 : setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
+    if (!$("#app").firstElementChild) paint($("#app"), '<div class="skel"><div></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>', true); }, 250);
   try {
     if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
@@ -35,6 +46,7 @@ async function route() {
     else if (hash === "#/cuenta") await accountPage();
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
+    if (id !== navId) return;
     const s = data && data.service;
     // a tab opened before an update keeps the old page (it is one page): reload it once the server has new code
     if (s && s.code && s.code.id) {
@@ -43,7 +55,7 @@ async function route() {
     }
     $("#service").textContent = window.partner ? window.partner : s ? (s.paused ? "en pausa" : s.watching ? "vigilando" : "") : "";
     $("#service").title = s && s.code ? `Código del servidor: ${s.code.what} (${s.code.at.slice(0, 16).replace("T", " ")}) · se actualiza solo` : "";
-  } catch (e) { if (e.message !== "login") $("#app").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+  } catch (e) { if (id !== navId) return; if (e.message !== "login") show(`<div class="notice bad" role="alert">${esc(e.message)}</div>`); }
   clearTimeout(slow); $("#app").classList.remove("loading");
 }
 
