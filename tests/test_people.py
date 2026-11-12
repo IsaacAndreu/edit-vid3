@@ -79,3 +79,13 @@ def test_the_portrait_is_the_face_most_photos_agree_on():
     group, verified = consensus([me, other])                     # two faces that disagree: nobody to trust
     assert not verified and group == [0, 1]
     assert consensus([None, None]) == ([0, 1], False)
+
+
+def test_the_role_comes_from_the_planner_by_name_or_surname():
+    from pipeline.people import role_of
+    from pipeline.planner import parse_roles
+
+    roles = parse_roles({"roles": {"Rita Isbell": "Hermana de una víctima", "Larry Nassar": "null", " ": "x"}})
+    assert roles == {"Rita Isbell": "Hermana de una víctima"}
+    assert role_of(roles, "Rita Isbell") == role_of(roles, "R. Isbell") == "Hermana de una víctima"
+    assert role_of(roles, "Larry Nassar") is None

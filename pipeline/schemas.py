@@ -199,6 +199,7 @@ class ShotsFile(_Strict):
     context: str = ""                                        # global visual context from the outline pass
     subject: str = ""                                        # who/what the video is about ("Carlos Yulo · artistic gymnastics")
     events: list[StoryEvent] = Field(default_factory=list)
+    roles: dict[str, str] = Field(default_factory=dict)      # who each named person is, as the script says it
     chapters: list[PlanChapter]
     shots: list[Shot] = Field(min_length=1)
 
@@ -498,6 +499,7 @@ class TimelineMedia(_Strict):
     layout: Literal["full", "card", "person", "parallax", "archive"] = "full"   # card: framed over the grid; person: cutout card;
     # parallax: photo with depth; archive: 4:3 footage with black side bars and a film look
     caption: str | None = None                               # person cards: the name
+    role: str | None = None                                  # person cards: who they are in the story
     width: int | None = None                                 # of the media file (cards keep the source frame)
     height: int | None = None
     zoom: list[float] | None = None                          # [start frame in the shot, frames, final scale] (pipeline/camera.py)

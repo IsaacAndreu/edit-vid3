@@ -359,7 +359,7 @@ def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineSho
             size = _size(ctx.work_dir / person["image"])
             shot.media = TimelineMedia(src=person["image"], kind="image", source=person.get("source") or "web",
                                        credit=person.get("credit"), layout="person", caption=person["name"],
-                                       width=size[0], height=size[1])
+                                       role=person.get("role"), width=size[0], height=size[1])
             taken.add(shot.id)
             break
 

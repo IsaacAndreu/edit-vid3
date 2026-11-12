@@ -52,6 +52,7 @@ Recibes las frases numeradas del guion de un vídeo. Devuelve SOLO un objeto JSO
   "chapters": [{"title": "TÍTULO EN MAYÚSCULAS", "sentence": 12}],
   "subject": "si el vídeo trata de una persona concreta: 'Nombre Apellido · deporte/actividad en inglés' (p. ej. 'Carlos Yulo · artistic gymnastics'); si no, \"\"",
   "peak": "si hay protagonista: búsqueda EN INGLÉS de su momento cumbre, el más espectacular (p. ej. 'Carlos Yulo Paris 2024 floor gold medal winning moment'); si no, \"\"",
+  "roles": {"Nombre Apellido": "quién es en la historia, en el idioma del guion y SOLO si el guion lo dice (p. ej. 'Hermana de una víctima', 'Jueza del tribunal', 'Fundador de Xiaomi'), máx. 40 caracteres; las personas que el guion nombra, sin inventar"},
   "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'", "tag": "rótulo en pantalla en el idioma del guion, lugar y/o fecha tal como se dicen en esa parte, MAYÚSCULAS, máx. 30 caracteres, p. ej. 'STUTTGART · 2019'; null si el guion no dice lugar ni fecha"}]
 }
 Reglas de "events" (el hilo de la historia):
@@ -114,6 +115,18 @@ def parse_story(result: dict[str, Any], sentences: list[tuple[int, int]]) -> tup
     if events and events[0].startWord != 0 and subject:
         events.insert(0, StoryEvent(label=subject.split("·")[0].strip() + " highlights", startWord=0))
     return subject, events
+
+
+def parse_roles(result: dict[str, Any]) -> dict[str, str]:
+    """Who each named person is in the story ("Hermana de una víctima"), as the script says it: for the person cards."""
+
+    raw = result.get("roles") if isinstance(result.get("roles"), dict) else {}
+    out: dict[str, str] = {}
+    for name, role in raw.items():
+        name, role = " ".join(str(name).split())[:60], " ".join(str(role or "").split())[:40]
+        if name and role and role.casefold() not in ("null", "none", "n/a", "-"):
+            out[name] = role
+    return out
 
 
 def _as_int(value: Any) -> int:
@@ -1027,6 +1040,7 @@ def run(ctx: RunContext) -> None:
         context=context,
         subject=subject,
         events=events,
+        roles=parse_roles(outline),
         chapters=chapters,
         shots=[Shot.model_validate(s) for s in shots],
     )

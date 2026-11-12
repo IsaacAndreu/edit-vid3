@@ -197,6 +197,15 @@ def cutout_with_box(image: np.ndarray, session: Any) -> tuple[np.ndarray, tuple[
     return cv2.cvtColor(crop, cv2.COLOR_RGBA2BGRA), (int(top), int(bottom), int(left), int(right))
 
 
+def role_of(roles: dict[str, str], person: str) -> str | None:
+    """The person's role from the planner (planner.parse_roles), by full name or, failing that, by surname."""
+
+    if person in roles:
+        return roles[person]
+    last = person.split()[-1].casefold() if person.split() else ""
+    return next((r for n, r in roles.items() if n.split() and n.split()[-1].casefold() == last), None)
+
+
 def face_feature(checker: Any, image: np.ndarray) -> Any:
     """The SFace vector of the biggest face in a photo, or None (no models, no face)."""
 
@@ -292,7 +301,9 @@ def run(ctx: RunContext) -> None:
             continue
         target = out_dir / f"{library.person_key(person)}.png"
         shutil.copy2(stored, target)
-        people.append({"name": person, "image": str(target.relative_to(ctx.work_dir)).replace("\\", "/"), **meta})
+        role = role_of(story.roles, person)
+        people.append({"name": person, "image": str(target.relative_to(ctx.work_dir)).replace("\\", "/"), **meta,
+                       **({"role": role} if role else {})})
         print(f"   {person}: tarjeta con recorte · {meta['credit']}")
     ctx.write_json(OUTPUT, {"slug": ctx.slug, "people": people})
 

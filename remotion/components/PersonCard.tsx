@@ -63,6 +63,22 @@ export const PersonCard: FC<{ media: Media; durationInFrames: number }> = ({ med
             >
               {surname}
             </div>
+            {media.role ? (
+              <div
+                style={{
+                  fontFamily,
+                  fontWeight: 600,
+                  fontSize: 44,
+                  color: theme.text,
+                  marginTop: 22,
+                  opacity: 0.9,
+                  textShadow: theme.shadow,
+                  maxWidth: 760,
+                }}
+              >
+                {media.role}
+              </div>
+            ) : null}
           </div>
         </div>
       </AbsoluteFill>
