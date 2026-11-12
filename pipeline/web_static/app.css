@@ -413,3 +413,15 @@ details.attn .causes { display: flex; gap: 6px; flex-wrap: wrap; align-items: ce
 .strip14.key { display: inline-grid; grid-template-columns: 14px; margin-left: 10px; vertical-align: middle; } .strip14.key > span { height: 10px; }
 .weeks { display: flex; align-items: flex-end; gap: 3px; height: 34px; } .weeks i { flex: 1; height: var(--v); background: var(--c); opacity: .5; border-radius: 2px 2px 0 0; } .weeks i.now { opacity: 1; }
 .hb > * { min-width: 0; max-width: 100%; } .tools > .seg { max-width: 100%; }
+/* la ficha: the video and its storyboard; how it was made and what YouTube needs at the side */
+.vlayout { display: flex; flex-wrap: wrap; gap: var(--s5); align-items: flex-start; margin-top: var(--s3); }
+.vmain { flex: 999 1 600px; min-width: 0; } .vside { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.vside > h2 { margin: var(--s2) 0 0; } .vside .card + .card { margin-top: 0; } .vside .thumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vside pre { max-height: 260px; }
+.vside .stagelist { grid-template-columns: 1fr; }
+.story { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s2); }
+.story .shot { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; color: var(--text); }
+.story .shot:hover { border-color: var(--muted); text-decoration: none; } .story .shot.incorrecta { border-color: var(--bad); } .story .shot.dudosa { border-color: var(--doubt); } .story .shot.correcta { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+.story .f { position: relative; } .story .f img { border-radius: 0; }
+.story .tl, .story .tr { position: absolute; top: 5px; font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 4px; background: rgba(0,0,0,.62); color: #fff; }
+.story .tl { left: 5px; } .story .tr { right: 5px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story .q { font-size: 12px; line-height: 1.35; color: var(--muted); padding: 6px 8px 8px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

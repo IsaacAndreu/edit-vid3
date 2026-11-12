@@ -438,13 +438,14 @@ async function videoPage(slug) {
           ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API</div></div>
       <div class="primary">${primary}
         <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ${icon("down")}</button><div>${secondary.join("")}</div></span></div></div>
-    ${whyView}${doing}${ytView}
-    <div class="row my-2" id="pilotBox"></div><div id="pilotReport"></div>
+    ${whyView}
     ${v.quotaWait ? `<div class="notice">${icon("pause")} En espera: ${esc(v.quotaWait)}. La cola sigue con los demás vídeos y este se reintenta solo.</div>` : ""}
     ${v.published ? `<div class="notice ok">${vMark("t-ok", "check")} Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
       <button class="sm ml-2" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
-    ${v.hasVideo ? `<h2>Vídeo</h2><video controls playsinline preload="metadata"
+    <div class="vlayout"><div class="vmain">
+    ${v.hasVideo ? "" : doing}
+    ${v.hasVideo ? `<video controls playsinline preload="metadata"
         ${v.thumbnails.length ? `poster="${base + v.thumbnails[0]}"` : ""} src="${base}${v.preview ? "preview.mp4" : "video-final.mp4"}"></video>
       <div class="small muted mt-1">${v.preview ? `Copia ligera en 720p para verlo rápido (también en el móvil) · <a href="${base}video-final.mp4" target="_blank" rel="noopener">ver el original en 1080p</a>`
         : "Preparando una copia ligera para verlo sin cortes en el móvil (unos minutos); mientras tanto, el original pesa mucho y puede ir a trompicones."}</div>
@@ -453,11 +454,26 @@ async function videoPage(slug) {
         <span id="exportBox" class="small"></span>
         <button onclick="exportCapcut(this)" title="Clips limpios por plano, voz, música, efectos sueltos y rótulos editables, para montarlo a tu manera en CapCut">${icon("scissors")} Proyecto para CapCut</button>
         <span id="capcutBox" class="small"></span></div>` : ""}
-    ${scenesPreview}${titles}${thumbs}${shorts}${dubs}
+    ${v.stagesDone >= 11 || v.hasVideo ? '<section id="storyBox" aria-label="Storyboard"></section>' : ""}
+    ${scenesPreview}${dubs}
     ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
     ${v.published ? '<div id="whyBox"></div>' : ""}
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';window.tabPicked=1;route()">${name}</button>`).join("")}</div>
-    <div class="card">${body}</div>`);
+    <div class="card">${body}</div></div>
+    <aside class="vside">${v.hasVideo ? doing : ""}${ytView}<div class="row" id="pilotBox"></div><div id="pilotReport"></div>${titles}${thumbs}${shorts}</aside></div>`);
+  // the storyboard: every shot with its frame, its minute, where the footage came from and its line of the script
+  if ($("#storyBox")) api("/api/review/" + encodeURIComponent(slug)).then((r) => {
+    const shots = r.shots || [], seen = {correcta: 0, dudosa: 0, incorrecta: 0};
+    shots.forEach((sh) => { const k = sh.label && sh.label.verdict; if (k in seen) seen[k]++; });
+    const left = shots.length - seen.correcta - seen.dudosa - seen.incorrecta, shown = shots.slice(0, 24);
+    fill($("#storyBox"), shots.length ? `<div class="hb"><h2>Storyboard · ${shots.length} planos</h2>
+        <div class="tools small"><span><b class="t-ok">${seen.correcta}</b> bien</span><span><b class="t-warn">${seen.dudosa}</b> dudosos</span><span><b class="t-bad">${seen.incorrecta}</b> mal</span>
+          <span class="muted">${left} sin revisar</span><a href="#/revisar/${encodeURIComponent(slug)}">Revisar clips →</a></div></div>
+      <div class="story">${shown.map((sh) => `<a class="shot ${(sh.label && sh.label.verdict) || ""}" href="#/revisar/${encodeURIComponent(slug)}" title="${esc(sh.title || sh.credit || sh.source || "")}">
+          <span class="f">${thumb(`/api/review/${encodeURIComponent(slug)}/frame/${sh.id}.jpg`, "", "")}<span class="tl">${clock(sh.at)}</span>${sh.source ? `<span class="tr">${esc(String(sh.source).slice(0, 14))}</span>` : ""}</span>
+          <span class="q">«${esc(sh.text || "—")}»</span></a>`).join("")}</div>
+      ${shots.length > shown.length ? `<a class="btn sm mt-2" href="#/revisar/${encodeURIComponent(slug)}">Ver los ${shots.length} planos</a>` : ""}` : "");
+  }).catch(() => {});
   const repLoad = async () => {
     const box = $("#repBox");
     if (!box) return;
