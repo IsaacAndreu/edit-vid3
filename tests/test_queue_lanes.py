@@ -143,3 +143,15 @@ def test_hold_and_the_queue_look_at_the_same_folder_when_a_flat_one_only_groups(
     assert not main.on_hold(tmp_path, "atleti10-pt")
     web.hold(tmp_path, "atleti10-pt", True)
     assert (real / main.HOLD).is_file() and main.on_hold(tmp_path, "atleti10-pt")
+
+
+def test_a_copy_put_away_in_hechos_does_not_hold_the_real_video(tmp_path):
+    from pipeline.context import find_video
+
+    for group in ("_hechos", "atleti-pt"):
+        folder = tmp_path / "materiales" / group / "atleti10-pt"
+        folder.mkdir(parents=True)
+        (folder / "guion.txt").write_text("hola", "utf-8")
+    (tmp_path / "materiales" / "_hechos" / "atleti10-pt" / main.HOLD).write_text("x", "utf-8")
+    assert find_video(tmp_path, "atleti10-pt") == tmp_path / "materiales" / "atleti-pt" / "atleti10-pt"
+    assert not main.on_hold(tmp_path, "atleti10-pt")

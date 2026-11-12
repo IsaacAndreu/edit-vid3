@@ -112,7 +112,11 @@ def find_video(root: Path, slug: str, materials: str = "materiales") -> Path:
         return flat
     # the same folder the queue takes (video_folders): a materiales/<slug>/ that only groups other folders is not
     # this video — «Quitar de la cola» wrote its mark there and the queue skipped the real one for ever
-    return next((f for f in video_folders(root, materials) if f.name == slug), flat)
+    # a copy put away (materiales/_hechos/…, folders starting with _ or .) only when there is no other: the queue
+    # never looks there, so «Quitar de la cola» on it left the real video skipped («quitado de la cola, se salta»)
+    found = [f for f in video_folders(root, materials) if f.name == slug]
+    put_away = lambda f: any(p.startswith(("_", ".")) for p in f.relative_to(root / materials).parts[:-1])   # noqa: E731
+    return next((f for f in found if not put_away(f)), found[0] if found else flat)
 
 
 @dataclass
