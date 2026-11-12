@@ -477,4 +477,4 @@ tts:
   provider: ""                    # ai84 | genaipro: con quién se buscan y guardan las voces nuevas ("" = AI84 si está AI84_API_KEY)
   usd_per_1k_chars: 0.022         # GenAIPro: lo que cuestan 1.000 caracteres de voz (22 $ el millón), para «Gasto de API»
   ai84_usd_per_1k_credits: 0      # AI84: $ por 1.000 créditos (lo que pagaste ÷ créditos × 1000); 0 = el gasto de voz sale a 0
-  ai84_credits_per_char: 1.0      # AI84: créditos por carácter, solo para avisar de créditos antes de medir el primer vídeo
+  ai84_credits_per_char: 1.3      # AI84: créditos por carácter (speech-2.6-hd: 33 por 25 caracteres, 12/11), para avisar antes de medir un vídeo

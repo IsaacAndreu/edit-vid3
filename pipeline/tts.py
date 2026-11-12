@@ -402,10 +402,24 @@ class AI84:
             tags = [str(t) for t in info.get("tag_list") or []]
             if language and gender and any(t.lower() in ("male", "female") for t in tags) and gender.lower() not in (t.lower() for t in tags):
                 continue
-            out.append({"voice_id": v.get("canonical_voice_id") or info.get("voice_id"), "name": v.get("name") or info.get("voice_name"),
+            # the TTS endpoint wants MiniMax's own id for a system voice («209539195289713»), not the named one
+            # («Spanish_HumorousElder»: 404 VOICE_NOT_FOUND, tried on the server 12/11)
+            out.append({"voice_id": info.get("voice_id") or v.get("canonical_voice_id"), "name": v.get("name") or info.get("voice_name"),
                         "tags": tags, "preview_url": info.get("sample_audio"),
                         "description": info.get("description") or "", "provider": "ai84", "engine": "minimax"})
         return [v for v in out if v["voice_id"]]
+
+    def system_id(self, named: str) -> str:
+        """MiniMax's own id of a system voice saved by its named id, "" when there is none."""
+
+        try:
+            found = self._call("GET", "/v1/minimax/voices", params={"search": named, "page_size": 20}).get("data") or []
+        except TTSError:
+            return ""
+        for v in found:
+            if v.get("canonical_voice_id") == named:
+                return str((v.get("minimax_voice") or {}).get("voice_id") or "")
+        return ""
 
     def create(self, text: str, voice: dict[str, Any]) -> str:
         if is_minimax(voice):
@@ -414,7 +428,14 @@ class AI84:
                     "format": "mp3", "sample_rate": 44100, "bitrate": 128000, "channel": 1}
             if voice.get("language_boost"):
                 body["language_boost"] = voice["language_boost"]
-            made = self._call("POST", "/v1/minimax/text-to-speech/async", json=body)
+            try:
+                made = self._call("POST", "/v1/minimax/text-to-speech/async", json=body)
+            except TTSError as error:
+                # a voice saved with its named id (before 12/11): MiniMax's own id instead, found in the voice list
+                own = self.system_id(voice["voice_id"]) if "VOICE_NOT_FOUND" in str(error) or "not found" in str(error).lower() else ""
+                if not own or own == voice["voice_id"]:
+                    raise
+                made = self._call("POST", "/v1/minimax/text-to-speech/async", json={**body, "canonical_voice_id": own})
             kind = "minimax"
         else:
             body = {"text": text, "voice_id": voice["voice_id"], "model_id": voice.get("model_id") or DEFAULTS["model_id"],

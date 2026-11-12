@@ -382,3 +382,23 @@ def test_ai84_voices_credits_and_saved_voice(tmp_path):
     tts.set_voice(tmp_path, "atletismo", {"voice_id": "V1"})          # an old-style GenAIPro voice keeps working
     assert tts.voice_for(tmp_path, "atletismo")["model_id"] == "eleven_multilingual_v2"
     assert tts.client_for(saved, {"ai84": "ak"}).NAME == "AI84" and tts.client_for({"voice_id": "V1"}, "k").NAME == "GenAIPro"
+
+
+def test_ai84_uses_minimax_own_id_and_mends_a_voice_saved_by_its_name():
+    class Named(_FakeAI84):
+        def request(self, method, url, headers=None, timeout=None, json=None, params=None):
+            path = url[len(tts.AI84_BASE):]
+            if method == "GET" and path == "/v1/minimax/voices":
+                return _Response(payload={"success": True, "data": [
+                    {"canonical_voice_id": "Spanish_HumorousElder", "name": "Humorous Elder",
+                     "minimax_voice": {"voice_id": "209539195289713", "tag_list": ["Spanish", "Male"]}}]})
+            if method == "POST" and json.get("canonical_voice_id") == "Spanish_HumorousElder":
+                return _Response(404, payload={"success": False, "error": "Voice not found",
+                                               "message": "Voice not found or not accessible.", "error_code": "VOICE_NOT_FOUND"})
+            return super().request(method, url, headers, timeout, json, params)
+
+    fake = Named(b"")
+    api = tts.AI84("ak", fake)
+    assert api.search("", "es")[0]["voice_id"] == "209539195289713"
+    api.create("Hola", tts.with_defaults({"provider": "ai84", "voice_id": "Spanish_HumorousElder"}))
+    assert fake.created[-1]["canonical_voice_id"] == "209539195289713"
