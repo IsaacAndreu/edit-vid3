@@ -909,6 +909,17 @@
       "marker": "event",
       "value": "HÁ + DE 1.000 ANOS"
      }
+    ],
+    "overlays": [
+     {
+      "kind": "info-card",
+      "at": {
+       "say": "Depois vieram os incas"
+      },
+      "corner": "tr",
+      "kicker": "DEPOIS, OS INCAS",
+      "title": "O planalto, *o centro do mundo*"
+     }
     ]
    },
    {
@@ -1006,15 +1017,86 @@
     ]
    },
    {
-    "id": "vazias",
-    "type": "atlas-statement",
+    "id": "cidades",
+    "type": "atlas-relief-map",
     "start": {
      "say": "E não é que as planícies"
     },
     "theme": "paper",
     "enter": "fade",
+    "region": "andes",
     "chapter": 1,
-    "title": "As planícies *não estavam vazias*, mas o poder estava *no alto*"
+    "camera": [
+     {
+      "at": {
+       "say": "E não é que as planícies"
+      },
+      "center": [
+       -65.2,
+       -14.4
+      ],
+      "zoom": 3
+     }
+    ],
+    "shapes": [
+     {
+      "id": "bolivia5",
+      "source": "atlas-data/shapes/bolivia.geojson",
+      "at": {
+       "say": "E não é que as planícies"
+      },
+      "stroke": "ink",
+      "fill": false
+     }
+    ],
+    "labels": [
+     {
+      "text": "Beni",
+      "pos": [
+       -65.0,
+       -14.0
+      ],
+      "at": {
+       "say": "E não é que as planícies"
+      },
+      "style": "region",
+      "accent": "good"
+     },
+     {
+      "text": "Cidades antigas · canais e aterros",
+      "pos": [
+       -65.0,
+       -14.7
+      ],
+      "at": {
+       "say": "Arqueólogos encontraram em Beni"
+      },
+      "style": "mono",
+      "accent": "data"
+     }
+    ]
+   },
+   {
+    "id": "vazias",
+    "type": "atlas-statement",
+    "start": {
+     "say": "Mas, quando os europeus"
+    },
+    "theme": "paper",
+    "enter": "fade",
+    "chapter": 1,
+    "title": "Mas o poder estava *no alto*"
+   },
+   {
+    "id": "prato",
+    "type": "atlas-statement",
+    "start": {
+     "say": "E havia outro motivo"
+    },
+    "theme": "paper",
+    "enter": "fade",
+    "chapter": 1,
+    "title": "E havia outro motivo: *o prato*"
    },
    {
     "id": "cap3",
@@ -1102,14 +1184,45 @@
    },
    {
     "id": "geladeira",
-    "type": "atlas-statement",
+    "type": "atlas-card-row",
     "start": {
      "say": "Ou seja, o frio"
     },
     "theme": "paper",
     "enter": "fade",
     "chapter": 2,
-    "title": "O frio virou *uma geladeira natural*"
+    "title": "Uma *geladeira natural*",
+    "cards": [
+     {
+      "heading": "Chuño",
+      "text": "O frio *conserva*",
+      "at": {
+       "say": "virou uma geladeira natural"
+      }
+     },
+     {
+      "heading": "Quinoa",
+      "text": "Cresce *no alto*",
+      "at": {
+       "say": "Junto com a quinoa"
+      }
+     },
+     {
+      "heading": "Lhamas",
+      "text": "Criadas *no planalto*",
+      "at": {
+       "say": "e as lhamas"
+      }
+     },
+     {
+      "heading": "Resultado",
+      "text": "*Cidades inteiras* alimentadas",
+      "at": {
+       "say": "alimentar cidades inteiras"
+      },
+      "accent": "good"
+     }
+    ]
    },
    {
     "id": "inscreva",
@@ -1220,6 +1333,41 @@
     "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
    },
    {
+    "id": "sintomas",
+    "type": "atlas-checklist",
+    "start": {
+     "say": "Um jogador que vem"
+    },
+    "theme": "paper",
+    "enter": "fade",
+    "chapter": 3,
+    "title": "Quem vem *do litoral*",
+    "items": [
+     {
+      "text": "Falta de ar",
+      "at": {
+       "say": "sente falta de ar"
+      },
+      "accent": "danger"
+     },
+     {
+      "text": "Cansaço",
+      "at": {
+       "say": "sente falta de ar",
+       "offset": 0.6
+      },
+      "accent": "danger"
+     },
+     {
+      "text": "Dor de cabeça",
+      "at": {
+       "say": "e dor de cabeça"
+      },
+      "accent": "danger"
+     }
+    ]
+   },
+   {
     "id": "fifa",
     "type": "atlas-card-row",
     "start": {
@@ -1266,6 +1414,13 @@
       }
      },
      {
+      "heading": "Como?",
+      "text": "*Milhares de anos* de adaptação",
+      "at": {
+       "say": "É uma adaptação construída"
+      }
+     },
+     {
       "heading": "Tibetanos",
       "text": "Respiram *mais rápido*",
       "at": {
@@ -1276,14 +1431,40 @@
    },
    {
     "id": "casa",
-    "type": "atlas-statement",
+    "type": "atlas-card-row",
     "start": {
      "say": "Então, para quem nasceu"
     },
     "theme": "paper",
     "enter": "fade",
     "chapter": 3,
-    "title": "Hostil é *a floresta lá embaixo*"
+    "title": "Quem nasceu lá *em cima*",
+    "cards": [
+     {
+      "heading": "O planalto",
+      "text": "É *a casa*",
+      "at": {
+       "say": "É a casa"
+      },
+      "accent": "good"
+     },
+     {
+      "heading": "A floresta",
+      "text": "É *o lugar hostil*",
+      "at": {
+       "say": "Hostil é a floresta"
+      },
+      "accent": "danger"
+     },
+     {
+      "heading": "E custou caro",
+      "text": "*à Bolívia*",
+      "at": {
+       "say": "custou caro à Bolívia"
+      },
+      "accent": "danger"
+     }
+    ]
    },
    {
     "id": "cap5",
@@ -1296,6 +1477,75 @@
     "chapter": 4,
     "of": 4,
     "title": "Quem não ocupa, *perde*"
+   },
+   {
+    "id": "vazio",
+    "type": "atlas-relief-map",
+    "start": {
+     "say": "Com toda a vida concentrada"
+    },
+    "theme": "paper",
+    "enter": "fade",
+    "region": "andes",
+    "chapter": 4,
+    "camera": [
+     {
+      "at": {
+       "say": "Com toda a vida concentrada"
+      },
+      "center": [
+       -65.0,
+       -16.6
+      ],
+      "zoom": 1.25
+     }
+    ],
+    "shapes": [
+     {
+      "id": "bolivia4",
+      "source": "atlas-data/shapes/bolivia.geojson",
+      "at": {
+       "say": "Com toda a vida concentrada"
+      },
+      "stroke": "ink",
+      "fill": false
+     },
+     {
+      "id": "alto4",
+      "source": "atlas-data/regions/andes/contour-3500.geojson",
+      "at": {
+       "say": "Com toda a vida concentrada"
+      },
+      "stroke": "danger",
+      "fill": true
+     }
+    ],
+    "labels": [
+     {
+      "text": "Leste quase vazio",
+      "pos": [
+       -62.8,
+       -16.0
+      ],
+      "at": {
+       "say": "o leste e o litoral"
+      },
+      "style": "region",
+      "accent": "good"
+     },
+     {
+      "text": "Território vazio = vulnerável",
+      "pos": [
+       -62.8,
+       -17.0
+      ],
+      "at": {
+       "say": "E território vazio é"
+      },
+      "style": "mono",
+      "accent": "danger"
+     }
+    ]
    },
    {
     "id": "mar",
@@ -1521,7 +1771,63 @@
     "theme": "night",
     "enter": "fade",
     "chapter": 4,
-    "title": "É 1942. *Você* governa a Bolívia. Manda descer a montanha?"
+    "title": "É 1942. *Você* governa a Bolívia"
+   },
+   {
+    "id": "opcoes",
+    "type": "atlas-card-row",
+    "start": {
+     "say": "O país vive da"
+    },
+    "theme": "paper",
+    "enter": "fade",
+    "chapter": 4,
+    "kicker": "1942",
+    "title": "A decisão",
+    "cards": [
+     {
+      "heading": "No alto",
+      "text": "O país vive *da mineração*",
+      "at": {
+       "say": "O país vive da"
+      }
+     },
+     {
+      "heading": "No leste",
+      "text": "Terra fértil, água e *espaço*",
+      "at": {
+       "say": "mas o leste tem"
+      },
+      "accent": "good"
+     },
+     {
+      "heading": "A proposta",
+      "text": "Uma estrada *até Santa Cruz*",
+      "at": {
+       "say": "Uma missão dos Estados"
+      },
+      "accent": "data"
+     },
+     {
+      "heading": "O preço",
+      "text": "*Uma fortuna*",
+      "at": {
+       "say": "Isso vai custar uma"
+      },
+      "accent": "danger"
+     }
+    ]
+   },
+   {
+    "id": "pergunta",
+    "type": "atlas-statement",
+    "start": {
+     "say": "Você manda descer a"
+    },
+    "theme": "night",
+    "enter": "fade",
+    "chapter": 4,
+    "title": "Você manda *descer a montanha*?"
    },
    {
     "id": "estrada",
@@ -1639,6 +1945,17 @@
     "sourceNote": "DADOS: ROTEIRO DO VÍDEO"
    },
    {
+    "id": "desce",
+    "type": "atlas-statement",
+    "start": {
+     "say": "Hoje é o departamento"
+    },
+    "theme": "paper",
+    "enter": "fade",
+    "chapter": 4,
+    "title": "Hoje, o departamento *mais populoso*. O país *desce a montanha*"
+   },
+   {
     "id": "rinconada2",
     "type": "atlas-relief-map",
     "start": {
@@ -1741,7 +2058,11 @@
     },
     "theme": "night",
     "enter": "fade",
-    "title": "Cinco séculos depois: *metal dentro da montanha*"
+    "kicker": "QUASE CINCO SÉCULOS DEPOIS DE POTOSÍ",
+    "title": "O que puxa as pessoas para o alto: *metal dentro da montanha*",
+    "titleAt": {
+     "say": "o que puxa as"
+    }
    },
    {
     "id": "recap",

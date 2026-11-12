@@ -96,6 +96,8 @@ Reglas:
   atlas-elevation-profile; si el guion anuncia N motivos/partes: atlas-agenda, atlas-chapter-card al empezar cada parte
   y atlas-recap al final; la llamada a suscribirse o comentar → atlas-cta.
 - Varía: no más de dos escenas seguidas del mismo tipo.
+- atlas-statement es una frase sola en pantalla: sólo para 4-8 s de voz. Si la idea sigue, la escena siguiente la
+  desarrolla con lo que se nombra (mapa, tarjetas, lista).
 - SOLO cifras, fechas y nombres del guion. Nada inventado. Textos en pantalla en el idioma del guion, cortos.
 - Di qué geografía hace falta (región y su recuadro aproximado, contornos de altura, país, perfil, bloque 3D) y
   reutiliza la que ya existe (te la doy abajo) siempre que sirva.
@@ -358,6 +360,51 @@ def fix_repeats(board: dict[str, Any], words: list[dict[str, Any]]) -> dict[str,
     return board
 
 
+MAX_STILL = 12.0          # segundos sin nada nuevo en pantalla que se le devuelven a la IA
+
+
+def still_gaps(board: dict[str, Any], words: list[dict[str, Any]], total: float, limit: float = MAX_STILL) -> list[str]:
+    """Las escenas que se quedan quietas más de `limit` s (de un revelado al siguiente, o al final de la escena):
+    con la voz real un atlas-statement de 30 s es una pantalla vacía (BoliviaNoAlto, primer render)."""
+
+    def at(v: dict[str, Any]) -> float | None:
+        if "t" in v:
+            return float(v["t"])
+        hits = _occurrences(words, v["say"])
+        return hits[min(int(v.get("nth", 1)), len(hits)) - 1] + float(v.get("offset", 0)) if hits else None
+
+    def times(value: Any, out: list[float]) -> None:
+        if isinstance(value, dict):
+            if set(value) <= {"say", "nth", "offset", "t"} and ("say" in value or "t" in value):
+                t = at(value)
+                if t is not None:
+                    out.append(t)
+                return
+            for v in value.values():
+                times(v, out)
+        elif isinstance(value, list):
+            for v in value:
+                times(v, out)
+
+    scenes = board.get("scenes") or []
+    starts = [at(s["start"]) if isinstance(s.get("start"), dict) else None for s in scenes]
+    problems = []
+    for i, scene in enumerate(scenes):
+        start = starts[i]
+        if start is None:
+            continue
+        end = next((t for t in starts[i + 1:] if t is not None), total)
+        found: list[float] = []
+        for key, v in scene.items():
+            if key != "start":
+                times(v, found)
+        marks = sorted({start, end, *[t for t in found if start < t < end]})
+        gap = max((b - a for a, b in zip(marks, marks[1:])), default=0.0)
+        if gap > limit:
+            problems.append(f"scenes[{i}] ({scene.get('id')}, {scene.get('type')}): {gap:.0f} s sin nada nuevo en pantalla")
+    return problems
+
+
 def draft(ask: Callable[[str, str], dict[str, Any]], slug: str, script: str, scenes: str, duration: float | None,
           storyboard_path: Path, transcript_rel: str, voice_rel: str | None, tries: int = 2) -> dict[str, Any]:
     """Storyboard escrito por la IA; los errores de validación se le devuelven para que los corrija."""
@@ -378,6 +425,13 @@ def draft(ask: Callable[[str, str], dict[str, Any]], slug: str, script: str, sce
         board = fix_repeats(board, words)
         storyboard_path.write_text(json.dumps(board, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         error = validate(storyboard_path)
+        if error is None and words and attempt < tries:
+            total = float(duration or (words[-1].get("end") or words[-1]["start"]))
+            gaps = still_gaps(board, words, total)
+            if gaps:              # válido pero con pantallas quietas: una vuelta más para repartirlas
+                error = ("Pantallas quietas (máximo ~8 s sin un revelado nuevo). Parte esas escenas en dos o añade "
+                         "revelados anclados a lo que dice la voz en ese tramo (etiquetas, puntos, tarjetas, una escena "
+                         "nueva):\n- " + "\n- ".join(gaps))
         if error is None:
             return {"storyboard": board, "data": answer.get("data") or []}
         if attempt == tries:

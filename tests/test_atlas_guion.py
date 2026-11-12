@@ -123,3 +123,15 @@ def test_repeated_anchor_phrases_take_the_occurrence_after_their_scene():
     assert out["scenes"][0]["points"][0]["at"]["nth"] == 1
     assert "nth" not in out["scenes"][1]["start"]
     assert out["scenes"][2]["start"]["nth"] == 2 and out["scenes"][2]["lines"][0]["at"]["nth"] == 2
+
+
+def test_a_scene_that_stays_still_too_long_is_reported():
+    script = "Uma frase curta. " + "Muitas palavras seguidas sem nada novo na tela. " * 6 + "Fim do vídeo."
+    words = atlas_guion.estimated_transcript(script)["words"]
+    board = {"scenes": [{"id": "a", "type": "atlas-statement", "start": {"t": 0}},
+                        {"id": "b", "type": "atlas-statement", "start": {"say": "Fim do vídeo"}}]}
+    gaps = atlas_guion.still_gaps(board, words, words[-1]["end"])
+    assert len(gaps) == 1 and "scenes[0] (a, atlas-statement)" in gaps[0]
+    board["scenes"].insert(1, {"id": "m", "type": "atlas-card-row", "start": {"say": "Uma frase curta"},
+                               "cards": [{"at": {"say": "nada novo", "nth": n}} for n in (2, 4, 6)]})
+    assert atlas_guion.still_gaps(board, words, words[-1]["end"]) == []
