@@ -4,11 +4,26 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    # Fields added later that stay out of a dump while empty: the stages hash these dumps to know whether to redo
+    # their work, and a new key with an empty value must not make a video half way search and analyse everything again.
+    _late: frozenset[str] = frozenset()
+
+    @model_serializer(mode="wrap")
+    def _drop_empty_late(self, handler: Any) -> Any:
+        data = handler(self)
+        if self._late and isinstance(data, dict):
+            for name in self._late:
+                field = type(self).model_fields.get(name)
+                for k in (name, field.alias if field else None):
+                    if k in data and data[k] in (None, {}, []):
+                        del data[k]
+        return data
 
 
 # --- Stage 1: words.json -------------------------------------------------------------
@@ -82,6 +97,7 @@ MAX_SHOT_SECONDS = 5.0           # emotional passages hold longer (pacing.slow);
 
 class BrollSpec(_Strict):
     """What footage to look for. Queries: 3-5 in English + 1-2 in the script language."""
+    _late = frozenset({'placeQuery'})
 
     visualIntent: str = Field(min_length=3, max_length=300)
     queries: list[str] = Field(min_length=3, max_length=5)          # English
@@ -92,6 +108,7 @@ class BrollSpec(_Strict):
     preferredShot: PreferredShot = "medium"
     event: str | None = Field(default=None, max_length=160)   # story event this shot belongs to (search phrase)
     moment: str | None = Field(default=None, max_length=160)  # the exact action narrated (EN): «falls on the quad lutz»
+    placeQuery: str | None = Field(default=None, max_length=160)  # its event searched in the local language (news from there)
 
     @model_validator(mode="before")
     @classmethod
@@ -186,13 +203,16 @@ class PlanChapter(_Strict):
 
 class StoryEvent(_Strict):
     """A stretch of the story about one concrete event: every shot in it searches for that event."""
+    _late = frozenset({'place'})
 
     label: str = Field(min_length=3, max_length=160)        # English search phrase: who + what + year + where
     startWord: int = Field(ge=0)
     tag: str | None = Field(default=None, max_length=40)    # on-screen place/date in the script language
+    place: str | None = Field(default=None, max_length=160)  # the same search in the language of where it happened
 
 
 class ShotsFile(_Strict):
+    _late = frozenset({'roles'})
     slug: str
     title: str
     durationSeconds: float = Field(gt=0)
@@ -492,6 +512,7 @@ class FallbackFile(_Strict):
 
 
 class TimelineMedia(_Strict):
+    _late = frozenset({'role'})
     src: str                                                 # relative to work/<slug>/ (Remotion public dir)
     kind: Literal["video", "image"]
     source: str
@@ -723,6 +744,7 @@ class TimelineAudio(_Strict):
 
 
 class Timeline(_Strict):
+    _late = frozenset({'subtitles'})
     slug: str
     title: str
     fps: int

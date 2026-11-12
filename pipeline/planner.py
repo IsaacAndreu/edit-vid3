@@ -53,7 +53,7 @@ Recibes las frases numeradas del guion de un vídeo. Devuelve SOLO un objeto JSO
   "subject": "si el vídeo trata de una persona concreta: 'Nombre Apellido · deporte/actividad en inglés' (p. ej. 'Carlos Yulo · artistic gymnastics'); si no, \"\"",
   "peak": "si hay protagonista: búsqueda EN INGLÉS de su momento cumbre, el más espectacular (p. ej. 'Carlos Yulo Paris 2024 floor gold medal winning moment'); si no, \"\"",
   "roles": {"Nombre Apellido": "quién es en la historia, en el idioma del guion y SOLO si el guion lo dice (p. ej. 'Hermana de una víctima', 'Jueza del tribunal', 'Fundador de Xiaomi'), máx. 40 caracteres; las personas que el guion nombra, sin inventar"},
-  "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'", "tag": "rótulo en pantalla en el idioma del guion, lugar y/o fecha tal como se dicen en esa parte, MAYÚSCULAS, máx. 30 caracteres, p. ej. 'STUTTGART · 2019'; null si el guion no dice lugar ni fecha"}]
+  "events": [{"sentence": 5, "label": "búsqueda EN INGLÉS del evento concreto que se cuenta desde esa frase: persona + competición/hecho + año + lugar, p. ej. 'Carlos Yulo floor final 2019 World Championships Stuttgart'", "tag": "rótulo en pantalla en el idioma del guion, lugar y/o fecha tal como se dicen en esa parte, MAYÚSCULAS, máx. 30 caracteres, p. ej. 'STUTTGART · 2019'; null si el guion no dice lugar ni fecha", "place": "la misma búsqueda en el idioma del país donde ocurrió, para encontrar las noticias de allí (un juicio en México: 'juicio Michael Madison Cleveland' no; 'audiencia caso X Monterrey 2019' sí; un accidente en Brasil, en portugués); null si allí se habla inglés o el idioma del guion"}]
 }
 Reglas de "events" (el hilo de la historia):
 - Un evento nuevo cada vez que el guion pasa a contar un hecho concreto distinto (una
@@ -111,10 +111,13 @@ def parse_story(result: dict[str, Any], sentences: list[tuple[int, int]]) -> tup
         tag = " ".join(str(item.get("tag") or "").split()).upper()[:40] or None
         if tag in ("NULL", "NONE"):
             tag = None
+        place = " ".join(str(item.get("place") or "").split())[:160] or None
+        if place and (place.casefold() in ("null", "none", "-") or place.casefold() == label.casefold()):
+            place = None
         if events and events[-1].startWord == start:
-            events[-1] = StoryEvent(label=label, startWord=start, tag=tag)
+            events[-1] = StoryEvent(label=label, startWord=start, tag=tag, place=place)
         elif not events or events[-1].label != label:
-            events.append(StoryEvent(label=label, startWord=start, tag=tag))
+            events.append(StoryEvent(label=label, startWord=start, tag=tag, place=place))
     if events and events[0].startWord != 0 and subject:
         events.insert(0, StoryEvent(label=subject.split("·")[0].strip() + " highlights", startWord=0))
     return subject, events
@@ -148,6 +151,13 @@ def subject_person(subject: str) -> str:
 def event_at(events: list[StoryEvent], word: int) -> str | None:
     current = [e for e in events if e.startWord <= word]
     return current[-1].label if current else None
+
+
+def event_place_at(events: list[StoryEvent], word: int) -> str | None:
+    """The event's search in the language of the place where it happened (planner outline «place»)."""
+
+    current = [e for e in events if e.startWord <= word]
+    return current[-1].place if current else None
 
 
 PACING_SYSTEM = """
@@ -864,6 +874,8 @@ def _merge(structural: dict[str, Any], label: dict[str, Any]) -> dict[str, Any]:
     if isinstance(shot.get("broll"), dict):
         shot["broll"] = _with_subject(_with_event(_trim_broll(shot["broll"]), structural.get("event")),
                                       structural.get("subject"))
+        if structural.get("eventPlace"):
+            shot["broll"]["placeQuery"] = structural["eventPlace"]
     if kind == "broll":
         shot.pop("panel", None), shot.pop("stat", None), shot.pop("panelId", None)
     if kind == "chapter":
@@ -1008,6 +1020,8 @@ def run(ctx: RunContext) -> None:
         # The hook of a video about someone shows their peak moment, whatever the narration says.
         if event := (peak if peak and start < hook_seconds else event_at(events, first)):
             item["event"] = event
+            if event != peak and (place := event_place_at(events, first)):
+                item["eventPlace"] = place
         if subject:
             item["subject"] = subject_person(subject)
         structural.append(item)
