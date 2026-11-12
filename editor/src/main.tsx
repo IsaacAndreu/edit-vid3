@@ -11,6 +11,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState, type CSSPropertie
 import { createRoot } from 'react-dom/client';
 import { Documentary } from '../../remotion/Documentary';
 import { api, clock, clone, toBase, type Asset, type Edits, type Job, type Selection, type State, type Template } from './model';
+import { joinPiece, PIECE, splitAt } from './Fx';
 import { Card, Inspector, Library } from './Panels';
 import { Tracks } from './Tracks';
 
@@ -135,13 +136,31 @@ const App: FC = () => {
   const map = state?.timeMap ?? [];
   const base = useCallback((f: number) => toBase(f, map), [map]);
 
-  // keyboard: undo/redo, delete, play
+  // keyboard: undo/redo, delete, play, split (S), J/K/L and the arrows to move the playhead
+  const frameRef = useRef(0);
+  frameRef.current = frame;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return;
+      const fps = state?.timeline.fps ?? 30, end = (state?.timeline.durationInFrames ?? 1) - 1;
+      const go = (d: number) => { e.preventDefault(); player.current?.pause(); seek(Math.max(0, Math.min(end, frameRef.current + d))); };
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
-      else if (e.key === ' ') { e.preventDefault(); player.current?.toggle(); }
+      else if (e.ctrlKey || e.metaKey || e.altKey) return;
+      else if (e.key === ' ' || e.key.toLowerCase() === 'k') { e.preventDefault(); player.current?.toggle(); }
+      else if (e.key.toLowerCase() === 'j') go(-fps);
+      else if (e.key.toLowerCase() === 'l') go(fps);
+      else if (e.key === 'ArrowLeft') go(e.shiftKey ? -10 : -1);
+      else if (e.key === 'ArrowRight') go(e.shiftKey ? 10 : 1);
+      else if (e.key.toLowerCase() === 's' && state) {
+        e.preventDefault();
+        if (!splitAt(state.layout, state.edits, toBase(frameRef.current, state.timeMap), change)) setError('Aquí no se puede dividir: pon el cursor dentro de un plano de metraje, a más de 0,4 s de sus bordes.');
+      }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selection?.kind === 'shot' && selection.id.includes(PIECE) && state) {
+        const shot = state.layout.shots.find((x) => x.id === selection.id);
+        if (shot) joinPiece(shot, change);          // a piece goes back into the one before it
+        setSelection(null);
+      }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && selection) {
         const s = selection;
         if (s.kind === 'group') change((ed) => { ed.removed.push(s.id); });
@@ -152,7 +171,7 @@ const App: FC = () => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, selection, change]);
+  }, [undo, redo, selection, change, seek, state]);
 
   if (!state) return <div style={{ padding: 40 }}>{error || 'Cargando…'}</div>;
   const { timeline, edits } = state;
@@ -165,7 +184,7 @@ const App: FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <header style={bar}>
+      <header style={bar} className="ebar">
         <strong style={{ fontSize: 15 }}>✂️ {timeline.title}</strong>
         <span style={{ color: 'var(--muted)', fontSize: 12 }}>{clock(timeline.durationInFrames, fps)} · {state.shots.length} planos</span>
         <button disabled={!past.current.length} onClick={undo} title="Deshacer (Ctrl+Z)">↶</button>
@@ -188,12 +207,12 @@ const App: FC = () => {
         </div>
       ) : null}
       {error ? <div style={{ ...bar, color: 'var(--bad)' }}>{error}</div> : null}
-      <div style={{ flex: '1 1 55%', display: 'flex', minHeight: 0 }}>
-        <aside style={{ width: 290, borderRight: '1px solid var(--line)', minHeight: 0 }}>
+      <div className="emid" style={{ flex: '1 1 55%', display: 'flex', minHeight: 0 }}>
+        <aside className="elib" style={{ width: 290, borderRight: '1px solid var(--line)', minHeight: 0 }}>
           <Library {...common} selection={selection} templates={templates} assets={assets} />
         </aside>
-        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, minWidth: 0, background: '#08090c' }}>
-          <div style={{ width: '100%', maxWidth: 'calc((55vh - 30px) * 16 / 9)' }}>
+        <main className="eplayer" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, minWidth: 0, background: '#08090c' }}>
+          <div className="eplayerbox" style={{ width: '100%', maxWidth: 'calc((55vh - 30px) * 16 / 9)' }}>
             <Player
               key={`${reload}-${scenePreview?.join('-') ?? 'all'}`}
               ref={player}
@@ -216,7 +235,7 @@ const App: FC = () => {
             ) : null}
           </div>
         </main>
-        <aside style={{ width: 380, borderLeft: '1px solid var(--line)', overflowY: 'auto', padding: 10 }}>
+        <aside className="einsp" style={{ width: 380, borderLeft: '1px solid var(--line)', overflowY: 'auto', padding: 10 }}>
           <Inspector {...common} selection={selection} />
           {state.removedGroups.length ? (
             <Card title={`Quitados (${state.removedGroups.length})`}>
@@ -230,9 +249,10 @@ const App: FC = () => {
           ) : null}
         </aside>
       </div>
-      <section style={{ flex: '1 1 45%', minHeight: 250, borderTop: '1px solid var(--line)', background: 'var(--bg)' }}>
+      <section className="etracks" style={{ flex: '1 1 45%', minHeight: 250, borderTop: '1px solid var(--line)', background: 'var(--bg)' }}>
         <Tracks
           layout={state.layout}
+          transitions={state.layout.transitions ?? []}
           shots={state.shots}
           scenes={state.scenes}
           order={edits.order}
@@ -248,7 +268,13 @@ const App: FC = () => {
           actions={{
             seek,
             select: setSelection,
-            cut: (id, f) => change((e) => { e.cuts[id] = f; }),
+            cut: (id, f) => change((e) => {
+              if (!id.includes(PIECE)) { e.cuts[id] = f; return; }
+              // the cut between two pieces of one shot: its split point moves
+              const piece = state.layout.shots.find((x) => x.id === id), base = id.split(PIECE)[0];
+              if (!piece || !e.splits?.[base]) return;
+              e.splits[base] = e.splits[base].map((x) => (x === piece.from ? Math.round(f) : x)).sort((a, b) => a - b);
+            }),
             swap: (a, b) => change((e) => {
               const origin = (x: string) => e.media[x] ?? x;
               const [oa, ob] = [origin(a), origin(b)];

@@ -350,7 +350,7 @@ TEMPLATES: list[dict[str, Any]] = [
     # «Recursos»: the ready-made scenes of templates/ (Remotion), drawn full frame over the edit with their own props
     *({"type": "scene", "group": "Escenas", "name": name, "seconds": seconds, "data": {"template": template, **data}}
       for template, name, seconds, data in [
-          ("title-card", "Título de capítulo", 4, {"text": "El título del capítulo"}),
+          ("title-card", "Título de capítulo", 4, {"text": "El título del capítulo", "kicker": "Capítulo 1"}),
           ("kinetic-text-hook", "Gancho en texto", 3, {"text": "La frase que engancha", "keywords": ["engancha"]}),
           ("number-callout", "Cifra destacada", 4, {"text": "12.000 pedidos el primer día", "keywords": ["12.000"]}),
           ("stat-overlay", "Dato sobre la imagen", 4, {"text": "1,45 millones de unidades", "keywords": ["1,45 millones"]}),
@@ -359,7 +359,7 @@ TEMPLATES: list[dict[str, Any]] = [
               {"title": "Antes", "items": ["Primer dato", "Segundo dato"]}, {"title": "Después", "items": ["Primer dato", "Segundo dato"]}]}),
           ("timeline-graphic", "Línea de tiempo animada", 6, {"text": "Cómo pasó", "timelinePoints": [
               {"label": "1955", "position": 0}, {"label": "1962", "position": 0.5}, {"label": "1975", "position": 1}]}),
-          ("blueprint-data-panel", "Panel técnico", 6, {"text": "Ficha técnica", "keywords": ["Motor", "Velocidad", "Peso"]}),
+          ("blueprint-data-panel", "Panel técnico", 6, {"text": "Ficha técnica", "keywords": ["Motor", "Velocidad", "Peso"], "kicker": "Ficha"}),
           ("whip-transition", "Transición rápida", 1, {"text": ""}),
       ]),
 ]

@@ -14,7 +14,8 @@ const media = (src?: string | null) => (!src ? undefined : /^(https?:|data:|blob
 export const SceneInsert: FC<{ graphic: SceneGraphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => {
   const Template = templates[graphic.template] ?? templates.placeholder;
   const props: SceneProps = {
-    sceneType: graphic.sceneType ?? 'narrative', durationInFrames, accentColor: graphic.accentColor || theme.accent,
+    // the templates print sceneType as a small kicker: the insert's own (in the channel's language), or nothing
+    sceneType: (graphic.kicker ?? '') as SceneProps['sceneType'], durationInFrames, accentColor: graphic.accentColor || theme.accent,
     text: graphic.text ?? undefined, keywords: graphic.keywords ?? undefined, timelinePoints: graphic.timelinePoints ?? undefined,
     comparisonColumns: graphic.comparisonColumns ?? undefined, imageUrl: media(graphic.imageUrl), videoUrl: media(graphic.videoUrl),
   };

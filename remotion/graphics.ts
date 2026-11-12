@@ -480,6 +480,7 @@ export interface SceneGraphic {
   type: 'scene';
   template: string;
   sceneType?: 'hook' | 'narrative' | 'stat' | 'transition' | 'avatar';
+  kicker?: string | null; // the small line over the title («Capítulo 1»)
   text?: string | null;
   keywords?: string[] | null;
   timelinePoints?: { label: string; value?: string; position: number }[] | null;

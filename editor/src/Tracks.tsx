@@ -40,6 +40,7 @@ interface Props {
   selection: Selection;
   actions: TrackActions;
   reload: number;
+  transitions: { kind: string; from: number; durationInFrames: number }[];
 }
 
 const ROWS = { ruler: 24, scenes: 30, video: 54, graphics: 30, labels: 26, voice: 46, music: 24, sfx: 22 };
@@ -316,6 +317,15 @@ export const Tracks: FC<Props> = (props) => {
                 <span style={{ paddingLeft: 3, color: meta?.weak ? 'var(--warn)' : 'var(--muted)', fontSize: 10 }}>
                   {s.type === 'chapter' ? `▌${s.chapterTitle ?? ''}` : meta?.weak ? '⚠' : ''}
                 </span>
+                {meta?.fx || (meta?.rate && meta.rate !== 1) ? (
+                  <span title={`Efectos${meta.rate && meta.rate !== 1 ? ` · velocidad ${meta.rate}×` : ''}`}
+                    style={{ position: 'absolute', right: 2, top: 2, fontSize: 9, fontWeight: 800, padding: '0 4px', borderRadius: 3, background: 'var(--accent)', color: '#111', pointerEvents: 'none' }}>
+                    {meta.rate && meta.rate !== 1 ? `${meta.rate}×` : 'FX'}</span>
+                ) : null}
+                {props.transitions.some((t) => Math.abs(t.from + t.durationInFrames / 2 - s.from) <= 7) && i > 0 ? (
+                  <span title="Transición" style={{ position: 'absolute', left: -6, bottom: 2, width: 12, height: 12, borderRadius: 3, transform: 'rotate(45deg)',
+                    background: '#7cb8ff', border: '1px solid #0e0f13', pointerEvents: 'none', zIndex: 2 }} />
+                ) : null}
                 {i > 0 ? handle('left', start({ what: 'cut', shotId: s.id, base: s.from }), s.durationInFrames * px) : null}
               </div>
             );

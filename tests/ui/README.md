@@ -118,3 +118,22 @@ Los cinco vídeos están en `coches` (canal del socio): las mismas rutas sirven 
 - `/api/voices/search`, `/api/voices/credits`: forma deducida del JS (la real viene de GenAIPro).
 - Textos de `diagnosis`, `log`, `audit`, etc.: verosímiles, no copias de un vídeo real.
 - Hora del servidor: el mock usa UTC para «hoy»; el servidor real, la hora local.
+
+## El editor con un proyecto de verdad (fixture_editor.py)
+
+El editor (`/editor/<slug>/`) no se puede simular con `mock.js`: necesita un montaje, clips y la voz. Este script
+crea un estudio pequeño en una carpeta temporal (enlaza la configuración, `remotion/`, `templates/` y `node_modules`
+del repositorio) con dos vídeos: «demo-editor» (25 s, 10 planos de vídeo generado con ffmpeg, una foto, un capítulo,
+un gráfico, un rótulo y un barrido) y «demo-largo» (25 min, 600 planos, para medir). Con un puerto, lo sirve:
+
+    python tests/ui/fixture_editor.py /tmp/estudio-prueba 8097
+    # http://127.0.0.1:8097/#/editor/demo-editor
+
+Para comparar el reproductor con el render de Remotion en unos fotogramas:
+
+    npx remotion bundle remotion/index.ts --public-dir=/tmp/estudio-prueba/work/demo-editor --out-dir=/tmp/bundle
+    npx remotion still /tmp/bundle Documentary /tmp/f180.jpg --props=/tmp/estudio-prueba/work/demo-editor/timeline.json \
+      --frame=180 --browser-executable=/opt/pw-browsers/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+
+El Chromium de Playwright no trae el códec H.264: el reproductor del editor avisa «MEDIA_ELEMENT_ERROR» al
+reproducir los mp4 (en Chrome de verdad no pasa). Los fotogramas parados sí se ven.

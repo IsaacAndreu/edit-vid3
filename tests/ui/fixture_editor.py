@@ -67,7 +67,31 @@ def make(root: Path) -> Path:
     (work / "shots.json").write_text(json.dumps({"events": [{"label": "a", "startWord": 0, "tag": "EL SALÓN"},
                                                             {"label": "b", "startWord": 50, "tag": "EL ATENTADO"}],
                                                  "shots": [{"id": s["id"], "startWord": 10 * i} for i, s in enumerate(shots)]}), "utf-8")
+    make_long(root, work, timeline)
     return root
+
+
+def make_long(root: Path, short_work: Path, short: dict) -> None:
+    """«demo-largo»: 25 minutes, 600 shots on the same clips (to measure the editor with a real length)."""
+
+    slug = "demo-largo"
+    folder = root / "materiales" / CHANNEL / slug
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "guion.txt").write_text("## Largo\nUn vídeo largo de prueba.\n", "utf-8")
+    work = root / "work" / slug
+    work.mkdir(parents=True, exist_ok=True)
+    for sub in ("media", "audio"):
+        if not (work / sub).exists():
+            (work / sub).symlink_to(short_work / sub)
+    clips = [s for s in short["shots"] if s.get("media")]
+    shots = [{**clips[i % len(clips)], "id": f"s{i + 1:03d}", "from": i * 75, "durationInFrames": 75, "text": f"Frase {i + 1}"} for i in range(600)]
+    total = 600 * 75
+    groups = [{"id": f"graphic-{k}", "kind": "graphic", "from": 300 + k * 1500, "durationInFrames": 90,
+               "graphic": {"type": "kinetic", "lines": [f"DATO {k + 1}"]}} for k in range(28)]
+    timeline = {**short, "slug": slug, "title": "Un vídeo de 25 minutos", "durationInFrames": total, "shots": shots, "groups": groups,
+                "labels": [], "transitions": [], "audio": {**short["audio"], "speech": [[0, total]]}}
+    for name in ("timeline.json", "timeline.base.json"):
+        (work / name).write_text(json.dumps(timeline, ensure_ascii=False), "utf-8")
 
 
 if __name__ == "__main__":
