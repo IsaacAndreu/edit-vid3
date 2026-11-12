@@ -237,6 +237,45 @@ def prefer_variety(usable: list[Option], selections: list[Selection], margin: fl
     return next((o for o in usable if o.candidateId not in shown and o.total >= first.total - margin), first)
 
 
+def _event_key(shot: Any) -> str:
+    broll = getattr(shot, "broll", None)
+    return " ".join(str(getattr(broll, "event", "") or "").casefold().split())
+
+
+def event_masters(shots: list[Any], verdicts: dict[str, Any], candidates: dict[str, Any]) -> dict[str, str]:
+    """The «master» video of each story event: the source the judge accepted for most shots of that event (its first
+    choice counts double, a title naming the event counts more). The reference true-crime channels tell each case
+    with the footage of THAT case (the trial's own broadcast), not a different clip per sentence from anywhere: the
+    people on screen are then the people of the story. A master needs the judge's yes in two shots of the event, or
+    in one when its title names the event. Videos only; one per event."""
+
+    tally: dict[str, dict[str, float]] = {}
+    shots_for: dict[str, dict[str, set[str]]] = {}
+    titled: dict[str, set[str]] = {}
+    for shot in shots:
+        event = _event_key(shot)
+        if not event or shot.id not in verdicts:
+            continue
+        accepted = verdicts[shot.id][2]
+        for rank, option in enumerate(accepted):
+            candidate = candidates.get(option.candidateId)
+            if candidate is None or option.kind != "video":
+                continue
+            score = 2.0 if rank == 0 else 1.0
+            if own_event(candidate.title, shot):
+                score += 1.0
+                titled.setdefault(event, set()).add(option.candidateId)
+            tally.setdefault(event, {})
+            tally[event][option.candidateId] = tally[event].get(option.candidateId, 0.0) + score
+            shots_for.setdefault(event, {}).setdefault(option.candidateId, set()).add(shot.id)
+    masters: dict[str, str] = {}
+    for event, scores in tally.items():
+        best = max(scores, key=lambda c: (scores[c], c))
+        if len(shots_for[event][best]) >= 2 or best in titled.get(event, set()):
+            masters[event] = best
+    return masters
+
+
 def own_event(title: str | None, shot: Any) -> bool:
     """The source is footage of the shot's own event: its title names at least two words of the event besides the
     people (competition, place, year: «Beijing 2022 free skate»). The original broadcast of the night a story turns
@@ -681,6 +720,10 @@ def run(ctx: RunContext) -> None:
     scenes = bool((ctx.section("sourcing").get("youtube") or {}).get("scene_search"))
     variety = float(cfg.get("variety_margin", 0.03 if scenes else 0) or 0)
     back_to_back = float(cfg.get("back_to_back_margin", 0.05 if scenes else 0.02) or 0)
+    # judge.event_masters (true): each event's master video first, for every shot of the event the judge took it for
+    masters = event_masters(shots, verdicts, candidates) if cfg.get("event_masters", True) else {}
+    for event, cid in masters.items():
+        print(f"   Vídeo maestro de «{event[:60]}»: {(candidates[cid].title or cid)[:70]}")
     selections: list[Selection] = []
     for shot in shots:
         if shot.id in kept:
@@ -694,11 +737,15 @@ def run(ctx: RunContext) -> None:
             # Only what the judge accepted, in its order. If it rejected everything it saw, the shot
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
+        master = masters.get(_event_key(shot))
         usable = [o for o in preference if not is_repeat(o, selections, max_hamming)
                   and not overused(o.candidateId, selections,
-                                   per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))]
-        chosen = prefer_variety(usable, selections, variety, back_to_back,
-                                lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
+                                   per_source * (3 if o.candidateId == master else
+                                                 2 if own_event(candidates[o.candidateId].title, shot) else 1))]
+        chosen = next((o for o in usable if o.candidateId == master), None) if judged else None
+        if chosen is None:
+            chosen = prefer_variety(usable, selections, variety, back_to_back,
+                                    lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))
@@ -734,6 +781,7 @@ def run(ctx: RunContext) -> None:
         "byJudge": sum(s.decidedBy == "judge" for s in selections),
         "byScore": sum(s.decidedBy == "score" for s in selections),
         "fallback": sum(s.status == "fallback" for s in selections),
+        "fromMaster": sum(1 for sh, s in zip(shots, selections) if s.candidateId and s.candidateId == masters.get(_event_key(sh))),
     }
     for selection in selections:
         if selection.source:

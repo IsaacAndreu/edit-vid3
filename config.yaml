@@ -161,6 +161,7 @@ judge:
   avoid_other_videos: true         # no reutilizar fragmentos/fotos ya usados en otros vídeos del canal (cache/used_fragments.json)
   all: true                        # el juez revisa todos los planos (~0,20 $/vídeo); false = solo los dudosos
   portraits: true                  # con cada hoja, la foto (people.json) de la persona de la que habla el plano: rechaza otra cara
+  event_masters: true              # cada suceso, de su vídeo maestro (el que el juez aceptó en más planos de ese suceso)
   provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
   model: gpt-5-mini
   reasoning_effort: low

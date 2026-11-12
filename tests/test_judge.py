@@ -142,6 +142,30 @@ class RunTests(unittest.TestCase):
         self.assertTrue(seen["s000"][0][1] > 0)
         self.assertEqual(seen["s001"], [])                                   # nobody named, no protagonist: no photo
 
+    def test_every_shot_of_an_event_comes_from_its_master_video_when_the_judge_takes_it(self) -> None:
+        broll = {"visualIntent": "the trial", "queries": ["a", "b", "c"], "queriesLocal": ["d"], "event": "Nassar sentencing hearing 2018"}
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": "t", "chapter": 0, "broll": broll} for i in range(3)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        base = {"source": "youtube", "kind": "video", "license": "l", "attribution": "a", "query": "q", "rankScore": 1,
+                "durationSeconds": 900, "storyboard": board}
+        trial = {**base, "id": "yt:trial", "url": "https://y/t", "title": "Court hearing", "channel": "MLive", "credit": "Fuente: MLive"}
+        other = {**base, "id": "yt:other", "url": "https://y/o", "title": "Some courtroom", "channel": "X", "credit": "Fuente: X"}
+        scores = {f"s00{i}": [opt("yt:other", 0.40, start=100 + 10 * i, end=103 + 10 * i),
+                              opt("yt:trial", 0.39, start=10 + 10 * i, end=13 + 10 * i)] for i in range(3)}
+        rankings = {"s000": ["B", "A"], "s001": ["B"], "s002": ["A", "B"]}     # s002: the judge prefers the other clip
+
+        def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
+            return {"ranking": rankings[shot.id], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {sid: [other, trial] for sid in scores}, scores)
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+            data = json.loads((ctx.work_dir / "selection.json").read_text())
+        self.assertEqual([r["candidateId"] for r in data["selections"]], ["yt:trial"] * 3)
+        self.assertEqual(data["stats"]["fromMaster"], 3)
+
     def test_second_round_then_fallback_never_blind_pick(self) -> None:
         broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
         shots = [{"id": "s000", "type": "broll", "startWord": 0, "endWord": 0, "start": 0.0, "end": 2.0,
