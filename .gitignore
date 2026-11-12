@@ -26,3 +26,8 @@ materiales/Video1/
 # Investigaciones (informes para el usuario, no son código)
 research_notes/
 reports/
+# Teselas de elevación descargadas por los scripts de datos Atlas (regenerables)
+.cache/
+
+# Mapas de alturas de los paquetes Atlas: sólo los usan los scripts y se regeneran con npm run atlas:data
+public/atlas-data/regions/*/height.png

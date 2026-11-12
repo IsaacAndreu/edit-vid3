@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400">
+<!-- Capas (ids) de plane-side:
+  plane: avión de perfil, morro a la derecha
+-->
+
+<g id="plane" class="paper ink" transform="scale(10)">
+  <path d="M5 22 C5 18 10 17 20 17 L82 17 C90 17 96 19 98 21 C96 23 90 24.5 82 24.5 L20 24.5 C10 24.5 5 23.5 5 22 Z M8 18 L3 5 L11 5 L23 17 Z M44 21.5 L63 21.5 L51 31 L41 31 Z" style="stroke-width:0.3"/>
+</g>
+
+</svg>

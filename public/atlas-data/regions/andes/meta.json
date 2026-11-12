@@ -1,0 +1,46 @@
+{
+  "id": "andes",
+  "width": 5600,
+  "height": 5179,
+  "projection": {
+    "type": "conicConformal",
+    "rotate": [
+      70,
+      0
+    ],
+    "parallels": [
+      -24,
+      -10
+    ],
+    "scale": 13305.916262776183,
+    "translate": [
+      2800.0000000000014,
+      -1425.2479912108365
+    ]
+  },
+  "metersPerPixel": 478.8095666754735,
+  "bbox": [
+    [
+      -82,
+      -28
+    ],
+    [
+      -58,
+      -6
+    ]
+  ],
+  "files": {
+    "relief": "relief.jpg",
+    "reliefNight": "relief-night.jpg",
+    "height": "height.png"
+  },
+  "heightEncoding": {
+    "min": -11000,
+    "max": 9000,
+    "note": "PNG gris 16 bits a mitad de resolución; metros = MIN + v/65535·(MAX−MIN)"
+  },
+  "sources": [
+    "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+    "Costas y países: Natural Earth vía el paquete npm world-atlas (dominio público)"
+  ]
+}

@@ -397,7 +397,10 @@ export interface MapaGraphic {
  * them), or a chart / line drawing / chapter title instead; every element with the frame of its word. */
 export interface AtlasGraphic {
   type: 'atlas';
-  view: 'globe' | 'chart' | 'icon' | 'title' | 'sat' | 'flat' | 'size';
+  view: 'globe' | 'chart' | 'icon' | 'title' | 'sat' | 'flat' | 'size' | 'scene';
+  /** view 'scene': una escena de remotion/atlas/schema.ts (esfera, barras, densidad, pistas, agenda, resumen…),
+   * con los tiempos en segundos desde el inicio del grupo ({ t }). pipeline/atlas.py la construye. */
+  scene?: { type: string; [key: string]: unknown } | null;
   camera: { lat: number; lon: number; zoom: number };
   prev?: { lat: number; lon: number; zoom: number };
   push?: number;                 // zoom the camera gains over the scene (a moment: wide → closer)

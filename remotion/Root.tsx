@@ -11,6 +11,9 @@ import type { Graphic } from "./graphics";
 import type { Media } from "./types";
 import { applyBrand, type Brand } from "./theme";
 import { Documentary } from "./Documentary";
+import { AtlasVideo, calculateAtlasMetadata, type AtlasVideoProps } from "./atlas/AtlasVideo";
+import { AtlasShort } from "./atlas/AtlasShort";
+import { atlasCompositionSchema } from "./atlas/schema";
 import type { TimelineProps } from "./types";
 
 const empty: TimelineProps = {
@@ -106,6 +109,13 @@ const SimAudio: FC<SimAudioProps> = ({ groups, fps }) => (
   </AbsoluteFill>
 );
 
+/** Atlas escrito a mano (storyboards/<slug>.json, ver remotion/atlas/schema.ts): vacío por defecto. */
+const atlasEmpty: AtlasVideoProps = {
+  meta: { slug: "vacio", title: "", brand: { name: "ATLAS", icon: "✦" }, chapters: [], duration: 2 },
+  audio: {},
+  scenes: [{ id: "vacio", type: "atlas-blank", start: { t: 0 }, theme: "paper", enter: "fade" }],
+};
+
 /** Props = work/<slug>/timeline.json; render with --public-dir=work/<slug>. */
 export const RemotionRoot: FC = () => (
   <>
@@ -166,6 +176,28 @@ export const RemotionRoot: FC = () => (
       calculateMetadata={({ props }) => ({
         durationInFrames: Math.max(1, props.scenes.reduce((s, x) => s + Math.round(x.seconds * 30), 0)),
       })}
+    />
+    <Composition
+      id="AtlasVideo"
+      component={AtlasVideo}
+      schema={atlasCompositionSchema}
+      defaultProps={atlasEmpty}
+      durationInFrames={1}
+      fps={30}
+      width={1920}
+      height={1080}
+      calculateMetadata={calculateAtlasMetadata}
+    />
+    <Composition
+      id="AtlasShort"
+      component={AtlasShort}
+      schema={atlasCompositionSchema}
+      defaultProps={atlasEmpty}
+      durationInFrames={1}
+      fps={30}
+      width={1080}
+      height={1920}
+      calculateMetadata={calculateAtlasMetadata}
     />
     <Composition
       id="Thumbnails"

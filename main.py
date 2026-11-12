@@ -64,6 +64,10 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--editor", metavar="SLUG",
                         help="Editor antes del render: ver el montaje, cambiar planos, gráficos y textos, y renderizar "
                              "(http://127.0.0.1:8766). Mejor con el vídeo lanzado antes con --review.")
+    target.add_argument("--atlas-guion", metavar="CARPETA",
+                        help="Atlas desde guion + escenas: materiales/CARPETA/{guion.txt, escenas.md|escenas.json, voz.mp3}.")
+    parser.add_argument("--atlas-hasta", choices=("storyboard", "stills", "render"), default="render",
+                        help="Con --atlas-guion: se detiene tras el storyboard, la hoja de contactos o el render.")
     target.add_argument("--panel", action="store_true",
                         help="Panel web local (outliers, análisis de canales, guardados, ideas) en http://127.0.0.1:8765.")
     parser.add_argument(
@@ -176,6 +180,20 @@ def run_one(slug: str, *, force: set[str], until: str | None, review: bool, root
                 return
             raise RuntimeError(f"el guion de {slug} está en español y su canal es en {IN_SPANISH.get(lang, lang)}: "
                                "no se hace (escribe el guion en ese idioma o cámbialo de canal)")
+    from pipeline import atlas_guion
+
+    if atlas_guion.is_atlas_folder(ctx.materials_dir, ctx.config):    # guion + escenas: the Atlas path, not the footage one
+        with _one_process(ctx):
+            def ask(system: str, user: str) -> dict:
+                from pipeline.llm import complete_json
+
+                return complete_json(ctx, stage="atlas_guion", system=system, user=user, section="atlas_guion", max_tokens=16000)
+
+            atlas_guion.make_in_queue(root, slug, ask)
+            from pipeline import atlas_doblaje
+
+            atlas_doblaje.after_done(root, slug)          # its dubs (canal → dubbing), each one a new video in the queue
+        return
     with _one_process(ctx):                               # never two runs of one video at once
         from pipeline import formats
 
@@ -326,10 +344,13 @@ def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
     # queue.drawn_first: the videos drawn in code (simulation, stick figures) before the footage ones
     drawn_first = bool(_queue_cfg(root).get("drawn_first", True))
     drawn = {d.name for d in ready if drawn_first and d.name not in easy and is_drawn(root, d.name)}
-    order = [d.name for d in sorted(ready, key=lambda d: (d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
+    # «.urgente» (un Short de última hora, pipeline/accidente_rapido.py): antes que todo lo demás
+    urgent = {d.name for d in ready if (d / URGENT).is_file()}
+    shorts_set -= urgent
+    order = [d.name for d in sorted(ready, key=lambda d: (d.name not in urgent, d.name in shorts_set, d.name not in easy, d.name not in drawn, first.get(d.name, 0),
                                                           due.get(d.name, "9999"), d.stat().st_mtime, d.name))]
-    longs = [n for n in order if n not in shorts_set]
-    return take_turns(root, longs) + take_turns(root, [n for n in order if n in shorts_set])
+    longs = [n for n in order if n not in shorts_set and n not in urgent]
+    return [n for n in order if n in urgent] + take_turns(root, longs) + take_turns(root, [n for n in order if n in shorts_set])
 
 
 def take_turns(root: Path, order: list[str]) -> list[str]:
@@ -499,6 +520,7 @@ def channel_rank(root: Path) -> dict[str, int]:
 
 
 HOLD = ".en-espera"                    # in a video's folder: out of the queue until «Volver a la cola»
+URGENT = ".urgente"                    # in a video's folder: made before everything else (breaking-news Shorts)
 QUOTA_WAIT = ".espera-cuota"           # in a video's folder: epoch of the API quota reset it waits for (the pilot)
 
 
@@ -735,6 +757,12 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 except Exception as error:
                     print(f"Radar: {type(error).__name__}: {error}")
                 try:
+                    from pipeline import accidente_rapido
+
+                    accidente_rapido.run_if_due(root)             # rapido.enabled: breaking-news Shorts, first in the queue
+                except Exception as error:
+                    print(f"Última hora: {type(error).__name__}: {error}")
+                try:
                     from pipeline import autopilot
 
                     autopilot.run_if_due(root)                    # channels on autopilot: today's video
@@ -918,6 +946,14 @@ def _clear_stale_lock(lock: Path) -> None:
     try:
         pid = int(lock.read_text().split()[0])
     except (OSError, ValueError, IndexError):
+        # vacío o ilegible: el proceso murió entre crearlo y escribir su pid (un reinicio en ese instante). Pasado un
+        # minuto ya no es una cola arrancando: fuera, o la cola esperaría para siempre
+        try:
+            if lock.is_file() and time.time() - lock.stat().st_mtime > 60:
+                print(f"(Quito {QUEUE_LOCK}: estaba vacío, de una cola que no llegó a arrancar)")
+                lock.unlink(missing_ok=True)
+        except OSError:
+            pass
         return
     if pid != os.getpid() and not _alive(pid):
         print(f"(Quito {QUEUE_LOCK}: era de un proceso que ya no existe, pid {pid})")
@@ -1397,6 +1433,26 @@ def main() -> None:
     args = _parser().parse_args()
     _stop_signals()
     _more_open_files()
+    if args.atlas_guion:
+        from pipeline import atlas_guion
+
+        slug = args.atlas_guion
+
+        def ask(system: str, user: str) -> dict:
+            from pipeline.llm import complete_json
+
+            ctx = RunContext.create(slug, root=PROJECT_ROOT)
+            return complete_json(ctx, stage="atlas_guion", system=system, user=user, section="atlas_guion", max_tokens=16000)
+
+        def transcribe(audio: Path) -> dict:
+            from pipeline.config import load_settings
+            from pipeline.transcribe import transcribe_audio
+
+            return dict(transcribe_audio(audio, load_settings()))
+
+        out = atlas_guion.run(slug, ask=ask, transcribe=transcribe, until=args.atlas_hasta)
+        print(f"Hecho: {out.relative_to(PROJECT_ROOT)}")
+        return
     if args.informe_analisis is not None:
         from pipeline import informe_analisis
 

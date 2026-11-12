@@ -1,0 +1,12 @@
+{
+  "meta": {"slug": "test-accidentes-c4", "title": "Prueba C4", "brand": {"name": "ATLAS", "icon": "✦"}, "chapters": [], "duration": 14},
+  "audio": {},
+  "scenes": [
+    {"id": "despegue", "type": "atlas-flight-cam", "start": {"t": 0}, "theme": "paper", "enter": "fade",
+     "terrain": "hudson-cerca", "model": "narrowbody", "livery": "stripe-blue", "registration": "N106US",
+     "sourceNote": "DATOS: FDR DE LA NTSB · SONIDO SINTETIZADO DEL N1 · AVIÓN GENÉRICO",
+     "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 0}, "from": "15:25:38", "to": "15:25:52", "rate": 1},
+     "camera": [{"at": {"t": 0}, "mode": "side", "distanceM": 70, "heightM": 3, "left": true}],
+     "engineSound": {"file": "accidentes/us1549/motores.mp3", "volume": 0.6}}
+  ]
+}

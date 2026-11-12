@@ -67,7 +67,8 @@ frases originales que puedas situar con seguridad.
 
 TRANSLATE_SYSTEM = """
 Traduce al {language} los textos en pantalla de un documental. Mantén MAYÚSCULAS si el
-original las usa, nombres propios, cifras y la brevedad (mismo largo aproximado).{local} Devuelve SOLO
+original las usa, nombres propios, cifras, los *asteriscos* que marcan el realce (alrededor de las palabras
+equivalentes) y la brevedad (mismo largo aproximado).{local} Devuelve SOLO
 JSON: {{"texts": {{"id": "traducción", ...}}}} con los mismos ids.
 """.strip()
 
@@ -347,6 +348,29 @@ def _drawn_paths(value: dict[str, Any], path: str) -> list[tuple[str, Any]]:
     for i, actor in enumerate(value.get("actors") or []):
         if isinstance(actor, dict) and actor.get("label"):
             out.append((f"{path}.actors.{i}.label", actor["label"]))
+    if value["type"] == "atlas" and isinstance(value.get("scene"), dict):
+        out += _scene_paths(value["scene"], f"{path}.scene")
+    return out
+
+
+# an Atlas «scene» (remotion/atlas/schema.ts): only the words read on screen; never what the scene draws from
+# (region, terrain, profile, a shape's file, accents, styles…)
+SCENE_TEXTS = {"text", "label", "sub", "kicker", "title", "sourceNote", "seaLabel", "name", "liftoffLabel", "doneLabel",
+               "display", "inside", "value"}
+
+
+def _scene_paths(node: Any, path: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    if isinstance(node, dict):
+        for key, item in node.items():
+            if isinstance(item, str):
+                if key in SCENE_TEXTS:
+                    out.append((f"{path}.{key}", item))
+            else:
+                out += _scene_paths(item, f"{path}.{key}")
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            out += _scene_paths(item, f"{path}.{i}")
     return out
 
 
@@ -412,6 +436,17 @@ def _set_graphic_strings(value: Any, path: str, texts: dict[str, str]) -> Any:
     if isinstance(value, list):
         return [_set_graphic_strings(v, f"{path}.{i}", texts) for i, v in enumerate(value)]
     return texts.get(path, value) if isinstance(value, str) else value
+
+
+def sat_credits(timeline: dict[str, Any], lang: str) -> None:
+    """An Atlas satellite view's licence line («credit» is never sent to translate) in the dub's language."""
+
+    from .atlas import SAT_CREDIT
+
+    for group in timeline["groups"]:
+        g = group.get("graphic")
+        if isinstance(g, dict) and g.get("type") == "atlas" and isinstance(g.get("sat"), dict) and g["sat"].get("credit"):
+            g["sat"]["credit"] = SAT_CREDIT.get(lang[:2], SAT_CREDIT["en"])
 
 
 def apply_texts(timeline: dict[str, Any], texts: dict[str, str]) -> None:
@@ -684,6 +719,7 @@ def run(ctx: RunContext) -> None:
         translated.update(complete_json(ctx, stage=STAGE, section="planner", max_tokens=8000, system=system,
                                         user=json.dumps(batch, ensure_ascii=False)).get("texts", {}))
     apply_texts(timeline, {k: str(v) for k, v in translated.items() if k in texts and str(v).strip()})
+    sat_credits(timeline, lang)
     if not (ctx.materials_dir / "titulo.txt").is_file():
         (ctx.materials_dir / "titulo.txt").write_text(timeline["title"] + "\n", encoding="utf-8")
     Timeline.model_validate(timeline)

@@ -1,0 +1,33 @@
+{
+  "meta": {"slug": "test-accidentes-a2", "title": "Prueba accidentes A2", "brand": {"name": "ATLAS", "icon": "✦"}, "chapters": [], "duration": 30},
+  "audio": {},
+  "scenes": [
+    {
+      "id": "perfil-altitud", "type": "atlas-flight-profile", "start": {"t": 0}, "theme": "paper", "enter": "fade",
+      "kicker": "ALTITUD DEL VUELO 1549", "title": {"text": "Seis minutos, *de pista a río*", "accent": "danger"},
+      "sourceNote": "ALTITUD: FDR DE LA NTSB, CORREGIDA CON EL ALTÍMETRO LOCAL · TERRENO: TERRARIUM",
+      "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 0.8}, "from": "15:24:50", "to": "15:30:42", "rate": 30},
+      "series": "alt", "axis": {"max": 4000, "step": 1000, "unit": "FT"}, "terrain": true,
+      "marks": [
+        {"clock": "15:27:11", "label": "Aves", "sub": "15:27:11", "accent": "danger"},
+        {"clock": "15:30:42", "label": "Hudson", "sub": "15:30:43", "accent": "data"}
+      ]
+    },
+    {
+      "id": "perfil-motores", "type": "atlas-flight-profile", "start": {"t": 13}, "theme": "paper", "enter": "fade",
+      "kicker": "EMPUJE DE LOS DOS MOTORES (N1)", "title": {"text": "Los dos motores, *a la vez*", "accent": "danger"},
+      "sourceNote": "N1: FDR DE LA NTSB (DCA09MA026)",
+      "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 13.5}, "from": "15:26:40", "to": "15:28:40", "rate": 12},
+      "series": "n1", "axis": {"max": 100, "step": 25, "unit": "%"}, "legend": ["MOTOR 1", "MOTOR 2"],
+      "marks": [{"clock": "15:27:11", "label": "Impacto con aves", "sub": "15:27:11", "accent": "danger"}]
+    },
+    {
+      "id": "perfil-velocidad", "type": "atlas-flight-profile", "start": {"t": 24}, "theme": "paper", "enter": "fade",
+      "kicker": "VELOCIDAD INDICADA", "title": {"text": "Nunca llegó a *300 nudos*", "accent": "danger"},
+      "sourceNote": "VELOCIDAD: FDR DE LA NTSB · 300 KT: INFORME NTSB AAR-10/03, P. 2",
+      "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 24.3}, "from": "15:27:00", "to": "15:30:42", "rate": 40},
+      "series": "kias", "axis": {"max": 350, "step": 50, "unit": "KT"},
+      "refs": [{"value": 300, "label": "300 KT: VELOCIDAD PARA REENCENDER", "at": {"t": 24.5}, "accent": "danger"}]
+    }
+  ]
+}

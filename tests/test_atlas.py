@@ -505,3 +505,52 @@ def test_a_close_map_with_no_name_opens_to_the_globe():
     named = A.no_empty_close({"view": "globe", "camera": {"lat": 8, "lon": -77, "zoom": 6}, "routes": [],
                               "points": [{"name": "YAVIZA", "lat": 8.2, "lon": -77.7}], "highlight": []})
     assert named["camera"]["zoom"] == 6
+
+
+def _scene(raw, text="", dark=False):
+    return atlas.check_scene(atlas.clean({"view": "scene", "scene": raw}, None), text)
+
+
+def test_a_scene_view_becomes_a_scene_of_the_atlas_schema():
+    dial = _scene({"type": "dial", "kicker": "a 35.000 pies sin oxígeno", "title": "Lúcido *un minuto o menos*",
+                   "max": 60, "from": 0, "to": 60, "fill": "remaining", "readout": "{value} SEG", "at": "minuto"})
+    s = dial["scene"]
+    assert dial["view"] == "scene" and s["type"] == "atlas-dial" and s["kicker"] == "A 35.000 PIES SIN OXÍGENO"
+    assert s["dial"]["fill"] == "remaining" and s["dial"]["accent"] == "danger" and s["readout"]["style"] == "mono"
+    saved = _scene({"type": "dial", "max": 60, "from": 0, "to": 20, "fill": "elapsed", "readout": "~{value} *minutos ahorrados*"},
+                   "Ahorra unos 20 minutos por vuelo.")
+    assert saved["scene"]["dial"]["accent"] == "good" and saved["scene"]["readout"]["style"] == "serif"
+    bars = _scene({"type": "compare", "unit": "km", "bars": [{"label": "Antártida", "value": 2.5}, {"label": "Tíbet", "value": 4.1}],
+                   "ghost": {"bar": 1, "value": 5, "label": "2 × Antártida"}}, "La Antártida, 2,5 km; el Tíbet, 4,1 km.")
+    b = bars["scene"]
+    assert b["type"] == "atlas-bar-compare" and [x["value"] for x in b["bars"]] == [2.5, 4.1]
+    assert b["bars"][-1]["valueAccent"] == "danger" and b["ghost"]["value"] == 5 and b["axis"]["max"] >= 5
+    assert b["axis"]["format"] == "{v} KM" and b["bars"][0]["display"] == "2.5 km"
+
+
+def test_a_scene_with_figures_the_script_never_says_goes_back_to_the_globe():
+    made_up = _scene({"type": "compare", "bars": [{"label": "A", "value": 7}, {"label": "B", "value": 9}]}, "En A son 7 y en B, 8.")
+    assert made_up["view"] == "globe" and made_up["scene"] is None
+    one_bar = _scene({"type": "compare", "bars": [{"label": "A", "value": 7}]})
+    assert one_bar["view"] == "globe"                                             # one bar compares nothing
+    density = _scene({"type": "density", "boxes": [{"label": "Mar", "percent": 100}, {"label": "Lhasa", "percent": 70}]},
+                     "En Lhasa queda el 70% del aire.")
+    assert density["scene"]["boxes"][1]["accent"] == "danger"
+    unknown = _scene({"type": "pie", "values": [1, 2]})
+    assert unknown["view"] == "globe"
+
+
+def test_scene_times_turn_words_into_seconds_from_the_group():
+    s = atlas.clean({"view": "scene", "scene": {"type": "cards", "title": "Cuando *no salen* las cuentas",
+                                                  "cards": [{"text": "Una ruta de escape", "at": "ruta"},
+                                                            {"text": "Un avión más ligero", "at": "ligero"}]}}, None)["scene"]
+    words = [(0, "Hay"), (15, "una"), (30, "ruta"), (60, "o"), (90, "un"), (120, "avión"), (150, "más"), (180, "ligero.")]
+    timed = atlas.scene_times(s, words, 210, 30, 5)
+    assert [c["at"] for c in timed["cards"]] == [{"t": 1.0}, {"t": 6.0}]
+    agenda = atlas.scene_times(atlas.clean({"view": "scene", "scene": {"type": "agenda", "title": "Cinco razones",
+                                                                         "tagline": "Cruzar es *lo fácil*"}}, None)["scene"],
+                               words, 210, 30, 5)
+    assert len(agenda["numerals"]) == 5 and all("t" in n for n in agenda["numerals"]) and "t" in agenda["tagline"]["at"]
+    recap = atlas.scene_times(atlas.clean({"view": "scene", "scene": {"type": "recap", "items": ["a", "b", "c", "d", "e", "f"]}}, None)["scene"],
+                              words, 210, 30, 5)
+    assert len(recap["items"]) == 5                                             # one card per chapter

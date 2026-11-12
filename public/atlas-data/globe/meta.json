@@ -1,0 +1,9 @@
+{
+  "width": 4096,
+  "height": 2048,
+  "projection": "equirectangular",
+  "sources": [
+    "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+    "Costas y países: Natural Earth vía el paquete npm world-atlas (dominio público)"
+  ]
+}

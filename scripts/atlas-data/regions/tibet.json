@@ -1,0 +1,8 @@
+{
+  "id": "tibet",
+  "description": "Meseta tibetana y alrededores: del Caspio al mar de China, del Índico a Mongolia.",
+  "bbox": [[44, 2], [136, 56]],
+  "projection": { "type": "conicConformal", "rotate": [-90, 0], "parallels": [20, 45] },
+  "width": 5600,
+  "zoom": 7
+}

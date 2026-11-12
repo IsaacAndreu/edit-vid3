@@ -2,7 +2,7 @@
 
 Our own, free stand-in for an "attention curve" (no model, no GPU, no API): the final render is read at 4 frames per
 second at 160x90, and a moment "has something happening" when at least 0.5 % of the picture changes in a quarter of a
-second (a cut, a label that appears, the camera moving). Measured on the reference channels: Manicule has at most a
+second (a cut, a label that appears, the camera moving). Measured on the reference channels: the Atlas reference has at most a
 couple of gaps over 12 s in five minutes; a fast edit never goes over 4 s.
 
 Warnings (never blocks the video):

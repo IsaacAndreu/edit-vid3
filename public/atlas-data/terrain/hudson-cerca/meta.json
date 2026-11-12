@@ -1,0 +1,22 @@
+{
+  "id": "hudson-cerca",
+  "bbox": [
+    -74.12,
+    40.7,
+    -73.8,
+    40.92
+  ],
+  "smooth": 1,
+  "textureRegion": "nueva-york",
+  "lat0": 40.81,
+  "kmLon": 84.25599299939803,
+  "kmLat": 110.57,
+  "widthKm": 26.961917759807992,
+  "depthKm": 24.325399999999874,
+  "cols": 800,
+  "rows": 722,
+  "maxM": 133,
+  "contourStep": 1000,
+  "zoom": 14,
+  "source": "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+}
