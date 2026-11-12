@@ -33,6 +33,7 @@ import requests
 
 BASE = "https://genaipro.io/api"
 AI84_BASE = "https://api.ai84.pro"
+AI84_CREDITS_PER_CHAR = 1.32     # speech-2.6-hd, measured 12/11 (33 credits for 25 characters)
 FILE = "out/_voces.json"
 MODELS = ("eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5", "eleven_v3", "eleven_v4")
 MINIMAX_MODELS = ("speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo", "speech-2.5-hd-preview",
@@ -343,6 +344,8 @@ class AI84:
         self.http = session or requests.Session()
         self.headers = {"xi-api-key": token}
         self.spent = 0.0               # credits of the jobs finished through this client
+        self.quoted: dict[str, float] = {}   # job → the credits quoted when it was made (MiniMax's poll does not say)
+        self.unpriced: list[str] = []  # jobs finished with no known price (resumed after a restart): generate() estimates
         self.kind: dict[str, str] = {}  # job → "minimax" | "elevenlabs" (which endpoint to poll)
 
     def _call(self, method: str, path: str, **kwargs: Any) -> Any:
@@ -448,6 +451,8 @@ class AI84:
         if not job:
             raise TTSError(f"AI84 no devolvió el trabajo: {str(made)[:200]}")
         self.kind[str(job)] = kind
+        if made.get("credit_cost") is not None:
+            self.quoted[str(job)] = float(made["credit_cost"])
         return str(job)
 
     def wait(self, job_id: str, timeout: float = WAIT_SECONDS, every: float = 4.0) -> str:
@@ -475,7 +480,12 @@ class AI84:
             status = str(job.get("status") or "").lower()
             url = job.get("audio_url") or job.get("audioUrl")
             if status == "done" and url:
-                self.spent += float(job.get("credit_cost") or 0)
+                cost = job.get("credit_cost")
+                cost = float(cost) if cost is not None else self.quoted.get(job_id)
+                if cost is None:
+                    self.unpriced.append(job_id)
+                else:
+                    self.spent += cost
                 return str(url)
             if status in ("failed", "error"):
                 message = job.get("errorMessage") or job.get("error_message") or "sin detalle"
@@ -638,6 +648,8 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
         if (target.parent / LOCK).is_file():                  # still alive: a long narration is not a stale lock
             (target.parent / LOCK).touch()
         url = api.wait(task_id)
+        if task_id in getattr(api, "unpriced", []):     # resumed after a restart: its price by the characters
+            api.spent += len(part) * AI84_CREDITS_PER_CHAR
         log(f"   Voz {number}/{len(parts)}: lista, descargando")
         partial_piece = piece.with_suffix(".bajando")
         api.download(url, partial_piece)

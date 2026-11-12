@@ -318,8 +318,7 @@ class _FakeAI84:
                 return _Response(502, payload={"success": False})          # a 5xx while polling: still running
             done = self.polls[job] >= 3
             return _Response(payload={"success": True, "job": {"job_id": job, "status": "done" if done else "processing",
-                                                                "audio_url": f"https://cdn.example/{job}.mp3?token=x" if done else None,
-                                                                "credit_cost": 100}})
+                                                                "audio_url": f"https://cdn.example/{job}.mp3?token=x" if done else None}})
         if method == "GET" and path == "/v1/minimax/voices":
             self.params = params
             return _Response(payload={"success": True, "data": [
@@ -402,3 +401,13 @@ def test_ai84_uses_minimax_own_id_and_mends_a_voice_saved_by_its_name():
     assert api.search("", "es")[0]["voice_id"] == "209539195289713"
     api.create("Hola", tts.with_defaults({"provider": "ai84", "voice_id": "Spanish_HumorousElder"}))
     assert fake.created[-1]["canonical_voice_id"] == "209539195289713"
+
+
+def test_ai84_voice_is_priced_by_its_credits(tmp_path):
+    from pipeline.context import RunContext
+
+    (tmp_path / "config.yaml").write_text("tts:\n  ai84_usd_per_1k_credits: 0.006\n", encoding="utf-8")
+    ctx = RunContext.create("v", root=tmp_path)
+    usd = tts.voice_usd(ctx, {"provider": "ai84"}, 14000, {"provider": "ai84", "credits": 18500})
+    assert abs(usd - 0.111) < 1e-9                       # 18,500 credits at 6 $ the million
+    assert abs(tts.voice_usd(ctx, {}, 10000, {"provider": "genaipro"}) - tts.usd_per_1k_chars(ctx) * 10) < 1e-9
