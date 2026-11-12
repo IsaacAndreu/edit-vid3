@@ -77,59 +77,105 @@ async function errorsPage() {
 }
 
 // --- Calendario: días de publicación por canal y qué vídeo sale en cada uno --------------------------------------
-
+// One grid, channels × days: a cell per slot, coloured by what it still needs, so the gaps are seen at a glance.
+// The controls of a slot (another video, «ya está subido», unpin) are built only for the cell that is picked.
+let calData = null, calPicked = "", calOnlyGaps = false, calRules = false;
+const calKind = (s) => !s.video ? (s.past ? "none" : s.late ? "late" : "gap")
+  : s.video.status === "subido" ? "up" : s.ok ? "ok" : s.late ? "late" : s.gap ? "need" : "work";
+const CAL_KINDS = {gap: "hueco", late: "ya vas tarde", need: "le falta guion o voz", work: "en marcha", ok: "listo", up: "subido", none: "sin vídeo"};
 async function calendarPage() {
-  const a = await api("/api/agenda"), st = a.settings, today = new Date().toISOString().slice(0, 10);
-  const byDay = {};
-  a.plan.forEach((s) => (byDay[s.date] = byDay[s.date] || []).push(s));
-  const free = (channel) => a.videos.filter((v) => v.channel === channel && !["subido"].includes(v.status));
-  const slot = (s) => {
-    const v = s.video, cls = s.ok ? "ok" : s.gap ? "gap" : "";
-    const state = !v ? `<span class="pill error">hueco</span> <span class="small muted">${s.past ? "" : (s.late ? "⏰ ya vas tarde" : "guion y voz antes del " + DAY(s.deadline.slice(0, 10)) + " " + s.deadline.slice(11))}</span>`
-      : `<a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a> ${pill(v.status === "subido" ? "hecho" : v.status)} ${v.status === "subido" ? '<span class="small muted">subido</span>' : ""}
-         ${s.pinned ? '<span class="small muted">📌 fijado</span>' : ""}
-         ${s.gap && !s.past ? `<span class="small muted">${s.late ? "⏰ ya vas tarde" : "listo antes del " + DAY(s.deadline.slice(0, 10)) + " " + s.deadline.slice(11)}</span>` : ""}`;
-    const choose = s.past ? "" : `<select onchange="pin(this.value, '${s.date}')"><option value="">Poner otro…</option>${free(s.channel).map((x) =>
-      `<option value="${esc(x.slug)}">${esc(x.slug)} (${esc(x.status)})</option>`).join("")}</select>`;
-    const done = v && v.status === "hecho" && s.date <= today ? `<button onclick="uploaded('${esc(v.slug)}')">Ya está subido</button>` : "";
-    const unpin = s.pinned ? `<button onclick="pin('${esc(v.slug)}', '')">Quitar fijado</button>` : "";
-    return `<div class="slot ${cls} ${s.past ? "past" : ""}"><b>${esc(s.channel)} · ${esc(s.time)}</b><span>${state}</span>
-      <span style="margin-left:auto" class="row">${done}${unpin}${choose}</span></div>`;
-  };
-  const short = Object.entries(a.reserve).filter(([, n]) => n < st.buffer), fine = Object.keys(a.reserve).length - short.length;
-  const reserve = `<div class="reserve">${short.length ? `<span class="small muted">Con pocos vídeos de reserva (objetivo ${st.buffer}):</span>
-      ${short.slice(0, 8).map(([c, n]) => `<span class="pill">${esc(c)} <b style="color:var(--bad)">${n}</b></span>`).join("")}
-      ${short.length > 8 ? `<span class="pill" title="${esc(short.slice(8).map(([c, n]) => c + ": " + n).join(", "))}">+${short.length - 8} más</span>` : ""}`
-      : `<span class="pill hecho">✓ Todos los canales con reserva</span>`}
-      ${short.length && fine ? `<span class="small muted">· ${fine} canal${fine === 1 ? "" : "es"} bien</span>` : ""}</div>`;
-  const rules = Object.entries(st.schedule).map(([c, r]) => `<div class="card" style="margin-bottom:10px">
-      <div class="row" style="justify-content:space-between"><b>${esc(c)}</b>
-        <label style="margin:0;font-weight:400"><input type="checkbox" style="width:auto" ${r.enabled ? "checked" : ""} onchange="rule('${esc(c)}', {enabled: this.checked})"> publica en este canal</label></div>
-      <div class="days" style="margin-top:8px">${a.weekdays.map((d, i) => `<label><input type="checkbox" ${r.days.includes(i) ? "checked" : ""}
-        onchange="toggleDay('${esc(c)}', ${i}, this.checked)"> ${d.slice(0, 3)}</label>`).join("")}
-        <input type="time" value="${esc(r.time)}" style="width:auto;margin-left:8px" onchange="rule('${esc(c)}', {time: this.value})"></div></div>`).join("");
-  window.agendaRules = st.schedule;
-  show(`<h1>Calendario</h1>
-    <div class="small muted">Lo que sale cada día en cada canal, y los huecos que aún no tienen vídeo.</div>
-    ${reserve}
-    ${Object.keys(byDay).sort().map((d) => `<div class="cal-day ${d === today ? "today" : ""}">${DAY(d)}${d === today ? " · hoy" : ""}</div>${byDay[d].map(slot).join("")}`).join("")
-      || '<div class="notice">No hay días de publicación: márcalos abajo.</div>'}
-    <h2>Días de publicación</h2>${rules}
-    ${window.partner ? "" : `<div class="card"><div class="two">
-      <div><label>Margen para tener guion y voz <span class="muted">(horas antes de publicar)</span></label>
-        <input type="number" min="6" step="1" value="${st.lead_hours}" onchange="option({lead_hours: +this.value})"></div>
-      <div><label>Vídeos de reserva por canal <span class="muted">(aviso si hay menos)</span></label>
-        <input type="number" min="0" step="1" value="${st.buffer}" onchange="option({buffer: +this.value})"></div>
-      <div><label>Hora del resumen de la mañana <span class="muted">(Telegram)</span></label>
-        <input type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})"></div></div></div>`}`);
-  window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
-  window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
-    calendarPage(); };
-  window.rule = async (channel, change) => { await post("/api/agenda", {channel, ...change}); calendarPage(); };
-  window.toggleDay = (channel, day, on) => { const days = new Set(window.agendaRules[channel].days); on ? days.add(day) : days.delete(day); rule(channel, {days: [...days]}); };
-  window.option = async (change) => { await post("/api/agenda", change); calendarPage(); };
+  calData = await api("/api/agenda");
+  drawCalendar();
 }
+window.calPick = (key) => { calPicked = calPicked === key ? "" : key; drawCalendar(); };
+function drawCalendar() {
+  if (!calData || location.hash !== "#/calendario") return;
+  const a = calData, st = a.settings, today = new Date().toISOString().slice(0, 10);
+  const slots = {};
+  a.plan.forEach((s) => slots[s.channel + "|" + s.date] = s);
+  const dates = a.plan.map((s) => s.date).sort();
+  const days = [];
+  if (dates.length) for (let d = new Date((dates[0] < today ? dates[0] : today) + "T12:00:00"); d.toISOString().slice(0, 10) <= dates[dates.length - 1]; d.setDate(d.getDate() + 1))
+    days.push(d.toISOString().slice(0, 10));
+  const open = a.plan.filter((s) => !s.past && (s.gap || s.late));              // what is still missing, soonest first
+  const week = new Date(today + "T12:00:00"); week.setDate(week.getDate() + 7);
+  const soon = open.filter((s) => s.date < week.toISOString().slice(0, 10));
+  const missing = (c) => open.some((s) => s.channel === c);
+  const rows = Object.keys(st.schedule).filter((c) => a.plan.some((s) => s.channel === c) && (!calOnlyGaps || missing(c)));
+  const need = (s) => s.late ? "ya vas tarde" : "antes del " + DAY(s.deadline.slice(0, 10)) + " " + s.deadline.slice(11);
+  const said = (s) => `${s.channel}, ${DAY(s.date)} ${s.time}: ${s.video ? (s.video.title || s.video.slug) + ", " : ""}${CAL_KINDS[calKind(s)]}${s.pinned ? ", fijado" : ""}`;
+  const head = days.map((d) => { const day = new Date(d + "T12:00:00"), n = day.getDay();
+    return `<th scope="col" class="${d === today ? "today" : ""} ${n === 1 ? "wk" : ""}" title="${DAY(d)}"><span>${"DLMXJVS"[n]}</span><b>${day.getDate()}</b></th>`; }).join("");
+  const cell = (c, d) => { const s = slots[c + "|" + d], n = new Date(d + "T12:00:00").getDay(), key = c + "|" + d;
+    return `<td class="${n === 1 ? "wk" : ""} ${n === 0 || n === 6 ? "we" : ""}">${s ? `<button class="${calKind(s)} ${s.pinned ? "pin" : ""} ${s.past ? "past" : ""}"
+      aria-pressed="${calPicked === key}" aria-label="${esc(said(s))}" title="${esc(said(s))}" onclick="calPick('${esc(key)}')"></button>` : ""}</td>`; };
+  const grid = rows.length ? `<div class="card flush cal-wrap" role="region" aria-label="Calendario de publicación" tabindex="0"><table class="cal">
+      <thead><tr><th scope="col" class="t-l">Canal</th><th scope="col" title="Vídeos de reserva (objetivo ${st.buffer})">Res.</th>${head}</tr></thead>
+      <tbody>${rows.map((c) => { const n = a.reserve[c];
+        return `<tr><th scope="row" title="${esc(c)}">${dot(c, "sm")} ${esc(c)}</th><td class="res ${n != null && n < st.buffer ? "t-bad" : "muted"}">${n ?? ""}</td>${days.map((d) => cell(c, d)).join("")}</tr>`; }).join("")}</tbody></table></div>
+    <div class="legend">${Object.entries(CAL_KINDS).filter(([k]) => k !== "none").map(([k, name]) => `<span class="cal-key"><i class="${k}"></i>${name}</span>`).join("")}<span class="cal-key"><i class="ok pin"></i>fijado</span></div>`
+    : calOnlyGaps && a.plan.length ? empty("check", "Ningún hueco", "Todos los días de publicación de estas cuatro semanas tienen vídeo.")
+    : empty("calendar", "No hay días de publicación", "Márcalos abajo, en «Días de publicación».");
+  // the picked slot: what it has, what it needs and what you can do with it
+  const s = slots[calPicked];
+  const free = (channel) => a.videos.filter((v) => v.channel === channel && v.status !== "subido");
+  const detail = !s ? (open.length ? `<div class="card mt"><b>Próximos huecos</b> <span class="small muted">toca uno para ponerle vídeo</span>
+        <div class="tools">${open.slice(0, 10).map((g) => `<button class="chip" onclick="calPick('${esc(g.channel + "|" + g.date)}')">${dot(g.channel, "sm")} ${esc(g.channel)} · <span class="${g.late ? "t-bad" : "muted"}">${DAY(g.date)}</span></button>`).join("")}
+        ${open.length > 10 ? `<span class="small muted">y ${open.length - 10} más</span>` : ""}</div></div>` : "")
+    : (() => { const v = s.video;
+      return `<div class="cal-detail card" id="cal-detail"><div class="row between nowrap top"><div class="mw0"><b>${dot(s.channel)} ${esc(s.channel)}</b> <span class="muted">· ${DAY(s.date)}${s.date === today ? " · hoy" : ""} · ${esc(s.time)}</span>
+          <div class="mt-1">${!v ? `<span class="pill error">hueco</span> <span class="small muted">${s.past ? "" : (s.late ? "ya vas tarde" : "guion y voz " + need(s))}</span>`
+            : `<a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a> ${pill(v.status === "subido" ? "hecho" : v.status)} ${v.status === "subido" ? '<span class="small muted">subido</span>' : ""}
+              ${s.pinned ? `<span class="small muted">${icon("pin")} fijado</span>` : ""}
+              ${s.gap && !s.past ? `<span class="small muted">${s.late ? "ya vas tarde" : "listo " + need(s)}</span>` : ""}`}</div></div>
+          <button class="icon ghost" aria-label="Cerrar" onclick="calPick('')">${icon("x")}</button></div>
+        <div class="tools">${v && v.status === "hecho" && s.date <= today ? `<button onclick="uploaded('${esc(v.slug)}')">Ya está subido</button>` : ""}
+          ${s.pinned ? `<button onclick="pin('${esc(v.slug)}', '')">Quitar fijado</button>` : ""}
+          ${s.past ? "" : `<select class="w-auto" aria-label="Poner otro vídeo en este día" onchange="pin(this.value, '${s.date}')"><option value="">Poner otro…</option>${free(s.channel).map((x) =>
+            `<option value="${esc(x.slug)}">${esc(x.slug)} (${esc(x.status)})</option>`).join("")}</select>`}</div></div>`; })();
+  const publishing = Object.values(st.schedule).filter((r) => r.enabled).length;
+  const rules = !calRules ? "" : `<div class="scroll-x"><table class="cal-rules"><thead><tr><th>Canal</th><th>Publica</th>${a.weekdays.map((d) => `<th class="t-c" title="${esc(d)}">${esc(d.slice(0, 1).toUpperCase())}</th>`).join("")}<th>Hora</th></tr></thead>
+      <tbody>${Object.entries(st.schedule).map(([c, r]) => `<tr><td>${dot(c, "sm")} ${esc(c)}</td>
+        <td><input type="checkbox" aria-label="${esc(c)}: publica en este canal" ${r.enabled ? "checked" : ""} onchange="rule('${esc(c)}', {enabled: this.checked})"></td>
+        ${a.weekdays.map((d, i) => `<td class="t-c"><input type="checkbox" aria-label="${esc(c)}: ${esc(d)}" ${r.days.includes(i) ? "checked" : ""} onchange="toggleDay('${esc(c)}', ${i}, this.checked)"></td>`).join("")}
+        <td><input type="time" class="sm w-auto" aria-label="${esc(c)}: hora" value="${esc(r.time)}" onchange="rule('${esc(c)}', {time: this.value})"></td></tr>`).join("")}</tbody></table></div>`;
+  window.agendaRules = st.schedule;
+  paint($("#app"), `<div class="hb"><div><h1>Calendario</h1>
+      <div class="small muted">Lo que sale cada día en cada canal, y los huecos que aún no tienen vídeo.</div></div>
+      <div class="tools"><span class="seg"><button class="${calOnlyGaps ? "" : "on"}" aria-pressed="${!calOnlyGaps}" onclick="calOnlyGaps=false;drawCalendar()">Todos los canales</button><button
+        class="${calOnlyGaps ? "on" : ""}" aria-pressed="${calOnlyGaps}" onclick="calOnlyGaps=true;drawCalendar()">Solo con huecos <span class="muted">${Object.keys(st.schedule).filter(missing).length}</span></button></span></div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Huecos · 7 días</div><div class="v ${soon.length ? "bad" : "ok"}">${soon.length}</div><div class="d">${open.length} en las cuatro semanas</div></div>
+      <div class="kpi"><div class="k">Ya vas tarde</div><div class="v ${open.some((x) => x.late) ? "bad" : ""}">${open.filter((x) => x.late).length}</div><div class="d">pasó el margen de ${st.lead_hours} h</div></div>
+      <div class="kpi"><div class="k">Listos para salir</div><div class="v">${a.plan.filter((x) => !x.past && x.ok).length}</div><div class="d">de ${a.plan.filter((x) => !x.past).length} publicaciones</div></div>
+      <div class="kpi"><div class="k">Reserva</div><div class="v ${Object.values(a.reserve).some((n) => n < st.buffer) ? "warn" : "ok"}">${Object.values(a.reserve).filter((n) => n < st.buffer).length}</div>
+        <div class="d">canales con menos de ${st.buffer} vídeos</div></div></div>
+    ${grid}${detail}
+    <details class="block" ${calRules ? "open" : ""} ontoggle="if(this.open!==calRules){calRules=this.open;drawCalendar()}"><summary><b>Días de publicación<span class="count">${publishing} de ${Object.keys(st.schedule).length} canales publican</span></b></summary>${rules}</details>
+    ${window.partner ? "" : `<div class="card mt"><div class="three">
+      ${field("Margen para tener guion y voz", `<input id="cal-lead" type="number" min="6" step="1" value="${st.lead_hours}" onchange="option({lead_hours: +this.value})">`, "Horas antes de publicar.", "cal-lead")}
+      ${field("Vídeos de reserva por canal", `<input id="cal-buffer" type="number" min="0" step="1" value="${st.buffer}" onchange="option({buffer: +this.value})">`, "Aviso si hay menos.", "cal-buffer")}
+      ${field("Hora del resumen de la mañana", `<input id="cal-morning" type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})">`, "Por Telegram.", "cal-morning")}</div></div>`}`);
+}
+window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
+window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
+  try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
+  calendarPage(); };
+window.rule = async (channel, change) => { await post("/api/agenda", {channel, ...change}); calendarPage(); };
+window.toggleDay = (channel, day, on) => { const days = new Set(window.agendaRules[channel].days); on ? days.add(day) : days.delete(day); rule(channel, {days: [...days]}); };
+window.option = async (change) => { await post("/api/agenda", change); calendarPage(); };
+// the arrows move between the cells of the grid
+document.addEventListener("keydown", (e) => {
+  const from = e.target.closest && e.target.closest(".cal button");
+  const step = {ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0]}[e.key];
+  if (!from || !step) return;
+  e.preventDefault();
+  const body = from.closest("tbody");
+  for (let r = from.closest("tr").sectionRowIndex + step[0], c = from.parentNode.cellIndex + step[1]; body.rows[r] && body.rows[r].cells[c]; r += step[0], c += step[1]) {
+    const next = body.rows[r].cells[c].querySelector("button");
+    if (next) { next.focus(); break; }
+  }
+});
 
 // --- Para subir: lo hecho y no subido, con todo lo que pide YouTube Studio (pipeline/organizar.py) ----------------
 const copyTexts = [];
