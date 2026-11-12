@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 900" width="1000" height="900">
+<!-- Capas (ids) de cockpit-top:
+  nose: contorno del morro
+  ws-left: parabrisas izquierdo
+  ws-right: parabrisas derecho
+  glareshield: panel de instrumentos
+  pedestal: pedestal central
+  seat-captain: asiento y piloto (capitán)
+  seat-copilot: asiento y piloto (copiloto)
+  belt: cinturón del copiloto
+  debris: trayectorias de lo que sale por el hueco
+-->
+
+<path id="nose" class="paper ink" d="M150,880 L150,420 C150,190 330,40 500,40 C670,40 850,190 850,420 L850,880"/>
+<path id="ws-left" class="glass ink" d="M220,330 C260,230 340,160 470,130 L470,250 C380,270 330,300 300,345 Z"/>
+<path id="ws-right" class="glass ink" d="M780,330 C740,230 660,160 530,130 L530,250 C620,270 670,300 700,345 Z"/>
+<path id="glareshield" class="grey ink" d="M200,385 C350,335 650,335 800,385 L795,410 C650,365 350,365 205,410 Z"/>
+<rect id="pedestal" class="paper ink" x="440" y="420" width="120" height="70"/>
+<g id="seat-captain">
+  <rect class="seat ink" x="230" y="500" width="120" height="140" rx="16"/>
+  <ellipse class="body ink" cx="290" cy="540" rx="62" ry="22"/>
+  <circle class="body ink" cx="290" cy="520" r="24"/>
+</g>
+<g id="seat-copilot">
+  <rect class="seat ink" x="650" y="500" width="120" height="140" rx="16"/>
+  <ellipse class="body ink" cx="710" cy="540" rx="62" ry="22"/>
+  <circle class="body ink" cx="710" cy="520" r="24"/>
+</g>
+<g id="belt" class="body-dark">
+  <rect x="650" y="582" width="120" height="12"/><rect x="700" y="575" width="20" height="26" class="paper ink"/>
+</g>
+<g id="debris" class="line dash-ink">
+  <path d="M700,560 L600,250"/><path d="M710,560 L560,780"/><path d="M720,560 L780,180"/><path d="M690,560 L470,690"/><path d="M730,560 L860,820"/>
+</g>
+
+</svg>

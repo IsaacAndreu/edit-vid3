@@ -1,0 +1,21 @@
+{
+  "id": "everest",
+  "bbox": [
+    86.66,
+    27.86,
+    87.16,
+    28.1
+  ],
+  "smooth": 1,
+  "lat0": 27.98,
+  "kmLon": 98.3079627794332,
+  "kmLat": 110.57,
+  "widthKm": 49.1539813897166,
+  "depthKm": 26.53680000000022,
+  "cols": 400,
+  "rows": 216,
+  "maxM": 8665,
+  "contourStep": 500,
+  "zoom": 12,
+  "source": "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+}

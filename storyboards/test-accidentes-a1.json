@@ -1,0 +1,27 @@
+{
+  "meta": {"slug": "test-accidentes-a1", "title": "Prueba accidentes A1", "brand": {"name": "ATLAS", "icon": "✦"}, "chapters": [], "duration": 22},
+  "audio": {},
+  "scenes": [
+    {
+      "id": "pista-hudson", "type": "atlas-relief-map", "start": {"t": 0}, "theme": "paper", "enter": "fade",
+      "kicker": "US AIRWAYS 1549 · 15 DE ENERO DE 2009",
+      "sourceNote": "TRAYECTORIA: FDR DE LA NTSB (DCA09MA026) · RECONSTRUCCIÓN SIMPLIFICADA",
+      "region": "nueva-york",
+      "camera": [{"at": {"t": 0}, "center": [-73.94, 40.822], "zoom": 1.0}],
+      "labels": [
+        {"text": "Río Hudson", "pos": [-74.003, 40.80], "at": {"t": 0.5}, "style": "region", "accent": "data"},
+        {"text": "Manhattan", "pos": [-73.962, 40.785], "at": {"t": 0.5}, "style": "region"}
+      ],
+      "points": [{"name": "LaGuardia", "pos": [-73.88417, 40.76889], "at": {"t": 0.4}, "marker": "airport"}],
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json", "at": {"t": 1}, "from": "15:25:00", "to": "15:30:42", "rate": 18,
+        "trail": "flown",
+        "marks": [
+          {"clock": "15:27:11", "label": "Impacto con aves", "sub": "15:27:11", "accent": "danger"},
+          {"clock": "15:30:42", "label": "Amerizaje", "sub": "15:30:43", "accent": "data"}
+        ],
+        "hud": {"show": ["clock", "alt", "kias", "n1"], "corner": "tl"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "meta": {"slug": "test-accidentes-a4", "title": "Prueba accidentes A4-A5", "brand": {"name": "ATLAS", "icon": "✦"}, "chapters": [], "duration": 34},
+  "audio": {},
+  "scenes": [
+    {
+      "id": "cabina", "type": "atlas-cockpit", "start": {"t": 0}, "theme": "paper", "enter": "fade",
+      "kicker": "CABINA · 15:27",
+      "sourceNote": "FRASES: TRANSCRIPCIÓN DEL CVR Y DE ATC (NTSB AAR-10/03, PP. 2-3), TRADUCIDAS · DATOS: FDR",
+      "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 0.5}, "from": "15:27:06", "to": "15:28:10", "rate": 5},
+      "instruments": ["alt", "kias", "n1"],
+      "visible": 3,
+      "lines": [
+        {"clock": "15:27:10", "who": "COMANDANTE", "text": "Pájaros.", "ref": "AAR-10/03 p. 2", "accent": "danger"},
+        {"clock": "15:27:14", "who": "COMANDANTE", "text": "Tenemos uno… los dos están perdiendo potencia.", "ref": "AAR-10/03 p. 2"},
+        {"clock": "15:27:23", "who": "COMANDANTE", "text": "Mi avión.", "ref": "AAR-10/03 p. 2"},
+        {"clock": "15:27:33", "who": "COMANDANTE A ATC", "text": "…hemos chocado con pájaros, hemos perdido empuje en los dos motores, volvemos hacia LaGuardia.", "ref": "AAR-10/03 p. 2"},
+        {"clock": "15:28:05", "who": "COMANDANTE A ATC", "text": "No podemos. Puede que acabemos en el Hudson.", "ref": "AAR-10/03 p. 2", "accent": "danger"}
+      ]
+    },
+    {
+      "id": "avion", "type": "atlas-aircraft", "start": {"t": 14}, "theme": "paper", "enter": "fade",
+      "kicker": "AIRBUS A320 · SILUETA GENÉRICA", "title": {"text": "Aves en *los dos motores*", "accent": "danger"},
+      "model": "narrowbody", "view": "top",
+      "highlights": [{"part": "engines", "at": {"t": 15}, "label": "Los dos motores", "sub": "PIERDEN EMPUJE A LA VEZ", "accent": "danger"}]
+    },
+    {
+      "id": "sabe", "type": "atlas-known", "start": {"t": 22}, "theme": "paper", "enter": "fade",
+      "kicker": "LO QUE SE SABE", "title": {"text": "Tres datos, *con su fuente*", "accent": "danger"},
+      "asOf": "INFORME FINAL · 4 MAY 2010",
+      "items": [
+        {"status": "confirmed", "text": "Las 155 personas a bordo *sobrevivieron*", "source": "NTSB AAR-10/03, TABLA 1", "at": {"t": 22.6}},
+        {"status": "confirmed", "text": "Aves a *2.818 pies* sobre el suelo", "source": "NTSB AAR-10/03, P. 2", "at": {"t": 23.4}},
+        {"status": "confirmed", "text": "Velocidad máxima tras el impacto: *214 nudos*", "source": "NTSB AAR-10/03, P. 2, NOTA 8", "at": {"t": 24.2}}
+      ]
+    }
+  ]
+}

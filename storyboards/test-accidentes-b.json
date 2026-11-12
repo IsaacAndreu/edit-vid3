@@ -1,0 +1,32 @@
+{
+  "meta": {"slug": "test-accidentes-b", "title": "Prueba accidentes B", "brand": {"name": "ATLAS", "icon": "✦"}, "chapters": [], "duration": 40},
+  "audio": {},
+  "scenes": [
+    {
+      "id": "persecucion", "type": "atlas-flight-cam", "start": {"t": 0}, "theme": "paper", "enter": "fade",
+      "kicker": "US AIRWAYS 1549 · RECONSTRUCCIÓN A ESCALA REAL",
+      "sourceNote": "POSICIÓN, ALTITUD, CABECEO, ALABEO Y RUMBO: FDR DE LA NTSB · AVIÓN GENÉRICO",
+      "terrain": "hudson-cerca", "model": "narrowbody",
+      "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 0}, "from": "15:27:40", "to": "15:30:43", "rate": 6},
+      "camera": [
+        {"at": {"t": 0}, "mode": "chase", "distanceM": 110, "heightM": 22},
+        {"at": {"t": 6}, "mode": "side", "distanceM": 90, "heightM": 6},
+        {"at": {"t": 11}, "mode": "orbit", "distanceM": 140, "heightM": 30, "degPerSecond": 18},
+        {"at": {"t": 17}, "mode": "cockpit", "fov": 60},
+        {"at": {"t": 25}, "mode": "ground", "pos": [-74.012, 40.762], "heightM": 3, "fov": 7}
+      ],
+      "pfd": {"at": {"t": 17.5}, "corner": "br", "size": 420},
+      "cockpitFrame": true
+    },
+    {
+      "id": "pfd", "type": "atlas-pfd", "start": {"t": 32}, "theme": "paper", "enter": "fade",
+      "kicker": "PANTALLA PRINCIPAL DE VUELO · RECONSTRUIDA CON EL FDR",
+      "sourceNote": "DATOS: FDR DE LA NTSB · FRASE: NTSB AAR-10/03, P. 2 (TRADUCIDA) · PFD GENÉRICO",
+      "flight": {"data": "accidentes/us1549/vuelo.json", "at": {"t": 32}, "from": "15:27:05", "to": "15:27:45", "rate": 5},
+      "lines": [
+        {"clock": "15:27:10", "who": "COMANDANTE", "text": "Pájaros.", "ref": "AAR-10/03 p. 2", "accent": "danger"},
+        {"clock": "15:27:23", "who": "COMANDANTE", "text": "Mi avión.", "ref": "AAR-10/03 p. 2"}
+      ]
+    }
+  ]
+}

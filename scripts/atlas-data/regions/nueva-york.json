@@ -1,0 +1,9 @@
+{
+  "id": "nueva-york",
+  "bbox": [[-74.13, 40.69], [-73.79, 40.93]],
+  "projection": { "type": "mercator" },
+  "width": 4200,
+  "zoom": 14,
+  "margin": 0.03,
+  "water": { "seas": true, "riversBelowM": 1.0 }
+}

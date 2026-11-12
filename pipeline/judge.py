@@ -29,6 +29,7 @@ from .analysis import detectors as det
 from .context import RunContext
 from .costs import record_cost
 from .schemas import (
+    MAX_THIRD_PARTY_SECONDS,
     Candidate,
     JudgeVerdict,
     Option,
@@ -68,7 +69,8 @@ Reject (leave out of the ranking) a candidate that:
 - is a presenter/vlogger talking to camera, a reaction face, or a channel intro/outro (an interview
   of the very person the video is about is fine when the narration quotes or describes them);
 - is blurry, black, frozen, a cartoon/animation or video-game footage (unless asked), or a slide;
-- has burned-in subtitles or captions, even small ones;
+- has burned-in subtitles, captions or text over the MIDDLE of the picture. Text only along the bottom or top edge
+  (a news channel's subtitles or lower-third, its tag in a corner) is fine: it is cropped out automatically;
 - is a screen recording or tutorial of software, a spreadsheet, a form, a website or an app — UNLESS the narration
   is about that app, website or interface itself (how a service signs people up or makes it hard to cancel, an
   app's design, a platform's settings): then a clear recording of that screen IS the right footage, accept it;
@@ -237,6 +239,82 @@ def prefer_variety(usable: list[Option], selections: list[Selection], margin: fl
     return next((o for o in usable if o.candidateId not in shown and o.total >= first.total - margin), first)
 
 
+def _event_key(shot: Any) -> str:
+    broll = getattr(shot, "broll", None)
+    return " ".join(str(getattr(broll, "event", "") or "").casefold().split())
+
+
+def event_masters(shots: list[Any], verdicts: dict[str, Any], candidates: dict[str, Any]) -> dict[str, str]:
+    """The «master» video of each story event: the source the judge accepted for most shots of that event (its first
+    choice counts double, a title naming the event counts more). The reference true-crime channels tell each case
+    with the footage of THAT case (the trial's own broadcast), not a different clip per sentence from anywhere: the
+    people on screen are then the people of the story. A master needs the judge's yes in two shots of the event, or
+    in one when its title names the event. Videos only; one per event."""
+
+    tally: dict[str, dict[str, float]] = {}
+    shots_for: dict[str, dict[str, set[str]]] = {}
+    titled: dict[str, set[str]] = {}
+    for shot in shots:
+        event = _event_key(shot)
+        if not event or shot.id not in verdicts:
+            continue
+        accepted = verdicts[shot.id][2]
+        for rank, option in enumerate(accepted):
+            candidate = candidates.get(option.candidateId)
+            if candidate is None or option.kind != "video":
+                continue
+            score = 2.0 if rank == 0 else 1.0
+            if own_event(candidate.title, shot):
+                score += 1.0
+                titled.setdefault(event, set()).add(option.candidateId)
+            tally.setdefault(event, {})
+            tally[event][option.candidateId] = tally[event].get(option.candidateId, 0.0) + score
+            shots_for.setdefault(event, {}).setdefault(option.candidateId, set()).add(shot.id)
+    masters: dict[str, str] = {}
+    for event, scores in tally.items():
+        best = max(scores, key=lambda c: (scores[c], c))
+        if len(shots_for[event][best]) >= 2 or best in titled.get(event, set()):
+            masters[event] = best
+    return masters
+
+
+def continuation(shot: Any, shots: list[Any], selections: list[Any], picked: dict[str, Option], judged: list[Option],
+                 master: str | None, cfg: dict[str, Any]) -> Option | None:
+    """judge.continue_action (true): the previous shot took a strong moment of its event's master video (motion or the
+    narrated action heard), and the judge accepted that master for this shot too: this shot plays what comes right
+    after it, so the action runs on across the cut instead of jumping elsewhere. Both together never pass the 5 s a
+    third-party clip may last (MAX_THIRD_PARTY_SECONDS), so it is still one short excerpt."""
+
+    if not cfg.get("continue_action", True) or not master or not selections or not judged:
+        return None
+    index = next((i for i, s in enumerate(shots) if s.id == shot.id), 0)
+    if index == 0:
+        return None
+    before, last = shots[index - 1], selections[-1]
+    option = picked.get(before.id)
+    if (option is None or last.shotId != before.id or last.candidateId != master or last.kind != "video"
+            or last.start is None or _event_key(before) != _event_key(shot)
+            or not any(o.candidateId == master for o in judged)):
+        return None
+    if option.scores.motion < float(cfg.get("continue_motion", 0.3)) and option.scores.moment < 0.5:
+        return None
+    first = min(before.duration, MAX_THIRD_PARTY_SECONDS)
+    # the whole unbroken run so far (a run of three would be 2 + 2 + 2 s of one excerpt)
+    run, k = first, index - 1
+    while k > 0 and len(selections) >= index - k + 1:
+        prev_sel, cur_sel = selections[-(index - k + 1)], selections[-(index - k)]
+        prev_len = min(shots[k - 1].duration, MAX_THIRD_PARTY_SECONDS)
+        if (prev_sel.candidateId != cur_sel.candidateId or prev_sel.start is None or cur_sel.start is None
+                or abs(prev_sel.start + prev_len - cur_sel.start) > 0.05):
+            break
+        run += prev_len
+        k -= 1
+    if run + shot.duration > MAX_THIRD_PARTY_SECONDS:
+        return None
+    start = round(last.start + first, 3)
+    return option.model_copy(update={"start": start, "end": round(start + shot.duration, 3)})
+
+
 def own_event(title: str | None, shot: Any) -> bool:
     """The source is footage of the shot's own event: its title names at least two words of the event besides the
     people (competition, place, year: «Beijing 2022 free skate»). The original broadcast of the night a story turns
@@ -361,8 +439,25 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
     return "\n".join(lines)
 
 
+def portrait_bytes(path: Path, side: int = 320) -> bytes | None:
+    """The person's cutout (people.json) as a small JPEG on white, for the judge to compare faces with."""
+
+    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        return None
+    if image.ndim == 3 and image.shape[2] == 4:            # rembg cutout: transparent background → white
+        alpha = image[:, :, 3:4].astype(np.float32) / 255.0
+        image = (image[:, :, :3].astype(np.float32) * alpha + 255.0 * (1 - alpha)).astype(np.uint8)
+    scale = side / max(image.shape[:2])
+    if scale < 1:
+        image = cv2.resize(image, (round(image.shape[1] * scale), round(image.shape[0] * scale)), interpolation=cv2.INTER_AREA)
+    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return encoded.tobytes() if ok else None
+
+
 def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, topic: str = "",
-               hook: bool = False, subject: str = "", sources: str = "", around: str = "") -> dict[str, Any]:
+               hook: bool = False, subject: str = "", sources: str = "", around: str = "",
+               portraits: list[tuple[str, bytes]] | None = None) -> dict[str, Any]:
     cfg = ctx.section("judge")
     model = str(cfg.get("model", "gpt-5-mini"))
     if not hook and cfg.get("model_rest"):   # judge.model_rest: a cheaper model outside the hook (the hook keeps `model`)
@@ -376,6 +471,13 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     prompt = f"{shot_brief(shot, topic, hook, subject, around)}\nCandidates on the sheet: {', '.join(letters)}."
     if sources:
         prompt += f"\nSource of each candidate:\n{sources}"
+    portraits = portraits or []
+    if portraits:
+        names = ", ".join(name for name, _ in portraits)
+        prompt += (f"\nREFERENCE PHOTO(S) after the sheet: {names} — who this shot is about. When a candidate's main person "
+                   "is clearly visible, compare the face, hair and build with the reference: if it is clearly a DIFFERENT "
+                   "person, reject the candidate, whatever its title says. If the person is small, turned away or "
+                   "masked, judge by the context instead.")
     # what is the same for every shot of the channel goes in the instructions, in front: OpenAI then reads that
     # prefix from its cache (a tenth of the price) instead of billing it again on each of the ~280 calls of a video
     instructions = JUDGE_INSTRUCTIONS
@@ -386,7 +488,7 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         instructions += ("\n\nThe editor's past corrections on this channel (learn the standard, not the clips):\n" + taught)
     cache_key = hashlib.sha256(
         json.dumps([model, instructions, prompt, cfg.get("reasoning_effort", "low"), cfg.get("detail", "auto")]).encode()
-        + image_bytes
+        + image_bytes + b"".join(data for _, data in portraits)
     ).hexdigest()[:32]
 
     def produce() -> dict[str, Any]:
@@ -404,6 +506,10 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
                     {"type": "input_text", "text": prompt},
                     {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(image_bytes).decode(),
                      "detail": str(cfg.get("detail", "auto"))},
+                    *[part for name, data in portraits for part in (
+                        {"type": "input_text", "text": f"Reference photo: {name}"},
+                        {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(data).decode(),
+                         "detail": "low"})],
                 ],
             }],
             text={"format": {"type": "json_schema", "name": "shot_verdict", "strict": True, "schema": VERDICT_SCHEMA}},
@@ -587,6 +693,26 @@ def run(ctx: RunContext) -> None:
 
     verdicts: dict[str, tuple[dict[str, Any], list[Option]]] = {}
 
+    # judge.portraits (true): the photo of the person a shot is about (people.json) goes with its sheet. Without
+    # it the judge only had a name, and for anyone not world-famous it cannot tell one face from another
+    # («hablamos de X y sale otra persona»).
+    portrait_of: dict[str, bytes] = {}
+    if cfg.get("portraits", True) and (ctx.work_dir / "people.json").is_file():
+        for person in ctx.read_json("people.json").get("people") or []:
+            image = ctx.work_dir / str(person.get("image") or "")
+            if person.get("verified") is not True:            # only a face several photos agree on (people.consensus)
+                continue
+            data = portrait_bytes(image) if person.get("name") and image.is_file() else None
+            if data:
+                portrait_of[str(person["name"])] = data
+    portrait_names = list(portrait_of)
+
+    def portraits_for(shot: Shot) -> list[tuple[str, bytes]]:
+        if not portrait_of:
+            return []
+        who = expected_people(shot, portrait_names, protagonist, scope)
+        return [(name, portrait_of[name]) for name in who[:2] if name in portrait_of]
+
     rounds = int(cfg.get("rounds", 2))
 
     def judge(shot: Shot) -> None:
@@ -605,7 +731,8 @@ def run(ctx: RunContext) -> None:
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
             cv2.imwrite(str(sheets_dir / f"{shot.id}{suffix}.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 80])
             verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds,
-                                 subject, source_lines(options, candidates), around=surrounding(shots_file.shots, shot.id))
+                                 subject, source_lines(options, candidates), around=surrounding(shots_file.shots, shot.id),
+                                 portraits=portraits_for(shot))
             by_letter = dict(zip(LETTERS, options))
             seen += options
             accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
@@ -632,7 +759,12 @@ def run(ctx: RunContext) -> None:
     scenes = bool((ctx.section("sourcing").get("youtube") or {}).get("scene_search"))
     variety = float(cfg.get("variety_margin", 0.03 if scenes else 0) or 0)
     back_to_back = float(cfg.get("back_to_back_margin", 0.05 if scenes else 0.02) or 0)
+    # judge.event_masters (true): each event's master video first, for every shot of the event the judge took it for
+    masters = event_masters(shots, verdicts, candidates) if cfg.get("event_masters", True) else {}
+    for event, cid in masters.items():
+        print(f"   Vídeo maestro de «{event[:60]}»: {(candidates[cid].title or cid)[:70]}")
     selections: list[Selection] = []
+    picked: dict[str, Option] = {}                       # shot → the option it took (its scores)
     for shot in shots:
         if shot.id in kept:
             selections.append(kept[shot.id])
@@ -645,16 +777,24 @@ def run(ctx: RunContext) -> None:
             # Only what the judge accepted, in its order. If it rejected everything it saw, the shot
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
-        usable = [o for o in preference if not is_repeat(o, selections, max_hamming)
+        master = masters.get(_event_key(shot))
+        if (follow := continuation(shot, shots, selections, picked, judged, master, cfg)) is not None:
+            preference = [follow, *preference]           # the strong moment of the shot before runs on (≤ 5 s in all)
+        usable = [o for o in preference if (o is follow or not is_repeat(o, selections, max_hamming))
                   and not overused(o.candidateId, selections,
-                                   per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))]
-        chosen = prefer_variety(usable, selections, variety, back_to_back,
-                                lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
+                                   per_source * (3 if o.candidateId == master else
+                                                 2 if own_event(candidates[o.candidateId].title, shot) else 1))]
+        chosen = follow if follow is not None and follow in usable else (
+            next((o for o in usable if o.candidateId == master), None) if judged else None)
+        if chosen is None:
+            chosen = prefer_variety(usable, selections, variety, back_to_back,
+                                    lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))
             continue
-        decided_by = "judge" if any(chosen is o for o in judged) else "score"
+        picked[shot.id] = chosen
+        decided_by = "judge" if (chosen is follow or any(chosen is o for o in judged)) else "score"
         candidate = candidates[chosen.candidateId]
         selections.append(Selection(
             shotId=shot.id,
@@ -676,6 +816,7 @@ def run(ctx: RunContext) -> None:
             score=chosen.total,
             judge=_verdict(verdict_info, chosen, cfg),
             phash=chosen.phash,
+            master=bool(master) and chosen.candidateId == master,
         ))
 
     stats: dict[str, int | float] = {
@@ -685,6 +826,7 @@ def run(ctx: RunContext) -> None:
         "byJudge": sum(s.decidedBy == "judge" for s in selections),
         "byScore": sum(s.decidedBy == "score" for s in selections),
         "fallback": sum(s.status == "fallback" for s in selections),
+        "fromMaster": sum(1 for sh, s in zip(shots, selections) if s.candidateId and s.candidateId == masters.get(_event_key(sh))),
     }
     for selection in selections:
         if selection.source:

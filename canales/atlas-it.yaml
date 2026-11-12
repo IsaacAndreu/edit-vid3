@@ -1,0 +1,54 @@
+# «Atlas» (italiano): el mismo formato que atlas-es/atlas-pt/atlas-de (página de papel, globo que gira de frase en
+# frase, relieve, escenas de remotion/atlas; pipeline/atlas.py → Atlas.tsx). Sin metraje: va por el carril rápido de la
+# cola. Llega doblado desde atlas-es (dubbing.channels it: atlas-it) o con guiones propios.
+# Su voz: estudio → Ajustes → Voces por canal → atlas-it.
+
+video:
+  fps: 30
+
+visual:
+  style: atlas
+  engine: storyboard               # motor nuevo (mapas de relieve, 3D, gráficos): basta guion.txt, la IA escribe
+                                   # las escenas (escenas.md) y el storyboard; sin esta línea, el Atlas de globo de siempre
+
+brand:
+  name: Atlas
+  accent: "#B8322A"
+  motion: clean
+  endStyle: paper                  # la pantalla final en papel, como el resto del vídeo
+
+align:
+  language: it
+
+localize: |                       # cómo adaptar cada guion a su público
+  Público de Italia y del Tesino suizo. Kilómetros, metros, euros; las cifras como allí (3.812 metri). Si viene a cuento,
+  una comparación de allí (el Monte Bianco con 4.806 m, los Alpes, los Apeninos, el Etna). Tono claro y con ritmo.
+
+factcheck:
+  block_voice: false               # la verificación avisa (verificacion.md) pero no para la voz
+
+timeline:
+  music_default: intriga
+  music_volume: 0.12
+  questions: false
+  labels: false
+  endscreen_seconds: 15
+
+graphics:
+  types: []
+  extra_types: []
+
+ideas:
+  about: 'un canale YouTube italiano di mappe e rilievo: perché un luogo del mondo è com’è (altopiani, montagne, confini, fiumi, il luogo più remoto), con dati e fonti, video di 8-10 minuti'
+  niches: [geografia, montagne, altopiani, confini, fiumi, curiosità della mappa]
+  words: 1200
+  competitors: ["https://www.youtube.com/channel/UCC4g8vS4FYCAELLK3AimTgQ", "@RealLifeLore", "@Wendoverproductions"]
+
+lab:
+  queries: ["nasconde qualcosa di cui nessuno parla", "perché nessuno vive", "il confine più strano del mondo", "geografia senza senso"]
+
+dubbing:
+  enabled: false
+
+shorts:
+  enabled: false

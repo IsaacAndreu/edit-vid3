@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import re
 import threading
 from pathlib import Path
@@ -97,17 +99,41 @@ class Detectors:
         recognised word keeps captions, titles and lower-thirds and ignores scene patterns.
         """
 
+        mask = np.zeros(frame.shape[:2], np.uint8)
+        for box in self.text_boxes(frame):
+            cv2.fillPoly(mask, [np.array(box, np.int32).reshape(-1, 2)], 1)
+        return float(mask.mean())
+
+    def text_boxes(self, frame: np.ndarray) -> list[Any]:
+        """The polygons of readable words (≥3 letters, confident OCR), in the frame's pixels."""
+
         with self._lock:
             if self._ocr is None:
                 self._ocr = _make_ocr(self.ocr_side)
             if self._ocr is False:                 # no OCR on this machine: nothing is counted as text
-                return 0.0
+                return []
             results, _ = self._ocr(frame, use_det=True, use_cls=False, use_rec=True)
-        mask = np.zeros(frame.shape[:2], np.uint8)
-        for box, text, score in results or []:
-            if float(score) >= 0.7 and len(re.findall(r"[^\W\d_]", str(text))) >= 3:
-                cv2.fillPoly(mask, [np.array(box, np.int32).reshape(-1, 2)], 1)
-        return float(mask.mean())
+        return [box for box, text, score in results or []
+                if float(score) >= 0.7 and len(re.findall(r"[^\W\d_]", str(text))) >= 3]
+
+    def text_edges(self, frames: list[np.ndarray], top_band: float = 0.2, bottom_band: float = 0.28) -> tuple[float, float] | None:
+        """Burned-in text that lives only on the edges (subtitles at the bottom, a channel tag at the top): how much to
+        cut from the top and the bottom (fractions of the height) to leave none; (0, 0) with no text at all; None when
+        there is text over the middle of the picture (cropping would not save it)."""
+
+        top = bottom = 0.0
+        for frame in frames:
+            h = frame.shape[0]
+            for box in self.text_boxes(frame):
+                ys = [float(p[1]) / h for p in np.array(box).reshape(-1, 2)]
+                y0, y1 = min(ys), max(ys)
+                if y1 <= top_band:
+                    top = max(top, y1 + 0.015)
+                elif y0 >= 1 - bottom_band:
+                    bottom = max(bottom, 1 - y0 + 0.015)
+                else:
+                    return None
+        return round(top, 3), round(bottom, 3)
 
     def faces(self, frame: np.ndarray, min_area: float = 0.002) -> list[float]:
         """Area (fraction of the frame) of every face bigger than `min_area`, largest first."""

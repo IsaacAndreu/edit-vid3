@@ -101,3 +101,23 @@ def test_a_voice_still_being_written_is_not_a_language(tmp_path):
     assert dub.pending(tmp_path) == []
     (folder / "voz-pt.mp3").write_bytes(b"x")
     assert dub.pending(tmp_path) == [("gimbr6", "pt")]
+
+
+def test_atlas_scene_texts_are_translated_and_vocabulary_kept():
+    graphic = {"type": "atlas", "view": "scene", "camera": {"lat": 0, "lon": 0, "zoom": 1},
+               "scene": {"type": "atlas-bar-compare", "id": "x", "theme": "paper", "kicker": "ALTURA",
+                         "title": {"text": "Más alto que *el Aneto*", "accent": "danger"},
+                         "bars": [{"label": "Aneto", "value": 3404, "display": "3.404 m", "style": "earth", "at": {"t": 1}}]}}
+    texts: dict[str, str] = {}
+    dub._graphic_strings(graphic, "graphic:g", texts)
+    assert set(texts) == {"graphic:g.scene.kicker", "graphic:g.scene.title.text", "graphic:g.scene.bars.0.label"}
+    out = dub._set_graphic_strings(graphic, "graphic:g", {k: v + "!" for k, v in texts.items()})["scene"]
+    assert out["title"] == {"text": "Más alto que *el Aneto*!", "accent": "danger"}
+    assert out["bars"][0]["style"] == "earth" and out["theme"] == "paper" and out["kicker"] == "ALTURA!"
+
+
+def test_atlas_satellite_credit_follows_the_dub_language():
+    from pipeline.atlas import SAT_CREDIT
+    timeline = {"groups": [{"id": "g", "graphic": {"type": "atlas", "view": "sat", "sat": {"credit": SAT_CREDIT["es"]}}}]}
+    dub.sat_credits(timeline, "fr")
+    assert timeline["groups"][0]["graphic"]["sat"]["credit"] == SAT_CREDIT["fr"]

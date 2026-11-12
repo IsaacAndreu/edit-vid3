@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "slug": "test-phase0",
+    "title": "Prueba fase 0",
+    "brand": { "name": "ATLAS", "icon": "✦" },
+    "chapters": [
+      { "numeral": "I", "label": "Ground" },
+      { "numeral": "II", "label": "Pressure" },
+      { "numeral": "III", "label": "Engines" },
+      { "numeral": "IV", "label": "Airports" },
+      { "numeral": "V", "label": "Cost" }
+    ],
+    "duration": 6
+  },
+  "audio": {},
+  "scenes": [
+    { "id": "papel", "type": "atlas-blank", "start": { "t": 0 }, "theme": "paper", "chapter": 0, "enter": "fade" },
+    { "id": "noche", "type": "atlas-blank", "start": { "t": 3 }, "theme": "night", "enter": "fade" }
+  ]
+}

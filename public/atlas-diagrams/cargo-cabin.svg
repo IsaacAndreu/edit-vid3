@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1680 760" width="1680" height="760">
+<!-- Capas (ids) de cargo-cabin:
+  fuselage: fuselaje
+  wings: alas
+  tail: cola
+  crew: tripulación (puntos rojos)
+  cargo: contenedores de carga
+-->
+
+<g id="wings" class="earth ink">
+  <path d="M780,282 L1060,30 L1130,30 L960,282 Z"/>
+  <path d="M780,478 L1060,730 L1130,730 L960,478 Z"/>
+</g>
+<g id="tail" class="earth ink">
+  <path d="M1470,290 L1560,200 L1600,200 L1560,290 Z"/>
+  <path d="M1470,470 L1560,560 L1600,560 L1560,470 Z"/>
+</g>
+<path id="fuselage" class="paper ink" d="M40,380 C60,330 120,282 220,282 L1480,282 C1530,282 1560,300 1575,330 L1640,380 L1575,430 C1560,460 1530,478 1480,478 L220,478 C120,478 60,430 40,380 Z"/>
+<g id="crew" class="red">
+  <circle cx="125" cy="362" r="11"/><circle cx="125" cy="398" r="11"/><circle cx="165" cy="362" r="11"/><circle cx="165" cy="398" r="11"/>
+</g>
+<g id="cargo" class="earth ink"><rect x="300" y="304" width="118" height="152"/><rect x="433" y="304" width="118" height="152"/><rect x="566" y="304" width="118" height="152"/><rect x="699" y="304" width="118" height="152"/><rect x="832" y="304" width="118" height="152"/><rect x="965" y="304" width="118" height="152"/><rect x="1098" y="304" width="118" height="152"/><rect x="1231" y="304" width="118" height="152"/><rect x="1364" y="304" width="118" height="152"/></g>
+</svg>

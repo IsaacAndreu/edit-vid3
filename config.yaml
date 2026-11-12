@@ -136,6 +136,8 @@ analysis:
   max_frames_per_video: 40         # miniaturas del storyboard codificadas por vídeo (pasada gruesa)
   dedupe_difference: 4             # miniaturas consecutivas casi iguales se codifican una vez
   moments_per_video: 2             # mejores momentos por vídeo en la pasada gruesa
+  said_windows: true              # una ventana más donde los subtítulos de la fuente DICEN el momento del plano
+  said_videos: 3                   # en cuántos de sus mejores vídeos se busca
   fine_windows: 2                  # ventanas por plano que se descargan a 360p (pasada fina)
   extra_windows_with_entities: 1   # +1 si el plano nombra un lugar/persona/marca concreta
   window_padding: 2.0              # s alrededor del momento elegido
@@ -160,6 +162,10 @@ judge:
   trusted_bonus: 0.03
   avoid_other_videos: true         # no reutilizar fragmentos/fotos ya usados en otros vídeos del canal (cache/used_fragments.json)
   all: true                        # el juez revisa todos los planos (~0,20 $/vídeo); false = solo los dudosos
+  portraits: true                  # con cada hoja, la foto (people.json) de la persona de la que habla el plano: rechaza otra cara
+  event_masters: true              # cada suceso, de su vídeo maestro (el que el juez aceptó en más planos de ese suceso)
+  continue_action: true            # un momento fuerte del vídeo maestro sigue en el plano siguiente (≤ 5 s en total, un solo fragmento)
+  continue_motion: 0.3             # movimiento mínimo (0-1) para contar como momento fuerte (o la acción oída en la fuente)
   provider: openai                 # modelo CON visión; nunca deepseek-chat/flash (no ven imágenes)
   model: gpt-5-mini
   reasoning_effort: low
@@ -198,7 +204,7 @@ grade:                             # color igualado entre clips (se aplica al pr
   look: cine                       # tono común del canal: neutral | cine (sombras frías, luces cálidas) | frio | calido
 
 quotes:                            # declaraciones originales con subtítulos (pipeline/quotes.py)
-  count: 0                         # cuántas citas del guion buscar dichas por su autor (0 = ninguna; los canales lo activan)
+  count: 2                         # cuántas citas del guion buscar dichas por su autor, con su voz y subtítulos (0 = ninguna)
   max_seconds: 12                  # duración máxima de cada declaración
   min_match: 0.55                  # parecido mínimo entre lo que dice el vídeo y la cita del guion
   videos_per_quote: 4              # resultados de YouTube que se revisan por cita
@@ -341,6 +347,7 @@ timeline:
   question_max_words: 30
   card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
   labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
+  subtitles: true                  # subtítulos de la voz siempre en pantalla (solo vídeos de metraje), la palabra clave en amarillo
   label_seconds: 2.5
   endscreen_seconds: 20           # pantalla final para los elementos de YouTube (vídeo sugerido + suscribirse); 0 = no
   moments: 2                       # momentos cumbre en los que la voz calla y suena el original (0 = ninguno)
@@ -374,6 +381,8 @@ qa:
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
   max_phash_distance: 6            # imágenes más parecidas → posible repetición
   columns: 14                      # hoja de contactos
+  review: true                     # revisión final: un fotograma de cada plano + su frase + las fotos de las personas → qa/revision.md
+  review_batch: 9                  # planos por hoja (≈0,01 $ cada una)
 
 # doctor: tras el render se mira el vídeo final una vez buscando negros y congelados, y se arreglan en su tramo
 # (un clip más corto que su plano se ralentiza para llenarlo en vez de quedarse en su último fotograma; otro tramo se
@@ -436,7 +445,7 @@ gancho:                            # revisión del principio del guion antes de 
 
 ritmo:                             # tras el render: tramos sin nada nuevo en pantalla y silencios (qa/ritmo.md; avisa, no bloquea)
   enabled: true
-  quiet_seconds: 12                # tramo quieto avisado (Manicule tiene 1-2 así en 5 min)
+  quiet_seconds: 12                # tramo quieto avisado (la referencia de Atlas tiene 1-2 así en 5 min)
   hook_seconds: 30                 # el arranque, más exigente:
   hook_quiet: 6                    # ya avisa a los 6 s quieto
   silence_seconds: 2.5             # la voz calla este tiempo o más
@@ -474,4 +483,7 @@ without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue a
   max_unfilled_share: 0
 
 tts:
+  provider: ""                    # ai84 | genaipro: con quién se buscan y guardan las voces nuevas ("" = AI84 si está AI84_API_KEY)
   usd_per_1k_chars: 0.022         # GenAIPro: lo que cuestan 1.000 caracteres de voz (22 $ el millón), para «Gasto de API»
+  ai84_usd_per_1k_credits: 0      # AI84: $ por 1.000 créditos (lo que pagaste ÷ créditos × 1000); 0 = el gasto de voz sale a 0
+  ai84_credits_per_char: 1.15     # AI84: créditos por carácter (modelos HD 1,15; turbo 1,0), para avisar antes de medir un vídeo

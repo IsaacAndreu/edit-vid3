@@ -1073,6 +1073,12 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
             files = heal(ctx, timeline, segments, files, build, join, r.fps)
         except Exception as error:      # a check: never costs the video
             print(f"   Render doctor no disponible: {str(error)[:120]}")
+    from . import subtitulos
+
+    try:                                 # timeline.subtitles: burned in last; the clean cut stays as video-limpio.mp4
+        subtitulos.burn(ctx, final, timeline)
+    except Exception as error:          # never costs the video: it goes out without them
+        print(f"   Subtítulos no quemados: {str(error)[:120]}")
     from . import simulacion
 
     if simulacion.active(ctx):           # quiet stretches, worlds that flash by, words on top of each other

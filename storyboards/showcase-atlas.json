@@ -1,0 +1,302 @@
+{
+  "brand": {
+    "name": "Atlas",
+    "accent": "#B8322A",
+    "motion": "clean",
+    "endStyle": "paper"
+  },
+  "scenes": [
+    {
+      "seconds": 4,
+      "graphic": {
+        "type": "atlas",
+        "view": "title",
+        "camera": {
+          "lat": 30,
+          "lon": 90,
+          "zoom": 2
+        },
+        "title": {
+          "number": "I",
+          "text": "The *ground*"
+        },
+        "chapters": [
+          "Ground",
+          "Pressure",
+          "Engines",
+          "Airports",
+          "Cost"
+        ],
+        "chapter": 1,
+        "brand": "ATLAS"
+      }
+    },
+    {
+      "seconds": 6,
+      "graphic": {
+        "type": "atlas",
+        "view": "globe",
+        "camera": {
+          "lat": 32,
+          "lon": 88,
+          "zoom": 3.4
+        },
+        "chapters": [
+          "Ground",
+          "Pressure",
+          "Engines",
+          "Airports",
+          "Cost"
+        ],
+        "chapter": 1,
+        "brand": "ATLAS",
+        "highlight": [
+          {
+            "name": "China",
+            "label": "CHINA"
+          }
+        ],
+        "points": [
+          {
+            "name": "LHASA",
+            "lat": 29.65,
+            "lon": 91.1,
+            "at": 10
+          },
+          {
+            "name": "CHENGDU",
+            "lat": 30.66,
+            "lon": 104.07,
+            "at": 20
+          },
+          {
+            "name": "KASHGAR",
+            "lat": 39.47,
+            "lon": 75.99,
+            "at": 30
+          }
+        ],
+        "routes": [
+          {
+            "from": [
+              39.47,
+              75.99
+            ],
+            "to": [
+              30.66,
+              104.07
+            ],
+            "label": "2,500 KM",
+            "dashed": true,
+            "style": "main",
+            "at": 40
+          }
+        ],
+        "card": {
+          "kind": "list",
+          "big": "",
+          "title": "To fly straight across",
+          "lines": [
+            "Special permission",
+            "Extra oxygen",
+            "An escape plan"
+          ],
+          "source": "",
+          "side": "left",
+          "at": 50
+        },
+        "stamp": {
+          "text": "MOST NEVER BOTHER",
+          "at": 120
+        }
+      }
+    },
+    {
+      "seconds": 5,
+      "graphic": {
+        "type": "atlas",
+        "view": "chart",
+        "camera": {
+          "lat": 32,
+          "lon": 88,
+          "zoom": 3.4
+        },
+        "chapters": [
+          "Ground",
+          "Pressure",
+          "Engines",
+          "Airports",
+          "Cost"
+        ],
+        "chapter": 1,
+        "brand": "ATLAS",
+        "chart": {
+          "kind": "bars",
+          "title": "Average height above sea level",
+          "unit": "km",
+          "bars": [
+            {
+              "label": "Antarctica",
+              "value": 2.5,
+              "unit": "km"
+            },
+            {
+              "label": "Tibetan Plateau",
+              "value": 4.1,
+              "unit": "km"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "seconds": 5,
+      "graphic": {
+        "type": "atlas",
+        "view": "globe",
+        "dark": true,
+        "camera": {
+          "lat": 25,
+          "lon": 80,
+          "zoom": 1.6
+        },
+        "brand": "ATLAS",
+        "headline": {
+          "text": "Why do planes avoid *flying over Tibet?*",
+          "at": 20
+        },
+        "routes": [
+          {
+            "from": [
+              25.28,
+              51.53
+            ],
+            "to": [
+              31.23,
+              121.47
+            ],
+            "label": "",
+            "dashed": true,
+            "style": "main",
+            "at": 5
+          }
+        ]
+      }
+    },
+    {
+      "seconds": 6,
+      "graphic": {
+        "type": "atlas",
+        "view": "scene",
+        "camera": {
+          "lat": 32,
+          "lon": 88,
+          "zoom": 3.4
+        },
+        "prev": {
+          "lat": 32,
+          "lon": 88,
+          "zoom": 3.4
+        },
+        "chapters": [
+          "Ground",
+          "Pressure",
+          "Engines",
+          "Airports",
+          "Cost"
+        ],
+        "chapter": 2,
+        "brand": "ATLAS",
+        "scene": {
+          "id": "s1",
+          "type": "atlas-dial",
+          "start": {
+            "t": 0
+          },
+          "theme": "paper",
+          "enter": "fade",
+          "kicker": "AT ABOUT 35,000 FT, WITHOUT OXYGEN",
+          "title": "Clear-headed for *a minute or less*",
+          "sourceNote": "FAA: 30–60 SECONDS AT 35,000 FT",
+          "dial": {
+            "max": 60,
+            "from": 0,
+            "to": 60,
+            "at": {
+              "t": 0.8
+            },
+            "seconds": 4.5,
+            "fill": "remaining",
+            "accent": "danger"
+          },
+          "readout": {
+            "text": "{value} SEC",
+            "style": "mono"
+          }
+        }
+      }
+    },
+    {
+      "seconds": 5,
+      "graphic": {
+        "type": "atlas",
+        "view": "scene",
+        "camera": {
+          "lat": 32,
+          "lon": 88,
+          "zoom": 3.4
+        },
+        "chapters": [
+          "Ground",
+          "Pressure",
+          "Engines",
+          "Airports",
+          "Cost"
+        ],
+        "brand": "ATLAS",
+        "scene": {
+          "id": "s2",
+          "type": "atlas-recap",
+          "start": {
+            "t": 0
+          },
+          "theme": "paper",
+          "enter": "fade",
+          "title": "Why planes *avoid Tibet*",
+          "items": [
+            {
+              "text": "The ground is high",
+              "at": {
+                "t": 0.4
+              }
+            },
+            {
+              "text": "No way down in time",
+              "at": {
+                "t": 0.8
+              }
+            },
+            {
+              "text": "Can’t stay high enough",
+              "at": {
+                "t": 1.2
+              }
+            },
+            {
+              "text": "Few, and in thin air",
+              "at": {
+                "t": 1.6
+              }
+            },
+            {
+              "text": "Doesn’t pay for most",
+              "at": {
+                "t": 2.0
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

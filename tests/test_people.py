@@ -67,3 +67,25 @@ def test_organisations_are_not_people():
 
     assert not looks_like_person("OCU") and not looks_like_person("NTSB") and not looks_like_person("Ministerio de Consumo")
     assert looks_like_person("Surya Bonaly") and looks_like_person("SATO") and looks_like_person("MALININ")
+
+
+def test_the_portrait_is_the_face_most_photos_agree_on():
+    import numpy as np
+    from pipeline.people import consensus
+
+    me, other = np.array([1.0, 0.0, 0.1]), np.array([0.0, 1.0, 0.0])
+    group, verified = consensus([other, me, me * 1.1, None, me + 0.05])
+    assert verified and group == [1, 2, 4]                       # the intruder and the faceless photo are out
+    group, verified = consensus([me, other])                     # two faces that disagree: nobody to trust
+    assert not verified and group == [0, 1]
+    assert consensus([None, None]) == ([0, 1], False)
+
+
+def test_the_role_comes_from_the_planner_by_name_or_surname():
+    from pipeline.people import role_of
+    from pipeline.planner import parse_roles
+
+    roles = parse_roles({"roles": {"Rita Isbell": "Hermana de una víctima", "Larry Nassar": "null", " ": "x"}})
+    assert roles == {"Rita Isbell": "Hermana de una víctima"}
+    assert role_of(roles, "Rita Isbell") == role_of(roles, "R. Isbell") == "Hermana de una víctima"
+    assert role_of(roles, "Larry Nassar") is None

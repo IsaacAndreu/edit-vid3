@@ -1,0 +1,555 @@
+{
+  "meta": {
+    "slug": "hudson1549",
+    "title": "Seis minutos: el vuelo que amerizó en el Hudson",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [],
+    "short": {
+      "top": {
+        "text": "El avión que *amerizó en el Hudson*",
+        "accent": "danger"
+      },
+      "bottom": "Datos reales del FDR · NTSB DCA09MA026"
+    },
+    "duration": 87.36
+  },
+  "audio": {
+    "transcript": "atlas-work/hudson1549/transcript.json"
+  },
+  "scenes": [
+    {
+      "id": "despegue",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 0
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "15 DE ENERO DE 2009 · NUEVA YORK",
+      "sourceNote": "TRAYECTORIA: FDR DE LA NTSB (DCA09MA026) · RECONSTRUCCIÓN SIMPLIFICADA",
+      "region": "nueva-york",
+      "camera": [
+        {
+          "at": {
+            "t": 0
+          },
+          "center": [
+            -73.9,
+            40.79
+          ],
+          "zoom": 2.0
+        },
+        {
+          "at": {
+            "say": "vuelo mil quinientos cuarenta"
+          },
+          "center": [
+            -73.89,
+            40.81
+          ],
+          "zoom": 1.5
+        }
+      ],
+      "points": [
+        {
+          "name": "LaGuardia",
+          "pos": [
+            -73.88417,
+            40.76889
+          ],
+          "at": {
+            "say": "despega de LaGuardia"
+          },
+          "marker": "airport"
+        }
+      ],
+      "labels": [
+        {
+          "text": "Manhattan",
+          "pos": [
+            -73.962,
+            40.785
+          ],
+          "at": {
+            "t": 0.8
+          },
+          "style": "region"
+        }
+      ],
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "despega de LaGuardia"
+        },
+        "from": "15:25:00",
+        "to": "15:27:05",
+        "rate": 9,
+        "hud": {
+          "show": [
+            "clock",
+            "alt",
+            "kias"
+          ],
+          "corner": "tl"
+        }
+      }
+    },
+    {
+      "id": "aves",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "minuto y medio después"
+      },
+      "theme": "paper",
+      "enter": "continuous",
+      "kicker": "US AIRWAYS 1549",
+      "sourceNote": "TRAYECTORIA: FDR DE LA NTSB · 2.818 FT: NTSB AAR-10/03, P. 2",
+      "region": "nueva-york",
+      "camera": [
+        {
+          "at": {
+            "say": "minuto y medio después"
+          },
+          "center": [
+            -73.89,
+            40.845
+          ],
+          "zoom": 1.7
+        }
+      ],
+      "points": [
+        {
+          "name": "LaGuardia",
+          "pos": [
+            -73.88417,
+            40.76889
+          ],
+          "at": {
+            "t": 0
+          },
+          "marker": "airport"
+        }
+      ],
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "minuto y medio después"
+        },
+        "from": "15:26:30",
+        "to": "15:27:20",
+        "rate": 7,
+        "marks": [
+          {
+            "clock": "15:27:11",
+            "label": "Bandada de aves",
+            "sub": "15:27:11 · 2.818 FT SOBRE EL SUELO",
+            "accent": "danger"
+          }
+        ],
+        "hud": {
+          "show": [
+            "clock",
+            "alt",
+            "n1"
+          ],
+          "corner": "tl"
+        }
+      }
+    },
+    {
+      "id": "motores",
+      "type": "atlas-flight-profile",
+      "start": {
+        "say": "los dos motores pierden"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "EMPUJE DE LOS MOTORES (N1)",
+      "title": {
+        "text": "Los dos motores, *a la vez*",
+        "accent": "danger"
+      },
+      "sourceNote": "N1: FDR DE LA NTSB (DCA09MA026)",
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "los dos motores pierden"
+        },
+        "from": "15:26:55",
+        "to": "15:28:10",
+        "rate": 14
+      },
+      "series": "n1",
+      "axis": {
+        "max": 100,
+        "step": 25,
+        "unit": "%"
+      },
+      "legend": [
+        "MOTOR 1",
+        "MOTOR 2"
+      ],
+      "marks": [
+        {
+          "clock": "15:27:11",
+          "label": "Aves",
+          "sub": "15:27:11",
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "cabina",
+      "type": "atlas-cockpit",
+      "start": {
+        "say": "en la cabina"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "CABINA",
+      "sourceNote": "FRASES: CVR Y ATC, NTSB AAR-10/03, PP. 2-3 (TRADUCIDAS) · INSTRUMENTOS: FDR",
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "en la cabina"
+        },
+        "from": "15:27:08",
+        "to": "15:28:50",
+        "rate": 4
+      },
+      "instruments": [
+        "alt",
+        "kias",
+        "n1"
+      ],
+      "visible": 3,
+      "lines": [
+        {
+          "clock": "15:27:10",
+          "who": "COMANDANTE",
+          "text": "Pájaros.",
+          "ref": "AAR-10/03 p. 2",
+          "accent": "danger"
+        },
+        {
+          "clock": "15:27:23",
+          "who": "COMANDANTE",
+          "text": "Mi avión.",
+          "ref": "AAR-10/03 p. 2"
+        },
+        {
+          "clock": "15:27:33",
+          "who": "COMANDANTE A CONTROL",
+          "text": "…perdimos empuje en los dos motores, volvemos hacia LaGuardia.",
+          "ref": "AAR-10/03 p. 2"
+        },
+        {
+          "clock": "15:28:05",
+          "who": "COMANDANTE A CONTROL",
+          "text": "No podemos. Puede que acabemos en el Hudson.",
+          "ref": "AAR-10/03 p. 2",
+          "accent": "danger"
+        },
+        {
+          "clock": "15:28:46",
+          "who": "COMANDANTE A CONTROL",
+          "text": "No sé si llegamos a ninguna pista… ¿Teterboro?",
+          "ref": "AAR-10/03 p. 3"
+        }
+      ]
+    },
+    {
+      "id": "velocidad",
+      "type": "atlas-flight-profile",
+      "start": {
+        "say": "para volver a encender"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "VELOCIDAD INDICADA",
+      "title": {
+        "text": "Nunca llegó a *300 nudos*",
+        "accent": "danger"
+      },
+      "sourceNote": "VELOCIDAD: FDR DE LA NTSB · 300 Y 214 KT: NTSB AAR-10/03, P. 2, NOTA 8",
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "para volver a encender"
+        },
+        "from": "15:27:00",
+        "to": "15:30:42",
+        "rate": 40
+      },
+      "series": "kias",
+      "axis": {
+        "max": 350,
+        "step": 50,
+        "unit": "KT"
+      },
+      "refs": [
+        {
+          "value": 300,
+          "label": "300 KT: VELOCIDAD PARA REENCENDER",
+          "at": {
+            "say": "hacía falta ir a"
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "hudson",
+      "type": "atlas-relief-map",
+      "start": {
+        "say": "así que gira"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "RUMBO AL RÍO",
+      "sourceNote": "TRAYECTORIA: FDR DE LA NTSB · RECONSTRUCCIÓN SIMPLIFICADA",
+      "region": "nueva-york",
+      "camera": [
+        {
+          "at": {
+            "say": "así que gira"
+          },
+          "center": [
+            -73.94,
+            40.822
+          ],
+          "zoom": 1.0
+        }
+      ],
+      "labels": [
+        {
+          "text": "Río Hudson",
+          "pos": [
+            -74.003,
+            40.8
+          ],
+          "at": {
+            "say": "el río Hudson"
+          },
+          "style": "region",
+          "accent": "data"
+        },
+        {
+          "text": "Manhattan",
+          "pos": [
+            -73.962,
+            40.785
+          ],
+          "at": {
+            "say": "así que gira"
+          },
+          "style": "region"
+        },
+        {
+          "text": "Nueva Jersey",
+          "pos": [
+            -74.05,
+            40.84
+          ],
+          "at": {
+            "say": "así que gira"
+          },
+          "style": "region"
+        }
+      ],
+      "points": [
+        {
+          "name": "LaGuardia",
+          "pos": [
+            -73.88417,
+            40.76889
+          ],
+          "at": {
+            "say": "así que gira"
+          },
+          "marker": "airport"
+        }
+      ],
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "así que gira"
+        },
+        "from": "15:28:30",
+        "to": "15:30:42",
+        "rate": 50,
+        "trail": "full",
+        "marks": [
+          {
+            "clock": "15:27:11",
+            "label": "Aves",
+            "sub": "15:27:11",
+            "accent": "danger"
+          }
+        ],
+        "hud": {
+          "show": [
+            "clock",
+            "alt"
+          ],
+          "corner": "tl"
+        }
+      }
+    },
+    {
+      "id": "descenso",
+      "type": "atlas-flight-profile",
+      "start": {
+        "say": "en tres minutos y medio"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "ALTITUD Y TERRENO DEBAJO",
+      "title": {
+        "text": "Tres minutos y medio, *hasta el agua*",
+        "accent": "danger"
+      },
+      "sourceNote": "ALTITUD: FDR DE LA NTSB CORREGIDA CON EL ALTÍMETRO LOCAL · TERRENO: TERRARIUM",
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "en tres minutos y medio"
+        },
+        "from": "15:25:00",
+        "to": "15:30:42",
+        "rate": 60
+      },
+      "series": "alt",
+      "axis": {
+        "max": 4000,
+        "step": 1000,
+        "unit": "FT"
+      },
+      "terrain": true,
+      "marks": [
+        {
+          "clock": "15:27:11",
+          "label": "Aves",
+          "sub": "15:27:11",
+          "accent": "danger"
+        },
+        {
+          "clock": "15:30:42",
+          "label": "Hudson",
+          "sub": "15:30:43",
+          "accent": "data"
+        }
+      ]
+    },
+    {
+      "id": "amerizaje",
+      "type": "atlas-terrain-3d",
+      "start": {
+        "say": "a las tres y media"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "ALTURAS ×3",
+      "sourceNote": "TRAYECTORIA Y ALTITUD: FDR DE LA NTSB · 125 KT: NTSB AAR-10/03, P. 48",
+      "terrain": "hudson-1549",
+      "exaggeration": 3,
+      "camera": [
+        {
+          "at": {
+            "say": "a las tres y media"
+          },
+          "tilt": 34,
+          "yaw": -12,
+          "distance": 1.5,
+          "target": [
+            -73.96,
+            40.81
+          ],
+          "targetKm": 0.3
+        },
+        {
+          "at": {
+            "say": "con el morro levantado"
+          },
+          "tilt": 24,
+          "yaw": 8,
+          "distance": 0.9,
+          "target": [
+            -73.995,
+            40.78
+          ],
+          "targetKm": 0.1
+        }
+      ],
+      "flight": {
+        "data": "accidentes/us1549/vuelo.json",
+        "at": {
+          "say": "a las tres y media"
+        },
+        "from": "15:29:30",
+        "to": "15:30:42",
+        "rate": 10,
+        "marks": [
+          {
+            "clock": "15:30:42",
+            "label": "Amerizaje",
+            "sub": "15:30:43 · 125 KT",
+            "accent": "data"
+          }
+        ],
+        "hud": {
+          "show": [
+            "clock",
+            "alt",
+            "kias"
+          ],
+          "corner": "tl"
+        }
+      }
+    },
+    {
+      "id": "sobreviven",
+      "type": "atlas-known",
+      "start": {
+        "say": "las ciento cincuenta y cinco"
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "INFORME FINAL",
+      "title": {
+        "text": "Ningún *fallecido*",
+        "accent": "good"
+      },
+      "asOf": "NTSB AAR-10/03 · ADOPTADO EL 4 MAY 2010",
+      "items": [
+        {
+          "status": "confirmed",
+          "text": "155 personas a bordo: *todas sobreviven*",
+          "source": "NTSB AAR-10/03, TABLA 1",
+          "at": {
+            "say": "las ciento cincuenta y cinco"
+          }
+        },
+        {
+          "status": "confirmed",
+          "text": "Aves a *2.818 pies* sobre el suelo",
+          "source": "NTSB AAR-10/03, P. 2",
+          "at": {
+            "say": "personas sobreviven"
+          }
+        },
+        {
+          "status": "confirmed",
+          "text": "Toca el agua a *125 nudos*",
+          "source": "NTSB AAR-10/03, P. 48",
+          "at": {
+            "say": "desde la pista"
+          }
+        }
+      ]
+    }
+  ]
+}

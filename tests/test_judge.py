@@ -113,6 +113,85 @@ class RunTests(unittest.TestCase):
         self.assertEqual(result[1]["candidateId"], "wm:1")
         self.assertEqual(result[1]["decidedBy"], "judge")
 
+    def test_the_judge_sees_the_photo_of_the_person_the_shot_is_about(self) -> None:
+        broll = {"visualIntent": "a gymnast", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+        texts = ["Ana Pérez ganó el oro", "el público aplaudía"]
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": t, "chapter": 0, "broll": broll} for i, t in enumerate(texts)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        video = {"id": "yt:a", "source": "youtube", "kind": "video", "url": "https://y/a", "title": "t", "channel": "A",
+                 "license": "l", "credit": "Fuente: A", "attribution": "a", "query": "q", "rankScore": 1,
+                 "durationSeconds": 100, "storyboard": board}
+        scores = {f"s00{i}": [opt("yt:a", 0.40, start=10 + 10 * i, end=12 + 10 * i), opt("yt:a", 0.399, start=50 + 10 * i, end=52 + 10 * i)]
+                  for i in range(2)}
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {s: [video] for s in scores}, scores)
+            import cv2, numpy as np
+            (ctx.work_dir / "people").mkdir()
+            cv2.imwrite(str(ctx.work_dir / "people" / "ana.png"), np.full((600, 400, 4), 200, "uint8"))
+            ctx.write_json("people.json", {"slug": "t", "people": [{"name": "Ana Pérez", "image": "people/ana.png", "verified": True}]})
+            seen = {}
+
+            def fake_judge(ctx, shot, sheet, letters, *args, portraits=None, **kwargs):
+                seen[shot.id] = [(name, len(data)) for name, data in portraits or []]
+                return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+        self.assertEqual([n for n, _ in seen["s000"]], ["Ana Pérez"])        # her name in the shot: her photo goes along
+        self.assertTrue(seen["s000"][0][1] > 0)
+        self.assertEqual(seen["s001"], [])                                   # nobody named, no protagonist: no photo
+
+    def test_every_shot_of_an_event_comes_from_its_master_video_when_the_judge_takes_it(self) -> None:
+        broll = {"visualIntent": "the trial", "queries": ["a", "b", "c"], "queriesLocal": ["d"], "event": "Nassar sentencing hearing 2018"}
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": "t", "chapter": 0, "broll": broll} for i in range(3)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        base = {"source": "youtube", "kind": "video", "license": "l", "attribution": "a", "query": "q", "rankScore": 1,
+                "durationSeconds": 900, "storyboard": board}
+        trial = {**base, "id": "yt:trial", "url": "https://y/t", "title": "Court hearing", "channel": "MLive", "credit": "Fuente: MLive"}
+        other = {**base, "id": "yt:other", "url": "https://y/o", "title": "Some courtroom", "channel": "X", "credit": "Fuente: X"}
+        scores = {f"s00{i}": [opt("yt:other", 0.40, start=100 + 10 * i, end=103 + 10 * i),
+                              opt("yt:trial", 0.39, start=10 + 10 * i, end=13 + 10 * i)] for i in range(3)}
+        rankings = {"s000": ["B", "A"], "s001": ["B"], "s002": ["A", "B"]}     # s002: the judge prefers the other clip
+
+        def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
+            return {"ranking": rankings[shot.id], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {sid: [other, trial] for sid in scores}, scores)
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+            data = json.loads((ctx.work_dir / "selection.json").read_text())
+        self.assertEqual([r["candidateId"] for r in data["selections"]], ["yt:trial"] * 3)
+        self.assertEqual(data["stats"]["fromMaster"], 3)
+
+    def test_a_strong_moment_runs_on_into_the_next_shot_within_five_seconds(self) -> None:
+        broll = {"visualIntent": "the attack", "queries": ["a", "b", "c"], "queriesLocal": ["d"], "event": "Nassar sentencing hearing 2018"}
+        shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+                  "text": "t", "chapter": 0, "broll": broll} for i in range(3)]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        trial = {"id": "yt:trial", "source": "youtube", "kind": "video", "url": "https://y/t", "title": "Court hearing",
+                 "channel": "MLive", "license": "l", "credit": "Fuente: MLive", "attribution": "a", "query": "q",
+                 "rankScore": 1, "durationSeconds": 900, "storyboard": board}
+
+        def fast(start):
+            o = opt("yt:trial", 0.4, start=start, end=start + 2)
+            return o.model_copy(update={"scores": o.scores.model_copy(update={"motion": 0.8})})
+
+        scores = {f"s00{i}": [fast(100 + 40 * i)] for i in range(3)}
+
+        def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
+            return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._write(Path(tmp), shots, {sid: [trial] for sid in scores}, scores, hook=100)   # all judged
+            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                J.run(ctx)
+            starts = [r["start"] for r in json.loads((ctx.work_dir / "selection.json").read_text())["selections"]]
+        # s001 continues s000 (2 s + 2 s ≤ 5 s); s002 would make 6 s: its own fragment again
+        self.assertEqual(starts, [100.0, 102.0, 180.0])
+
     def test_second_round_then_fallback_never_blind_pick(self) -> None:
         broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
         shots = [{"id": "s000", "type": "broll", "startWord": 0, "endWord": 0, "start": 0.0, "end": 2.0,
