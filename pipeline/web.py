@@ -33,6 +33,7 @@ import threading
 import time
 from datetime import datetime, timezone
 import urllib.parse
+from email.utils import formatdate, parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,7 @@ STATIC_KINDS = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=
 
 # --- the page itself: index.html + css/js, each with an ETag; the assets carry a version in their URL ---------------
 
-_STATIC: dict[str, tuple[tuple[int, int, str], bytes, bytes, str]] = {}      # name → (mtime, size, version), body, gzip, etag
+_STATIC: dict[str, tuple[tuple[int, int, str], bytes, bytes, str, float]] = {}   # name → (mtime, size, version), body, gzip, etag, mtime
 _STATIC_LOCK = threading.Lock()
 
 
@@ -62,8 +63,8 @@ def static_version() -> str:
     return hashlib.sha256(repr(stamp).encode()).hexdigest()[:12]
 
 
-def static_file(name: str) -> tuple[bytes, bytes, str, str] | None:
-    """(body, gzipped body, ETag, content type) of a file of web_static, read once per version of the file.
+def static_file(name: str) -> tuple[bytes, bytes, str, str, float] | None:
+    """(body, gzipped body, ETag, content type, modified) of a file of web_static, read once per version of the file.
 
     index.html gets the version of the whole page in the URLs of its css and js ({{v}}), so the browser keeps those
     for good and asks again only when they change."""
@@ -80,10 +81,11 @@ def static_file(name: str) -> tuple[bytes, bytes, str, str] | None:
         body = path.read_bytes()
         if version:
             body = body.replace(b"{{v}}", version.encode())
-        hit = (key, body, gzip.compress(body, 6, mtime=0), hashlib.sha256(body).hexdigest()[:16])
+        modified = max(p.stat().st_mtime for p in [STATIC, *STATIC.rglob("*")]) if version else stat.st_mtime   # a removed file moves its folder's date
+        hit = (key, body, gzip.compress(body, 6, mtime=0), hashlib.sha256(body).hexdigest()[:16], modified)
         with _STATIC_LOCK:
             _STATIC[name] = hit
-    return hit[1], hit[2], hit[3], STATIC_KINDS[path.suffix]
+    return hit[1], hit[2], hit[3], STATIC_KINDS[path.suffix], hit[4]
 
 
 # --- what the pages show ----------------------------------------------------------------------------------------
@@ -1376,12 +1378,18 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             found = static_file(name)
             if not found:
                 return self._fail(404, "No existe")
-            body, packed, tag, kind = found
+            body, packed, tag, kind, modified = found
             zipped = "gzip" in (self.headers.get("Accept-Encoding") or "")
             etag = f'"{tag}{"-gz" if zipped else ""}"'
-            headers = {"ETag": etag, "Vary": "Accept-Encoding",
+            headers = {"ETag": etag, "Last-Modified": formatdate(modified, usegmt=True), "Vary": "Accept-Encoding",
                        "Cache-Control": "public, max-age=31536000, immutable" if forever else "no-cache"}
-            if etag in (self.headers.get("If-None-Match") or ""):
+            # ETag first; Last-Modified too, because Chromium revalidates an HTTP/1.0 answer (this server's) only by date
+            asked_tag, asked_date = self.headers.get("If-None-Match"), self.headers.get("If-Modified-Since")
+            try:
+                same_date = not asked_tag and bool(asked_date) and int(modified) <= parsedate_to_datetime(asked_date).timestamp()
+            except (TypeError, ValueError):
+                same_date = False
+            if (asked_tag and etag in asked_tag) or same_date:
                 self.send_response(304)
                 for k, v in headers.items():
                     self.send_header(k, v)

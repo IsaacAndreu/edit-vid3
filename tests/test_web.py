@@ -778,6 +778,7 @@ def test_the_page_is_revalidated_and_its_assets_are_kept_for_good(tmp_path):
         status, headers, page = get("/")
         assert status == 200 and headers["Cache-Control"] == "no-cache" and b"{{v}}" not in page
         assert get("/", **{"If-None-Match": headers["ETag"]})[0] == 304
+        assert get("/", **{"If-Modified-Since": headers["Last-Modified"]})[0] == 304     # what Chromium sends to HTTP/1.0
         assets = re.findall(rb'(?:src|href)="(/static/[^"]+)"', page)
         assert assets and all(b"?v=" in a for a in assets)
         for asset in assets:
