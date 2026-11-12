@@ -367,8 +367,8 @@ async function videoPage(slug) {
         : !d.voice ? `<div class="row my-2"><button onclick="dubChoose('${d.lang}', false, this)">No doblar a ${esc(d.name)}</button></div>` : ""}
       ${d.adapted ? `<div class="small my-2"><b>Adaptado a su público:</b><div class="md">${md(d.adapted.split("\n").slice(2).join("\n"), "")}</div></div>` : ""}
       ${d.done ? "" : `<div class="small muted my-2">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
-        <input id="dubt-${d.lang}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" class="mb-2">
-        <textarea id="dubs-${d.lang}" rows="${d.review ? 14 : 8}" placeholder="Guion en ${esc(d.name)}…">${esc(d.own || d.review ? d.script : "")}</textarea>
+        <input id="dubt-${d.lang}" aria-label="Título en ${esc(d.name)}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" class="mb-2">
+        <textarea id="dubs-${d.lang}" aria-label="Guion en ${esc(d.name)}" rows="${d.review ? 14 : 8}" placeholder="Guion en ${esc(d.name)}…">${esc(d.own || d.review ? d.script : "")}</textarea>
         ${d.review ? `<div class="small muted my-2">Revísalo (o pásaselo a un corrector nativo): si está bien, apruébalo; si lo corriges aquí, «Usar mi guion y doblar».</div>` : ""}
         <div class="row mt-2">${d.review ? `<button class="main" onclick="dubApprove('${d.lang}', this)">Aprobar y grabar la voz</button>` : ""}
         <button class="${d.review ? "" : "main"}" onclick="dubScript('${d.lang}', this)">Usar mi guion y doblar</button>`}
@@ -376,12 +376,12 @@ async function videoPage(slug) {
   window.dubScript = async (lang, button) => {
     button.disabled = true;
     try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, script: $("#dubs-" + lang).value, title: $("#dubt-" + lang).value}); route(); }
-    catch (e) { alert(e.message); button.disabled = false; }
+    catch (e) { oops(e); button.disabled = false; }
   };
   window.dubApprove = async (lang, button) => { button.disabled = true;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, approve: true}); route(); } catch (e) { alert(e.message); button.disabled = false; } };
+    try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, approve: true}); route(); } catch (e) { oops(e); button.disabled = false; } };
   window.dubChoose = async (lang, on, button) => { button.disabled = true;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, on}); route(); } catch (e) { alert(e.message); button.disabled = false; } };
+    try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, on}); route(); } catch (e) { oops(e); button.disabled = false; } };
   window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${icon("download")} ${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics], rhythm: ["Ritmo", v.rhythm],
@@ -418,7 +418,7 @@ async function videoPage(slug) {
     : `<div class="md">${md(docs[tab][1], base)}</div>`;
   const primary = v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>'
     : v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>'
-    : v.status === "haciendo" ? '<button onclick="if(confirm(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\'))act(\'stop\')">Parar</button>'
+    : v.status === "haciendo" ? '<button onclick="ask(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\', {ok: \'Parar\', danger: true}).then((yes) => yes && act(\'stop\'))">Parar</button>'
     : v.status === "en pausa" ? '<button class="main" onclick="act(\'unhold\')">Volver a la cola</button>'
     : v.hasVideo ? `<a class="btn main" href="${base}video-final.mp4?download">${icon("download")} Descargar vídeo</a>` : "";
   const secondary = [
@@ -429,7 +429,7 @@ async function videoPage(slug) {
     !v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : "",
     v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom(this)" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
     v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>'
-      : v.status !== "haciendo" ? '<button onclick="if(confirm(\'¿Quitar este vídeo de la lista? No se borra nada: va a materiales/_hechos.\'))act(\'archive\')" title="Sin vídeo hecho: sale de la lista y de la cola (materiales/_hechos)">Quitar de la lista</button>' : "",
+      : v.status !== "haciendo" ? '<button onclick="ask(\'¿Quitar este vídeo de la lista? No se borra nada: va a materiales/_hechos.\', {ok: \'Quitar de la lista\'}).then((yes) => yes && act(\'archive\'))" title="Sin vídeo hecho: sale de la lista y de la cola (materiales/_hechos)">Quitar de la lista</button>' : "",
     `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
   ].filter(Boolean);
   show(`
@@ -499,13 +499,13 @@ async function videoPage(slug) {
   };
   window.whyAnalyse = async (button) => {
     button.disabled = true; button.textContent = "Analizando…";
-    try { await post(`/api/video/${encodeURIComponent(slug)}/porque`); } catch (e) { alert(e.message); }
+    try { await post(`/api/video/${encodeURIComponent(slug)}/porque`); } catch (e) { oops(e); }
     whyLoad();
   };
   whyLoad();
   window.exportPremiere = async (button) => {
     button.disabled = true;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/exportar`); } catch (e) { alert(e.message); button.disabled = false; return; }
+    try { await post(`/api/video/${encodeURIComponent(slug)}/exportar`); } catch (e) { oops(e); button.disabled = false; return; }
     exportWatch();
   };
   const exportWatch = async () => {
@@ -519,7 +519,7 @@ async function videoPage(slug) {
   exportWatch();
   window.exportCapcut = async (button) => {
     button.disabled = true;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/capcut`); } catch (e) { alert(e.message); button.disabled = false; return; }
+    try { await post(`/api/video/${encodeURIComponent(slug)}/capcut`); } catch (e) { oops(e); button.disabled = false; return; }
     capcutWatch();
   };
   const capcutWatch = async () => {
@@ -532,9 +532,9 @@ async function videoPage(slug) {
   };
   capcutWatch();
   window.markUploaded = async (value = true) => {
-    const url = value ? prompt("Enlace del vídeo en YouTube (opcional):", "") : "";
+    const url = value ? await askText("Enlace del vídeo en YouTube (opcional):", "", {placeholder: "https://youtu.be/…", ok: "Marcar como subido"}) : "";
     if (url === null) return;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
+    try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value, url}); } catch (e) { return toast("No se pudo marcar: " + e.message, "bad"); }
     route();
   };
   // «Rehacer desde…»: the choice on the page itself (prompt() is silenced in some browsers and in the app, and then
@@ -569,9 +569,9 @@ async function videoPage(slug) {
   window.act = async (what) => {
     try {
       const r = await post(`/api/video/${encodeURIComponent(slug)}/${what}`);
-      if (r.message) alert(r.message);
+      if (r.message) toast(r.message, "ok");
       what === "archive" && r.ok !== false ? (location.hash = "#/") : setTimeout(route, 2500);
-    } catch (e) { alert(e.message); }
+    } catch (e) { oops(e); }
   };
   const logBox = $("#log"); if (logBox) logBox.scrollTop = logBox.scrollHeight;
   pilotBox(v.slug, v);
@@ -586,20 +586,20 @@ async function pilotBox(slug, v) {
   if (p.pilot) {
     fill(box, `<span class="pill">${icon("flask")} Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
       ${v.status === "hecho" ? `<button onclick="pilotReport('${esc(slug)}')">Informe del piloto</button>` : ""}
-      <button onclick="if(confirm('¿Volver este vídeo a la búsqueda por plano?'))post('${url}', {on: false}).then(() => route())">Quitar piloto</button>`);
+      <button onclick="ask('¿Volver este vídeo a la búsqueda por plano?', {ok: 'Quitar piloto'}).then((yes) => yes && post('${url}', {on: false}).then(() => route()))">Quitar piloto</button>`);
     if (p.report) showPilot(p.report);
   } else if (!p.others.length && !v.stagesDone) {
     fill(box, `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">${icon("flask")} Hacer de piloto por escenas</button>`);
   }
 }
 window.startPilot = async (slug, refs) => {
-  const ref = prompt("Vídeo ya hecho de referencia, de tema y complejidad parecidos (escribe su nombre):\n" + refs.slice(-15).join("\n"), "");
+  const ref = await askText("Vídeo ya hecho de referencia, de tema y complejidad parecidos (escribe su nombre o elígelo de la lista):", "", {options: refs.slice(-15), ok: "Activar piloto"});
   if (ref === null || !ref.trim()) return;
-  try { const r = await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {reference: ref.trim()}); alert("Piloto activado. Referencia: " + (r.reference || "ninguna")); route(); }
-  catch (e) { alert(e.message); }
+  try { const r = await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {reference: ref.trim()}); toast("Piloto activado. Referencia: " + (r.reference || "ninguna"), "ok"); route(); }
+  catch (e) { oops(e); }
 };
 window.pilotReport = async (slug) => {
-  try { showPilot(await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {report: true})); } catch (e) { alert(e.message); }
+  try { showPilot(await post(`/api/video/${encodeURIComponent(slug)}/pilot`, {report: true})); } catch (e) { oops(e); }
 };
 function showPilot(r) {
   const show = (x) => x == null ? "—" : (typeof x === "number" && x > 0 && x < 1 && !Number.isInteger(x)) ? Math.round(x * 100) + " %" : x;
@@ -622,16 +622,13 @@ async function changeChannel(slug, current, el) {
 async function copyForClaude(slug, button) {
   let text = "";
   try { text = (await post(`/api/video/${encodeURIComponent(slug)}/for-claude`)).text; }
-  catch (e) { alert(e.message); return; }
+  catch (e) { oops(e); return; }
   try { await navigator.clipboard.writeText(text); button.textContent = "Copiado ✓ pégalo en el chat"; return; }
   catch (e) {}                                     // Safari refuses the clipboard after waiting for the server
-  const modal = document.createElement("div");
-  modal.className = "modal"; modal.id = "modal";
-  modal.innerHTML = `<div><div class="row between"><b>Para Claude</b>
-    <button onclick="document.getElementById('modal').remove()">Cerrar</button></div>
+  const modal = sheet(`<div class="row between"><b>Para Claude</b>
+    <button onclick="document.getElementById('modal').close()">Cerrar</button></div>
     <div class="small muted my-2">Mantén pulsado el texto → Seleccionar todo → Copiar, y pégalo en el chat.</div>
-    <textarea readonly class="tall">${esc(text)}</textarea></div>`;
-  document.body.appendChild(modal);
+    <textarea readonly class="tall" aria-label="Texto para Claude">${esc(text)}</textarea>`);
   const box = modal.querySelector("textarea"); box.focus(); box.select();
 }
 
@@ -652,7 +649,7 @@ async function reviewPage(slug) {
           <div class="src">${clock(sh.at)} · ${esc(sh.title || sh.credit || sh.source || "")}${sh.url ? ` · <a href="${esc(sh.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
           <div class="acts">
             <button class="b-ok ${v && v !== "correcta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','correcta')" title="tecla 1">Correcta</button>
-            <select id="why-${sh.id}" onclick="event.stopPropagation()">${options}</select>
+            <select id="why-${sh.id}" aria-label="Por qué es incorrecta" onclick="event.stopPropagation()">${options}</select>
             <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','incorrecta')" title="tecla 3">Incorrecta</button>
             <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','dudosa')" title="tecla 2">Dudosa</button>
             ${v ? `<button onclick="event.stopPropagation();mark('${sh.id}',null)" class="icon" aria-label="Quitar (tecla 0)" title="Quitar (tecla 0)">${icon("undo")}</button>` : ""}
@@ -685,7 +682,7 @@ async function reviewPage(slug) {
     const sel = document.getElementById("why-" + id);
     const reason = verdict === "incorrecta" && sel ? sel.value : "";
     const sh = shots.find((x) => x.id === id);
-    try { await post(`/api/review/${encodeURIComponent(slug)}/${id}`, {verdict, reason}); } catch (e) { return alert(e.message); }
+    try { await post(`/api/review/${encodeURIComponent(slug)}/${id}`, {verdict, reason}); } catch (e) { return oops(e); }
     sh.label = verdict ? {verdict, reason} : null;
     const old = document.getElementById("r-" + id);
     if (old) { const i = +old.dataset.i; old.outerHTML = card(sh, i); if (sel) { const again = document.getElementById("why-" + id); if (again) again.value = sel.value; } }
@@ -738,7 +735,7 @@ async function decisionsPage(slug) {
             <div class="row mt-2"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? `${icon("check")} Elegida` : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
       </div></div>`).join("") || empty("check", "En este vídeo el relleno no tuvo que decidir nada.")}`);
   window.decide = async (shot, body) => { const y = window.scrollY; await post(`/api/decisions/${encodeURIComponent(slug)}/${shot}`, body); await route(); window.scrollTo(0, y); };
-  window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { alert(e.message); } };
+  window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { oops(e); } };
   // keyboard: ←/→ between shots, Enter = «bien así», 1-9 = that option
   let at = -1;
   const blocks = () => [...document.querySelectorAll("#app > .card[data-shot]")];

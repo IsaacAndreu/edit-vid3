@@ -14,20 +14,20 @@ async function allVideosPage() {
     .sort((a, b) => { const x = value(a), y = value(b); return (x < y ? -1 : x > y ? 1 : 0) * allSort.dir; });
   const count = (fn) => data.videos.filter(fn).length;
   const channels = [...new Set(data.videos.map((v) => v.channel).filter(Boolean))].sort();     // only those with videos
-  const th = (key, name, cls = "") => `<th class="${cls}" onclick="allSortBy('${key}')">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
+  const th = (key, name, cls = "") => `<th class="${cls}" tabindex="0" aria-sort="${allSort.key === key ? (allSort.dir > 0 ? "ascending" : "descending") : "none"}" onclick="allSortBy('${key}')">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
   const state = (v) => v.published ? `<span class="pill hecho">subido</span> <span class="small muted">${esc(String(v.published.at || "").slice(0, 10))}</span>${v.published.url ? ` <a href="${esc(v.published.url)}" target="_blank" rel="noopener">↗</a>` : ""}`
     : v.archived ? '<span class="pill">archivado</span>' : pill(v.lastError && v.status === "en cola" ? "reintento" : v.status);
   show(`<h1>Todos los vídeos</h1>
     <div class="hb mt-2"><div class="tools grow">
-      <input type="search" placeholder="Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)">
-      <select class="w-auto" onchange="allFilter.channel=this.value;allVideosPage()"><option value="">Todos los canales (${data.videos.length})</option>${[...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) =>
+      <input type="search" aria-label="Buscar por nombre o título" placeholder="Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)">
+      <select class="w-auto" aria-label="Canal" onchange="allFilter.channel=this.value;allVideosPage()"><option value="">Todos los canales (${data.videos.length})</option>${[...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) =>
         `<option value="${esc(c)}" ${f.channel === c ? "selected" : ""}>${esc(c)} (${count((v) => c === "(sin canal)" ? !v.channel : v.channel === c)})</option>`).join("")}</select>
       ${data.videos.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${(f.kind || "") === k ? "on" : ""}" onclick="allFilter.kind='${k}';allVideosPage()">${name}</button>`).join("")}</span>` : ""}</div>
       <div class="tools mw0"><span class="seg">${["todos", "en marcha", "sin subir", "subidos", "archivados"].map((st) => `<button class="${f.state === st ? "on" : ""}" onclick="allFilter.state='${st}';allVideosPage()">${st} <span class="muted">${st === "todos" ? data.videos.length : count((v) => stateOf(v) === st)}</span></button>`).join("")}</span></div></div>
     <div class="small muted my-2">${list.length} vídeo(s). El desplegable de canal cambia dónde cuenta el vídeo (no se rehace).</div>
     <div class="card flush"><table class="vt"><thead><tr>${th("title", "Vídeo")}${th("channel", "Canal", "wide")}${th("updated", "Estado")}${th("minutes", "Dura", "r wide")}${th("cost", "API", "r wide")}</tr></thead>
       <tbody>${list.map((v) => `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.title ? v.slug : "")}</div></td>
-        <td class="wide"><select class="sm w-auto" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch((e)=>alert(e.message))">
+        <td class="wide"><select class="sm w-auto" aria-label="Canal de ${esc(v.slug)}" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch(oops)">
           ${v.channel ? (data.channels.includes(v.channel) ? "" : `<option selected>${esc(v.channel)}</option>`) : "<option selected>(sin canal)</option>"}${data.channels.map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td>
         <td>${state(v)}</td><td class="r wide">${v.minutes ? v.minutes + " min" : "—"}</td><td class="r wide">${v.costUsd ? v.costUsd + " $" : "—"}</td></tr>`).join("")
         || '<tr><td colspan="5" class="empty-row">Ninguno con estos filtros.</td></tr>'}</tbody></table></div>`);
@@ -158,8 +158,8 @@ function drawCalendar() {
       ${field("Hora del resumen de la mañana", `<input id="cal-morning" type="number" min="0" max="23" value="${st.morning_hour}" onchange="option({morning_hour: +this.value})">`, "Por Telegram.", "cal-morning")}</div></div>`}`);
 }
 window.pin = async (slug, date) => { if (!slug) return; await post("/api/agenda", {assign: slug, date}); calendarPage(); };
-window.uploaded = async (slug) => { const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", ""); if (url === null) return;
-  try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
+window.uploaded = async (slug) => { const url = await askText("Enlace del vídeo en YouTube (para seguir sus vistas; opcional):", "", {placeholder: "https://youtu.be/…", ok: "Marcar como subido"}); if (url === null) return;
+  try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return toast("No se pudo marcar: " + e.message, "bad"); }
   calendarPage(); };
 window.rule = async (channel, change) => { await post("/api/agenda", {channel, ...change}); calendarPage(); };
 window.toggleDay = (channel, day, on) => { const days = new Set(window.agendaRules[channel].days); on ? days.add(day) : days.delete(day); rule(channel, {days: [...days]}); };
@@ -182,9 +182,9 @@ const copyTexts = [];
 function copyBox(label, text, rows = 3) {
   const n = copyTexts.push(text) - 1;
   const button = `<button class="sm" onclick="copyIt(${n}, this)">${icon("copy")}<span>Copiar</span></button>`;
-  if (!label) return `<div class="row nowrap mt-2"><input readonly class="grow" value="${esc(text)}">${button}</div>`;
+  if (!label) return `<div class="row nowrap mt-2"><input readonly class="grow" aria-label="Texto para copiar" value="${esc(text)}">${button}</div>`;
   return `<div class="mt-4"><div class="row between mb-1"><b class="small">${esc(label)}</b>${button}</div>
-    <textarea readonly class="fit" rows="${rows}">${esc(text)}</textarea></div>`;
+    <textarea readonly class="fit" rows="${rows}" aria-label="${esc(label)}">${esc(text)}</textarea></div>`;
 }
 // the label is the button's last element, so its icon stays while the text changes
 window.copyIt = async (n, button) => {
@@ -253,14 +253,14 @@ async function uploadPage() {
       </div></details>`;
     }).join("")}`);
   window.makeCompilation = async (channel, button) => {
-    if (!confirm(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`)) return;
+    if (!(await ask(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`, {ok: "Montarla"}))) return;
     button.disabled = true; await post("/api/compilations", {channel}); uploadPage();
   };
   if (r.compilationJob && r.compilationJob.running) schedule(uploadPage, 10000);
   window.doneUpload = async (slug) => {
-    const url = prompt("Enlace del vídeo en YouTube (para seguir sus vistas a las 48 h y 7 días; opcional):", "");
+    const url = await askText("Enlace del vídeo en YouTube (para seguir sus vistas a las 48 h y 7 días; opcional):", "", {placeholder: "https://youtu.be/…", ok: "Marcar como subido"});
     if (url === null) return;
-    try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return alert("No se pudo marcar: " + e.message); }
+    try { await post(`/api/video/${encodeURIComponent(slug)}/published`, {value: true, url}); } catch (e) { return toast("No se pudo marcar: " + e.message, "bad"); }
     uploadPage();
   };
 }
@@ -274,7 +274,7 @@ async function scriptsPage(days = 14) {
   show(`<h1>Guiones</h1>
     <div class="row between nowrap top mb-3"><div class="small muted grow">Los días de tu calendario que aún no tienen vídeo.
       Elige una idea, pide un borrador y revísalo: al crearlo, la voz y los capítulos se hacen solos.</div>
-      <select class="w-auto" onchange="scriptsPage(+this.value)">${[7, 14, 30].map((d) => `<option value="${d}" ${d === days ? "selected" : ""}>${d} días</option>`).join("")}</select></div>
+      <select class="w-auto" aria-label="Días" onchange="scriptsPage(+this.value)">${[7, 14, 30].map((d) => `<option value="${d}" ${d === days ? "selected" : ""}>${d} días</option>`).join("")}</select></div>
     <div class="notice ${total ? "" : "ok"}">${total ? `Te faltan <b>${total}</b> guion(es) para los próximos ${days} días.` : `Los próximos ${days} días están cubiertos.`}
       ${r.channels.length ? "" : ' Pon los días de publicación de cada canal en <a href="#/calendario">Calendario</a>.'}</div>
     ${r.channels.map((c) => `<div class="card">
@@ -297,7 +297,7 @@ async function scriptsPage(days = 14) {
         <div class="row mt-3"><label class="small muted n4" for="fmt-${esc(c.channel)}">Formato del borrador:</label>
           <select id="fmt-${esc(c.channel)}" class="w-auto"><option value="">— el del canal —</option>
           ${(data.formats || []).map((f) => `<option ${f === "caso-real" ? "" : ""}>${esc(f)}</option>`).join("")}</select></div>
-        <div class="row nowrap mt-2"><input id="quick-${esc(c.channel)}" class="grow" placeholder="Idea rápida: un título…">
+        <div class="row nowrap mt-2"><input id="quick-${esc(c.channel)}" class="grow" aria-label="Idea rápida para ${esc(c.channel)}" placeholder="Idea rápida: un título…">
           <button onclick="quickDraft('${esc(c.channel)}', this)">${icon("pen")} Borrador</button></div></div>` : ""}
     </div>`).join("")}`);
   const toNew = (channel, idea, draft) => {
@@ -310,9 +310,9 @@ async function scriptsPage(days = 14) {
     button.disabled = true; const label = button.innerHTML; button.textContent = "Escribiendo… (~1 min)";
     try {
       const d = await post("/api/scripts/draft", {channel, idea});
-      if (d.check) alert(`Borrador de ${d.words} palabras. Tiene ${d.check} dato(s) marcados [COMPROBAR]: revísalos antes de crear el vídeo.`);
+      if (d.check) toast(`Borrador de ${d.words} palabras. Tiene ${d.check} dato(s) marcados [COMPROBAR]: revísalos antes de crear el vídeo.`);
       toNew(channel, idea, d);
-    } catch (e) { alert(e.message); button.disabled = false; button.innerHTML = label; }
+    } catch (e) { oops(e); button.disabled = false; button.innerHTML = label; }
   };
   const withFormat = (channel, idea) => { const f = (document.getElementById(`fmt-${channel}`) || {}).value;
     return f ? {...idea, format: f} : idea; };
@@ -327,14 +327,14 @@ async function scriptsPage(days = 14) {
         return `<div class="rowline row between"><div><div>${esc(i.title)}</div>
           <div class="small muted">${esc(i.note)}</div></div><button class="sm" onclick="draftFrom('${esc(id)}', this)">${icon("pen")} Borrador</button></div>`; }).join("");
       button.innerHTML = label;
-    } catch (e) { alert(e.message); button.innerHTML = label; }
+    } catch (e) { oops(e); button.innerHTML = label; }
     button.disabled = false;
   };
   window.draftFrom = (id, button) => { const x = window.scriptIdeas[id]; draft(x.channel, withFormat(x.channel, x.idea), button); };
   window.writeOwn = (id) => { const x = window.scriptIdeas[id]; toNew(x.channel, x.idea, null); };
   window.quickDraft = (channel, button) => {
     const title = document.getElementById(`quick-${channel}`).value.trim();
-    if (!title) return alert("Escribe el título de la idea");
+    if (!title) return toast("Escribe el título de la idea", "bad");
     draft(channel, withFormat(channel, {title}), button);
   };
 }
@@ -350,7 +350,7 @@ async function libraryPage() {
   show(`<h1>Biblioteca</h1>
     <div class="small muted">Lo que ha funcionado de cada persona y tema. El próximo vídeo que hable de ellos parte de aquí
       (otros momentos de las mismas fuentes: nunca repite un fragmento). Se llena sola con cada vídeo terminado; «Correcta» en Errores sube una fuente.</div>
-    <div class="tools"><input id="libfilter" type="search" placeholder="Buscar persona o tema…" oninput="document.querySelectorAll('#libgrid a.card').forEach((a) => a.classList.toggle('hide', !a.textContent.toLowerCase().includes(this.value.toLowerCase())))"></div>
+    <div class="tools"><input id="libfilter" type="search" aria-label="Buscar persona o tema" placeholder="Buscar persona o tema…" oninput="document.querySelectorAll('#libgrid a.card').forEach((a) => a.classList.toggle('hide', !a.textContent.toLowerCase().includes(this.value.toLowerCase())))"></div>
     <div id="libgrid">
       <h2>Personas (${people.length})</h2>${people.length ? grid(people) : empty("user", "Aún ninguna.")}
       <h2>Temas, empresas, lugares (${topics.length})</h2>${topics.length ? grid(topics) : empty("inbox", "Se llenan con los próximos vídeos terminados.")}
@@ -377,7 +377,7 @@ async function libraryEntity(key) {
       <div class="row"><button class="sm" onclick="libRemove('${esc(key)}', '${esc(x.id)}')">Quitar</button></div></div>`).join("")}</div>`);
 }
 window.libRemove = async (key, id) => {
-  if (!confirm(id ? "¿Quitar esta fuente? No volverá a ofrecerse para este tema." : "¿Borrar toda la biblioteca de este tema?")) return;
+  if (!(await ask(id ? "¿Quitar esta fuente? No volverá a ofrecerse para este tema." : "¿Borrar toda la biblioteca de este tema?", {ok: id ? "Quitar" : "Borrar", danger: true}))) return;
   await post(`/api/library/${encodeURIComponent(key)}/remove`, id ? {id} : {});
   if (id) libraryEntity(key); else location.hash = "#/biblioteca";
 };
@@ -407,16 +407,16 @@ async function boardPage() {
       <div class="actions"><button class="main" onclick="addIdea()">Añadir idea</button></div></div></div>
     <div class="card"><b>Ideas que ya se pueden simular</b>
       <div class="small muted">Ideas de vídeo que los mundos del canal saben enseñar, una por día desde mañana, con su gancho y sus escenas.</div>
-      <div class="row mt-3"><select id="tc" class="w-md">${b.channels.filter((c) => (b.kinds || {})[c] === "simulacion").map((c) => `<option>${esc(c)}</option>`).join("")}</select>
+      <div class="row mt-3"><select id="tc" class="w-md" aria-label="Canal de simulación">${b.channels.filter((c) => (b.kinds || {})[c] === "simulacion").map((c) => `<option>${esc(c)}</option>`).join("")}</select>
       <button class="main" id="tbtn" onclick="topicIdeas()">Llenar 10 días</button> <button id="tbtn2" onclick="topicIdeas('y-si')" title="Serie «¿Y si…?»: un mundo, un dial, una pregunta">Serie «¿Y si…?»</button><span id="tmsg" class="small muted"></span></div></div>
     <div class="kanban mt-4">${Object.entries(b.columns).map(([k, items]) => `<div class="col"><h3>${names[k] || k} <span class="muted">${items.length}</span></h3>
       ${items.map(card).join("") || '<div class="small muted">—</div>'}</div>`).join("")}</div>`);
   window.addIdea = async () => { try { await post("/api/board/idea", {title: $("#bt").value, channel: $("#bc").value, date: $("#bd").value, note: $("#bn").value}); boardPage(); }
-    catch (e) { alert(e.message); } };
+    catch (e) { oops(e); } };
   window.topicIdeas = async (serie) => { $("#tbtn").disabled = true; $("#tbtn2").disabled = true; $("#tmsg").textContent = "Pensando ideas… (~30 s)";
     try { const r = await post("/api/board/temas", {channel: $("#tc").value, serie: serie || ""}); $("#tmsg").textContent = `${r.added.length} ideas añadidas`; boardPage(); }
     catch (e) { $("#tmsg").textContent = e.message; $("#tbtn").disabled = false; $("#tbtn2").disabled = false; } };
-  window.dropIdea = async (id) => { if (!confirm("¿Quitar esta idea?")) return; await post("/api/board/idea", {delete: id}); boardPage(); };
+  window.dropIdea = async (id) => { if (!(await ask("¿Quitar esta idea?", {ok: "Quitar", danger: true}))) return; await post("/api/board/idea", {delete: id}); boardPage(); };
   window.makeVideo = (id) => { const x = window.boardIdeas[id], idea = {...(x.idea || {}), title: x.title, ...(x.escenas ? {escenas: x.escenas} : {}), ...(x.hook && !(x.idea || {}).hook ? {hook: x.hook} : {})};
     try { sessionStorage.setItem("prefill", JSON.stringify({idea, channel: x.channel})); } catch (e) {}
     window.prefill = {idea, channel: x.channel}; location.hash = "#/nuevo"; };

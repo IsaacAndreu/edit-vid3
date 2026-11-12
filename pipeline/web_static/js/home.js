@@ -67,12 +67,12 @@ window.toggleSection = (k) => { openSections[k] = openSections[k] === false; try
 window.expandSection = (k) => { expanded[k] = true; drawHome(true); };
 window.retryMany = async (slugs, button) => {
   if (button) { button.disabled = true; button.textContent = "En cola…"; }
-  for (const slug of slugs) { try { await post(`/api/video/${encodeURIComponent(slug)}/retry`); } catch (e) { alert(`${slug}: ${e.message}`); } }
+  for (const slug of slugs) { try { await post(`/api/video/${encodeURIComponent(slug)}/retry`); } catch (e) { toast(`${slug}: ${e.message}`, "bad"); } }
   setTimeout(() => { homeKey = ""; route(); }, 2000);
 };
 window.unholdMany = async (slugs, button) => {
   if (button) button.disabled = true;
-  for (const slug of slugs) { try { await post(`/api/video/${encodeURIComponent(slug)}/unhold`, {}); } catch (e) { alert(`${slug}: ${e.message}`); } }
+  for (const slug of slugs) { try { await post(`/api/video/${encodeURIComponent(slug)}/unhold`, {}); } catch (e) { toast(`${slug}: ${e.message}`, "bad"); } }
   setTimeout(() => { homeKey = ""; route(); }, 1500);
 };
 function drawHome(force = false) {               // the channel buttons redraw from what is already loaded: instant
@@ -143,10 +143,10 @@ function drawHome(force = false) {               // the channel buttons redraw f
     const key = opts.key || head;
     const open = openSections[key] !== false;
     const shown = opts.limit && list.length > opts.limit && !expanded[key] ? list.slice(0, opts.limit) : list;
-    return `<div class="block ${opts.cls || ""}"${opts.id ? ` id="${opts.id}"` : ""}><div class="bh click" onclick="toggleSection('${esc(key)}')"><b>${head}<span class="count">${list.length}</span></b><span class="small">${opts.more || ""} <span class="muted">${open ? "▴" : "▾"}</span></span></div>
+    return `<div class="block ${opts.cls || ""}"${opts.id ? ` id="${opts.id}"` : ""}><div class="bh click" role="button" tabindex="0" aria-expanded="${open}" onclick="toggleSection('${esc(key)}')"><b>${head}<span class="count">${list.length}</span></b><span class="small">${opts.more || ""} <span class="muted">${open ? "▴" : "▾"}</span></span></div>
       ${open ? `<div class="scroll-x"><table class="vt"><thead><tr><th>Vídeo</th><th class="wide">Canal</th>${opts.cols.map((c) => `<th class="${c.cls || ""}">${c.name}</th>`).join("")}</tr></thead>
       <tbody>${shown.map((v) => row(v, extra(v))).join("")}</tbody></table></div>
-      ${shown.length < list.length ? `<div class="vrow click" onclick="expandSection('${esc(key)}')"><span></span><span class="small muted">y ${list.length - shown.length} más: ver todos</span><span></span></div>` : ""}` : ""}</div>`;
+      ${shown.length < list.length ? `<div class="vrow click" role="button" tabindex="0" onclick="expandSection('${esc(key)}')"><span></span><span class="small muted">y ${list.length - shown.length} más: ver todos</span><span></span></div>` : ""}` : ""}</div>`;
   };
   const makingRows = (v) => { const st = v.stage || {}; return `<td><span class="t-work">${esc(STAGES[st.stage] || st.stage || "")}</span> <span class="muted small">${st.number}/${st.of}</span></td>
     <td class="r"><span class="mini"><i style="--v:${Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))}%"></i></span></td><td class="r wide">${ago(st.started)}</td>`; };
@@ -155,7 +155,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
     <td class="r wide">${v.stagesDone ? `<span class="mini wait"><i style="--v:${Math.round(100 * v.stagesDone / 15)}%"></i></span>` : ""}</td>`;
   const doneRows = (v) => `<td>${v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"}</td><td class="r wide">${v.published && v.published.url ? `<a href="${esc(v.published.url)}" target="_blank" rel="noopener">ver ↗</a>` : ""}</td>`;
   const channelPick = channels.length > 6
-    ? `<select class="w-auto" onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
+    ? `<select class="w-auto" aria-label="Canal" onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
     : channels.length > 1 ? `<div class="tools">${["", ...channels].map((c) => `<button class="chip ${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">${c ? `${dot(c)}${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : "";
   const kindPick = all.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}</button>`).join("")}</span>` : "";
   const viewPick = `<span class="seg"><button class="${homeView === "tabla" ? "on" : ""}" onclick="pickView('tabla')">Tabla</button><button class="${homeView === "lista" ? "on" : ""}" onclick="pickView('lista')">Tarjetas</button></span>`;
@@ -177,7 +177,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
       <a href="javascript:void(0)" class="${attention.length ? "bad" : ""}" onclick="document.getElementById('h-warn')?.scrollIntoView({behavior:'smooth'})"><div class="n">${attention.length}</div><div class="l">con problemas</div></a>
       <a href="#/subir"><div class="n">${toUpload.length}</div><div class="l">para subir${late ? ` · <span class="t-bad">${late} tarde</span>` : ""}</div></a></div>
     <form class="hero home-search" onsubmit="event.preventDefault();searchFrom(this.q.value)">
-      <textarea name="q" placeholder="¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
+      <textarea name="q" aria-label="¿Ya lo hice? Buscar en títulos y guiones" placeholder="¿Ya lo hice? Escribe un tema o un nombre (dingos, Kratochvílová, A380…) o pega un guion entero"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}"></textarea>
       <button class="main">Buscar</button></form>
     <div class="kpis home-kpis">
@@ -201,7 +201,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
 window.retryOne = async (slug, button) => {
   if (button) { button.disabled = true; button.textContent = "En cola…"; }
   try { const r = await post(`/api/video/${encodeURIComponent(slug)}/retry`); if (r.message && button) button.textContent = r.message.slice(0, 40); }
-  catch (e) { alert(e.message); }
+  catch (e) { oops(e); }
   setTimeout(() => { homeKey = ""; route(); }, 2000);
 };
 window.pickChannel = (c) => { homeChannel = c; try { localStorage.setItem("inicio:canal", c); } catch (e) {} drawHome(true); };
@@ -226,7 +226,7 @@ async function searchPage(q) {
   const words = query.split(/\s+/);
   show(`<h1>¿Ya lo hice?</h1>
     <form class="hero" onsubmit="event.preventDefault();searchFrom(this.q.value)">
-      <textarea name="q" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}">${pasted ? "" : esc(q)}</textarea>
+      <textarea name="q" aria-label="¿Ya lo hice? Buscar en títulos y guiones" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();searchFrom(this.value)}">${pasted ? "" : esc(q)}</textarea>
       <button class="main">Buscar</button></form>
     <div class="small muted mb-2">${r.whole ? "Has pegado un guion: comparo sus nombres, lugares y cifras con todos tus guiones." : `Busco «${esc(q)}» en títulos y guiones de todos los vídeos (también los archivados y subidos).`}</div>
     ${r.results.length ? `<div class="block">${r.results.map((v) => `<a class="vrow hit" href="#/video/${encodeURIComponent(v.slug)}">

@@ -3,7 +3,14 @@ function schedule(fn, ms) { clearTimeout(timer); timer = setTimeout(() => { if (
 
 // the keys of the page on screen (←/→, 1-3 in «Revisar»): one handler at a time, gone with its page
 let pageKeys = null;
-document.addEventListener("keydown", (e) => { if (pageKeys) pageKeys(e); });
+document.addEventListener("keydown", (e) => {
+  // what is clickable without being a button (a sortable column, a row, a section header) works with Enter and Space
+  const own = e.target.matches && e.target.matches("[onclick][tabindex]:not(button, a, input, select, textarea, summary)");
+  if (own && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.target.click(); return; }
+  if (e.key === "Escape" && document.body.classList.contains("menu") && !document.querySelector("dialog[open]")) {
+    document.body.classList.remove("menu"); const b = $(".burger"); b.setAttribute("aria-expanded", "false"); b.focus(); return; }
+  if (pageKeys) pageKeys(e);
+});
 
 async function route() {
   clearTimeout(timer);
@@ -15,7 +22,8 @@ async function route() {
   $(".burger").setAttribute("aria-expanded", "false");
   let hash = location.hash || "#/";
   if (window.partner && !partnerMay(hash)) { hash = "#/"; history.replaceState(null, "", "#/"); }
-  document.querySelectorAll("header nav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/")));
+  document.querySelectorAll("header nav a").forEach((a) => { const on = a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/");
+    a.classList.toggle("on", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
   if (hash !== $("#app")._hash) quiet = false;
   const slow = quiet ? 0 : setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
@@ -47,6 +55,8 @@ async function route() {
     else if (hash.startsWith("#/buscar/")) await searchPage(decodeURIComponent(hash.slice(9)));
     else await home();
     if (id !== navId) return;
+    const h1 = $("#app h1");               // the tab says which page it is (history, tabs, screen readers)
+    document.title = h1 && hash !== "#/" ? `${h1.textContent.trim().slice(0, 60)} · Estudio` : "Estudio de vídeos";
     const s = data && data.service;
     // a tab opened before an update keeps the old page (it is one page): reload it once the server has new code
     if (s && s.code && s.code.id) {

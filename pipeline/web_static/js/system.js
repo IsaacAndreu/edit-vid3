@@ -65,7 +65,7 @@ async function serverPage() {
         <div class="small muted">En ${esc(b.folder)} del servidor. Lleva tus claves (.env): guárdala en un sitio privado.</div>`
         : '<span class="muted">Aún no hay ninguna (se hace sola cada semana).</span>'}
       <div class="actions">${b ? `<a class="btn" href="/api/copia">${icon("download")} Descargar</a>` : ""}
-        <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{alert(e.message||e);serverPage()})">Hacer copia ahora</button></div></div>`);
+        <button onclick="this.disabled=true;this.textContent='Haciendo copia…';post('/api/copia').then(serverPage).catch((e)=>{oops(e);serverPage()})">Hacer copia ahora</button></div></div>`);
   doctorCard();
   schedule(serverPage, 15000);
 }
@@ -183,7 +183,7 @@ async function spendPage() {
     <h2>Media por canal</h2>
     <div class="card flush"><table class="ytt">
       <thead><tr><th>Canal</th><th>Media por vídeo</th><th>Mediana</th><th>Por minuto</th><th>Cuota YT / vídeo</th><th>Proxy / vídeo</th><th>Terminados</th><th>Total</th><th>En curso</th><th>Más caro</th></tr></thead>
-      <tbody>${g.channels.map((c) => `<tr class="v click" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+      <tbody>${g.channels.map((c) => `<tr class="v click" tabindex="0" aria-label="Ver los vídeos de ${esc(c.channel)}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
         <td><span class="row nowrap">${dot(c.channel)}<b>${esc(c.channel)}</b></span></td>
         <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="--v:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
         <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td>
@@ -232,25 +232,25 @@ async function spendPage() {
 }
 
 async function restartQueue(button) {
-  if (!confirm("¿Reiniciar la cola? El vídeo que se esté haciendo sigue luego desde su última etapa terminada.")) return;
-  button.disabled = true;
-  try { alert((await post("/api/restart-queue")).message); } catch (e) { alert(e.message); }
-  button.disabled = false;
+  if (!(await ask("¿Reiniciar la cola? El vídeo que se esté haciendo sigue luego desde su última etapa terminada.", {ok: "Reiniciar"}))) return;
+  busy(button, true);
+  try { toast((await post("/api/restart-queue")).message, "ok"); } catch (e) { oops(e); }
+  busy(button, false);
 }
 async function youtubeRetry(button) {
-  if (!confirm("¿YouTube ya funciona? Ábrelo en una ventana privada desde el wifi de casa: si NO pide «no eres un bot», sigue.\n\nSe quitan la pausa por bloqueo, las cuarentenas y la espera de 72 h, y la cola vuelve a buscar ya.")) return;
-  button.disabled = true;
-  try { alert((await post("/api/youtube/retry")).message); } catch (e) { alert(e.message); }
-  button.disabled = false;
+  if (!(await ask("¿YouTube ya funciona? Ábrelo en una ventana privada desde el wifi de casa: si NO pide «no eres un bot», sigue.\n\nSe quitan la pausa por bloqueo, las cuarentenas y la espera de 72 h, y la cola vuelve a buscar ya.", {ok: "Reintentar YouTube"}))) return;
+  busy(button, true);
+  try { toast((await post("/api/youtube/retry")).message, "ok"); } catch (e) { oops(e); }
+  busy(button, false);
 }
 
 async function updateNow(button) {
   button.disabled = true; button.textContent = "Actualizando…";
   try {
     const r = await post("/api/update");
-    alert(r.message);
+    toast(r.message, "ok");
     setTimeout(() => location.reload(), r.changed ? 4000 : 300);    // «ya al día» too: the tab may be older
-  } catch (e) { alert(e.message); }
+  } catch (e) { oops(e); }
   button.disabled = false; button.innerHTML = `${icon("refresh")} Actualizar ahora`;
 }
 
@@ -277,7 +277,7 @@ async function peopleBlock(all) {
     catch (e) { msg.textContent = e.message; }
   };
   window.removePerson = async (who) => {
-    if (!confirm(`¿Quitar a ${who}? No podrá entrar más; sus vídeos se quedan.`)) return;
+    if (!(await ask(`¿Quitar a ${who}? No podrá entrar más; sus vídeos se quedan.`, {ok: "Quitar", danger: true}))) return;
     await post("/api/users", {remove: who}); settingsPage();
   };
   return `<details class="block"${u.length ? " open" : ""}><summary><b>Personas que comparten el estudio
@@ -289,13 +289,13 @@ async function peopleBlock(all) {
       <div class="row gap-4 mt-2">${boxes(x.name, x.channels)}</div>
       <div class="setting mt-3"><div><div class="small b">Sus topes al día</div>
           <p class="help">0 = sin tope · Telegram: ${x.telegram ? `<span class="t-ok">${icon("check")}</span> conectado` : "sin conectar (sus avisos te llegan a ti)"}</p></div>
-        <div class="row gap-4"><div class="unit"><input id="plim-usd-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}"><span class="nw">$ de API</span></div>
-          <div class="unit"><input id="plim-gb-${esc(x.name)}" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}"><span class="nw">GB de proxy</span></div></div></div>
-      <div class="actions"><input id="ppass-${esc(x.name)}" class="grow" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)">
+        <div class="row gap-4"><div class="unit"><input id="plim-usd-${esc(x.name)}" aria-label="Tope de API al día de ${esc(x.name)} ($)" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}"><span class="nw">$ de API</span></div>
+          <div class="unit"><input id="plim-gb-${esc(x.name)}" aria-label="Tope de proxy al día de ${esc(x.name)} (GB)" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}"><span class="nw">GB de proxy</span></div></div></div>
+      <div class="actions"><input id="ppass-${esc(x.name)}" aria-label="Nueva contraseña de ${esc(x.name)}" class="grow" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)">
         <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small t-bad"></span></div></div>`).join("")}
     <div class="card mt"><b>Añadir persona</b>
-      <div class="row mt-2"><input id="pname" class="w-md" placeholder="nombre (p. ej. marc)">
-        <input id="ppass-_new" class="w-md" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)"></div>
+      <div class="row mt-2"><input id="pname" aria-label="Nombre" class="w-md" placeholder="nombre (p. ej. marc)">
+        <input id="ppass-_new" aria-label="Contraseña" class="w-md" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)"></div>
       <div class="row gap-4 mt-3">${boxes("", [])}</div>
       <div class="actions"><button class="main" onclick="savePerson('')">Añadir</button><span id="pmsg-_new" class="small t-bad"></span></div></div></div>
   </details>`;
@@ -366,7 +366,7 @@ async function settingsPage() {
       <div class="in">
       <p class="help mb-2">Tu @canal o su URL: lo usan «Mi canal» y las ideas. ${s.channels.length - filled ? `<a href="javascript:mineEmpty=!mineEmpty;route()">${mineEmpty ? "Ver todos" : `Ver solo los ${s.channels.length - filled} sin rellenar`}</a>` : ""}</p>
       ${s.channels.filter((c) => !mineEmpty || !s.myChannels[c]).map((c) => `<div class="mine-row"><div><span class="pill ch" style="--c:${chColor(c)}">${esc(c)}</span></div>
-        <input class="mine" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}"></div>`).join("")}
+        <input class="mine" aria-label="Tu canal de YouTube para ${esc(c)}" data-c="${esc(c)}" placeholder="@TuCanal" value="${esc(s.myChannels[c] || "")}"></div>`).join("")}
       <div class="actions"><button class="main" onclick="save({my_channels: {...${JSON.stringify(s.myChannels || {}).replace(/"/g, "&quot;")}, ...Object.fromEntries([...document.querySelectorAll('.mine')].map((i) => [i.dataset.c, i.value]))}})">Guardar</button></div>
       </div></details>`);
   window.save = async (body) => { await post("/api/settings", body); route(); };
@@ -405,7 +405,7 @@ async function voicesPage() {
         (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</p>
       ${(v.dubLanguages || []).map((l) => `<div class="mine-row">
         <label class="check"><input type="checkbox" class="dub-${esc(c)}" value="${l}" ${on.includes(l) ? "checked" : ""}> ${LANGS[l] || l}</label>
-        <input id="dubv-${esc(c)}-${l}" placeholder="ID de voz nativa (vacío = la voz del canal, modelo multilingüe)" value="${esc(((d.voices || {})[l] || {}).voice_id || "")}"></div>`).join("")}
+        <input id="dubv-${esc(c)}-${l}" aria-label="ID de voz en ${LANGS[l] || l} para ${esc(c)}" placeholder="ID de voz nativa (vacío = la voz del canal, modelo multilingüe)" value="${esc(((d.voices || {})[l] || {}).voice_id || "")}"></div>`).join("")}
       <label class="check mt-3"><input type="checkbox" id="dubex-${esc(c)}" ${d.existing === false ? "" : "checked"}>
         Doblar también los vídeos ya hechos</label>
       <p class="help">Si no, solo los que se terminen a partir de ahora</p>
@@ -423,10 +423,10 @@ async function voicesPage() {
     ${v.channels.map(row).join("")}
     <h2>Buscar voces</h2>
     <div class="card"><div class="three">
-      <div class="field"><input id="vq" placeholder="nombre o estilo: narrator, documentary, deep…"></div>
-      <div class="field"><select id="vlang"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
+      <div class="field"><input id="vq" aria-label="Buscar voz" placeholder="nombre o estilo: narrator, documentary, deep…"></div>
+      <div class="field"><select id="vlang" aria-label="Idioma"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
         <option value="fr">francés</option><option value="en">inglés</option><option value="it">italiano</option><option value="">todas</option></select></div>
-      <div class="field"><select id="vgender"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select></div></div>
+      <div class="field"><select id="vgender" aria-label="Voz de hombre o mujer"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select></div></div>
       <div class="actions"><button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" class="mt-3"></div></div>`);
   const read = (c) => ({channel: c, voice_id: $("#vid-" + c).value.trim(), name: $("#vname-" + c).value.trim(), model_id: $("#vmodel-" + c).value,
     speed: $("#vspeed-" + c).value, stability: $("#vstab-" + c).value, similarity: $("#vsim-" + c).value});

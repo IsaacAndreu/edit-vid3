@@ -41,7 +41,7 @@ window.runScenes = async (button) => {
   button.disabled = true; await post("/api/scenebench"); setTimeout(() => stats(), 4000);
 };
 window.runBench = async (button) => {
-  if (!confirm("¿Probar ahora? Tarda 5-15 min y hace unas 50 peticiones a YouTube (mejor cuando la cola no esté a tope).")) return;
+  if (!(await ask("¿Probar ahora? Tarda 5-15 min y hace unas 50 peticiones a YouTube (mejor cuando la cola no esté a tope).", {ok: "Probar ahora"}))) return;
   button.disabled = true; await post("/api/ytbench"); setTimeout(() => stats(), 3000);
 };
 
@@ -58,9 +58,9 @@ async function stats(refresh = false) {
     const colors = {youtube: "#e5534b", fotos: "#3b82f6", stock: "#a371f7", generadas: "#f2cc60", "gráficos": "#3fb950", otros: "#8b949e"};
     return `<div class="bar mix">${Object.entries(mix).map(([k, n]) =>
       `<i title="${esc(k)}: ${n} planos" style="--v:${100 * n / total}%;--c:${colors[k] || "#8b949e"}"></i>`).join("")}</div>`; };
-  const head = (key, label) => `<th class="r" onclick="statsSort='${key}';stats()">${label}${statsSort === key ? " ▾" : ""}</th>`;
+  const head = (key, label) => `<th class="r" tabindex="0" aria-sort="${statsSort === key ? "descending" : "none"}" onclick="statsSort='${key}';stats()">${label}${statsSort === key ? " ▾" : ""}</th>`;
   show(`<div class="hb"><h1>Estadísticas</h1>
-      <div class="tools"><select class="w-auto" onchange="statsChannel=this.value;stats()"><option value="">Todos los canales</option>
+      <div class="tools"><select class="w-auto" aria-label="Canal" onchange="statsChannel=this.value;stats()"><option value="">Todos los canales</option>
         ${st.channels.map((c) => `<option ${c.channel === statsChannel ? "selected" : ""}>${esc(c.channel)}</option>`).join("")}</select>
       <button onclick="stats(true)">${icon("refresh")} Actualizar de YouTube</button></div></div>
     <div class="small muted">${st.fetched ? "Datos de YouTube de " + new Date(st.fetched * 1000).toLocaleString("es-ES") : "Sin datos de YouTube aún (hace falta el enlace del vídeo: «Ya está subido» con su URL)."}</div>
@@ -131,7 +131,7 @@ async function saveExperiment(slug, field, value) {
   try {
     await post(`/api/experimentos/${encodeURIComponent(slug)}`, {[field]: value});
   } catch (e) {
-    alert(e.message || e);
+    oops(e);
   }
 }
 
@@ -147,7 +147,7 @@ async function pilotPage() {
       <div class="row between">
         <div class="row"><b class="lg">${esc(c.channel)}</b>
           <button class="${c.on ? "main" : ""}" onclick="pilotSet('${esc(c.channel)}', {on: ${!c.on}})">${c.on ? "VÍDEOS ON" : "EN PAUSA"}</button>
-          <select class="w-auto" onchange="pilotSet('${esc(c.channel)}', {perDay: +this.value})">${[1, 2, 3].map((n) => `<option value="${n}" ${n === c.perDay ? "selected" : ""}>${n} al día</option>`).join("")}</select></div>
+          <select class="w-auto" aria-label="Vídeos al día en ${esc(c.channel)}" onchange="pilotSet('${esc(c.channel)}', {perDay: +this.value})">${[1, 2, 3].map((n) => `<option value="${n}" ${n === c.perDay ? "selected" : ""}>${n} al día</option>`).join("")}</select></div>
         <span class="small">${c.voice ? `<span class="pill hecho">${icon("mic")} voz lista</span>` : `<span class="pill" title="Sin voz de GenAIPro: el vídeo esperará a que subas la voz (Ajustes → Voces)">${icon("mic")} sin voz automática</span>`}</span></div>
       ${c.error ? `<div class="notice bad small">Último intento: ${esc(c.error)}</div>` : ""}
       ${c.job && c.job.running ? `<div class="notice small">${icon("pen")} Escribiendo el guion… (un par de minutos)</div>` : ""}
@@ -165,7 +165,7 @@ async function pilotPage() {
   window.pilotSkip = async (channel, id) => { await post(`/api/piloto/${encodeURIComponent(channel)}/saltar`, {id}); pilotPage(); };
   window.pilotMake = async (channel, id, button) => {
     button.disabled = true;
-    try { await post(`/api/piloto/${encodeURIComponent(channel)}/hacer`, {id}); } catch (e) { alert(e.message); }
+    try { await post(`/api/piloto/${encodeURIComponent(channel)}/hacer`, {id}); } catch (e) { oops(e); }
     pilotPage();
   };
   if (busy) timer = setTimeout(() => location.hash === "#/piloto" && pilotPage(), 5000);
@@ -208,9 +208,9 @@ async function experimentsPage() {
         <td data-k="7 días">${v.views7d != null ? fmt(v.views7d) : '<span class="muted">—</span>'}</td>
         <td data-k="Frente al canal"><b>${times(v.score)}</b></td>
         <td class="wide small l">${Object.entries(v.tried).map(([k, x]) => `<span class="pill" title="${esc(k)}">${esc(x)}</span>`).join(" ")}</td>
-        <td data-k="Etiquetas" class="l"><input class="w-md" placeholder="p. ej. miniatura con cara" value="${esc((v.tags || []).join(", "))}"
+        <td data-k="Etiquetas" class="l"><input class="w-md" aria-label="Etiquetas de ${esc(v.slug)}" placeholder="p. ej. miniatura con cara" value="${esc((v.tags || []).join(", "))}"
           onchange="saveExperiment('${esc(v.slug)}', 'tags', this.value).then(experimentsPage)"></td>
-        ${["retention30", "retentionAvg", "ctr"].map((k) => `<td data-k="${k}"><input class="w-xs" inputmode="decimal" value="${v[k] ?? ""}"
+        ${["retention30", "retentionAvg", "ctr"].map((k) => `<td data-k="${k}"><input class="w-xs" inputmode="decimal" aria-label="${{retention30: "Retención a los 30 s", retentionAvg: "Retención media", ctr: "CTR"}[k]} (%) de ${esc(v.slug)}" value="${v[k] ?? ""}"
           onchange="saveExperiment('${esc(v.slug)}', '${k}', this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
         || '<tr><td colspan="8" class="empty-row">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`);
 }
@@ -236,7 +236,7 @@ function drawYtTable(typing = false) {
   const vs = (r) => r == null ? "—" : `<span class="pill ${r >= 1.5 ? "hecho" : r < 0.7 ? "error" : ""}">${times(r)}</span>`;
   const row = (v) => { const y = v.youtube; return `<tr class="v">
     <td><div class="row gap-3 nowrap">
-      <a class="thumb" href="${esc(v.url)}" target="_blank" rel="noopener">${y.thumbnail ? thumb(y.thumbnail) : ""}</a>
+      <a class="thumb" href="${esc(v.url)}" target="_blank" rel="noopener" aria-label="${esc(y.title || v.title)} en YouTube">${y.thumbnail ? thumb(y.thumbnail) : ""}</a>
       <div class="mw0"><a class="t" href="#/video/${encodeURIComponent(v.slug)}">${esc(y.title || v.title)}</a>
         <div class="sub">${dot(v.channel)}${esc(v.channel)} · ${esc(v.slug)}${v.publishedDay ? " · " + esc(v.publishedDay) : ""}${y.minutes ? " · " + fmt(y.minutes) + " min" : ""}</div></div></div></td>
     <td data-k="Visitas" title="${fmt(y.views)} visitas"><b>${kfmt(y.views)}</b><div class="vbar" style="--v:${Math.max(3, 100 * (y.views || 0) / maxViews)}%"></div></td>
@@ -253,20 +253,20 @@ function drawYtTable(typing = false) {
         <span class="muted small n4">${g.length} vídeo(s) · ${kfmt(views)} visitas · ${kfmt(hours)} h (est.)</span></span></td></tr>${g.map(row).join("")}`; }).join("");
   } else body = rows.map(row).join("");
   fill(box, `<div class="tools">
-      <input type="search" placeholder="Buscar título o carpeta…" value="${esc(statsQuery)}" oninput="statsQuery=this.value;drawYtTable(true)">
+      <input type="search" aria-label="Buscar título o carpeta" placeholder="Buscar título o carpeta…" value="${esc(statsQuery)}" oninput="statsQuery=this.value;drawYtTable(true)">
       <button class="chip ${statsChannel ? "" : "on"}" onclick="statsChannel='';drawYtTable()">Todos <span class="muted">${statsRows.length}</span></button>
       ${Object.keys(counts).sort().map((c) => `<button class="chip ${c === statsChannel ? "on" : ""}" onclick="statsChannel='${esc(c)}';drawYtTable()">
         ${dot(c)}${esc(c)} <span class="muted">${counts[c]}</span></button>`).join("")}
       <span class="row small gap-1 push nowrap">Ordenar:
-        <select class="w-auto" onchange="statsSort=this.value;statsDir=['title','channel'].includes(this.value)?1:-1;drawYtTable()">
+        <select class="w-auto" aria-label="Ordenar por" onchange="statsSort=this.value;statsDir=['title','channel'].includes(this.value)?1:-1;drawYtTable()">
           ${[["channel", "Canal"], ["title", "Título"], ...YT_COLS].map(([k, label]) => `<option value="${k}" ${statsSort === k ? "selected" : ""}>${label}</option>`).join("")}</select>
         <button class="icon" title="Al revés" aria-label="Al revés" onclick="statsDir=-statsDir;drawYtTable()">${icon(statsDir > 0 ? "up" : "down")}</button></span>
       <label class="check small nw">
         <input type="checkbox" ${statsGroup ? "checked" : ""} onchange="statsGroup=this.checked;drawYtTable()"> Agrupar por canal</label></div>
     <div class="card flush tall"><table class="ytt">
-      <thead><tr><th class="${statsSort === "title" ? "on" : ""}" onclick="ytSort('title')">Vídeo${arrow("title")}
-        <span class="ml-2 ${statsSort === "channel" ? "on" : ""}" onclick="event.stopPropagation();ytSort('channel')">· Canal${arrow("channel")}</span></th>
-        ${YT_COLS.map(([k, label]) => `<th class="${statsSort === k ? "on" : ""} ${["at48h", "at7d", "commentsPer1k"].includes(k) ? "wide" : ""}" onclick="ytSort('${k}')">${label}${arrow(k)}</th>`).join("")}</tr></thead>
+      <thead><tr><th class="${statsSort === "title" ? "on" : ""}" tabindex="0" aria-sort="${statsSort === "title" ? (statsDir > 0 ? "ascending" : "descending") : "none"}" onclick="ytSort('title')">Vídeo${arrow("title")}
+        <span class="ml-2 ${statsSort === "channel" ? "on" : ""}" role="button" tabindex="0" onclick="event.stopPropagation();ytSort('channel')">· Canal${arrow("channel")}</span></th>
+        ${YT_COLS.map(([k, label]) => `<th class="${statsSort === k ? "on" : ""} ${["at48h", "at7d", "commentsPer1k"].includes(k) ? "wide" : ""}" tabindex="0" aria-sort="${statsSort === k ? (statsDir > 0 ? "ascending" : "descending") : "none"}" onclick="ytSort('${k}')">${label}${arrow(k)}</th>`).join("")}</tr></thead>
       <tbody>${body || '<tr><td colspan="10" class="empty-row">Ningún vídeo con ese filtro.</td></tr>'}</tbody>
     </table></div>
     <div class="small muted mt-1">${rows.length} de ${statsRows.length} vídeos · ${kfmt(rows.reduce((s, v) => s + (v.youtube.views || 0), 0))} visitas · ${kfmt(rows.reduce((s, v) => s + (v.youtube.watchHours || 0), 0))} h (est.) · toca una columna para ordenar (otra vez: al revés)</div>`);
@@ -287,7 +287,7 @@ function viralBadge(v) {
     style="--c:${color}">${n >= 60 ? icon("fire") : ""}${n}<small>VIRAL</small></span>`;
 }
 function videoTile(v, actions = "") {
-  return `<div class="card"><a href="${esc(v.url)}" target="_blank" rel="noopener">${thumb(v.thumbnail)}</a>
+  return `<div class="card"><a href="${esc(v.url)}" target="_blank" rel="noopener" aria-label="${esc(v.title)} en YouTube">${thumb(v.thumbnail)}</a>
     <div class="body"><div class="row between"><span class="row">${viralBadge(v)}<span class="big">${times(v.ratio)}</span></span>${v.new ? '<span class="pill hecho">nuevo</span>' : ""}</div>
     <a class="t" href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>
     <div class="small muted">${esc(v.channel)}${v.subscribers != null ? " · " + kfmt(v.subscribers) + " subs" : ""} · ${kfmt(v.views)} visitas · hace ${v.ageDays} días</div>
@@ -312,11 +312,13 @@ function ideaCard(i, channel) {
     <div class="actions"><button class="main" onclick="ideaToVideo('${i.id}','${esc(channel || "")}')">Crear vídeo</button>
       <button onclick="saveIdea('${i.id}','${esc(channel || "")}',this)">Guardar</button></div></div>`;
 }
-function closeIdeas() { const m = document.getElementById("modal"); if (m) m.remove(); route(); }
+function closeIdeas() { const m = document.getElementById("modal"); if (m) m.remove(); route(); }   // a <dialog>: Esc and the backdrop close it too
 async function openIdeas(n, more = false) {
   const seed = ideaSeeds[n];
   let box = document.getElementById("modal");
-  if (!box) { box = document.createElement("div"); box.id = "modal"; box.className = "modal"; box.onclick = (e) => e.target === box && closeIdeas(); document.body.appendChild(box); }
+  if (!box) { box = document.createElement("dialog"); box.id = "modal"; box.className = "dialog sheet"; box.setAttribute("aria-label", "Ideas");
+    box.onclick = (e) => e.target === box && closeIdeas(); box.oncancel = (e) => { e.preventDefault(); closeIdeas(); };
+    document.body.appendChild(box); box.showModal(); }
   const title = seed.kind === "niche" ? `Ideas · ${esc(seed.name || seed.query)}` : `Ideas como «${esc(seed.title)}»`;
   const keep = more && box.querySelector("#ideas-list") ? box.querySelector("#ideas-list").innerHTML : "";
   box.innerHTML = `<div><div class="row between top nowrap"><h1 class="m-0">${title}</h1><button class="icon" title="Cerrar" aria-label="Cerrar" onclick="closeIdeas()">${icon("x")}</button></div>
@@ -342,12 +344,12 @@ function ideaToVideo(id, channel) {
 }
 async function nicheChannel(n) {
   const seed = ideaSeeds[n];
-  const name = prompt("Nombre del canal nuevo (sin espacios):", (seed.name || seed.query).toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30));
+  const name = await askText("Nombre del canal nuevo (sin espacios):", (seed.name || seed.query).toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30));
   if (!name) return;
   try { const r = await post("/api/niche-channel", {query: seed.query, name});
-    alert(`Canal «${r.channel}» creado: el radar lo sigue desde mañana` + (r.competitors.length ? ` (competidores: ${r.competitors.join(", ")})` : "") + ". Ponle colores y formato en canales/" + r.channel + ".yaml cuando quieras.");
+    toast(`Canal «${r.channel}» creado: el radar lo sigue desde mañana` + (r.competitors.length ? ` (competidores: ${r.competitors.join(", ")})` : "") + ". Ponle colores y formato en canales/" + r.channel + ".yaml cuando quieras.", "ok");
     data = null;
-  } catch (e) { alert(e.message); }
+  } catch (e) { oops(e); }
 }
 let newsTab = null, nicheFilter = "todos", gapFilter = "todos";
 async function radarPage() {
@@ -412,7 +414,7 @@ async function radarPage() {
     <div class="small muted">Cada tema se mide en YouTube: <b>demanda</b> (mediana de visitas de los vídeos más vistos del último año),
       <b>competencia</b> (vídeos largos en español subidos en 30 días), <b>canales pequeños que ganan</b>, cuánto se llevan los canales grandes
       y el <b>hueco frente al inglés</b> (×N = el mismo tema tiene N veces más público en inglés). Verde = hueco: entra antes que nadie.</div>
-    <div class="row nowrap my-2"><input id="gapTopic" class="grow" placeholder="Mide un tema que tengas en mente: p. ej. «desastres de ingeniería»">
+    <div class="row nowrap my-2"><input id="gapTopic" class="grow" aria-label="Tema que medir" placeholder="Mide un tema que tengas en mente: p. ej. «desastres de ingeniería»">
       <button class="main" onclick="measureGap(this)">${icon("ruler")} Medir (~20 s)</button></div>
     ${r.gaps && r.gaps.length ? `${filters(["todos", "hueco", "hueco en inglés", "a vigilar", "saturado", "sin demanda"], gapFilter, "gapFilter", {todos: "Todos"})}
       <div class="cards">${r.gaps.filter((g) => gapFilter === "todos" || g.verdict === gapFilter).map((g) => {
@@ -502,7 +504,7 @@ async function radarPage() {
     if (!topic) return;
     button.disabled = true; button.textContent = "Midiendo…";
     try { await post("/api/radar/gap", {topic}); gapFilter = "todos"; route(); }
-    catch (e) { alert(e.message); button.disabled = false; button.innerHTML = icon("ruler") + " Medir (~20 s)"; }
+    catch (e) { oops(e); button.disabled = false; button.innerHTML = icon("ruler") + " Medir (~20 s)"; }
   };
   window.runNews = async () => { await post("/api/news"); route(); };
   window.newsDraft = async (i, button) => {
@@ -511,11 +513,11 @@ async function radarPage() {
     button.disabled = true; button.textContent = "Escribiendo… (~1 min)";
     try {
       const d = await post("/api/scripts/draft", {channel, idea});
-      if (d.check) alert(`Borrador de ${d.words} palabras con ${d.check} dato(s) [COMPROBAR]: revísalos antes de crear el vídeo.`);
+      if (d.check) toast(`Borrador de ${d.words} palabras con ${d.check} dato(s) [COMPROBAR]: revísalos antes de crear el vídeo.`);
       const pre = {channel, idea: {...idea, title: d.title || idea.title, format: d.format || "caso-real"}, script: d.script};
       try { sessionStorage.setItem("prefill", JSON.stringify(pre)); } catch (e) {}
       window.prefill = pre; location.hash = "#/nuevo";
-    } catch (e) { alert(e.message); button.disabled = false; button.innerHTML = label; }
+    } catch (e) { oops(e); button.disabled = false; button.innerHTML = label; }
   };
   window.newsSave = async (i, button) => {
     const idea = window.newsIdeas[i];
@@ -539,7 +541,7 @@ async function channelPage() {
   const c = await api("/api/mychannel/" + encodeURIComponent(myChannel));
   const r = c.report;
   const head = `<div class="hb"><h1>Mi canal</h1>
-      <div class="tools"><select class="w-auto" onchange="myChannel=this.value;route()">${data.channels.map((n) => `<option ${n === myChannel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      <div class="tools"><select class="w-auto" aria-label="Canal" onchange="myChannel=this.value;route()">${data.channels.map((n) => `<option ${n === myChannel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
       <button class="main" onclick="analyse()" ${c.job.running || !c.handle ? "disabled" : ""}>Analizar ahora</button></div></div>
     ${c.handle ? `<div class="small muted">${esc(c.handle)}${r ? " · análisis del " + new Date(r.generated).toLocaleString("es-ES") : ""}</div>`
       : `<div class="notice"><label for="myhandle">¿Cuál es este canal en YouTube?</label>

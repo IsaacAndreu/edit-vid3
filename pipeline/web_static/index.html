@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/static/app.css?v={{v}}">
 </head>
 <body>
+<button class="skip" type="button" onclick="document.getElementById('app').focus()">Saltar al contenido</button>
 <header id="top" class="hide">
   <a class="brand" href="#/"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg></i>Estudio</a>
   <button class="burger icon" type="button" aria-label="Menú" aria-expanded="false" aria-controls="nav"
@@ -39,6 +40,7 @@
   <div class="foot"><span id="service"></span><a href="#" id="logout" onclick="event.preventDefault();logout()">Salir</a></div>
 </header>
 <main id="app" tabindex="-1"></main>
+<div id="toasts" aria-live="polite"></div>
 
 <form id="login" class="card hide" onsubmit="event.preventDefault();login()">
   <h1>Estudio de vídeos</h1>
@@ -48,6 +50,7 @@
 
 <script src="/static/js/core.js?v={{v}}"></script>
 <script src="/static/js/paint.js?v={{v}}"></script>
+<script src="/static/js/ui.js?v={{v}}"></script>
 <script src="/static/js/home.js?v={{v}}"></script>
 <script src="/static/js/video.js?v={{v}}"></script>
 <script src="/static/js/grow.js?v={{v}}"></script>
