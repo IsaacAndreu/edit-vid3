@@ -501,7 +501,7 @@ class TimelineMedia(_Strict):
     width: int | None = None                                 # of the media file (cards keep the source frame)
     height: int | None = None
     zoom: list[float] | None = None                          # [start frame in the shot, frames, final scale] (pipeline/camera.py)
-    rate: float | None = None                                # playback speed < 1 when the shot outlasts its clip
+    rate: float | None = None                                # playback speed: < 1 when the shot outlasts its clip, or the editor's speed
     mono: bool | None = None                                 # black and white (a low moment of the story)
     cutout: str | None = None                                # parallax photos with depth: the subject alone, same size (pipeline/depth.py)
 
@@ -585,7 +585,7 @@ class ColdOpenFile(_Strict):
 class TimelineTransition(_Strict):
     """A key cut: zoom punch or whip pan with motion blur, centred on the cut (from = cut - 6)."""
 
-    kind: Literal["zoom", "whip"]
+    kind: Literal["zoom", "whip", "black", "flash", "blur"]   # black / flash / blur: chosen in the editor
     from_: int = Field(alias="from", ge=0)
     durationInFrames: int = Field(default=12, ge=2)
 
@@ -610,6 +610,20 @@ class TimelineLabel(_Strict):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class ShotFx(_Strict):
+    """Effects of a shot chosen in the editor (remotion/components/ShotFx.tsx); its speed is media.rate."""
+
+    look: Literal["none", "bn", "sepia", "frio", "calido", "vintage", "dramatico"] | None = None
+    brightness: float | None = Field(default=None, ge=0.2, le=2)
+    contrast: float | None = Field(default=None, ge=0.2, le=2)
+    saturation: float | None = Field(default=None, ge=0, le=3)
+    temperature: float | None = Field(default=None, ge=-1, le=1)
+    blur: float | None = Field(default=None, ge=0, le=40)
+    vignette: float | None = Field(default=None, ge=0, le=1)
+    grain: float | None = Field(default=None, ge=0, le=1)
+    move: Literal["none", "in", "out", "left", "right"] | None = None
+
+
 class TimelineShot(_Strict):
     id: str
     type: ShotType | Literal["endscreen"]                     # endscreen: the last 20 s for YouTube's end screen
@@ -622,6 +636,10 @@ class TimelineShot(_Strict):
     chapterFrames: int | None = None                         # the card shows only this long: the voice's pause
     groupId: str | None = None                               # panel / stat group this shot belongs to
     coldOpen: bool = False                                   # plays with its original sound, before the narration
+    # the editor: a shot split in pieces (each starts `offset` frames into the whole one) and its effects
+    offset: int = Field(default=0, ge=0)
+    fullDuration: int | None = Field(default=None, ge=1)
+    fx: ShotFx | None = None
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

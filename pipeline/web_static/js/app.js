@@ -18,6 +18,7 @@ async function route() {
   if (navStop) navStop.abort();
   navStop = new AbortController();
   pageKeys = null;
+  syncChannelFilters();
   document.body.classList.remove("menu");
   $(".burger").setAttribute("aria-expanded", "false");
   let hash = location.hash || "#/";
@@ -29,7 +30,9 @@ async function route() {
   const slow = quiet ? 0 : setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
     if (!$("#app").firstElementChild) paint($("#app"), '<div class="skel"><div></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>', true); }, 250);
   try {
-    if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
+    document.body.classList.toggle("editing", hash.startsWith("#/editor/"));
+    if (hash.startsWith("#/editor/")) await editorPage(decodeURIComponent(hash.slice(9)));
+    else if (hash.startsWith("#/video/")) await videoPage(decodeURIComponent(hash.slice(8)));
     else if (hash.startsWith("#/revisar/")) await reviewPage(decodeURIComponent(hash.slice(10)));
     else if (hash.startsWith("#/decisiones/")) await decisionsPage(decodeURIComponent(hash.slice(13)));
     else if (hash === "#/errores") await errorsPage();
@@ -38,6 +41,7 @@ async function route() {
     else if (hash === "#/canal-nuevo") await newChannelPage();
     else if (hash === "#/nuevo") await newVideo();
     else if (hash === "#/calendario") await calendarPage();
+    else if (hash === "#/canales") await canalesPage();
     else if (hash === "#/subir") await uploadPage();
     else if (hash === "#/biblioteca") await libraryPage();
     else if (hash.startsWith("#/biblioteca/")) await libraryEntity(decodeURIComponent(hash.slice(13)));
@@ -80,9 +84,9 @@ document.addEventListener("click", (e) => {     // menus of the header: open on 
 async function logout() { await post("/api/logout").catch(() => {}); location.hash = "#/"; location.reload(); }
 
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
-const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/tablero",
+const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/canales", "#/tablero",
   "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta"];
-const PARTNER_PREFIXES = ["#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
+const PARTNER_PREFIXES = ["#/editor/", "#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
 
 async function start() {
@@ -102,6 +106,8 @@ async function start() {
   }
   $("#top").classList.remove("hide");
   document.body.classList.add("authed");
+  if (/Mac|iPhone|iPad/.test(navigator.platform)) $("#cmdkey").textContent = "⌘K";
+  loadStudioChannels();
   window.onhashchange = () => { tab = "diagnosis"; window.tabPicked = 0; window.logAll = 0; route(); };
   route();
 }

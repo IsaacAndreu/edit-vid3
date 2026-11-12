@@ -70,6 +70,8 @@ def test_a_partner_sees_only_their_channels(studio):
     assert voices["channels"] == ["atletismo"] and set(voices["speaks"]) == {"atletismo"}
     assert call("/api/voices", {"channel": "aviacion", "voice_id": "x"})[0] == 403
     assert call("/api/voices/credits")[0] == 403 and call("/api/dubbing", {"channel": "atletismo"})[0] == 403
+    health = json.loads(call("/api/canales")[1])["channels"]                  # «Canales»: theirs only
+    assert [c["channel"] for c in health] == ["atletismo"] and len(health[0]["next"]) == 14 and len(health[0]["weeks"]) == 8
 
 
 def test_nothing_of_yours_opens_for_a_partner(studio):
@@ -78,13 +80,15 @@ def test_nothing_of_yours_opens_for_a_partner(studio):
     for path in ("/api/video/mio1", "/files/mio1/video-final.mp4", "/api/review/mio1", "/api/decisions/mio1",
                  "/api/video/mio1/repeticion", "/api/settings", "/api/users", "/api/servidor",
                  "/api/library", "/api/errors", "/api/proxy", "/api/piloto", "/api/voices/credits",
-                 "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia"):
+                 "/api/mychannel/aviacion", "/api/video/suyo1/pilot", "/api/copia", "/editor/mio1/", "/editor/mio1/api/state"):
         assert call(path)[0] == 403, path
+    assert call("/editor/suyo1/api/state")[0] == 404              # theirs, but it has no edit yet: nothing to open
     for path, body in (("/api/video/mio1/hold", {}), ("/api/video/mio1/retry", {}), ("/api/settings", {"daily_usd": 9}),
                        ("/api/users", {"name": "amigo", "channels": ["aviacion"]}), ("/api/update", {}),
                        ("/api/videos", {"name": "nuevo", "channel": "aviacion", "script": SCRIPT}),
                        ("/api/video/suyo1/channel", {"channel": "aviacion"}), ("/api/review/mio1/s001", {"verdict": "mala"})):
         assert call(path, body)[0] == 403, path
+    assert call("/editor/mio1/api/edits", {"edits": {}})[0] == 403
     assert call("/api/videos", {"name": "nuevo", "channel": "atletismo", "script": SCRIPT})[0] == 200
 
 
@@ -93,6 +97,7 @@ def test_you_still_see_everything_and_manage_partners(studio):
     assert login("clave") == 200
     data = json.loads(call("/api/overview")[1])
     assert {v["slug"] for v in data["videos"]} == {"mio1", "suyo1"} and "partner" not in data
+    assert {"aviacion", "atletismo"} <= {c["channel"] for c in json.loads(call("/api/canales")[1])["channels"]}
     listed = json.loads(call("/api/users")[1])["users"]
     assert [(u["name"], u["channels"], u["telegram"]) for u in listed] == [("amigo", ["atletismo"], False)]
     assert "hash" not in json.dumps(listed) and "salt" not in json.dumps(listed)

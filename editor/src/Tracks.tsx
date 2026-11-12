@@ -3,7 +3,7 @@
 // the pipeline's frames (edits.json) by the callbacks.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FC, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
-import { clock, groupName, toBase, toView, type Layout, type Scene, type Selection, type ShotInfo } from './model';
+import { at as urlOf, clock, groupName, toBase, toView, type Layout, type Scene, type Selection, type ShotInfo } from './model';
 
 export type Drag =
   | { what: 'cut'; shotId: string; base: number }
@@ -40,6 +40,7 @@ interface Props {
   selection: Selection;
   actions: TrackActions;
   reload: number;
+  transitions: { kind: string; from: number; durationInFrames: number }[];
 }
 
 const ROWS = { ruler: 24, scenes: 30, video: 54, graphics: 30, labels: 26, voice: 46, music: 24, sfx: 22 };
@@ -310,12 +311,21 @@ export const Tracks: FC<Props> = (props) => {
                   transform: swapping ? `translate(${drag!.dx}px, -6px)` : undefined, zIndex: swapping ? 6 : undefined, ...ring(on),
                 })}>
                 {s.media && s.durationInFrames * px > 26 ? (
-                  <img src={`/api/thumb/${s.id}?r=${props.reload}`} loading="lazy" draggable={false}
+                  <img src={urlOf(`/api/thumb/${s.id}?r=${props.reload}`)} loading="lazy" draggable={false}
                     style={{ height: '100%', width: Math.min(96, s.durationInFrames * px), objectFit: 'cover', float: 'left', pointerEvents: 'none' }} />
                 ) : null}
                 <span style={{ paddingLeft: 3, color: meta?.weak ? 'var(--warn)' : 'var(--muted)', fontSize: 10 }}>
                   {s.type === 'chapter' ? `▌${s.chapterTitle ?? ''}` : meta?.weak ? '⚠' : ''}
                 </span>
+                {meta?.fx || (meta?.rate && meta.rate !== 1) ? (
+                  <span title={`Efectos${meta.rate && meta.rate !== 1 ? ` · velocidad ${meta.rate}×` : ''}`}
+                    style={{ position: 'absolute', right: 2, top: 2, fontSize: 9, fontWeight: 800, padding: '0 4px', borderRadius: 3, background: 'var(--accent)', color: '#111', pointerEvents: 'none' }}>
+                    {meta.rate && meta.rate !== 1 ? `${meta.rate}×` : 'FX'}</span>
+                ) : null}
+                {props.transitions.some((t) => Math.abs(t.from + t.durationInFrames / 2 - s.from) <= 7) && i > 0 ? (
+                  <span title="Transición" style={{ position: 'absolute', left: -6, bottom: 2, width: 12, height: 12, borderRadius: 3, transform: 'rotate(45deg)',
+                    background: '#7cb8ff', border: '1px solid #0e0f13', pointerEvents: 'none', zIndex: 2 }} />
+                ) : null}
                 {i > 0 ? handle('left', start({ what: 'cut', shotId: s.id, base: s.from }), s.durationInFrames * px) : null}
               </div>
             );

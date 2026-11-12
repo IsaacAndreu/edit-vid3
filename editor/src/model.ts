@@ -27,6 +27,10 @@ export interface ShotInfo {
   weak: boolean;
   swapped: boolean;
   options: number;
+  fx?: Record<string, unknown> | null;
+  rate?: number | null;
+  offset?: number;
+  piece?: boolean;
 }
 
 export interface Group {
@@ -71,6 +75,7 @@ export interface Layout {
   groups: Group[];
   labels: LayoutLabel[];
   audio: { sfx: LayoutSfx[]; musicParts?: MusicPart[]; voiceFrom?: number; voiceGaps?: [number, number][] };
+  transitions?: { kind: string; from: number; durationInFrames: number }[];
 }
 
 export interface Scene {
@@ -98,6 +103,9 @@ export interface Edits {
   sfx: { removed: string[]; moved: Record<string, number>; volume: Record<string, number>; added: LayoutSfx[] };
   order: string[];
   deleted: string[];
+  splits: Record<string, number[]>; // a shot cut in pieces (base frames)
+  fx: Record<string, Record<string, unknown>>; // effects per shot or piece (Fx.tsx)
+  trans: Record<string, { kind: string; frames?: number }>; // the transition into a shot
 }
 
 export interface Job {
@@ -169,8 +177,15 @@ export type Selection =
   | { kind: 'scene'; id: string }
   | null;
 
+export interface TemplateGroup { group?: string }
+
+/** Where the page lives: '' on its own server (python main.py --editor), '/editor/<slug>' inside the studio. */
+export const BASE = location.pathname.replace(/\/(index\.html)?$/, '');
+/** A path of the editor's server, from wherever the page is. */
+export const at = (path: string) => (path.startsWith('/') ? BASE + path : path);
+
 export const api = async <T,>(path: string, body?: unknown): Promise<T> => {
-  const response = await fetch(path, body === undefined ? undefined : {
+  const response = await fetch(at(path), body === undefined ? undefined : {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -238,6 +253,7 @@ export const GRAPHIC_NAMES: Record<string, string> = {
   kinetic: 'Texto cinético', score: 'Nota', press: 'Prensa', rule: 'Reglamento', split: 'Pantalla partida',
   banned: 'Prohibido', spotlight: 'Congelado', strobe: 'Estroboscopia', replay: 'Repetición', standings: 'Marcador',
   podium: 'Podio', race: 'Carrera de barras', card: 'Carta', scale: 'Escala', tier: 'Tier list', iceberg: 'Iceberg', receipt: 'Ticket',
+  scene: 'Escena', clip: 'Clip propio',
 };
 
 export const groupName = (g: Group) =>

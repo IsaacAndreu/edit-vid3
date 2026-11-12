@@ -1,21 +1,27 @@
 // Side panels: the library (templates, footage search / upload, music and sound effects) and the
 // inspector of whatever is selected on the timeline.
 
+import { Thumbnail } from '@remotion/player';
 import { useEffect, useRef, useState, type FC, type ReactNode } from 'react';
+import { GraphicScene } from '../../remotion/components/graphics/GraphicScene';
+import type { Graphic } from '../../remotion/graphics';
 import {
-  api, clock, clone, groupName, setPath, type Asset, type Edits, type Option, type SearchResult,
+  api, at, clock, clone, groupName, setPath, type Asset, type Edits, type Option, type SearchResult,
   type Selection, type State, type Template,
 } from './model';
+import { baseId, ShotTools } from './Fx';
 
 const SKIP = new Set(['src', 'kind', 'source', 'credit', 'type', 'chart', 'layout', 'better', 'query', 'id', 'axis', 'countries',
-  'labels', 'focus', 'anchor', 'seconds', 'track', 'peak', 'ghosts', 'still', 'cutout', 'video', 'background', 'media', 'lon', 'lat', 'zoom']);
+  'labels', 'focus', 'anchor', 'seconds', 'track', 'peak', 'ghosts', 'still', 'cutout', 'video', 'background', 'media', 'lon', 'lat', 'zoom',
+  'template', 'sceneType', 'place', 'fit', 'volume', 'accentColor', 'imageUrl', 'videoUrl']);
 const FIELD: Record<string, string> = {
   title: 'Título', name: 'Nombre', note: 'Nota', subtitle: 'Subtítulo', lines: 'Línea', label: 'Etiqueta', text: 'Texto',
   headline: 'Titular', outlet: 'Medio', date: 'Fecha', highlight: 'Resaltado', who: 'Quién', reason: 'Motivo', since: 'Desde',
   stamp: 'Sello', position: 'Posición', badge: 'Rótulo', value: 'Valor', left: 'Izquierda', right: 'Derecha', points: 'Punto',
   events: 'Hito', rows: 'Fila', stats: 'Dato', specs: 'Dato', items: 'Elemento', places: 'Puesto', data: 'Dato', steps: 'Paso',
   kicker: 'Antetítulo', rank: 'Puesto', total: 'Total', d: 'Dificultad', e: 'Ejecución', penalty: 'Penalización', a: 'A', b: 'B',
-  year: 'Año', score: 'Nota', unit: 'Unidad', place: 'Puesto', number: 'Número',
+  year: 'Año', score: 'Nota', unit: 'Unidad', place: 'Puesto', number: 'Número', keywords: 'Palabra clave',
+  comparisonColumns: 'Columna', timelinePoints: 'Punto',
 };
 const pretty = (path: string) => path.replace(/^graphic\./, '').split('.').map((k) => (/^\d+$/.test(k) ? String(Number(k) + 1) : FIELD[k] ?? k)).join(' › ');
 
@@ -75,12 +81,12 @@ const OptionCard: FC<{ option: Option; chosen: boolean; onPick: () => void }> = 
       style={{ border: `2px solid ${chosen ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 8, overflow: 'hidden', background: 'var(--raised)' }}>
       <div style={{ position: 'relative', aspectRatio: '16 / 9', background: '#000' }}>
         {hover && option.preview && option.kind === 'video' ? (
-          <video ref={video} src={option.preview} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          <video ref={video} src={at(option.preview)} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (option.previewTo !== null && option.previewFrom !== null && v.currentTime > option.previewTo) v.currentTime = option.previewFrom;
             }} />
-        ) : <img src={option.thumb} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+        ) : <img src={at(option.thumb)} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
         <span style={{ position: 'absolute', left: 4, top: 4, fontSize: 10, background: 'rgba(0,0,0,.7)', padding: '1px 5px', borderRadius: 4 }}>
           {option.kind === 'video' ? 'VÍDEO' : 'FOTO'} · {option.score.toFixed(2)}
         </span>
@@ -108,15 +114,22 @@ interface Common {
   scenePreview: [number, number] | null;
 }
 
+/** A ready-made scene drawn live, one frame, with the same component as the render (no image files to keep up to date). */
+const ScenePreview: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graphic, durationInFrames }) => (
+  <GraphicScene graphic={graphic} durationInFrames={durationInFrames} seed="preview" />
+);
+
 // --- library -------------------------------------------------------------------------------------------------
 
 export const Library: FC<Common & { selection: Selection; templates: Template[]; assets: { music: Asset[]; sfx: Asset[] } }> = (props) => {
   const { state, frame, change, selection, templates, assets, toBase } = props;
   const [tab, setTab] = useState<'templates' | 'footage' | 'audio'>('templates');
+  const [find, setFind] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [busy, setBusy] = useState('');
   const [startAt, setStartAt] = useState<Record<string, string>>({});
+  const [overlay, setOverlay] = useState(false);
   const fps = state.timeline.fps;
   const shotId = selection?.kind === 'shot' ? selection.id : null;
   const shot = shotId ? state.layout.shots.find((s) => s.id === shotId) : null;
@@ -134,23 +147,39 @@ export const Library: FC<Common & { selection: Selection; templates: Template[];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', gap: 4, padding: 8 }}>
-        {tabButton('templates', 'Plantillas')}
+        {tabButton('templates', 'Recursos')}
         {tabButton('footage', 'Metraje')}
         {tabButton('audio', 'Audio')}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
         {tab === 'templates' ? (
           <>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>Arrástrala a la línea de tiempo o haz clic para ponerla en el cursor.</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              {templates.map((t, i) => (
-                <div key={t.type} draggable onDragStart={(e) => e.dataTransfer.setData('text/template', String(i))}
-                  onClick={() => addTemplate(t, toBase(frame))}
-                  style={{ background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 8px', cursor: 'grab', fontSize: 12, textAlign: 'center' }}>
-                  {t.name}
+            <input type="search" placeholder="Buscar un gráfico o una escena…" aria-label="Buscar recursos" value={find}
+              onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => e.stopPropagation()} style={{ marginBottom: 6 }} />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>Arrástralo a la línea de tiempo o haz clic para ponerlo en el cursor.</div>
+            {[['', 'Gráficos'], ['Escenas', 'Escenas listas (Remotion)']].map(([group, title]) => (
+              <div key={title}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)', margin: '10px 0 6px' }}>{title}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {templates.map((t, i) => ((t as Template & { group?: string }).group ?? '') !== group
+                    || (find && !t.name.toLowerCase().includes(find.toLowerCase())) ? null : (
+                    <div key={i} draggable onDragStart={(e) => e.dataTransfer.setData('text/template', String(i))}
+                      onClick={() => addTemplate(t, toBase(frame))} role="button" tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter') addTemplate(t, toBase(frame)); }}
+                      style={{ background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: group ? 4 : '10px 8px', cursor: 'grab', fontSize: 12, textAlign: 'center', overflow: 'hidden' }}>
+                      {group ? (
+                        <div style={{ aspectRatio: '16 / 9', borderRadius: 5, overflow: 'hidden', background: '#000', marginBottom: 4, pointerEvents: 'none' }}>
+                          <Thumbnail component={ScenePreview as unknown as FC<Record<string, unknown>>} compositionWidth={1920} compositionHeight={1080}
+                            durationInFrames={Math.max(2, Math.round(t.seconds * fps))} fps={fps} frameToDisplay={Math.round(t.seconds * fps * 0.6)}
+                            inputProps={{ graphic: { type: t.type, ...t.data }, durationInFrames: Math.round(t.seconds * fps) }} style={{ width: '100%' }} />
+                        </div>
+                      ) : null}
+                      {t.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
             <div style={{ height: 12 }} />
             <button style={{ width: '100%' }} onClick={() => change((e) => {
               e.addedLabels.push({ kind: 'name', text: 'NUEVO RÓTULO', from: toBase(frame), durationInFrames: Math.round(2.5 * fps) });
@@ -163,17 +192,26 @@ export const Library: FC<Common & { selection: Selection; templates: Template[];
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Para el plano {shot.id} ({(shot.durationInFrames / fps).toFixed(1)} s): «{shot.text.slice(0, 60)}»</div>
             )}
             <Card title="Subir un clip o una foto tuya">
-              <input type="file" accept="video/*,image/*" disabled={!shot || !!busy} onChange={async (ev) => {
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 6 }}>
+                <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} style={{ width: 'auto' }} />
+                Ponerlo encima, en el cursor (inserto), sin cambiar el plano
+              </label>
+              <input type="file" accept="video/*,image/*" disabled={(!shot && !overlay) || !!busy} onChange={async (ev) => {
                 const file = ev.target.files?.[0];
-                if (!file || !shot) return;
+                if (!file || (!shot && !overlay)) return;
                 setBusy('Subiendo…');
                 try {
-                  const response = await fetch(`/api/upload?name=${encodeURIComponent(file.name)}`, {
+                  const response = await fetch(at(`/api/upload?name=${encodeURIComponent(file.name)}`), {
                     method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
                   });
                   const data = await response.json();
                   if (!response.ok) throw new Error(data.error);
-                  change((e) => { e.own[shot.id] = data; delete e.footage[shot.id]; delete e.media[shot.id]; });
+                  if (overlay) change((e) => {          // a clip of your own over the edit: a «clip» graphic you can move and stretch
+                    const n = Math.max(0, ...e.added.map((g) => Number(g.id.replace('user-', '')) || 0)) + 1;
+                    e.added.push({ id: `user-${n}`, kind: 'graphic', from: toBase(frame), durationInFrames: Math.round(4 * fps),
+                      graphic: { type: 'clip', src: data.src, kind: data.kind, place: 'full', fit: 'cover' } });
+                  });
+                  else if (shot) change((e) => { e.own[shot.id] = data; delete e.footage[shot.id]; delete e.media[shot.id]; });
                 } catch (error) {
                   alert(String(error));
                 } finally {
@@ -261,7 +299,7 @@ export const Inspector: FC<Common & { selection: Selection }> = (props) => {
   useEffect(() => {
     setOptions(null);
     const info = state.shots.find((s) => s.id === shotId);
-    if (shotId && info && info.options > 0) api<Option[]>(`/api/options/${shotId}`).then(setOptions).catch(() => setOptions([]));
+    if (shotId && info && info.options > 0) api<Option[]>(`/api/options/${baseId(shotId)}`).then(setOptions).catch(() => setOptions([]));
   }, [shotId, reload]);
 
   if (!selection) {
@@ -274,7 +312,10 @@ export const Inspector: FC<Common & { selection: Selection }> = (props) => {
           • Arrastra un plano encima de otro para intercambiar su metraje.<br />
           • Arrastra y estira gráficos, rótulos y efectos.<br />
           • Arrastra una escena para cambiar el orden de la historia (la voz se mueve con ella).<br />
-          • Ctrl+Z / Ctrl+Y deshacen y rehacen · Supr quita lo seleccionado · Espacio reproduce.<br />
+          • S divide el plano en el cursor; elige una pieza para darle su transición, su aspecto, su velocidad o su movimiento.<br />
+          • «Recursos»: gráficos y escenas listas para arrastrar; «Metraje» → «Ponerlo encima» para un clip tuyo sobre el montaje.<br />
+          • Espacio o K reproduce · J / L: un segundo atrás / adelante · ← → un fotograma (con Mayús, 10).<br />
+          • Ctrl+Z / Ctrl+Y deshacen y rehacen · Supr quita lo seleccionado (una pieza vuelve a unirse con la anterior).<br />
           {pending ? <b style={{ color: 'var(--warn)' }}>{pending} plano(s) esperan «Aplicar cambios de planos».</b> : null}
         </div>
       </Card>
@@ -356,6 +397,7 @@ export const Inspector: FC<Common & { selection: Selection }> = (props) => {
           </div>
           {swap ? <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 6 }}>Pendiente: se descarga con «Aplicar cambios de planos».</div> : null}
         </Card>
+        <ShotTools state={state} shotId={shot.id} frame={props.frame} toBase={props.toBase} change={change} />
         {info.options > 0 ? (
           <Card title="Otras opciones que encontró el análisis">
             {options === null ? <div style={{ color: 'var(--muted)', fontSize: 12 }}>Cargando…</div> : (
@@ -389,6 +431,19 @@ export const Inspector: FC<Common & { selection: Selection }> = (props) => {
         </span>}>
         <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Dura {(group.durationInFrames / fps).toFixed(1)} s · estíralo o muévelo en la pista «Gráficos».</div>
         {leaves(group, '').map((f) => <Field key={f.path} label={pretty(f.path)} value={f.value} onSave={(v) => save(f.path, v)} />)}
+        {graphic.type === 'clip' ? (
+          <div style={{ display: 'grid', gap: 6, marginBottom: 8, fontSize: 12 }}>
+            {([['place', 'Dónde', [['full', 'Pantalla completa'], ['pip', 'Ventana en una esquina']]],
+               ['fit', 'Encaje', [['cover', 'Llenar (recorta)'], ['contain', 'Entero (con bandas)']]],
+               ['volume', 'Su sonido', [['0', 'Sin sonido'], ['0.5', 'Medio'], ['1', 'Entero']]]] as [string, string, [string, string][]][]).map(([key, name, opts]) => (
+              <label key={key} style={{ display: 'grid', gridTemplateColumns: '90px 1fr', alignItems: 'center', gap: 8 }}>{name}
+                <select value={String((graphic as Record<string, unknown>)[key] ?? opts[0][0])} style={{ padding: '4px 6px' }}
+                  onChange={(e) => save(`graphic.${key}`, key === 'volume' ? Number(e.target.value) : e.target.value)}>
+                  {opts.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+                </select></label>
+            ))}
+          </div>
+        ) : null}
         {graphic.type === 'map' ? (
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <input placeholder="Añadir lugar (p. ej. Tokio, Japón)" value={place} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />

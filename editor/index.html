@@ -18,10 +18,21 @@
     input, textarea { font: inherit; width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
                       border-radius: 6px; padding: 6px 8px; }
     input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    /* a phone: one column — the player, what is selected, the library, then the timeline (the page scrolls) */
+    @media (max-width: 760px) {
+      html, body, #root { height: auto; }
+      #root > div { height: auto !important; }
+      .ebar { flex-wrap: wrap; } .ebar strong { flex: 1 1 100%; }
+      .emid { flex-direction: column; flex: none !important; }
+      .eplayer { order: -1; padding: 6px !important; } .eplayerbox { max-width: none !important; }
+      .einsp, .elib { width: auto !important; border: 0 !important; border-top: 1px solid var(--line) !important; }
+      .elib { max-height: 60vh; overflow: auto; }
+      .etracks { flex: none !important; min-height: 330px !important; overflow-x: auto; }
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  <script src="/app/app.js"></script>
+  <script src="./app/app.js"></script>
 </body>
 </html>
