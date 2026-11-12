@@ -89,19 +89,34 @@ def video_folders(root: Path, materials: str = "materiales") -> list[Path]:
         if not folder.is_dir() or folder.name.startswith("."):
             continue
         subs = [sub for sub in sorted(folder.iterdir()) if sub.is_dir() and not sub.name.startswith(".")]
-        grouping = (not any((folder / name).is_file() for name in VIDEO_FILES)
-                    and (subs or (root / CHANNELS_DIR / f"{folder.name}.yaml").is_file()))
-        out += subs if grouping else [folder]
+        out += subs if _groups_videos(root, folder, subs) else [folder]
     return out
+
+
+def _groups_videos(root: Path, folder: Path, subs: list[Path] | None = None) -> bool:
+    """A folder of materiales/ without a script, voice or title that holds folders (or is named after a channel):
+    it groups videos instead of being one."""
+
+    if any((folder / name).is_file() for name in VIDEO_FILES):
+        return False
+    if subs is None:
+        subs = [sub for sub in folder.iterdir() if sub.is_dir() and not sub.name.startswith(".")]
+    return bool(subs) or (root / CHANNELS_DIR / f"{folder.name}.yaml").is_file()
 
 
 def find_video(root: Path, slug: str, materials: str = "materiales") -> Path:
     """materiales/<slug>/, or materiales/<canal>/<slug>/ when the video sits in a channel folder."""
 
     flat = root / materials / slug
-    if flat.is_dir():
+    if flat.is_dir() and not _groups_videos(root, flat):
         return flat
-    return next((f for f in video_folders(root, materials) if f.name == slug), flat)
+    # the same folder the queue takes (video_folders): a materiales/<slug>/ that only groups other folders is not
+    # this video — «Quitar de la cola» wrote its mark there and the queue skipped the real one for ever
+    # a copy put away (materiales/_hechos/…, folders starting with _ or .) only when there is no other: the queue
+    # never looks there, so «Quitar de la cola» on it left the real video skipped («quitado de la cola, se salta»)
+    found = [f for f in video_folders(root, materials) if f.name == slug]
+    put_away = lambda f: any(p.startswith(("_", ".")) for p in f.relative_to(root / materials).parts[:-1])   # noqa: E731
+    return next((f for f in found if not put_away(f)), found[0] if found else flat)
 
 
 @dataclass

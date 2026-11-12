@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+import cv2
 import requests
 
 from .context import RunContext
@@ -107,9 +108,42 @@ def detect_bars(source: Path, offset: float = 0.0) -> tuple[int, int, int, int] 
     return w, h, x, y
 
 
-def _frame_filter(source: Path, width: int, height: int, offset: float = 0.0) -> str:
+_DETECTORS: Any = None
+
+
+def edge_crop(source: Path, offset: float, duration: float, cfg: dict[str, Any], cache_dir: Path) -> tuple[float, float]:
+    """Burned-in text only on the edges of the fragment (subtitles below, a channel tag above): the share of the
+    height to cut from the top and the bottom so that none is left (0, 0: nothing to cut). Three frames read by OCR."""
+
+    if not cfg.get("crop_edge_text", True) or duration <= 0:
+        return 0.0, 0.0
+    global _DETECTORS
+    from .analysis import detectors as det
+
+    if _DETECTORS is None:
+        _DETECTORS = det.Detectors(cache_dir=cache_dir)
+    frames = []
+    for q in (0.2, 0.5, 0.8):
+        capture = cv2.VideoCapture(str(source))
+        capture.set(cv2.CAP_PROP_POS_MSEC, (offset + duration * q) * 1000)
+        ok, frame = capture.read()
+        capture.release()
+        if ok:
+            frames.append(frame)
+    try:
+        edges = _DETECTORS.text_edges(frames) if frames else None
+    except Exception:                # no OCR on this machine: nothing is cut
+        return 0.0, 0.0
+    if not edges or sum(edges) > float(cfg.get("max_edge_crop", 0.35)):
+        return 0.0, 0.0
+    return edges
+
+
+def _frame_filter(source: Path, width: int, height: int, offset: float = 0.0,
+                  edges: tuple[float, float] = (0.0, 0.0)) -> str:
     """Remove baked-in black borders, then cover-crop widescreen content to width x height or fit
-    narrower content (4:3, vertical) inside it, uncropped."""
+    narrower content (4:3, vertical) inside it, uncropped. `edges`: (top, bottom) shares of the height cut off with
+    their burned-in text, the width cut in proportion (the picture zooms in, centred)."""
 
     crop = ""
     try:
@@ -120,6 +154,11 @@ def _frame_filter(source: Path, width: int, height: int, offset: float = 0.0) ->
     if bars := detect_bars(source, offset):
         w, h, x, y = bars
         crop, aspect = f"crop={w}:{h}:{x}:{y},", w / h
+    top, bottom = edges
+    if top + bottom > 0:
+        keep = 1 - top - bottom
+        crop += (f"crop=trunc(iw*{keep:.4f}/2)*2:trunc(ih*{keep:.4f}/2)*2:"
+                 f"trunc(iw*{(1 - keep) / 2:.4f}):trunc(ih*{top:.4f}),")
     if aspect < FIT_BELOW_ASPECT:
         return (f"{crop}scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,"
                 "scale=trunc(iw/2)*2:trunc(ih/2)*2")
@@ -133,7 +172,8 @@ def normalise_video(source: Path, target: Path, *, offset: float, duration: floa
 
     width, height = VIDEO_SIZE
     frames = max(1, round(duration * FPS))
-    fit = _frame_filter(source, width, height, offset)
+    edges = edge_crop(source, offset, duration, cfg, Path(source).parent)
+    fit = _frame_filter(source, width, height, offset, edges)
     try:
         low_res = probe(source)["height"] <= LOW_RES_HEIGHT
     except (subprocess.CalledProcessError, ValueError, KeyError):

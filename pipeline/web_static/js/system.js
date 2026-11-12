@@ -315,7 +315,7 @@ async function settingsPage() {
       <div class="actions mt-3"><button onclick="updateNow(this)">${icon("refresh")} Actualizar ahora</button>
       <button onclick="restartQueue(this)" title="Si la cola parece parada o colgada">${icon("restart")} Reiniciar la cola</button>
       <button onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">${icon("play")} Reintentar YouTube ahora</button></div></div>` : ""}
-    <div class="notice">${icon("mic")} <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
+    <div class="notice">${icon("mic")} <a href="#/voces"><b>Voces por canal</b></a> (también en el menú, en Producción): la voz se genera sola a partir del guion, sin grabarla.</div>
     ${people}
     <h2>Cola y límites</h2>
     <div class="card">
@@ -380,71 +380,113 @@ async function settingsPage() {
   };
 }
 
-// --- Voces por canal (GenAIPro) ----------------------------------------------------------------------------------
+// --- Voces por canal (AI84 · MiniMax, o GenAIPro · ElevenLabs) ------------------------------------------------------
 async function voicesPage() {
   const v = await api("/api/voices");
-  const row = (c) => { const x = v.voices[c] || {};
-    return `<div class="card"><div class="row"><b>${esc(c)}</b> ${x.voice_id ? `<span class="pill hecho">${esc(x.name || x.voice_id)}</span>` : '<span class="pill">sin voz: se graba a mano</span>'}</div>
+  const PROV = {ai84: "AI84 · MiniMax", genaipro: "GenAIPro · ElevenLabs"};
+  const provOf = (x) => x.voice_id ? (x.provider || "genaipro") : v.provider;
+  const vfield = (label, html, help, id) => field(label, html, help || "", id);
+  const fields = (c, x, p) => p === "ai84" ? `
+        ${vfield("Modelo", `<select id="vmodel-${esc(c)}">${v.minimaxModels.map((m) => `<option ${m === (x.model_id && v.minimaxModels.includes(x.model_id) ? x.model_id : v.minimaxDefaults.model_id) ? "selected" : ""}>${m}</option>`).join("")}</select>`, "hd = mejor calidad", "vmodel-" + esc(c))}
+        ${vfield("Velocidad", `<input id="vspeed-${esc(c)}" type="number" step="0.05" min="0.5" max="2" value="${x.speed ?? 1}">`, "0,5-2; 1 = normal", "vspeed-" + esc(c))}
+        ${vfield("Tono", `<input id="vpitch-${esc(c)}" type="number" step="1" min="-12" max="12" value="${x.pitch ?? 0}">`, "-12 a 12; 0 = el suyo", "vpitch-" + esc(c))}`
+    : `
+        ${vfield("Modelo", `<select id="vmodel-${esc(c)}">${v.models.map((m) => `<option ${m === (x.model_id || v.defaults.model_id) ? "selected" : ""}>${m}</option>`).join("")}</select>`, "", "vmodel-" + esc(c))}
+        ${vfield("Velocidad", `<input id="vspeed-${esc(c)}" type="number" step="0.05" min="0.7" max="1.2" value="${x.speed ?? v.defaults.speed}">`, "0,7-1,2", "vspeed-" + esc(c))}
+        ${vfield("Estabilidad", `<input id="vstab-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.stability ?? v.defaults.stability}">`, "0-1; más = más regular", "vstab-" + esc(c))}
+        ${vfield("Parecido", `<input id="vsim-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.similarity ?? v.defaults.similarity}">`, "0-1", "vsim-" + esc(c))}`;
+  const both = v.keys && v.keys.ai84 && v.keys.genaipro;
+  const row = (c) => { const x = v.voices[c] || {}, p = provOf(x);
+    return `<div class="card" id="vcard-${esc(c)}"><div class="row"><b>${esc(c)}</b> ${x.voice_id ? `<span class="pill hecho">${esc(x.name || x.voice_id)}</span> <span class="small muted">${PROV[p] || p}</span>` : '<span class="pill">sin voz: elige una arriba en «Escoger voz»</span>'}</div>
       <div class="three">
-        ${field("ID de la voz", `<input id="vid-${esc(c)}" value="${esc(x.voice_id || "")}" placeholder="p. ej. JBFqnCBsd6RMkjVDRZzb">`, "", "vid-" + esc(c))}
-        ${field("Nombre", `<input id="vname-${esc(c)}" value="${esc(x.name || "")}">`, "Para reconocerla", "vname-" + esc(c))}
-        ${field("Modelo", `<select id="vmodel-${esc(c)}">${v.models.map((m) => `<option ${m === (x.model_id || v.defaults.model_id) ? "selected" : ""}>${m}</option>`).join("")}</select>`, "", "vmodel-" + esc(c))}
-        ${field("Velocidad", `<input id="vspeed-${esc(c)}" type="number" step="0.05" min="0.7" max="1.2" value="${x.speed ?? v.defaults.speed}">`, "0,7-1,2", "vspeed-" + esc(c))}
-        ${field("Estabilidad", `<input id="vstab-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.stability ?? v.defaults.stability}">`, "0-1; más = más regular", "vstab-" + esc(c))}
-        ${field("Parecido", `<input id="vsim-${esc(c)}" type="number" step="0.05" min="0" max="1" value="${x.similarity ?? v.defaults.similarity}">`, "0-1", "vsim-" + esc(c))}
+        ${both ? vfield("Proveedor", `<select id="vprov-${esc(c)}" onchange="switchProvider('${esc(c)}', this.value)">${Object.entries(PROV).map(([k, n]) => `<option value="${k}" ${k === p ? "selected" : ""}>${n}</option>`).join("")}</select>`, "", "vprov-" + esc(c)) : `<input type="hidden" id="vprov-${esc(c)}" value="${p}">`}
+        ${vfield("ID de la voz", `<input id="vid-${esc(c)}" value="${esc(x.voice_id || "")}" placeholder="se rellena al pulsar «Usar en…»">`, "", "vid-" + esc(c))}
+        ${vfield("Nombre", `<input id="vname-${esc(c)}" value="${esc(x.name || "")}">`, "Para reconocerla", "vname-" + esc(c))}
+        <span id="vfields-${esc(c)}" style="display:contents">${fields(c, x, p)}</span>
       </div>
       <div class="actions"><button class="main" onclick="saveVoice('${esc(c)}')">Guardar</button>
-        <button onclick="testVoice('${esc(c)}')">${icon("play")} Probar</button>${x.voice_id ? `<button onclick="clearVoice('${esc(c)}')">Quitar voz</button>` : ""}
-        <span id="vmsg-${esc(c)}" class="small muted"></span></div><div id="vplay-${esc(c)}"></div>
+        <button onclick="testVoice('${esc(c)}')">${icon("play")} Probar con un texto</button>${x.voice_id ? `<button onclick="clearVoice('${esc(c)}')">Quitar voz</button>` : ""}
+        <span id="vmsg-${esc(c)}" class="small muted"></span></div>
+      <textarea id="vtext-${esc(c)}" rows="2" class="mt-2" style="min-height:0" aria-label="Texto de la prueba para ${esc(c)}" placeholder="Texto de la prueba (vacío = una frase de ejemplo). Mejor una frase de tu guion: así oyes cómo sonará."></textarea>
+      <div id="vplay-${esc(c)}"></div>
       ${dubBox(c)}</div>`; };
+  window.switchProvider = (c, p) => { $("#vfields-" + CSS.escape(c)).innerHTML = fields(c, {}, p); $("#vid-" + CSS.escape(c)).value = ""; $("#vname-" + CSS.escape(c)).value = ""; };
   const LANGS = {pt: "Portugués", de: "Alemán", fr: "Francés", en: "Inglés", it: "Italiano"};
   const dubBox = (c) => { if (window.partner) return "";      // dubbing sends videos to other channels: set up by the owner
     const d = (v.dubbing || {})[c] || {}, on = d.languages || [];
     return `<details class="fset" ${on.length ? "open" : ""}><summary class="mt-3"><b>Doblaje</b> ${on.length ? `<span class="pill hecho">${on.map((l) => LANGS[l] || l).join(", ")}</span>` : '<span class="muted small">apagado</span>'}</summary>
       <p class="help my-2">Cada vídeo terminado de este canal se traduce y se vuelve a leer en esos idiomas; la cola monta el vídeo doblado
-        (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y los caracteres de GenAIPro (lo mismo que la voz original, por idioma).</p>
-      ${(v.dubLanguages || []).map((l) => `<div class="mine-row">
+        (mismos clips, textos de pantalla traducidos) en una carpeta <code>&lt;vídeo&gt;-pt</code>, <code>-de</code>… Coste: la traducción (céntimos) y la voz (lo mismo que la original, por idioma).</p>
+      ${(v.dubLanguages || []).map((l) => { const dv = (d.voices || {})[l] || {}; return `<div class="mine-row">
         <label class="check"><input type="checkbox" class="dub-${esc(c)}" value="${l}" ${on.includes(l) ? "checked" : ""}> ${LANGS[l] || l}</label>
-        <input id="dubv-${esc(c)}-${l}" aria-label="ID de voz en ${LANGS[l] || l} para ${esc(c)}" placeholder="ID de voz nativa (vacío = la voz del canal, modelo multilingüe)" value="${esc(((d.voices || {})[l] || {}).voice_id || "")}"></div>`).join("")}
+        <input id="dubv-${esc(c)}-${l}" data-provider="${esc(dv.provider || (dv.voice_id ? "genaipro" : v.provider))}" aria-label="ID de voz en ${LANGS[l] || l} para ${esc(c)}" placeholder="ID de voz nativa (vacío = la voz del canal)" value="${esc(dv.voice_id || "")}"></div>`; }).join("")}
       <label class="check mt-3"><input type="checkbox" id="dubex-${esc(c)}" ${d.existing === false ? "" : "checked"}>
         Doblar también los vídeos ya hechos</label>
       <p class="help">Si no, solo los que se terminen a partir de ahora</p>
       <div class="actions"><button class="main" onclick="saveDub('${esc(c)}')">Guardar doblaje</button><span id="dubmsg-${esc(c)}" class="small muted"></span></div></details>`; };
   window.saveDub = async (c) => {
     const languages = [...document.querySelectorAll(".dub-" + CSS.escape(c))].filter((x) => x.checked).map((x) => x.value);
-    const voices = {}; languages.forEach((l) => { const id = $("#dubv-" + CSS.escape(c) + "-" + l).value.trim(); if (id) voices[l] = {voice_id: id}; });
+    const voices = {}; languages.forEach((l) => { const box = $("#dubv-" + CSS.escape(c) + "-" + l), id = box.value.trim(); if (id) voices[l] = {voice_id: id, provider: box.dataset.provider}; });
     try { await post("/api/dubbing", {channel: c, languages, voices, existing: $("#dubex-" + CSS.escape(c)).checked});
       $("#dubmsg-" + CSS.escape(c)).textContent = languages.length ? "Guardado ✓ (empieza en unos minutos)" : "Doblaje apagado"; }
     catch (e) { $("#dubmsg-" + CSS.escape(c)).textContent = e.message; } };
-  show(`<h1>Voces por canal</h1>
-    ${v.hasKey ? "" : '<div class="notice bad">Falta <b>GENAIPRO_API_KEY</b> en el .env del servidor (genaipro.io → avatar → Manage Account → API Key). Ponla y reinicia el estudio.</div>'}
-    <p class="muted small">Con una voz puesta, un vídeo de ese canal solo necesita el guion: la voz se genera al empezar el vídeo. Si subes tu voz.mp3, se usa la tuya.
-      <span id="credits"></span></p>
-    ${v.channels.map(row).join("")}
-    <h2>Buscar voces</h2>
+  const missing = !v.hasKey ? '<div class="notice bad">Falta la clave de voz en el .env del servidor: <b>AI84_API_KEY</b> (ai84.pro → API Document → API Key; hace falta comprar créditos). Ponla y reinicia el estudio.</div>' : "";
+  show(`<h1>Voces por canal</h1>${missing}
+    <div class="notice"><b>Cómo elegir la voz de tu canal (2 minutos):</b>
+      <ol class="small" style="margin:6px 0 0 18px;padding:0">
+        <li>Abajo, en <b>«Escoger voz»</b>, filtra por idioma y hombre/mujer y escucha las muestras (escucharlas es gratis).</li>
+        <li>Si una te gusta, pulsa <b>«Con mi texto»</b> para oírla leyendo una frase tuya (gasta unos pocos créditos).</li>
+        <li>En <b>«Usar en…»</b> elige tu canal: queda guardada. Desde entonces, con subir el guion basta: la voz se hace sola.</li>
+      </ol><span id="credits" class="small muted"></span></div>
+    <h2>Escoger voz</h2>
     <div class="card"><div class="three">
-      <div class="field"><input id="vq" aria-label="Buscar voz" placeholder="nombre o estilo: narrator, documentary, deep…"></div>
-      <div class="field"><select id="vlang" aria-label="Idioma"><option value="es">español</option><option value="pt">portugués</option><option value="de">alemán</option>
-        <option value="fr">francés</option><option value="en">inglés</option><option value="it">italiano</option><option value="">todas</option></select></div>
-      <div class="field"><select id="vgender" aria-label="Voz de hombre o mujer"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select></div></div>
-      <div class="actions"><button class="main" onclick="searchVoices()">Buscar</button></div><div id="vresults" class="mt-3"></div></div>`);
-  const read = (c) => ({channel: c, voice_id: $("#vid-" + c).value.trim(), name: $("#vname-" + c).value.trim(), model_id: $("#vmodel-" + c).value,
-    speed: $("#vspeed-" + c).value, stability: $("#vstab-" + c).value, similarity: $("#vsim-" + c).value});
-  window.saveVoice = async (c) => { try { await post("/api/voices", read(c)); voicesPage(); } catch (e) { $("#vmsg-" + c).textContent = e.message; } };
-  window.clearVoice = async (c) => { await post("/api/voices", {channel: c, voice_id: ""}); voicesPage(); };
-  window.testVoice = async (c) => { const m = $("#vmsg-" + c); m.textContent = "Generando la prueba… (10-40 s)";
-    try { const r = await post("/api/voices/test", {...read(c), text: ""}); m.textContent = "";
-      $("#vplay-" + c).innerHTML = `<audio class="w-full mt-2" controls autoplay src="${r.url}"></audio>`; } catch (e) { m.textContent = e.message; } };
+      ${both ? `<div class="field"><select id="vsprov" aria-label="Proveedor">${Object.entries(PROV).map(([k, n]) => `<option value="${k}" ${k === v.provider ? "selected" : ""}>${n}</option>`).join("")}</select></div>` : `<input type="hidden" id="vsprov" value="${v.provider}">`}
+      <div class="field"><select id="vlang" aria-label="Idioma"><option value="es">español</option><option value="pt">portugués</option><option value="en">inglés</option>
+        <option value="de">alemán</option><option value="fr">francés</option><option value="it">italiano</option><option value="">todos los idiomas</option></select></div>
+      <div class="field"><select id="vgender" aria-label="Voz de hombre o mujer"><option value="">hombre o mujer</option><option value="male">hombre</option><option value="female">mujer</option></select></div>
+      <div class="field"><input id="vq" aria-label="Estilo de voz" placeholder="estilo (opcional): narrator, deep, calm…" onkeydown="if(event.key==='Enter')searchVoices()"></div></div>
+      <div class="actions"><button class="main" onclick="searchVoices()">Buscar</button></div>
+      <p class="help">Las voces clonadas de la cuenta salen primero cuando buscas sin filtros.</p>
+      <div id="vresults" class="mt-3" style="max-height:520px;overflow-y:auto"></div></div>
+    <h2>Tus canales</h2>
+    ${v.channels.map(row).join("") || '<div class="small muted">Aún no tienes canales.</div>'}`);
+  const num = (id) => { const el = $(id); return el ? el.value : undefined; };
+  const read = (c) => { const e = CSS.escape(c), p = $("#vprov-" + e).value;
+    return {channel: c, provider: p, voice_id: $("#vid-" + e).value.trim(), name: $("#vname-" + e).value.trim(), model_id: $("#vmodel-" + e).value,
+      speed: num("#vspeed-" + e), pitch: num("#vpitch-" + e), stability: num("#vstab-" + e), similarity: num("#vsim-" + e)}; };
+  window.saveVoice = async (c) => { try { await post("/api/voices", read(c)); voicesPage(); } catch (e) { $("#vmsg-" + CSS.escape(c)).textContent = e.message; } };
+  window.clearVoice = async (c) => { if (!(await ask(`¿Quitar la voz de ${c}? Sus vídeos nuevos necesitarán un voz.mp3 subido a mano.`, {ok: "Quitar", danger: true}))) return;
+    await post("/api/voices", {channel: c, voice_id: ""}); voicesPage(); };
+  window.testVoice = async (c) => { const e = CSS.escape(c), m = $("#vmsg-" + e), body = read(c);
+    if (!body.voice_id) { m.textContent = "Primero elige una voz arriba"; return; }
+    m.textContent = "Generando la prueba… (10-40 s)";
+    try { const r = await post("/api/voices/test", {...body, text: $("#vtext-" + e).value}); m.textContent = "";
+      $("#vplay-" + e).innerHTML = `<audio class="w-full mt-2" controls autoplay src="${r.url}"></audio>`; } catch (err) { m.textContent = err.message; } };
+  window.useVoice = (i, c) => { const x = window.foundVoices[i]; if (!c || !x) return;
+    const e = CSS.escape(c), p = x.provider || v.provider;
+    if ($("#vprov-" + e).value !== p) { $("#vprov-" + e).value = p; $("#vfields-" + e).innerHTML = fields(c, {}, p); }
+    $("#vid-" + e).value = x.voice_id; $("#vname-" + e).value = x.name || ""; saveVoice(c); };
+  window.tryFound = async (i, button) => { const x = window.foundVoices[i], box = $("#vtry-" + i);
+    button.disabled = true; box.textContent = "Generando… (10-40 s)";
+    try { const r = await post("/api/voices/test", {voice_id: x.voice_id, provider: x.provider, engine: x.engine, language: $("#vlang").value,
+        text: (window.partnerSample || ""), channel: v.channels[0] || ""});
+      box.innerHTML = `<audio class="sm" controls autoplay src="${r.url}"></audio>`; } catch (e) { box.textContent = e.message; }
+    button.disabled = false; };
   window.searchVoices = async () => { const box = $("#vresults"); box.textContent = "Buscando…";
-    try { const list = await api(`/api/voices/search?q=${encodeURIComponent($("#vq").value)}&language=${$("#vlang").value}&gender=${$("#vgender").value}`);
-      fill(box, list.map((x) => `<div class="slot"><b>${esc(x.name || "")}</b><span class="small muted">${esc([x.gender, x.age, x.accent, x.language, x.use_case, x.descriptive].filter(Boolean).join(" · "))}</span>
-        ${x.preview_url ? `<audio class="sm" controls preload="none" src="${esc(x.preview_url)}"></audio>` : ""}
-        <code class="small">${esc(x.voice_id)}</code>
-        <select class="sm w-auto push" onchange="if(this.value){document.getElementById('vid-'+this.value).value='${esc(x.voice_id)}';document.getElementById('vname-'+this.value).value='${esc(x.name || "")}';saveVoice(this.value)}">
-          <option value="">Usar en canal…</option>${v.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>`).join("") || "Nada con eso.");
+    try { const list = await api(`/api/voices/search?provider=${$("#vsprov").value}&q=${encodeURIComponent($("#vq").value)}&language=${$("#vlang").value}&gender=${$("#vgender").value}`);
+      window.foundVoices = list;
+      fill(box, list.map((x, i) => `<div class="slot" style="flex-wrap:wrap;gap:6px 10px"><b>${esc(x.name || "")}</b>${x.cloned ? ' <span class="pill hecho">clonada</span>' : ""}
+        <span class="small muted">${esc([...(x.tags || []), x.gender, x.age, x.accent, x.language, x.use_case, x.descriptive].filter(Boolean).join(" · "))}</span>
+        ${x.description ? `<span class="small" style="flex-basis:100%">${esc(x.description)}</span>` : ""}
+        ${x.preview_url ? `<audio class="sm" controls preload="none" src="${esc(x.preview_url)}"></audio>` : '<span class="small muted">sin muestra</span>'}
+        <button class="sm" onclick="tryFound(${i}, this)" title="La lee con una frase de prueba (gasta unos pocos créditos)">${icon("play")} Con mi texto</button><span id="vtry-${i}"></span>
+        <select class="sm w-auto push" aria-label="Usar esta voz en un canal" onchange="useVoice(${i}, this.value)">
+          <option value="">Usar en…</option>${v.channels.map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>`).join("") || "Nada con eso: prueba sin el estilo o con otro idioma.");
     } catch (e) { box.textContent = e.message; } };
-  if (v.hasKey) api("/api/voices/credits").then((cr) => { const n = (cr || []).reduce((a, x) => a + (x.amount || 0), 0);
-    $("#credits").textContent = ` · Créditos de voz: ${n.toLocaleString("es-ES")}`; }).catch(() => {});
+  if (v.hasKey && !window.partner) api("/api/voices/credits").then((cr) => {
+    const parts = Object.entries(cr || {}).filter(([k, n]) => !k.endsWith("Error") && n !== null).map(([k, n]) => `${PROV[k] || k}: ${Number(n).toLocaleString("es-ES")} créditos`);
+    const box = $("#credits"); if (box) box.textContent = parts.join(" · "); }).catch(() => {});
+  searchVoices();
 }
 
 async function newChannelPage() {

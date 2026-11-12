@@ -1,0 +1,21 @@
+{
+  "id": "altiplano-3d",
+  "bbox": [
+    -72.5,
+    -23,
+    -65,
+    -14
+  ],
+  "smooth": 2,
+  "lat0": -18.5,
+  "kmLon": 105.5673892975541,
+  "kmLat": 110.57,
+  "widthKm": 791.7554197316557,
+  "depthKm": 995.1299999999999,
+  "cols": 360,
+  "rows": 452,
+  "maxM": 5364,
+  "contourStep": 1000,
+  "zoom": 8,
+  "source": "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+}

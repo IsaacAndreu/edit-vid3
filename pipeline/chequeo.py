@@ -22,7 +22,7 @@ OK, WARN, FAIL = "ok", "aviso", "error"
 ICON = {OK: "✅", WARN: "⚠️", FAIL: "❌"}
 
 REQUIRED = {"LLM_API_KEY": "planificador, gráficos y textos", "OPENAI_API_KEY": "el juez de los clips (visión)"}
-OPTIONAL = {"GENAIPRO_API_KEY": "voces automáticas", "YOUTUBE_API_KEY": "búsquedas de YouTube sin bloqueos",
+OPTIONAL = {"AI84_API_KEY": "voces automáticas (AI84: MiniMax)", "GENAIPRO_API_KEY": "voces automáticas (GenAIPro)", "YOUTUBE_API_KEY": "búsquedas de YouTube sin bloqueos",
             "SERPER_API_KEY": "fotos de Google Imágenes", "PEXELS_API_KEY": "vídeos de recurso",
             "PIXABAY_API_KEY": "fotos de Pixabay", "TELEGRAM_BOT_TOKEN": "avisos por Telegram",
             "WEB_PASSWORD": "contraseña de la web"}

@@ -100,8 +100,7 @@ async function start() {
     if (spend) spend.lastChild.textContent = "Mi gasto";
     const nav = document.querySelector("header nav");
     nav.querySelectorAll(".sec").forEach((sec) => sec.remove());
-    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voces</a>
-      <a href="#/cuenta"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Mi cuenta</a>`);
+    nav.insertAdjacentHTML("beforeend", `<a href="#/cuenta"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Mi cuenta</a>`);
     $("#service").textContent = window.partner;
   }
   $("#top").classList.remove("hide");

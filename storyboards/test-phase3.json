@@ -1,0 +1,743 @@
+{
+  "meta": {
+    "slug": "test-phase3",
+    "title": "Prueba fase 3",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [
+      {
+        "numeral": "I",
+        "label": "Ground"
+      },
+      {
+        "numeral": "II",
+        "label": "Pressure"
+      },
+      {
+        "numeral": "III",
+        "label": "Engines"
+      },
+      {
+        "numeral": "IV",
+        "label": "Airports"
+      },
+      {
+        "numeral": "V",
+        "label": "Cost"
+      }
+    ],
+    "duration": 46
+  },
+  "audio": {},
+  "scenes": [
+    {
+      "id": "region",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 0
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "tibet",
+      "camera": [
+        {
+          "at": {
+            "t": 0
+          },
+          "center": [
+            88,
+            30.5
+          ],
+          "zoom": 2.0
+        }
+      ],
+      "shapes": [
+        {
+          "id": "plateau",
+          "source": "atlas-data/regions/tibet/contour-3000.geojson",
+          "at": {
+            "t": 0.6
+          },
+          "stroke": "danger",
+          "fill": true,
+          "label": "Tibetan Plateau",
+          "sub": "Land above 3,000 m"
+        },
+        {
+          "id": "greenland",
+          "source": "atlas-data/shapes/greenland.geojson",
+          "at": {
+            "t": 5.0
+          },
+          "moveTo": [
+            88,
+            33.5
+          ],
+          "label": "Greenland, moved here",
+          "sub": "at the same scale"
+        }
+      ]
+    },
+    {
+      "id": "airways",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 10
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "region": "tibet",
+      "sourceNote": "AIRWAYS SIMPLIFIED · ILLUSTRATIVE",
+      "camera": [
+        {
+          "at": {
+            "t": 10
+          },
+          "center": [
+            92,
+            33.5
+          ],
+          "zoom": 1.45
+        }
+      ],
+      "shapes": [
+        {
+          "id": "plateau",
+          "source": "atlas-data/regions/tibet/contour-3000.geojson",
+          "at": {
+            "t": 10
+          },
+          "stroke": "danger",
+          "fill": true
+        }
+      ],
+      "routes": [
+        {
+          "id": "l888",
+          "path": [
+            [
+              78,
+              39.5
+            ],
+            [
+              86.5,
+              39.5
+            ],
+            [
+              97,
+              33.5
+            ],
+            [
+              99.5,
+              28.5
+            ],
+            [
+              101,
+              24.5
+            ]
+          ],
+          "at": {
+            "t": 10.5
+          },
+          "drawSeconds": 2.5,
+          "style": "solid",
+          "accent": "data",
+          "label": "L888"
+        },
+        {
+          "id": "y1",
+          "path": [
+            [
+              86.5,
+              39.5
+            ],
+            [
+              104,
+              32.5
+            ]
+          ],
+          "at": {
+            "t": 11.2
+          },
+          "drawSeconds": 2.0,
+          "style": "solid",
+          "accent": "data",
+          "label": "Y1"
+        },
+        {
+          "id": "straight",
+          "path": [
+            [
+              60,
+              26.5
+            ],
+            [
+              125,
+              38
+            ]
+          ],
+          "at": {
+            "t": 14.5
+          },
+          "drawSeconds": 1.6,
+          "style": "dashed",
+          "accent": "ink"
+        }
+      ],
+      "points": [
+        {
+          "name": "Ngari",
+          "pos": [
+            80.1,
+            32.5
+          ],
+          "at": {
+            "t": 12.4
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Shigatse",
+          "pos": [
+            88.88,
+            29.27
+          ],
+          "at": {
+            "t": 12.6
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Lhasa",
+          "pos": [
+            91.13,
+            29.65
+          ],
+          "at": {
+            "t": 12.8
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Nyingchi",
+          "pos": [
+            94.36,
+            29.65
+          ],
+          "at": {
+            "t": 13.0
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Qamdo",
+          "pos": [
+            97.17,
+            31.14
+          ],
+          "at": {
+            "t": 13.2
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Chengdu",
+          "pos": [
+            104.07,
+            30.66
+          ],
+          "at": {
+            "t": 13.6
+          },
+          "marker": "city"
+        }
+      ],
+      "overlays": [
+        {
+          "kind": "info-card",
+          "corner": "bl",
+          "at": {
+            "t": 15.2
+          },
+          "kicker": "To fly straight across",
+          "title": "",
+          "lines": [
+            {
+              "text": "Special permission",
+              "at": {
+                "t": 15.6
+              }
+            },
+            {
+              "text": "Extra oxygen",
+              "at": {
+                "t": 16.4
+              }
+            },
+            {
+              "text": "An escape plan",
+              "at": {
+                "t": 17.2
+              }
+            }
+          ]
+        },
+        {
+          "kind": "stamp",
+          "at": {
+            "t": 18.2
+          },
+          "text": "MOST NEVER BOTHER",
+          "x": 0.5,
+          "y": 0.8
+        }
+      ]
+    },
+    {
+      "id": "hump",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 20
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "region": "tibet",
+      "camera": [
+        {
+          "at": {
+            "t": 20
+          },
+          "center": [
+            92,
+            31
+          ],
+          "zoom": 2.0
+        },
+        {
+          "at": {
+            "t": 21
+          },
+          "center": [
+            98,
+            28
+          ],
+          "zoom": 3.0
+        }
+      ],
+      "routes": [
+        {
+          "id": "hump",
+          "path": [
+            [
+              94.91,
+              27.47
+            ],
+            [
+              102.71,
+              25.04
+            ]
+          ],
+          "at": {
+            "t": 23.2
+          },
+          "drawSeconds": 1.8,
+          "style": "dashed",
+          "accent": "danger",
+          "label": "THROUGH THE PASSES"
+        }
+      ],
+      "points": [
+        {
+          "name": "Assam",
+          "pos": [
+            94.91,
+            27.47
+          ],
+          "at": {
+            "t": 23
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Kunming",
+          "pos": [
+            102.71,
+            25.04
+          ],
+          "at": {
+            "t": 24.6
+          },
+          "marker": "city"
+        }
+      ],
+      "labels": [
+        {
+          "text": "India",
+          "pos": [
+            86,
+            24
+          ],
+          "at": {
+            "t": 22.5
+          },
+          "style": "region"
+        },
+        {
+          "text": "China",
+          "pos": [
+            106,
+            34
+          ],
+          "at": {
+            "t": 22.5
+          },
+          "style": "region"
+        },
+        {
+          "text": "The plateau",
+          "pos": [
+            94,
+            31.3
+          ],
+          "at": {
+            "t": 22.7
+          },
+          "style": "region"
+        },
+        {
+          "text": "Hurricane-force winds",
+          "pos": [
+            98.5,
+            22.6
+          ],
+          "at": {
+            "t": 26.5
+          },
+          "style": "mono",
+          "accent": "data"
+        }
+      ],
+      "arrows": [
+        {
+          "from": [
+            94.5,
+            28.8
+          ],
+          "to": [
+            96.6,
+            28.9
+          ],
+          "at": {
+            "t": 26
+          },
+          "accent": "data"
+        },
+        {
+          "from": [
+            97.6,
+            28.7
+          ],
+          "to": [
+            99.7,
+            28.9
+          ],
+          "at": {
+            "t": 26.2
+          },
+          "accent": "data"
+        },
+        {
+          "from": [
+            95.5,
+            26.1
+          ],
+          "to": [
+            97.6,
+            26.2
+          ],
+          "at": {
+            "t": 26.4
+          },
+          "accent": "data"
+        }
+      ],
+      "overlays": [
+        {
+          "kind": "info-card",
+          "corner": "tl",
+          "at": {
+            "t": 24.8
+          },
+          "kicker": "1942–1945 · India → China",
+          "title": "“The Hump”",
+          "sub": "ALLIED SUPPLY FLIGHTS"
+        }
+      ]
+    },
+    {
+      "id": "backup",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 30
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "region": "tibet",
+      "kicker": "OFFICIAL BACKUP AIRPORTS FOR L888",
+      "sourceNote": "AIRWAY SIMPLIFIED · DISTANCES ILLUSTRATIVE",
+      "camera": [
+        {
+          "at": {
+            "t": 30
+          },
+          "center": [
+            91,
+            33
+          ],
+          "zoom": 1.85
+        }
+      ],
+      "shapes": [
+        {
+          "id": "plateau",
+          "source": "atlas-data/regions/tibet/contour-3000.geojson",
+          "at": {
+            "t": 30
+          },
+          "stroke": "danger",
+          "fill": true
+        }
+      ],
+      "routes": [
+        {
+          "id": "l888",
+          "path": [
+            [
+              75.99,
+              39.47
+            ],
+            [
+              86.5,
+              39.5
+            ],
+            [
+              97,
+              33.5
+            ],
+            [
+              99.5,
+              28.5
+            ],
+            [
+              101,
+              24.5
+            ]
+          ],
+          "at": {
+            "t": 30.3
+          },
+          "drawSeconds": 1.5,
+          "style": "solid",
+          "accent": "data",
+          "label": "L888"
+        },
+        {
+          "id": "to-urumqi",
+          "path": [
+            [
+              89,
+              33
+            ],
+            [
+              87.62,
+              43.83
+            ]
+          ],
+          "at": {
+            "t": 32.4
+          },
+          "drawSeconds": 0.9,
+          "style": "dashed",
+          "accent": "good",
+          "label": "1,210 KM"
+        },
+        {
+          "id": "to-kashgar",
+          "path": [
+            [
+              89,
+              33
+            ],
+            [
+              75.99,
+              39.47
+            ]
+          ],
+          "at": {
+            "t": 32.8
+          },
+          "drawSeconds": 0.9,
+          "style": "dashed",
+          "accent": "good",
+          "label": "1,300 KM"
+        },
+        {
+          "id": "to-chengdu",
+          "path": [
+            [
+              89,
+              33
+            ],
+            [
+              104.07,
+              30.66
+            ]
+          ],
+          "at": {
+            "t": 33.2
+          },
+          "drawSeconds": 0.9,
+          "style": "dashed",
+          "accent": "good",
+          "label": "1,530 KM"
+        },
+        {
+          "id": "to-kunming",
+          "path": [
+            [
+              89,
+              33
+            ],
+            [
+              102.71,
+              25.04
+            ]
+          ],
+          "at": {
+            "t": 33.6
+          },
+          "drawSeconds": 0.9,
+          "style": "dashed",
+          "accent": "good",
+          "label": "1,690 KM"
+        }
+      ],
+      "points": [
+        {
+          "name": "Kashgar",
+          "pos": [
+            75.99,
+            39.47
+          ],
+          "at": {
+            "t": 31
+          },
+          "marker": "airport"
+        },
+        {
+          "name": "Urumqi",
+          "pos": [
+            87.62,
+            43.83
+          ],
+          "at": {
+            "t": 31.2
+          },
+          "marker": "airport"
+        },
+        {
+          "name": "Chengdu",
+          "pos": [
+            104.07,
+            30.66
+          ],
+          "at": {
+            "t": 31.4
+          },
+          "marker": "airport"
+        },
+        {
+          "name": "Kunming",
+          "pos": [
+            102.71,
+            25.04
+          ],
+          "at": {
+            "t": 31.6
+          },
+          "marker": "airport"
+        },
+        {
+          "name": "THE MIDDLE",
+          "pos": [
+            89,
+            33
+          ],
+          "at": {
+            "t": 32
+          },
+          "marker": "event"
+        }
+      ],
+      "overlays": [
+        {
+          "kind": "info-card",
+          "corner": "tr",
+          "at": {
+            "t": 34.5
+          },
+          "kicker": "From the middle, each one",
+          "title": "1,000+ km away"
+        }
+      ]
+    },
+    {
+      "id": "night",
+      "type": "atlas-relief-map",
+      "start": {
+        "t": 38
+      },
+      "theme": "night",
+      "enter": "fade",
+      "region": "tibet",
+      "camera": [
+        {
+          "at": {
+            "t": 38
+          },
+          "center": [
+            89,
+            33
+          ],
+          "zoom": 1.4
+        },
+        {
+          "at": {
+            "t": 39
+          },
+          "center": [
+            89,
+            33
+          ],
+          "zoom": 2.0
+        }
+      ],
+      "shapes": [
+        {
+          "id": "plateau",
+          "source": "atlas-data/regions/tibet/contour-3000.geojson",
+          "at": {
+            "t": 39.5
+          },
+          "stroke": "danger",
+          "fill": true,
+          "label": "Tibetan Plateau"
+        }
+      ]
+    }
+  ]
+}

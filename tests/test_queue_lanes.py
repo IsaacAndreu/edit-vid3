@@ -127,3 +127,31 @@ def test_retry_in_the_studio_puts_a_video_that_failed_in_this_round_back_in(monk
     results = main.run_parallel(["sim1", "foot1"], 2, force=set(), until=None, review=False, root=tmp_path,
                                 refill=lambda: [])
     assert runs.count("sim1") == 2 and ("sim1", "OK") in [(r[0], r[1]) for r in results]
+
+
+def test_hold_and_the_queue_look_at_the_same_folder_when_a_flat_one_only_groups(tmp_path):
+    from pipeline import web
+    from pipeline.context import find_video
+
+    real = tmp_path / "materiales" / "atleti-pt" / "atleti10-pt"
+    real.mkdir(parents=True)
+    (real / "guion.txt").write_text("hola", "utf-8")
+    stray = tmp_path / "materiales" / "atleti10-pt" / "clips"      # a leftover folder with the video's name
+    stray.mkdir(parents=True)
+    (stray.parent / main.HOLD).write_text("x", "utf-8")
+    assert find_video(tmp_path, "atleti10-pt") == real
+    assert not main.on_hold(tmp_path, "atleti10-pt")
+    web.hold(tmp_path, "atleti10-pt", True)
+    assert (real / main.HOLD).is_file() and main.on_hold(tmp_path, "atleti10-pt")
+
+
+def test_a_copy_put_away_in_hechos_does_not_hold_the_real_video(tmp_path):
+    from pipeline.context import find_video
+
+    for group in ("_hechos", "atleti-pt"):
+        folder = tmp_path / "materiales" / group / "atleti10-pt"
+        folder.mkdir(parents=True)
+        (folder / "guion.txt").write_text("hola", "utf-8")
+    (tmp_path / "materiales" / "_hechos" / "atleti10-pt" / main.HOLD).write_text("x", "utf-8")
+    assert find_video(tmp_path, "atleti10-pt") == tmp_path / "materiales" / "atleti-pt" / "atleti10-pt"
+    assert not main.on_hold(tmp_path, "atleti10-pt")

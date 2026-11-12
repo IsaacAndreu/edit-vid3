@@ -1,0 +1,81 @@
+{
+ "meta": {
+  "slug": "test-accidentes-a3",
+  "title": "Prueba accidentes A3",
+  "brand": {
+   "name": "ATLAS",
+   "icon": "✦"
+  },
+  "chapters": [],
+  "duration": 20
+ },
+ "audio": {},
+ "scenes": [
+  {
+   "id": "vuelo-3d",
+   "type": "atlas-terrain-3d",
+   "start": {
+    "t": 0
+   },
+   "theme": "paper",
+   "enter": "fade",
+   "kicker": "US AIRWAYS 1549 · ALTURAS ×3",
+   "sourceNote": "TRAYECTORIA Y ALTITUD: FDR DE LA NTSB · RECONSTRUCCIÓN SIMPLIFICADA",
+   "terrain": "hudson-1549",
+   "exaggeration": 3,
+   "camera": [
+    {
+     "at": {
+      "t": 0
+     },
+     "tilt": 40,
+     "yaw": -25,
+     "distance": 1.75,
+     "target": [
+      -73.94,
+      40.83
+     ],
+     "targetKm": 0.5
+    },
+    {
+     "at": {
+      "t": 9
+     },
+     "tilt": 30,
+     "yaw": -5,
+     "distance": 1.45,
+     "target": [
+      -73.96,
+      40.81
+     ],
+     "targetKm": 0.3
+    }
+   ],
+   "flight": {
+    "data": "accidentes/us1549/vuelo.json",
+    "at": {
+     "t": 0.8
+    },
+    "from": "15:25:30",
+    "to": "15:30:42",
+    "rate": 18,
+    "marks": [
+     {
+      "clock": "15:27:11",
+      "label": "Aves",
+      "sub": "15:27:11",
+      "accent": "danger"
+     }
+    ],
+    "hud": {
+     "show": [
+      "clock",
+      "alt",
+      "kias"
+     ],
+     "corner": "tl"
+    }
+   }
+  }
+ ]
+}

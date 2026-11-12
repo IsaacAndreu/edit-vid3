@@ -1,0 +1,21 @@
+{
+  "id": "tibet-3d",
+  "bbox": [
+    72,
+    26,
+    104,
+    40
+  ],
+  "smooth": 3,
+  "lat0": 33,
+  "kmLon": 93.3608076236846,
+  "kmLat": 110.57,
+  "widthKm": 2987.545843957907,
+  "depthKm": 1547.98,
+  "cols": 400,
+  "rows": 207,
+  "maxM": 5888,
+  "contourStep": 1000,
+  "zoom": 7,
+  "source": "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+}

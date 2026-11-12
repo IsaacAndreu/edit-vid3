@@ -1,6 +1,12 @@
-"""The narration made from the script with GenAIPro (Labs: ElevenLabs voices) instead of recording it.
+"""The narration made from the script with AI84.pro (MiniMax voices; also its ElevenLabs ones) or GenAIPro (Labs:
+ElevenLabs voices) instead of recording it.
 
-- The key: GENAIPRO_API_KEY in .env (genaipro.io → avatar → Manage Account → API Key). Never in the repository.
+- The keys: AI84_API_KEY (ai84.pro → API Document → API Key, a paid account) and/or GENAIPRO_API_KEY in .env. Never in
+  the repository. Each channel's voice says which provider reads it (`provider`: ai84 | genaipro; older voices with
+  none are GenAIPro's); a new voice is AI84's when its key is there (`tts.provider`).
+- AI84 (api.ai84.pro, `xi-api-key`): MiniMax system voices (GET /v1/minimax/voices, each with its own sample to listen
+  to for free) and cloned ones (GET /v1/minimax/voices/cloned); POST /v1/minimax/text-to-speech/async → job_id, GET
+  …/async/{id} until «done» → audio_url. No word timings: the align stage uses Whisper. GET /v1/credits.
 - A voice per channel: studio → Ajustes → «Voces por canal» (out/_voces.json): the voice ID, the model and the
   settings. The studio also searches GenAIPro's voices and plays a test with a channel's voice.
 - A video with its script and no voz.mp3, in a channel that has a voice, is in the queue like any other. The
@@ -26,10 +32,39 @@ from typing import Any
 import requests
 
 BASE = "https://genaipro.io/api"
+AI84_BASE = "https://api.ai84.pro"
+# AI84's own price list (POST /v1/estimate-credit-cost, 12/11): the HD models 1.15 credits a character, turbo and 01 1.0
+AI84_CREDITS_PER_CHAR = {"hd": 1.15, "turbo": 1.0}
+
+
+def ai84_credits_per_char(model: str) -> float:
+    hd = model != "speech-01-hd" and (model.endswith("-hd") or model.endswith("-hd-preview"))
+    return AI84_CREDITS_PER_CHAR["hd" if hd else "turbo"]
 FILE = "out/_voces.json"
 MODELS = ("eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5", "eleven_v3", "eleven_v4")
+MINIMAX_MODELS = ("speech-2.6-hd", "speech-2.6-turbo", "speech-2.8-hd", "speech-2.8-turbo", "speech-02-hd", "speech-02-turbo",
+                  "speech-2.5-hd-preview", "speech-2.5-turbo-preview", "speech-01-hd", "speech-01-turbo")
 DEFAULTS = {"model_id": "eleven_multilingual_v2", "stability": 0.5, "similarity": 0.75, "style": 0.0, "speed": 1.0,
             "use_speaker_boost": True}
+MINIMAX_DEFAULTS = {"provider": "ai84", "engine": "minimax", "model_id": "speech-2.6-hd", "speed": 1.0, "pitch": 0,
+                    "volume": 1.0}
+PROVIDERS = {"ai84": "AI84", "genaipro": "GenAIPro"}
+# MiniMax reads a language better told which one it is (language_boost): the video's language
+LANGUAGE_BOOST = {"es": "Spanish", "pt": "Portuguese", "en": "English", "de": "German", "fr": "French", "it": "Italian"}
+
+
+def is_minimax(voice: dict[str, Any] | None) -> bool:
+    return bool(voice) and voice.get("provider") == "ai84" and voice.get("engine", "minimax") == "minimax"
+
+
+def with_defaults(voice: dict[str, Any]) -> dict[str, Any]:
+    """A saved voice with its provider's defaults under it: a MiniMax voice never gets an ElevenLabs model."""
+
+    return {**(MINIMAX_DEFAULTS if is_minimax(voice) else DEFAULTS), **voice}
+
+
+def provider_name(voice: dict[str, Any] | None) -> str:
+    return PROVIDERS.get(str((voice or {}).get("provider") or "genaipro"), "GenAIPro")
 MAX_CHARS = 4500
 WAIT_SECONDS = 1800
 LOCK = ".voz.generando"          # in the video's folder while its narration is being made (pid, time)
@@ -44,6 +79,19 @@ class TTSError(RuntimeError):
 
 
 USD_PER_1K_CHARS = 0.022         # GenAIPro (Labs): 22 $ the million characters; tts.usd_per_1k_chars to change it
+
+
+def voice_usd(ctx: Any, voice: dict[str, Any], chars: float, result: dict[str, Any]) -> float:
+    """What a narration cost: AI84 by its credits (tts.ai84_usd_per_1k_credits; 0 until it is set: credits are what
+    AI84 counts), GenAIPro by its characters."""
+
+    if result.get("provider") == "ai84":
+        try:
+            rate = float(ctx.section("tts").get("ai84_usd_per_1k_credits", 0) or 0)
+        except Exception:
+            rate = 0.0
+        return rate * float(result.get("credits") or 0) / 1000
+    return usd_per_1k_chars(ctx, voice) * chars / 1000
 
 
 def usd_per_1k_chars(ctx: Any, voice: dict[str, Any] | None = None) -> float:
@@ -72,7 +120,7 @@ def _read(root: Path) -> dict[str, Any]:
 def voices(root: Path) -> dict[str, dict[str, Any]]:
     """channel → its voice settings ({} when the channel has none)."""
 
-    return {c: {**DEFAULTS, **v} for c, v in _read(root).items() if isinstance(v, dict) and v.get("voice_id")}
+    return {c: with_defaults(v) for c, v in _read(root).items() if isinstance(v, dict) and v.get("voice_id") and not c.startswith("_")}
 
 
 def voice_for(root: Path, channel: str) -> dict[str, Any] | None:
@@ -100,13 +148,13 @@ def voice_for_video(ctx: Any) -> dict[str, Any] | None:
 
     spec = (settings(ctx)["voices"] or {}).get(lang) or {}
     if spec.get("voice_id"):
-        return {**DEFAULTS, **spec}
+        return with_defaults(spec)
     channel = ctx.channel or ""
     if channel in voices(ctx.root):                      # the channel's own voice (gimnasia-br: its Brazilian voice)
         return voice_for(ctx.root, channel)
     parent = base_channel(ctx.root, channel) if channel else None
     spec = ((dubbing_for(ctx.root, parent).get("voices") or {}).get(lang) or {}) if parent else {}
-    return {**DEFAULTS, **spec} if spec.get("voice_id") else voice_for(ctx.root, channel)   # its base's «pt» voice
+    return with_defaults(spec) if spec.get("voice_id") else voice_for(ctx.root, channel)   # its base's «pt» voice
 
 
 def set_voice(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -117,13 +165,23 @@ def set_voice(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any]:
         data.pop(channel, None)
     else:
         entry = {"voice_id": str(body["voice_id"]).strip(), "name": str(body.get("name") or "").strip()}
+        provider = str(body.get("provider") or "genaipro")
+        if provider not in PROVIDERS:
+            raise ValueError(f"Proveedor desconocido: {provider}")
+        if provider == "ai84":
+            entry.update(provider="ai84", engine="elevenlabs" if body.get("engine") == "elevenlabs" else "minimax")
+        minimax = is_minimax(entry)
         if body.get("model_id"):
-            if body["model_id"] not in MODELS:
+            if body["model_id"] not in (MINIMAX_MODELS if minimax else MODELS):
                 raise ValueError(f"Modelo desconocido: {body['model_id']}")
             entry["model_id"] = body["model_id"]
-        for key, low, high in (("stability", 0, 1), ("similarity", 0, 1), ("style", 0, 1), ("speed", 0.7, 1.2)):
+        ranges = (("speed", 0.5, 2.0), ("pitch", -12, 12), ("volume", 0.1, 10)) if minimax else \
+            (("stability", 0, 1), ("similarity", 0, 1), ("style", 0, 1), ("speed", 0.7, 1.2))
+        for key, low, high in ranges:
             if body.get(key) not in (None, ""):
                 entry[key] = min(high, max(low, float(body[key])))
+        if minimax and body.get("language_boost"):
+            entry["language_boost"] = str(body["language_boost"])[:30]
         data[channel] = entry
     path = root / FILE
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +217,9 @@ def set_dubbing(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any
         every[channel] = {
             "languages": languages,
             "voices": {l: {"voice_id": str((voices_in.get(l) or {}).get("voice_id") or "").strip(),
-                           "name": str((voices_in.get(l) or {}).get("name") or "").strip()}
+                           "name": str((voices_in.get(l) or {}).get("name") or "").strip(),
+                           **({"provider": "ai84", "engine": "minimax"}
+                              if (voices_in.get(l) or {}).get("provider") == "ai84" else {})}
                        for l in languages if str((voices_in.get(l) or {}).get("voice_id") or "").strip()},
             "existing": bool(body.get("existing", True)),
             "since": before.get("since") or _time.time(),
@@ -173,6 +233,10 @@ def set_dubbing(root: Path, channel: str, body: dict[str, Any]) -> dict[str, Any
 # --- the API ------------------------------------------------------------------------------------------------------
 
 class GenAIPro:
+    NAME = "GenAIPro"
+    subtitles = True
+    spent = 0.0
+
     def __init__(self, token: str, session: Any = None) -> None:
         if not token:
             raise TTSError("Falta GENAIPRO_API_KEY en .env (genaipro.io → avatar → Manage Account → API Key)")
@@ -270,7 +334,208 @@ class GenAIPro:
                 if waits:
                     time.sleep(waits.pop(0))
                     continue
-                raise TTSError(f"No se pudo bajar el audio de GenAIPro ({type(error).__name__})") from error
+                raise TTSError(f"No se pudo bajar el audio de {getattr(self, 'NAME', 'GenAIPro')} ({type(error).__name__})") from error
+
+
+class AI84:
+    """api.ai84.pro: MiniMax voices (system and cloned) and its ElevenLabs ones. Same face as GenAIPro for generate()."""
+
+    NAME = "AI84"
+    RETRIES = GenAIPro.RETRIES
+    subtitles = False                  # MiniMax gives no word timings: the align stage uses Whisper
+
+    def __init__(self, token: str, session: Any = None) -> None:
+        if not token:
+            raise TTSError("Falta AI84_API_KEY en .env (ai84.pro → API Document → API Key; hace falta una cuenta de pago)")
+        self.http = session or requests.Session()
+        self.headers = {"xi-api-key": token}
+        self.spent = 0.0               # credits of the jobs finished through this client
+        self.quoted: dict[str, float] = {}   # job → the credits quoted when it was made (MiniMax's poll does not say)
+        self.unpriced: list[str] = []  # jobs finished with no known price (resumed after a restart): generate() estimates
+        self.kind: dict[str, str] = {}  # job → "minimax" | "elevenlabs" (which endpoint to poll)
+
+    def _call(self, method: str, path: str, **kwargs: Any) -> Any:
+        """Reads are retried on network errors, 429 and 5xx (a 5xx while polling is a job still running); a POST
+        that creates a job is never repeated blindly (it would be paid twice)."""
+
+        waits = list(self.RETRIES) if method == "GET" else []
+        while True:
+            try:
+                response = self.http.request(method, AI84_BASE + path, headers=self.headers, timeout=60, **kwargs)
+            except requests.RequestException as error:
+                if waits:
+                    time.sleep(waits.pop(0))
+                    continue
+                raise TTSError(f"AI84 no responde ({type(error).__name__})") from error
+            if waits and (response.status_code == 429 or response.status_code >= 500):
+                wait = waits.pop(0)
+                try:
+                    wait = max(wait, float(getattr(response, "headers", {}).get("Retry-After") or 0))
+                except ValueError:
+                    pass
+                time.sleep(min(wait, 120))
+                continue
+            break
+        if response.status_code >= 400:
+            try:
+                detail = response.json()
+                detail = detail.get("message") or detail.get("error") or detail
+            except ValueError:
+                detail = response.text[:200]
+            hint = " (hace falta una cuenta de pago en AI84)" if response.status_code == 403 else ""
+            raise TTSError(f"AI84 {response.status_code}: {str(detail)[:300]}{hint}")
+        return response.json() if response.content else {}
+
+    def credits(self) -> float:
+        return float(self._call("GET", "/v1/credits").get("credits") or 0)
+
+    def search(self, query: str = "", language: str = "", gender: str = "", page_size: int = 60) -> list[dict[str, Any]]:
+        """MiniMax system voices (and, without a search, the cloned ones first) in one shape: voice_id, name, tags,
+        description, preview_url (MiniMax's own sample: listening costs nothing)."""
+
+        out: list[dict[str, Any]] = []
+        if not query and not language and not gender:
+            try:
+                for v in self._call("GET", "/v1/minimax/voices/cloned").get("data") or []:
+                    out.append({"voice_id": v.get("canonical_voice_id"), "name": v.get("name"), "cloned": True,
+                                "tags": ["clonada" if not v.get("is_system_shared") else "compartida"],
+                                "preview_url": v.get("demo_audio"), "description": "", "provider": "ai84", "engine": "minimax"})
+            except TTSError:
+                pass
+        # the tags MiniMax gives are like ["Spanish", "male", "adult"]: the language goes as the tag, the gender is
+        # checked here on the tags (one tag per call)
+        tag = LANGUAGE_BOOST.get(language[:2], language) if language else gender
+        params = {k: v for k, v in {"search": query, "tag": tag, "page": 1, "page_size": min(200, page_size)}.items() if v}
+        for v in self._call("GET", "/v1/minimax/voices", params=params).get("data") or []:
+            info = v.get("minimax_voice") or {}
+            tags = [str(t) for t in info.get("tag_list") or []]
+            if language and gender and any(t.lower() in ("male", "female") for t in tags) and gender.lower() not in (t.lower() for t in tags):
+                continue
+            # the TTS endpoint wants MiniMax's own id for a system voice («209539195289713»), not the named one
+            # («Spanish_HumorousElder»: 404 VOICE_NOT_FOUND, tried on the server 12/11)
+            out.append({"voice_id": info.get("voice_id") or v.get("canonical_voice_id"), "name": v.get("name") or info.get("voice_name"),
+                        "tags": tags, "preview_url": info.get("sample_audio"),
+                        "description": info.get("description") or "", "provider": "ai84", "engine": "minimax"})
+        return [v for v in out if v["voice_id"]]
+
+    def system_id(self, named: str) -> str:
+        """MiniMax's own id of a system voice saved by its named id, "" when there is none."""
+
+        try:
+            found = self._call("GET", "/v1/minimax/voices", params={"search": named, "page_size": 20}).get("data") or []
+        except TTSError:
+            return ""
+        for v in found:
+            if v.get("canonical_voice_id") == named:
+                return str((v.get("minimax_voice") or {}).get("voice_id") or "")
+        return ""
+
+    def create(self, text: str, voice: dict[str, Any]) -> str:
+        if is_minimax(voice):
+            body = {"canonical_voice_id": voice["voice_id"], "text": text, "model": voice.get("model_id") or MINIMAX_DEFAULTS["model_id"],
+                    "speed": voice.get("speed", 1.0), "pitch": voice.get("pitch", 0), "volume": voice.get("volume", 1.0),
+                    "format": "mp3", "sample_rate": 44100, "bitrate": 128000, "channel": 1}
+            if voice.get("language_boost"):
+                body["language_boost"] = voice["language_boost"]
+            try:
+                made = self._call("POST", "/v1/minimax/text-to-speech/async", json=body)
+            except TTSError as error:
+                # a voice saved with its named id (before 12/11): MiniMax's own id instead, found in the voice list
+                own = self.system_id(voice["voice_id"]) if "VOICE_NOT_FOUND" in str(error) or "not found" in str(error).lower() else ""
+                if not own or own == voice["voice_id"]:
+                    raise
+                made = self._call("POST", "/v1/minimax/text-to-speech/async", json={**body, "canonical_voice_id": own})
+            kind = "minimax"
+        else:
+            body = {"text": text, "voice_id": voice["voice_id"], "model_id": voice.get("model_id") or DEFAULTS["model_id"],
+                    "voice_settings": {"stability": voice.get("stability", 0.5), "similarity_boost": voice.get("similarity", 0.75),
+                                       "style": voice.get("style", 0.0), "speed": voice.get("speed", 1.0),
+                                       "use_speaker_boost": voice.get("use_speaker_boost", True)}}
+            made = self._call("POST", "/v2/text-to-speech/async", json=body)
+            kind = "elevenlabs"
+        job = made.get("job_id") or made.get("task_id")
+        if not job:
+            raise TTSError(f"AI84 no devolvió el trabajo: {str(made)[:200]}")
+        self.kind[str(job)] = kind
+        if made.get("credit_cost") is not None:
+            self.quoted[str(job)] = float(made["credit_cost"])
+        return str(job)
+
+    def wait(self, job_id: str, timeout: float = WAIT_SECONDS, every: float = 4.0) -> str:
+        """The mp3's URL once the job is «done». Statuses: queued, processing, done, failed (anything else: keep
+        waiting). A 200 can carry a failed job: always its status."""
+
+        kind = self.kind.get(job_id)
+        paths = [f"/v1/minimax/text-to-speech/async/{job_id}"] if kind == "minimax" else \
+            [f"/v2/text-to-speech/async/{job_id}"] if kind == "elevenlabs" else \
+            [f"/v1/minimax/text-to-speech/async/{job_id}", f"/v2/text-to-speech/async/{job_id}"]   # resumed after a restart
+        ends = time.monotonic() + timeout
+        while time.monotonic() < ends:
+            job: dict[str, Any] = {}
+            for path in paths:
+                try:
+                    job = self._call("GET", path).get("job") or {}
+                except TTSError as error:
+                    if " 404" in str(error) and len(paths) > 1:
+                        continue
+                    raise
+                if job:
+                    if len(paths) > 1:
+                        paths = [path]
+                    break
+            status = str(job.get("status") or "").lower()
+            url = job.get("audio_url") or job.get("audioUrl")
+            if status == "done" and url:
+                cost = job.get("credit_cost")
+                cost = float(cost) if cost is not None else self.quoted.get(job_id)
+                if cost is None:
+                    self.unpriced.append(job_id)
+                else:
+                    self.spent += cost
+                return str(url)
+            if status in ("failed", "error"):
+                message = job.get("errorMessage") or job.get("error_message") or "sin detalle"
+                key = job.get("errorMessageKey") or job.get("error_message_key") or ""
+                raise TTSError(f"AI84: el trabajo {job_id} falló: {message}" + (f" ({key})" if key else ""))
+            time.sleep(every)
+        raise TTSError(f"AI84: el trabajo {job_id} no terminó en {timeout / 60:.0f} min")
+
+    def subtitle(self, task_id: str, timeout: float = 120, every: float = 3.0) -> str:
+        raise TTSError("AI84 no da los tiempos de las palabras")
+
+    def download(self, url: str, target: Path) -> Path:
+        return GenAIPro.download(self, url, target)       # type: ignore[arg-type]
+
+
+def keys(root: Path) -> dict[str, str]:
+    """The voice keys in .env, by provider."""
+
+    from .context import RunContext
+
+    ctx = RunContext.create("_voces", root=root)
+    return {"ai84": ctx.env("AI84_API_KEY", required=False), "genaipro": ctx.env("GENAIPRO_API_KEY", required=False)}
+
+
+def default_provider(root: Path) -> str:
+    """The provider a new voice is searched and saved with: tts.provider, else AI84 when its key is there."""
+
+    try:
+        from .context import RunContext
+
+        asked = str(RunContext.create("_voces", root=root).section("tts").get("provider") or "")
+    except Exception:
+        asked = ""
+    if asked in PROVIDERS:
+        return asked
+    return "ai84" if keys(root)["ai84"] or not keys(root)["genaipro"] else "genaipro"
+
+
+def client_for(voice: dict[str, Any], token: str | dict[str, str], session: Any = None) -> GenAIPro | AI84:
+    """The API that reads this voice. `token`: the keys by provider (keys()), or one GenAIPro key (older callers)."""
+
+    provider = str(voice.get("provider") or "genaipro")
+    key = token.get(provider, "") if isinstance(token, dict) else (token if provider == "genaipro" else "")
+    return AI84(key, session) if provider == "ai84" else GenAIPro(key, session)
 
 
 # --- the script → the narration ---------------------------------------------------------------------------------
@@ -343,7 +608,7 @@ def pieces(text: str, max_chars: int = MAX_CHARS) -> list[str]:
     return out
 
 
-def generate(token: str, text: str, voice: dict[str, Any], target: Path, session: Any = None,
+def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], target: Path, session: Any = None,
              log: Any = print) -> dict[str, Any]:
     """The whole text as one mp3 at `target`. Returns {"chars", "pieces", "tasks"}.
 
@@ -352,7 +617,7 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
 
     import hashlib
 
-    api = GenAIPro(token, session)
+    api = client_for(voice, token, session)
     parts = pieces(text, int(voice.get("max_chars", MAX_CHARS)))
     if not parts:
         raise TTSError("El guion está vacío")
@@ -363,7 +628,9 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         state = json.loads(state_file.read_text("utf-8"))
     except (OSError, ValueError):
         state = {}
-    settings = json.dumps({k: voice.get(k) for k in ("voice_id", *DEFAULTS)}, sort_keys=True)
+    # the pieces' names: GenAIPro's as always (a narration half made before an update is not paid again)
+    fields = ("voice_id", *MINIMAX_DEFAULTS, "language_boost") if voice.get("provider") == "ai84" else ("voice_id", *DEFAULTS)
+    settings = json.dumps({k: voice.get(k) for k in fields}, sort_keys=True)
     tasks, files = [], []
     reused = 0
     for number, part in enumerate(parts, start=1):
@@ -387,14 +654,17 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
         if (target.parent / LOCK).is_file():                  # still alive: a long narration is not a stale lock
             (target.parent / LOCK).touch()
         url = api.wait(task_id)
+        if task_id in getattr(api, "unpriced", []):     # resumed after a restart: its price by the characters
+            api.spent += len(part) * ai84_credits_per_char(str(voice.get("model_id") or ""))
         log(f"   Voz {number}/{len(parts)}: lista, descargando")
         partial_piece = piece.with_suffix(".bajando")
         api.download(url, partial_piece)
         if partial_piece.stat().st_size == 0:
-            raise TTSError(f"GenAIPro devolvió un audio vacío (tarea {task_id})")
+            raise TTSError(f"{getattr(api, 'NAME', 'GenAIPro')} devolvió un audio vacío (tarea {task_id})")
         partial_piece.replace(piece)
-    cues: list[list[tuple[float, float, str]]] | None = []
-    for number, (task_id, piece) in enumerate(zip(tasks, files), start=1):
+    timed = getattr(api, "subtitles", True)
+    cues: list[list[tuple[float, float, str]]] | None = [] if timed else None
+    for number, (task_id, piece) in enumerate(zip(tasks, files) if timed else [], start=1):
         vtt = piece.with_suffix(".vtt")
         try:
             if not vtt.is_file():
@@ -430,7 +700,8 @@ def generate(token: str, text: str, voice: dict[str, Any], target: Path, session
     shutil.rmtree(work, ignore_errors=True)
     total = sum(len(p) for p in parts)
     # «chars» is the whole narration; only paidChars were generated (and billed) this time
-    return {"chars": total, "paidChars": total - reused, "reusedChars": reused, "pieces": len(parts), "tasks": tasks}
+    return {"chars": total, "paidChars": total - reused, "reusedChars": reused, "pieces": len(parts), "tasks": tasks,
+            "provider": str(voice.get("provider") or "genaipro"), "credits": getattr(api, "spent", 0.0)}
 
 
 # --- word timings from the subtitles (instead of Whisper) ---------------------------------------------------------
@@ -620,18 +891,21 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
         from .numeros import spoken_numbers
 
         text = spoken_numbers(text)              # «413.240.000» read right; the graphics keep the digits
-    print(f"Voz con GenAIPro ({voice.get('name') or voice['voice_id']}, {voice['model_id']}): {len(text)} caracteres")
+    lang = str(ctx.section("align").get("language", "es"))[:2]
+    if is_minimax(voice) and not voice.get("language_boost") and lang in LANGUAGE_BOOST:
+        voice = {**voice, "language_boost": LANGUAGE_BOOST[lang]}
+    print(f"Voz con {provider_name(voice)} ({voice.get('name') or voice['voice_id']}, {voice['model_id']}): {len(text)} caracteres")
     started = time.monotonic()
-    result = generate(ctx.env("GENAIPRO_API_KEY", required=False), text, voice, voice_file)
+    result = generate(keys(ctx.root), text, voice, voice_file)
     (ctx.materials_dir / "voz.genaipro.json").write_text(json.dumps(
         {"voice": voice, **result, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         from .costs import record_cost
 
         paid = result.get("paidChars", result["chars"])     # a restart reuses pieces: they are not paid twice
-        record_cost(ctx, stage="voz", provider="genaipro", operation=voice["model_id"],
-                    usd=usd_per_1k_chars(ctx, voice) * paid / 1000,
-                    details={"chars": paid, "pieces": result["pieces"]})
+        provider = result.get("provider", "genaipro")
+        record_cost(ctx, stage="voz", provider=provider, operation=voice["model_id"], usd=voice_usd(ctx, voice, paid, result),
+                    details={"chars": paid, "pieces": result["pieces"], "credits": result.get("credits", 0)})
         if result.get("reusedChars"):
             from .ahorro import record
 
@@ -652,9 +926,9 @@ def prepare_all(root: Path, log: Any = print) -> int:
     if not voices(root):
         return 0
     try:
-        check_credits(root, RunContext.create("_voces", root=root).env("GENAIPRO_API_KEY", required=False) or "")
+        check_credits(root, keys(root))
     except Exception as error:                   # never stops the voices
-        log(f"Créditos de GenAIPro: {type(error).__name__}: {str(error)[:150]}")
+        log(f"Créditos de voz: {type(error).__name__}: {str(error)[:150]}")
     made = 0
     materials = root / "materiales"
     for folder in sorted(video_folders(root), key=lambda d: d.stat().st_mtime):
@@ -686,7 +960,7 @@ def prepare_all(root: Path, log: Any = print) -> int:
         except Exception as error:
             log(f"Voz de {folder.name}: {type(error).__name__}: {str(error)[:200]}")
             if not failed:                       # one message per video, not one every half hour
-                _tell(root, f"🎙️ No se pudo generar la voz de {folder.name} con GenAIPro:\n{str(error)[:300]}\n\n"
+                _tell(root, f"🎙️ No se pudo generar la voz de {folder.name}:\n{str(error)[:300]}\n\n"
                             f"Lo reintento cada {RETRY_MINUTES} min.", folder.name)
     return made
 
@@ -707,9 +981,25 @@ def chars_per_video(root: Path) -> float:
     return sum(made) / len(made) if made else VIDEO_CHARS
 
 
-def check_credits(root: Path, token: str, session: Any = None, now: float | None = None) -> dict[str, Any] | None:
-    """Every hour: GenAIPro's credits; a Telegram message (once a day) when they cover fewer than
-    `tts.min_videos` (5) narrations, so the queue does not run dry in the middle of the night."""
+def credits_per_video(root: Path) -> float:
+    """The AI84 credits a whole narration took (voz.genaipro.json of the videos read with it), 0 until one is made."""
+
+    from .context import video_folders
+
+    made = []
+    for folder in video_folders(root):
+        try:
+            data = json.loads((folder / "voz.genaipro.json").read_text("utf-8"))
+            if data.get("provider") == "ai84" and float(data.get("credits") or 0) > 0 and data.get("paidChars", data.get("chars")):
+                made.append(float(data["credits"]) * float(data["chars"]) / float(data.get("paidChars") or data["chars"]))
+        except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError):
+            pass
+    return sum(made) / len(made) if made else 0.0
+
+
+def check_credits(root: Path, token: str | dict[str, str], session: Any = None, now: float | None = None) -> dict[str, Any] | None:
+    """Every hour: the voice credits (AI84's when a channel reads with it, else GenAIPro's); a Telegram message
+    (once a day) when they cover fewer than `tts.min_videos` (5) narrations, so the queue does not run dry at night."""
 
     now = time.time() if now is None else now
     path = root / CREDITS_STATE
@@ -722,15 +1012,25 @@ def check_credits(root: Path, token: str, session: Any = None, now: float | None
     from .context import RunContext
 
     cfg = RunContext.create("_voces", root=root).section("tts") if (root / "config.yaml").is_file() else {}
-    rows = GenAIPro(token, session).credits()
-    left = sum(float(r.get("amount") or 0) for r in (rows if isinstance(rows, list) else [rows]) if isinstance(r, dict))
-    per_video = chars_per_video(root) * float(cfg.get("credits_per_char", 1.0))
+    tokens = token if isinstance(token, dict) else {"genaipro": token}
+    use_ai84 = any(v.get("provider") == "ai84" for v in voices(root).values()) and tokens.get("ai84")
+    if use_ai84:
+        name = "AI84"
+        left = AI84(tokens["ai84"], session).credits()
+        per_video = credits_per_video(root) or chars_per_video(root) * float(cfg.get("ai84_credits_per_char", 1.0))
+    else:
+        if not tokens.get("genaipro"):
+            return None
+        name = "GenAIPro"
+        rows = GenAIPro(tokens["genaipro"], session).credits()
+        left = sum(float(r.get("amount") or 0) for r in (rows if isinstance(rows, list) else [rows]) if isinstance(r, dict))
+        per_video = chars_per_video(root) * float(cfg.get("credits_per_char", 1.0))
     videos = left / per_video if per_video else 0
     state.update(checked=now, credits=left, videos=round(videos, 1))
     minimum = float(cfg.get("min_videos", 5))
     if videos < minimum and now - float(state.get("alerted") or 0) > 20 * 3600:
         state["alerted"] = now
-        _tell(root, f"🎙️ Quedan {left:,.0f} créditos de GenAIPro: unas {videos:.0f} voces más "
+        _tell(root, f"🎙️ Quedan {left:,.0f} créditos de {name}: unas {videos:.0f} voces más "
                     f"(~{per_video:,.0f} por vídeo). Recarga antes de que la cola se quede sin voz.".replace(",", "."))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state), encoding="utf-8")

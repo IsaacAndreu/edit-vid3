@@ -2200,6 +2200,8 @@ class YouTubeSource:
         ]
         if self.api is not None:   # API quota: the event search + one more (~30k units a video instead of ~46k)
             queries = queries[: int(self.cfg.get("api_queries_per_shot", 2))]
+        elif broll.placeQuery and self.cfg.get("place_queries", True):
+            queries.append(broll.placeQuery)   # the news from where it happened (the same for the whole event: cached)
         return list(dict.fromkeys(self.merged(q) for q in queries))
 
     def merged(self, query: str) -> str:

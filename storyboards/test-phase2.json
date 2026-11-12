@@ -1,0 +1,316 @@
+{
+  "meta": {
+    "slug": "test-phase2",
+    "title": "Prueba fase 2",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [
+      {
+        "numeral": "I",
+        "label": "Ground"
+      },
+      {
+        "numeral": "II",
+        "label": "Pressure"
+      },
+      {
+        "numeral": "III",
+        "label": "Engines"
+      },
+      {
+        "numeral": "IV",
+        "label": "Airports"
+      },
+      {
+        "numeral": "V",
+        "label": "Cost"
+      }
+    ],
+    "duration": 36
+  },
+  "audio": {},
+  "scenes": [
+    {
+      "id": "dial-countdown",
+      "type": "atlas-dial",
+      "start": {
+        "t": 0
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "AT ABOUT 35,000 FT, WITHOUT OXYGEN",
+      "title": "Clear-headed for *a minute or less*",
+      "sourceNote": "FAA: 30–60 SECONDS AT 35,000 FT",
+      "dial": {
+        "max": 60,
+        "from": 0,
+        "to": 60,
+        "at": {
+          "t": 0.6
+        },
+        "seconds": 5.2,
+        "fill": "remaining",
+        "accent": "danger"
+      },
+      "readout": {
+        "text": "{value} SEC",
+        "style": "mono"
+      }
+    },
+    {
+      "id": "dial-saved",
+      "type": "atlas-dial",
+      "start": {
+        "t": 6
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "kicker": "THE SHORTCUT · PER FLIGHT · DHL SAYS",
+      "dial": {
+        "max": 60,
+        "from": 0,
+        "to": 20,
+        "at": {
+          "t": 6.5
+        },
+        "seconds": 2.5,
+        "fill": "elapsed",
+        "accent": "good",
+        "hand": false
+      },
+      "readout": {
+        "text": {
+          "text": "~{value} *minutes saved*",
+          "accent": "good"
+        },
+        "style": "serif",
+        "at": {
+          "t": 6.6
+        }
+      }
+    },
+    {
+      "id": "bar-antarctica",
+      "type": "atlas-bar-compare",
+      "start": {
+        "t": 10
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 0,
+      "kicker": "AVERAGE HEIGHT ABOVE SEA LEVEL",
+      "axis": {
+        "max": 5,
+        "step": 1,
+        "format": "{v} KM",
+        "style": "grid",
+        "base": "SEA LEVEL"
+      },
+      "labels": "below",
+      "bars": [
+        {
+          "label": "Antarctica",
+          "value": 2.5,
+          "display": "~2.5 km",
+          "at": {
+            "t": 10.6
+          },
+          "style": "hatched",
+          "valueAccent": "data",
+          "inside": "MOSTLY ICE"
+        },
+        {
+          "label": "Tibetan Plateau",
+          "value": 4.1,
+          "display": "~4.1 km",
+          "at": {
+            "t": 12.0
+          },
+          "style": "earth",
+          "valueAccent": "danger"
+        }
+      ],
+      "ghost": {
+        "bar": 1,
+        "value": 5.0,
+        "label": "2 × ANTARCTICA",
+        "at": {
+          "t": 13.4
+        }
+      }
+    },
+    {
+      "id": "bar-threshold",
+      "type": "atlas-bar-compare",
+      "start": {
+        "t": 16
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "kicker": "CIVIL AVIATION ADMINISTRATION OF CHINA",
+      "title": "“High plateau” *airports*",
+      "axis": {
+        "max": 5000,
+        "step": 1000,
+        "format": "{v} M",
+        "style": "ticks",
+        "base": "SEA LEVEL"
+      },
+      "labels": "above",
+      "bars": [
+        {
+          "label": "Lhasa",
+          "value": 3570,
+          "display": "3,570 M",
+          "at": {
+            "t": 16.6
+          },
+          "style": "earth"
+        },
+        {
+          "label": "Bangda",
+          "value": 4334,
+          "display": "4,334 M",
+          "at": {
+            "t": 17.0
+          },
+          "style": "earth"
+        },
+        {
+          "label": "Daocheng Yading",
+          "value": 4411,
+          "display": "4,411 M",
+          "at": {
+            "t": 17.4
+          },
+          "style": "earth"
+        }
+      ],
+      "threshold": {
+        "value": 2438,
+        "label": "2,438 M AND HIGHER",
+        "at": {
+          "t": 18.4
+        },
+        "accent": "danger",
+        "band": true
+      },
+      "side": {
+        "kicker": "OWN RULES FOR",
+        "items": [
+          "AIRLINES",
+          "PLANES",
+          "PILOTS"
+        ],
+        "at": {
+          "t": 19.4
+        }
+      }
+    },
+    {
+      "id": "dot-density",
+      "type": "atlas-dot-density",
+      "start": {
+        "t": 22
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "kicker": "THE SAME BOX OF AIR · STANDARD ATMOSPHERE",
+      "title": {
+        "text": "About *a third thinner*",
+        "accent": "data"
+      },
+      "sourceNote": "AIR DENSITY · INTERNATIONAL STANDARD ATMOSPHERE",
+      "grid": 9,
+      "boxes": [
+        {
+          "label": "SEA LEVEL",
+          "percent": 100,
+          "display": "100%",
+          "at": {
+            "t": 22.5
+          }
+        },
+        {
+          "label": "LHASA · 3,570 M",
+          "percent": 70,
+          "display": "70%",
+          "at": {
+            "t": 23.4
+          },
+          "accent": "data"
+        },
+        {
+          "label": "DAOCHENG YADING · 4,411 M",
+          "percent": 64,
+          "display": "64%",
+          "at": {
+            "t": 25.0
+          },
+          "accent": "danger"
+        }
+      ]
+    },
+    {
+      "id": "runway",
+      "type": "atlas-runway-compare",
+      "start": {
+        "t": 29
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 3,
+      "kicker": "TAKE-OFF RUN · ILLUSTRATIVE · NO WIND",
+      "title": {
+        "text": "Thin air: *faster, and further*",
+        "accent": "data"
+      },
+      "notes": [
+        {
+          "text": "ENGINES: LESS POWER",
+          "at": {
+            "t": 29.6
+          }
+        },
+        {
+          "text": "WINGS: MORE SPEED FOR THE SAME LIFT",
+          "at": {
+            "t": 30.2
+          }
+        }
+      ],
+      "runways": [
+        {
+          "label": "SEA LEVEL",
+          "liftoff": 0.46,
+          "at": {
+            "t": 30.8
+          },
+          "seconds": 2.4,
+          "liftoffLabel": "LIFT-OFF"
+        },
+        {
+          "label": "LHASA · 3,570 M",
+          "liftoff": 0.72,
+          "at": {
+            "t": 30.8
+          },
+          "seconds": 3.4,
+          "liftoffLabel": "LIFT-OFF"
+        }
+      ],
+      "footer": {
+        "text": "SAME SPEED ON THE DIAL · AT LHASA ~20% FASTER OVER THE GROUND",
+        "at": {
+          "t": 31.5
+        }
+      }
+    }
+  ]
+}

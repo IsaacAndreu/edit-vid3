@@ -1,0 +1,50 @@
+{
+  "id": "us1549",
+  "flight": "US Airways 1549",
+  "aircraft": "Airbus A320-214",
+  "registration": "N106US",
+  "date": "2009-01-15",
+  "timezone": "EST",
+  "from": "15:24:40",
+  "to": "15:30:44",
+  "source": {
+    "document": "NTSB DCA09MA026 — Flight Data Recorder 10B, Attachment 1: Tabular Data",
+    "url": "https://data.ntsb.gov/Docket/?NTSBNumber=DCA09MA026",
+    "report": "NTSB AAR-10/03, Loss of Thrust in Both Engines After Encountering a Flock of Birds and Subsequent Ditching on the Hudson River",
+    "reportUrl": "https://www.ntsb.gov/investigations/AccidentReports/Reports/AAR1003.pdf",
+    "license": "Obra del Gobierno de EE. UU. (dominio público)"
+  },
+  "altitude": {
+    "offsetFt": 293,
+    "method": "Altitud de presión del FDR (29,92 inHg, sin corregir: FDR 10A, §3.5.2) + 293 ft por el altímetro de 30,24 inHg de la observación de las 14:51 en Central Park (AAR-10/03, p. 23), con la atmósfera estándar.",
+    "ref": "FDR 10A §3.5.2; AAR-10/03 p. 23"
+  },
+  "notes": [
+    "Posición del FDR cada 4 s; entre dos posiciones se interpola en línea recta. Tras la última posición grabada (15:30:40,8) el punto sigue la dirección de las dos últimas a la velocidad sobre el suelo del FDR hasta el final de los datos.",
+    "Velocidad indicada vacía (null) cuando el FDR graba 511,875 kt: por debajo de ~30 kt no hay lectura.",
+    "Rumbo magnético del FDR.",
+    "Horas EST (hora local de Nueva York).",
+    "Dos muestras de altitud de presión de 16380 ft al cruzar el cero (15:29:48 y 15:30:28) se leen como −4 ft (complemento a dos de 14 bits), como indican sus vecinas."
+  ],
+  "events": [
+    {"clock": "15:24:54", "kind": "atc", "who": "LGA tower", "text": "[cleared for takeoff from runway 4]", "ref": "AAR-10/03 p. 1"},
+    {"clock": "15:27:10", "kind": "cvr", "who": "Captain", "text": "birds.", "ref": "AAR-10/03 p. 2 (CVR 15:27:10.4)"},
+    {"clock": "15:27:11", "kind": "event", "text": "Bird strike: both engines start to lose speed", "ref": "AAR-10/03 p. 2"},
+    {"clock": "15:27:14", "kind": "cvr", "who": "Captain", "text": "we got one rol- both of 'em rolling back.", "ref": "AAR-10/03 p. 2"},
+    {"clock": "15:27:23", "kind": "cvr", "who": "Captain", "text": "my aircraft.", "ref": "AAR-10/03 p. 2"},
+    {"clock": "15:27:33", "kind": "atc", "who": "Captain", "text": "…hit birds, we've lost thrust in both engines, we're turning back towards LaGuardia.", "ref": "AAR-10/03 p. 2"},
+    {"clock": "15:28:05", "kind": "atc", "who": "Captain", "text": "we're unable. we may end up in the Hudson.", "ref": "AAR-10/03 p. 2"},
+    {"clock": "15:28:46", "kind": "atc", "who": "Captain", "text": "I'm not sure we can make any runway. Uh what's over to our right anything in New Jersey maybe Teterboro?", "ref": "AAR-10/03 p. 3"},
+    {"clock": "15:29:11", "kind": "pa", "who": "Captain", "text": "this is the Captain, brace for impact.", "ref": "AAR-10/03 p. 3"},
+    {"clock": "15:29:28", "approx": true, "kind": "atc", "who": "Captain", "text": "we’re gonna be in the Hudson.", "ref": "AAR-10/03 p. 3 (poco después de las 15:29:27)"},
+    {"clock": "15:30:01", "kind": "cvr", "who": "First officer", "text": "got flaps out", "ref": "AAR-10/03 p. 4"},
+    {"clock": "15:30:43", "kind": "event", "text": "Touchdown on the Hudson River", "ref": "AAR-10/03 p. 48"}
+  ],
+  "facts": [
+    {"label": "occupants", "value": 155, "text": "2 pilots, 3 flight attendants, 150 passengers", "ref": "AAR-10/03 p. 6, tabla 1"},
+    {"label": "fatal", "value": 0, "text": "Fatal injuries: 0", "ref": "AAR-10/03 p. 6, tabla 1"},
+    {"label": "birdstrike_agl_ft", "value": 2818, "text": "Bird encounter at 2,818 ft above ground level", "ref": "AAR-10/03 p. 2"},
+    {"label": "max_kias_after", "value": 214, "text": "Maximum airspeed after the bird ingestion: 214 kts (relight needs 300 kts)", "ref": "AAR-10/03 p. 2, nota 8"},
+    {"label": "touchdown", "value": 125, "text": "Touchdown at 125 KCAS, pitch 9.5°, right roll 0.4°", "ref": "AAR-10/03 p. 48"}
+  ]
+}

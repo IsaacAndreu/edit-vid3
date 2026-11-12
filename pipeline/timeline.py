@@ -35,6 +35,7 @@ from .schemas import (
     ShotsFile,
     Timeline,
     TimelineCaption,
+    TimelineSubtitle,
     TimelineAudio,
     ColdOpenFile,
     TimelineClipAudio,
@@ -359,7 +360,7 @@ def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineSho
             size = _size(ctx.work_dir / person["image"])
             shot.media = TimelineMedia(src=person["image"], kind="image", source=person.get("source") or "web",
                                        credit=person.get("credit"), layout="person", caption=person["name"],
-                                       width=size[0], height=size[1])
+                                       role=person.get("role"), width=size[0], height=size[1])
             taken.add(shot.id)
             break
 
@@ -733,6 +734,15 @@ def earth_textures(ctx: RunContext) -> dict[str, Any] | None:
             shutil.copy2(source, target)
         out[key_] = {"src": f"graphics/earth/{name}", "kind": "image", "source": "nasa"}
     return out
+
+
+def subtitles_wanted(ctx: RunContext, timeline: Timeline) -> bool:
+    """timeline.subtitles (true): the narration subtitled, in footage videos only — not in a Short (its own captions),
+    nor in the drawn styles (simulation, stickmen, maps: their words are part of the picture)."""
+
+    style = str(ctx.section("visual").get("style") or "").lower()
+    return (bool(ctx.section("timeline").get("subtitles", False)) and timeline.width > timeline.height
+            and style in ("", "metraje", "footage"))
 
 
 def voice_frame(timeline: Timeline, seconds: float) -> int:
@@ -1561,6 +1571,12 @@ def run(ctx: RunContext) -> None:
         simulacion.sync(timeline.groups, words.words, lambda seconds: voice_frame(timeline, seconds), fps)
     if cfg.get("captions"):
         timeline = timeline.model_copy(update={"captions": captions(words, timeline, int(cfg.get("caption_words", 3)))})
+    elif subtitles_wanted(ctx, timeline):
+        from . import subtitulos
+
+        blocked = [(g.from_, g.from_ + g.durationInFrames) for g in timeline.groups if g.kind == "question"]
+        cues = subtitulos.cues([w.model_dump() for w in words.words], lambda seconds: voice_frame(timeline, seconds), fps, blocked)
+        timeline = timeline.model_copy(update={"subtitles": [TimelineSubtitle.model_validate(c) for c in cues]})
     if (short := short_texts(ctx, timeline)):
         timeline = timeline.model_copy(update={"short": short})
     bites = ColdOpenFile.model_validate(ctx.read_json("coldopen.json")).bites if (ctx.work_dir / "coldopen.json").is_file() else []

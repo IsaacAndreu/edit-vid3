@@ -13,6 +13,7 @@ export interface Media {
   credit?: string | null;
   layout?: 'full' | 'card' | 'person' | 'parallax' | 'archive';
   caption?: string | null; // person cards: the name
+  role?: string | null; // person cards: who they are in the story ("Hermana de una víctima")
   width?: number | null;
   height?: number | null;
   focus?: [number, number] | null; // graphics: centre of the face (% of width, % of height) to crop around

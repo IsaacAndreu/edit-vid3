@@ -1,0 +1,8 @@
+{
+  "meta": { "slug": "Prueba Mala", "title": "x", "brand": { "name": "X", "icon": "" }, "chapters": [], "duration": 4 },
+  "audio": {},
+  "scenes": [
+    { "id": "a", "type": "atlas-blank", "start": { "t": 0 }, "theme": "sepia", "enter": "fade", "chapter": 2 },
+    { "id": "a", "type": "atlas-globo", "start": { "say": "" }, "theme": "night", "enter": "fade" }
+  ]
+}

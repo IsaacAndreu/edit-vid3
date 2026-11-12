@@ -297,3 +297,117 @@ def test_a_script_written_for_reading_is_made_ready_to_narrate():
     assert "## Quién está detrás" in clean and "## De dónde sale" in clean
     assert "[" not in clean and "GUIÓN" not in clean and "5:20" not in clean
     assert narration_text(script) == "Entras a una tienda.\n\nFactura más que Ross.\n\nSuscríbete.\n\nCompran barato."
+
+
+class _FakeAI84:
+    """api.ai84.pro: MiniMax jobs (queued → processing → done), its voices, its credits."""
+
+    def __init__(self, audio: bytes):
+        self.audio, self.created, self.polls = audio, [], {}
+
+    def request(self, method, url, headers=None, timeout=None, json=None, params=None):
+        assert headers["xi-api-key"] == "ak" and url.startswith(tts.AI84_BASE)
+        path = url[len(tts.AI84_BASE):]
+        if method == "POST" and path == "/v1/minimax/text-to-speech/async":
+            self.created.append(json)
+            return _Response(201, payload={"success": True, "job_id": f"j{len(self.created)}", "status": "queued", "credit_cost": 100})
+        if method == "GET" and path.startswith("/v1/minimax/text-to-speech/async/"):
+            job = path.rsplit("/", 1)[1]
+            self.polls[job] = self.polls.get(job, 0) + 1
+            if self.polls[job] == 1:
+                return _Response(502, payload={"success": False})          # a 5xx while polling: still running
+            done = self.polls[job] >= 3
+            return _Response(payload={"success": True, "job": {"job_id": job, "status": "done" if done else "processing",
+                                                                "audio_url": f"https://cdn.example/{job}.mp3?token=x" if done else None}})
+        if method == "GET" and path == "/v1/minimax/voices":
+            self.params = params
+            return _Response(payload={"success": True, "data": [
+                {"canonical_voice_id": "es_narrador", "name": "Narrador", "minimax_voice": {"tag_list": ["Spanish", "male"],
+                 "sample_audio": "https://cdn.example/s.mp3", "description": "Grave"}},
+                {"canonical_voice_id": "es_ana", "name": "Ana", "minimax_voice": {"tag_list": ["Spanish", "female"]}}]})
+        if method == "GET" and path == "/v1/credits":
+            return _Response(payload={"success": True, "credits": 5000})
+        raise AssertionError(path)
+
+    def get(self, url, stream=False, timeout=None):
+        return _Response(content=self.audio)
+
+
+def test_ai84_minimax_reads_the_script_with_no_word_timings(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    fake = _FakeAI84(_mp3(tmp_path / "piece.mp3"))
+    voice = tts.with_defaults({"provider": "ai84", "voice_id": "es_narrador", "speed": 1.1, "language_boost": "Spanish",
+                               "max_chars": 40})
+    target = tmp_path / "voz.mp3"
+    result = tts.generate({"ai84": "ak", "genaipro": ""}, "Primera frase del guion. Segunda frase.\n\nTercer párrafo.",
+                          voice, target, session=fake, log=lambda *_: None)
+    sent = fake.created[0]
+    assert sent["canonical_voice_id"] == "es_narrador" and sent["model"] == "speech-2.6-hd" and sent["speed"] == 1.1
+    assert sent["language_boost"] == "Spanish" and target.is_file()
+    assert result["provider"] == "ai84" and result["credits"] == 100 * len(fake.created)
+    assert not tts.timings_path(target).is_file()                    # MiniMax gives none: Whisper aligns
+
+
+def test_ai84_failed_job_says_why(monkeypatch):
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+
+    class Failed(_FakeAI84):
+        def request(self, method, url, headers=None, timeout=None, json=None, params=None):
+            if method == "GET" and "/async/" in url:
+                return _Response(payload={"success": True, "job": {"status": "failed", "errorMessage": "This voice is not available",
+                                                                    "errorMessageKey": "internal.VOICE_NOT_FOUND_LOCAL"}})
+            return super().request(method, url, headers, timeout, json, params)
+
+    api = tts.AI84("ak", Failed(b""))
+    job = api.create("Hola", tts.with_defaults({"provider": "ai84", "voice_id": "x"}))
+    with pytest.raises(tts.TTSError, match="VOICE_NOT_FOUND_LOCAL"):
+        api.wait(job)
+
+
+def test_ai84_voices_credits_and_saved_voice(tmp_path):
+    fake = _FakeAI84(b"")
+    api = tts.AI84("ak", fake)
+    found = api.search("", "es", "female")
+    assert [v["voice_id"] for v in found] == ["es_ana"] and fake.params["tag"] == "Spanish"
+    assert api.credits() == 5000
+    with pytest.raises(tts.TTSError, match="AI84_API_KEY"):
+        tts.AI84("")
+    tts.set_voice(tmp_path, "gimnasia", {"provider": "ai84", "voice_id": "es_ana", "name": "Ana", "model_id": "speech-02-hd",
+                                         "speed": 3, "pitch": -2})
+    saved = tts.voice_for(tmp_path, "gimnasia")
+    assert saved["model_id"] == "speech-02-hd" and saved["speed"] == 2.0 and saved["pitch"] == -2 and "stability" not in saved
+    with pytest.raises(ValueError):
+        tts.set_voice(tmp_path, "gimnasia", {"provider": "ai84", "voice_id": "es_ana", "model_id": "eleven_v3"})
+    tts.set_voice(tmp_path, "atletismo", {"voice_id": "V1"})          # an old-style GenAIPro voice keeps working
+    assert tts.voice_for(tmp_path, "atletismo")["model_id"] == "eleven_multilingual_v2"
+    assert tts.client_for(saved, {"ai84": "ak"}).NAME == "AI84" and tts.client_for({"voice_id": "V1"}, "k").NAME == "GenAIPro"
+
+
+def test_ai84_uses_minimax_own_id_and_mends_a_voice_saved_by_its_name():
+    class Named(_FakeAI84):
+        def request(self, method, url, headers=None, timeout=None, json=None, params=None):
+            path = url[len(tts.AI84_BASE):]
+            if method == "GET" and path == "/v1/minimax/voices":
+                return _Response(payload={"success": True, "data": [
+                    {"canonical_voice_id": "Spanish_HumorousElder", "name": "Humorous Elder",
+                     "minimax_voice": {"voice_id": "209539195289713", "tag_list": ["Spanish", "Male"]}}]})
+            if method == "POST" and json.get("canonical_voice_id") == "Spanish_HumorousElder":
+                return _Response(404, payload={"success": False, "error": "Voice not found",
+                                               "message": "Voice not found or not accessible.", "error_code": "VOICE_NOT_FOUND"})
+            return super().request(method, url, headers, timeout, json, params)
+
+    fake = Named(b"")
+    api = tts.AI84("ak", fake)
+    assert api.search("", "es")[0]["voice_id"] == "209539195289713"
+    api.create("Hola", tts.with_defaults({"provider": "ai84", "voice_id": "Spanish_HumorousElder"}))
+    assert fake.created[-1]["canonical_voice_id"] == "209539195289713"
+
+
+def test_ai84_voice_is_priced_by_its_credits(tmp_path):
+    from pipeline.context import RunContext
+
+    (tmp_path / "config.yaml").write_text("tts:\n  ai84_usd_per_1k_credits: 0.006\n", encoding="utf-8")
+    ctx = RunContext.create("v", root=tmp_path)
+    usd = tts.voice_usd(ctx, {"provider": "ai84"}, 14000, {"provider": "ai84", "credits": 18500})
+    assert abs(usd - 0.111) < 1e-9                       # 18,500 credits at 6 $ the million
+    assert abs(tts.voice_usd(ctx, {}, 10000, {"provider": "genaipro"}) - tts.usd_per_1k_chars(ctx) * 10) < 1e-9

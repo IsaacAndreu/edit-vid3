@@ -1,0 +1,544 @@
+{
+  "meta": {
+    "slug": "test-phase5",
+    "title": "Prueba fase 5",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [
+      {
+        "numeral": "I",
+        "label": "Ground"
+      },
+      {
+        "numeral": "II",
+        "label": "Pressure"
+      },
+      {
+        "numeral": "III",
+        "label": "Engines"
+      },
+      {
+        "numeral": "IV",
+        "label": "Airports"
+      },
+      {
+        "numeral": "V",
+        "label": "Cost"
+      }
+    ],
+    "duration": 36
+  },
+  "audio": {},
+  "scenes": [
+    {
+      "id": "globe-night",
+      "type": "atlas-globe",
+      "start": {
+        "t": 0
+      },
+      "theme": "night",
+      "enter": "fade",
+      "camera": [
+        {
+          "at": {
+            "t": 0
+          },
+          "center": [
+            70,
+            25
+          ],
+          "zoom": 1.5
+        },
+        {
+          "at": {
+            "t": 0.3
+          },
+          "center": [
+            84,
+            30
+          ],
+          "zoom": 1.68
+        }
+      ],
+      "shapes": [
+        {
+          "id": "tibet",
+          "source": "atlas-data/regions/tibet/contour-3000.geojson",
+          "at": {
+            "t": 0.5
+          },
+          "stroke": "danger",
+          "fill": true
+        }
+      ],
+      "routes": [
+        {
+          "id": "doha-tokyo",
+          "path": [
+            [
+              51.53,
+              25.29
+            ],
+            [
+              139.78,
+              35.55
+            ]
+          ],
+          "at": {
+            "t": 2
+          },
+          "drawSeconds": 1.5,
+          "style": "dashed",
+          "accent": "ink"
+        },
+        {
+          "id": "dubai-shanghai",
+          "path": [
+            [
+              55.36,
+              25.25
+            ],
+            [
+              121.8,
+              31.14
+            ]
+          ],
+          "at": {
+            "t": 2.3
+          },
+          "drawSeconds": 1.5,
+          "style": "dashed",
+          "accent": "ink"
+        },
+        {
+          "id": "delhi-chengdu",
+          "path": [
+            [
+              77.1,
+              28.56
+            ],
+            [
+              103.95,
+              30.58
+            ]
+          ],
+          "at": {
+            "t": 2.6
+          },
+          "drawSeconds": 1.5,
+          "style": "dashed",
+          "accent": "ink"
+        }
+      ],
+      "points": [
+        {
+          "name": "Doha",
+          "pos": [
+            51.53,
+            25.29
+          ],
+          "at": {
+            "t": 1.2
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Dubai",
+          "pos": [
+            55.36,
+            25.25
+          ],
+          "at": {
+            "t": 1.3
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Delhi",
+          "pos": [
+            77.1,
+            28.56
+          ],
+          "at": {
+            "t": 1.4
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Chengdu",
+          "pos": [
+            103.95,
+            30.58
+          ],
+          "at": {
+            "t": 1.5
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Shanghai",
+          "pos": [
+            121.8,
+            31.14
+          ],
+          "at": {
+            "t": 1.6
+          },
+          "marker": "city"
+        },
+        {
+          "name": "Tokyo",
+          "pos": [
+            139.78,
+            35.55
+          ],
+          "at": {
+            "t": 1.7
+          },
+          "marker": "city"
+        }
+      ],
+      "overlays": [
+        {
+          "kind": "legend",
+          "corner": "bl",
+          "at": {
+            "t": 3
+          },
+          "items": [
+            {
+              "style": "dashed",
+              "accent": "ink",
+              "label": "Shortest path"
+            },
+            {
+              "style": "solid",
+              "accent": "amber",
+              "label": "Usual way around"
+            }
+          ],
+          "sub": "SIMPLIFIED"
+        }
+      ]
+    },
+    {
+      "id": "globe-light",
+      "type": "atlas-globe",
+      "start": {
+        "t": 6
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "camera": [
+        {
+          "at": {
+            "t": 6
+          },
+          "center": [
+            50,
+            44
+          ],
+          "zoom": 2.9
+        }
+      ],
+      "routes": [
+        {
+          "id": "leipzig",
+          "path": [
+            [
+              12.24,
+              51.42
+            ],
+            [
+              100,
+              32
+            ]
+          ],
+          "at": {
+            "t": 6.5
+          },
+          "drawSeconds": 3,
+          "style": "dashed",
+          "accent": "ink"
+        }
+      ],
+      "points": [
+        {
+          "name": "Leipzig",
+          "pos": [
+            12.24,
+            51.42
+          ],
+          "at": {
+            "t": 6.3
+          },
+          "marker": "city"
+        }
+      ],
+      "overlays": [
+        {
+          "kind": "info-card",
+          "corner": "br",
+          "at": {
+            "t": 7
+          },
+          "kicker": "February 2024 · DHL",
+          "title": "Airbus A330 freighters",
+          "sub": "EUROPEAN AIR TRANSPORT · LEIPZIG"
+        }
+      ]
+    },
+    {
+      "id": "everest-hook",
+      "type": "atlas-terrain-3d",
+      "start": {
+        "t": 12
+      },
+      "theme": "night",
+      "enter": "fade",
+      "kicker": "THE EVEREST MASSIF · TRUE SCALE",
+      "terrain": "everest",
+      "exaggeration": 1,
+      "camera": [
+        {
+          "at": {
+            "t": 12
+          },
+          "tilt": 5,
+          "yaw": 0,
+          "distance": 1.4,
+          "targetKm": 5.5
+        }
+      ],
+      "cruise": {
+        "km": 11,
+        "label": "Airliners cruise · ~11 km",
+        "at": {
+          "t": 12.6
+        }
+      },
+      "plane": {
+        "from": [
+          86.55,
+          27.97
+        ],
+        "to": [
+          87.35,
+          27.97
+        ],
+        "km": 11,
+        "at": {
+          "t": 12.8
+        },
+        "seconds": 5,
+        "dropLine": false
+      },
+      "labels": [
+        {
+          "text": "Mount Everest",
+          "sub": "8,849 m",
+          "pos": [
+            86.925,
+            27.988
+          ],
+          "at": {
+            "t": 13.5
+          },
+          "style": "value",
+          "accent": "ink"
+        }
+      ],
+      "axis": {
+        "maxKm": 12,
+        "stepKm": 3,
+        "at": {
+          "t": 12.3
+        }
+      }
+    },
+    {
+      "id": "plateau-threshold",
+      "type": "atlas-terrain-3d",
+      "start": {
+        "t": 18
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "kicker": "THE TIBETAN PLATEAU · HEIGHTS ×30",
+      "terrain": "tibet-3d",
+      "exaggeration": 30,
+      "extrude": {
+        "at": {
+          "t": 18.3
+        },
+        "seconds": 2.2
+      },
+      "camera": [
+        {
+          "at": {
+            "t": 18
+          },
+          "tilt": 89,
+          "yaw": 0,
+          "distance": 1.6
+        },
+        {
+          "at": {
+            "t": 18.3
+          },
+          "tilt": 30,
+          "yaw": -12,
+          "distance": 1.5
+        }
+      ],
+      "threshold": {
+        "m": 4000,
+        "at": {
+          "t": 21
+        },
+        "label": "Above 4 km",
+        "labelPos": [
+          89,
+          33.5
+        ]
+      },
+      "base": {
+        "label": "Sea level",
+        "at": {
+          "t": 20.5
+        }
+      }
+    },
+    {
+      "id": "plateau-labels",
+      "type": "atlas-terrain-3d",
+      "start": {
+        "t": 24
+      },
+      "theme": "paper",
+      "enter": "continuous",
+      "chapter": 0,
+      "kicker": "THE TIBETAN PLATEAU · HEIGHTS ×30",
+      "terrain": "tibet-3d",
+      "exaggeration": 30,
+      "camera": [
+        {
+          "at": {
+            "t": 24
+          },
+          "tilt": 30,
+          "yaw": -12,
+          "distance": 1.5
+        },
+        {
+          "at": {
+            "t": 24.2
+          },
+          "tilt": 28,
+          "yaw": 10,
+          "distance": 1.35,
+          "target": [
+            87,
+            31.5
+          ]
+        }
+      ],
+      "labels": [
+        {
+          "text": "Himalayas",
+          "pos": [
+            83.5,
+            29.2
+          ],
+          "at": {
+            "t": 25.5
+          },
+          "style": "range"
+        },
+        {
+          "text": "Karakoram",
+          "pos": [
+            76.5,
+            35.6
+          ],
+          "at": {
+            "t": 26
+          },
+          "style": "range"
+        },
+        {
+          "text": "Kunlun",
+          "pos": [
+            86,
+            36.2
+          ],
+          "at": {
+            "t": 26.5
+          },
+          "style": "range"
+        },
+        {
+          "text": "Everest",
+          "pos": [
+            86.925,
+            27.988
+          ],
+          "at": {
+            "t": 27
+          },
+          "style": "peak"
+        }
+      ]
+    },
+    {
+      "id": "night-closing",
+      "type": "atlas-terrain-3d",
+      "start": {
+        "t": 30
+      },
+      "theme": "night",
+      "enter": "fade",
+      "title": {
+        "text": "Over Tibet, the hard part is *coming down.*",
+        "accent": "amber"
+      },
+      "terrain": "tibet-3d",
+      "exaggeration": 30,
+      "camera": [
+        {
+          "at": {
+            "t": 30
+          },
+          "tilt": 9,
+          "yaw": 0,
+          "distance": 0.7,
+          "target": [
+            89,
+            32
+          ],
+          "targetKm": 6
+        }
+      ],
+      "plane": {
+        "from": [
+          84,
+          32
+        ],
+        "to": [
+          92,
+          32
+        ],
+        "km": 10.5,
+        "at": {
+          "t": 30.5
+        },
+        "seconds": 6,
+        "dropLine": true,
+        "trail": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "hudson-1549",
+  "bbox": [
+    -74.06,
+    40.74,
+    -73.83,
+    40.9
+  ],
+  "smooth": 1,
+  "textureRegion": "nueva-york",
+  "lat0": 40.82,
+  "kmLon": 84.24329383705825,
+  "kmLat": 110.57,
+  "widthKm": 19.375957582523732,
+  "depthKm": 17.691199999999622,
+  "cols": 520,
+  "rows": 475,
+  "maxM": 132,
+  "contourStep": 1000,
+  "zoom": 14,
+  "source": "Elevación: Terrarium (tilezen/joerd) — SRTM, GMTED, ETOPO1 y otras fuentes públicas; https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+}

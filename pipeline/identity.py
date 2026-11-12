@@ -242,7 +242,8 @@ class Checker:
         ref = None
         person = self.people.get(name) or {}
         path = self.ctx.work_dir / str(person.get("image") or "")
-        if person.get("image") and path.is_file():
+        # a portrait no other photo agreed with (people.consensus: verified false) may be somebody else: no reference
+        if person.get("image") and path.is_file() and person.get("verified", True) is not False:
             image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
             if image is not None and image.ndim == 3 and image.shape[2] == 4:
                 alpha = image[..., 3:] / 255.0
@@ -329,7 +330,8 @@ class Checker:
         found = None
         person = self.people.get(name) or {}
         path = self.ctx.work_dir / str(person.get("image") or "")
-        if person.get("image") and path.is_file():
+        # a portrait no other photo agreed with (people.consensus: verified false) may be somebody else: no reference
+        if person.get("image") and path.is_file() and person.get("verified", True) is not False:
             image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
             if image is not None and image.ndim == 3 and image.shape[2] == 4:
                 alpha = image[..., 3:] / 255.0

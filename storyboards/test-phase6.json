@@ -1,0 +1,530 @@
+{
+  "meta": {
+    "slug": "test-phase6",
+    "title": "Prueba fase 6",
+    "brand": {
+      "name": "ATLAS",
+      "icon": "✦"
+    },
+    "chapters": [
+      {
+        "numeral": "I",
+        "label": "Ground"
+      },
+      {
+        "numeral": "II",
+        "label": "Pressure"
+      },
+      {
+        "numeral": "III",
+        "label": "Engines"
+      },
+      {
+        "numeral": "IV",
+        "label": "Airports"
+      },
+      {
+        "numeral": "V",
+        "label": "Cost"
+      }
+    ],
+    "duration": 36
+  },
+  "audio": {},
+  "scenes": [
+    {
+      "id": "seat",
+      "type": "atlas-diagram",
+      "start": {
+        "t": 0
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "PASSENGER OXYGEN IN MANY AIRLINERS",
+      "title": {
+        "text": "Small *chemical canisters*",
+        "accent": "data"
+      },
+      "sourceNote": "EXAMPLE: BOEING 737 SYSTEMS · OTHERS VARY",
+      "diagram": "atlas-diagrams/seat-oxygen.svg",
+      "box": {
+        "x": 260,
+        "y": 300,
+        "w": 1000,
+        "h": 720
+      },
+      "states": [
+        {
+          "layer": "door",
+          "at": {
+            "t": 0
+          },
+          "rotate": -78,
+          "seconds": 0.01
+        },
+        {
+          "layer": "mask-hanging",
+          "at": {
+            "t": 0
+          },
+          "opacity": 0,
+          "y": -230,
+          "seconds": 0.01
+        },
+        {
+          "layer": "mask-face",
+          "at": {
+            "t": 0
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "tube",
+          "at": {
+            "t": 0
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "flow",
+          "at": {
+            "t": 0
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "generator",
+          "at": {
+            "t": 0
+          },
+          "fill": "grey",
+          "seconds": 0.01
+        },
+        {
+          "layer": "door",
+          "at": {
+            "t": 1.0
+          },
+          "rotate": 0,
+          "seconds": 0.4
+        },
+        {
+          "layer": "mask-hanging",
+          "at": {
+            "t": 1.1
+          },
+          "opacity": 1,
+          "y": 0,
+          "seconds": 0.6
+        },
+        {
+          "layer": "tube",
+          "at": {
+            "t": 1.1
+          },
+          "opacity": 1,
+          "seconds": 0.6
+        },
+        {
+          "layer": "generator",
+          "at": {
+            "t": 2.4
+          },
+          "fill": "amber",
+          "seconds": 0.5
+        },
+        {
+          "layer": "mask-hanging",
+          "at": {
+            "t": 2.6
+          },
+          "opacity": 0,
+          "seconds": 0.4
+        },
+        {
+          "layer": "mask-face",
+          "at": {
+            "t": 2.6
+          },
+          "opacity": 1,
+          "seconds": 0.4
+        },
+        {
+          "layer": "flow",
+          "at": {
+            "t": 3.2
+          },
+          "opacity": 1,
+          "seconds": 0.5
+        }
+      ],
+      "callouts": [
+        {
+          "text": "CHEMICAL OXYGEN",
+          "sub": "GENERATOR",
+          "at": {
+            "t": 1.6
+          },
+          "anchor": [
+            385,
+            141
+          ],
+          "label": [
+            700,
+            141
+          ]
+        },
+        {
+          "text": "PULLING A MASK",
+          "sub": "STARTS IT",
+          "at": {
+            "t": 2.4
+          },
+          "anchor": [
+            300,
+            150
+          ],
+          "label": [
+            200,
+            280
+          ],
+          "align": "right",
+          "accent": "danger"
+        },
+        {
+          "text": "OXYGEN TO THE MASK",
+          "at": {
+            "t": 3.3
+          },
+          "anchor": [
+            470,
+            380
+          ],
+          "label": [
+            700,
+            330
+          ],
+          "accent": "good"
+        }
+      ],
+      "meters": [
+        {
+          "label": "STANDARD · 12 MIN",
+          "at": {
+            "t": 3.8
+          },
+          "from": 1,
+          "to": 0,
+          "seconds": 6,
+          "x": 1240,
+          "y": 780,
+          "w": 330
+        },
+        {
+          "label": "OPTIONAL · 22 MIN",
+          "at": {
+            "t": 3.8
+          },
+          "from": 1,
+          "to": 0,
+          "seconds": 11,
+          "x": 1240,
+          "y": 880,
+          "w": 605
+        }
+      ]
+    },
+    {
+      "id": "cockpit",
+      "type": "atlas-diagram",
+      "start": {
+        "t": 8
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 1,
+      "kicker": "THE COCKPIT FROM ABOVE · 9,800 M",
+      "diagram": "atlas-diagrams/cockpit-top.svg",
+      "box": {
+        "x": 560,
+        "y": 220,
+        "w": 800,
+        "h": 660
+      },
+      "states": [
+        {
+          "layer": "debris",
+          "at": {
+            "t": 8
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "belt",
+          "at": {
+            "t": 8
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "ws-right",
+          "at": {
+            "t": 9
+          },
+          "fill": "none",
+          "stroke": "danger",
+          "dashed": true,
+          "seconds": 0.5
+        },
+        {
+          "layer": "debris",
+          "at": {
+            "t": 9.6
+          },
+          "opacity": 1,
+          "seconds": 0.6
+        },
+        {
+          "layer": "belt",
+          "at": {
+            "t": 10.8
+          },
+          "opacity": 1,
+          "seconds": 0.4
+        }
+      ],
+      "callouts": [
+        {
+          "text": "RIGHT WINDSHIELD",
+          "sub": "BLEW OUT",
+          "at": {
+            "t": 9.2
+          },
+          "anchor": [
+            700,
+            200
+          ],
+          "label": [
+            880,
+            150
+          ],
+          "accent": "danger",
+          "size": 26
+        },
+        {
+          "text": "CAPTAIN",
+          "at": {
+            "t": 8.5
+          },
+          "label": [
+            290,
+            690
+          ],
+          "align": "center"
+        },
+        {
+          "text": "CO-PILOT",
+          "at": {
+            "t": 8.6
+          },
+          "label": [
+            710,
+            690
+          ],
+          "align": "center"
+        },
+        {
+          "text": "SEATBELT ON",
+          "at": {
+            "t": 11
+          },
+          "label": [
+            710,
+            760
+          ],
+          "align": "center",
+          "accent": "data"
+        }
+      ]
+    },
+    {
+      "id": "twin",
+      "type": "atlas-diagram",
+      "start": {
+        "t": 14
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 2,
+      "kicker": "A TWIN-ENGINE JET FROM ABOVE",
+      "diagram": "atlas-diagrams/plane-twin-top.svg",
+      "box": {
+        "x": 360,
+        "y": 170,
+        "w": 1200,
+        "h": 820
+      },
+      "states": [
+        {
+          "layer": "engine-top",
+          "at": {
+            "t": 15.2
+          },
+          "fill": "danger",
+          "seconds": 0.4
+        }
+      ],
+      "callouts": [
+        {
+          "text": "ONE FAILS",
+          "at": {
+            "t": 15.3
+          },
+          "label": [
+            800,
+            150
+          ],
+          "accent": "danger",
+          "size": 30
+        },
+        {
+          "text": "THE OTHER STILL FLIES IT",
+          "at": {
+            "t": 16.4
+          },
+          "label": [
+            690,
+            930
+          ],
+          "align": "center",
+          "accent": "data",
+          "size": 30
+        }
+      ]
+    },
+    {
+      "id": "widebody",
+      "type": "atlas-diagram",
+      "start": {
+        "t": 20
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "kicker": "A WIDE-BODY PASSENGER JET FROM ABOVE",
+      "diagram": "atlas-diagrams/widebody-cabin.svg",
+      "box": {
+        "x": 230,
+        "y": 230,
+        "w": 1520,
+        "h": 620
+      },
+      "states": [
+        {
+          "layer": "seats",
+          "at": {
+            "t": 20
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "seats",
+          "at": {
+            "t": 20.8
+          },
+          "opacity": 1,
+          "seconds": 0.8
+        }
+      ],
+      "callouts": [
+        {
+          "text": "HUNDREDS OF PEOPLE · OXYGEN FOR EACH",
+          "at": {
+            "t": 21.6
+          },
+          "label": [
+            840,
+            900
+          ],
+          "align": "center",
+          "accent": "data",
+          "size": 30
+        }
+      ]
+    },
+    {
+      "id": "cargo",
+      "type": "atlas-diagram",
+      "start": {
+        "t": 26
+      },
+      "theme": "paper",
+      "enter": "fade",
+      "chapter": 4,
+      "kicker": "A CARGO JET FROM ABOVE",
+      "diagram": "atlas-diagrams/cargo-cabin.svg",
+      "box": {
+        "x": 230,
+        "y": 230,
+        "w": 1520,
+        "h": 620
+      },
+      "states": [
+        {
+          "layer": "cargo",
+          "at": {
+            "t": 26
+          },
+          "opacity": 0,
+          "seconds": 0.01
+        },
+        {
+          "layer": "cargo",
+          "at": {
+            "t": 26.6
+          },
+          "opacity": 1,
+          "seconds": 0.8
+        },
+        {
+          "layer": "crew",
+          "at": {
+            "t": 27.6
+          },
+          "scale": 1.3,
+          "seconds": 0.3
+        },
+        {
+          "layer": "crew",
+          "at": {
+            "t": 27.9
+          },
+          "scale": 1,
+          "seconds": 0.3
+        }
+      ],
+      "callouts": [
+        {
+          "text": "THE CREW · A HANDFUL OF PEOPLE",
+          "at": {
+            "t": 27.7
+          },
+          "label": [
+            840,
+            900
+          ],
+          "align": "center",
+          "accent": "danger",
+          "size": 30
+        }
+      ]
+    }
+  ]
+}

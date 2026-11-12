@@ -7,6 +7,8 @@ video:
 
 visual:
   style: atlas
+  engine: storyboard               # motor nuevo (mapas de relieve, 3D, gráficos): basta guion.txt, la IA escribe
+                                   # las escenas (escenas.md) y el storyboard; sin esta línea, el Atlas de globo de siempre
 
 brand:
   name: Atlas
