@@ -13,6 +13,7 @@ async function allVideosPage() {
       && words.every((w) => `${v.slug} ${v.title || ""}`.toLowerCase().includes(w)))
     .sort((a, b) => { const x = value(a), y = value(b); return (x < y ? -1 : x > y ? 1 : 0) * allSort.dir; });
   const count = (fn) => data.videos.filter(fn).length;
+  lazyLists.videos = data.channels;
   const channels = [...new Set(data.videos.map((v) => v.channel).filter(Boolean))].sort();     // only those with videos
   const th = (key, name, cls = "") => `<th class="${cls}" tabindex="0" aria-sort="${allSort.key === key ? (allSort.dir > 0 ? "ascending" : "descending") : "none"}" onclick="allSortBy('${key}')">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
   const state = (v) => v.published ? `<span class="pill hecho">subido</span> <span class="small muted">${esc(String(v.published.at || "").slice(0, 10))}</span>${v.published.url ? ` <a href="${esc(v.published.url)}" target="_blank" rel="noopener">↗</a>` : ""}`
@@ -27,8 +28,7 @@ async function allVideosPage() {
     <div class="small muted my-2">${list.length} vídeo(s). El desplegable de canal cambia dónde cuenta el vídeo (no se rehace).</div>
     <div class="card flush"><table class="vt"><thead><tr>${th("title", "Vídeo")}${th("channel", "Canal", "wide")}${th("updated", "Estado")}${th("minutes", "Dura", "r wide")}${th("cost", "API", "r wide")}</tr></thead>
       <tbody>${list.map((v) => `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.title ? v.slug : "")}</div></td>
-        <td class="wide"><select class="sm w-auto" aria-label="Canal de ${esc(v.slug)}" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch(oops)">
-          ${v.channel ? (data.channels.includes(v.channel) ? "" : `<option selected>${esc(v.channel)}</option>`) : "<option selected>(sin canal)</option>"}${data.channels.map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td>
+        <td class="wide">${lazySelect("videos", v.channel || "(sin canal)", `class="sm w-auto" aria-label="Canal de ${esc(v.slug)}" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(allVideosPage).catch(oops)"`)}</td>
         <td>${state(v)}</td><td class="r wide">${v.minutes ? v.minutes + " min" : "—"}</td><td class="r wide">${v.costUsd ? v.costUsd + " $" : "—"}</td></tr>`).join("")
         || '<tr><td colspan="5" class="empty-row">Ninguno con estos filtros.</td></tr>'}</tbody></table></div>`);
 }

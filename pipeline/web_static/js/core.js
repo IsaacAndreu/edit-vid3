@@ -7,6 +7,16 @@ const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<
 let timer = null, data = null;
 let navStop = null, navId = 0;                 // the page being opened: its requests are dropped when another one is
 
+// the channel <select> of every row of a long table carries only its own option until it is used: the other channels
+// are added when it gets the focus or a touch (one per row × 30 channels was most of «Todos los vídeos» and «Gasto»)
+const lazyLists = {};
+const lazySelect = (list, current, attrs) => `<select ${attrs} onfocus="lazyFill(this, '${list}')" onpointerdown="lazyFill(this, '${list}')"><option selected>${esc(current)}</option></select>`;
+window.lazyFill = (select, list) => {
+  if (select.options.length > 1) return;
+  const current = select.value, all = lazyLists[list] || [];
+  select.innerHTML = (all.includes(current) ? all : [current, ...all]).map((c) => `<option ${c === current ? "selected" : ""}>${esc(c)}</option>`).join("");
+};
+
 // stroke icons, the same family as the sidebar's: icon("search"), or icon("alert", "Aviso") when it stands alone
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',

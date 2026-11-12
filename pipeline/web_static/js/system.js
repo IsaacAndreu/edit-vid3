@@ -114,6 +114,7 @@ function invoiceBlock(g, usd) {
 async function spendPage() {
   const [g, px] = await Promise.all([api("/api/gasto"), window.partner ? null : api("/api/proxy?days=7").catch(() => null)]);
   const usd = (n, d = 2) => n == null ? "—" : Number(n).toFixed(d) + " $";
+  lazyLists.gasto = g.allChannels;
   const o = g.overall, max = Math.max(0.01, ...g.days.map((d) => d.usd));
   const top = Math.max(0.01, ...g.channels.map((c) => c.average || 0));
   const provTotal = Object.values(g.providers).reduce((a, b) => a + b, 0) || 1;
@@ -217,8 +218,7 @@ async function spendPage() {
       <thead><tr><th>Vídeo</th><th>Gasto</th><th>Ahorrado</th><th>Tiempo</th><th>Cuota YT</th><th>Proxy</th><th>Duración</th><th>Por minuto</th><th>Estado</th><th class="l">Desglose</th></tr></thead>
       <tbody>${rows.map((v) => `<tr class="v"><td><a class="t" href="#/video/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a>
           <div class="sub">${dot(v.channel, "sm")}
-            <select class="sm w-auto" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)">
-              ${(g.allChannels.includes(v.channel) ? g.allChannels : [v.channel, ...g.allChannels]).map((c) => `<option ${c === v.channel ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
+            ${lazySelect("gasto", v.channel, `class="sm w-auto" title="Cambiar de canal" onchange="post('/api/video/${encodeURIComponent(v.slug)}/channel', {channel: this.value}).then(spendPage)"`)}
             <span class="nw">· ${esc(v.last)}</span></div></td>
         <td data-k="Gasto"><b>${usd(v.usd)}</b>${v.proxyUsd ? `<div class="sub" title="API + proxy">con proxy ${usd(v.usd + v.proxyUsd)}</div>` : ""}</td>
         <td data-k="Ahorrado" title="${fmt(v.reused?.judge || 0)} veredictos · ${fmt(v.reused?.voice || 0)} caracteres de voz">${v.savedUsd ? usd(v.savedUsd) : "—"}</td>
