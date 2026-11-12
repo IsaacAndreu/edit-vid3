@@ -200,9 +200,13 @@ const UPLOAD_STEPS = [["video", "Vídeo subido"], ["title", "Título"], ["descri
 let uploadChannel = (() => { try { return localStorage.getItem("subir:canal") || ""; } catch (e) { return ""; } })();
 window.pickUploadChannel = (c) => { uploadChannel = c; try { localStorage.setItem("subir:canal", c); } catch (e) {} uploadPage(); };
 let uploadOpenAll = false;
+window.uploadBody = (details, slug) => {
+  const box = details.querySelector(".in"), make = (window.uploadBodies || {})[slug];
+  if (details.open && make && !box.firstElementChild) fill(box, make());
+};
 async function uploadPage() {
   const r = await api("/api/upload");
-  copyTexts.length = 0;
+  window.uploadBodies = {};
   const today = new Date().toISOString().slice(0, 10);
   show(`<h1>Para subir</h1>
     <div class="small muted">Vídeos terminados que aún no están en YouTube, por el día que les toca en el calendario.
@@ -226,11 +230,13 @@ async function uploadPage() {
       const done = UPLOAD_STEPS.filter(([k]) => checked(v.slug, k)).length;
       const video = v.files.find((x) => !x.image && !x.still && /video|mp4/i.test(x.label + " " + x.path));
       return `${group !== prevGroup ? `<div class="daylabel ${late ? "late" : v.date === today ? "today" : ""}">${esc(group)}</div>` : ""}
-      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""}><summary>${dot(v.channel)}
+      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""} ontoggle="uploadBody(this, '${esc(v.slug)}')"><summary>${dot(v.channel)}
         <div class="mw0"><b class="lg">${esc(v.title || v.slug)}</b>
           <div class="small muted">${esc(v.channel)} · ${esc(v.slug)}${v.minutes ? ` · ${v.minutes} min` : ""} · <span class="mini ok"><i style="--v:${Math.round(100 * done / UPLOAD_STEPS.length)}%"></i></span> ${done}/${UPLOAD_STEPS.length} pasos</div></div>
         <span class="row end"><span class="pill ${late ? "error" : "hecho"}">${late ? "tocaba " : ""}${when}</span>
-          ${video ? `<a class="btn sm" href="${f(video.path)}" download onclick="event.stopPropagation()">${icon("download")} Vídeo${video.mb ? ` (${video.mb} MB)` : ""}</a>` : ""}</span></summary><div class="in">
+          ${video ? `<a class="btn sm" href="${f(video.path)}" download onclick="event.stopPropagation()">${icon("download")} Vídeo${video.mb ? ` (${video.mb} MB)` : ""}</a>` : ""}</span></summary><div class="in">${
+        // what is inside a closed video is built when it is opened (60 videos × their boxes and buttons was most of the page)
+        (window.uploadBodies[v.slug] = () => `
         <div class="small mt-2"><a href="#/video/${encodeURIComponent(v.slug)}">Abrir la ficha del vídeo →</a></div>
         <div class="row gap-4 small mt-3 mb-3">${UPLOAD_STEPS.map(([k, name]) =>
           `<label class="check"><input type="checkbox"
@@ -249,8 +255,7 @@ async function uploadPage() {
         ${s["COMENTARIO FIJADO"] ? copyBox("Comentario fijado (publícalo y fíjalo)", s["COMENTARIO FIJADO"], 2) : ""}
         ${s["POST DE COMUNIDAD"] ? copyBox("Post de comunidad (el día de la publicación)", s["POST DE COMUNIDAD"], 3) : ""}
         ${v.shortsText ? copyBox("Shorts (títulos y textos)", v.shortsText, 4) : ""}
-        <div class="actions"><button class="main" onclick="doneUpload('${esc(v.slug)}')">Ya está subido</button></div>
-      </div></details>`;
+        <div class="actions"><button class="main" onclick="doneUpload('${esc(v.slug)}')">Ya está subido</button></div>`) && i === 0 && !uploadOpenAll ? window.uploadBodies[v.slug]() : ""}</div></details>`;
     }).join("")}`);
   window.makeCompilation = async (channel, button) => {
     if (!(await ask(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`, {ok: "Montarla"}))) return;
