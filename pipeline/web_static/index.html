@@ -449,6 +449,7 @@
     <a href="#/guiones"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h8"/></svg></span>Guiones</a>
     <a href="#/calendario"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>Calendario</a>
     <a href="#/tablero"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>Tablero de ideas</a>
+    <a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>
     <div class="sec">Crecer</div>
     <a href="#/competencia"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2"/></svg></span>Radar</a>
     <a href="#/canal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>Mi canal</a>
@@ -2054,7 +2055,7 @@ async function settingsPage() {
       <button style="margin-top:8px" onclick="updateNow(this)">🔄 Actualizar ahora</button>
       <button style="margin-top:8px" onclick="restartQueue(this)" title="Si la cola parece parada o colgada">♻️ Reiniciar la cola</button>
       <button style="margin-top:8px" onclick="youtubeRetry(this)" title="Quita la pausa por bloqueo, las cuarentenas y la espera de 72 h">▶️ Reintentar YouTube ahora</button></div>` : ""}
-    <div class="notice">🎙 <a href="#/voces"><b>Voces por canal (GenAIPro)</b></a>: la voz se genera sola a partir del guion, sin grabarla.</div>
+    <div class="notice">🎙 <a href="#/voces"><b>Voces por canal</b></a> (también en el menú, en Producción): la voz se genera sola a partir del guion, sin grabarla.</div>
     ${people}
     <div class="card">
       <label>Hacer vídeos</label>
@@ -2739,8 +2740,6 @@ async function voicesPage() {
         <li>Si una te gusta, pulsa <b>«▶ Con mi texto»</b> para oírla leyendo una frase tuya (gasta unos pocos créditos).</li>
         <li>En <b>«Usar en…»</b> elige tu canal: queda guardada. Desde entonces, con subir el guion basta: la voz se hace sola.</li>
       </ol><span id="credits" class="small muted"></span></div>
-    <h2>Tus canales</h2>
-    ${v.channels.map(row).join("") || '<div class="small muted">Aún no tienes canales.</div>'}
     <h2>Escoger voz</h2>
     <div class="card"><div class="row" style="flex-wrap:wrap">
       ${both ? `<select id="vsprov" style="flex:1;min-width:150px">${Object.entries(PROV).map(([k, n]) => `<option value="${k}" ${k === v.provider ? "selected" : ""}>${n}</option>`).join("")}</select>` : `<input type="hidden" id="vsprov" value="${v.provider}">`}
@@ -2750,7 +2749,9 @@ async function voicesPage() {
       <input id="vq" placeholder="estilo (opcional): narrator, deep, calm…" style="flex:2;min-width:180px" onkeydown="if(event.key==='Enter')searchVoices()">
       <button class="main" onclick="searchVoices()">Buscar</button></div>
       <div class="small muted" style="margin-top:6px">Las voces clonadas de la cuenta salen primero cuando buscas sin filtros.</div>
-      <div id="vresults" style="margin-top:10px"></div></div>`;
+      <div id="vresults" style="margin-top:10px;max-height:520px;overflow-y:auto"></div></div>
+    <h2>Tus canales</h2>
+    ${v.channels.map(row).join("") || '<div class="small muted">Aún no tienes canales.</div>'}`;
   const num = (id) => { const el = $(id); return el ? el.value : undefined; };
   const read = (c) => { const e = CSS.escape(c), p = $("#vprov-" + e).value;
     return {channel: c, provider: p, voice_id: $("#vid-" + e).value.trim(), name: $("#vname-" + e).value.trim(), model_id: $("#vmodel-" + e).value,
@@ -3198,8 +3199,7 @@ async function start() {
     if (spend) spend.lastChild.textContent = "Mi gasto";
     const nav = document.querySelector("header nav");
     nav.querySelectorAll(".sec").forEach((sec) => sec.remove());
-    nav.insertAdjacentHTML("beforeend", `<a href="#/voces"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voces</a>
-      <a href="#/cuenta"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Mi cuenta</a>`);
+    nav.insertAdjacentHTML("beforeend", `<a href="#/cuenta"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Mi cuenta</a>`);
     $("#service").textContent = "👤 " + window.partner;
   }
   $("#top").classList.remove("hide");
