@@ -33,11 +33,17 @@ import requests
 
 BASE = "https://genaipro.io/api"
 AI84_BASE = "https://api.ai84.pro"
-AI84_CREDITS_PER_CHAR = 1.32     # speech-2.6-hd, measured 12/11 (33 credits for 25 characters)
+# AI84's own price list (POST /v1/estimate-credit-cost, 12/11): the HD models 1.15 credits a character, turbo and 01 1.0
+AI84_CREDITS_PER_CHAR = {"hd": 1.15, "turbo": 1.0}
+
+
+def ai84_credits_per_char(model: str) -> float:
+    hd = model != "speech-01-hd" and (model.endswith("-hd") or model.endswith("-hd-preview"))
+    return AI84_CREDITS_PER_CHAR["hd" if hd else "turbo"]
 FILE = "out/_voces.json"
 MODELS = ("eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5", "eleven_v3", "eleven_v4")
-MINIMAX_MODELS = ("speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo", "speech-2.5-hd-preview",
-                  "speech-2.5-turbo-preview", "speech-01-hd", "speech-01-turbo")
+MINIMAX_MODELS = ("speech-2.6-hd", "speech-2.6-turbo", "speech-2.8-hd", "speech-2.8-turbo", "speech-02-hd", "speech-02-turbo",
+                  "speech-2.5-hd-preview", "speech-2.5-turbo-preview", "speech-01-hd", "speech-01-turbo")
 DEFAULTS = {"model_id": "eleven_multilingual_v2", "stability": 0.5, "similarity": 0.75, "style": 0.0, "speed": 1.0,
             "use_speaker_boost": True}
 MINIMAX_DEFAULTS = {"provider": "ai84", "engine": "minimax", "model_id": "speech-2.6-hd", "speed": 1.0, "pitch": 0,
@@ -649,7 +655,7 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
             (target.parent / LOCK).touch()
         url = api.wait(task_id)
         if task_id in getattr(api, "unpriced", []):     # resumed after a restart: its price by the characters
-            api.spent += len(part) * AI84_CREDITS_PER_CHAR
+            api.spent += len(part) * ai84_credits_per_char(str(voice.get("model_id") or ""))
         log(f"   Voz {number}/{len(parts)}: lista, descargando")
         partial_piece = piece.with_suffix(".bajando")
         api.download(url, partial_piece)
