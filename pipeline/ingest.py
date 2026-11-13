@@ -416,6 +416,12 @@ def run(ctx: RunContext) -> None:
     if len(todo) >= 10 and len(failed) / len(todo) > 0.5 and not offline:    # without YouTube: the gate decides
         from .ytpause import YouTubeBlocked
 
+        refused = sum("descartado" in e or "supera el tope del proxy" in e for e in failed.values())
+        if refused > len(failed) / 2:      # not YouTube blocking: clips of videos too big for the proxy were chosen
+            raise RuntimeError(
+                f"Fallaron {len(failed)} de {len(todo)} clips porque sus vídeos no se pueden bajar en HD por el proxy "
+                "residencial (sin HLS y demasiado grandes). Al reintentar, el juez elige otros clips para esos planos "
+                "(lo ya descargado se conserva).")
         blocked = any(re.search(r"bot|bloquea|429|sign in|too many", e, re.I) for e in failed.values())
         raise (YouTubeBlocked if blocked else RuntimeError)(
             f"YouTube no deja descargar: fallaron {len(failed)} de {len(todo)} clips. ¿Está encendido el proxy de casa "
