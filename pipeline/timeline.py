@@ -319,7 +319,7 @@ def _size(path: Path) -> tuple[int | None, int | None]:
 
 
 def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share: float, narrow: str = "card",
-                  old: bool = False) -> str:
+                  old: bool = False, photos: str = "mixed") -> str:
     """Framed card for stills and for sources that are not widescreen (kept uncropped), plus a
     deterministic share of ordinary clips for variety, as the channel style does. With
     `narrow="archive"` (timeline.narrow_layout) narrow clips stay full screen between black bars,
@@ -330,6 +330,8 @@ def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share
         return "full"
     if old and media.kind == "video":   # 1972 broadcast, a 360p upload: shown as archive, not stretched
         return "archive"
+    if media.kind == "image" and photos == "full":   # timeline.photo_layout: full — full screen, a slow Ken Burns
+        return "full"
     if media.kind == "image":   # photos alternate between the framed card and the parallax move
         return "parallax" if int(hashlib.sha1(shot_id.encode()).hexdigest()[8:16], 16) % 2 else "card"
     if media.width and media.height and media.width / media.height < 1.6:
@@ -700,6 +702,8 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False)
     boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
+    if borrow:   # a shot only partly under a graphic: footage for the rest of it, never the bare canvas
+        fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True)
     if punches:
         print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
               + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»" for g in punches[:12]))
@@ -855,22 +859,38 @@ def weak_sentences(ctx: RunContext, sents: list[dict[str, Any]]) -> set[int]:
 
 
 def key_phrase(text: str, most: int = 8) -> str:
-    """The script's own words that carry a sentence: the clause with most long words/numbers, ≤ `most` words."""
+    """The script's own words that carry a sentence: the clause with most long words/numbers, ≤ `most` words, never
+    ending (or starting) on a word that needs the next one («MUERTE DE», «ISABEL SIN NINGUNA»)."""
 
     text = " ".join(text.split()).strip(" ,.;:¿?¡!…")
     if len(text.split()) <= most:
-        return text
+        return whole_phrase(text)
     parts = [p.strip(" ,.;:¿?¡!…") for p in re.split(r"[,;:]|\b(?:que|y|pero|porque)\b", text) if p and p.strip()]
-    fitting = [p for p in parts if 2 <= len(p.split()) <= most]
+    fitting = [w for w in (whole_phrase(p) for p in parts) if 2 <= len(w.split()) <= most]
     if fitting:
         return max(fitting, key=lambda p: sum(1 for w in re.findall(r"\w+", p) if len(w) > 4 or w.isdigit()))
-    return " ".join(text.split()[:most])
+    return whole_phrase(" ".join(text.split()[:most]))
+
+
+def whole_phrase(text: str) -> str:
+    """`text` without the words at its end that leave it hanging: articles, prepositions, «ninguna», «su»…"""
+
+    words = text.split()
+    loose = lambda w: w.strip(".,;:¿?¡!…\"«»()").lower() in _STOP | _DANGLING   # noqa: E731
+    while words and loose(words[-1]):
+        words.pop()
+    return " ".join(words)
 
 
 _STOP = set("""el la los las un una unos unas de del al a en y e o u que se su sus lo le les con por para como más
 menos muy pero porque cuando donde ya no ni es era fue son está estaba estuvo ser hay había esta este esto ese esa eso
 nos me te mi tu todo toda todos todas sobre entre hasta desde sin tras también solo sólo así durante ante bajo cada
 otro otra otros otras ella él ellos ellas dijo tenía tiene sido muy aquel aquella""".split())
+# words that cannot end a phrase on screen: the next word is the one that says something («sin ninguna» … defensa)
+_DANGLING = set("""ningún ninguna ninguno ningunos ningunas algún alguna alguno algunos algunas cualquier cierto cierta
+ciertos ciertas varios varias mismo misma mismos mismas propio propia propios propias tanto tanta tantos tantas mucho
+mucha muchos muchas poco poca pocos pocas demasiado demasiada nuestro nuestra nuestros nuestras vuestro vuestra suyo
+suya cuyo cuya cuyos cuyas tan sino según hacia contra mediante aunque mientras si""".split())
 
 
 def punch_words(text: str, most: int = 3) -> str:
@@ -913,6 +933,8 @@ def punch_words(text: str, most: int = 3) -> str:
             window = list(range(i, min(len(words), i + size)))
             if len(window) < size or score(window[0]) == 0 or score(window[-1]) == 0:
                 continue
+            if words[window[-1]].lower() in _DANGLING:     # «Isabel sin ninguna»: the phrase goes on after it
+                continue
             if sentence[window[0]] != sentence[window[-1]]:
                 continue
             # only something that says something: a figure or a name («2.500 millones», «Lina Khan»), never two
@@ -937,7 +959,7 @@ def footage(shot: TimelineShot) -> float:
 
 
 def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
-                     words: bool = True) -> list[TimelineGroup]:
+                     words: bool = True, partial: bool = False) -> list[TimelineGroup]:
     """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the clip used
     farthest away in time, pushed in so it does not look repeated, and at the start of each stretch the 1-3 key
     words of what is said flash over it for ~2 s. Changes `shots` in place; returns the word overlays."""
@@ -970,7 +992,11 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
         if shot.media is not None or shot.type != "broll" or shot.groupId:
             continue
         start, end = shot.from_, shot.from_ + shot.durationInFrames
-        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+        over = [(max(start, g.from_), min(end, g.from_ + g.durationInFrames)) for g in groups
+                if g.from_ < end and start < g.from_ + g.durationInFrames]
+        # `partial`: a shot only partly under a graphic (a chapter card shorter than it) would show the bare canvas
+        # for the rest — pazos 13/11: 2 s of empty purple after «Capítulo 05»
+        if over and (not partial or covered_frames(over) >= end - start):
             continue
         # only a donor with footage for the whole shot at ≥0.6× speed: a slower floor would play past the end of
         # its file and show more than 5 s of someone else's clip (avion9 s202: 5.27 s blocked the render)
@@ -990,6 +1016,20 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
         previous_end = end
     flush()
     return overlays
+
+
+def covered_frames(spans: list[tuple[int, int]]) -> int:
+    """Frames of the union of [a, b) spans."""
+
+    total, reach = 0, None
+    for a, b in sorted(spans):
+        if reach is None or a >= reach:
+            total += b - a
+            reach = b
+        elif b > reach:
+            total += b - reach
+            reach = b
+    return total
 
 
 def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
@@ -1401,7 +1441,8 @@ def run(ctx: RunContext) -> None:
             missing.append(shot.id)
         if m is not None:
             m = m.model_copy(update={"layout": choose_layout(shot.id, shot.type, m, card_share, narrow,
-                                                             old=shot.id in old and cfg.get("archive_auto", True))})
+                                                             old=shot.id in old and cfg.get("archive_auto", True),
+                                                             photos=str(cfg.get("photo_layout", "mixed")))})
             if shot.mood == "low":
                 m = m.model_copy(update={"mono": True})
         if shot.type == "chapter":

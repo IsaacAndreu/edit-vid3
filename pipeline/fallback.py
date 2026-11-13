@@ -144,7 +144,10 @@ def run(ctx: RunContext) -> None:
             seen.append((media.shotId, h))
 
     # Is the athlete on screen the one the script names? On-screen captions and, in clear cases, faces.
-    people = ctx.read_json("people.json").get("people", []) if (ctx.work_dir / "people.json").is_file() else []
+    people_file = ctx.read_json("people.json") if (ctx.work_dir / "people.json").is_file() else {}
+    # named people without a photo too (no face to compare): with fallback.unknown_faces: reject, a big face in a shot
+    # that names them cannot be verified and goes
+    people = [*(people_file.get("people") or []), *({"name": n} for n in people_file.get("unseen") or [])]
     from .people import looks_like_person
 
     def a_person(name: str) -> bool:   # «AIFA» (mega17) is an airport: «a woman, not AIFA» threw good clips away

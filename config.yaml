@@ -225,6 +225,7 @@ fallback:
   face_min_size: 100               # px de la cara para contar como "grande"
   face_reject: 0.22                # parecido máximo (SFace, coseno) para descartar; el mismo atleta suele dar 0,3-0,6
   identity_scope: protagonist      # comprobar TODOS los planos de la historia del protagonista, no solo los que dicen su nombre (named = solo esos)
+  unknown_faces: keep              # reject: en un plano que nombra a alguien SIN foto para comparar, fuera la cara grande que no se puede comprobar (canales de crímenes reales)
   gender_check: true               # en la historia de un hombre, fuera los clips donde claramente sale una mujer o una niña (y al revés)
   gender_reject: 0.85              # seguridad mínima de CLIP en 2 de 5 fotogramas
   cold_open_confirm: true          # los momentos con sonido original solo con clips donde el rótulo dice su nombre o su cara coincide (face_accept)
@@ -346,6 +347,7 @@ timeline:
   question_hold: 1.2               # s que el texto sigue tras la última palabra
   question_max_words: 30
   card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
+  photo_layout: mixed              # fotos: mixed (tarjeta enmarcada o paralaje, a partes) · full (a pantalla completa, con un Ken Burns lento)
   labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
   subtitles: true                  # subtítulos de la voz siempre en pantalla (solo vídeos de metraje), la palabra clave en amarillo
   label_seconds: 2.5

@@ -144,3 +144,25 @@ def test_borrowed_footage_never_plays_past_its_clip():
     shots[1] = shots[1].model_copy(update={"durationInFrames": 75})
     fill_empty_shots(shots, [], 30)
     assert shots[1].media is not None and shots[1].durationInFrames * shots[1].media.rate <= 60
+
+
+def test_words_on_screen_never_end_hanging():
+    """pazos 13/11: «ISABEL SIN NINGUNA» and «MUERTE DE» on screen, phrases cut before the word that says something."""
+    from pipeline.timeline import punch_words
+
+    assert key_phrase("la muerte de") == "la muerte"
+    assert not key_phrase("Isabel sin ninguna").endswith("ninguna")
+    assert not punch_words("Isabel Fuentes sin ninguna protección del juzgado.").lower().endswith("ninguna")
+
+
+def test_a_shot_only_partly_under_a_graphic_gets_footage_for_the_rest():
+    from pipeline.schemas import TimelineGroup
+    from pipeline.timeline import fill_empty_shots
+
+    shots = [_shot(0), _shot(1, media=False)]
+    card = TimelineGroup.model_validate({"id": "c", "kind": "graphic", "from": 60, "durationInFrames": 20,
+                                         "graphic": {"type": "kinetic", "lines": ["x"]}})
+    fill_empty_shots(shots, [card], 30, words=False)
+    assert shots[1].media is None                                        # the usual pass leaves it alone
+    fill_empty_shots(shots, [card], 30, words=False, partial=True)
+    assert shots[1].media is not None

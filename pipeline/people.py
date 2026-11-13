@@ -226,6 +226,7 @@ def run(ctx: RunContext) -> None:
     cfg = ctx.section("people")
     story = ShotsFile.model_validate(ctx.read_json("shots.json"))
     people: list[dict[str, Any]] = []
+    unseen: list[str] = []                 # named, but no usable photo: the identity check still knows about them
     names = people_to_introduce(story, int(cfg.get("max", 4))) if cfg.get("enabled", True) else []
     try:
         from rembg import new_session
@@ -298,6 +299,7 @@ def run(ctx: RunContext) -> None:
                 library.save(ctx, person, full)
         if meta is None:
             print(f"   {person}: sin foto recortable (se queda sin tarjeta)")
+            unseen.append(person)
             continue
         target = out_dir / f"{library.person_key(person)}.png"
         shutil.copy2(stored, target)
@@ -305,7 +307,7 @@ def run(ctx: RunContext) -> None:
         people.append({"name": person, "image": str(target.relative_to(ctx.work_dir)).replace("\\", "/"), **meta,
                        **({"role": role} if role else {})})
         print(f"   {person}: tarjeta con recorte · {meta['credit']}")
-    ctx.write_json(OUTPUT, {"slug": ctx.slug, "people": people})
+    ctx.write_json(OUTPUT, {"slug": ctx.slug, "people": people, **({"unseen": unseen} if unseen else {})})
 
 
 def validate(ctx: RunContext) -> bool:
