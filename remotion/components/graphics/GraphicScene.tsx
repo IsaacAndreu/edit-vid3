@@ -24,6 +24,7 @@ import { PlayerCard } from './PlayerCard';
 import { Podium } from './Podium';
 import { Plazo } from './Plazo';
 import { Calendar } from './Calendar';
+import { Lineup } from './Lineup';
 import { Cambio } from './Cambio';
 import { Race } from './Race';
 import { Scale } from './Scale';
@@ -164,6 +165,8 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <Plazo graphic={graphic} durationInFrames={durationInFrames} />;
     case 'calendar':
       return <Calendar graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'lineup':
+      return <Lineup graphic={graphic} durationInFrames={durationInFrames} />;
     case 'cambio':
       return <Cambio graphic={graphic} durationInFrames={durationInFrames} />;
     case 'race':

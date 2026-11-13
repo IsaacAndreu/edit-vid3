@@ -377,6 +377,96 @@ def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineSho
     return names
 
 
+def weak_shots(ctx: RunContext) -> set[str]:
+    """Shots whose footage is a stand-in: a low score nobody judged, a fallback item (not the next option), or none."""
+
+    low = float(ctx.section("qa").get("low_score", ctx.section("judge").get("min_score", 0.30)))
+    weak: set[str] = set()
+    if (ctx.work_dir / "selection.json").is_file():
+        weak |= {s["shotId"] for s in ctx.read_json("selection.json").get("selections", [])
+                 if s.get("score") is not None and s["score"] < low and not s.get("judge")}
+    if (ctx.work_dir / "fallback.json").is_file():
+        data = ctx.read_json("fallback.json")
+        weak |= {i["shotId"] for i in (data.get("items") or []) if i.get("method") != "next-option"}
+        weak |= set(data.get("unresolved", {}))
+    return weak
+
+
+def hold_photos(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, most_seconds: float,
+                weak: set[str]) -> list[TimelineShot]:
+    """timeline.photo_hold_seconds: a real photo (full screen or parallax) stays on screen over the shots right after
+    it whose footage is only a stand-in (or nothing), up to `most_seconds` — one longer shot, its slow move spread
+    over all of it, instead of a cut every 3 s to filler (El Corredor de la Muerte holds a photo 10-20 s). Footage the
+    judge chose, chapters, panels and graphics are never swallowed. Photos have no 5 s limit (that is for clips)."""
+
+    covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    busy = lambda s: s.groupId or any(a < s.from_ + s.durationInFrames and s.from_ < b for a, b in covered)  # noqa: E731
+    most = round(most_seconds * fps)
+    out: list[TimelineShot] = []
+    i = 0
+    while i < len(shots):
+        shot = shots[i]
+        photo = (shot.type == "broll" and shot.media is not None and shot.media.kind == "image"
+                 and (shot.media.layout or "full") in ("full", "parallax") and not shot.coldOpen and not busy(shot))
+        j = i + 1
+        if photo:
+            length, texts = shot.durationInFrames, [shot.text]
+            while (j < len(shots) and shots[j].type == "broll" and not shots[j].coldOpen and not busy(shots[j])
+                   and (shots[j].id in weak or shots[j].media is None)
+                   and length + shots[j].durationInFrames <= most):
+                length += shots[j].durationInFrames
+                texts.append(shots[j].text)
+                j += 1
+            if j > i + 1:
+                shot = shot.model_copy(update={"durationInFrames": length, "text": " ".join(t for t in texts if t)})
+        out.append(shot)
+        i = j
+    return out
+
+
+def _name_words(name: str) -> set[str]:
+    from .identity import ascii_upper
+
+    return {w for w in re.findall(r"[A-Z]+", ascii_upper(name)) if len(w) >= 4 and w not in {"SANTA", "SANTO", "DELLA"}}
+
+
+def lineups(ctx: RunContext, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+    """people.lineups: N — a shot whose words name two or more people with a photo shows them side by side, each with
+    their name typed under it (the three mugshots of El Corredor de la Muerte), over the footage of that shot."""
+
+    most = int(ctx.section("people").get("lineups", 0) or 0)
+    path = ctx.work_dir / "people.json"
+    if most <= 0 or not path.is_file():
+        return []
+    from .identity import ascii_upper
+
+    people = [p for p in ctx.read_json("people.json").get("people", []) if p.get("photo") or p.get("image")]
+    covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    out: list[TimelineGroup] = []
+    for shot in shots:
+        if len(out) >= most:
+            break
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if (shot.type != "broll" or shot.groupId or shot.durationInFrames < round(2.0 * fps)
+                or any(a < end and start < b for a, b in covered)
+                or any(start - (g.from_ + g.durationInFrames) < 20 * fps and g.from_ <= start for g in out)):
+            continue
+        said = set(re.findall(r"[A-Z]+", ascii_upper(shot.text)))
+        named = [p for p in people if _name_words(p["name"]) & said][:4]
+        if len(named) < 2:
+            continue
+        faces = []
+        for person in named:
+            src = person.get("photo") or person["image"]
+            size = _size(ctx.work_dir / src)
+            faces.append({"name": person["name"], "media": {"src": src, "kind": "image", "source": person.get("source") or "web",
+                                                            "credit": person.get("credit"), "width": size[0], "height": size[1]}})
+        out.append(TimelineGroup.model_validate({"id": f"lineup-{shot.id}", "kind": "graphic", "from": start,
+                                                 "durationInFrames": shot.durationInFrames,
+                                                 "graphic": {"type": "lineup", "people": faces}}))
+    return out
+
+
 def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
                  cfg: dict[str, Any], names: dict[str, str] | None = None) -> list[TimelineLabel]:
     """Lower-left tags: the place/date of each story event on its first plain shot, and the names and
@@ -391,14 +481,14 @@ def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[
     wanted: list[tuple[int, str, str]] = []            # (frame, kind, text)
     by_id = {s.id: s for s in shots}
     for shot in shots_file.shots:
-        if shot.label is not None and shot.type == "broll":
+        if shot.label is not None and shot.type == "broll" and shot.id in by_id:    # (a shot held under a photo: gone)
             wanted.append((by_id[shot.id].from_, shot.label.kind, shot.label.text))
     for shot_id, name in (names or {}).items():       # a person shown full screen for the first time: their name
         if shot_id in by_id:
             wanted.append((by_id[shot_id].from_ - 1, "name", name))     # ahead of a place tag on the same shot
     for event in shots_file.events:
         if event.tag:
-            first = next((s for s in shots_file.shots if s.startWord >= event.startWord), None)
+            first = next((s for s in shots_file.shots if s.startWord >= event.startWord and s.id in by_id), None)
             if first is not None:
                 wanted.append((by_id[first.id].from_, "place", event.tag))
     labels: list[TimelineLabel] = []
@@ -1504,6 +1594,10 @@ def run(ctx: RunContext) -> None:
             if shot.groupId in dropped:
                 shot.groupId = None
     names = person_cards(ctx, shots_file, shots, groups, fps)
+    held = float(cfg.get("photo_hold_seconds", 0) or 0)
+    if held > 0:                       # a real photo stays on, as true-crime channels do, over the weak shots after it
+        shots = hold_photos(shots, groups, fps, held, weak_shots(ctx))
+    groups = sorted([*groups, *lineups(ctx, shots, groups, fps)], key=lambda g: g.from_)
     labels = place_labels(shots_file, shots, groups, fps, cfg, names)
     groups, labels = with_graphics(ctx, words, shots, groups, labels, fps, total_frames)
     groups, labels = with_spotlights(ctx, words, shots, groups, labels, shots_file.subject or "", fps)
