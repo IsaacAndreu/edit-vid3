@@ -733,7 +733,8 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             while True:
                 try:
                     if not (root / "out" / "_pausa").is_file():
-                        tts.prepare_all(root)
+                        if tts.prepare_all(root):        # a narration is ready: its video starts now, not in 5 min
+                            (root / WAKE).write_text(datetime.now().strftime("%H:%M:%S"), encoding="utf-8")
                         from pipeline import doblaje
 
                         doblaje.prepare_all(root)            # dubbing.enabled (off by default)

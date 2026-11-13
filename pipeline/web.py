@@ -877,7 +877,18 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         if skip:
             with (folder / "config.yaml").open("a", encoding="utf-8") as f:
                 f.write(f"dub_skip: [{', '.join(skip)}]\n")
+    wake_watcher(root)                     # a video with its voice (or an automatic one) starts now, not in 5 min
     return {"slug": name, "folder": str(folder.relative_to(root))}
+
+
+def wake_watcher(root: Path) -> None:
+    """The watcher looks at the queue now instead of at its next 5-minute round (main.WAKE)."""
+
+    try:
+        (root / "out").mkdir(parents=True, exist_ok=True)
+        (root / "out" / "_despertar").write_text(time.strftime("%H:%M:%S"), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
@@ -897,6 +908,7 @@ def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
             raise ValueError(f"No entiendo ese audio: {done.stderr.strip()[-200:]}")
     else:
         tmp.replace(folder / "voz.mp3")
+    wake_watcher(root)                     # the voice was all it was waiting for
     return {"ok": True, "bytes": (folder / "voz.mp3").stat().st_size}
 
 
