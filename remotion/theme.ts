@@ -135,6 +135,9 @@ const DEFAULTS = {
   keyword: '#e0282e',
   // endStyle: 'grid' (the dark channel canvas) | 'paper' (the atlas page: serif, ink frames, grain)
   endStyle: 'grid',
+  // labelStyle: 'tag' (a coloured slanted tag) | 'typewriter' (names, places and dates typed in red, true crime)
+  labelStyle: 'tag',
+  typewriter: '#d8231f', // colour of the typed labels
 };
 
 export type Brand = Partial<typeof DEFAULTS>;

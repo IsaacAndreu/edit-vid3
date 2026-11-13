@@ -1135,6 +1135,28 @@ def _sheet(r: "Renderer", timeline: dict[str, Any], frames: list[int], kind: str
     return out
 
 
+FILM_LOOK = ("colorbalance=rs=0.04:bs=-0.05:rm=0.07:gm=0.01:bm=-0.06:rh=0.03:bh=-0.04,"
+             "eq=contrast=1.04:saturation=0.95:brightness='0.01*sin(n*2.3)':eval=frame,"
+             "vignette=angle=PI/6,noise=c0s=7:c0f=t")
+
+
+def film_look(ctx: RunContext, final: Path, r: "Renderer", timeline: dict[str, Any]) -> bool:
+    """brand.look: film — a warm grade, a vignette, moving grain and a breath of flicker over the WHOLE video, in one
+    ffmpeg pass after the join (the footage cut by ffmpeg never goes through Remotion, so FilmFinish cannot do it
+    there). The subtitles go on after it, clean."""
+
+    if str((timeline.get("brand") or {}).get("look") or "") != "film":
+        return False
+    started = time.monotonic()
+    tmp = final.with_suffix(".film.mp4")
+    encode = [a for a in r.encode if a != "-an"]
+    _run(["ffmpeg", "-y", "-v", "error", "-i", str(final), "-vf", FILM_LOOK, "-map", "0:v", "-map", "0:a?",
+          *encode, "-c:a", "copy", "-movflags", "+faststart", str(tmp)], "el acabado de película")
+    tmp.replace(final)
+    print(f"   Acabado de película (cálido, grano, viñeta) en {time.monotonic() - started:.0f} s")
+    return True
+
+
 def run(ctx: RunContext) -> None:
     """The render, hybrid (ffmpeg for plain footage, Remotion for the rest); if the fast path fails in ffmpeg, the whole
     timeline again with Remotion (slower, the reference) — an optimisation must never cost the video."""
@@ -1268,6 +1290,10 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
             files = heal(ctx, timeline, segments, files, build, join, r.fps)
         except Exception as error:      # a check: never costs the video
             print(f"   Render doctor no disponible: {str(error)[:120]}")
+    try:                                 # brand.look: film — the warm, grainy finish of true-crime channels
+        film_look(ctx, final, r, timeline)
+    except Exception as error:          # never costs the video: it goes out without the look
+        print(f"   Acabado de película no aplicado: {str(error)[:120]}")
     from . import subtitulos
 
     try:                                 # timeline.subtitles: burned in last; the clean cut stays as video-limpio.mp4
