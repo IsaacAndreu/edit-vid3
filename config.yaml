@@ -324,6 +324,7 @@ shorts:                            # Shorts verticales sacados del vídeo final 
   zoom: 1.1                        # el plano 16:9 un poco más ancho que la pantalla
 
 people:
+  card: cutout                     # cutout (recorte sobre el fondo del canal) · photo (su foto entera a pantalla completa y su nombre encima, como los canales de crímenes reales)
   enabled: true                    # tarjeta de presentación (atleta recortado + nombre) la 1.ª vez que se le nombra
   max: 4                           # protagonista + hasta 3 personas con rótulo de nombre
   tries: 8                         # fotos que se prueban por persona hasta encontrar una recortable

@@ -270,7 +270,8 @@ def run(ctx: RunContext) -> None:
                 if score is None:
                     continue
                 usable.append((score, found[0], {"credit": candidate.credit, "url": candidate.url,
-                                                 "candidateId": candidate.id, "source": candidate.source}))
+                                                 "candidateId": candidate.id, "source": candidate.source,
+                                                 "original": str(original)}))
                 features.append(face_feature(faces, image))
             group, verified = consensus(features, float(ctx.section("fallback").get("face_accept", 0.36)))
             for i in group:
@@ -304,7 +305,16 @@ def run(ctx: RunContext) -> None:
         target = out_dir / f"{library.person_key(person)}.png"
         shutil.copy2(stored, target)
         role = role_of(story.roles, person)
-        people.append({"name": person, "image": str(target.relative_to(ctx.work_dir)).replace("\\", "/"), **meta,
+        # the whole photo too (people.card: photo — full screen with the name, as true-crime channels introduce
+        # people), when the one cut out is still in the cache
+        photo = None
+        original = Path(str(meta.get("original") or ""))
+        if meta.get("original") and original.is_file():
+            photo = out_dir / f"{library.person_key(person)}-foto{original.suffix.lower() or '.jpg'}"
+            shutil.copy2(original, photo)
+        people.append({"name": person, "image": str(target.relative_to(ctx.work_dir)).replace("\\", "/"),
+                       **{k: v for k, v in meta.items() if k != "original"},
+                       **({"photo": str(photo.relative_to(ctx.work_dir)).replace("\\", "/")} if photo else {}),
                        **({"role": role} if role else {})})
         print(f"   {person}: tarjeta con recorte · {meta['credit']}")
     ctx.write_json(OUTPUT, {"slug": ctx.slug, "people": people, **({"unseen": unseen} if unseen else {})})

@@ -341,13 +341,16 @@ def choose_layout(shot_id: str, shot_type: str, media: TimelineMedia, card_share
 
 
 def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup],
-                 fps: int) -> None:
+                 fps: int) -> dict[str, str]:
     """The first plain shot where the voice names each person (the protagonist after the hook) becomes
-    their presentation card: the cutout from the people stage, with its own credit."""
+    their presentation card: the cutout from the people stage, with its own credit. With people.card: photo, their
+    whole photo full screen instead, and their name on it (returned: shot id → name, for place_labels)."""
 
     path = ctx.work_dir / "people.json"
+    names: dict[str, str] = {}
     if not path.is_file():
-        return
+        return names
+    as_photo = str(ctx.section("people").get("card", "cutout")) == "photo"
     hook = round(float(ctx.section("judge").get("hook_seconds", 30)) * fps)
     covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
     taken: set[str] = set()
@@ -359,16 +362,23 @@ def person_cards(ctx: RunContext, shots_file: ShotsFile, shots: list[TimelineSho
                     or shot.durationInFrames < round(1.5 * fps) or (index == 0 and start < hook)
                     or any(a < end and start < b for a, b in covered) or not surname <= tokens(shot.text)):
                 continue
-            size = _size(ctx.work_dir / person["image"])
-            shot.media = TimelineMedia(src=person["image"], kind="image", source=person.get("source") or "web",
-                                       credit=person.get("credit"), layout="person", caption=person["name"],
-                                       role=person.get("role"), width=size[0], height=size[1])
+            if as_photo and person.get("photo") and (ctx.work_dir / person["photo"]).is_file():
+                size = _size(ctx.work_dir / person["photo"])
+                shot.media = TimelineMedia(src=person["photo"], kind="image", source=person.get("source") or "web",
+                                           credit=person.get("credit"), layout="full", width=size[0], height=size[1])
+                names[shot.id] = person["name"]
+            else:
+                size = _size(ctx.work_dir / person["image"])
+                shot.media = TimelineMedia(src=person["image"], kind="image", source=person.get("source") or "web",
+                                           credit=person.get("credit"), layout="person", caption=person["name"],
+                                           role=person.get("role"), width=size[0], height=size[1])
             taken.add(shot.id)
             break
+    return names
 
 
 def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
-                 cfg: dict[str, Any]) -> list[TimelineLabel]:
+                 cfg: dict[str, Any], names: dict[str, str] | None = None) -> list[TimelineLabel]:
     """Lower-left tags: the place/date of each story event on its first plain shot, and the names and
     scores the planner marked. Never over a panel, a stat, a question or a chapter title, never two at once."""
 
@@ -383,6 +393,9 @@ def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[
     for shot in shots_file.shots:
         if shot.label is not None and shot.type == "broll":
             wanted.append((by_id[shot.id].from_, shot.label.kind, shot.label.text))
+    for shot_id, name in (names or {}).items():       # a person shown full screen for the first time: their name
+        if shot_id in by_id:
+            wanted.append((by_id[shot_id].from_ - 1, "name", name))     # ahead of a place tag on the same shot
     for event in shots_file.events:
         if event.tag:
             first = next((s for s in shots_file.shots if s.startWord >= event.startWord), None)
@@ -1490,8 +1503,8 @@ def run(ctx: RunContext) -> None:
         for shot in shots:
             if shot.groupId in dropped:
                 shot.groupId = None
-    person_cards(ctx, shots_file, shots, groups, fps)
-    labels = place_labels(shots_file, shots, groups, fps, cfg)
+    names = person_cards(ctx, shots_file, shots, groups, fps)
+    labels = place_labels(shots_file, shots, groups, fps, cfg, names)
     groups, labels = with_graphics(ctx, words, shots, groups, labels, fps, total_frames)
     groups, labels = with_spotlights(ctx, words, shots, groups, labels, shots_file.subject or "", fps)
 
