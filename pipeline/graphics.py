@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import time
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ STAGE = "timeline"
 GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
          "strobe", "replay", "standings", "podium", "race", "card", "plazo", "cambio", "scale", "receipt", "tier", "iceberg", "cita",
+         "calendar",
          "search", "marker", "lens", "scroll", "news", "poster", "board", "post")
 # The paper graphics (a search engine, a highlighted phrase over a newspaper, a magnifying glass, a parchment, a
 # news item with the person, a red-sun poster, an evidence board with red string, a social media post): every channel
@@ -123,6 +125,10 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   a cámara lenta. data: {{"name": "etiqueta de máx. 4 palabras del guion (p. ej. 'el doble mortal') o null"}}
 - "standings": se dicen las notas/marcas de al menos 3 participantes de una misma prueba (una final).
   data: {{"title": "…" o null, "rows": [{{"name": "…", "score": "nota como se dice"}}]}} en el orden en que se dicen
+- "calendar": una FECHA CLAVE concreta del caso (el día del crimen, de la detención, de la sentencia) con el día y el
+  mes dichos («la madrugada del 2 de abril de 2015»). Una hoja de calendario con ese día marcado en rojo. Úsalo en
+  el momento en que el guion da la fecha, no para fechas de pasada. data: {{"day": 2, "month": 4, "year": 2015 o
+  null si no se dice, "label": "qué pasó ese día, máx. 6 palabras del guion" o null}}
 - "plazo": un plazo o un tiempo límite que decide algo y se dicen al menos dos momentos en segundos (el límite y cuándo
   pasó algo: «un minuto para reclamar… a los 47 segundos… un minuto y cuatro segundos»; «12 milésimas»). Un cronómetro
   que corre, con la línea del límite y cada momento marcado. data: {{"title": "qué se mide, máx. 6 palabras del guion",
@@ -282,6 +288,79 @@ def _num(value: Any) -> float | None:
         return float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return None
+
+
+MONTHS = {
+    "es": "enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre",
+    "en": "january february march april may june july august september october november december",
+    "pt": "janeiro fevereiro março abril maio junho julho agosto setembro outubro novembro dezembro",
+    "fr": "janvier février mars avril mai juin juillet août septembre octobre novembre décembre",
+    "it": "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre",
+    "de": "januar februar märz april mai juni juli august september oktober november dezember",
+}
+WEEKDAYS = {"es": "lun mar mié jue vie sáb dom", "en": "mon tue wed thu fri sat sun", "pt": "seg ter qua qui sex sáb dom",
+            "fr": "lun mar mer jeu ven sam dim", "it": "lun mar mer gio ven sab dom", "de": "mo di mi do fr sa so"}
+_TENS_ES = {2: "veinte", 3: "treinta", 4: "cuarenta", 5: "cincuenta", 6: "sesenta", 7: "setenta", 8: "ochenta", 9: "noventa"}
+_HUNDREDS_ES = {1: "ciento", 2: "doscientos", 3: "trescientos", 4: "cuatrocientos", 5: "quinientos", 6: "seiscientos",
+                7: "setecientos", 8: "ochocientos", 9: "novecientos"}
+
+
+def spoken_es(n: int) -> str:
+    """0-9999 as said in Spanish, without accents («dos mil quince», «mil novecientos noventa y cinco»): narrations
+    written for the voice spell the years out, and said() only reads small numbers in words."""
+
+    from .planner import _UNITS
+
+    if n < 30:
+        return _UNITS[n]
+    if n < 100:
+        tens, unit = divmod(n, 10)
+        return _TENS_ES[tens] + (f" y {_UNITS[unit]}" if unit else "")
+    if n < 1000:
+        hundreds, rest = divmod(n, 100)
+        if n == 100:
+            return "cien"
+        return _HUNDREDS_ES[hundreds] + (f" {spoken_es(rest)}" if rest else "")
+    thousands, rest = divmod(n, 1000)
+    return ("mil" if thousands == 1 else f"{spoken_es(thousands)} mil") + (f" {spoken_es(rest)}" if rest else "")
+
+
+def said_number(value: int, text: str) -> bool:
+    """`value` in `text`, in digits or (Spanish) in words."""
+
+    if said(value, text):
+        return True
+    plain = " ".join(re.findall(r"[a-z]+", unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()))
+    return f" {spoken_es(value)} " in f" {plain} "
+
+
+def calendar_graphic(data: dict[str, Any], text: str, ctx: RunContext) -> dict[str, Any] | None:
+    """A key date as a calendar page: only when the script says the day and the month (and the year, if shown)."""
+
+    import datetime
+
+    code = str(ctx.section("align").get("language", "es")) if ctx else "es"
+    months = MONTHS.get(code, MONTHS["es"]).split()
+    day, month, year = (int(_num(data.get(k)) or 0) for k in ("day", "month", "year"))
+    if not 1 <= month <= 12 or not 1 <= day <= 31:
+        return None
+    plain = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    name = unicodedata.normalize("NFKD", months[month - 1]).encode("ascii", "ignore").decode()
+    if not re.search(rf"\b{name}\b", plain) or not said_number(day, text):
+        return None
+    if year and not (1800 <= year <= 2100 and said_number(year, text)):
+        year = 0
+    try:
+        datetime.date(year or 2000, month, day)          # 31 of April: no such day (2000: the 29th of February is)
+        weekday = datetime.date(year, month, day).weekday() if year else datetime.date(2001, month, 1).weekday()
+    except ValueError:
+        return None
+    label = data.get("label") if data.get("label") and len(str(data["label"]).split()) <= 6 \
+        and said_words(data["label"], text, 0.6) else None
+    return {"type": "calendar", "day": day, "month": month, "year": year or None, "monthName": months[month - 1],
+            # without the year the day of the week is not known: none shown rather than a made-up one
+            "weekdays": WEEKDAYS.get(code, WEEKDAYS["es"]).split() if year else [], "weekday": weekday if year else 0,
+            "label": label}
 
 
 def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries: set[str]) -> dict[str, Any] | None:
@@ -450,6 +529,8 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
             return None
         return {"type": "standings", "title": data.get("title") if data.get("title") and said_words(data["title"], text, 0.6) else None,
                 "rows": [{"name": str(r["name"]), "score": str(r["score"])} for r in rows[:8]]}
+    if kind == "calendar":
+        return calendar_graphic(data, text, ctx)
     if kind == "plazo":
         def spoken_seconds(sec: float) -> bool:      # «47 segundos», or «un minuto y cuatro segundos» for 64
             whole = int(round(sec))

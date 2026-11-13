@@ -117,8 +117,9 @@ def shot_pieces(shot: dict[str, Any], overlays: list[dict[str, Any]], hybrid: bo
              and not shot.get("groupId") and not edited)
     card = (shot["type"] == "broll" and media.get("kind") in ("video", "image") and media.get("layout") == "card"
             and not shot.get("groupId") and not edited)
-    # a photo with the parallax move (ParallaxPhoto.tsx, without a cut-out): ffmpeg draws it too, in pieces like footage
-    plain = plain or is_parallax(shot)
+    # a photo with the parallax move (ParallaxPhoto.tsx, without a cut-out) or full screen with its Ken Burns
+    # (BRoll.tsx): ffmpeg draws them too, in pieces like footage
+    plain = plain or is_parallax(shot) or is_kenburns(shot)
     if hybrid and card:            # a framed card is composed by ffmpeg too, but only whole (its pop-in and push)
         return [("remotion" if _covered(a, b, overlays) else "ffmpeg", a, b)]
     if not hybrid or not plain:
@@ -146,6 +147,52 @@ def is_parallax(shot: dict[str, Any]) -> bool:
     media = shot.get("media") or {}
     return (shot["type"] == "broll" and media.get("kind") == "image" and media.get("layout") == "parallax"
             and not media.get("cutout") and not shot.get("groupId") and not shot.get("fx") and not shot.get("offset"))
+
+
+def is_kenburns(shot: dict[str, Any]) -> bool:
+    """A full-screen photo with its slow Ken Burns move that ffmpeg can draw (KenBurns in BRoll.tsx)."""
+
+    media = shot.get("media") or {}
+    return (shot["type"] == "broll" and media.get("kind") == "image" and media.get("layout", "full") == "full"
+            and not shot.get("groupId") and not shot.get("fx") and not shot.get("offset"))
+
+
+def _js_mod3(value: int) -> int:
+    """(value % 3) as JavaScript says it: the sign of the dividend."""
+
+    return int(math.fmod(value, 3))
+
+
+def kenburns_move(seed: str) -> tuple[bool, int, int]:
+    """(zoom in?, dx, dy) of KenBurns in BRoll.tsx for this shot: `h >> 3` there works on a signed 32-bit int."""
+
+    h = _seed_hash(seed)
+    signed = h - (1 << 32) if h >= (1 << 31) else h
+    return h % 2 == 0, _js_mod3(signed >> 3) - 1, _js_mod3(signed >> 5) - 1
+
+
+KENBURNS_PAD = 200        # black around the photo: a drift past its edge shows black, as the component does
+
+
+def kenburns_graph(seed: str, frames: int, badge: bool, mono: bool = False) -> str:
+    """ffmpeg graph for a full-screen photo: [0] the photo already covering 1920x1080, [1] the credit badge. As
+    KenBurns: scale 1 → 1.08 (or back) around the centre, and a drift of dx·1.5 % and dy·1 % of the frame scaled
+    with it. The black border goes on before scaling and the crop is placed with the scaled size worked out in
+    the expression itself: pad, crop and overlay keep the size of the FIRST frame (iw goes stale), which put the
+    drift at twice its size when this was written with them."""
+
+    zoom_in, dx, dy = kenburns_move(seed)
+    p = f"(n/{max(1, frames)})"
+    scale = f"(1+0.08*{p})" if zoom_in else f"(1.08-0.08*{p})"
+    w, h = 1920 + 2 * KENBURNS_PAD, 1080 + 2 * KENBURNS_PAD
+    sw, sh = f"(2*trunc({w}*{scale}/2))", f"(2*trunc({h}*{scale}/2))"
+    tx, ty = f"({dx * 0.015 * 1920:.3f}*{p})", f"({dy * 0.01 * 1080:.3f}*{p})"
+    graph = (f"[0:v]pad={w}:{h}:{KENBURNS_PAD}:{KENBURNS_PAD}:black,"
+             f"scale=w='{sw}':h='{sh}':eval=frame:flags=bicubic,"
+             f"crop=1920:1080:x='({sw}-1920)/2-{scale}*{tx}':y='({sh}-1080)/2-{scale}*{ty}',setsar=1"
+             + (",hue=s=0,eq=contrast=1.08" if mono else "") + ",format=yuv420p")
+    graph += "[k];[k][1:v]overlay=0:0:format=auto,format=yuv420p[v]" if badge else "[v]"
+    return graph
 
 
 def _seed_hash(text: str) -> int:
@@ -700,6 +747,36 @@ class Renderer:
         layer.resize((size[0] // k, size[1] // k), Image.LANCZOS).save(front)
         return back, front
 
+    def kenburns_segment(self, segment: Segment, badge: Path | None) -> Path:
+        """A full-screen photo with its Ken Burns move (or a piece of it, from `segment.offset`), by ffmpeg."""
+
+        from PIL import Image, ImageOps
+
+        shot = segment.shots[0]
+        source = self.ctx.work_dir / shot["media"]["src"]
+        folder = self.dir / "kenburns"
+        cover = folder / f"{_hash(_file_sig(source), 'cover-v2')}.png"
+        if not cover.is_file():
+            folder.mkdir(parents=True, exist_ok=True)
+            photo = ImageOps.exif_transpose(Image.open(source)).convert("RGB")
+            ImageOps.fit(photo, (1920, 1080), Image.LANCZOS).save(cover)    # object-fit: cover, centred
+        graph = kenburns_graph(shot["id"], shot["durationInFrames"], badge is not None, bool(shot["media"].get("mono")))
+        if segment.offset:
+            graph = graph.replace("format=yuv420p[v]" if badge else "format=yuv420p[v]",
+                                  f"format=yuv420p,trim=start_frame={segment.offset},setpts=PTS-STARTPTS[v]")
+        key = _hash(self.enc_key, _file_sig(cover), _file_sig(badge) if badge else None, graph, segment.frames)
+        out = self.dir / "segments" / f"{shot['id']}-{segment.offset}-kb-{key}.mp4"
+        if out.is_file():
+            return out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        still = ["-loop", "1", "-framerate", str(self.fps)]
+        inputs = [*still, "-i", str(cover), *([*still, "-i", str(badge)] if badge else [])]
+        tmp = out.with_suffix(".tmp.mp4")
+        _run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", graph, "-map", "[v]",
+              "-frames:v", str(segment.frames), *self.encode, str(tmp)], f"la foto {shot['id']}")
+        tmp.replace(out)
+        return out
+
     def parallax_segment(self, segment: Segment, badge: Path | None) -> Path:
         """A parallax photo (or a piece of it, from `segment.offset`) drawn by ffmpeg instead of Chrome."""
 
@@ -1148,6 +1225,8 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
                 return r.card_segment(segment, badge)
             if is_parallax(segment.shots[0]):
                 return r.parallax_segment(segment, badge)
+            if is_kenburns(segment.shots[0]):
+                return r.kenburns_segment(segment, badge)
             return r.fast_segment(segment, badge, stretch)
         return r.cut_segment(segment, condensed_path, _hash(condensed_path.stem, r.enc_key))
 

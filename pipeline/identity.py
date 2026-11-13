@@ -273,8 +273,18 @@ class Checker:
         import cv2
 
         refs = {n: self.references(n) for n in names}
-        if not refs or any(not r for r in refs.values()):
-            return None                                      # someone named has no reliable face to compare: cannot tell
+        if refs and any(not r for r in refs.values()):
+            # someone named has no reliable face to compare. fallback.unknown_faces: reject — real-crime channels: a
+            # big face that cannot be verified is somebody else presented as them (pazos 13/11: «y Aniceto Rodríguez»
+            # over a smiling stranger); the shot takes a place, a document or a real photo of the person instead
+            if str(self.cfg.get("unknown_faces", "keep")) != "reject":
+                return None
+            size = int(self.cfg.get("face_min_size", 100))
+            big = sum(1 for frame in frames if any(s >= size and frontal for _, s, frontal in self.faces(frame)))
+            unknown = [n for n, r in refs.items() if not r]
+            return f"una cara que no se puede comprobar en un plano sobre {' / '.join(unknown)}" if big >= 2 else None
+        if not refs:
+            return None
         recognizer = self._face_models()[1]
         big_frames, best = 0, -1.0
         size = int(self.cfg.get("face_min_size", 100))
@@ -412,7 +422,7 @@ class Checker:
 class IdentityCache:
     """work/<slug>/identity.json: verdicts per media file (path + size + mtime + names), so reruns are free."""
 
-    VERSION = 6                     # 3: + man/woman check (CLIP); 4: scoreboard words; 5: man/woman only on close faces; 6: any sport
+    VERSION = 7                     # 3: + man/woman check (CLIP); 4: scoreboard words; 5: man/woman only on close faces; 6: any sport; 7: unknown_faces
 
     def __init__(self, ctx: RunContext):
         self.path = ctx.work_dir / "identity.json"

@@ -460,6 +460,18 @@ export interface PosterGraphic {
   media?: Media | null; // the person's cutout, in black and white, a red bar over the eyes
 }
 
+/** A key date as a page of the calendar: the month big, the year, a row of days and THE day marked (true crime). */
+export interface CalendarGraphic {
+  type: 'calendar';
+  day: number;
+  month: number; // 1-12
+  year?: number | null;
+  monthName: string; // in the video's language («ABRIL»)
+  weekdays: string[]; // seven short names, Monday first, in the video's language ([] when the year is not said)
+  weekday: number; // 0 = Monday … 6 = Sunday, of the marked day
+  label?: string | null; // what happened, ≤ 6 words of the script («la noche del martillo»)
+}
+
 export interface PlazoGraphic {
   type: 'plazo';
   title?: string | null;
@@ -508,6 +520,7 @@ export type Graphic =
   | ClipGraphic
   | AtlasGraphic
   | PlazoGraphic
+  | CalendarGraphic
   | CambioGraphic
   | SearchGraphic
   | MarkerGraphic

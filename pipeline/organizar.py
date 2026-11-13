@@ -244,7 +244,9 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     if not title:
         raise ValueError("La idea necesita un título")
     ctx = RunContext.create("_guiones", root=root, channel=channel or None)
-    words = _words_per_video(root, channel) or int(ctx.section("ideas").get("words") or 2000)   # a new channel: its profile
+    # the channel's own length (ideas.words) when it says one: the average of its scripts kept every new script as
+    # long as the old ones (buscandolaverdad: 15 min where 6-9 was wanted); else that average, else 2000
+    words = int(ctx.section("ideas").get("words") or 0) or _words_per_video(root, channel) or 2000
     format_name = str(idea.get("format") or "")
     if format_name:
         from .formats import spec

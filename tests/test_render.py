@@ -7,6 +7,7 @@ from pipeline.render import condensed_props, music_volume_curve, music_volume_ex
 
 VIDEO = {"src": "media/a.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: X"}
 IMAGE = {"src": "media/b.jpg", "kind": "image", "source": "wikimedia", "credit": "Fuente: Y"}
+CARD_IMAGE = {**IMAGE, "layout": "card", "width": 800, "height": 600}     # over a label: drawn by Remotion
 
 
 def _shot(i: int, start: int, frames: int, kind: str = "broll", media=VIDEO, group=None) -> dict:
@@ -21,11 +22,12 @@ class PlanTests(unittest.TestCase):
             "shots": [
                 _shot(0, 0, 60),                             # fast
                 _shot(1, 60, 60, "chapter"),                 # slow
-                _shot(2, 120, 60, media=IMAGE),              # slow (Ken Burns)
+                _shot(2, 120, 60, media=IMAGE),              # slow: a photo under a label
                 _shot(3, 180, 60, "stat", group="stat-s003"),  # slow
                 _shot(4, 240, 60),                           # fast
             ],
             "groups": [{"id": "stat-s003", "kind": "stat", "from": 180, "durationInFrames": 60, "steps": []}],
+            "labels": [{"kind": "place", "text": "PAZOS", "from": 120, "durationInFrames": 60}],
             "audio": {"voice": "audio/voz.mp3", "musicVolume": 0.25, "duckedVolume": 0.03, "speech": [[0, 30]], "sfx": []},
         }
 
@@ -191,3 +193,16 @@ def test_parallax_photos_go_to_ffmpeg_in_pieces_except_cutouts_and_vertical_vide
     # the drift goes the way the Remotion component's hash says (seed "s000": even → backdrop left, photo right)
     graph = parallax_graph("s000", 90, badge=False)
     assert "x='80+60*(n/90)'" in graph and "960+40*(n/90)" in graph
+
+
+def test_full_screen_photos_go_to_ffmpeg_with_the_components_own_move():
+    from pipeline.render import kenburns_graph, kenburns_move
+
+    photo = {**IMAGE, "layout": "full"}
+    timeline = {"durationInFrames": 90, "width": 1920, "height": 1080, "shots": [_shot(0, 0, 90, media=photo)],
+                "groups": [], "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []}}
+    assert [s.kind for s in plan_segments(timeline)] == ["ffmpeg"]
+    # BRoll.tsx: `h >> 3` works on a signed 32-bit int, `%` keeps the dividend's sign (checked against node)
+    assert kenburns_move("s000") == (True, 1, 1) and kenburns_move("shot-2177725") == (False, -3, -1)
+    graph = kenburns_graph("s000", 90, badge=False)
+    assert "pad=2320:1480" in graph and "((2*trunc(2320*(1+0.08*(n/90))/2))-1920)/2" in graph   # not iw: it goes stale
