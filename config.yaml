@@ -203,6 +203,11 @@ grade:                             # color igualado entre clips (se aplica al pr
   warmth: 0.02                     # balance rojo-azul (0 neutro, + cálido, − frío); el blanco y negro no se tiñe
   look: cine                       # tono común del canal: neutral | cine (sombras frías, luces cálidas) | frio | calido
 
+apertura:                          # clip de apertura con su sonido, antes de la voz (pipeline/apertura.py)
+  auto: false                      # true: si no eliges uno a mano, se busca y se elige solo (crímenes reales: la sentencia, una declaración)
+  auto_ask: ""                     # qué momento buscar, p. ej. «la lectura de la sentencia o una declaración del acusado en el juicio»
+  max_seconds: 20                  # duración máxima del clip
+
 quotes:                            # declaraciones originales con subtítulos (pipeline/quotes.py)
   count: 2                         # cuántas citas del guion buscar dichas por su autor, con su voz y subtítulos (0 = ninguna)
   max_seconds: 12                  # duración máxima de cada declaración
@@ -325,6 +330,7 @@ shorts:                            # Shorts verticales sacados del vídeo final 
 
 people:
   card: cutout                     # cutout (recorte sobre el fondo del canal) · photo (su foto entera a pantalla completa y su nombre encima, como los canales de crímenes reales)
+  lineups: 0                       # >0: hasta N planos que nombran a 2+ personas con foto las muestran juntas, cada una con su nombre a máquina
   enabled: true                    # tarjeta de presentación (atleta recortado + nombre) la 1.ª vez que se le nombra
   max: 4                           # protagonista + hasta 3 personas con rótulo de nombre
   tries: 8                         # fotos que se prueban por persona hasta encontrar una recortable
@@ -349,6 +355,7 @@ timeline:
   question_max_words: 30
   card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
   photo_layout: mixed              # fotos: mixed (tarjeta enmarcada o paralaje, a partes) · full (a pantalla completa, con un Ken Burns lento)
+  photo_hold_seconds: 0            # >0: una foto real sigue en pantalla sobre los planos de relleno que vienen detrás, hasta estos segundos (crímenes reales: 9)
   labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
   subtitles: true                  # subtítulos de la voz siempre en pantalla (solo vídeos de metraje), la palabra clave en amarillo
   label_seconds: 2.5

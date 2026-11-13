@@ -285,6 +285,42 @@ def chosen(ctx: RunContext) -> dict[str, Any] | None:
     return data if video_id(data.get("url") or data.get("id") or "") else None
 
 
+AUTO_MARK = "apertura.auto.json"     # in work/<slug>/: the automatic search already ran (found or not): not again
+
+
+def auto(ctx: RunContext, youtube: Any) -> dict[str, Any] | None:
+    """apertura.auto: no opening chosen by hand → look for one ourselves, as true-crime channels open: a real moment
+    of the case with its own sound (the sentence being read, a statement), from the title and the start of the script
+    and `apertura.auto_ask`. The best candidate is saved as materiales/<vídeo>/apertura.json (you see it in the studio
+    and can change it); nothing good enough → the video starts with the voice, as before. Runs once per video."""
+
+    cfg = ctx.section("apertura")
+    mark = ctx.work_dir / AUTO_MARK
+    if not cfg.get("auto", False) or chosen(ctx) or mark.is_file():
+        return None
+    title = script = ""
+    for name, most in (("titulo.txt", 200), ("guion.txt", 1800)):
+        path = ctx.materials_dir / name
+        if path.is_file():
+            text = path.read_text("utf-8").strip()
+            title, script = (text.splitlines()[0][:most], script) if name == "titulo.txt" else (title, text[:most])
+    found: dict[str, Any] = {}
+    try:
+        found = search(ctx, title=title, script=script, ask=str(cfg.get("auto_ask") or ""), youtube=youtube)
+    except Exception as error:              # never costs the video: it starts with the voice
+        print(f"   Apertura automática: {type(error).__name__}: {str(error)[:160]}")
+    candidates = found.get("candidates") or []
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(json.dumps({"found": bool(candidates), "plan": found.get("plan")}, ensure_ascii=False), "utf-8")
+    if not candidates:
+        print("   Apertura automática: ningún momento con sonido original claro; empieza la voz")
+        return None
+    data = {**choice(candidates[0], most=longest(ctx)), "auto": True}
+    (ctx.materials_dir / FILE).write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+    print(f"   Apertura automática: {data['url']} {data['start']:.1f}-{data['end']:.1f} s · {candidates[0].get('why', '')[:80]}")
+    return data
+
+
 def pick(ctx: RunContext, youtube: Any, out_dir: Path) -> dict[str, Any] | None:
     """The chosen opening cut WITH its sound (your file, or downloaded): the fields of schemas.OpeningClip, or None."""
 

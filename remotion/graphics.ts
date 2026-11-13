@@ -460,6 +460,12 @@ export interface PosterGraphic {
   media?: Media | null; // the person's cutout, in black and white, a red bar over the eyes
 }
 
+/** Two to four people side by side (the accused, the victim and the accused…), each named in typed red. */
+export interface LineupGraphic {
+  type: 'lineup';
+  people: { name: string; media: Media }[];
+}
+
 /** A key date as a page of the calendar: the month big, the year, a row of days and THE day marked (true crime). */
 export interface CalendarGraphic {
   type: 'calendar';
@@ -521,6 +527,7 @@ export type Graphic =
   | AtlasGraphic
   | PlazoGraphic
   | CalendarGraphic
+  | LineupGraphic
   | CambioGraphic
   | SearchGraphic
   | MarkerGraphic
