@@ -117,6 +117,8 @@ def shot_pieces(shot: dict[str, Any], overlays: list[dict[str, Any]], hybrid: bo
              and not shot.get("groupId") and not edited)
     card = (shot["type"] == "broll" and media.get("kind") in ("video", "image") and media.get("layout") == "card"
             and not shot.get("groupId") and not edited)
+    # a photo with the parallax move (ParallaxPhoto.tsx, without a cut-out): ffmpeg draws it too, in pieces like footage
+    plain = plain or is_parallax(shot)
     if hybrid and card:            # a framed card is composed by ffmpeg too, but only whole (its pop-in and push)
         return [("remotion" if _covered(a, b, overlays) else "ffmpeg", a, b)]
     if not hybrid or not plain:
@@ -136,6 +138,53 @@ def shot_pieces(shot: dict[str, Any], overlays: list[dict[str, Any]], hybrid: bo
         else:
             out.append((kind, x, y))
     return out
+
+
+def is_parallax(shot: dict[str, Any]) -> bool:
+    """A full-screen photo with the parallax move that ffmpeg can draw (FramedParallax in ParallaxPhoto.tsx)."""
+
+    media = shot.get("media") or {}
+    return (shot["type"] == "broll" and media.get("kind") == "image" and media.get("layout") == "parallax"
+            and not media.get("cutout") and not shot.get("groupId") and not shot.get("fx") and not shot.get("offset"))
+
+
+def _seed_hash(text: str) -> int:
+    """hash() of the Remotion components: the same per-shot choice (which way the photo drifts)."""
+
+    h = 7
+    for char in text:
+        h = (h * 31 + ord(char)) & 0xFFFFFFFF
+    return h
+
+
+PARALLAX_BOX = (1574.4, 842.4)    # ParallaxPhoto.tsx: the framed photo is 78 % high, at most 82 % wide (border box)
+PARALLAX_BORDER = 4
+PARALLAX_MARGIN = 110              # room around the frame for its shadow (0 22px 40px)
+
+
+def parallax_box(media: dict[str, Any]) -> tuple[int, int]:
+    """Size of the photo inside the frame: the frame is 78 % of the height with the photo's aspect, at most 82 % of
+    the width, its 4 px border inside that size (border-box, as Chrome draws it)."""
+
+    w, h = media.get("width") or 16, media.get("height") or 9
+    outer_w, outer_h = min(PARALLAX_BOX[1] * w / h, PARALLAX_BOX[0]), PARALLAX_BOX[1]
+    return round(outer_w) - 2 * PARALLAX_BORDER, round(outer_h) - 2 * PARALLAX_BORDER
+
+
+def parallax_graph(seed: str, frames: int, badge: bool) -> str:
+    """ffmpeg graph for a parallax photo: [0] the blurred backdrop at an eighth of the size (260x155), [1] the framed
+    photo with its border and shadow (RGBA), [2] the credit badge. As FramedParallax: the backdrop grows from 1.1 to
+    1.15 and drifts 60 px one way; the photo grows 6 % and drifts 40 px the other way, over the whole shot."""
+
+    d = 1 if _seed_hash(seed) % 2 == 0 else -1
+    p = f"(n/{max(1, frames)})"
+    graph = (f"[0:v]scale=w='2*trunc(2080*(1.1+0.05*{p})/2)':h='2*trunc(1240*(1.1+0.05*{p})/2)':eval=frame:flags=bicubic,"
+             f"crop=1920:1080:x='80+{60 * d}*{p}':y=80,setsar=1,format=yuv420p[bg];"
+             f"[1:v]scale=w='2*trunc(iw*(1+0.06*{p})/2)':h='2*trunc(ih*(1+0.06*{p})/2)':eval=frame:flags=bicubic,"
+             f"format=yuva420p[fg];"          # composed in YUV: 3x faster than RGBA, the same picture
+             f"[bg][fg]overlay=x='960+{40 * d}*{p}-overlay_w/2':y='540-overlay_h/2':eval=frame:format=yuv420")
+    graph += "[o];[o][2:v]overlay=0:0:format=auto,format=yuv420p[v]" if badge else ",format=yuv420p[v]"
+    return graph
 
 
 def is_fast(shot: dict[str, Any], groups: list[dict[str, Any]] = ()) -> bool:
@@ -193,7 +242,8 @@ def plan_segments(timeline: dict[str, Any], hybrid: bool = True) -> list[Segment
             # the same in every video of the channel: rendered once and cached (Renderer.endscreen)
             segments.append(Segment("endscreen", shot["from"], shot["durationInFrames"], [shot]))
             continue
-        vertical_card = timeline.get("height", 0) > timeline.get("width", 1) and (shot.get("media") or {}).get("layout") == "card"
+        vertical_card = timeline.get("height", 0) > timeline.get("width", 1) and (
+            (shot.get("media") or {}).get("layout") == "card" or is_parallax(shot))      # ffmpeg draws them only at 16:9
         pieces = ([("remotion", shot["from"], shot["from"] + shot["durationInFrames"])] if vertical_card   # drawn as
                   else shot_pieces(shot, overlays, hybrid))                                                 # plain b-roll
         for kind, x, y in pieces:
@@ -607,6 +657,70 @@ class Renderer:
         path.parent.mkdir(parents=True, exist_ok=True)
         colour.save(path)
         return path
+
+    def parallax_layers(self, media: dict[str, Any]) -> tuple[Path, Path]:
+        """The two still layers of a parallax photo, cached by photo, size and accent colour: the backdrop (the photo
+        covering 260x155, blur 3.5 px, brightness 0.45, saturation 1.2, as the eighth-size div of FramedParallax) and
+        the framed photo (cover into its box, 4 px accent border, 14 px corners, shadow 0 22px 40px rgba(0,0,0,.6))."""
+
+        from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
+
+        source = self.ctx.work_dir / media["src"]
+        accent = str((self.ctx.section("brand") or {}).get("accent") or "#ffd400")
+        cw, ch = parallax_box(media)
+        key = _hash(_file_sig(source), cw, ch, accent, "parallax-v2")
+        folder = self.dir / "parallax"
+        back, front = folder / f"{key}-back.png", folder / f"{key}-front.png"
+        if back.is_file() and front.is_file():
+            return back, front
+        folder.mkdir(parents=True, exist_ok=True)
+        photo = ImageOps.exif_transpose(Image.open(source)).convert("RGB")
+        small = ImageOps.fit(photo, (260, 155), Image.LANCZOS).filter(ImageFilter.GaussianBlur(3.5))
+        small = ImageEnhance.Color(ImageEnhance.Brightness(small).enhance(0.45)).enhance(1.2)
+        small.save(back)
+        # the framed photo, drawn at twice the size for smooth corners
+        k, b, m, r = 2, PARALLAX_BORDER, PARALLAX_MARGIN, 14
+        ow, oh = cw + 2 * b, ch + 2 * b
+        size = ((ow + 2 * m) * k, (oh + 2 * m) * k)
+        outer = [m * k, m * k, (m + ow) * k - 1, (m + oh) * k - 1]
+        shadow = Image.new("L", size, 0)
+        ImageDraw.Draw(shadow).rounded_rectangle([outer[0], outer[1] + 22 * k, outer[2], outer[3] + 22 * k], r * k,
+                                                 fill=round(0.6 * 255))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(20 * k))
+        layer = Image.new("RGBA", size, (0, 0, 0, 0))
+        layer.putalpha(shadow)
+        card = Image.new("RGBA", size, (0, 0, 0, 0))
+        ImageDraw.Draw(card).rounded_rectangle(outer, r * k, fill=accent)
+        inner = [outer[0] + b * k, outer[1] + b * k, outer[2] - b * k, outer[3] - b * k]
+        mask = Image.new("L", size, 0)
+        ImageDraw.Draw(mask).rounded_rectangle(inner, (r - b) * k, fill=255)
+        fitted = ImageOps.fit(photo, (cw * k, ch * k), Image.LANCZOS)
+        card.paste(fitted, (inner[0], inner[1]), mask.crop((inner[0], inner[1], inner[0] + cw * k, inner[1] + ch * k)))
+        layer.alpha_composite(card)
+        layer.resize((size[0] // k, size[1] // k), Image.LANCZOS).save(front)
+        return back, front
+
+    def parallax_segment(self, segment: Segment, badge: Path | None) -> Path:
+        """A parallax photo (or a piece of it, from `segment.offset`) drawn by ffmpeg instead of Chrome."""
+
+        shot = segment.shots[0]
+        back, front = self.parallax_layers(shot["media"])
+        graph = parallax_graph(shot["id"], shot["durationInFrames"], badge is not None)
+        if segment.offset:     # a later piece of the shot (a label over the middle went to Remotion)
+            graph = graph.replace("format=yuv420p[v]", f"trim=start_frame={segment.offset},setpts=PTS-STARTPTS,format=yuv420p[v]")
+        key = _hash(self.enc_key, _file_sig(back), _file_sig(front), _file_sig(badge) if badge else None, graph,
+                    segment.frames)
+        out = self.dir / "segments" / f"{shot['id']}-{segment.offset}-px-{key}.mp4"
+        if out.is_file():
+            return out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        still = ["-loop", "1", "-framerate", str(self.fps)]
+        inputs = [*still, "-i", str(back), *still, "-i", str(front), *([*still, "-i", str(badge)] if badge else [])]
+        tmp = out.with_suffix(".tmp.mp4")
+        _run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", graph, "-map", "[v]",
+              "-frames:v", str(segment.frames), *self.encode, str(tmp)], f"la foto {shot['id']}")
+        tmp.replace(out)
+        return out
 
     def card_segment(self, segment: Segment, badge: Path | None) -> Path:
         shot = segment.shots[0]
@@ -1032,6 +1146,8 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
             badge = badges.get(shown(credit)) if credit else None
             if segment.shots[0]["media"].get("layout") == "card":
                 return r.card_segment(segment, badge)
+            if is_parallax(segment.shots[0]):
+                return r.parallax_segment(segment, badge)
             return r.fast_segment(segment, badge, stretch)
         return r.cut_segment(segment, condensed_path, _hash(condensed_path.stem, r.enc_key))
 
