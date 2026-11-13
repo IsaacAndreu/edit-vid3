@@ -352,6 +352,21 @@ def whole_estimate_mb(formats: list[dict[str, Any]], max_height: int = 720) -> f
     return round(total, 1)
 
 
+def unreachable_videos(cache_dir: Path, days: float = 7) -> set[str]:
+    """YouTube ids no clip can come from now (refused «sin-hls», «vpn» or «geo» in the last `days`): the judge leaves
+    them out, so a shot takes a clip that can be downloaded instead of failing at «Descargar en HD»."""
+
+    import json
+
+    try:
+        data = json.loads((cache_dir / "videos" / ".rechazados.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    now = time.time()
+    return {video for video, entry in data.items() if isinstance(entry, dict)
+            and entry.get("why") in ("sin-hls", "vpn", "geo") and now - float(entry.get("at") or 0) < 86400 * days}
+
+
 def _has_hls(info_path: Path) -> bool:
     import json
 
@@ -1738,6 +1753,8 @@ class YouTubeSource:
         if self.offline:                                  # not on disk: without YouTube this clip cannot come
             raise SourceUnavailable(self.offline)
         info_path = self._fresh_full_info(video_id)
+        if prefix == "a360":
+            self._check_hd_reachable(video_id, info_path)     # not worth analysing a clip that cannot come in HD
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
         if hls and _has_hls(info_path):
             try:
@@ -1783,6 +1800,39 @@ class YouTubeSource:
         if self.residential:
             return (float(self.cfg.get("whole_max_minutes_residential", 10)), float(self.cfg.get("whole_max_mb_residential", 80)))
         return (float(self.cfg.get("whole_max_minutes", 30)), float(self.cfg.get("whole_max_mb", 600)))
+
+    HD_FORMAT = "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]"   # = ingest's default
+
+    def hd_unreachable(self, video_id: str, info_path: Path) -> str | None:
+        """Why the HD clip of this video could never come through the residential proxy (no HLS, and the whole file
+        over whole_max_*_residential), or None. Asked before the 360p analysis: elcrimendepazos (13/11) analysed and
+        chose dozens of clips of such videos for 113 min, and every one was refused at «Descargar en HD»."""
+
+        import json
+
+        if not self.residential or _has_hls(info_path):
+            return None
+        max_minutes, max_mb = self._whole_caps()
+        data = json.loads(info_path.read_text(encoding="utf-8"))
+        duration = float(data.get("duration") or 0)
+        if duration > 60 * max_minutes:
+            return f"dura {duration / 60:.0f} min (> {max_minutes:g} min)"
+        fmt = cap_fps(cap_height(self.HD_FORMAT, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
+        try:
+            with self._ydl({"format": whole_format(fmt), "simulate": True, "quiet": True}) as ydl:
+                chosen = ydl.process_ie_result(dict(data), download=False)
+        except Exception:
+            return None                          # yt-dlp cannot tell: let the download find out, as before
+        pieces = chosen.get("requested_formats") or [chosen]
+        size = sum(float(f.get("filesize") or f.get("filesize_approx") or 0) for f in pieces)
+        return f"pesa {size / 1e6:.0f} MB en HD (> {max_mb:g} MB)" if size > 1e6 * max_mb else None
+
+    def _check_hd_reachable(self, video_id: str, info_path: Path) -> None:
+        why = self.hd_unreachable(video_id, info_path)
+        if why:
+            self._whole_skipped(video_id, why)
+            raise RuntimeError(f"yt-dlp download: {video_id} descartado antes de analizarlo ({self._refusal_text('sin-hls')}); "
+                               "se pasa al siguiente candidato")
 
     def _whole_skipped(self, video_id: str, why: str) -> None:
         if self.residential:
@@ -2181,6 +2231,10 @@ class YouTubeSource:
 
         try:
             info_path = self._fresh_full_info(video_id)
+            if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo"):
+                return False
+            if self.hd_unreachable(video_id, info_path):
+                return False                     # download_section says why (and the video is not asked for again)
             if self.residential and not self.cfg.get("prefetch_whole_residential", False) and _has_hls(info_path):
                 # paid by the GB: the whole 360p file (13 MB on average) cost 60 % of gimnasia2's proxy (1.7 of
                 # 2.8 GB, 124 videos) where its 3-6 windows by HLS come to a fraction; same 360p for the analysis

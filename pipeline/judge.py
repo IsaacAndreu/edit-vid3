@@ -627,6 +627,16 @@ def run(ctx: RunContext) -> None:
             scores[shot_id] = shot_scores.model_copy(update={"options": kept})
     if stray:
         print(f"   {stray} opciones de candidatos que ya no existen, descartadas (¿dos procesos con el mismo vídeo?)")
+    gone = _unreachable(ctx)
+    if gone:                                              # no HD through the proxy: never chosen, the next one is
+        dropped = 0
+        for shot_id, shot_scores in scores.items():
+            kept = [o for o in shot_scores.options if o.candidateId not in gone]
+            dropped += len(shot_scores.options) - len(kept)
+            if len(kept) != len(shot_scores.options):
+                scores[shot_id] = shot_scores.model_copy(update={"options": kept})
+        if dropped:
+            print(f"   {dropped} opciones de vídeos que no se pueden bajar en HD por el proxy, descartadas")
 
     bonus = cfg.get("source_bonus", {"youtube": 0.02})
     margin = float(cfg.get("margin", 0.02))
@@ -860,6 +870,21 @@ def _verdict(info: dict[str, Any] | None, chosen: Option | None, cfg: dict[str, 
     )
 
 
+def _unreachable(ctx: RunContext) -> set[str]:
+    """«yt:<id>» of the videos whose clips cannot be downloaded now (sourcing.youtube.unreachable_videos)."""
+
+    from .sourcing.youtube import unreachable_videos
+
+    days = float(ctx.section("sourcing").get("youtube", {}).get("refused_days", 7))
+    return {f"yt:{video}" for video in unreachable_videos(ctx.cache_dir, days)}
+
+
 def validate(ctx: RunContext) -> bool:
-    SelectionFile.model_validate(ctx.read_json(OUTPUT))
+    selections = SelectionFile.model_validate(ctx.read_json(OUTPUT)).selections
+    gone = _unreachable(ctx)
+    stuck = [s.shotId for s in selections if s.status == "selected" and s.candidateId in gone]
+    if stuck:   # elcrimendepazos 13/11: the HD download refused them and every retry chose them again
+        print(f"   judge: {len(stuck)} planos eligieron vídeos que no se pueden bajar en HD ({', '.join(stuck[:6])}…); "
+              "se eligen otros")
+        return False
     return True
