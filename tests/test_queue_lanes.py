@@ -155,3 +155,17 @@ def test_a_copy_put_away_in_hechos_does_not_hold_the_real_video(tmp_path):
     (tmp_path / "materiales" / "_hechos" / "atleti10-pt" / main.HOLD).write_text("x", "utf-8")
     assert find_video(tmp_path, "atleti10-pt") == tmp_path / "materiales" / "atleti-pt" / "atleti10-pt"
     assert not main.on_hold(tmp_path, "atleti10-pt")
+
+
+def test_a_new_video_or_its_uploaded_voice_wakes_the_watcher(tmp_path):
+    from pipeline import web
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "crimen.yaml").write_text("format: historia\n")
+    wake = tmp_path / main.WAKE
+    web.create_video(tmp_path, {"name": "pazos", "channel": "crimen", "script": "Hola. " * 60})
+    assert wake.is_file()
+    wake.unlink()
+    web.save_voice(tmp_path, "pazos", b"ID3" + b"\0" * 20_000)
+    assert wake.is_file()
