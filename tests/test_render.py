@@ -167,3 +167,27 @@ def test_long_figures_are_shortened_for_the_giant_number():
     assert compact_figure("25.000 millones de dólares") == "25.000 M$"
     assert compact_figure("15.000 mil millones de euros") == "15.000 MM€"
     assert compact_figure("2,7%") == "2,7%"
+
+
+def test_parallax_photos_go_to_ffmpeg_in_pieces_except_cutouts_and_vertical_videos():
+    from pipeline.render import parallax_box, parallax_graph
+
+    photo = {**IMAGE, "layout": "parallax", "width": 1600, "height": 1000}
+    timeline = {
+        "durationInFrames": 180, "width": 1920, "height": 1080,
+        "shots": [_shot(0, 0, 90, media=photo), _shot(1, 90, 90, media={**photo, "cutout": "media/b.png"})],
+        "groups": [], "labels": [{"kind": "place", "text": "PUEBLA", "from": 30, "durationInFrames": 30}],
+        "audio": {"voice": "v", "musicVolume": 0.2, "duckedVolume": 0.02, "speech": [], "sfx": []},
+    }
+    segments = plan_segments(timeline)
+    # the photo is drawn by ffmpeg around the label (the piece after it starts 60 frames into the move); the photo
+    # with a cut-out (2.5D) stays in Remotion
+    assert [(s.kind, s.start, s.frames, s.offset) for s in segments] == [
+        ("ffmpeg", 0, 30, 0), ("remotion", 30, 30, 0), ("ffmpeg", 60, 30, 60), ("remotion", 90, 90, 0)]
+    vertical = {**timeline, "width": 1080, "height": 1920, "labels": []}
+    assert [s.kind for s in plan_segments(vertical)] == ["remotion"]
+    # the frame: 78 % of 1080 high with the photo's aspect, at most 82 % of 1920 wide, the 4 px border inside
+    assert parallax_box(photo) == (1340, 834) and parallax_box({"width": 3000, "height": 1000}) == (1566, 834)
+    # the drift goes the way the Remotion component's hash says (seed "s000": even → backdrop left, photo right)
+    graph = parallax_graph("s000", 90, badge=False)
+    assert "x='80+60*(n/90)'" in graph and "960+40*(n/90)" in graph
