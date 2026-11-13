@@ -331,9 +331,14 @@ def unplayable(details: dict[str, Any], region: str = "ES") -> str:
     return ""
 
 
+WHOLE_ESTIMATE_VERSION = 2      # «wholeMb» of an info cached with another version is worked out again
+
+
 def whole_estimate_mb(formats: list[dict[str, Any]], max_height: int = 720) -> float | None:
-    """What the video would weigh downloaded whole for a clip: the smallest video stream at `max_height` or less
-    (plus the smallest audio when the video has none), from yt-dlp's filesize / filesize_approx. None when unknown."""
+    """What the video would weigh downloaded whole for its HD clip: the stream the HD download takes (the tallest at
+    `max_height` or less, H.264 and 30 fps first, as ingest's format), plus the smallest audio when it has none, from
+    yt-dlp's filesize / filesize_approx. None when unknown. Version 1 took the SMALLEST stream (a 144p of a few MB):
+    elcrimendepazos (13/11) let through dozens of videos whose 720p weighed 85-325 MB, analysed and chosen for nothing."""
 
     def size(f: dict[str, Any]) -> float | None:
         value = f.get("filesize") or f.get("filesize_approx")
@@ -343,7 +348,8 @@ def whole_estimate_mb(formats: list[dict[str, Any]], max_height: int = 720) -> f
               and not str(f.get("format_id", "")).startswith("sb") and size(f) is not None]
     if not videos:
         return None
-    best = min(videos, key=lambda f: size(f) or 0)
+    best = max(videos, key=lambda f: (f.get("height") or 0, str(f.get("vcodec") or "").startswith("avc1"),
+                                      float(f.get("fps") or 30) <= 30, -(size(f) or 0)))
     total = size(best) or 0.0
     if best.get("acodec") in (None, "none"):
         audios = [size(f) for f in formats if f.get("vcodec") in (None, "none") and f.get("acodec") not in (None, "none")
@@ -1461,7 +1467,7 @@ class YouTubeSource:
                 cached = json.loads(path.read_text(encoding="utf-8"))
                 if "storyboard" not in cached:  # written by the older, download-first sourcing
                     path.unlink()
-                elif "hls" not in cached:
+                elif "hls" not in cached or cached.get("wholeMbV") != WHOLE_ESTIMATE_VERSION:
                     self._backfill_hls(video_id, cached, path)
             except (OSError, ValueError):
                 path.unlink(missing_ok=True)
@@ -1506,6 +1512,7 @@ class YouTubeSource:
                 "maxHeight": max(heights or [0]),
                 "hls": any(str(f.get("protocol") or "").startswith("m3u8") for f in formats),
                 "wholeMb": whole_estimate_mb(formats),
+                "wholeMbV": WHOLE_ESTIMATE_VERSION,
                 "liveStatus": data.get("live_status"),
                 "fetchedAt": time.time(),
                 "storyboard": None if board is None else {
@@ -1540,6 +1547,7 @@ class YouTubeSource:
             return
         cached["hls"] = any(str(f.get("protocol") or "").startswith("m3u8") for f in formats)
         cached["wholeMb"] = whole_estimate_mb(formats)
+        cached["wholeMbV"] = WHOLE_ESTIMATE_VERSION
         try:
             tmp = path.with_name(path.name + ".tmp")
             tmp.write_text(json.dumps(cached), encoding="utf-8")

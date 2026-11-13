@@ -306,8 +306,11 @@ def test_candidates_that_could_never_be_downloaded_are_dropped_at_the_search(tmp
                {"format_id": "18", "vcodec": "avc1", "acodec": "mp4a", "height": 360, "filesize": 50e6},
                {"format_id": "140", "vcodec": "none", "acodec": "mp4a", "filesize": 9e6},
                {"format_id": "sb0", "vcodec": "none", "acodec": "none", "height": 90, "filesize": 1e6}]
-    assert whole_estimate_mb(formats) == 50.0                          # the progressive 360p carries its own audio
-    assert whole_estimate_mb(formats[:2] + formats[3:]) == 129.0        # 720p video + the smallest audio
+    # what the HD download takes: the 720p (not the 1080p, not the small 360p) + the smallest audio
+    assert whole_estimate_mb(formats) == 129.0
+    assert whole_estimate_mb(formats[2:]) == 50.0                       # only a progressive 360p: it carries its audio
+    tiny = {"format_id": "160", "vcodec": "avc1", "acodec": "none", "height": 144, "filesize": 3e6}
+    assert whole_estimate_mb([tiny, *formats]) == 129.0                 # elcrimendepazos: not the 144p
     assert whole_estimate_mb([{"format_id": "x", "vcodec": "avc1", "height": 720}]) is None
 
 
@@ -352,4 +355,23 @@ def test_the_analysis_takes_its_windows_by_hls_instead_of_the_whole_360p_file_th
     monkeypatch.setattr(yt, "_fresh_full_info", lambda v: info)
     monkeypatch.setattr(yt, "_fetch_whole", lambda *a: tmp_path / "full_a360.mp4")
     assert yt.prefetch_sections(VIDEO) is True
+    yt.close()
+
+
+def test_an_info_cached_with_the_old_size_estimate_is_measured_again(tmp_path, monkeypatch):
+    """elcrimendepazos: «wholeMb» of version 1 was the 144p's few MB; the search let 258 MB videos through."""
+    import json
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, RESI)
+    old = {"id": VIDEO, "title": "t", "channel": "c", "duration": 300, "storyboard": {"fps": 0.2, "width": 320},
+           "hls": False, "wholeMb": 3.0}
+    yt._info_path(VIDEO).parent.mkdir(parents=True, exist_ok=True)
+    yt._info_path(VIDEO).write_text(json.dumps(old))
+    formats = [{"format_id": "160", "vcodec": "avc1", "acodec": "none", "height": 144, "protocol": "https", "filesize": 3e6},
+               {"format_id": "136", "vcodec": "avc1", "acodec": "none", "height": 720, "protocol": "https", "filesize": 258e6}]
+    yt._full_info_path(VIDEO).write_text(json.dumps({"formats": formats, "_edit_vid3_clients": yt._clients()}))
+    monkeypatch.setattr(yt, "_call", lambda *a, **k: pytest.fail("no request: the info is cached"))
+    info = yt.info(VIDEO)
+    assert info["wholeMb"] == 258.0 and "pesa 258 MB" in yt._undownloadable(info)
     yt.close()
