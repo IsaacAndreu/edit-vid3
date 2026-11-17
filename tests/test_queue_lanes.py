@@ -222,3 +222,35 @@ def test_voice_in_background_looks_at_the_lock(tmp_path):
     assert main.voice_in_background(tmp_path, "v1")
     (folder / "voz.mp3").write_bytes(b"x")
     assert not main.voice_in_background(tmp_path, "v1")
+
+
+def test_a_free_line_goes_to_the_person_with_fewer_videos_running(monkeypatch, tmp_path):
+    """17-11: antonio's videos came in during the round and queued behind three of yours."""
+
+    nap = time.sleep
+    order: list[str] = []
+    guard = threading.Lock()
+
+    class FakeProcess:
+        def __init__(self, args, **kwargs):
+            with guard:
+                order.append(args[args.index("--slug") + 1])
+            self.stdout = iter(())
+
+        def wait(self):
+            nap(0.2)
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakeProcess)
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)
+    monkeypatch.setattr(main, "needs_youtube", lambda root, slug: True)
+    monkeypatch.setattr(main, "footage_at_once", lambda root: 2)
+    monkeypatch.setattr(main, "waits_for_youtube", lambda root, slug: False)
+    monkeypatch.setattr(main, "on_hold", lambda root, slug: False)
+    monkeypatch.setattr(main, "voice_in_background", lambda root, slug, folders=None: False)
+    monkeypatch.setattr(main, "_write_report", lambda root, results: None)
+    monkeypatch.setattr(main.time, "sleep", lambda s: nap(min(s, 0.05)))
+    monkeypatch.setattr("pipeline.budget.owner_of_work", lambda root, slug: "antonio" if slug.startswith("gta") else "")
+
+    main.run_parallel(["mio1", "mio2", "mio3", "gtamapa"], 2, force=set(), until=None, review=False, root=tmp_path)
+    assert "gtamapa" in order[:2]                  # not last: the second line went to the partner

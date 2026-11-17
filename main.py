@@ -1249,6 +1249,15 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
 
     failed_at: dict[str, float] = {}
     folders: dict[str, Path] = {}
+    running_by: dict[str, int] = {}                # person → their videos running now (partners: usuarios.py)
+    owners_of: dict[str, str] = {}
+
+    def whose(slug: str) -> str:
+        if slug not in owners_of:
+            from pipeline.budget import owner_of_work
+
+            owners_of[slug] = owner_of_work(root, slug)
+        return owners_of[slug]
 
     def retried() -> list[str]:
         """«Reintentar» in the studio on a video that already failed in this round: it goes in again now."""
@@ -1325,10 +1334,15 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 # queue.shorts_last: a long video that came in meanwhile still goes before the Shorts
                 if not only_shorts and _queue_cfg(root).get("shorts_last", True):
                     fits.sort(key=lambda s: shorts[s])
+                # with partners, a free line goes to whoever has fewer videos running: take_turns ordered the round
+                # when it began, but what came in later queued behind everything (17-11: antonio's three gtaviprueba
+                # videos waited while three of yours ran and a fourth was next)
+                fits.sort(key=lambda s: running_by.get(whose(s), 0))
                 slug = fits[0] if fits else None
                 if slug is not None:
                     pending.remove(slug)
                     active[0] += 1
+                    running_by[whose(slug)] = running_by.get(whose(slug), 0) + 1
                     if not kinds[slug]:
                         footage_running[0] += 1
                 finished = not pending and active[0] == 0
@@ -1356,6 +1370,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             finally:
                 with lock:
                     active[0] -= 1
+                    running_by[whose(slug)] -= 1
                     if not kinds[slug]:
                         footage_running[0] -= 1
 
