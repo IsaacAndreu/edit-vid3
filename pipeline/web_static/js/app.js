@@ -26,9 +26,17 @@ async function route() {
   document.querySelectorAll("header nav a").forEach((a) => { const on = a.getAttribute("href") === hash.split("/").slice(0, 2).join("/") || (hash === "#/" && a.getAttribute("href") === "#/");
     a.classList.toggle("on", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
   document.querySelectorAll("header .dd").forEach((d) => { d.classList.remove("open"); d.classList.toggle("on", !!d.querySelector("a.on")); });
-  if (hash !== $("#app")._hash) quiet = false;
-  const slow = quiet ? 0 : setTimeout(() => { $("#app").classList.add("loading");          // a slow answer shows it is working
-    if (!$("#app").firstElementChild) paint($("#app"), '<div class="skel"><div></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>', true); }, 250);
+  const moving = hash !== $("#app")._hash;
+  if (moving) quiet = false;
+  // a slow answer shows it is working. Opening another page, the old one goes at once: it stayed on screen for the
+  // seconds the server took (the Radar under «Todos los vídeos» selected in the menu), as if the click did nothing.
+  const slow = quiet ? 0 : setTimeout(() => {
+    if (id !== navId) return;
+    if (moving || !$("#app").firstElementChild) {
+      paint($("#app"), '<div class="skel"><div></div><div class="kpis"><div></div><div></div><div></div><div></div></div><div class="tall"></div><div class="tall"></div></div>', true);
+      window.scrollTo(0, 0);
+    } else $("#app").classList.add("loading");
+  }, 150);
   try {
     document.body.classList.toggle("editing", hash.startsWith("#/editor/"));
     if (hash.startsWith("#/editor/")) await editorPage(decodeURIComponent(hash.slice(9)));

@@ -46,10 +46,10 @@ window.runBench = async (button) => {
 };
 
 async function stats(refresh = false) {
-  const [o, spend, st] = [await api("/api/overview"), await api("/api/spending"), await api("/api/stats" + (refresh ? "?refresh=1" : ""))];
-  const bench = window.partner ? {} : await api("/api/ytbench").catch(() => ({}));       // the server's: the owner's
-  const scenesBench = window.partner ? {} : await api("/api/scenebench").catch(() => ({}));
-  const times_ = window.partner ? {} : await api("/api/tiempos").catch(() => ({}));
+  // all at once: one after another they added up (overview + stats alone were 14 s on the server)
+  const own = (path) => (window.partner ? Promise.resolve({}) : api(path).catch(() => ({})));   // the server's: the owner's
+  const [o, spend, st, bench, scenesBench, times_] = await Promise.all([api("/api/overview"), api("/api/spending"),
+    api("/api/stats" + (refresh ? "?refresh=1" : "")), own("/api/ytbench"), own("/api/scenebench"), own("/api/tiempos")]);
   const y = o.youtube, max = Math.max(1, ...spend.map((d) => d.usd));
   const vids = st.videos.filter((v) => !statsChannel || v.channel === statsChannel);
   const out = vids.filter((v) => v.youtube).sort((a, b) => (b.youtube[statsSort] ?? -1) - (a.youtube[statsSort] ?? -1));
