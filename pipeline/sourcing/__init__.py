@@ -368,6 +368,8 @@ def run(ctx: RunContext) -> None:
     youtube = youtube_source(ctx) if yt_cfg.get("enabled", True) else None
     if youtube is not None and ctx.section("content").get("title_blocklist") is not None:
         youtube.cfg = {**youtube.cfg, "title_blocklist": ctx.section("content")["title_blocklist"]}
+    if youtube is not None and ctx.section("content").get("official_channels"):
+        youtube.cfg = {**youtube.cfg, "official_channels": ctx.section("content")["official_channels"]}
     images = ImageSources(
         root=ctx.root,
         cache_dir=ctx.cache_dir,

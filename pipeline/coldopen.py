@@ -101,6 +101,7 @@ def pick_moments(ctx: RunContext, count: int, seconds: float) -> list[tuple[floa
             if s.status == "selected" and s.start is not None and s.end is not None]
     name = tokens(story.subject.split("·")[0].strip())
     blocklist = ctx.section("content").get("title_blocklist")
+    official = ctx.section("content").get("official_channels")
     picks: list[tuple[float, list[tuple[Selection, float]]]] = []
     for item in chosen:
         try:
@@ -117,7 +118,7 @@ def pick_moments(ctx: RunContext, count: int, seconds: float) -> list[tuple[floa
             sel = selections.get(shot.id)
             if (sel is None or shot.id in replaced or sel.status != "selected" or sel.source != "youtube"
                     or sel.kind != "video" or sel.end is None or TALK.search(sel.title or "")
-                    or blocked_by_title(sel.title or "", sel.channel or "", blocklist)
+                    or blocked_by_title(sel.title or "", sel.channel or "", blocklist, official)
                     or (name and not name <= tokens(f"{sel.title or ''} {sel.channel or ''}"))):
                 continue
             start = float(sel.end)            # the action continues right after what was shown
@@ -148,7 +149,7 @@ def analysed_options(ctx: RunContext, shots: list, used: list, name: set[str], b
         for total, option in ranked(ShotScores.model_validate_json(scores.read_text("utf-8")).options, {}):
             c = by_id.get(option.candidateId)
             if (c is None or option.kind != "video" or c.source != "youtube" or c.id in skip or option.start is None
-                    or TALK.search(c.title or "") or blocked_by_title(c.title or "", c.channel or "", blocklist)
+                    or TALK.search(c.title or "") or blocked_by_title(c.title or "", c.channel or "", blocklist, official)
                     or (name and not name <= tokens(f"{c.title or ''} {c.channel or ''}"))
                     or any(cid == c.id and option.start < b + 1.0 and a < option.end + 1.0 for cid, a, b in used)):
                 continue

@@ -650,6 +650,7 @@ def run(ctx: RunContext) -> None:
     plans: dict[str, list[Option]] = {}
     doubtful: list[Shot] = []
     blocklist = ctx.section("content").get("title_blocklist")
+    allowed = ctx.section("content").get("official_channels")
     hook_seconds = float(cfg.get("hook_seconds", 30))
     judge_all = bool(cfg.get("all", False))
     trusted = [tokens(str(t)) for t in (cfg.get("trusted_channels") or []) if tokens(str(t))]
@@ -692,7 +693,8 @@ def run(ctx: RunContext) -> None:
         order = sorted((
             (s + official(o), o) for s, o in ranked(scores[shot.id].options, bonus)
             if not (offline and o.source == "youtube")
-            and s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
+            and s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
+                                                                   allowed)
             and not seen_elsewhere(o, elsewhere)
         ), key=lambda pair: -pair[0])
         plans[shot.id] = [o for _, o in order]
