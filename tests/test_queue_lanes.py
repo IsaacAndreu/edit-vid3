@@ -169,3 +169,56 @@ def test_a_new_video_or_its_uploaded_voice_wakes_the_watcher(tmp_path):
     wake.unlink()
     web.save_voice(tmp_path, "pazos", b"ID3" + b"\0" * 20_000)
     assert wake.is_file()
+
+
+def test_a_video_whose_voice_is_still_being_made_does_not_take_a_line(monkeypatch, tmp_path):
+    """17-11, 19:22: gta2 and gym3 waited for their voice on two of the three footage lines; newgym1/2 sat behind."""
+
+    nap = time.sleep
+    voiced = {"newgym1": True, "newgym2": True, "gta2": False, "gym3": False}
+    order: list[str] = []
+    guard = threading.Lock()
+
+    class FakeProcess:
+        def __init__(self, args, **kwargs):
+            self.slug = args[args.index("--slug") + 1]
+            with guard:
+                order.append(self.slug)
+            self.stdout = iter(())
+
+        def wait(self):
+            nap(0.2)
+            with guard:
+                if self.slug == "newgym2":           # meanwhile the voice thread finishes their voices
+                    voiced["gta2"] = voiced["gym3"] = True
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakeProcess)
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)
+    monkeypatch.setattr(main, "needs_youtube", lambda root, slug: True)
+    monkeypatch.setattr(main, "footage_at_once", lambda root: 2)
+    monkeypatch.setattr(main, "waits_for_youtube", lambda root, slug: False)
+    monkeypatch.setattr(main, "on_hold", lambda root, slug: False)
+    monkeypatch.setattr(main, "voice_in_background", lambda root, slug, folders=None: not voiced[slug])
+    monkeypatch.setattr(main, "_write_report", lambda root, results: None)
+    monkeypatch.setattr(main.time, "sleep", lambda s: nap(min(s, 0.05)))
+
+    results = main.run_parallel(["gta2", "gym3", "newgym1", "newgym2"], 2, force=set(), until=None,
+                                review=False, root=tmp_path)
+    assert sorted(r[0] for r in results) == ["gta2", "gym3", "newgym1", "newgym2"]
+    assert set(order[:2]) == {"newgym1", "newgym2"}          # the ones ready went first; the others once voiced
+
+
+def test_voice_in_background_looks_at_the_lock(tmp_path):
+    import os
+
+    folder = tmp_path / "materiales" / "v1"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text("Hola.")
+    assert not main.voice_in_background(tmp_path, "v1")
+    from pipeline import tts
+
+    (folder / tts.LOCK).write_text(f"{os.getpid()} x")
+    assert main.voice_in_background(tmp_path, "v1")
+    (folder / "voz.mp3").write_bytes(b"x")
+    assert not main.voice_in_background(tmp_path, "v1")

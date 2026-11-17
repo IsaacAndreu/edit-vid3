@@ -502,6 +502,22 @@ def needs_youtube(root: Path, slug: str) -> bool:
     return True
 
 
+def voice_in_background(root: Path, slug: str, folders: dict[str, Path] | None = None) -> bool:
+    """Its voz.mp3 is being made right now by the watcher's voice thread: the video would only sit on a line waiting
+    for it. At 19:22 on 17-11 gta2 and gym3 did, and with them two of the three footage lines: newgym1 and newgym2
+    waited behind two videos doing nothing."""
+
+    from pipeline import tts
+    from pipeline.context import find_video
+
+    folder = (folders or {}).get(slug)
+    if folder is None:
+        folder = find_video(root, slug)
+        if folders is not None:
+            folders[slug] = folder
+    return not (folder / "voz.mp3").is_file() and tts.generating(folder)
+
+
 def waits_for_youtube(root: Path, slug: str) -> bool:
     """YouTube is paused and this video needs it: it waits, unless it may go on without it (sin_youtube.py)."""
 
@@ -1232,6 +1248,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     last_refill = [time.monotonic()]
 
     failed_at: dict[str, float] = {}
+    folders: dict[str, Path] = {}
 
     def retried() -> list[str]:
         """«Reintentar» in the studio on a video that already failed in this round: it goes in again now."""
@@ -1303,7 +1320,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     def worker(only_shorts: bool) -> None:
         while True:
             with lock:
-                fits = [s for s in pending if (shorts[s] if only_shorts else True) and (kinds[s] or footage_running[0] < footage_max)]
+                fits = [s for s in pending if (shorts[s] if only_shorts else True) and (kinds[s] or footage_running[0] < footage_max)
+                        and not voice_in_background(root, s, folders)]   # it goes in once its voice is there
                 # queue.shorts_last: a long video that came in meanwhile still goes before the Shorts
                 if not only_shorts and _queue_cfg(root).get("shorts_last", True):
                     fits.sort(key=lambda s: shorts[s])
