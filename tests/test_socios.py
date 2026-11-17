@@ -92,11 +92,11 @@ def test_nothing_of_yours_opens_for_a_partner(studio):
     assert call("/api/videos", {"name": "nuevo", "channel": "atletismo", "script": SCRIPT})[0] == 200
 
 
-def test_you_still_see_everything_and_manage_partners(studio):
+def test_you_manage_partners_without_their_videos_in_your_lists(studio):
     root, call, login = studio
     assert login("clave") == 200
     data = json.loads(call("/api/overview")[1])
-    assert {v["slug"] for v in data["videos"]} == {"mio1", "suyo1"} and "partner" not in data
+    assert {v["slug"] for v in data["videos"]} == {"mio1"} and "partner" not in data      # their videos: in their lists
     assert {"aviacion", "atletismo"} <= {c["channel"] for c in json.loads(call("/api/canales")[1])["channels"]}
     listed = json.loads(call("/api/users")[1])["users"]
     assert [(u["name"], u["channels"], u["telegram"]) for u in listed] == [("amigo", ["atletismo"], False)]
@@ -344,3 +344,29 @@ def test_whose_video_comes_from_one_walk_of_materiales(studio, monkeypatch):
     assert len(walks) == 1
     usuarios.save(root, "amigo", ["atletismo", "aviacion"], "", "clave")    # a channel given to them counts at once
     assert budget.owner_of_work(root, "mio1") == "amigo"
+
+
+def test_you_do_not_see_your_partners_videos(studio):
+    root, call, login = studio
+    login("clave")
+    overview = json.loads(call("/api/overview")[1])
+    assert [v["slug"] for v in overview["videos"]] == ["mio1"] and "atletismo" not in overview["channels"]
+    assert [v["slug"] for v in json.loads(call("/api/upload")[1])["videos"]] == ["mio1"]
+    agenda = json.loads(call("/api/agenda")[1])
+    assert all(v["channel"] != "atletismo" for v in agenda["videos"])
+    login("contraseña-amigo")                                          # and they still see theirs
+    assert [v["slug"] for v in json.loads(call("/api/overview")[1])["videos"]] == ["suyo1"]
+
+
+def test_discarding_videos_you_will_never_upload(studio):
+    root, call, login = studio
+    login("clave")
+    (root / "work" / "mio1" / "big.bin").write_bytes(b"0" * 1000)
+    assert call("/api/upload/discard", {"slugs": []})[0] == 400
+    r = json.loads(call("/api/upload/discard", {"slugs": ["mio1", "../etc", "no-existe"]})[1])
+    assert r["discarded"] == ["mio1"] and set(r["skipped"]) == {"../etc", "no-existe"}
+    assert (root / "materiales" / "_descartados" / "mio1" / "guion.txt").is_file()        # the script stays
+    assert not (root / "out" / "mio1").exists() and not (root / "work" / "mio1").exists()  # the heavy files go
+    assert json.loads(call("/api/upload")[1])["videos"] == []
+    login("contraseña-amigo")
+    assert call("/api/upload/discard", {"slugs": ["suyo1"]})[0] == 403        # yours only
