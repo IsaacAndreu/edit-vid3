@@ -21,7 +21,10 @@ DEFAULT_USD_PER_GB = 0.62        # sourcing.youtube.proxy_usd_per_gb: what the r
 
 def read(path: Path, since: float = 0.0) -> list[dict[str, Any]]:
     rows = []
-    if not path.is_file():
+    try:
+        if path.stat().st_mtime < since:       # not written since then: no row of it is recent (they are appended)
+            return rows
+    except OSError:
         return rows
     for line in path.read_text("utf-8").splitlines():
         try:
