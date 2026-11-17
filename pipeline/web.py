@@ -53,6 +53,7 @@ STATIC_KINDS = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=
 
 _STATIC: dict[str, tuple[tuple[int, int, str], bytes, bytes, str, float]] = {}   # name → (mtime, size, version), body, gzip, etag, mtime
 _STATIC_LOCK = threading.Lock()
+SLOW_API_SECONDS = 1.0                 # an answer slower than this is written to the log
 
 
 def static_version() -> str:
@@ -1485,6 +1486,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
         def _ok(self, data: Any, code: int = 200) -> None:
             self._send(code, json.dumps(data, ensure_ascii=False, default=str).encode())
+            started = getattr(self, "_started", None)
+            if started is not None:      # a slow page of the studio shows up in the log (journalctl): which one, how long
+                took = time.monotonic() - started
+                if took >= SLOW_API_SECONDS:
+                    print(f"[estudio] {self.command} {urllib.parse.urlparse(self.path).path} tardó {took:.1f} s",
+                          file=sys.stderr, flush=True)
 
         def _fail(self, code: int, message: str) -> None:
             self._ok({"error": message}, code)
@@ -1580,6 +1587,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             editor.send(self, editor.respond(ctx, method, rest, query, body, raw))
 
         def do_GET(self) -> None:
+            self._started = time.monotonic()
             url = urllib.parse.urlparse(self.path)
             path = url.path
             if path.startswith("/editor/"):
