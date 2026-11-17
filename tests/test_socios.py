@@ -328,3 +328,19 @@ def test_the_queue_takes_turns_between_people(studio):
     assert main.take_turns(root, order) == ["suyo1", "mio1", "suyo2", "mio2", "mio3"]
     usuarios.remove(root, "amigo")
     assert main.take_turns(root, order) == order                    # alone: as before
+
+
+def test_whose_video_comes_from_one_walk_of_materiales(studio, monkeypatch):
+    """Inicio asked video by video and walked all of materiales/ each time (6 of its 14 s on the server)."""
+
+    from pipeline import budget, context
+
+    root, _, _ = studio
+    walks = []
+    real = context.video_folders
+    monkeypatch.setattr(context, "video_folders", lambda *a, **k: walks.append(1) or real(*a, **k))
+    for _ in range(50):
+        assert budget.owner_of_work(root, "suyo1") == "amigo" and budget.owner_of_work(root, "mio1") == ""
+    assert len(walks) == 1
+    usuarios.save(root, "amigo", ["atletismo", "aviacion"], "", "clave")    # a channel given to them counts at once
+    assert budget.owner_of_work(root, "mio1") == "amigo"

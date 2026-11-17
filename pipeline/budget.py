@@ -15,6 +15,8 @@ that is going wrong (negocio2-4 on 05-10: 1.4-1.5 $ each for chalkboard videos).
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,6 +56,39 @@ def dead_key(text: str) -> bool:
     return any(marker in text for marker in DEAD_KEY_MARKERS)
 
 
+_OWNERS: dict[tuple, tuple[float, dict[str, str]]] = {}
+_OWNERS_LOCK = threading.Lock()
+OWNERS_SECONDS = 30
+
+
+def _owners_by_slug(root: Path) -> dict[str, str]:
+    """{video slug: owner} for every video folder, from one walk of materiales/ (30 s in memory). Asking video by
+    video walked the whole of materiales/ each time: 389 walks, 6 of the 14 s the studio's overview took."""
+
+    from .context import video_folders
+    from .usuarios import owners
+    from .web import _channel_of
+
+    mapping = owners(root)                      # a channel given to someone else counts for them at once
+    key = (str(root), tuple(sorted(mapping.items())))
+    with _OWNERS_LOCK:
+        hit = _OWNERS.get(key)
+        if hit and time.monotonic() - hit[0] < OWNERS_SECONDS:
+            return hit[1]
+    found: dict[str, str] = {}
+    if mapping:
+        base = root / "materiales"
+        # the same folder find_video picks: a copy put away (materiales/_hechos/…) only when there is no other
+        put_away = lambda f: any(p.startswith(("_", ".")) for p in f.relative_to(base).parts[:-1])   # noqa: E731
+        for folder in sorted(video_folders(root), key=put_away):
+            if folder.name not in found:
+                found[folder.name] = mapping.get(_channel_of(root, folder), "")
+    with _OWNERS_LOCK:
+        _OWNERS.clear()                         # one root, one list of owners at a time: nothing piles up
+        _OWNERS[key] = (time.monotonic(), found)
+    return found
+
+
 def owner_of_work(root: Path, slug: str) -> str:
     """Whose spending a work folder is: a partner's name (their channel, usuarios.py) or "" (yours: your videos and
     every «_» folder, the radar, the ideas…)."""
@@ -61,6 +96,9 @@ def owner_of_work(root: Path, slug: str) -> str:
     if slug.startswith("_"):
         return ""
     try:
+        known = _owners_by_slug(root)
+        if slug in known:
+            return known[slug]
         from .context import find_video
         from .usuarios import owners
         from .web import _channel_of
@@ -77,13 +115,27 @@ def _mine(root: Path, folder: Path, owner: str | None) -> bool:
     return owner is None or owner_of_work(root, folder.name) == owner
 
 
+def _today_start() -> float:
+    return datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc).timestamp()
+
+
+def _untouched_since(path: Path, start: float) -> bool:
+    """A log not written since `start` has nothing from after it (its rows are appended as they happen)."""
+
+    try:
+        return path.stat().st_mtime < start
+    except OSError:
+        return True
+
+
 def spent_today(root: Path, owner: str | None = None) -> float:
     """Today's API spending (UTC); `owner` ("" you, a partner's name): only that person's videos."""
 
     today = datetime.now(timezone.utc).date().isoformat()
+    start = _today_start()
     total = 0.0
     for path in (root / "work").glob("*/costs.json"):
-        if not _mine(root, path.parent, owner):
+        if _untouched_since(path, start) or not _mine(root, path.parent, owner):
             continue
         try:
             entries = json.loads(path.read_text("utf-8")).get("entries", [])
@@ -159,10 +211,10 @@ class ProxyBudgetReached(ApiSearchesShort):
 def proxy_gb_today(root: Path, owner: str | None = None) -> float:
     """GB the paid proxy carried today (UTC): proxy_bytes of every request row of every video (of `owner`'s only)."""
 
-    start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc).timestamp()
+    start = _today_start()
     total = 0
     for path in (root / "work").glob("*/youtube_downloads.jsonl"):
-        if not _mine(root, path.parent, owner):
+        if _untouched_since(path, start) or not _mine(root, path.parent, owner):
             continue
         try:
             with path.open(encoding="utf-8") as handle:
