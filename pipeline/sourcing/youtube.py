@@ -1436,7 +1436,8 @@ class YouTubeSource:
             return False
         if entry.get("live_status") in ("is_live", "is_upcoming", "post_live"):
             return False
-        if blocked_by_title(str(entry.get("title") or ""), str(entry.get("channel") or ""), self.cfg.get("title_blocklist")):
+        if blocked_by_title(str(entry.get("title") or ""), str(entry.get("channel") or ""), self.cfg.get("title_blocklist"),
+                            self.cfg.get("official_channels")):
             return False
         if entry.get("unplayable"):
             return False        # the API already says the player will refuse it: no yt-dlp request for it

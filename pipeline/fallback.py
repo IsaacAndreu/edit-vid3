@@ -371,9 +371,11 @@ def run(ctx: RunContext) -> None:
             # whatever pool they come from: never a blocked source, never a source already on screen too often
             per_source = source_cap(judge_cfg, len(story.shots) * 2 // 3)   # about the footage shots
             blocklist = ctx.section("content").get("title_blocklist")
+            official = ctx.section("content").get("official_channels")
             options = [o for o in options
                        if not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
-                       and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist)
+                       and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
+                                                official)
                        and not overused(o.candidateId, used,
                                         per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
                        and f"{o.candidateId}@{o.start}" not in dead
@@ -457,7 +459,8 @@ def run(ctx: RunContext) -> None:
                 o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
                 if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId != failed_id
                 and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
-                                         ctx.section("content").get("title_blocklist"))
+                                         ctx.section("content").get("title_blocklist"),
+                                         ctx.section("content").get("official_channels"))
                 and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
                 and not seen_elsewhere(o, elsewhere)
             ][:limit]
@@ -761,6 +764,7 @@ def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4,
         group = [s for s in ordered[max(0, index - reach): index + reach + 1] if s.id != shot.id]
     judge_cfg = ctx.section("judge")
     blocklist = ctx.section("content").get("title_blocklist")
+    official = ctx.section("content").get("official_channels")
     options: dict[tuple[str, float | None], Option] = {}
     candidates: dict[str, Candidate] = {}
     # a neighbour's footage of someone this shot does not name is not this shot's footage: the script mentions
@@ -785,7 +789,7 @@ def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4,
                                     judge_cfg.get("source_bonus", {"youtube": 0.02})):
             c = found.get(option.candidateId)
             if c is None or option.kind != "video" or total < float(judge_cfg.get("min_accept", 0.22)) \
-                    or blocked_by_title(c.title, c.channel, blocklist):
+                    or blocked_by_title(c.title, c.channel, blocklist, official):
                 continue
             title = tokens(f"{c.title or ''} {c.channel or ''}")
             if any(name <= title for name in others) and not any(name & title for name in mine):
@@ -806,6 +810,7 @@ def protagonist_pool(ctx: RunContext, story: ShotsFile, person: str | None = Non
     name = tokens(person)                     # the full name: the surname alone also matches relatives
     judge_cfg = ctx.section("judge")
     blocklist = ctx.section("content").get("title_blocklist")
+    official = ctx.section("content").get("official_channels")
     options: dict[tuple[str, float | None], Option] = {}
     candidates: dict[str, Candidate] = {}
     for path in sorted((ctx.work_dir / "candidates").glob("s*.json")):   # per-shot files, not the stage summary
@@ -818,7 +823,7 @@ def protagonist_pool(ctx: RunContext, story: ShotsFile, person: str | None = Non
             c = found.get(option.candidateId)
             if (c is None or total < float(judge_cfg.get("min_accept", 0.22))
                     or not name <= tokens(f"{c.title or ''} {c.channel or ''}")
-                    or blocked_by_title(c.title, c.channel, blocklist)):
+                    or blocked_by_title(c.title, c.channel, blocklist, official)):
                 continue
             candidates[c.id] = c
             options.setdefault((option.candidateId, option.start), option)

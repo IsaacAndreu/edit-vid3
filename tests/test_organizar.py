@@ -166,3 +166,22 @@ def test_more_like_the_winner_avoids_what_was_done(tmp_path: Path, monkeypatch):
     assert seen["calls"] == 1
     organizar.similar_ideas(root, "n1", refresh=True)
     assert seen["calls"] == 2
+
+
+def test_a_german_channel_drafts_in_german(tmp_path: Path, monkeypatch):
+    root = _site(tmp_path)
+    (root / "canales" / "leonida.yaml").write_text(
+        "align: {language: de}\nideas: {words: 1500}\n",
+        encoding="utf-8")
+    seen = {}
+
+    def fake(ctx, **kwargs):
+        seen.update(kwargs)
+        return {"title": "GTA 6: Vice City", "script": "Das ist Miami. " * 100}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    organizar.draft_script(root, "leonida", {"title": "GTA 6: Vice City vs. Miami"})
+    assert "IDIOMA: escribe el guion y el título en alemán" in seen["user"]
+    assert "unas 1500 palabras" in seen["user"]
+    organizar.draft_script(root, "negocios", {"title": "Booking"})
+    assert "IDIOMA" not in seen["user"]

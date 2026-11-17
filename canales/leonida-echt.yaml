@@ -1,0 +1,158 @@
+# «Leonida echt» (alemán): el mundo real detrás de GTA 6. Leonida es Florida: los lugares de verdad (Miami, los Keys,
+# los Everglades), los casos y titulares reales que Rockstar parodia, y la comparación juego ↔ realidad. Sin gameplay
+# de otros canales: tráilers y capturas oficiales de Rockstar + metraje real de Florida + noticias + mapas de Atlas.
+# Estilo de la referencia (un canal inglés de 9-10 min sobre los sistemas de GTA 6): interfaz verde tipo menú del
+# juego sobre paneles oscuros, cifra grande, mapa con zona marcada, y la fuente siempre a la vista.
+# Úsalo con `canal: leonida-echt` y `serie: orte | verbrechen | vergleich` en materiales/<vídeo>/config.yaml.
+
+format: explicativo
+
+align:
+  language: de
+
+localize: |
+  Público de Alemania, Austria y Suiza que juega o va a jugar a GTA 6. Kilómetros, euros entre paréntesis cuando
+  una cifra en dólares necesita escala; fechas como allí (19. November 2026). Tono de alguien que lo ha investigado:
+  directo, con datos y sin exagerar. Nombres del juego tal como salen en la versión alemana o en inglés (Vice City,
+  Leonida Keys, Port Gellhorn); los lugares reales con su nombre (Miami, Florida Keys, Everglades).
+
+brand:                             # verde tipo menú de GTA 6 (medido en la referencia) sobre negro azulado
+  accent: "#3df58a"
+  accent2: "#ff4d6d"               # rojo: «Wanted», el lado del crimen en las comparativas
+  canvas: "#0b0f0e"
+  glow: "rgba(61,245,138,0.22)"
+  label: "#0f3d24"
+  wipe: "#3df58a"
+  panel: "#0c1411"
+  panelRaised: "#16221d"
+  muted: "#a7b8af"
+  ocean: "#123a4a"
+  land: "#1f3a2c"
+  mapStyle: flat
+  mapHighlight: "#3df58a"
+  border: "rgba(61,245,138,0.45)"
+  chapterStyle: numbered
+  statStyle: bare                  # la cifra grande en verde directamente sobre la imagen
+  labelStyle: tag
+  motion: editorial
+  dataStyle: dark
+
+pacing:                            # la referencia corta rápido: 3-4 s por plano
+  base_seconds: 3.6
+  fast_seconds: 2.6
+  hook_seconds: 25
+  hook_shot_seconds: 2.4
+
+graphics:
+  seconds_per_graphic: 60          # la referencia pone un panel cada ~30-60 s
+  cover_weak: true
+  types: [map, satellite, compare, split, kinetic, specs, timeline, scale, press, card, rule, news, post, search, board]
+
+people:
+  max: 3                           # protagonistas de un caso real (nunca los personajes del juego como «personas»)
+
+timeline:
+  assets: assets/leonida-echt      # música y efectos propios; si están vacías, assets/
+  labels: true                     # rótulo con el lugar real o la fuente («MIAMI · 2019», «ROCKSTAR · TRAILER 2»)
+  sound_bites: 0
+  emphasis_zoom: true
+  questions: true                  # «So how do you AVOID it?»: la pregunta del guion como texto en pantalla
+  music_default: tension
+
+fallback:
+  pexels: true                     # Miami, playas, pantanos: el stock 4K de Florida vale como relleno
+  generate: false
+
+content:
+  # Rockstar sube sus tráilers a su canal: solo de ahí entra metraje del juego (el filtro de «gta» y «official
+  # trailer» sigue para todo lo demás: gameplay, reacciones y vídeos de otros canales de GTA = contenido reutilizado).
+  official_channels: [Rockstar Games]
+  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, leak, leaks, reaction, react,
+                    minecraft, roblox, fortnite, red dead, videojuego, video game, simulator, speedrun,
+                    slag, julex, frametime, vprimix, taymetic, venom aimz, jakevi, gamestar, coletheman]
+
+planner:
+  shots_note: |
+    - EL JUEGO: solo tráilers y capturas OFICIALES de Rockstar Games ('Grand Theft Auto VI Trailer 2 Rockstar
+      Games', 'GTA VI Trailer 1 Vice City beach'). Nunca gameplay, filtraciones ni vídeos de otros youtubers.
+    - LA REALIDAD: metraje real del lugar o del caso, lo más concreto posible: tomas de dron ('Miami Beach Ocean
+      Drive aerial drone 4K', 'Seven Mile Bridge Florida Keys drone', 'Everglades airboat alligator'), noticias
+      locales del caso con año ('WSVN Miami news 2019 …', 'Florida man arrested news report'), fotos de prensa.
+    - COMPARACIÓN: cuando el guion compara juego y realidad, dos planos seguidos (primero el juego, luego el sitio
+      real) o un "split" con los dos.
+    - 'tag' en cada plano real con LUGAR · AÑO ('KEY WEST · 2023'); en los del juego, 'ROCKSTAR · TRAILER 1/2'.
+    - CIFRAS: población, kilómetros, dinero, condenas en un plano "stat" con su unidad.
+
+judge:
+  trusted_bonus: 0.06
+  note: "This is a German channel about the real Florida behind GTA 6. Official Rockstar Games trailers are
+    ACCEPTABLE for any line about the game (Vice City, Leonida, the characters). For lines about a real place or a
+    real case, prefer real footage of that exact place or case (drone shots, local news). Reject gameplay recorded
+    by other creators, reaction videos, streamers, a presenter talking to camera, or burned-in subtitles."
+  trusted_channels: [Rockstar Games, WSVN 7News, Local 10 News, NBC 6 South Florida, WPLG Local 10, CBS News Miami,
+                     WPTV News, FOX 13 Tampa Bay, Miami Herald, Associated Press, Reuters, NBC News, ABC News,
+                     DW Documentary, Florida Keys, Visit Florida, National Park Service]
+
+package:
+  thumbnail_style: concept
+  hint: "titular alemán con el LUGAR del juego frente al real o el CASO real detrás de algo del juego:
+    'Vice City vs. das echte Miami', 'Der echte Fall hinter …', 'Diesen Ort gibt es wirklich'. Miniatura partida
+    en dos (juego | realidad) o el sitio real con 1-3 palabras en verde: 'ECHT?', 'GIBT ES WIRKLICH', 'GLEICHER ORT'."
+
+ideas:
+  about: "ein deutscher YouTube-Kanal über die echte Welt hinter GTA 6: echte Orte in Florida, die in Leonida
+    nachgebaut sind, echte Kriminalfälle und Schlagzeilen, die Rockstar parodiert, und Vergleiche Spiel vs.
+    Realität, 8-12 Minuten"
+  pattern: "Ort oder Detail aus GTA 6 + das echte Vorbild in Florida + eine überraschende Tatsache"
+  words: 1500                      # 9-10 min de narración, como la referencia
+  my_channel: ""
+  competitors: []
+  niches: [GTA 6 echte Orte, Florida, Miami, Florida Keys, Everglades, Florida Man, echte Kriminalfälle, Spiel vs Realität]
+
+lab:
+  queries: [GTA 6 echte Orte, GTA 6 vs real life, Vice City vs Miami, Leonida real Florida, GTA 6 Florida Man,
+            GTA 6 echtes Vorbild]
+
+dubbing:
+  enabled: false
+
+# --- series --------------------------------------------------------------------------------------------------
+series:
+  orte:                            # «Vice City vs. das echte Miami»
+    format: explicativo
+    planner:
+      outline: "ESTE VÍDEO COMPARA UN LUGAR DE GTA 6 CON SU VERSIÓN REAL EN FLORIDA: qué es en el juego (tráiler
+        oficial), qué es en la realidad (metraje real), lo que Rockstar copió, lo que cambió y el dato que nadie
+        sabe del sitio real. Cada lugar real con 'tag' LUGAR · AÑO."
+    graphics:
+      types: [map, satellite, split, compare, specs, kinetic, scale, timeline]
+      hint: "Es un lugar del juego frente al real: usa \"satellite\" o \"map\" para situar el sitio real en Florida,
+        \"split\" o \"compare\" para juego frente a realidad, \"specs\" para la ficha del lugar (población, tamaño)
+        y \"kinetic\" para el dato sorprendente."
+    ideas:
+      pattern: "<Ort in GTA 6> vs. <echter Ort in Florida>: was Rockstar kopiert hat"
+      niches: [GTA 6 echte Orte, Miami, Florida Keys, Everglades, Florida Städte]
+
+  verbrechen:                      # «Welche echten Verbrechen stecken hinter GTA 6?»
+    format: caso-real
+    planner:
+      outline: "ESTE VÍDEO CUENTA UN CASO O TITULAR REAL DE FLORIDA QUE APARECE PARODIADO EN GTA 6: primero lo que
+        sale en el tráiler, después el caso real como un true crime (quién, dónde, cuándo, qué pasó, la condena) y
+        al final cómo lo convirtió Rockstar. 'tag' con LUGAR · AÑO; 'label' busca la noticia local del caso."
+    graphics:
+      types: [press, news, post, card, timeline, map, rule, kinetic, board, split]
+      hint: "Es un caso real: usa \"press\" o \"news\" para el titular, \"post\" para el vídeo viral, \"card\" para
+        presentar a la persona real, \"map\" para el lugar, \"rule\" para la condena y \"split\" para el tráiler frente
+        a la noticia."
+    ideas:
+      pattern: "Der echte Fall hinter <Szene aus GTA 6>"
+      niches: [Florida Man, echte Kriminalfälle Florida, virale Videos Florida, Bonnie und Clyde]
+
+  vergleich:                       # «GTA 6 vs. Realität: 10 Dinge, die wirklich so sind»
+    format: lista
+    graphics:
+      types: [split, compare, kinetic, specs, map, scale, press]
+      hint: "Es una lista juego frente a realidad: un \"split\" o \"compare\" por punto y \"kinetic\" para el número."
+    ideas:
+      pattern: "GTA 6 vs. Realität: <N> Dinge, die es in Florida wirklich gibt"
+      niches: [GTA 6 vs Realität, Florida Kuriositäten, Florida Gesetze]

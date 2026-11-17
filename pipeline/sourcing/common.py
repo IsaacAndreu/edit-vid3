@@ -293,9 +293,17 @@ def _has(term: str, text: str) -> bool:
     return bool(re.search(rf"(?<![a-z0-9]){re.escape(term.casefold())}(?![a-z0-9])", text))
 
 
-def blocked_by_title(title: str, channel: str, blocklist: list[str] | tuple[str, ...] | None = None) -> str | None:
-    """The blocklisted term found in a source's title/channel (video games, gameplay...), if any."""
+def blocked_by_title(title: str, channel: str, blocklist: list[str] | tuple[str, ...] | None = None,
+                     official: list[str] | tuple[str, ...] | None = None) -> str | None:
+    """The blocklisted term found in a source's title/channel (video games, gameplay...), if any.
 
+    `official` (content.official_channels) names channels whose uploads are always welcome, whatever the title says:
+    a channel about a video game needs the publisher's own trailers («GTA 6 Official Trailer» by Rockstar Games),
+    which the video-game and «official trailer» terms block everywhere else. The name must match exactly, so a fan
+    channel called «Rockstar Games Fan» is still filtered."""
+
+    if channel and official and channel.strip().casefold() in {str(o).strip().casefold() for o in official}:
+        return None
     text = f" {title} {channel} ".casefold()
     for term in [*(blocklist if blocklist is not None else DEFAULT_TITLE_BLOCKLIST), *ALWAYS_BLOCKED_TERMS]:
         if _has(term, text):
