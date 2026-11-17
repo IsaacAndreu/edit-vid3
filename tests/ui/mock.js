@@ -183,6 +183,11 @@ function post(st, path, body, who) {
   const ok = (message) => ({ok: true, ...(message ? {message} : {})});
   if (path === "/api/login" || path === "/api/logout" || path === "/api/password") return ok();
   if (path === "/api/search") return D.search(st, body.q || "", mine);
+  if (path === "/api/upload/discard") {
+    const slugs = body.slugs || [];
+    st.videos = st.videos.filter((v) => !slugs.includes(v.slug));
+    return {ok: true, discarded: slugs, skipped: [], gb: 1.5 * slugs.length};
+  }
   if (path === "/api/agenda") {
     const a = st.agenda;
     if (body.channel && a.schedule[body.channel]) { const e = a.schedule[body.channel]; if ("days" in body) e.days = [...new Set(body.days.map(Number))].sort(); if ("time" in body) e.time = String(body.time); if ("enabled" in body) e.enabled = !!body.enabled; }

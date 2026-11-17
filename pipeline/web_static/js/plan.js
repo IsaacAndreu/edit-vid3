@@ -204,6 +204,31 @@ const UPLOAD_STEPS = [["video", "Vídeo subido"], ["title", "Título"], ["descri
 let uploadChannel = (() => { try { return localStorage.getItem("subir:canal") || ""; } catch (e) { return ""; } })();
 window.pickUploadChannel = (c) => { uploadChannel = c; try { localStorage.setItem("subir:canal", c); } catch (e) {} uploadPage(); };
 let uploadOpenAll = false;
+// «Descartar»: the videos marked to never upload (kept while the page refreshes; gone with what was discarded)
+const uploadPicked = new Set();
+function discardBar() {
+  const bar = $("#discardbar");
+  if (!bar) return;
+  const n = uploadPicked.size;
+  bar.querySelector(".n").textContent = n ? `${n} marcado${n === 1 ? "" : "s"}` : "Marca los vídeos que no vas a subir";
+  bar.querySelector(".go").disabled = !n;
+  bar.querySelector(".none").hidden = !n;
+}
+window.pickUpload = (slug, on) => { on ? uploadPicked.add(slug) : uploadPicked.delete(slug); discardBar(); };
+window.pickAllUpload = (on) => {
+  document.querySelectorAll("input.pick").forEach((box) => { box.checked = on; on ? uploadPicked.add(box.dataset.slug) : uploadPicked.delete(box.dataset.slug); });
+  discardBar();
+};
+window.discardPicked = async () => {
+  const slugs = [...uploadPicked];
+  if (!slugs.length) return;
+  if (!(await ask(`¿Descartar ${slugs.length} vídeo${slugs.length === 1 ? "" : "s"}? Se borran el vídeo final, los Shorts y todo lo que se descargó para hacerlo${slugs.length === 1 ? "" : "s"}; el guion queda en materiales/_descartados. No se puede deshacer.`, {ok: `Descartar ${slugs.length}`, danger: true}))) return;
+  let r;
+  try { r = await post("/api/upload/discard", {slugs}); } catch (e) { return toast("No se pudo descartar: " + e.message, "bad"); }
+  r.discarded.forEach((slug) => uploadPicked.delete(slug));
+  toast(`${r.discarded.length} descartado${r.discarded.length === 1 ? "" : "s"} · ${r.gb} GB liberados${r.skipped.length ? ` · ${r.skipped.length} no (se están haciendo ahora)` : ""}`, r.skipped.length ? "" : "ok");
+  uploadPage();
+};
 window.uploadBody = (details, slug) => {
   const box = details.querySelector(".in"), make = (window.uploadBodies || {})[slug];
   if (details.open && make && !box.firstElementChild) fill(box, make());
@@ -224,6 +249,10 @@ async function uploadPage() {
     ${(() => { const chans = [...new Set(r.videos.map((v) => v.channel))].sort();
       return chans.length > 1 ? `<div class="tools mt-4">${["", ...chans].map((c) => `<button class="chip ${c === uploadChannel ? "on" : ""}" onclick="pickUploadChannel('${esc(c)}')">
         ${c ? `${dot(c)}${esc(c)} <span class="muted">${r.videos.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : ""; })()}
+    ${!window.partner && r.videos.length ? `<div class="row between mt-4 discardbar" id="discardbar"><span class="small muted n"></span>
+      <span class="row end"><button class="sm" onclick="pickAllUpload(true)">Marcar todos</button>
+        <button class="sm none" onclick="pickAllUpload(false)" hidden>Desmarcar</button>
+        <button class="sm b-bad go" onclick="discardPicked()" disabled>${icon("trash")} Descartar</button></span></div>` : ""}
     ${r.videos.filter((v) => !uploadChannel || v.channel === uploadChannel).map((v, i, list) => {
       const s = v.sections || {}, f = (p) => `/files/${encodeURIComponent(v.slug)}/${p.split("/").map(encodeURIComponent).join("/")}`;
       const when = v.date ? `${DAY(v.date)} · ${esc(v.time)}` : "sin día en el calendario";
@@ -234,7 +263,7 @@ async function uploadPage() {
       const done = UPLOAD_STEPS.filter(([k]) => checked(v.slug, k)).length;
       const video = v.files.find((x) => !x.image && !x.still && /video|mp4/i.test(x.label + " " + x.path));
       return `${group !== prevGroup ? `<div class="daylabel ${late ? "late" : v.date === today ? "today" : ""}">${esc(group)}</div>` : ""}
-      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""} ontoggle="uploadBody(this, '${esc(v.slug)}')"><summary>${dot(v.channel)}
+      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""} ontoggle="uploadBody(this, '${esc(v.slug)}')"><summary>${window.partner ? "" : `<input type="checkbox" class="pick" data-slug="${esc(v.slug)}" aria-label="Marcar para descartar: ${esc(v.title || v.slug)}" ${uploadPicked.has(v.slug) ? "checked" : ""} onclick="event.stopPropagation()" onchange="pickUpload(this.dataset.slug, this.checked)">`}${dot(v.channel)}
         <div class="mw0"><b class="lg">${esc(v.title || v.slug)}</b>
           <div class="small muted">${esc(v.channel)} · ${esc(v.slug)}${v.minutes ? ` · ${v.minutes} min` : ""} · <span class="mini ok"><i style="--v:${Math.round(100 * done / UPLOAD_STEPS.length)}%"></i></span> ${done}/${UPLOAD_STEPS.length} pasos</div></div>
         <span class="row end"><span class="pill ${late ? "error" : "hecho"}">${late ? "tocaba " : ""}${when}</span>
@@ -265,6 +294,9 @@ async function uploadPage() {
     if (!(await ask(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`, {ok: "Montarla"}))) return;
     button.disabled = true; await post("/api/compilations", {channel}); uploadPage();
   };
+  // a mark on a video that is no longer here (uploaded, discarded) goes
+  for (const slug of [...uploadPicked]) if (!r.videos.some((v) => v.slug === slug)) uploadPicked.delete(slug);
+  discardBar();
   if (r.compilationJob && r.compilationJob.running) schedule(uploadPage, 10000);
   window.doneUpload = async (slug) => {
     const url = await askText("Enlace del vídeo en YouTube (para seguir sus vistas a las 48 h y 7 días; opcional):", "", {placeholder: "https://youtu.be/…", ok: "Marcar como subido"});

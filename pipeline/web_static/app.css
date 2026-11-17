@@ -431,3 +431,12 @@ body.editing header, body.editing .skip { display: none; } body.editing main { m
 .editbar .btn > svg:first-child { transform: rotate(180deg); } .editbar .push > svg:first-child { transform: none; }
 .editframe { display: block; width: 100%; height: calc(100dvh - 45px); border: 0; background: #0e0f13; }
 .phone-only { display: none; } @media (max-width: 760px) { .phone-only { display: inline; } }
+/* «Para subir» → «Descartar»: the bar stays in view over a long list; a box to mark each video */
+.discardbar { position: sticky; top: 0; z-index: 4; background: var(--bg); padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+.discardbar .n { flex: 1 1 auto; }
+details.upl > summary input.pick { width: 18px; height: 18px; margin: 0; accent-color: var(--bad); cursor: pointer; }
+.upl > summary:has(> input.pick) { grid-template-columns: 18px 10px minmax(0, 1fr) auto; }
+@media (max-width: 760px) {
+  .upl > summary:has(> input.pick) { grid-template-columns: 18px 10px minmax(0, 1fr); }
+  .upl > summary:has(> input.pick) > :last-child { grid-column: 3; }
+}

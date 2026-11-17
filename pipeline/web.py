@@ -1128,6 +1128,57 @@ def stop(root: Path, slug: str) -> dict[str, Any]:
     return {"ok": True, "message": "Parado y fuera de la cola. La cola sigue con el siguiente en un minuto."}
 
 
+def partner_channels(root: Path) -> set[str]:
+    """The channels a partner has: you never see their videos in your own lists (they see them in theirs)."""
+
+    from . import usuarios
+
+    return set(usuarios.owners(root))
+
+
+def without_partners(root: Path, data: dict[str, Any]) -> dict[str, Any]:
+    """Your Inicio, Vídeos and channel picker: the overview without the partners' channels and videos."""
+
+    theirs = partner_channels(root)
+    if not theirs:
+        return data
+    return {**data, "videos": [v for v in data["videos"] if v.get("channel") not in theirs],
+            "channels": [c for c in data["channels"] if c not in theirs],
+            "channelKinds": {k: v for k, v in data["channelKinds"].items() if k not in theirs}}
+
+
+DISCARDED = "_descartados"
+
+
+def discard(root: Path, slugs: list[str]) -> dict[str, Any]:
+    """«Descartar» from «Para subir»: videos you will never upload. The folder goes to materiales/_descartados/ (the
+    script stays, nothing is made again) and its heavy files go: the final video, the shorts, the work folder."""
+
+    done, skipped, freed = [], [], 0
+    for slug in dict.fromkeys(str(s) for s in slugs):
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", slug) or slug.startswith(("_", ".")):
+            skipped.append(slug)
+            continue
+        if running(_json(root / "work" / slug / "current.json")):
+            skipped.append(slug)                   # being made right now: «Parar» first
+            continue
+        folder = find_video(root, slug)
+        if not folder.is_dir():
+            skipped.append(slug)
+            continue
+        target = root / "materiales" / DISCARDED / slug
+        if target.exists():
+            target = target.with_name(f"{slug}-{int(time.time())}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        folder.rename(target)
+        for heavy in (root / "out" / slug, root / "work" / slug):
+            if heavy.is_dir():
+                freed += sum(f.stat().st_size for f in heavy.rglob("*") if f.is_file())
+                shutil.rmtree(heavy, ignore_errors=True)
+        done.append(slug)
+    return {"ok": True, "discarded": done, "skipped": skipped, "gb": round(freed / 1e9, 2)}
+
+
 def archive(root: Path, slug: str) -> dict[str, Any]:
     """Out of the queue for good: materiales/_hechos/<slug>."""
 
@@ -1746,7 +1797,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._fail(500, f"{type(error).__name__}: {error}")
             try:
                 if path == "/api/overview":
-                    return self._ok(live(f"overview:{root}", 5, 600, lambda: overview(root)))
+                    return self._ok(without_partners(root, live(f"overview:{root}", 5, 600, lambda: overview(root))))
                 if path == "/api/users":                   # Ajustes → «Personas»: names and channels, no hashes
                     return self._ok({"users": usuarios.listing(root)})
                 if path == "/api/stats":                   # «Estadísticas» (pipeline/estadisticas.py)
@@ -1806,9 +1857,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if path == "/api/agenda":                  # the publishing calendar (pipeline/agenda.py)
                     from . import agenda
 
-                    listed = agenda.videos(root)
+                    theirs = partner_channels(root)
+                    listed = [v for v in agenda.videos(root) if v.get("channel") not in theirs]
                     return self._ok({"settings": agenda.settings(root), "weekdays": agenda.WEEKDAYS,
-                                     "plan": agenda.plan(root, days=28, listed=listed),
+                                     "plan": [s for s in agenda.plan(root, days=28, listed=listed) if s.get("channel") not in theirs],
                                      "reserve": agenda.reserve(root, listed), "videos": listed})
                 if path == "/api/voices":                  # GenAIPro voices per channel (pipeline/tts.py)
                     from . import tts
@@ -1871,7 +1923,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if path == "/api/upload":                  # «Para subir» (pipeline/organizar.py)
                     from . import compilacion, organizar
 
-                    return self._ok({"videos": organizar.to_upload(root), "compilations": compilacion.status(root),
+                    theirs = partner_channels(root)
+                    return self._ok({"videos": [v for v in organizar.to_upload(root) if v.get("channel") not in theirs],
+                                     "compilations": compilacion.status(root),
                                      "compilationJob": job_state(root, "compilacion")})
                 if path == "/api/scripts":                 # «Guiones»: what each channel's calendar still needs
                     from . import organizar
@@ -2253,6 +2307,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(piloto.enable(root, slug, body.get("reference") or None))
                 if path == "/api/update":
                     return self._ok(update_code(root))
+                if path == "/api/upload/discard":          # «Para subir» → «Descartar»: {slugs: [...]}
+                    slugs = body.get("slugs") or []
+                    if not isinstance(slugs, list) or not slugs:
+                        return self._fail(400, "Marca al menos un vídeo")
+                    return self._ok(discard(root, slugs))
                 if path == "/api/queue":
                     return self._ok(start_queue(root))
                 if path == "/api/queue/retry-all":
