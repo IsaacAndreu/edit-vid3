@@ -197,6 +197,9 @@ def _short_day(iso: str) -> str:
 
 # --- a first draft of a script --------------------------------------------------------------------------------
 
+LANGUAGE_NAMES = {"en": "inglés", "pt": "portugués de Brasil", "fr": "francés", "de": "alemán", "it": "italiano",
+                  "pl": "polaco"}
+
 DRAFT_SYSTEM = """
 Eres el guionista de un canal documental de YouTube. Escribe el GUION COMPLETO de un vídeo a partir de una idea,
 con la voz y el estilo del guion de referencia del canal (ritmo, tono, cómo arranca y cómo cierra), sin copiar sus
@@ -262,6 +265,10 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     if idea.get("outline"):
         brief.append("ESQUEMA:\n" + "\n".join(f"- {x}" for x in idea["outline"]))
     brief.append(f"LONGITUD: unas {words} palabras (como los vídeos del canal).")
+    language = str(ctx.section("align").get("language", "es"))[:2]
+    if language != "es":                         # a German or Brazilian channel: the voice reads this text as is
+        name = LANGUAGE_NAMES.get(language, language)
+        brief.append(f"IDIOMA: escribe el guion y el título en {name}, natural para ese público (nunca traducido).")
     if writing:
         brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
     from .simulacion import writing as simulation_writing
