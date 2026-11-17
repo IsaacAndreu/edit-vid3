@@ -302,7 +302,7 @@ async function peopleBlock(all) {
 }
 
 async function settingsPage() {
-  const [s, n] = [await api("/api/settings"), await api("/api/notify")];
+  const [s, n] = await Promise.all([api("/api/settings"), api("/api/notify")]);
   window.prioList = s.channel_priority || [];
   const guessUrl = n.studioUrl || (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "" : location.origin);
   if (!data) data = await api("/api/overview");

@@ -35,7 +35,7 @@ async function allVideosPage() {
 
 let errFilter = "todos";
 async function errorsPage() {
-  const [e, o] = [await api("/api/errors"), data && data.videos ? data : await api("/api/overview")];
+  const [e, o] = await Promise.all([api("/api/errors"), data && data.videos ? data : api("/api/overview")]);
   data = o;
   const done = o.videos.filter((v) => v.hasVideo).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const byVideo = Object.fromEntries(e.videos.map((v) => [v.slug, v]));

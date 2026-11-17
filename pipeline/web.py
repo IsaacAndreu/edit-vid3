@@ -330,6 +330,71 @@ def cached(key: str, seconds: float, make: Any) -> Any:
     return value
 
 
+# Pages that take seconds to build on a busy server (the overview: 9.4 s with a few hundred videos): the last answer
+# goes out at once and a new one is built in the background, one at a time. After a change (any POST but the
+# editor's saves) the next request waits for the new one, so a video just created is never missing.
+_LIVE: dict[str, dict[str, Any]] = {}
+_LIVE_LOCK = threading.Lock()
+
+
+def _live_build(key: str, make: Any, done: threading.Event) -> None:
+    try:
+        value = make()
+        with _LIVE_LOCK:
+            _LIVE[key].update(at=time.monotonic(), value=value, ok=True, dirty=False)
+    except Exception as e:                      # kept for the waiting request; the old answer stays for the rest
+        with _LIVE_LOCK:
+            _LIVE[key]["error"] = e
+    finally:
+        with _LIVE_LOCK:
+            _LIVE[key]["job"] = None
+        done.set()
+
+
+def _live_start(key: str, make: Any) -> threading.Event:
+    """The build running for `key`, or a new one (called with _LIVE_LOCK held)."""
+
+    entry = _LIVE.setdefault(key, {"at": 0.0, "value": None, "ok": False, "dirty": False, "job": None})
+    entry["make"] = make
+    if entry["job"] is None:
+        entry["error"] = None
+        entry["job"] = threading.Event()
+        threading.Thread(target=_live_build, args=(key, make, entry["job"]), daemon=True).start()
+    return entry["job"]
+
+
+def live(key: str, fresh: float, stale: float, make: Any) -> Any:
+    """`make()`'s value: as is when younger than `fresh` s; the old one plus a rebuild in the background when younger
+    than `stale` s; else (never built, too old, or changed by a POST) waiting for the rebuild."""
+
+    with _LIVE_LOCK:
+        entry = _LIVE.get(key)
+        age = time.monotonic() - entry["at"] if entry and entry["ok"] else None
+        if age is not None and not entry["dirty"]:
+            if age < fresh:
+                return entry["value"]
+            if age < stale:
+                _live_start(key, make)
+                return entry["value"]
+        job = _live_start(key, make)
+    job.wait(120)
+    with _LIVE_LOCK:
+        entry = _LIVE[key]
+        if not entry["ok"] and entry.get("error"):
+            raise entry["error"]
+        return entry["value"]
+
+
+def live_changed() -> None:
+    """Something changed (a POST): every live page is rebuilt now, and the next request waits for it."""
+
+    with _LIVE_LOCK:
+        for key, entry in _LIVE.items():
+            if entry["ok"]:
+                entry["dirty"] = True
+                _live_start(key, entry["make"])
+
+
 def _first_line(path: Path) -> str:
     try:
         return path.read_text("utf-8", errors="replace").strip().splitlines()[0][:200] if path.is_file() else ""
@@ -1401,7 +1466,7 @@ def partner_overview(root: Path, name: str, mine: list[str]) -> dict[str, Any]:
 
     from . import budget
 
-    data = overview(root)
+    data = live(f"overview:{root}", 5, 600, lambda: overview(root))      # shared with the owner: read only
     videos = [v for v in data["videos"] if v.get("channel") in mine]
     today = datetime.now(timezone.utc).date().isoformat()
     spent = 0.0
@@ -1486,6 +1551,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
         def _ok(self, data: Any, code: int = 200) -> None:
             self._send(code, json.dumps(data, ensure_ascii=False, default=str).encode())
+            if self.command == "POST" and not self.path.startswith("/editor/") and code < 400:
+                live_changed()           # a video created, a setting saved…: the next overview has it
             started = getattr(self, "_started", None)
             if started is not None:      # a slow page of the studio shows up in the log (journalctl): which one, how long
                 took = time.monotonic() - started
@@ -1679,13 +1746,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._fail(500, f"{type(error).__name__}: {error}")
             try:
                 if path == "/api/overview":
-                    return self._ok(overview(root))
+                    return self._ok(live(f"overview:{root}", 5, 600, lambda: overview(root)))
                 if path == "/api/users":                   # Ajustes → «Personas»: names and channels, no hashes
                     return self._ok({"users": usuarios.listing(root)})
                 if path == "/api/stats":                   # «Estadísticas» (pipeline/estadisticas.py)
                     from . import estadisticas
 
-                    return self._ok(estadisticas.report(root, bool(urllib.parse.parse_qs(url.query).get("refresh"))))
+                    if urllib.parse.parse_qs(url.query).get("refresh"):
+                        return self._ok(estadisticas.report(root, True))
+                    return self._ok(live(f"stats:{root}", 30, 1800, lambda: estadisticas.report(root, False)))
                 if path == "/api/spending":
                     return self._ok(spending(root))
                 if path == "/api/factura.csv":             # one person's month (a partner: only their own)
