@@ -67,10 +67,28 @@ const thumb = (src, cls = "shot", alt = "") => `<img class="${cls}" src="${esc(s
 // GETs answered in the last few seconds are served from memory (coming back to a page is instant); the page then
 // refreshes itself from the network when its own timer fires
 const apiCache = new Map();
+const API_FRESH = 8000, API_STALE = 15 * 60 * 1000;
 async function api(path, options = {}) {
   const isGet = !options.method || options.method === "GET";
   const hit = isGet && apiCache.get(path);
-  if (hit && Date.now() - hit.at < 8000) return hit.body;
+  if (hit && Date.now() - hit.at < API_FRESH) return hit.body;
+  // opening a page seen in the last minutes: its last answer at once (the server can take seconds to build some
+  // pages), and the page is painted again, quietly, when the new answer arrives. Never on a page's own refresh
+  // timer (`quiet`): that one waits for the network as before.
+  if (hit && !quiet && Date.now() - hit.at < API_STALE) {
+    if (!hit.refreshing) {
+      hit.refreshing = true;
+      const nav = navId, hash = location.hash;
+      fetch(path, {credentials: "same-origin"})
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+        .then((body) => {
+          apiCache.set(path, {at: Date.now(), body});
+          if (nav === navId && hash === location.hash && JSON.stringify(body) !== JSON.stringify(hit.body)) { quiet = true; route(); }
+        })
+        .catch(() => { hit.refreshing = false; });
+    }
+    return hit.body;
+  }
   // a GET belongs to the page that asked for it: when another page is opened its answer never arrives (the promise
   // stays pending), so a slow answer cannot paint the old page over the new one
   const stop = isGet ? navStop : null;
