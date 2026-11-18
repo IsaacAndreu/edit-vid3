@@ -1234,6 +1234,14 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             if status == "ERROR":
                 failed_at[slug] = time.time()
             _write_report(root, results)
+            bug = code_bug(detail) if status == "ERROR" else None
+            if bug:
+                hit = bugs.setdefault(bug, [])
+                if slug not in hit:
+                    hit.append(slug)
+                if len(hit) >= 2 and not stopped[0]:
+                    stopped[0] = True            # running videos finish; no new one starts
+                    stop_for_bug(root, bug, hit)
 
     # third-party footage videos at once (queue.footage_at_once, 1): the other lines are for videos drawn in code
     # (simulation, stick figures), which need neither YouTube nor the footage analysis; and one more line only for
@@ -1250,6 +1258,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     failed_at: dict[str, float] = {}
     folders: dict[str, Path] = {}
     running_by: dict[str, int] = {}                # person → their videos running now (partners: usuarios.py)
+    bugs: dict[str, list[str]] = {}                # an error of the program → the videos it stopped
+    stopped = [False]
     owners_of: dict[str, str] = {}
 
     def whose(slug: str) -> str:
@@ -1328,6 +1338,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
 
     def worker(only_shorts: bool) -> None:
         while True:
+            if stopped[0]:                       # the same bug twice: nothing more starts (stop_for_bug)
+                return
             with lock:
                 fits = [s for s in pending if (shorts[s] if only_shorts else True) and (kinds[s] or footage_running[0] < footage_max)
                         and not voice_in_background(root, s, folders)]   # it goes in once its voice is there
@@ -1388,6 +1400,33 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
 
 
 NOISE = ("[h264", "[hevc", "[mov", "[aac", "libpng", "[ WARN", "frame=", "size=")
+
+
+# An error of the program itself, not of the video: the same one in two videos means every video will hit it
+CODE_BUG = re.compile(r"\b(NameError|AttributeError|TypeError|ImportError|ModuleNotFoundError|SyntaxError|"
+                      r"UnboundLocalError|IndentationError)\b")
+
+
+def code_bug(detail: str) -> str | None:
+    """The error line when it is a bug of the program (NameError…), else None."""
+
+    return detail.strip()[:300] if detail and CODE_BUG.search(detail) else None
+
+
+def stop_for_bug(root: Path, line: str, slugs: list[str]) -> None:
+    """Two videos failed with the same bug: the queue pauses (out/_pausa, «Reanudar» in the studio) and says so,
+    instead of starting video after video that will fail at the same line (17-11: a whole night, ~28 GB of proxy)."""
+
+    (root / "out").mkdir(parents=True, exist_ok=True)
+    (root / "out" / "_pausa").write_text(f"error de código en {', '.join(slugs)}: {line}\n", encoding="utf-8")
+    message = (f"⛔ Cola en pausa: el mismo error del programa en {len(slugs)} vídeos ({', '.join(slugs[:5])}).\n\n{line}\n\n"
+               "No es culpa de los vídeos: copia el informe de uno («Copiar para Claude») y pásaselo a Claude. "
+               "Cuando esté arreglado, reanuda la cola en el estudio y pulsa «Reintentar».")
+    print(message, flush=True)
+    try:
+        notify(root, message)
+    except Exception as error:                   # the pause holds even without Telegram
+        print(f"(Aviso no enviado: {type(error).__name__}: {str(error)[:120]})")
 
 
 def _error_line(tail: list[str], code: int) -> str:
