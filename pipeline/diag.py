@@ -233,6 +233,11 @@ def collect(ctx: RunContext) -> dict[str, Any]:
     origin = origen.video(work, ctx.out_dir)
     if origin:
         data["origen"] = origin
+    from . import descartes
+
+    discarded = descartes.collect(work, ctx.out_dir, ctx.cache_dir)
+    if discarded:
+        data["descartado"] = discarded
     data.update(_log_facts(ctx))
     from . import ytstats
 
@@ -349,6 +354,10 @@ def markdown(data: dict[str, Any], tips: list[str], error: str | None) -> str:
         from . import origen
 
         lines += ["", *origen.lines(data["origen"])]
+    if data.get("descartado"):
+        from . import descartes
+
+        lines += ["", *descartes.lines(data["descartado"])]
     if data.get("pantalla"):
         lines += ["", "## En pantalla", ""] + [f"- {k}: {v:.0%}" for k, v in data["pantalla"].items()]
     if data.get("analisis"):
