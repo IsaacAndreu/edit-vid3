@@ -1556,6 +1556,17 @@ class YouTubeSource:
                 target = f"ytsearch{scrape_limit}:{query}"
                 extra = {"extract_flat": "in_playlist", "skip_download": True}
             self._local.video_id = None             # a search is nobody's video: the shared sticky session
+            if str(self.cfg.get("api_overflow", "esperar")).lower() == "mixto":
+                # api_overflow: mixto — the quota ran out: the searches left go by yt-dlp through the proxy's search
+                # session instead of waiting for tomorrow, but never more than overflow_searches_per_hour (60) for the
+                # whole machine, on top of the usual pace and hourly budget
+                with self._turn_lock:
+                    if not hasattr(self, "_overflow_budget"):
+                        self._overflow_budget = HourlyBudget(self.cache_dir / "videos" / ".busquedas-ytdlp",
+                                                             float(self.cfg.get("overflow_searches_per_hour", 60)))
+                waited = self._overflow_budget.take(1)
+                if waited:
+                    self._count("espera por tope de búsquedas yt-dlp", waited)
             info = self._call("search", lambda: self._extract(target, extra))
             keep = ("id", "title", "channel", "uploader", "duration", "url", "live_status", "view_count")
             return [{k: entry.get(k) for k in keep} for entry in (info or {}).get("entries") or [] if isinstance(entry, dict)]

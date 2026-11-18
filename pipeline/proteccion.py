@@ -37,8 +37,10 @@ def report(root: Path) -> list[str]:
         used = HourlyBudget(ctx.cache_dir / "videos" / (pacer_name(way) + BUDGET_SUFFIX), per_hour).used()
         lines.append(f"Conexión {name}: " + (f"EN CUARENTENA {int((until - now) / 60)} min más" if until > now else "libre")
                      + (f" · última hora {used:.0f}/{per_hour:.0f} peticiones" if per_hour else " · sin límite por hora"))
-    lines.append("Si la API no tiene búsquedas: " + ("busca con yt-dlp (api_overflow: ytdlp)"
-                 if str(yt.get("api_overflow", "esperar")).lower() == "ytdlp" else "el vídeo espera, nada por yt-dlp"))
+    overflow = str(yt.get("api_overflow", "esperar")).lower()
+    lines.append("Si la API no tiene búsquedas: " + ("busca con yt-dlp (api_overflow: ytdlp)" if overflow == "ytdlp" else
+                 f"busca con yt-dlp, como mucho {yt.get('overflow_searches_per_hour', 60)} por hora (api_overflow: mixto)"
+                 if overflow == "mixto" else "el vídeo espera, nada por yt-dlp"))
     try:
         last = float((ctx.cache_dir / "videos" / LAST_BLOCK).read_text().strip())
         hours = float(yt.get("bot_recovery_hours", 72))
