@@ -11,6 +11,7 @@ cache/videos/<id>/, so later videos on similar topics reuse the work.
 from __future__ import annotations
 
 import contextlib
+import json
 import math
 import os
 import re
@@ -1769,11 +1770,20 @@ class YouTubeSource:
     def captions(self, video_id: str) -> list[tuple[float, float, str]]:
         """Subtitle cues (en/es) — best effort: [] when there are none or YouTube refuses."""
 
+        folder = self.cache_dir / "videos" / video_id
+        failed = folder / "captions.fallo.json"
+        known = read_json(failed, {}) if failed.is_file() else {}
+        if isinstance(known, dict) and time.time() < float(known.get("until") or 0):
+            return []                 # failed a moment ago (any process): not asked again per option and per shot
+
         def produce() -> list[list[Any]]:
             info = self.info(video_id)
             url = info.get("captions", {}).get("en") or info.get("captions", {}).get("es")
             if not url:
                 return []
+            # YouTube's subtitles answer 429 to bursts (1 108 in the analysis stage, half of every GET): their own
+            # pace for the whole machine (captions_min_interval, 3 s), through the video's session as before
+            self._captions_pacer().wait()
             response = self._get(url, timeout=30)
             if response.status_code == 429:
                 raise RateLimited("subtítulos: 429")
@@ -1782,10 +1792,29 @@ class YouTubeSource:
             return [[c.start_seconds, c.end_seconds, c.text] for c in cues]
 
         try:
-            cues = cached_json(self.cache_dir / "videos" / video_id / "captions.json", produce)
-        except Exception:
+            cues = cached_json(folder / "captions.json", produce)
+        except SourceUnavailable:
+            return []                 # no YouTube now (pause, quarantine): nothing asked, nothing remembered
+        except Exception as error:
+            # 429 or a passing error: a short rest (captions_retry_minutes, 30); anything else for a day
+            minutes = float(self.cfg.get("captions_retry_minutes", 30)) if isinstance(error, RateLimited) \
+                or error_kind(str(error)) in ("429", "timeout") else 24 * 60.0
+            try:
+                atomic_write_text(failed, json.dumps({"until": time.time() + 60 * minutes,
+                                                      "error": error_detail(f"{type(error).__name__}: {error}")}))
+            except OSError:
+                pass
+            print(f"   yt:{video_id}: subtítulos no disponibles ({error_detail(str(error), 100) or type(error).__name__}); "
+                  f"no se piden otra vez en {minutes:.0f} min")
             return []
         return [tuple(c) for c in cues]  # type: ignore[misc]
+
+    def _captions_pacer(self) -> Pacer:
+        with self._turn_lock:
+            if not hasattr(self, "_captions_pace"):
+                self._captions_pace = SharedPacer(float(self.cfg.get("captions_min_interval", 3.0)),
+                                                  self.cache_dir / "videos" / ".ritmo-subtitulos")
+            return self._captions_pace
 
     # --- downloads without re-extraction ------------------------------------------------
 
