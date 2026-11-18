@@ -39,7 +39,7 @@ python3 -m venv .venv
 . .venv/bin/activate
 pip install -U pip wheel
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 pip install -U "yt-dlp[default]" yt-dlp-ejs bgutil-ytdlp-pot-provider psutil
 
 echo "== Paquetes de Node"

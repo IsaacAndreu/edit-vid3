@@ -1,0 +1,3 @@
+# Lo que hace falta para la suite de tests y la CI (además de requirements.txt)
+pytest>=8
+pyflakes

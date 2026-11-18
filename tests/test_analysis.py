@@ -119,6 +119,9 @@ class _FakeDetectors:
     def face_area(self, frame):
         return self.face
 
+    def text_edges(self, frames):
+        return None                                  # no burnt-in text on the edges (detectors.text_edges)
+
 
 class FineTests(unittest.TestCase):
     def _video(self, path: Path, seconds: int = 12) -> None:
