@@ -1,6 +1,7 @@
 """A residential proxy (user in its URL) gets one sticky session per video; home proxies stay as they are."""
 
 import json
+from pathlib import Path
 import time
 
 import pytest
@@ -8,6 +9,8 @@ import pytest
 from pipeline.sourcing.proxy_sessions import (ProxySessions, is_residential, mask_proxy, new_session_id,
                                               with_sticky_session)
 from pipeline.sourcing.youtube import YouTubeSource
+
+pytestmark = pytest.mark.usefixtures("fake_media_ok")    # ffmpeg is a double here
 
 RESI = "http://user:p%40ss@resi-bridge-eu.rainproxy.io:1111"
 HOME = "http://100.64.0.2:8899"
@@ -171,12 +174,17 @@ def test_range_downloads_build_their_ffmpeg_arguments_when_they_run(tmp_path, mo
             return False
 
         def download_with_info_file(self, path):
-            raw = tmp_path / "videos" / "dQw4w9WgXcQ" / "dl_hd_10.00_15.00.mp4"
+            raw = Path(seen["outtmpl"].replace("%(ext)s", "mp4"))     # this process's own .part name
             raw.write_bytes(b"x")
 
+    def run(cmd, **kw):
+        if cmd[0] == "ffmpeg":
+            Path(cmd[-1]).write_bytes(b"x")
+        return type("P", (), {"returncode": 0, "stdout": json.dumps(
+            {"streams": [{"start_time": "10.0", "height": 720}], "format": {"duration": "5"}})})()
+
     monkeypatch.setattr(yt, "_ydl", lambda extra=None: FakeYdl(extra))
-    monkeypatch.setattr("subprocess.run", lambda cmd, **kw: type("P", (), {"returncode": 0, "stdout": json.dumps(
-        {"streams": [{"start_time": "10.0", "height": 720}], "format": {"duration": "5"}})})())
+    monkeypatch.setattr("subprocess.run", run)
     yt.download_range("dQw4w9WgXcQ", 10, 15, fmt="bv*[height<=720]", prefix="hd")
     ffmpeg_i = seen["external_downloader_args"]["ffmpeg_i"]
     assert ffmpeg_i[ffmpeg_i.index("-http_proxy") + 1] == HOME

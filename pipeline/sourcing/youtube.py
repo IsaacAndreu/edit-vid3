@@ -25,6 +25,7 @@ import requests
 
 from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
+from ..fileio import clean_parts, file_lock, media_problem, part_for, publish
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
 from .proxy_sessions import SESSION_SUFFIX, ProxySessions, is_residential, with_sticky_session
@@ -414,6 +415,38 @@ class _QuietLogger:
     def error(self, msg: str) -> None: ...
 
 
+_CLEANED: set[str] = set()
+
+
+def _clean_leftovers(videos: Path) -> None:
+    """Once per process: the half-written files of a process that died (killed by a restart after `git pull`, a
+    power cut): `.part<pid>-…` whose process is gone, and the old fixed-name leftovers (wip_, dl_, hls_ work)."""
+
+    if str(videos) in _CLEANED or not videos.is_dir():
+        return
+    _CLEANED.add(str(videos))
+    removed = clean_parts(videos)
+    for pattern in ("*/wip_*", "*/dl_*", "*/hls_*"):          # the names used before 11-2026
+        removed += _remove_old(videos, pattern, 6.0)
+    if removed:
+        print(f"   Caché de YouTube: {removed} archivo(s) a medias de procesos que murieron, borrados")
+
+
+def _remove_old(folder: Path, pattern: str, older_hours: float) -> int:
+    import shutil
+
+    removed, now = 0, time.time()
+    for path in folder.glob(pattern):
+        try:
+            if now - path.stat().st_mtime < older_hours * 3600:
+                continue
+            shutil.rmtree(path, ignore_errors=True) if path.is_dir() else path.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 class YouTubeSource:
     def __init__(
         self, *, root: Path, cache_dir: Path, config: dict[str, Any], cookies_text: str | None = None,
@@ -540,6 +573,7 @@ class YouTubeSource:
         self.metrics_path: Path | None = None       # work/<slug>/youtube_downloads.jsonl (set by youtube_source)
         self.stage = ""
         self._metrics_lock = threading.Lock()
+        _clean_leftovers(cache_dir / "videos")
 
     def _po_tokens(self, options: dict[str, Any]) -> bool:
         """PO Token Provider (bgutil-ytdlp-pot-provider: the yt-dlp plugin + its small server, see docs/VPS.md)
@@ -1866,11 +1900,35 @@ class YouTubeSource:
                 except ValueError:
                     continue
                 side = self._range_sidecar(existing)
+                if not side and not self._legacy_range_ok(existing, suffix):
+                    continue
                 height, cap = side.get("height"), side.get("cap")
                 tall_enough = wanted is None or height is None or int(height) >= wanted or (cap is not None and int(cap) >= wanted)
                 if tall_enough:
                     candidates.append((rank, existing))
         return min(candidates, key=lambda c: (c[0], c[1].name))[1] if candidates else None
+
+    def _legacy_range_ok(self, path: Path, suffix: str) -> bool:
+        """A range from before the atomic writes (no sidecar): it may be the truncated output of an ffmpeg killed half
+        way. Checked once with ffprobe; a good one gets a neutral sidecar (same library behaviour as before), a bad
+        one is deleted so it is downloaded again."""
+
+        try:
+            _, a, b = path.stem.split("_")
+            span = float(b) - float(a)
+        except ValueError:
+            span = None
+        problem = media_problem(path, video=suffix != ".m4a", seconds=span, tolerance=max(1.0, 0.2 * (span or 0)))
+        if problem:
+            print(f"   {path.parent.name}/{path.name}: tramo de la caché roto ({problem}); se borra y se vuelve a bajar")
+            path.unlink(missing_ok=True)
+            return False
+        try:
+            path.with_suffix(path.suffix + ".json").write_text('{"height": null, "cap": null, "checked": true}',
+                                                               encoding="utf-8")
+        except OSError:
+            pass
+        return True
 
     @staticmethod
     def _range_sidecar(path: Path) -> dict[str, Any]:
@@ -1919,7 +1977,7 @@ class YouTubeSource:
 
         target_dir = self.cache_dir / "videos" / video_id
         suffix = ".m4a" if audio_only else ".mp4"
-        work = target_dir / f"hls_{prefix}_{start:.2f}_{end:.2f}"
+        work = part_for(target_dir / f"hls_{prefix}_{start:.2f}_{end:.2f}")      # this process's own folder
 
         def choose(path: Path) -> dict[str, Any]:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -1982,22 +2040,28 @@ class YouTubeSource:
                 piece = choose(self._fresh_full_info(video_id))
                 _, first_start, playlist = self._call("download (HLS)", lambda: fetch(piece))
             target = target_dir / f"{prefix}_{start:.3f}_{end:.3f}{suffix}"
+            part = part_for(target)                    # the final name only once it is complete and checked
             command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                        "-protocol_whitelist", "file,crypto,data", "-allowed_extensions", "ALL",
                        "-ss", f"{max(0.0, start - first_start):.3f}", "-i", str(playlist), "-t", f"{end - start:.3f}"]
             if audio_only:
-                command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(target)]
+                command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
             else:
                 command += ["-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)]
-            done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
-            if done.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
-                target.unlink(missing_ok=True)
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)]
+            try:
+                done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
+            except subprocess.TimeoutExpired:
+                part.unlink(missing_ok=True)
+                raise RuntimeError("yt-dlp download (HLS): el corte local tardó más de 10 min") from None
+            if done.returncode != 0 or not part.is_file() or part.stat().st_size == 0:
+                part.unlink(missing_ok=True)
                 words = " ".join((done.stderr or "").split())[:200]
                 raise RuntimeError(f"yt-dlp download (HLS): el corte local falló: {words or f'ffmpeg código {done.returncode}'}")
             if not audio_only:
                 height = piece.get("height")
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
+            self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS")
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -2032,26 +2096,35 @@ class YouTubeSource:
             return None
         if self.residential:
             print(f"   yt:{video_id}: sin HLS; se baja entero por el proxy ({size / 1e6:.0f} MB) para cortar el tramo")
-        with self._whole_locks_guard:
-            lock = self._whole_locks.setdefault(video_id, threading.Lock())
-        with lock:                                     # two clips of one video: one download
+        # two clips of one video, in this process or in another video's process: one download (an flock per video)
+        with file_lock(target_dir / f".lock-full_{prefix}"):
             done = next(iter(sorted(target_dir.glob(f"full_{prefix}.*"))), None)
             if done is not None and done.suffix in (".mp4", ".mkv", ".webm"):
                 return done
             target_dir.mkdir(parents=True, exist_ok=True)
-            options = {"format": fmt, "outtmpl": str(target_dir / f"wip_{prefix}.%(ext)s"), "overwrites": True,
+            wip = part_for(target_dir / f"wip_{prefix}.mp4").with_suffix("")      # this process's own name
+            options = {"format": fmt, "outtmpl": str(wip) + ".%(ext)s", "overwrites": True,
                        "http_chunk_size": 10 * 1024 * 1024, "merge_output_format": "mp4", "concurrent_fragment_downloads": 1}
 
             def fetch() -> None:
                 with self._ydl(options) as ydl:
                     ydl.download_with_info_file(str(info_path))
 
-            self._call("download (completo)", fetch)
-            produced = [p for p in target_dir.glob(f"wip_{prefix}.*") if p.stem == f"wip_{prefix}" and p.suffix in (".mp4", ".mkv", ".webm")]
+            try:
+                self._call("download (completo)", fetch)
+            except BaseException:
+                for leftover in target_dir.glob(f"{wip.name}.*"):
+                    leftover.unlink(missing_ok=True)
+                raise
+            produced = [p for p in target_dir.glob(f"{wip.name}.*") if p.stem == wip.name and p.suffix in (".mp4", ".mkv", ".webm")]
+            for leftover in target_dir.glob(f"{wip.name}.*"):          # the separate video/audio pieces
+                if leftover not in produced:
+                    leftover.unlink(missing_ok=True)
             if not produced:
                 return None
             final = target_dir / f"full_{prefix}{produced[0].suffix}"
-            produced[0].replace(final)
+            duration = float(data.get("duration") or 0) or None
+            self._publish(produced[0], final, video=True, seconds=duration, what="completo")
             return final
 
     def _cut(self, whole: Path, video_id: str, start: float, end: float, prefix: str, audio: bool) -> Path:
@@ -2060,14 +2133,34 @@ class YouTubeSource:
         import subprocess
 
         target = self.cache_dir / "videos" / video_id / f"{prefix}_{start:.3f}_{end:.3f}.mp4"
-        subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
-             "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-             "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(target)],
-            check=True, env=local_env(),
-        )
-        self._write_range_sidecar(target, height=self._probe_height(target), cap=self.cfg.get("max_height", 720))
+        part = part_for(target)                        # the final name only once it is complete and checked
+        try:
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
+                 "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)],
+                check=True, env=local_env(), timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            part.unlink(missing_ok=True)
+            raise RuntimeError(f"yt-dlp download: cortar {start:.1f}-{end:.1f} s de {video_id} tardó más de 10 min") from None
+        except subprocess.CalledProcessError as error:
+            part.unlink(missing_ok=True)
+            raise RuntimeError(f"yt-dlp download: ffmpeg no pudo cortar {start:.1f}-{end:.1f} s de {video_id} "
+                               f"(código {error.returncode})") from None
+        self._write_range_sidecar(target, height=self._probe_height(part), cap=self.cfg.get("max_height", 720))
+        self._publish(part, target, video=True, seconds=end - start, what="corte")
         return target
+
+    def _publish(self, part: Path, target: Path, *, video: bool, seconds: float | None, what: str) -> None:
+        """`part` → `target` once ffprobe sees a whole clip (a picture, and at least ~80 % of the seconds asked: the
+        source may end before `end`). Otherwise the RuntimeError names it and nothing reaches the cache."""
+
+        try:
+            publish(part, target, video=video, seconds=seconds, tolerance=max(1.0, 0.2 * (seconds or 0)))
+        except RuntimeError as error:
+            target.with_suffix(target.suffix + ".json").unlink(missing_ok=True)
+            raise RuntimeError(f"yt-dlp download ({what}): {error}") from None
 
     def _fetch_range(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
                      audio_only: bool, info_path: Path, *, exact: bool) -> Path:
@@ -2079,7 +2172,7 @@ class YouTubeSource:
         target_dir = self.cache_dir / "videos" / video_id
         suffix = ".m4a" if audio_only else ".mp4"
         stream = "a:0" if audio_only else "v:0"
-        raw = target_dir / f"dl_{prefix}_{start:.2f}_{end:.2f}.mp4"
+        raw = part_for(target_dir / f"dl_{prefix}_{start:.2f}_{end:.2f}.mp4")     # this process's own name
         options: dict[str, Any] = {
             "format": fmt,
             "outtmpl": str(raw.with_suffix(".%(ext)s")),
@@ -2103,20 +2196,20 @@ class YouTubeSource:
                     raise
                 # yt-dlp reports only the exit code (ffmpeg runs with -loglevel quiet): ask ffmpeg itself why
                 raise RuntimeError(f"{error} — ffmpeg dice: {self._ffmpeg_diagnosis(info_file, fmt)}") from None
-            produced = [p for p in target_dir.glob(f"dl_{prefix}_{start:.2f}_{end:.2f}.*")
+            produced = [p for p in target_dir.glob(f"{raw.stem}.*")
                         if p.suffix in (".mp4", ".webm", ".mkv", ".m4a", ".opus", ".weba", ".ts")]
             if not produced:
                 return None
-            probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time,height:format=duration",
-                 "-of", "json", str(produced[0])],
-                capture_output=True, text=True, env=local_env(),
-            )
             try:
+                probe = subprocess.run(
+                    ["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time,height:format=duration",
+                     "-of", "json", str(produced[0])],
+                    capture_output=True, text=True, env=local_env(), timeout=60,
+                )
                 info = json.loads(probe.stdout or "{}")
-            except ValueError:
-                info = {}
-            if probe.returncode != 0 or not info.get("streams") or not (info.get("format") or {}).get("duration"):
+            except (ValueError, subprocess.SubprocessError):
+                probe, info = None, {}
+            if probe is None or probe.returncode != 0 or not info.get("streams") or not (info.get("format") or {}).get("duration"):
                 produced[0].unlink(missing_ok=True)          # an empty or broken piece (no picture): not usable
                 return None
             return produced[0], info
@@ -2132,16 +2225,23 @@ class YouTubeSource:
         real_start = start if exact else float(info["streams"][0].get("start_time") or start)
         real_end = real_start + float(info["format"]["duration"])
         target = target_dir / f"{prefix}_{real_start:.3f}_{real_end:.3f}{suffix}"
-        subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(produced[0]), "-map", f"0:{stream}",
-             *(["-map", "0:a:0?"] if audio and not audio_only else []),
-             "-c", "copy", "-avoid_negative_ts", "make_zero", str(target)],
-            check=True, env=local_env(),
-        )
+        part = part_for(target)                        # the final name only once it is complete and checked
+        try:
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", str(produced[0]), "-map", f"0:{stream}",
+                 *(["-map", "0:a:0?"] if audio and not audio_only else []),
+                 "-c", "copy", "-avoid_negative_ts", "make_zero", str(part)],
+                check=True, env=local_env(), timeout=300,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            part.unlink(missing_ok=True)
+            produced[0].unlink(missing_ok=True)
+            raise RuntimeError(f"yt-dlp download: el remux del tramo falló ({type(error).__name__})") from None
         produced[0].unlink(missing_ok=True)
         if not audio_only:
             height = info["streams"][0].get("height")
             self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
+        self._publish(part, target, video=not audio_only, seconds=None, what="tramo")
         return target
 
     def _ffmpeg_args(self, exact: bool) -> dict[str, list[str]]:

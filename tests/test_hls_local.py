@@ -8,6 +8,8 @@ import pytest
 
 from pipeline.sourcing.youtube import YouTubeSource, parse_media_playlist
 
+pytestmark = pytest.mark.usefixtures("fake_media_ok")    # ffmpeg is a double here
+
 RESI = "http://user:pass@resi-bridge-eu.rainproxy.io:1111"
 VIDEO = "dQw4w9WgXcQ"
 PLAYLIST = """#EXTM3U
