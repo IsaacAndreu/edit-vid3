@@ -31,7 +31,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:                       # the return types of the audio curves; numpy is imported where it is used
+    import numpy as np
 
 from . import depth
 from .context import RunContext

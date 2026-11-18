@@ -254,3 +254,41 @@ def test_a_free_line_goes_to_the_person_with_fewer_videos_running(monkeypatch, t
 
     main.run_parallel(["mio1", "mio2", "mio3", "gtamapa"], 2, force=set(), until=None, review=False, root=tmp_path)
     assert "gtamapa" in order[:2]                  # not last: the second line went to the partner
+
+
+def test_the_same_bug_in_two_videos_pauses_the_queue_and_says_so(monkeypatch, tmp_path):
+    """17-11: a NameError stopped every footage video, one after another, for a whole night."""
+
+    nap = time.sleep
+    started: list[str] = []
+    told: list[str] = []
+
+    class FakeProcess:
+        def __init__(self, args, **kwargs):
+            self.slug = args[args.index("--slug") + 1]
+            started.append(self.slug)
+            self.stdout = iter(["Traceback (most recent call last):\n", "NameError: name 'official' is not defined\n"])
+
+        def wait(self):
+            nap(0.05)
+            return 1
+
+    monkeypatch.setattr("subprocess.Popen", FakeProcess)
+    monkeypatch.setattr(main, "is_drawn", lambda root, slug: False)
+    monkeypatch.setattr(main, "needs_youtube", lambda root, slug: True)
+    monkeypatch.setattr(main, "footage_at_once", lambda root: 1)
+    monkeypatch.setattr(main, "waits_for_youtube", lambda root, slug: False)
+    monkeypatch.setattr(main, "on_hold", lambda root, slug: False)
+    monkeypatch.setattr(main, "voice_in_background", lambda root, slug, folders=None: False)
+    monkeypatch.setattr(main, "_write_report", lambda root, results: None)
+    monkeypatch.setattr(main, "notify", lambda root, text: told.append(text))
+    monkeypatch.setattr(main.time, "sleep", lambda s: nap(min(s, 0.02)))
+
+    main.run_parallel(["v1", "v2", "v3", "v4", "v5"], 1, force=set(), until=None, review=False, root=tmp_path)
+    assert started == ["v1", "v2"]                                   # the third never starts
+    assert (tmp_path / "out" / "_pausa").is_file() and "NameError" in told[0] and "v1, v2" in told[0]
+
+
+def test_a_video_error_is_not_a_bug():
+    assert main.code_bug("YouTube rechazó las descargas") is None
+    assert main.code_bug("AttributeError: 'NoneType' object has no attribute 'x'")
