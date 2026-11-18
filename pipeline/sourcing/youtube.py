@@ -212,6 +212,20 @@ def all_quarantined(cache_dir: Path, proxies: list[str]) -> bool:
     return all(quarantined_until(cache_dir, p) > now for p in (proxies or [""]))
 
 
+def proxy_down_text(proxy: str, name: str) -> str:
+    """What to check when a proxy does not answer: a home PC (proxy-youtube + Tailscale) or a paid residential proxy
+    (its balance, credentials, the provider's status) — 2 722 notes on 17-11 spoke of Tailscale and «that PC» about
+    gw.dataimpulse.com. Both keep «no responde»: sourcing takes such notes as not final (STALE_NOTES)."""
+
+    from .proxy_sessions import is_residential
+
+    if is_residential(proxy):
+        return (f"El proxy residencial {name} no responde: mira en el panel del proveedor el saldo (GB), el usuario y "
+                "la contraseña, y su estado. El vídeo se reintenta solo en 15 min")
+    return (f"El proxy {name} no responde: ¿está abierto proxy-youtube en ese PC y conectado Tailscale? "
+            "El vídeo se reintenta solo en 15 min")
+
+
 def proxy_reachable(proxy: str, timeout: float = 5.0) -> bool:
     """The proxy program answers on its port (a TCP connection; nothing goes to YouTube). A direct way is always up."""
 
@@ -1080,8 +1094,7 @@ class YouTubeSource:
                 if self.proxies and _proxy_down(lowered) and len(tried_ways) >= len(self.proxies) - 1:
                     from ..budget import ProxyDown
 
-                    raise ProxyDown(f"El proxy {self.way_name(way)} no responde: ¿está abierto proxy-youtube en ese PC "
-                                    "y conectado Tailscale? El vídeo se reintenta solo en 15 min") from None
+                    raise ProxyDown(proxy_down_text(self.proxies[way], self.way_name(way))) from None
                 if len(self.proxies) > 1 and len(tried_ways) < len(self.proxies) - 1:
                     if _proxy_down(lowered):         # that way out is off (laptop asleep…): the others, and it rests
                         self._rest(way, float(self.cfg.get("proxy_rest_minutes", 10)) * 60, "no responde")
