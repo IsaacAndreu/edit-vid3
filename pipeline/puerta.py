@@ -93,11 +93,16 @@ def import_problems(folder: Path, python: str = sys.executable) -> tuple[list[st
 
 
 def check_folder(folder: Path, python: str = sys.executable) -> tuple[list[str], list[str]]:
-    """The quick check: (errors, warnings). No errors → the code can be deployed."""
+    """The quick check: (errors, warnings). No errors → the code can be deployed.
+
+    pyflakes missing on the machine (a server that pulled this code but has not run pip install yet) is a warning,
+    never an error: otherwise the gate would refuse every new commit — including the one that installs it."""
 
     errors = pyflakes_problems(folder, python)
+    missing = [e for e in errors if "pyflakes no está instalado" in e]
+    errors = [e for e in errors if e not in missing]
     import_errors, warnings = import_problems(folder, python)
-    return errors + import_errors, warnings
+    return errors + import_errors, missing + warnings
 
 
 def check_commit(root: Path, commit: str, python: str = sys.executable) -> tuple[list[str], list[str]]:

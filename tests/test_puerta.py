@@ -84,3 +84,14 @@ def test_a_new_third_party_dependency_is_only_a_warning(tmp_path, monkeypatch):
 def test_the_real_code_passes_the_quick_check():
     errors, _ = puerta.check_folder(Path(__file__).resolve().parents[1])
     assert not errors, "\n".join(errors)
+
+
+def test_without_pyflakes_installed_the_gate_still_lets_code_through(tmp_path, monkeypatch):
+    origin, server = _repo(tmp_path)
+    monkeypatch.setattr(puerta, "_notify", lambda root, text: None)
+    monkeypatch.setattr(puerta, "pyflakes_problems",
+                        lambda folder, python=None: ["pyflakes no está instalado (pip install -r requirements.txt)"])
+    (origin / "pipeline" / "uno.py").write_text("def f():\n    return 3\n")
+    git(origin, "commit", "-qam", "c")
+    moved, _ = puerta.pull(server)
+    assert moved and "pyflakes" in json.loads((server / puerta.STATE).read_text())["warnings"][0]
