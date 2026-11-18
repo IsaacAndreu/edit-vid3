@@ -280,14 +280,20 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         error: Exception | None = None
         for _ in range(int(ctx.section("planner").get("max_attempts", 3))):
             feedback = f"\n\nTu respuesta anterior no era válida: {error}. Corrígela." if error else ""
-            result = complete_json(
-                ctx,
-                stage=STAGE,
-                section="planner",
-                system=outline_system(ctx),
-                user=f"TÍTULO: {words_file.title}\n\nFRASES:\n{listing}{feedback}",
-                max_tokens=room,
-            )
+            try:
+                result = complete_json(
+                    ctx,
+                    stage=STAGE,
+                    section="planner",
+                    system=outline_system(ctx),
+                    user=f"TÍTULO: {words_file.title}\n\nFRASES:\n{listing}{feedback}",
+                    max_tokens=room,
+                )
+            except LLMError as exc:          # invalid or truncated JSON: one more attempt, telling it why
+                if "no respondió a tiempo" in str(exc):
+                    raise
+                error, result = exc, {}
+                continue
             try:
                 chapters = _validate_outline(result, sentences, words)
                 break
