@@ -494,7 +494,7 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     def produce() -> dict[str, Any]:
         from openai import OpenAI
 
-        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"))
+        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=180, max_retries=2)
         response = client.responses.create(
             model=model,
             instructions=instructions,

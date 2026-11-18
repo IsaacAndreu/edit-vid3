@@ -879,7 +879,7 @@ def _generate(ctx: RunContext, shot: Shot, reason: str, digest: str, out_dir: Pa
     target_png = ctx.cache_dir / "generated" / f"{key(model, prompt, cfg.get('image_quality', 'medium'))}.png"
     usd = 0.0
     if not target_png.is_file():
-        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"))
+        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=300, max_retries=1)
         response = client.images.generate(model=model, prompt=prompt, size="1536x1024",
                                           quality=str(cfg.get("image_quality", "medium")), n=1)
         target_png.parent.mkdir(parents=True, exist_ok=True)

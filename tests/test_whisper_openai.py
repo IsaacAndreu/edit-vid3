@@ -24,7 +24,7 @@ def test_a_long_voice_goes_in_pieces_and_keeps_its_timings(tmp_path, monkeypatch
             return {"duration": 2.0 if len(sent) < 3 else 1.0, "language": "spanish",
                     "words": [{"word": f"w{len(sent)}", "start": 0.5, "end": 0.9}]}
 
-    fake = types.SimpleNamespace(OpenAI=lambda api_key: types.SimpleNamespace(audio=types.SimpleNamespace(transcriptions=Transcriptions())))
+    fake = types.SimpleNamespace(OpenAI=lambda api_key, **kw: types.SimpleNamespace(audio=types.SimpleNamespace(transcriptions=Transcriptions())))
     monkeypatch.setitem(sys.modules, "openai", fake)
     monkeypatch.setattr(whisper_local, "OPENAI_MAX_BYTES", 10)
     monkeypatch.setattr(whisper_local, "OPENAI_CHUNK_SECONDS", 2)

@@ -146,7 +146,7 @@ def _pieces(audio_path: Path, folder: Path) -> list[Path]:
 def _transcribe_openai(audio_path: Path, api_key: str) -> dict[str, Any]:
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=600, max_retries=2)
     if audio_path.stat().st_size <= OPENAI_MAX_BYTES:
         return _transcribe_openai_file(client, audio_path)
     import tempfile

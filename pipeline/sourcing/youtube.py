@@ -1957,9 +1957,9 @@ class YouTubeSource:
 
         try:
             probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height",
-                                    "-of", "json", str(path)], capture_output=True, text=True, env=local_env())
+                                    "-of", "json", str(path)], capture_output=True, text=True, env=local_env(), timeout=60)
             return int((json.loads(probe.stdout or "{}").get("streams") or [{}])[0].get("height") or 0) or None
-        except (OSError, ValueError, TypeError, IndexError):
+        except (OSError, ValueError, TypeError, IndexError, subprocess.SubprocessError):
             return None
 
     def _fetch_hls_locally(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
@@ -2103,7 +2103,8 @@ class YouTubeSource:
             target_dir.mkdir(parents=True, exist_ok=True)
             wip = part_for(target_dir / f"wip_{prefix}.mp4").with_suffix("")      # this process's own name
             options = {"format": fmt, "outtmpl": str(wip) + ".%(ext)s", "overwrites": True,
-                       "http_chunk_size": 10 * 1024 * 1024, "merge_output_format": "mp4", "concurrent_fragment_downloads": 1}
+                       "http_chunk_size": 10 * 1024 * 1024, "merge_output_format": "mp4", "concurrent_fragment_downloads": 1,
+                       **self._whole_deadline(size)}
 
             def fetch() -> None:
                 with self._ydl(options) as ydl:
@@ -2125,6 +2126,26 @@ class YouTubeSource:
             duration = float(data.get("duration") or 0) or None
             self._publish(produced[0], final, video=True, seconds=duration, what="completo")
             return final
+
+    def _whole_deadline(self, size_bytes: float) -> dict[str, Any]:
+        """yt-dlp options so a whole download can never hang a stage: a connection crawling under
+        `whole_min_rate_kb` (100 KB/s) is dropped and retried (throttledratelimit: yt-dlp re-extracts), each
+        fragment/chunk retries `fragment_retries` (5) times, and the whole download stops after a total time
+        proportional to its size (`whole_deadline_seconds_per_mb`, 6 s/MB, plus 2 min)."""
+
+        options: dict[str, Any] = {"throttledratelimit": int(float(self.cfg.get("whole_min_rate_kb", 100)) * 1024),
+                                   "fragment_retries": int(self.cfg.get("fragment_retries", 5))}
+        if size_bytes <= 0:                  # size unknown: only the crawl detection, no total limit
+            return options
+        mb = size_bytes / 1e6
+        limit = 120 + float(self.cfg.get("whole_deadline_seconds_per_mb", 6)) * mb
+        deadline = time.monotonic() + limit
+
+        def hook(status: dict[str, Any]) -> None:
+            if status.get("status") == "downloading" and time.monotonic() > deadline:
+                raise RuntimeError(f"yt-dlp download (completo): más de {limit:.0f} s para {mb:.0f} MB; se corta")
+
+        return {**options, "progress_hooks": [hook]}
 
     def _cut(self, whole: Path, video_id: str, start: float, end: float, prefix: str, audio: bool) -> Path:
         """[start, end] of the downloaded source, cut exactly (re-encoding only those seconds)."""

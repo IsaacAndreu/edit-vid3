@@ -94,7 +94,7 @@ def concept_image(ctx: RunContext, scene: str, accent: str, side: str, n: int) -
     if not cached.is_file():
         from openai import OpenAI
 
-        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"))
+        client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=300, max_retries=1)
         response = client.images.generate(model=model, prompt=prompt, size="1536x1024", quality=quality, n=1)
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(base64.b64decode(response.data[0].b64_json))

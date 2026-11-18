@@ -51,7 +51,7 @@ def test_what_if_images_are_illustrations(tmp_path, monkeypatch):
             return types.SimpleNamespace(data=[types.SimpleNamespace(b64_json=base64.b64encode(png.tobytes()).decode())],
                                          usage=None)
 
-    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=lambda api_key: types.SimpleNamespace(images=Images())))
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=lambda api_key, **kw: types.SimpleNamespace(images=Images())))
     ctx = RunContext.create("v", root=tmp_path, config={"paths": {}})
     monkeypatch.setattr(ctx, "env", lambda *a, **k: "key")
     ctx.write_json("shots.json", {"context": "Spain 2008"})

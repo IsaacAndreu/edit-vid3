@@ -130,3 +130,19 @@ def test_a_quarantine_is_never_shortened_by_another_process(tmp_path, monkeypatc
     yt._quarantine(0)
     assert quarantined_until(tmp_path, "") >= far - 1
     yt.close()
+
+
+def test_whole_downloads_carry_a_deadline_and_crawl_detection(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
+    unknown = yt._whole_deadline(0)
+    assert unknown["throttledratelimit"] == 100 * 1024 and unknown["fragment_retries"] == 5
+    assert "progress_hooks" not in unknown
+    options = yt._whole_deadline(20e6)
+    hook = options["progress_hooks"][0]
+    hook({"status": "downloading"})                     # in time: nothing
+    clock = time.monotonic() + 10_000
+    monkeypatch.setattr(time, "monotonic", lambda: clock)
+    with pytest.raises(RuntimeError, match="se corta"):
+        hook({"status": "downloading"})
+    yt.close()

@@ -100,7 +100,7 @@ def ask(ctx: RunContext, prompt: str, images: list[tuple[str, bytes]]) -> dict[s
         content.append({"type": "input_text", "text": label})
         content.append({"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(data).decode(),
                         "detail": "high" if label.startswith("Sheet") else "low"})
-    response = OpenAI(api_key=ctx.env("OPENAI_API_KEY")).responses.create(
+    response = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=180, max_retries=2).responses.create(
         model=model, instructions=REVIEW_INSTRUCTIONS, reasoning={"effort": str(cfg.get("reasoning_effort", "low"))},
         input=[{"role": "user", "content": content}],
         text={"format": {"type": "json_schema", "name": "review", "strict": True, "schema": REVIEW_SCHEMA}},
