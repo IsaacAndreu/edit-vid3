@@ -230,6 +230,23 @@ análisis → juez → relleno) encontró estas causas, todas comprobadas en el 
   protagonista (negocios, megaproyectos, crímenes) las búsquedas salen genéricas. (Inferencia: confírmalo con
   `shots.json` de un vídeo de cada canal si el usuario te lo pasa.)
 
+Datos de cuatro vídeos terminados (`selection.json` → `stats`, y `decidedBy` de `out/<slug>/manifest.json`):
+
+| Vídeo | Planos | El juez aceptó algo | Acaban con la elección del juez | Resto |
+|---|---|---|---|---|
+| tedbundy (crimen) | 137 | 113 (82 %) | 95 | 26 de relleno, 3 sin dato |
+| elcrimendepazos (crimen) | 303 | 133 (44 %) | 121 | 49 de relleno, 119 sin dato |
+| atleta1 (deporte) | 221 | 95 (43 %) | 56 | 59 de relleno, 92 sin dato |
+| guiadelmapa (GTA) | 155 | 85 (55 %; solo 115 llegaron al juez) | 79 | 51 vídeos de Pexels sin juez, 25 de otro relleno |
+
+`judgeErrors` y `byScore` son 0 en los cuatro: el juez no falla ni se le salta por error. Lo que pasa es que en la
+mitad de los planos **rechaza todo lo que se le enseña**, o no se le enseña nada (40 planos de guiadelmapa sin
+candidatos). El problema está antes del juez: la búsqueda y la elección del momento no le traen material bueno, y
+el relleno tapa el hueco con algo peor. En atleta1 además se pierden 39 elecciones del juez entre el veredicto y el
+montaje (descargas fallidas). En guiadelmapa un tercio del vídeo es stock de Pexels elegido por CLIP sin juez.
+«Sin dato» son planos con medio pero con `decidedBy` nulo en el manifiesto (`pipeline/qa.py`): averigua qué son
+(¿planos que heredan el medio del anterior?) y haz que el manifiesto lo diga.
+
 Qué hacer, por orden. Lo que no cuesta proxy ni llamadas entra encendido; lo que sube gasto, con opción y medida.
 
 1. Arregla el `Literal` de `protagonist-photo`, con su test.
