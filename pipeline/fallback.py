@@ -384,7 +384,9 @@ def run(ctx: RunContext) -> None:
             if not options:
                 return None
             if vet:
-                verdict = call_judge(ctx, shot, contact_sheet(options, candidates, ctx.root), LETTERS[: len(options)],
+                sheet = contact_sheet(options, candidates, ctx.root, frames=int(judge_cfg.get("frames_per_candidate", 3)),
+                                      tile_width=int(judge_cfg.get("tile_width", 320)))
+                verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)],
                                      story.context or story.title, False, story.subject, source_lines(options, candidates),
                                      around=surrounding(story.shots, shot.id))
                 by_letter = dict(zip(LETTERS, options))

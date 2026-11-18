@@ -144,10 +144,11 @@ VERDICT_SCHEMA = {
 # --- contact sheet ---------------------------------------------------------------------
 
 
-def _video_frames(option: Option, candidate: Candidate, root: Path) -> list[np.ndarray]:
+def _video_frames(option: Option, candidate: Candidate, root: Path, count: int = 3) -> list[np.ndarray]:
     assert option.start is not None and option.end is not None
     span = option.end - option.start
-    times = [option.start + span * q for q in (0.2, 0.5, 0.8)]
+    times = [option.start + span * (0.2 + 0.6 * i / max(1, count - 1)) for i in range(count)] if count > 1 \
+        else [option.start + span / 2]
     frames: list[np.ndarray] = []
     if option.analysisPath:
         path = root / option.analysisPath
@@ -164,8 +165,11 @@ def _video_frames(option: Option, candidate: Candidate, root: Path) -> list[np.n
         capture.release()
     elif candidate.storyboard is not None:  # coarse-only option: the storyboard thumbnails around it
         board = candidate.storyboard
-        for t in times:
-            index = min(board.frames - 1, int(t / board.interval))
+        # a 2-4 s fragment falls inside ONE thumbnail (they are 2-10 s apart): the judge saw the same picture three
+        # times. Different thumbnails around it instead — the one of the fragment in the middle
+        centre = min(board.frames - 1, int((option.start + span / 2) / board.interval))
+        indices = sorted({max(0, min(board.frames - 1, centre + d)) for d in range(-(count // 2), count - count // 2)})
+        for index in indices:
             sheet_index, x, y = board.locate(index)
             sheet = cv2.imread(str(root / board.sheets[sheet_index]))
             if sheet is not None:
@@ -174,24 +178,29 @@ def _video_frames(option: Option, candidate: Candidate, root: Path) -> list[np.n
     return [f for f in frames if f.size > 0]
 
 
-def contact_sheet(options: list[Option], candidates: dict[str, Candidate], root: Path) -> np.ndarray:
+def contact_sheet(options: list[Option], candidates: dict[str, Candidate], root: Path, *, frames: int = 3,
+                  tile_width: int = TILE[0]) -> np.ndarray:
+    """One row per option: `frames` pictures of the exact fragment (judge.frames_per_candidate, 3) at `tile_width`
+    (judge.tile_width, 320) — more or bigger ones cost more tokens per call: options, measured before switching."""
+
+    tile = (int(tile_width), int(round(tile_width * 9 / 16)))
     label_width = 70
     rows = []
     for letter, option in zip(LETTERS, options):
         candidate = candidates[option.candidateId]
         if option.kind == "image":
             picture = cv2.imread(str(root / option.analysisPath)) if option.analysisPath else None
-            frames = [picture] * 3 if picture is not None else []
+            pictures = [picture] * frames if picture is not None else []
         else:
-            frames = _video_frames(option, candidate, root)
-        tiles = [cv2.resize(f, TILE, interpolation=cv2.INTER_AREA) for f in frames[:3]]
-        while len(tiles) < 3:
-            tiles.append(np.zeros((TILE[1], TILE[0], 3), np.uint8))
-        label = np.full((TILE[1], label_width, 3), 30, np.uint8)
+            pictures = _video_frames(option, candidate, root, frames)
+        tiles = [cv2.resize(f, tile, interpolation=cv2.INTER_AREA) for f in pictures[:frames]]
+        while len(tiles) < frames:
+            tiles.append(np.zeros((tile[1], tile[0], 3), np.uint8))
+        label = np.full((tile[1], label_width, 3), 30, np.uint8)
         cv2.putText(label, letter, (14, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.8, (255, 255, 255), 3)
         cv2.putText(label, "FOTO" if option.kind == "image" else "VIDEO", (6, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         rows.append(np.hstack([label, *tiles]))
-        rows.append(np.full((4, label_width + 3 * TILE[0], 3), 90, np.uint8))
+        rows.append(np.full((4, label_width + frames * tile[0], 3), 90, np.uint8))
     return np.vstack(rows[:-1])
 
 
@@ -312,7 +321,14 @@ def continuation(shot: Any, shots: list[Any], selections: list[Any], picked: dic
     if run + shot.duration > MAX_THIRD_PARTY_SECONDS:
         return None
     start = round(last.start + first, 3)
-    return option.model_copy(update={"start": start, "end": round(start + shot.duration, 3)})
+    end = round(start + shot.duration, 3)
+    # only seconds the judge saw and accepted for THIS shot (an accepted fragment of the master overlapping them);
+    # `judge.continue_unseen: true` brings back the old rule (any accepted fragment of the master)
+    if not cfg.get("continue_unseen", False) and not any(
+            o.candidateId == master and o.start is not None and o.end is not None and o.start < end and start < o.end
+            for o in judged):
+        return None
+    return option.model_copy(update={"start": start, "end": end})
 
 
 def own_event(title: str | None, shot: Any) -> bool:
@@ -462,6 +478,9 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     model = str(cfg.get("model", "gpt-5-mini"))
     if not hook and cfg.get("model_rest"):   # judge.model_rest: a cheaper model outside the hook (the hook keeps `model`)
         model = str(cfg["model_rest"])
+    if hook and cfg.get("model_hook"):       # judge.model_hook: a stronger model for the first seconds only
+        model = str(cfg["model_hook"])
+    model = str(cfg.get("_model_override") or model)      # pipeline/rejuzgar.py: the same sheets, another model
     if str(cfg.get("provider", "openai")) != "openai":
         raise ValueError("judge.provider: solo 'openai' está implementado (modelo con visión).")
     ok, encoded = cv2.imencode(".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -739,12 +758,16 @@ def run(ctx: RunContext) -> None:
             options = plans[shot.id][round_number * shown : (round_number + 1) * shown]
             if not options:
                 break
-            sheet = contact_sheet(options, candidates, ctx.root)
+            sheet = contact_sheet(options, candidates, ctx.root, frames=int(cfg.get("frames_per_candidate", 3)),
+                                  tile_width=int(cfg.get("tile_width", TILE[0])))
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
             cv2.imwrite(str(sheets_dir / f"{shot.id}{suffix}.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds,
-                                 subject, source_lines(options, candidates), around=surrounding(shots_file.shots, shot.id),
-                                 portraits=portraits_for(shot))
+            sources = source_lines(options, candidates)
+            verdict = _judge_with_retry(lambda: call_judge(
+                ctx, shot, sheet, LETTERS[: len(options)], topic, shot.start < hook_seconds, subject, sources,
+                around=surrounding(shots_file.shots, shot.id), portraits=portraits_for(shot)), cfg)
+            _save_sheet_context(sheets_dir / f"{shot.id}{suffix}.json", shot, options, sources, topic, subject,
+                                shot.start < hook_seconds, verdict)
             by_letter = dict(zip(LETTERS, options))
             seen += options
             accepted = [by_letter[letter] for letter in verdict["ranking"] if letter in by_letter]
@@ -791,6 +814,11 @@ def run(ctx: RunContext) -> None:
             # Only what the judge accepted, in its order. If it rejected everything it saw, the shot
             # goes to fallback rather than to an option nobody looked at.
             preference = judged
+        elif shot.id in failed_shots and str(cfg.get("on_error", "relleno")) == "relleno":
+            # the judge could not answer (twice): the fallback (which judges its own options) rather than CLIP's
+            # order nobody looked at; judge.on_error: puntuacion keeps the old way
+            selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback"))
+            continue
         master = masters.get(_event_key(shot))
         if (follow := continuation(shot, shots, selections, picked, judged, master, cfg)) is not None:
             preference = [follow, *preference]           # the strong moment of the shot before runs on (≤ 5 s in all)
@@ -866,6 +894,39 @@ def run(ctx: RunContext) -> None:
     print(f"   Juez: {len(verdicts)} llamadas · gasto acumulado del juez {spent:.3f} $ · {time.monotonic() - started:.0f} s")
     for error in errors[:5]:
         print(f"   AVISO juez: {error}")
+
+
+def _judge_with_retry(call: Any, cfg: dict[str, Any]) -> dict[str, Any]:
+    """One more try after a pause (judge.error_retries, 1): a passing API error used to send the shot straight to
+    CLIP's order in silence. A dead key is not retried."""
+
+    from .budget import dead_key
+
+    tries = int(cfg.get("error_retries", 1)) + 1
+    for attempt in range(tries):
+        try:
+            return call()
+        except Exception as error:
+            if attempt + 1 >= tries or dead_key(str(error)):
+                raise
+            time.sleep(float(cfg.get("error_pause_seconds", 5)) * (attempt + 1))
+    raise AssertionError("inalcanzable")
+
+
+def _save_sheet_context(path: Path, shot: Shot, options: list[Option], sources: str, topic: str, subject: str,
+                        hook: bool, verdict: dict[str, Any]) -> None:
+    """Next to each saved sheet (work/<slug>/judge/<shot>.jpg) what the judge was asked and answered, so another model
+    can judge the same sheets later (python -m pipeline.rejuzgar) and the verdicts be compared."""
+
+    try:
+        path.write_text(json.dumps({
+            "shotId": shot.id, "letters": LETTERS[: len(options)], "sources": sources, "topic": topic,
+            "subject": subject, "hook": hook,
+            "options": [{"candidateId": o.candidateId, "start": o.start, "end": o.end, "pass": o.pass_} for o in options],
+            "verdict": {k: verdict.get(k) for k in ("ranking", "reason", "confidence") if k in verdict},
+        }, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _verdict(info: dict[str, Any] | None, chosen: Option | None, cfg: dict[str, Any]) -> JudgeVerdict | None:
