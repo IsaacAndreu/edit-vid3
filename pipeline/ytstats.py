@@ -36,7 +36,27 @@ def read(path: Path, since: float = 0.0) -> list[dict[str, Any]]:
     return rows
 
 
+def is_skip(row: dict[str, Any]) -> bool:
+    """A row written before 11-2026 for a video already refused («descartado … no se vuelve a pedir»): nothing was
+    asked, so it is no failed request (≈4 800 of them in «otros» on 17-11)."""
+
+    return not row.get("ok") and "descartado (" in str(row.get("detail") or "")
+
+
+def cause_of(row: dict[str, Any]) -> str:
+    """The row's cause (written since 11-2026), or the same classification over its words for older rows."""
+
+    if row.get("cause"):
+        return str(row["cause"])
+    from .sourcing.youtube import error_cause
+
+    detail = str(row.get("detail") or "")
+    return error_cause(detail) if detail else ("sin-texto" if (row.get("error") or "other") == "other" else str(row["error"]))
+
+
 def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    skipped = sum(1 for r in rows if is_skip(r))
+    rows = [r for r in rows if not is_skip(r)]
     calls = [r for r in rows if not str(r.get("action", "")).startswith("archivo ")]
     files = [r for r in rows if str(r.get("action", "")).startswith("archivo ")]
     done = [r for r in files if r.get("ok") and r.get("bytes")]
@@ -44,6 +64,11 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for r in calls:
         if not r.get("ok"):
             errors[r.get("error") or "other"] = errors.get(r.get("error") or "other", 0) + 1
+    causes: dict[str, int] = {}
+    for r in rows:
+        if not r.get("ok"):
+            cause = cause_of(r)
+            causes[cause] = causes.get(cause, 0) + 1
     megabytes = sum(r["bytes"] for r in done) / 1e6
     seconds = sum(float(r.get("seconds") or 0) for r in done)
     return {
@@ -51,6 +76,8 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "ok": sum(1 for r in calls if r.get("ok")),
         "failed": sum(1 for r in calls if not r.get("ok")),
         "errors": errors,
+        "causes": causes,
+        "skipped": skipped,
         "retried": sum(1 for r in calls if r.get("ok") and int(r.get("attempt") or 1) > 1),
         "with_cookies": sum(1 for r in calls if r.get("cookies")),
         "pot": any(r.get("pot") for r in calls),
@@ -96,6 +123,11 @@ def lines(s: dict[str, Any]) -> list[str]:
     ]
     if s["errors"]:
         out.append("- Errores: " + ", ".join(f"{ERRORS.get(k, k)} {n}" for k, n in sorted(s["errors"].items(), key=lambda kv: -kv[1])))
+    if s.get("causes"):
+        out.append("- Causas (peticiones y archivos): " + ", ".join(
+            f"{k} {n}" for k, n in sorted(s["causes"].items(), key=lambda kv: -kv[1])))
+    if s.get("skipped"):
+        out.append(f"- Vídeos ya descartados, no pedidos (no cuentan como fallo): {s['skipped']}")
     return out
 
 

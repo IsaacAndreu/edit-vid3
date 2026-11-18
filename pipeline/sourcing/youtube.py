@@ -59,6 +59,45 @@ def error_kind(message: str) -> str:
     return "other"
 _RATE_MARKERS = ("http error 429", "too many requests")
 
+# What a failure was, finer than error_kind (which drives the retry logic and stays as it was): the request log keeps
+# it as «cause», so «otros» — 1/3 of every failure on 17-11, most rows without a word — can be told apart.
+_CAUSES = (
+    ("proxy-túnel", ("unable to connect to proxy", "tunnel connection failed")),
+    ("proxy-407", ("407", "proxy authentication required")),
+    ("proxy-sin-respuesta", ("no responde", "proxy connection refused", "connection refused", "proxyerror")),
+    ("formato-no-disponible", ("requested format is not available", "no hls stream")),
+    ("tramo-vacío", ("tramo vacío", "empty media playlist", "no segment covers", "salió incompleto")),
+    ("ffmpeg", ("ffmpeg", "corte local", "remux")),
+    ("conexión-cortada", ("connection reset", "connection aborted", "remote end closed", "broken pipe",
+                          "incompleteread", "connection broken", "eof occurred")),
+    ("http-5xx", ("http error 500", "http error 502", "http error 503", "http error 504", " 502 ", " 503 ")),
+    ("http-404", ("http error 404", "http error 410")),
+    ("plazo", ("se corta", "tardó más de")),
+    ("dns", ("name or service not known", "temporary failure in name resolution", "getaddrinfo")),
+    ("yt-dlp-roto", ("nonetype", "keyerror", "typeerror", "indexerror", "attributeerror", "expected str instance")),
+)
+
+
+def error_cause(message: str) -> str:
+    """The cause of a failure for the request log: error_kind's answer, or for «other» a finer name (proxy tunnel,
+    proxy not answering, format not available, ffmpeg, empty piece, connection cut, 5xx…)."""
+
+    kind = error_kind(message)
+    low = message.casefold()
+    if kind == "unavailable" and ("requested format is not available" in low or "no hls stream" in low):
+        return "formato-no-disponible"         # error_kind calls it «unavailable» («not available»): it is not the video
+    if kind not in ("other", "timeout"):
+        return kind
+    for cause, markers in _CAUSES:
+        if any(marker in low for marker in markers):
+            return cause
+    return kind if low.strip() else "sin-texto"
+
+
+class Refused(RuntimeError):
+    """A video this machine already refused (bot through several IPs, no HLS and too big, VPN, region): nothing was
+    asked, so it is not a failed request in the log — the next candidate, at once."""
+
 
 def error_detail(message: str, limit: int = 320) -> str:
     """An error's words for the request log: one line, proxy credentials masked (//****@), video ids kept."""
@@ -196,9 +235,13 @@ def tunnel_failure(lowered: str) -> str | None:
     down; a 407 is the credentials and is left to the usual handling."""
 
     found = re.search(r"tunnel connection failed: (\d{3})", lowered)
-    if not found or found.group(1) == "407":
-        return None
-    return found.group(1)
+    if found:
+        return None if found.group(1) == "407" else found.group(1)
+    # «Unable to connect to proxy … Tunnel …» without a status (4 442 metadata failures): the exit node dropped the
+    # CONNECT — transient, like a 5xx; another session before the video is given up
+    if "unable to connect to proxy" in lowered and "407" not in lowered and "authentication" not in lowered:
+        return "sin respuesta"
+    return None
 
 
 # yt-dlp warnings that explain slow or failing downloads: shown once each (the rest stays quiet).
@@ -637,8 +680,10 @@ class YouTubeSource:
                                "video": getattr(self._local, "video_id", None), "ok": ok, "error": error,
                                "attempt": attempt, "cookies": cookies, "clients": self.clients, "pot": self.pot,
                                "seconds": round(seconds, 2), "wait": round(getattr(self._local, "waited", 0.0), 2)}
-        if detail and not ok:
-            row["detail"] = error_detail(detail)
+        if not ok:
+            # every failure carries its words and a cause (20 524 metadata failures without a word on 17-11)
+            row["detail"] = error_detail(detail) if detail else f"(sin texto; error {error or 'desconocido'})"
+            row["cause"] = error_cause(detail) if detail else (error if error not in ("", "other") else "sin-texto")
         if getattr(self._local, "via_metadata_proxy", False):
             row["proxy"] = "metadatos"
         elif self.proxies:
@@ -1316,9 +1361,12 @@ class YouTubeSource:
             response = self._session_get(way, url, timeout)
         if is_residential((self.proxies or [""])[way]):      # paid per GB: every GET through it is in the log
             self._local.proxy_bytes = len(response.content or b"")
+            from urllib.parse import urlsplit
+
             self._metric("get", ok=response.status_code < 400, seconds=time.monotonic() - began,
                          error="" if response.status_code < 400 else ("429" if response.status_code == 429 else
-                                                                       "403" if response.status_code == 403 else "other"))
+                                                                       "403" if response.status_code == 403 else "other"),
+                         detail=f"HTTP Error {response.status_code} en {urlsplit(url).hostname}")
         return response
 
     def _session_get(self, way: int, url: str, timeout: float) -> requests.Response:
@@ -1497,7 +1545,7 @@ class YouTubeSource:
         self._local.video_id = video_id
         why = self.refused_why(video_id)
         if why is not None and (why != "bot" or not self._info_path(video_id).is_file()):
-            raise RuntimeError(f"{video_id}: descartado ({self._refusal_text(why)}); no se vuelve a pedir")
+            raise Refused(f"{video_id}: descartado ({self._refusal_text(why)}); no se vuelve a pedir")
         path = self._info_path(video_id)
         if path.is_file():
             try:
@@ -1754,7 +1802,8 @@ class YouTubeSource:
         try:
             path = self._download_range(video_id, start, end, fmt=fmt, prefix=prefix, audio=audio, audio_only=audio_only)
         except Exception as error:
-            if not (self.offline and str(error) == self.offline):      # never asked: not a failed download
+            # never asked (no YouTube now, or a video already refused): not a failed download
+            if not (self.offline and str(error) == self.offline) and not isinstance(error, Refused):
                 self._metric(f"archivo {prefix}", ok=False, seconds=time.monotonic() - began,
                              error=error_kind(str(error)), span=(start, end), detail=str(error))
             raise
@@ -1784,8 +1833,8 @@ class YouTubeSource:
         if existing is not None:
             return existing
         if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo"):
-            raise RuntimeError(f"yt-dlp download: {video_id} descartado ({self._refusal_text(self.refused_why(video_id) or '')}); "
-                               "se pasa al siguiente candidato")
+            raise Refused(f"yt-dlp download: {video_id} descartado ({self._refusal_text(self.refused_why(video_id) or '')}); "
+                          "se pasa al siguiente candidato")
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
