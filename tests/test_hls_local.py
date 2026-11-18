@@ -74,6 +74,15 @@ class Got:
     def __init__(self, content, status=200):
         self.content, self.status_code, self.reason = content, status, "OK" if status == 200 else "Forbidden"
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def iter_content(self, size):
+        yield from ([self.content] if self.content else [])
+
 
 def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tmp_path, monkeypatch):
     monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
@@ -82,7 +91,7 @@ def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tm
     monkeypatch.setattr(yt, "_ydl", lambda extra=None: FakeYdl(extra or {}))
     fetched = []
 
-    def get(url, headers=None, timeout=None, proxies=None):
+    def get(url, headers=None, timeout=None, proxies=None, stream=False):
         fetched.append((url, headers, proxies))
         if url.endswith("index.m3u8"):
             return Got(PLAYLIST.encode())
@@ -103,7 +112,7 @@ def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tm
 
     assert result.name == "hd_7.000_11.000.mp4" and result.read_bytes() == b"mp4"
     urls = [u.rsplit("/", 3)[-3] if "/sq/" in u else u.rsplit("/", 1)[-1] for u, _, _ in fetched]
-    assert urls == ["index.m3u8", "init.mp4", "1", "2"]                   # the playlist, the init, segments 5-10 and 10-15 s only
+    assert urls[:2] == ["index.m3u8", "init.mp4"] and sorted(urls[2:]) == ["1", "2"]   # segments 5-10 and 10-15 s only (in parallel)
     sticky = fetched[0][2]["https"]
     assert "-time-30-session-" in sticky and all(p["https"] == sticky for _, _, p in fetched)   # one IP, the video's
     assert all(h == {"User-Agent": "UA"} for _, h, _ in fetched)
@@ -130,7 +139,7 @@ def test_a_403_on_a_segment_refreshes_the_links_once(tmp_path, monkeypatch):
     calls = {"n": 0}
     refreshed = []
 
-    def get(url, headers=None, timeout=None, proxies=None):
+    def get(url, headers=None, timeout=None, proxies=None, stream=False):
         calls["n"] += 1
         if url.endswith("index.m3u8"):
             return Got(PLAYLIST.encode())
@@ -238,3 +247,76 @@ def test_without_hls_a_big_video_is_not_downloaded_whole_through_the_residential
     assert _source(tmp_path / "h")._whole_caps() == (10.0, 80.0)
     home = YouTubeSource(root=tmp_path, cache_dir=tmp_path / "home", config={"proxy": "http://100.64.0.2:8899"})
     assert home._whole_caps() == (30.0, 600.0)
+
+
+def _setup(tmp_path, monkeypatch, get):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, whole_fallback=False)
+    _info(yt)
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: FakeYdl(extra or {}))
+    monkeypatch.setattr(yt._sessions[0], "get", get)
+    monkeypatch.setattr(subprocess, "run", lambda command, **kw: (open(command[-1], "wb").write(b"m"), subprocess.CompletedProcess(command, 0, "", ""))[1])
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    return yt
+
+
+def test_a_passing_error_on_one_segment_is_retried_alone(tmp_path, monkeypatch):
+    import requests
+
+    asked = []
+
+    def get(url, headers=None, timeout=None, proxies=None, stream=False):
+        asked.append(url.rsplit("/", 3)[-3] if "/sq/" in url else url.rsplit("/", 1)[-1])
+        if url.endswith("index.m3u8"):
+            return Got(PLAYLIST.encode())
+        if "/sq/2/" in url and asked.count("2") == 1:
+            raise requests.ConnectionError("Connection reset by peer")
+        return Got(b"x" * 10)
+
+    yt = _setup(tmp_path, monkeypatch, get)
+    yt.download_range(VIDEO, 7.0, 11.0, fmt="bv*[height<=1080]", prefix="hd")
+    assert asked.count("index.m3u8") == 1 and asked.count("1") == 1 and asked.count("2") == 2
+    yt.close()
+
+
+def test_segments_already_down_are_kept_when_the_links_are_refreshed(tmp_path, monkeypatch):
+    asked, refreshed = [], []
+
+    def get(url, headers=None, timeout=None, proxies=None, stream=False):
+        asked.append(url.rsplit("/", 3)[-3] if "/sq/" in url else url.rsplit("/", 1)[-1])
+        if url.endswith("index.m3u8"):
+            return Got(PLAYLIST.encode())
+        if "/sq/2/" in url and not refreshed:
+            return Got(b"", 403)
+        return Got(b"x" * 10)
+
+    yt = _setup(tmp_path, monkeypatch, get)
+    monkeypatch.setattr(yt, "info", lambda vid: refreshed.append(vid) or _info(yt))
+    yt.cfg["hls_segment_workers"] = 1
+    yt.download_range(VIDEO, 7.0, 11.0, fmt="bv*[height<=1080]", prefix="hd")
+    assert refreshed == [VIDEO] and asked.count("1") == 1          # segment 1 was not asked again
+    yt.close()
+
+
+def test_a_new_session_extracts_again_before_asking_with_old_links(tmp_path, monkeypatch):
+    asked, refreshed = [], []
+
+    def get(url, headers=None, timeout=None, proxies=None, stream=False):
+        asked.append(url)
+        return Got(PLAYLIST.encode()) if url.endswith("index.m3u8") else Got(b"x" * 10)
+
+    yt = _setup(tmp_path, monkeypatch, get)
+    real_info = _info
+    monkeypatch.setattr(yt, "info", lambda vid: refreshed.append(vid) or real_info(yt))
+    original = yt._call
+
+    def call(action, fn, **kw):
+        if not refreshed and action == "download (HLS)":
+            yt.sessions.rotate(VIDEO)                       # a rotation happened just before this request
+        return original(action, fn, **kw)
+
+    monkeypatch.setattr(yt, "_call", call)
+    yt.download_range(VIDEO, 7.0, 11.0, fmt="bv*[height<=1080]", prefix="hd")
+    assert refreshed == [VIDEO]
+    assert asked[0].endswith("index.m3u8") and len([u for u in asked if u.endswith("index.m3u8")]) == 1
+    yt.close()

@@ -100,6 +100,7 @@ SPEED_KEYS = frozenset({
     "whole_min_rate_kb", "whole_deadline_seconds_per_mb", "fragment_retries", "byte_ranges",
     "pace_per_session", "session_min_interval", "session_concurrency", "proxy_connections_max",
     "captions_min_interval", "captions_retry_minutes", "player_skip", "overflow_searches_per_hour",
+    "hls_segment_workers", "hls_segment_retries",
     "hd_windows_top",   # analysis: the same windows, only in HD: never a reason to analyse again     # plazos de las descargas enteras
     "max_height",       # ingest: the HD clips already downloaded are not downloaded again at the new height
     # the judge outside the hook (judge.py): only for the shots judged from now on, never a reason to judge again

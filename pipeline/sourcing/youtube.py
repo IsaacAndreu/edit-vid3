@@ -2214,7 +2214,10 @@ class YouTubeSource:
         """[start, end] from the HLS stream yt-dlp would choose, without ffmpeg ever touching the network: the media
         playlist and only the segments covering the range are fetched here (requests, through this video's sticky
         session, so the proxy authenticates and the IP matches the URLs), written as a local playlist, and ffmpeg
-        cuts those seconds exactly. Stale links (403/410) are refreshed once, like the ffmpeg path."""
+        cuts those seconds exactly. Stale links (403/410) are refreshed once, like the ffmpeg path.
+
+        Segments come `hls_segment_workers` (3) at a time, each retried `hls_segment_retries` (2) times on a passing
+        error, streamed to disk; those already down are kept for the retry with fresh links."""
 
         import json
         import shutil
@@ -2234,36 +2237,91 @@ class YouTubeSource:
                 raise RuntimeError("yt-dlp download (HLS): Requested format is not available (no HLS stream)")
             return piece
 
-        def fetch(piece: dict[str, Any]) -> tuple[list[Path], float, Path | None]:
+        stale = object()                     # the session (exit IP) changed since the links were extracted
+        workers = max(1, int(self.cfg.get("hls_segment_workers", 3)))
+        retries = max(0, int(self.cfg.get("hls_segment_retries", 2)))
+
+        def session_now() -> str | None:
+            return self.sessions.session_id(self._session_key()) if self.residential else None
+
+        def fetch(piece: dict[str, Any], session_at: str | None) -> Any:
+            if session_now() != session_at:
+                # a rotation (bot, 429, tunnel) moved this video to another IP: its URLs belong to the old one, and
+                # trying them from the new IP is a paid 403 for sure — extract again first (outside this request)
+                return stale
             way = getattr(self._local, "way", 0) or 0
             headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
             proxies = self._requests_proxies(way)
+            moved = [0]
+            moved_lock = threading.Lock()
+
+            def fail(response: requests.Response) -> None:
+                raise RuntimeError(f"yt-dlp download (HLS): HTTP Error {response.status_code}: {response.reason}")
 
             def get(url: str) -> bytes:
                 response = self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies)
                 if response.status_code >= 400:
-                    raise RuntimeError(f"yt-dlp download (HLS): HTTP Error {response.status_code}: {response.reason}")
-                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(response.content)
+                    fail(response)
+                with moved_lock:
+                    moved[0] += len(response.content)
                 return response.content
 
-            playlist_url = str(piece["url"])
-            segments, init_url = parse_media_playlist(get(playlist_url).decode("utf-8", "replace"), playlist_url)
-            if not segments:
-                raise RuntimeError("yt-dlp download (HLS): empty media playlist")
-            wanted = [seg for seg in segments if seg[2] > start + 1e-3 and seg[1] < end - 1e-3]
-            if not wanted:
-                raise RuntimeError(f"yt-dlp download (HLS): no segment covers {start:.1f}-{end:.1f} s")
-            shutil.rmtree(work, ignore_errors=True)
-            work.mkdir(parents=True, exist_ok=True)
-            init_path = None
-            if init_url:
-                init_path = work / "init.mp4"
-                init_path.write_bytes(get(urljoin(playlist_url, init_url)))
-            paths: list[Path] = []
-            for index, (url, _, _) in enumerate(wanted):
-                path = work / f"seg{index:03d}.ts"
-                path.write_bytes(get(urljoin(playlist_url, url)))
-                paths.append(path)
+            def segment(url: str, path: Path) -> Path:
+                """One segment to disk, streamed (never whole in memory), retried on a passing error; one already
+                on disk from an earlier attempt of this range is kept."""
+
+                if path.is_file() and path.stat().st_size > 0:
+                    return path
+                for attempt in range(retries + 1):
+                    partial = path.with_name(path.name + ".part")
+                    try:
+                        with self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies,
+                                                     stream=True) as response:
+                            if response.status_code >= 400:
+                                fail(response)
+                            size = 0
+                            with partial.open("wb") as handle:
+                                for block in response.iter_content(256 * 1024):
+                                    handle.write(block)
+                                    size += len(block)
+                        if size == 0:
+                            raise RuntimeError("yt-dlp download (HLS): segmento vacío")
+                        partial.replace(path)
+                        with moved_lock:
+                            moved[0] += size
+                        return path
+                    except (requests.RequestException, RuntimeError) as error:
+                        partial.unlink(missing_ok=True)
+                        text = str(error)
+                        if any(code in text for code in ("HTTP Error 403", "HTTP Error 410", "HTTP Error 404")) \
+                                or attempt >= retries:
+                            raise RuntimeError(text if text.startswith("yt-dlp") else f"yt-dlp download (HLS): {text}") \
+                                from None
+                        time.sleep(0.5 * (attempt + 1))
+                raise AssertionError("inalcanzable")
+
+            try:
+                playlist_url = str(piece["url"])
+                segments, init_url = parse_media_playlist(get(playlist_url).decode("utf-8", "replace"), playlist_url)
+                if not segments:
+                    raise RuntimeError("yt-dlp download (HLS): empty media playlist")
+                wanted = [seg for seg in segments if seg[2] > start + 1e-3 and seg[1] < end - 1e-3]
+                if not wanted:
+                    raise RuntimeError(f"yt-dlp download (HLS): no segment covers {start:.1f}-{end:.1f} s")
+                work.mkdir(parents=True, exist_ok=True)
+                tag = re.sub(r"[^A-Za-z0-9]", "", str(piece.get("format_id") or "f"))[:12]
+                init_path = None
+                if init_url:
+                    init_path = work / f"init_{tag}.mp4"
+                    if not init_path.is_file():
+                        init_path.write_bytes(get(urljoin(playlist_url, init_url)))
+                # a few segments at once through the same session: bytes of a video already extracted, not new requests
+                # for its details (the pace and the hourly budget count this download as one request, as before)
+                names = [work / f"seg_{tag}_{a:.3f}.ts" for _, a, _ in wanted]
+                with ThreadPoolExecutor(max_workers=min(workers, len(wanted))) as pool:
+                    paths = list(pool.map(segment, [urljoin(playlist_url, url) for url, _, _ in wanted], names))
+            finally:
+                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + moved[0]
             lines = ["#EXTM3U", "#EXT-X-VERSION:3", f"#EXT-X-TARGETDURATION:{int(max(b - a for _, a, b in wanted)) + 1}",
                      "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-PLAYLIST-TYPE:VOD"]
             if init_path is not None:
@@ -2275,16 +2333,24 @@ class YouTubeSource:
             local.write_text("\n".join(lines) + "\n", encoding="utf-8")
             return paths, wanted[0][1], local
 
+        def attempt(piece: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+            for _ in range(3):
+                session_at = session_now()
+                got = self._call("download (HLS)", lambda: fetch(piece, session_at))
+                if got is not stale:
+                    return got, piece
+                piece = choose(self._fresh_full_info(video_id))     # the new session's own links
+            raise RuntimeError("yt-dlp download (HLS): la sesión del proxy cambió de IP tres veces seguidas")
+
         piece = choose(info_path)
         try:
             try:
-                _, first_start, playlist = self._call("download (HLS)", lambda: fetch(piece))
+                (_, first_start, playlist), piece = attempt(piece)
             except RuntimeError as error:
                 if not any(code in str(error) for code in ("HTTP Error 403", "HTTP Error 410", "HTTP Error 404")):
                     raise
                 self._full_info_path(video_id).unlink(missing_ok=True)      # stale links: fresh ones, once more
-                piece = choose(self._fresh_full_info(video_id))
-                _, first_start, playlist = self._call("download (HLS)", lambda: fetch(piece))
+                (_, first_start, playlist), piece = attempt(choose(self._fresh_full_info(video_id)))
             target = target_dir / f"{prefix}_{start:.3f}_{end:.3f}{suffix}"
             part = part_for(target)                    # the final name only once it is complete and checked
             command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
