@@ -614,6 +614,15 @@ class YouTubeSource:
         self._configured_clients = [str(c) for c in (chosen or [])]
         if self._configured_clients:
             options["extractor_args"] = {"youtube": {"player_client": list(self._configured_clients)}}
+        # `player_skip` (none by default): yt-dlp's own «skip these requests». With [default, web_safari] every
+        # extraction also downloads www.youtube.com (~0.9 MB) only for web_safari's client config: the
+        # «youtube.com/» line of --youtube-stats, 8.3 GB a week. [configs] skips it; whether the formats stay the
+        # same is for `python -m pipeline.sonda_ytcfg` to say on the server before switching it on.
+        skip = [str(x) for x in (config.get("player_skip") or [])]
+        if skip:
+            args = dict(options.get("extractor_args") or {})
+            args["youtube"] = {**(args.get("youtube") or {}), "player_skip": skip}
+            options["extractor_args"] = args
         if config.get("cookies_from_browser"):
             options["cookiesfrombrowser"] = (str(config["cookies_from_browser"]),)
         if config.get("rate_limit"):
@@ -810,7 +819,9 @@ class YouTubeSource:
                 # Off by default: without the ~1 MB watch page (the visitor data in it) YouTube answered «are you a
                 # bot» to 576 of 608 requests on pati7esc, against 15 % with it. Kept for trying again some day.
                 args = dict(options.get("extractor_args") or {})
-                args["youtube"] = {**(args.get("youtube") or {}), "player_skip": ["webpage"]}
+                youtube = dict(args.get("youtube") or {})
+                youtube["player_skip"] = list(dict.fromkeys([*youtube.get("player_skip", []), "webpage"]))
+                args["youtube"] = youtube
                 options["extractor_args"] = args
             return self._metered(yt_dlp.YoutubeDL(options), True)
         if self.proxies:
