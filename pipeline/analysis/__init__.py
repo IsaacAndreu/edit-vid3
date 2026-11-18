@@ -371,11 +371,17 @@ def make_models(ctx: RunContext) -> tuple[ClipScorer, det.Detectors]:
     return clip, det.Detectors(cache_dir=ctx.cache_dir, ocr_side=int(cfg.get("ocr_side", 480)))
 
 
-def prompts_for(shot: Shot) -> list[str]:
+def prompts_for(shot: Shot, with_queries: bool = False) -> list[str]:
+    """What CLIP compares the pictures with: what is SEEN — the narrated moment and the visual intent. The searches
+    (and the entity before the moment) are proper names and years ViT-B-32 cannot see; averaged in, they pulled the
+    ranking that decides which three options the judge sees. `analysis.clip_queries: true` puts them back."""
+
     assert shot.broll is not None
-    moment = [f"{shot.broll.entities[0]} {shot.broll.moment}" if shot.broll.entities else shot.broll.moment] \
-        if shot.broll.moment else []
-    return list(dict.fromkeys([*moment, shot.broll.visualIntent, *shot.broll.queries]))
+    if with_queries:
+        moment = [f"{shot.broll.entities[0]} {shot.broll.moment}" if shot.broll.entities else shot.broll.moment] \
+            if shot.broll.moment else []
+        return list(dict.fromkeys([*moment, shot.broll.visualIntent, *shot.broll.queries]))
+    return list(dict.fromkeys([*([shot.broll.moment] if shot.broll.moment else []), shot.broll.visualIntent]))
 
 
 MOMENT_STOP = set("the a an on in of at to and with his her their from first after before into over".split())
@@ -478,7 +484,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         return
 
     clip, detectors = make_models(ctx)
-    shot_vectors = {s.id: clip.shot_vector(prompts_for(s)) for s in todo}
+    with_queries = bool(cfg.get("clip_queries", False))
+    shot_vectors = {s.id: clip.shot_vector(prompts_for(s, with_queries)) for s in todo}
 
     # 1. Coarse embeddings, once per source (cached globally).
     videos: dict[str, Candidate] = {}
@@ -644,7 +651,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         options.sort(key=lambda o: (o.discarded is not None, o.pass_ != "fine", -o.total))
         result = ShotScores(
             shotId=shot.id, inputsHash=shot_hash[shot.id], needed=round(needed, 3),
-            prompts=prompts_for(shot), options=options, notes=notes[shot.id],
+            prompts=prompts_for(shot, with_queries), options=options, notes=notes[shot.id],
         )
         ctx.write_json(f"{folder}/{shot.id}.json", result.model_dump(by_alias=True, exclude_none=True))
         written.add(shot.id)

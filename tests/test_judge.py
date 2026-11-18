@@ -334,7 +334,9 @@ def test_a_narrated_moment_reaches_clip_the_commentary_and_the_judge():
                                 "broll": {"visualIntent": "figure skater on ice", "queries": ["a", "b", "c"],
                                           "queriesLocal": ["x"], "entities": ["Ilia Malinin"],
                                           "moment": "falls on the quad lutz landing"}})
-    assert prompts_for(shot)[0] == "Ilia Malinin falls on the quad lutz landing"
+    # CLIP gets what is seen (the moment, the intent), never names or the searches (it cannot see a name)
+    assert prompts_for(shot) == ["falls on the quad lutz landing", "figure skater on ice"]
+    assert prompts_for(shot, with_queries=True)[0] == "Ilia Malinin falls on the quad lutz landing"
     said = [(10.0, 12.0, "oh and he falls on the lutz"), (40.0, 41.0, "beautiful landing")]
     assert moment_score(said, shot.broll.moment, 9.0, 11.0) >= 0.7 and moment_score(said, shot.broll.moment, 38.0, 40.0) < 0.2
     assert "EXACT MOMENT narrated: falls on the quad lutz landing" in shot_brief(shot)
