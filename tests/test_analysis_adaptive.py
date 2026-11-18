@@ -181,3 +181,22 @@ def test_hd_windows_top_brings_the_best_windows_in_hd(tmp_path, monkeypatch):
     analysis.analyse(ctx)
     assert [h[:2] for h in hd] == [("00000000001", "hd")] and "avc1" in hd[0][2]
     assert fake.downloaded == ["yt:00000000002"]                 # the second window stays at 360p
+
+
+def test_more_thumbnails_for_long_videos_never_fewer():
+    from pipeline.analysis import frames_limit
+
+    assert frames_limit(20 * 60, {}) == 120              # one every 10 s instead of one every 30 s
+    assert frames_limit(3 * 60, {}) == 40                 # never fewer than before
+    assert frames_limit(20 * 60, {"max_frames_cap": 60}) == 60
+
+
+def test_a_chapter_named_after_the_moment_gives_its_start():
+    from pipeline.analysis import chapter_moment
+
+    shot = _shot(1).model_copy(update={"broll": _shot(1).broll.model_copy(update={
+        "moment": "falls off the beam", "event": "Simone Biles Tokyo 2020", "entities": ["Simone Biles"]})})
+    chapters = [{"title": "Intro", "start_time": 0}, {"title": "Simone falls off the beam", "start_time": 192.0},
+                {"title": "Floor final", "start_time": 300.0}]
+    assert chapter_moment(chapters, shot) == 192.0
+    assert chapter_moment([{"title": "Intro", "start_time": 0}], shot) is None

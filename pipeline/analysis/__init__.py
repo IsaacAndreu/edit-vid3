@@ -76,12 +76,56 @@ def storyboard_frames(candidate: Candidate, root: Path, cfg: dict[str, Any]) -> 
         previous = tile
         times.append(t)
         tiles.append(tile)
-    limit = int(cfg.get("max_frames_per_video", 40))
+    limit = frames_limit(duration, cfg)
     if len(tiles) > limit:
         keep = np.linspace(0, len(tiles) - 1, limit).round().astype(int)
         times = [times[i] for i in keep]
         tiles = [tiles[i] for i in keep]
     return times, tiles
+
+
+def frames_limit(duration: float, cfg: dict[str, Any]) -> int:
+    """How many storyboard thumbnails of a video CLIP looks at: `max_frames_per_video` (40) was one every 27 s in a
+    20 min video, for a shot of 2-4 s. Now one every `frames_every_seconds` (6) up to `max_frames_cap` (120), never
+    fewer than before. The thumbnails come straight from i.ytimg.com: only CPU, no proxy, no YouTube request."""
+
+    base = int(cfg.get("max_frames_per_video", 40))
+    cap = int(cfg.get("max_frames_cap", 120))
+    every = float(cfg.get("frames_every_seconds", 6.0) or 0)
+    wanted = int(duration / every) if every > 0 else base
+    return max(base, min(cap, wanted))
+
+
+def chapter_moment(chapters: list[dict[str, Any]], shot: Shot) -> float | None:
+    """The start of the source's own chapter about this shot (YouTube chapters: «03:12 The fall on the beam»): its
+    title names the shot's moment or event words, or its entity. None when no chapter does."""
+
+    if not chapters or shot.broll is None:
+        return None
+    wanted = tokens(" ".join([shot.broll.moment or "", shot.broll.event or ""])) - MOMENT_STOP
+    best, at = 0.0, None
+    for chapter in chapters:
+        title = str(chapter.get("title") or "")
+        words = tokens(title)
+        score = (len(words & wanted) / max(1, min(len(wanted), 4)) if wanted else 0.0) \
+            + 0.5 * entity_match(title, shot.broll.entities)
+        if score > best + 1e-6:
+            best, at = score, float(chapter.get("start_time") or 0)
+    return at if best >= 0.75 else None
+
+
+def source_chapters(root: Path, cache_dir: Path, candidate_id: str) -> list[dict[str, Any]]:
+    """The chapters yt-dlp already brought with the video's details (cache/videos/<id>/ytdlp-info.json): no request."""
+
+    if not candidate_id.startswith("yt:"):
+        return []
+    try:
+        import json
+
+        data = json.loads((cache_dir / "videos" / candidate_id.removeprefix("yt:") / "ytdlp-info.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [c for c in (data.get("chapters") or []) if isinstance(c, dict)]
 
 
 def coarse_moments(times: np.ndarray, sims: np.ndarray, interval: float, per_video: int) -> list[tuple[float, float]]:
@@ -101,7 +145,8 @@ def coarse_moments(times: np.ndarray, sims: np.ndarray, interval: float, per_vid
 
 
 def frames_key(candidate_id: str, cfg: dict[str, Any]) -> str:
-    settings = (cfg.get("edge_margin", 0.05), cfg.get("max_frames_per_video", 40), cfg.get("dedupe_difference", 4))
+    settings = (cfg.get("edge_margin", 0.05), cfg.get("max_frames_per_video", 40), cfg.get("dedupe_difference", 4),
+                cfg.get("max_frames_cap", 120), cfg.get("frames_every_seconds", 6.0))
     return f"{candidate_id.replace(':', '_')}-{key(*settings)[:8]}"
 
 
@@ -725,6 +770,38 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 break                                    # one «said» window per shot
         if said:
             print(f"   Momentos localizados por lo que dice la fuente: {said} planos")
+    # analysis.chapter_windows (false): a window at the start of the source's own chapter about the shot (its title
+    # names the moment, the event or the person). Finding it costs nothing (the details already on disk); its 360p
+    # window is one more download for the shots where a chapter matches, so it is off until measured
+    by_chapter = 0
+    if cfg.get("chapter_windows", False):
+        for shot in todo:
+            if not shot.broll:
+                continue
+            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            for option in coarse[shot.id]:
+                c = option["candidate"]
+                if c.kind != "video" or not c.id.startswith("yt:"):
+                    continue
+                t = chapter_moment(source_chapters(ctx.root, ctx.cache_dir, c.id), shot)
+                if t is None:
+                    continue
+                duration = float(c.durationSeconds or 0)
+                margin = duration * float(cfg.get("edge_margin", 0.05))
+                a = round(max(margin, t), 2)
+                b = round(min(duration - margin, a + needed + 2 * pad + 4), 2)
+                if b - a < needed or any(o.get("window") and o["candidate"].id == c.id and o["window"][0] < b
+                                         and a < o["window"][1] for o in coarse[shot.id]):
+                    continue
+                job = (c.id, a, b)
+                jobs.setdefault(job, []).append(shot.id)
+                coarse[shot.id].append({"candidate": c, "t": a, "clip": 0.0, "entity": 0.0, "window": (a, b),
+                                        "chapter": True})
+                round_one.append(job)
+                by_chapter += 1
+                break                                    # one chapter window per shot
+        if by_chapter:
+            print(f"   Momentos localizados por los capítulos de la fuente: {by_chapter} planos")
     print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
           + (f" ({len(hd_jobs)} de ellas ya en HD, hd_windows_top {hd_top})" if hd_jobs else "")
           + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
