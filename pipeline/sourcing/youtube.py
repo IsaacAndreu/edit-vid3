@@ -269,7 +269,12 @@ def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> st
     if audio_only:
         return "worst[protocol^=m3u8][acodec!=none]"          # the sound only: the lightest muxed stream
     if audio:
-        return f"b{limit}[protocol^=m3u8][acodec!=none][vcodec^=avc1]/b{limit}[protocol^=m3u8][acodec!=none]"
+        # 30 fps first, as cap_fps does for the video-only request: the 60 fps HLS stream is twice the bytes
+        found = re.search(r"fps<=(\d+)", fmt)
+        fps = f"[fps<={found.group(1)}]" if found else ""
+        alts = [f"b{limit}{fps}[protocol^=m3u8][acodec!=none][vcodec^=avc1]", f"b{limit}{fps}[protocol^=m3u8][acodec!=none]",
+                f"b{limit}[protocol^=m3u8][acodec!=none][vcodec^=avc1]", f"b{limit}[protocol^=m3u8][acodec!=none]"]
+        return "/".join(dict.fromkeys(alts))
     parts = [alt.split("+")[0] for alt in fmt.split("/") if alt.strip()]
     return "/".join(f"{alt}[protocol^=m3u8]" for alt in dict.fromkeys(parts))
 
@@ -701,6 +706,11 @@ class YouTubeSource:
                 hosts = getattr(self._local, "proxy_hosts", None)
                 if hosts:
                     row["hosts"] = dict(sorted(hosts.items(), key=lambda kv: -kv[1])[:8])
+        if action.startswith("archivo") or action == "download (completo)":
+            if getattr(self._local, "route", None):
+                row["route"] = self._local.route
+            if getattr(self._local, "not_hls", None):
+                row["notHls"] = self._local.not_hls
         reused = getattr(self._local, "info_reused", None)
         if reused is not None and (action.startswith("archivo") or action.startswith("download") or action == "captions"):
             row["info_reused"] = bool(reused)
@@ -1829,9 +1839,11 @@ class YouTubeSource:
             # 720p/30fps at most (sourcing.youtube.max_height/max_fps): the final 1920x1080 at 30 fps shows no more
             fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
         wanted = requested_height(fmt)
+        self._local.route, self._local.not_hls = "biblioteca", None
         existing = self._library_range(target_dir, prefix, suffix, start, end, wanted)
         if existing is not None:
             return existing
+        self._local.route = None
         if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo"):
             raise Refused(f"yt-dlp download: {video_id} descartado ({self._refusal_text(self.refused_why(video_id) or '')}); "
                           "se pasa al siguiente candidato")
@@ -1840,6 +1852,7 @@ class YouTubeSource:
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
         whole = next((p for p in sorted(target_dir.glob(f"full_{prefix}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
         if whole is not None and not audio_only:          # already downloaded whole (prefetch_sections)
+            self._local.route = "corte-de-entero-en-caché"
             return self._cut(whole, video_id, start, end, prefix, audio)
         if self.offline:                                  # not on disk: without YouTube this clip cannot come
             raise SourceUnavailable(self.offline)
@@ -1847,7 +1860,13 @@ class YouTubeSource:
         if prefix == "a360":
             self._check_hd_reachable(video_id, info_path)     # not worth analysing a clip that cannot come in HD
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
+        # why a range does not come by HLS, in its log row (2/3 of the residential downloads were whole files on
+        # 17-11 although almost every video has HLS: this says which branch sends them there)
+        self._local.not_hls = None if hls else "hls_ranges apagado"
+        if hls and not _has_hls(info_path):
+            self._local.not_hls = self._why_no_hls(video_id, info_path)
         if hls and _has_hls(info_path):
+            self._local.route = "hls-local" if self.residential else "hls-ffmpeg"
             try:
                 if self.residential:
                     # ffmpeg cannot authenticate against this proxy (it answers the CONNECT with a lowercase
@@ -1858,6 +1877,7 @@ class YouTubeSource:
             except (RuntimeError, SourceUnavailable) as error:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
                     raise
+                self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»"
         # two 403s in a row on whole downloads: this client/connection does not get them today (pati12 14/10: 403 on
         # every one, each a wasted request before the piece that works); straight to the piece for the rest of the run
         whole_off = getattr(self, "_whole_403", 0) >= 2
@@ -1875,13 +1895,35 @@ class YouTubeSource:
                 print(f"   yt:{video_id}: descarga completa no disponible ({str(error)[:120]}); voy por tramo")
                 whole = None
             if whole is not None:
+                self._local.route = "entero"
                 return self._cut(whole, video_id, start, end, prefix, audio)
         if self.residential:
             # the HTTPS range goes through ffmpeg, which cannot authenticate against this proxy: nothing left to try
             raise RuntimeError(f"yt-dlp download: {video_id} no tiene HLS y entero supera el tope del proxy residencial "
                                f"({self._whole_caps()[1]:g} MB / {self._whole_caps()[0]:g} min, whole_max_*_residential); "
                                "se pasa al siguiente candidato")
+        self._local.route = "https-ffmpeg"
         return self._fetch_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path, exact=False)
+
+    def _why_no_hls(self, video_id: str, info_path: Path) -> str:
+        """Why this extraction has no m3u8 format, from what is on disk (no request)."""
+
+        import json
+
+        try:
+            data = json.loads(info_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return "sin ytdlp-info.json legible"
+        formats = data.get("formats") or []
+        protocols = sorted({str(f.get("protocol") or "?") for f in formats})
+        cached = {}
+        try:
+            cached = json.loads(self._info_path(video_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        said = " (info.json decía que sí)" if cached.get("hls") else ""
+        return (f"la extracción no trae m3u8{said}: {len(formats)} formatos, protocolos {', '.join(protocols) or '—'}, "
+                f"clientes {','.join(data.get('_edit_vid3_clients') or []) or 'por defecto'}")
 
     def _whole_caps(self) -> tuple[float, float]:
         """(minutes, MB) a video may have to be downloaded whole for one clip: sourcing.youtube.whole_max_minutes (30)
