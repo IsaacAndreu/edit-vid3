@@ -45,6 +45,11 @@ from .schemas import Timeline
 
 STAGE = "render"
 OUTPUT = "video-final.mp4"
+# The render works on this name and only renames it to OUTPUT once the doctor, the look, the subtitles and the
+# postflight are through: a cut or a failure in between never leaves a half-made video under the name that tells the
+# queue (housekeeping.is_done) and the studio «finished».
+WORKING = ".video-final.render.mp4"
+IN_PROGRESS = ".haciendo"     # out/<slug>/: from the render's start to the last stage's end (housekeeping.is_done)
 VERSION = 1
 RAMP_FRAMES = 8          # music fade around speech, as in remotion/components/AudioBed.tsx
 MUSIC_LUFS = -20         # the bed before music_volume / ducking (the voice is ~-23 LUFS before mastering)
@@ -1183,6 +1188,8 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     started = time.monotonic()
     timeline = ctx.read_json("timeline.json")
     Timeline.model_validate(timeline)
+    ctx.out_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.out_dir / IN_PROGRESS).write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
     r = Renderer(ctx)
     hybrid = bool(r.cfg.get("hybrid", True)) if hybrid is None else hybrid
     segments = plan_segments(timeline, hybrid)
@@ -1277,7 +1284,8 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     audio_pool.shutdown()
     listing = r.dir / "segments.txt"
     ctx.out_dir.mkdir(parents=True, exist_ok=True)
-    final = ctx.out_dir / OUTPUT
+    final = ctx.out_dir / WORKING
+    final.unlink(missing_ok=True)
 
     def join(files: list[Path]) -> None:
         listing.write_text("".join(f"file '{f.resolve()}'\n" for f in files), encoding="utf-8")
@@ -1290,7 +1298,7 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     join(files)
     if ctx.section("doctor").get("enabled", True):
         try:
-            files = heal(ctx, timeline, segments, files, build, join, r.fps)
+            files = heal(ctx, timeline, segments, files, build, join, r.fps, final)
         except Exception as error:      # a check: never costs the video
             print(f"   Render doctor no disponible: {str(error)[:120]}")
     try:                                 # brand.look: film — the warm, grainy finish of true-crime channels
@@ -1338,6 +1346,8 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     (ctx.out_dir / "qa").mkdir(parents=True, exist_ok=True)
     write_postflight_report(ctx.out_dir / "qa" / "postflight.json", issues)
     enforce_postflight(issues)
+    final.replace(ctx.out_dir / OUTPUT)  # only now: every check is through
+    final = ctx.out_dir / OUTPUT
     try:
         graphics_sheet(ctx, final, timeline)
     except Exception as error:  # a review aid: never costs the video
@@ -1348,13 +1358,13 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
 
 
 def heal(ctx: RunContext, timeline: dict[str, Any], segments: list[Segment], files: list[Path], build: Any, join: Any,
-         fps: int) -> list[Path]:
+         fps: int, final: Path | None = None) -> list[Path]:
     """Render doctor (pipeline/doctor.py): black or frozen frames in the joined video, fixed at their segment."""
 
     from . import doctor
 
     cfg = ctx.section("doctor")
-    final = ctx.out_dir / OUTPUT
+    final = final or ctx.out_dir / OUTPUT
     found = doctor.problems(timeline, doctor.detect(final, cfg), fps)
     left, fixed = found, []
     if found:

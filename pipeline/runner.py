@@ -322,4 +322,7 @@ def run_stages(
             if review and stage.name == "qa":
                 print("Revisión: pipeline detenido tras la QA (--review). Revisa out/<slug>/qa/ y relanza sin --review.")
             break
+    if stage is STAGES[-1] and not (review and last == "qa"):
+        # every stage through, the last one included: the video is finished (housekeeping.is_done)
+        (ctx.out_dir / render.IN_PROGRESS).unlink(missing_ok=True)
     return executed

@@ -784,3 +784,4 @@ def run(ctx: RunContext) -> None:
     for stage in (qa, render, shorts, package):
         print(f"   · {stage.__name__.rsplit('.', 1)[-1]}")
         stage.run(ctx)
+    (ctx.out_dir / render.IN_PROGRESS).unlink(missing_ok=True)       # finished: housekeeping.is_done
