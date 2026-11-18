@@ -228,6 +228,11 @@ def collect(ctx: RunContext) -> dict[str, Any]:
         for claim in (factcheck.get("claims") or []):
             verdicts[claim.get("verdict", "?")] = verdicts.get(claim.get("verdict", "?"), 0) + 1
         data["verificacion"] = verdicts
+    from . import origen
+
+    origin = origen.video(work, ctx.out_dir)
+    if origin:
+        data["origen"] = origin
     data.update(_log_facts(ctx))
     from . import ytstats
 
@@ -340,6 +345,10 @@ def markdown(data: dict[str, Any], tips: list[str], error: str | None) -> str:
         lines += ["", "## Relleno (planos sin opción buena)", "",
                   "De dónde salió: " + ", ".join(f"{k} {v}" for k, v in r["metodos"].items()),
                   "Por qué: " + ", ".join(f"{k} {v}" for k, v in r["motivos"].items())]
+    if data.get("origen"):
+        from . import origen
+
+        lines += ["", *origen.lines(data["origen"])]
     if data.get("pantalla"):
         lines += ["", "## En pantalla", ""] + [f"- {k}: {v:.0%}" for k, v in data["pantalla"].items()]
     if data.get("analisis"):

@@ -86,7 +86,11 @@ def report(root: Path, channel: str | None = None) -> dict[str, Any]:
     for work in sorted((root / "work").glob("*/")):
         found = video(work)
         if found and (channel is None or channel_of.get(work.name) == channel):
-            rows.append({**found, "channel": channel_of.get(work.name, "?")})
+            from . import origen
+
+            origin = origen.video(work, root / "out" / work.name) or {}
+            rows.append({**found, "channel": channel_of.get(work.name, "?"),
+                         "origin": origin.get("origin"), "thumbnailsOnly": origin.get("thumbnailsOnly")})
     groups: dict[tuple[str, bool], list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault((row["channel"], row["adaptive"]), []).append(row)
@@ -116,4 +120,9 @@ def markdown(data: dict[str, Any]) -> str:
     for v in data["videos"]:
         lines.append(f"| {v['slug']} | {v['channel']} | {'adaptativo' if v['adaptive'] else 'antes'} | {v['videos']} | {v['units']} | "
                      f"{v['minutes']} | {pct(v['accepted'])} | {pct(v['toFallback'])} | {v['unfilled']} | {v['secondRound'] or '—'} | {v['overlaps']} |")
+    from . import origen
+
+    table = origen.by_channel(data["videos"])
+    if table:
+        lines += ["", *table]
     return "\n".join(lines) + "\n"

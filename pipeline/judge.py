@@ -753,12 +753,14 @@ def run(ctx: RunContext) -> None:
         verdicts[shot.id] = ({**verdict, "round": round_number + 1}, seen, accepted)
 
     errors: list[str] = []
+    failed_shots: set[str] = set()
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 4))) as pool:
         for shot, future in [(s, pool.submit(judge, s)) for s in doubtful]:
             try:
                 future.result()
             except Exception as error:  # a failed call falls back to the local ranking for that shot
                 errors.append(f"{shot.id}: {str(error)[:160]}")
+                failed_shots.add(shot.id)
     from .budget import dead_key
 
     if any(dead_key(e) for e in errors):     # no key: the judge did nothing; the stage fails, the queue waits for a key
@@ -798,9 +800,14 @@ def run(ctx: RunContext) -> None:
                                                  2 if own_event(candidates[o.candidateId].title, shot) else 1))]
         chosen = follow if follow is not None and follow in usable else (
             next((o for o in usable if o.candidateId == master), None) if judged else None)
+        picked_by = "continuación" if chosen is not None and chosen is follow else "maestro" if chosen is not None else None
         if chosen is None:
             chosen = prefer_variety(usable, selections, variety, back_to_back,
                                     lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
+            if chosen is not None:
+                picked_by = ("variedad" if usable and chosen is not usable[0] else
+                             "juez" if judged else
+                             "puntuación-por-error-del-juez" if shot.id in failed_shots else "puntuación")
         if chosen is None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback",
                                         judge=_verdict(verdict_info, None, cfg)))
@@ -829,6 +836,10 @@ def run(ctx: RunContext) -> None:
             judge=_verdict(verdict_info, chosen, cfg),
             phash=chosen.phash,
             master=bool(master) and chosen.candidateId == master,
+            judgeRank=next((n for n, o in enumerate(judged, start=1) if o is chosen), None),
+            pickedBy=picked_by,
+            thumbnailsOnly=bool(shot.id in verdicts and verdicts[shot.id][1]
+                                and all(o.pass_ == "coarse" for o in verdicts[shot.id][1] if o.kind == "video")),
         ))
 
     stats: dict[str, int | float] = {

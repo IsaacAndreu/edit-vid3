@@ -382,7 +382,7 @@ class JudgeVerdict(_Strict):
 
 
 class Selection(_Strict):
-    _late = frozenset({'master'})
+    _late = frozenset({'master', 'judgeRank', 'pickedBy', 'thumbnailsOnly'})
     shotId: str
     status: Literal["selected", "fallback"]                 # fallback → stage 7 (Pexels / GPT Image)
     decidedBy: Literal["score", "judge", "fallback", "editor"]    # editor: swapped by hand before the render
@@ -403,6 +403,12 @@ class Selection(_Strict):
     judge: JudgeVerdict | None = None
     phash: str | None = None
     master: bool = False                                     # from its event's master video (judge.event_masters)
+    # who decided in the end, to measure the aim (pipeline/origen.py): the judge's place for the option used (1 = its
+    # first choice; None: not judged), and the rule that picked it — juez | continuación | maestro | variedad |
+    # puntuación | puntuación-por-error-del-juez
+    judgeRank: int | None = None
+    pickedBy: str | None = None
+    thumbnailsOnly: bool = False                             # the judge saw only storyboard thumbnails (no 360p window)
 
     @model_validator(mode="after")
     def _complete(self) -> "Selection":
@@ -474,6 +480,7 @@ class IngestFile(_Strict):
 
 
 class FallbackItem(_Strict):
+    _late = frozenset({'judged'})
     shotId: str
     reason: str                                              # why the shot needed a fallback
     method: Literal["next-option", "protagonist", "protagonist-filler", "protagonist-photo", "event-footage", "re-search",
@@ -493,6 +500,7 @@ class FallbackItem(_Strict):
     specHash: str
     sourceHeight: int | None = None                          # as in IngestedMedia (archive look)
     year: int | None = None
+    judged: bool | None = None                               # the vision judge accepted it (False: taken unseen)
 
     @model_validator(mode="after")
     def _checks(self) -> "FallbackItem":

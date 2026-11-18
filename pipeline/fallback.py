@@ -437,7 +437,7 @@ def run(ctx: RunContext) -> None:
                     shotId=shot_id, reason=reason, method=method, kind=media.kind, path=media.path,
                     source=c.source, candidateId=c.id, url=c.url, start=media.start, end=media.end,
                     durationSeconds=media.durationSeconds, credit=c.credit, attribution=c.attribution,
-                    specHash=digest, sourceHeight=media.sourceHeight, year=media.year,
+                    specHash=digest, sourceHeight=media.sourceHeight, year=media.year, judged=vet,
                 )
             return None
 
@@ -579,7 +579,7 @@ def run(ctx: RunContext) -> None:
                         shotId=shot_id, reason=reason, method=f"pexels-{kind}", kind="video" if kind == "video" else "image",
                         path=str(target.relative_to(ctx.root)), source="pexels", candidateId=rid, url=best.get("url"),
                         credit=f"Fuente: {author} / Pexels", attribution=f"{author} — Pexels: {best.get('url')}",
-                        clip=round(similarity, 4), specHash=digest, **extra,
+                        clip=round(similarity, 4), specHash=digest, judged=False, **extra,
                     )
                     pexels_used.add(rid)
                     break
