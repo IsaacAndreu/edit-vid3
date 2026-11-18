@@ -516,6 +516,21 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     first = int(cfg.get("adaptive_first", 2))
     round_one = [job for shot in todo for job in plan(shot, min(first, limit_for[shot.id]) if adaptive else limit_for[shot.id])]
 
+    # analysis.hd_windows_top (0, off): the best N windows of each shot come down at once in the HD the clip will be
+    # cut from, not at 360p: fewer requests (ingest finds them), more bytes (the windows that do not win are HD too).
+    # Compare with python main.py --youtube-stats (MB and minutes of «archivo a360» + «archivo hd») on and off.
+    hd_top = int(cfg.get("hd_windows_top", 0) or 0)
+    hd_jobs: set[tuple[str, float, float]] = set()
+    if hd_top:
+        for shot in todo:
+            mine = [job for job in round_one if shot.id in jobs.get(job, []) and job[0].startswith("yt:")]
+            hd_jobs.update(list(dict.fromkeys(mine))[:hd_top])
+    from ..sourcing.youtube import cap_height
+
+    ingest_cfg = ctx.section("ingest")
+    hd_format = cap_height(str(ingest_cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
+                           ingest_cfg.get("max_height"))
+
     # 3. Fine pass: downloads in threads, analysis in this thread as they arrive.
     yt_cfg = ctx.section("sourcing").get("youtube", {})
     youtube = youtube_source(ctx)
@@ -628,6 +643,13 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             out: list[tuple[tuple[str, float, float], Path | Exception]] = []
             for job in its:
                 try:
+                    if job in hd_jobs:
+                        # analysis.hd_windows_top: this window in the clip's final quality (and 1 s more, ingest's
+                        # margin): ingest finds it on disk (RANGE_FAMILY) instead of asking the same seconds again
+                        end = min(job[2] + 1.0, float(videos[video].durationSeconds or job[2] + 1.0))
+                        out.append((job, youtube.download_range(video.removeprefix("yt:"), job[1], end,
+                                                                fmt=hd_format, prefix="hd")))
+                        continue
                     out.append((job, youtube.download_section(video.removeprefix("yt:"), job[1], job[2])))
                 except (ApiSearchesShort, BudgetReached):
                     raise                      # the proxy down or the quota: the stage stops and the video waits
@@ -704,6 +726,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         if said:
             print(f"   Momentos localizados por lo que dice la fuente: {said} planos")
     print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
+          + (f" ({len(hd_jobs)} de ellas ya en HD, hd_windows_top {hd_top})" if hd_jobs else "")
           + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
     for job in set(round_one):
         for sid in jobs.get(job, []):
