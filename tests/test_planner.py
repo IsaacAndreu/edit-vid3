@@ -353,3 +353,13 @@ def test_a_short_needs_no_chapters_but_a_long_video_does(tmp_path, monkeypatch):
     assert len(chapters) == 1 and not chapters[0].showTitle and context == "tráfico"
     with pytest.raises(RuntimeError):
         planner.plan_chapters(ctx, words_file(600.0))
+
+
+def test_search_instructions_serve_any_topic():
+    """«Que el clip sea…» 8: the search rules said «2-6 words» and asked «person + competition + year + action»
+    with sports examples only; crime, business or megaproject videos got generic searches."""
+
+    text = planner.LABEL_SYSTEM
+    assert "2-6 palabras" not in text and "BÚSQUEDAS" in text
+    for kind in ("crimen", "negocios", "megaproyectos", "historia", "videojuegos"):
+        assert kind in text
