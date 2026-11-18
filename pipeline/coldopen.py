@@ -149,7 +149,8 @@ def analysed_options(ctx: RunContext, shots: list, used: list, name: set[str], b
         for total, option in ranked(ShotScores.model_validate_json(scores.read_text("utf-8")).options, {}):
             c = by_id.get(option.candidateId)
             if (c is None or option.kind != "video" or c.source != "youtube" or c.id in skip or option.start is None
-                    or TALK.search(c.title or "") or blocked_by_title(c.title or "", c.channel or "", blocklist, official)
+                    or TALK.search(c.title or "") or blocked_by_title(c.title or "", c.channel or "", blocklist,
+                                                                                    ctx.section("content").get("official_channels"))
                     or (name and not name <= tokens(f"{c.title or ''} {c.channel or ''}"))
                     or any(cid == c.id and option.start < b + 1.0 and a < option.end + 1.0 for cid, a, b in used)):
                 continue
