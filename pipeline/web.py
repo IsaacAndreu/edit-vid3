@@ -2530,7 +2530,9 @@ def _reload_on_new_code(root: Path, every: float = 120.0) -> None:
     while running_code:
         time.sleep(every)
         try:
-            subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, timeout=120)
+            from . import puerta
+
+            puerta.pull(root, who="estudio")       # only code that passes the quick check reaches the disk
         except (OSError, subprocess.SubprocessError):
             continue
         if head() not in ("", running_code):

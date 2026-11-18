@@ -682,9 +682,14 @@ def _git_update(root: Path, running: str) -> bool:
 
     import subprocess
 
-    pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
-    if pulled.returncode != 0:
-        print(f"(git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-200:]})")
+    from pipeline import puerta
+
+    try:
+        _, message = puerta.pull(root, who="cola")      # only code that passes the quick check reaches the disk
+    except (OSError, subprocess.SubprocessError) as error:
+        message = f"{type(error).__name__}"
+    if message and "→" not in message:
+        print(f"(git pull no se pudo: {message[-300:]})")
     now = git_head(root)
     return bool(running) and bool(now) and now != running
 

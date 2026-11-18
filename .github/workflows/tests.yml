@@ -1,0 +1,40 @@
+# Cada push y cada PR: typecheck de Remotion, la comprobación rápida (pyflakes + importar todo, la misma que hace
+# la puerta antes del despliegue en el servidor) y la suite de tests. Sin torch/CLIP/Whisper: los tests no los usan.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Dependencias ligeras (sin torch, CLIP, Whisper, OCR ni rembg)
+        run: |
+          pip install -r requirements-dev.txt
+          pip install "openai>=1.0.0,<2.0.0" "python-dotenv>=1.0.0,<2.0.0" "requests>=2.31.0,<3.0.0" yt-dlp \
+            "pydantic>=2.6,<3" "PyYAML>=6.0" numpy opencv-python-headless scenedetect fonttools
+      - name: Comprobación rápida (la de la puerta del despliegue)
+        run: python -m pipeline.puerta
+      - name: Tests
+        run: python -m pytest tests -q
