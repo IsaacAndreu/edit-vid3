@@ -139,6 +139,8 @@ def analysed_options(ctx: RunContext, shots: list, used: list, name: set[str], b
                      skip: set[str]) -> list[tuple[Selection, float]]:
     """Other analysed fragments of these shots (best first) from the protagonist's sources, not on screen."""
 
+    official = ctx.section("content").get("official_channels")      # gta5: was pick_moments' own name (NameError)
+
     found: list[tuple[float, Selection, float]] = []
     for shot in shots:
         path = ctx.work_dir / "candidates" / f"{shot.id}.json"

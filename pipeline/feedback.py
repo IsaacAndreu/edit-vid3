@@ -41,7 +41,7 @@ METHODS = {"judge": "Juez (búsqueda del plano)", "score": "Puntuación directa"
            "next-option": "Siguiente opción", "protagonist": "Otro clip del protagonista",
            "protagonist-filler": "Relleno del protagonista", "event-footage": "Clip del mismo evento",
            "web-photo": "Foto de la web", "library-photo": "Foto de la biblioteca", "pexels-video": "Vídeo de stock",
-           "pexels-photo": "Foto de stock", "generated": "Imagen generada", "coldopen": "Arranque (cold open)"}
+           "pexels-photo": "Foto de stock", "protagonist-photo": "Foto del protagonista", "generated": "Imagen generada", "coldopen": "Arranque (cold open)"}
 _LOCK = threading.Lock()
 
 
