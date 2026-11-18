@@ -135,3 +135,25 @@ def test_a_scene_that_stays_still_too_long_is_reported():
     board["scenes"].insert(1, {"id": "m", "type": "atlas-card-row", "start": {"say": "Uma frase curta"},
                                "cards": [{"at": {"say": "nada novo", "nth": n}} for n in (2, 4, 6)]})
     assert atlas_guion.still_gaps(board, words, words[-1]["end"]) == []
+
+
+def test_the_queue_passes_a_transcriber_when_the_key_exists(tmp_path, monkeypatch):
+    """17-11: two Atlas videos died with «Hay voz pero no hay transcriptor» although the key was in .env: the queue's
+    path (make_in_queue) never handed run() a transcriber."""
+
+    from pipeline import atlas_guion, tts
+    from pipeline.context import RunContext
+
+    (tmp_path / "materiales" / "a1").mkdir(parents=True)
+    (tmp_path / "config.yaml").write_text("{}\n")
+    seen = {}
+    monkeypatch.setattr(tts, "ensure", lambda ctx: None)
+    monkeypatch.setattr(atlas_guion, "run", lambda slug, **kw: seen.update(kw) or (_ for _ in ()).throw(SystemExit("x")))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        atlas_guion.make_in_queue(tmp_path, "a1", ask=None)
+    assert callable(seen["transcribe"])
+    monkeypatch.delenv("OPENAI_API_KEY")
+    assert atlas_guion.queue_transcriber(RunContext.create("a1", root=tmp_path)) is None

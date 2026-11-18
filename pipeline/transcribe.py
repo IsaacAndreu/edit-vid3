@@ -36,9 +36,10 @@ def _probe_duration_seconds(audio_path: Path) -> float:
             check=True,
             capture_output=True,
             text=True,
+            timeout=60,
         )
         return max(0.0, float(result.stdout.strip()))
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return 0.0
 
 
@@ -49,7 +50,7 @@ def transcribe_audio(audio_path: Path, settings: Settings) -> Transcript:
     if not audio_path.is_file():
         raise FileNotFoundError(f"No existe el audio: {audio_path}")
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(api_key=settings.openai_api_key, timeout=600, max_retries=2)
     with audio_path.open("rb") as audio_file:
         response = client.audio.transcriptions.create(
             model="whisper-1",
