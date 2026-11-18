@@ -29,6 +29,8 @@ from ..fileio import (atomic_write_text, clean_parts, file_lock, media_problem, 
                       update_json)
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
+from .byteranges import NoIndex, Plan, needed_head, plan
+from .byteranges import pieces as byte_pieces
 from .proxy_sessions import SESSION_SUFFIX, ProxySessions, is_residential, with_sticky_session
 
 
@@ -177,7 +179,7 @@ QUARANTINE_SUFFIX = ".cuarentena"
 BUDGET_SUFFIX = ".presupuesto"
 # What one action costs out of the hourly budget, in HTTP requests to YouTube (estimated: yt-dlp does several per
 # operation — the page, the player API, the PO token, the format manifests; a range download fetches many fragments)
-REQUEST_UNITS = {"search": 2, "metadata": 4, "captions": 1, "download": 3, "download (HLS)": 3,
+REQUEST_UNITS = {"search": 2, "metadata": 4, "captions": 1, "download": 3, "download (HLS)": 3, "download (rango)": 3,
                  "download (completo)": 8, "get": 1}
 # storyboard thumbnails come from the image CDN (i.ytimg.com), not from YouTube's pages or player: not counted
 _FREE_HOSTS = ("ytimg.com",)
@@ -1654,7 +1656,7 @@ class YouTubeSource:
         """Why this video could not be downloaded through the residential proxy (no HLS and over the whole-download
         caps), or None. Older cached infos without the `hls` field are left alone."""
 
-        if not self.residential or info.get("hls") is not False:
+        if not self.residential or info.get("hls") is not False or self.cfg.get("byte_ranges", False):
             return None
         max_minutes, max_mb = self._whole_caps()
         duration = float(info.get("duration") or 0)
@@ -1878,6 +1880,14 @@ class YouTubeSource:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
                     raise
                 self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»"
+        if self.cfg.get("byte_ranges", False):
+            # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
+            try:
+                self._local.route = "rango-bytes"
+                return self._fetch_byte_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path)
+            except NoIndex as error:
+                self._local.route = None
+                self._local.not_hls = f"{self._local.not_hls or 'sin HLS'}; sin rango de bytes: {error}"
         # two 403s in a row on whole downloads: this client/connection does not get them today (pati12 14/10: 403 on
         # every one, each a wasted request before the piece that works); straight to the piece for the rest of the run
         whole_off = getattr(self, "_whole_403", 0) >= 2
@@ -1945,6 +1955,8 @@ class YouTubeSource:
 
         if not self.residential or _has_hls(info_path):
             return None
+        if self.cfg.get("byte_ranges", False) and self._has_dash_mp4(info_path):
+            return None                          # its ranges come by byte ranges, whatever its length
         max_minutes, max_mb = self._whole_caps()
         data = json.loads(info_path.read_text(encoding="utf-8"))
         duration = float(data.get("duration") or 0)
@@ -1959,6 +1971,17 @@ class YouTubeSource:
         pieces = chosen.get("requested_formats") or [chosen]
         size = sum(float(f.get("filesize") or f.get("filesize_approx") or 0) for f in pieces)
         return f"pesa {size / 1e6:.0f} MB en HD (> {max_mb:g} MB)" if size > 1e6 * max_mb else None
+
+    @staticmethod
+    def _has_dash_mp4(info_path: Path) -> bool:
+        import json
+
+        try:
+            formats = json.loads(info_path.read_text(encoding="utf-8")).get("formats") or []
+        except (OSError, ValueError):
+            return False
+        return any(f.get("protocol") == "https" and f.get("ext") == "mp4" and f.get("vcodec") not in (None, "none")
+                   for f in formats)
 
     def _check_hd_reachable(self, video_id: str, info_path: Path) -> None:
         why = self.hd_unreachable(video_id, info_path)
@@ -2152,6 +2175,116 @@ class YouTubeSource:
                 height = piece.get("height")
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
             self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS")
+            return target
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _fetch_byte_range(self, video_id: str, start: float, end: float, fmt: str, prefix: str, audio: bool,
+                          audio_only: bool, info_path: Path) -> Path:
+        """[start, end] of a DASH mp4 by HTTP byte ranges (see byteranges.py): the first KB give the index, then only
+        the fragments covering the seconds, through this video's session, and ffmpeg cuts locally. NoIndex when the
+        format is not an indexed mp4 (webm, no sidx): the caller goes on as before."""
+
+        import json
+        import subprocess
+
+        def choose(path: Path) -> list[dict[str, Any]]:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if audio_only:
+                request = "ba[ext=m4a][protocol=https]"
+            else:
+                video = "/".join(dict.fromkeys(f"{alt.split('+')[0]}[ext=mp4][protocol=https]"
+                                               for alt in fmt.split("/") if alt.strip() and not alt.startswith("ba")))
+                request = f"({video})+ba[ext=m4a][protocol=https]" if audio else video
+            try:
+                with self._ydl({"format": request, "simulate": True, "quiet": True}) as ydl:
+                    chosen = ydl.process_ie_result(dict(data), download=False)
+            except Exception as error:
+                raise NoIndex(f"sin formato mp4 por HTTPS ({str(error)[:80]})") from None
+            return list(chosen.get("requested_formats") or [chosen])
+
+        target_dir = self.cache_dir / "videos" / video_id
+        work = part_for(target_dir / f"br_{prefix}_{start:.2f}_{end:.2f}")
+        margin = 0.0
+
+        def fetch(pieces_: list[dict[str, Any]]) -> list[tuple[Path, Plan]]:
+            way = getattr(self._local, "way", 0) or 0
+            proxies = self._requests_proxies(way)
+
+            def get(url: str, headers: dict[str, str], first: int, last: int) -> bytes:
+                wanted = last - first + 1
+                response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={first}-{last}"},
+                                                   timeout=60, proxies=proxies, stream=True)
+                try:
+                    if response.status_code >= 400:
+                        raise RuntimeError(f"yt-dlp download (rango): HTTP Error {response.status_code}: {response.reason}")
+                    if response.status_code != 206 and first > 0:
+                        raise NoIndex("el servidor no atiende peticiones Range")
+                    body = bytearray()
+                    for block in response.iter_content(256 * 1024):
+                        body += block
+                        if len(body) >= wanted:
+                            break
+                finally:
+                    response.close()
+                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(body)
+                return bytes(body[:wanted])
+
+            out = []
+            work.mkdir(parents=True, exist_ok=True)
+            for n, piece in enumerate(pieces_):
+                url = str(piece["url"])
+                headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
+                head = get(url, headers, 0, 64 * 1024 - 1)
+                need = needed_head(head)
+                if need is not None and need > len(head):
+                    if need > 4 * 1024 * 1024:
+                        raise NoIndex(f"índice demasiado grande ({need / 1e6:.1f} MB)")
+                    head += get(url, headers, len(head), need - 1)
+                cut = plan(head, start, end, margin=margin)
+                path = work / f"pista{n}.mp4"
+                with path.open("wb") as handle:
+                    handle.write(head[cut.init[0]:cut.init[1] + 1])
+                    for a, b in byte_pieces(*cut.data):
+                        handle.write(get(url, headers, a, b))
+                out.append((path, cut))
+            return out
+
+        pieces_ = choose(info_path)
+        try:
+            try:
+                tracks = self._call("download (rango)", lambda: fetch(pieces_))
+            except RuntimeError as error:
+                if not any(code in str(error) for code in ("HTTP Error 403", "HTTP Error 410", "HTTP Error 404")):
+                    raise
+                self._full_info_path(video_id).unlink(missing_ok=True)      # stale links: fresh ones, once more
+                pieces_ = choose(self._fresh_full_info(video_id))
+                tracks = self._call("download (rango)", lambda: fetch(pieces_))
+            suffix = ".m4a" if audio_only else ".mp4"
+            target = target_dir / f"{prefix}_{start:.3f}_{end:.3f}{suffix}"
+            part = part_for(target)
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+            for path, cut in tracks:
+                command += ["-ss", f"{max(0.0, start - cut.start):.3f}", "-i", str(path)]
+            command += ["-t", f"{end - start:.3f}"]
+            if audio_only:
+                command += ["-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
+            else:
+                command += ["-map", "0:v:0", *(["-map", "1:a:0", "-c:a", "aac"] if audio and len(tracks) > 1 else ["-an"]),
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)]
+            try:
+                done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
+            except subprocess.TimeoutExpired:
+                part.unlink(missing_ok=True)
+                raise RuntimeError("yt-dlp download (rango): el corte local tardó más de 10 min") from None
+            if done.returncode != 0:
+                part.unlink(missing_ok=True)
+                words = " ".join((done.stderr or "").split())[:200]
+                raise RuntimeError(f"yt-dlp download (rango): el corte local falló: {words or done.returncode}")
+            if not audio_only:
+                height = pieces_[0].get("height")
+                self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
+            self._publish(part, target, video=not audio_only, seconds=end - start, what="rango")
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)

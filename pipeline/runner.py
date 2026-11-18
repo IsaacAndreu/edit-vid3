@@ -97,7 +97,7 @@ SPEED_KEYS = frozenset({
     "player_client_residential", "max_fps", "proxy_usd_per_gb", "whole_max_minutes_residential", "whole_max_mb_residential", "prefetch_whole_residential",
     "refused_hours_residential",
     "timeout_retries_residential",
-    "whole_min_rate_kb", "whole_deadline_seconds_per_mb", "fragment_retries",     # plazos de las descargas enteras
+    "whole_min_rate_kb", "whole_deadline_seconds_per_mb", "fragment_retries", "byte_ranges",     # plazos de las descargas enteras
     "max_height",       # ingest: the HD clips already downloaded are not downloaded again at the new height
     # the judge outside the hook (judge.py): only for the shots judged from now on, never a reason to judge again
     "rounds_rest", "model_rest", "usd_per_mtok_rest", "lessons_refresh",
