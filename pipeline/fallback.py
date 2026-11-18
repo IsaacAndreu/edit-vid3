@@ -88,6 +88,35 @@ def _download(http: requests.Session, url: str, target: Path) -> Path:
     return target
 
 
+def _judged_stock(ctx: RunContext, shot: Any, good: list[tuple[float, dict[str, Any]]], kind: str, story: Any,
+                  tried: list[str]) -> list[tuple[float, dict[str, Any]]]:
+    """The Pexels results CLIP liked, shown to the vision judge (their poster frames): only those it accepts, in its
+    order. A judge error keeps nothing (the shot goes on to the next step), never CLIP's choice unseen."""
+
+    options, candidates = [], {}
+    for _, result in good:
+        rid = f"px{kind[0]}:{result['id']}"
+        candidates[rid] = Candidate(id=rid, source="pexels", kind="image", url=str(result.get("url") or "u"),
+                                    title=str(result.get("alt") or result.get("url") or "Pexels"), channel="Pexels",
+                                    license="pexels", credit="Fuente: Pexels", attribution="Pexels", query="pexels",
+                                    rankScore=0.0)
+        options.append(Option.model_validate({"candidateId": rid, "source": "pexels", "kind": "image", "pass": "coarse",
+                                              "analysisPath": result.get("_thumb"), "scores": {"clip": 0.0}, "total": 0.0}))
+    judge_cfg = ctx.section("judge")
+    try:
+        sheet = contact_sheet(options, candidates, ctx.root, frames=1, tile_width=int(judge_cfg.get("tile_width", 320)))
+        verdict = call_judge(ctx, shot, sheet, LETTERS[: len(options)], story.context or story.title, False, story.subject,
+                             source_lines(options, candidates), around=surrounding(story.shots, shot.id))
+    except Exception as error:
+        tried.append(f"pexels {kind}: el juez no respondió ({str(error)[:80]})")
+        return []
+    by_letter = dict(zip(LETTERS, good))
+    accepted = [by_letter[letter] for letter in verdict.get("ranking") or [] if letter in by_letter]
+    if not accepted:
+        tried.append(f"pexels {kind}: el juez las rechazó ({str(verdict.get('reason', ''))[:100]})")
+    return accepted
+
+
 def _thumbnail(http: requests.Session, url: str, cache: Path) -> np.ndarray | None:
     try:
         path = _download(http, url, cache / f"{key(url)}.jpg")
@@ -364,7 +393,7 @@ def run(ctx: RunContext) -> None:
         tried: list[str] = []
 
         def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str,
-                                vet: bool = True) -> FallbackItem | None:
+                                vet: bool = True, judged: bool | None = None) -> FallbackItem | None:
             """Nobody has looked at these yet: the vision judge vets them (unless `vet` is off), then the first
             that downloads (and passes the identity check) wins."""
 
@@ -439,7 +468,8 @@ def run(ctx: RunContext) -> None:
                     shotId=shot_id, reason=reason, method=method, kind=media.kind, path=media.path,
                     source=c.source, candidateId=c.id, url=c.url, start=media.start, end=media.end,
                     durationSeconds=media.durationSeconds, credit=c.credit, attribution=c.attribution,
-                    specHash=digest, sourceHeight=media.sourceHeight, year=media.year, judged=vet,
+                    specHash=digest, sourceHeight=media.sourceHeight, year=media.year,
+                    judged=vet if judged is None else judged,
                 )
             return None
 
@@ -457,6 +487,19 @@ def run(ctx: RunContext) -> None:
             scores = ShotScores.model_validate_json((ctx.work_dir / "scores" / f"{shot_id}.json").read_text("utf-8"))
             candidates = {c.id: c for c in ShotCandidates.model_validate_json(
                 (ctx.work_dir / "candidates" / f"{shot_id}.json").read_text("utf-8")).candidates}
+            # 1a. what the judge already accepted for this shot (its 2nd and 3rd), in its order: no new call, and
+            # never reordered by CLIP before (39 % of the HD downloads failed: each one used to lose the judge's work)
+            accepted = []
+            for cid, start, _ in selections[shot_id].alternatives:
+                match = next((o for o in scores.options if o.candidateId == cid and o.start is not None and start is not None
+                              and abs(o.start - start) < 0.05), None)
+                if match is not None and cid != failed_id and cid in candidates \
+                        and not is_repeat(match, used, int(judge_cfg.get("max_phash_distance", 6))) \
+                        and not seen_elsewhere(match, elsewhere):
+                    accepted.append(match)
+            if accepted:
+                item = vet_and_materialise(accepted, candidates, "next-option", vet=False, judged=True)
+        if item is None and reason.startswith("descarga fallida"):
             options = [
                 o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
                 if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId != failed_id
@@ -545,12 +588,20 @@ def run(ctx: RunContext) -> None:
                         thumb_url = result.get("image") if kind == "video" else (result.get("src") or {}).get("medium")
                         picture = _thumbnail(http, thumb_url, ctx.cache_dir / "pexels" / "thumbs") if thumb_url else None
                         if picture is not None:
+                            result = {**result, "_thumb": str((ctx.cache_dir / "pexels" / "thumbs" / f"{key(thumb_url)}.jpg")
+                                                              .relative_to(ctx.root))}
                             scored.append((float(clip.embed_images([picture])[0] @ vector), result))
                 scored.sort(key=lambda pair: -pair[0])
                 good = [pair for pair in scored if pair[0] >= float(cfg.get("min_clip", 0.22))]
                 if not good:
                     tried.append(f"pexels {kind}: nada con CLIP ≥ {cfg.get('min_clip', 0.22)}")
                     continue
+                if cfg.get("judge_pexels", False):
+                    # fallback.judge_pexels (off: one judge call per such shot): stock footage chosen by CLIP alone was a
+                    # third of guiadelmapa; the judge sees its best ones first and only what it accepts is used
+                    good = _judged_stock(ctx, shot, good[:3], kind, story, tried)
+                    if not good:
+                        continue
                 for similarity, best in good[:4]:
                     author = str((best.get("user") or {}).get("name") or best.get("photographer") or "Pexels")[:40]
                     rid = f"px{kind[0]}:{best['id']}"
@@ -581,7 +632,7 @@ def run(ctx: RunContext) -> None:
                         shotId=shot_id, reason=reason, method=f"pexels-{kind}", kind="video" if kind == "video" else "image",
                         path=str(target.relative_to(ctx.root)), source="pexels", candidateId=rid, url=best.get("url"),
                         credit=f"Fuente: {author} / Pexels", attribution=f"{author} — Pexels: {best.get('url')}",
-                        clip=round(similarity, 4), specHash=digest, judged=False, **extra,
+                        clip=round(similarity, 4), specHash=digest, judged=bool(cfg.get("judge_pexels", False)), **extra,
                     )
                     pexels_used.add(rid)
                     break
@@ -601,7 +652,9 @@ def run(ctx: RunContext) -> None:
                                           and abs(u.start - o.start) < 6 for u in used)),
                              key=lambda o: -o.total)[: limit * 2]
             # a narrated moment (a fall, tears on the podium) is never filled with any other moment of the person
-            item = vet_and_materialise(options, pool_candidates, "protagonist-filler", vet=bool(shot.broll.moment))
+            # fallback.judge_filler (off: one judge call more per such shot): the judge vets any filler, not only moments
+            item = vet_and_materialise(options, pool_candidates, "protagonist-filler",
+                                       vet=bool(shot.broll.moment) or bool(cfg.get("judge_filler", False)))
 
         # 2c. A narrated moment nobody filmed (Yulo dejected after fourth place, the Manila parade, a press conference):
         # a photo of the protagonist instead of an empty shot, as sports channels do. Without the judge (it would

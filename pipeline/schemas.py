@@ -382,7 +382,7 @@ class JudgeVerdict(_Strict):
 
 
 class Selection(_Strict):
-    _late = frozenset({'master', 'judgeRank', 'pickedBy', 'thumbnailsOnly'})
+    _late = frozenset({'master', 'judgeRank', 'pickedBy', 'thumbnailsOnly', 'alternatives'})
     shotId: str
     status: Literal["selected", "fallback"]                 # fallback → stage 7 (Pexels / GPT Image)
     decidedBy: Literal["score", "judge", "fallback", "editor"]    # editor: swapped by hand before the render
@@ -409,6 +409,9 @@ class Selection(_Strict):
     judgeRank: int | None = None
     pickedBy: str | None = None
     thumbnailsOnly: bool = False                             # the judge saw only storyboard thumbnails (no 360p window)
+    # the other options the judge ACCEPTED, in its order [candidateId, start, end]: what the fallback tries first
+    # when this clip cannot be downloaded, before reordering anything by CLIP
+    alternatives: list[tuple[str, float | None, float | None]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _complete(self) -> "Selection":

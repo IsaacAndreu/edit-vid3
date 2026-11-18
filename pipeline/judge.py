@@ -865,6 +865,7 @@ def run(ctx: RunContext) -> None:
             phash=chosen.phash,
             master=bool(master) and chosen.candidateId == master,
             judgeRank=next((n for n, o in enumerate(judged, start=1) if o is chosen), None),
+            alternatives=[(o.candidateId, o.start, o.end) for o in judged if o is not chosen][:3],
             pickedBy=picked_by,
             thumbnailsOnly=bool(shot.id in verdicts and verdicts[shot.id][1]
                                 and all(o.pass_ == "coarse" for o in verdicts[shot.id][1] if o.kind == "video")),
