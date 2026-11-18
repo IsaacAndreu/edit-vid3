@@ -141,6 +141,52 @@ class SharedPacer(Pacer):
                     fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+class ProcessSlots:
+    """At most `count` holders at once across every process of the machine: one file per place, held with a
+    non-blocking flock (freed by the kernel when its process dies, so a killed video never keeps a place).
+    Where flock does not exist (Windows) a plain semaphore of this process."""
+
+    def __init__(self, folder: Path, count: int, poll: float = 0.05) -> None:
+        self._folder = folder
+        self._count = max(1, int(count))
+        self._poll = poll
+        self._local = threading.local()
+        self._fallback = threading.Semaphore(self._count)
+
+    def __enter__(self) -> "ProcessSlots":
+        try:
+            import fcntl
+        except ImportError:
+            self._fallback.acquire()
+            return self
+        self._folder.mkdir(parents=True, exist_ok=True)
+        start = int(time.monotonic() * 1000) % self._count       # spread the first tries over the places
+        while True:
+            for n in range(self._count):
+                place = (start + n) % self._count
+                handle = open(self._folder / f"plaza-{place}", "a+")
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    handle.close()
+                    continue
+                self._local.handles = getattr(self._local, "handles", []) + [handle]
+                return self
+            time.sleep(self._poll)
+
+    def __exit__(self, *exc: Any) -> None:
+        try:
+            import fcntl
+        except ImportError:
+            self._fallback.release()
+            return
+        handle = self._local.handles.pop()
+        try:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
 def http_get_json(
     session: requests.Session,
     url: str,

@@ -10,6 +10,7 @@ cache/videos/<id>/, so later videos on similar topics reuse the work.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import re
@@ -27,7 +28,7 @@ from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
 from ..fileio import (atomic_write_text, clean_parts, file_lock, media_problem, part_for, publish, read_json,
                       update_json)
-from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
+from .common import (USER_AGENT, HourlyBudget, Pacer, ProcessSlots, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
 from .byteranges import NoIndex, Plan, needed_head, plan
 from .byteranges import pieces as byte_pieces
@@ -926,6 +927,47 @@ class YouTubeSource:
         proxy = self.metadata_proxy if via_metadata else (self.proxies[getattr(self._local, "way", 0) or 0] if self.proxies else "")
         return self.sessions.session_id(self._session_key()) if is_residential(proxy) else None
 
+    def _paced_per_session(self, way: int, through: bool) -> bool:
+        """`pace_per_session` (off by default): through a residential proxy each sticky session is its own exit IP,
+        so the pace (`session_min_interval`) and the concurrency (`session_concurrency`) are per session (per YouTube
+        video), with a cap on the connections open to the proxy for the whole machine (`proxy_connections_max`).
+        The rule «never raise the pace to YouTube» was learnt with home proxies (one IP); here it has to be measured:
+        python main.py --youtube-stats before and after (bot, 429, failed share per hour)."""
+
+        return bool(self.cfg.get("pace_per_session", False)) and not through \
+            and is_residential((self.proxies or [""])[way])
+
+    def _session_pacer(self) -> Pacer:
+        key = self.sessions.session_id(self._session_key())
+        with self._turn_lock:
+            pacers = self.__dict__.setdefault("_session_pacers", {})
+            if key not in pacers:
+                pacers[key] = Pacer(float(self.cfg.get("session_min_interval", self.cfg.get("min_interval", 1.0))))
+            return pacers[key]
+
+    @contextlib.contextmanager
+    def _request_slots(self, way: int, per_session: bool):
+        """The connection slots of one request: this process's and the way's (as always), or, paced per session, the
+        session's own and one of the machine's `proxy_connections_max` connections to the proxy."""
+
+        if not per_session:
+            with self._slots:
+                self._way_slots[way].acquire()
+                try:
+                    yield
+                finally:
+                    self._way_slots[way].release()
+            return
+        key = self.sessions.session_id(self._session_key())
+        with self._turn_lock:
+            gates = self.__dict__.setdefault("_session_gates", {})
+            gate = gates.setdefault(key, threading.Semaphore(max(1, int(self.cfg.get("session_concurrency", 1)))))
+            if not hasattr(self, "_proxy_slots"):
+                self._proxy_slots = ProcessSlots(self.cache_dir / "videos" / ".conexiones-proxy",
+                                                 int(self.cfg.get("proxy_connections_max", 6)))
+        with gate, self._proxy_slots:
+            yield
+
     def _calm_down(self) -> None:
         """Back to `concurrency` requests at a time: the extra slots are taken and never given back."""
 
@@ -957,28 +999,32 @@ class YouTubeSource:
             self._local.proxy_bytes = 0
             self._local.proxy_hosts = {}
             try:
-                with self._slots:
-                    way = self._local.way = self._pick_way(tried_ways)
+                way = self._local.way = self._pick_way(tried_ways)
+                # the waits that can be long (a 429's cooldown, the hourly budget: up to an hour) come BEFORE taking a
+                # connection slot: holding one meanwhile stopped every other thread of the video for nothing
+                delay = self._cooldown_until - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+                    self._count("espera por límite", delay)
+                held = 0.0 if through else self._budget_take(way, REQUEST_UNITS.get(action, 2))
+                if held:
+                    self._count("espera por presupuesto/hora", held)
+                per_session = self._paced_per_session(way, through)
+                with self._request_slots(way, per_session):
                     with self._proxy_lock:
                         self._busy[way] += 1
-                    self._way_slots[way].acquire()
                     try:
-                        delay = self._cooldown_until - time.monotonic()
-                        if delay > 0:
-                            time.sleep(delay)
-                            self._count("espera por límite", delay)
-                        self._pacers[way].wait()
-                        held = 0.0 if through else self._budget_take(way, REQUEST_UNITS.get(action, 2))
-                        if held:
-                            self._count("espera por presupuesto/hora", held)
+                        if per_session:
+                            self._session_pacer().wait()
+                        else:
+                            self._pacers[way].wait()
                         began = time.monotonic()
-                        self._local.waited = began - queued     # our own queue (slots + 1 req/s), not YouTube
+                        self._local.waited = began - queued     # our own queue (slots + pace + budget), not YouTube
                         try:
                             result = fn()
                         finally:
                             self._count(action, time.monotonic() - began)
                     finally:
-                        self._way_slots[way].release()
                         with self._proxy_lock:
                             self._busy[way] -= 1
                 self._metric(action, ok=True, seconds=time.monotonic() - began, attempt=tries,
