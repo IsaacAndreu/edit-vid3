@@ -62,6 +62,11 @@ def error_kind(message: str) -> str:
         return "timeout"
     return "other"
 _RATE_MARKERS = ("http error 429", "too many requests")
+# the video itself is gone for everyone (never «Requested format is not available», which is our request)
+_GONE_MARKERS = ("video unavailable. this video has been removed", "this video has been removed",
+                 "this video is no longer available", "account associated with this video has been terminated",
+                 "this video is private", "private video. sign in", "video unavailable. this video is not available",
+                 "this live event has ended", "this video has been removed by the uploader")
 
 # What a failure was, finer than error_kind (which drives the retry logic and stays as it was): the request log keeps
 # it as «cause», so «otros» — 1/3 of every failure on 17-11, most rows without a word — can be told apart.
@@ -424,7 +429,7 @@ def unreachable_videos(cache_dir: Path, days: float = 7) -> set[str]:
         return set()
     now = time.time()
     return {video for video, entry in data.items() if isinstance(entry, dict)
-            and entry.get("why") in ("sin-hls", "vpn", "geo") and now - float(entry.get("at") or 0) < 86400 * days}
+            and entry.get("why") in ("sin-hls", "vpn", "geo", "no-disponible") and now - float(entry.get("at") or 0) < 86400 * days}
 
 
 def _has_hls(info_path: Path) -> bool:
@@ -1170,6 +1175,12 @@ class YouTubeSource:
                         # instance, NoneType found», three times from one session on AMA4j3IcLWw; fine from
                         # another IP): once more from another session
                         continue
+                video = getattr(self._local, "video_id", None) if action != "search" else None
+                if video is not None and any(marker in lowered for marker in _GONE_MARKERS):
+                    # removed, private, terminated: no stage asks for it again (coldopen asked 1 070 times)
+                    self._refuse(video, "no-disponible")
+                    raise Refused(f"yt-dlp {action}: {video} no está disponible ({message[:120]}); "
+                                  "no se vuelve a pedir") from None
                 if any(marker in lowered for marker in _RATE_MARKERS):
                     # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry
                     self._quarantine(way, "YouTube responde 429 (demasiadas peticiones)")
@@ -1296,6 +1307,7 @@ class YouTubeSource:
     @staticmethod
     def _refusal_text(why: str) -> str:
         return {"sin-hls": "sin HLS y entero supera el tope del proxy residencial",
+                "no-disponible": "YouTube dice que el vídeo no está disponible (borrado, privado o retirado)",
                 "vpn": "YouTube no lo sirve a la IP de un proxy",
                 "geo": "no está disponible en el país del proxy"}.get(why, "pidió «no eres un bot»")
 
@@ -1932,7 +1944,8 @@ class YouTubeSource:
         if existing is not None:
             return existing
         self._local.route = None
-        if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo"):
+        if (self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo")) \
+                or self.refused_why(video_id) == "no-disponible":
             raise Refused(f"yt-dlp download: {video_id} descartado ({self._refusal_text(self.refused_why(video_id) or '')}); "
                           "se pasa al siguiente candidato")
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
@@ -1953,7 +1966,10 @@ class YouTubeSource:
         self._local.not_hls = None if hls else "hls_ranges apagado"
         if hls and not _has_hls(info_path):
             self._local.not_hls = self._why_no_hls(video_id, info_path)
-        if hls and _has_hls(info_path):
+        missed = self.__dict__.setdefault("_hls_missed", set())
+        if hls and (video_id, hls) in missed:       # this request found no HLS stream of this video a moment ago
+            self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}» (ya visto)"
+        elif hls and _has_hls(info_path):
             self._local.route = "hls-local" if self.residential else "hls-ffmpeg"
             try:
                 if self.residential:
@@ -1966,6 +1982,7 @@ class YouTubeSource:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
                     raise
                 self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»"
+                missed.add((video_id, hls))
         if self.cfg.get("byte_ranges", False):
             # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
             try:
