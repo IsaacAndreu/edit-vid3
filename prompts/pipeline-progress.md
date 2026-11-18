@@ -68,7 +68,15 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 
 ## Bloques 5-6 · resto de fase 1, fases 2-5
 
-Pendiente (no empezado en esta sesión), salvo la fase 1.6 (hecha en el bloque 3). Siguiente paso: fase 1.4
-(segmentos HLS con reintento y en paralelo), 1.5, 1.7-1.10, y la fase 2 entera (`is_done` con nombre temporal,
-cortacircuitos en los dos modos de cola, perro guardián que mata, estado tras cada resultado, preflight, topes de
-gasto dentro de judge y fallback).
+| Punto | Estado | Test |
+|---|---|---|
+| 1.4 segmentos HLS | hecho: 3 a la vez por la misma sesión (`hls_segment_workers`), 2 reintentos por segmento (`hls_segment_retries`), a disco en streaming, se conservan los ya bajados al renovar enlaces, y si la sesión cambió de IP se re-extrae antes de pedir | `tests/test_hls_local.py` |
+| 1.6 esperas sin hueco cogido | hecho (bloque 3) | `tests/test_session_pace.py` |
+| 2.1 vídeo a medias «terminado» | hecho: el render trabaja sobre `.video-final.render.mp4` y renombra tras el postflight; marca `out/<slug>/.haciendo` desde el render hasta la última etapa; `is_done` la exige ausente (los vídeos antiguos sin marca siguen hechos) | `tests/test_done_only_when_finished.py` |
+| 2.2 cortacircuitos | hecho: en los dos modos de cola; bug = tipo + archivo:línea; `queue.breaker_same_stage` (3) fallos seguidos en una etapa; en paralelo «sin saldo / clave muerta» (salida 77) y «tope de gasto» (78) paran los arranques | `tests/test_cortacircuitos.py` |
+| 1.5, 1.7-1.10 | pendiente | — |
+| 2.3 perro guardián que mata | pendiente | — |
+| 2.4 estado tras cada resultado, `KillMode=mixed` | pendiente | — |
+| 2.5 preflight completo | pendiente | — |
+| 2.6 topes de gasto dentro de judge y fallback | pendiente | — |
+| Fases 3, 4, 5 | pendiente | — |
