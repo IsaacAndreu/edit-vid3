@@ -1194,6 +1194,20 @@ def is_light(root: Path, slug: str) -> bool:
         return False
 
 
+def _trim_log(path: Path, keep: int = 5 * 1024 * 1024, limit: int = 20 * 1024 * 1024) -> None:
+    """The queue's logs are appended across retries: past `limit` only the last `keep` bytes stay."""
+
+    try:
+        if path.stat().st_size <= limit:
+            return
+        with path.open("rb") as handle:
+            handle.seek(-keep, os.SEEK_END)
+            tail = handle.read()
+        path.write_bytes(b"(recortado: solo el final)\n" + tail)
+    except OSError:
+        pass
+
+
 def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
                  root: Path, refill: Callable[[], list[str]] | None = None) -> list[tuple[str, str, float, str]]:
     """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
@@ -1218,7 +1232,10 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         if review:
             args.append("--review")
         tail: deque[str] = deque(maxlen=200)
-        with (logs / f"{slug}.log").open("w", encoding="utf-8", buffering=1) as log:   # line by line: readable while it runs
+        _trim_log(logs / f"{slug}.log")
+        # line by line: readable while it runs; appended, so the attempt that failed before a retry is still there
+        with (logs / f"{slug}.log").open("a", encoding="utf-8", buffering=1) as log:
+            log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} · intento nuevo =====\n")
             process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                        encoding="utf-8", errors="replace",
                                        env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1",

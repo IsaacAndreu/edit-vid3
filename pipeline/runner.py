@@ -166,6 +166,44 @@ def is_up_to_date(ctx: RunContext, stage: Stage) -> bool:
     return True
 
 
+def _failures_path(ctx: RunContext, stage: Stage) -> Path:
+    # .jsonl, not .json: the readers of .stages/*.json (tiempos, the studio) take every .json as a stage marker
+    return ctx.work_dir / ".stages" / f"{stage.name}.fallos.jsonl"
+
+
+def _record_failure(ctx: RunContext, stage: Stage, error: BaseException, queued: float, started: float | None) -> None:
+    """A failed (or interrupted) attempt of a stage, with what it cost: the marker is only written on success, so
+    without this the hours of an attempt that died (11 videos, 3.5-7 h each, on 17-11) were invisible."""
+
+    now = time.monotonic()
+    row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "error": type(error).__name__,
+           "detail": str(error).replace("\n", " ")[:300],
+           "waitSeconds": round((started or now) - queued, 1), "seconds": round(now - started, 1) if started else 0.0}
+    try:
+        path = _failures_path(ctx, stage)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def _failed_attempts(ctx: RunContext, stage: Stage) -> dict:
+    rows = []
+    try:
+        for line in _failures_path(ctx, stage).read_text("utf-8").splitlines():
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+    except OSError:
+        return {}
+    if not rows:
+        return {}
+    return {"failedAttempts": rows[-20:], "failedSeconds": round(sum(float(r.get("seconds") or 0) for r in rows), 1),
+            "failedWaitSeconds": round(sum(float(r.get("waitSeconds") or 0) for r in rows), 1)}
+
+
 PROXY_STAGES = ("sourcing", "analysis", "ingest", "fallback")   # the stages that ask YouTube through the proxy
 
 
@@ -210,19 +248,26 @@ def run_stages(
                 budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
-            current.write_text(json.dumps({"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),
-                                           "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
-                               encoding="utf-8")
+            state = {"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),
+                     "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "waiting": True}
+            current.write_text(json.dumps(state), encoding="utf-8")
             from .housekeeping import Sampler
 
             from . import stickman
 
             skipped = stage.name in stickman.SKIP and stickman.drawn(ctx)    # drawn in code: no footage
+            queued = time.monotonic()
+            started = None
             try:
                 # a drawn video skips these stages without queueing for the network turn (atlas1pt waited behind
                 # other videos' searches with «esperando turno de red» for a stage it never runs)
                 with nullcontext() if skipped else turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):
                     started = time.monotonic()
+                    waited = started - queued                   # the turn's wait, never counted as the stage's work
+                    state.pop("waiting", None)
+                    current.write_text(json.dumps({**state, "waitSeconds": round(waited, 1),
+                                                   "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
+                                       encoding="utf-8")
                     with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
                         if skipped:
                             stickman.skip(ctx, stage.name)
@@ -230,7 +275,8 @@ def run_stages(
                             stage.run(ctx)
                 if stage.validate is not None:
                     stage.validate(ctx)
-            except BaseException:
+            except BaseException as error:
+                _record_failure(ctx, stage, error, queued, started)
                 # The stage stopped (an error, waiting for the API quota…): the file stays for the failure notice
                 # (which stage), marked as ended, or the studio would show it «haciendo» while the queue (the same
                 # process, still alive) goes on with other videos — mega11 showed «Buscar material desde hace 6 h».
@@ -250,6 +296,8 @@ def run_stages(
                         "inputsHash": fingerprint(ctx, stage),
                         "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                         "seconds": round(time.monotonic() - started, 1),
+                        "waitSeconds": round(waited, 1),
+                        **_failed_attempts(ctx, stage),
                         **usage.fields(),
                         **({"withoutYouTube": True} if offline and stage.name in sin_youtube.STAGES else {}),
                     },
@@ -259,6 +307,7 @@ def run_stages(
                 encoding="utf-8",
             )
             current.unlink(missing_ok=True)
+            _failures_path(ctx, stage).unlink(missing_ok=True)       # now inside the marker
             executed.append(stage.name)
             spent = time.monotonic() - started
             print(f"{label}: hecho en {spent:.1f} s" + (f" ({spent / 60:.0f} min)" if spent >= 120 else ""))
