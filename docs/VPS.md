@@ -28,7 +28,7 @@ Provider** (`bgutil-ytdlp-pot-provider`: el plugin de yt-dlp + su servidor en Do
 sourcing:
   youtube:
     cookies: fallback      # sin cuenta; una de reserva SOLO si un vídeo la pide (edad, miembros, privado)
-    po_token: on           # PO Token + cliente mweb (guía de yt-dlp); avisa si falta
+    po_token: on           # PO Token para los clientes configurados (mweb solo con pot_keep_clients: false); avisa si falta
 ```
 
 Copia a mano, **nunca por git**: `.env` (tus claves) y, si quieres cuentas de reserva, sus cookies en
@@ -50,8 +50,8 @@ cambies sus archivos o a que pasen 6 horas (`watch.retry_hours`). Entre vídeo y
 nuevo, se reinicia con él. Ver lo que hace: `journalctl -u edit-vid3 -f`; parar: `sudo systemctl stop edit-vid3`.
 (`install-cron.sh` sigue ahí si prefieres una hora fija.)
 
-Al empezar cada fase que usa YouTube verás `YouTube: sin cuenta…` y `PO Token Provider activo · clientes default, …,
-mweb`. Si no sale lo segundo: `docker ps` (¿está `bgutil-provider`?) y `curl http://127.0.0.1:4416/ping`.
+Al empezar cada fase que usa YouTube verás `YouTube: sin cuenta…` y `PO Token Provider activo · clientes default,
+web_safari` (mweb solo aparece con `pot_keep_clients: false`). Si no sale lo segundo: `docker ps` (¿está `bgutil-provider`?) y `curl http://127.0.0.1:4416/ping`.
 
 ## 3b. Estudio web con contraseña (sin comandos)
 
@@ -238,6 +238,31 @@ Factura: Ajustes → «Coste del servidor al mes», y en «Gasto» la tabla «Fa
 (por el día de cada llamada), proxy (los GB medidos de sus vídeos × `proxy_usd_per_gb`) y su parte del servidor,
 a partes iguales entre tú y cada persona (42 y una persona: 21 cada uno), con un CSV por persona. La otra persona
 ve la suya en «Mi gasto».
+
+## 3h. Puerta antes del despliegue y opciones por probar (noviembre de 2026)
+
+**Puerta.** El estudio, la cola y `--actualizar` ya no hacen `git pull` a ciegas: `pipeline/puerta.py` baja el commit
+nuevo con `git fetch`, lo comprueba en una carpeta temporal (pyflakes + importar `main` y todo `pipeline/`) y solo
+entonces hace `merge --ff-only`. Si falla, el servidor sigue con el código anterior, llega un Telegram y el commit
+queda en `out/_puerta.json` (no se vuelve a comprobar hasta que llegue otro). A mano: `python -m pipeline.puerta`.
+
+**Apagadas, a la espera de probarlas aquí** (en `config.local.yaml`, bajo `sourcing: youtube:` salvo que se diga):
+
+| Opción | Qué hace | Cómo compararla |
+|---|---|---|
+| `byte_ranges: true` | sin HLS, solo los bytes del tramo (índice `sidx` del mp4) en vez del vídeo entero o el descarte | `--youtube-stats`: «download (rango)», GB por vídeo terminado; `diagnostico.md` → «Material descartado» (sin HLS) |
+| `pace_per_session: true` | ritmo y concurrencia por sesión (IP) del proxy residencial, con `proxy_connections_max` | `--youtube-stats 2` antes/después: % fallidas, bot, 429 por hora, esperas |
+| `player_skip: [configs]` | quita la portada que yt-dlp baja para `web_safari` (≈0,9 MB por extracción) | primero `python -m pipeline.sonda_ytcfg`: solo si dice «se puede encender» |
+| `api_overflow: mixto` | sin cuota de la API, busca por yt-dlp con tope (`overflow_searches_per_hour`, 60) en vez de esperar | vídeos en «espera cuota» y «bot» en `--youtube-stats` |
+| `analysis: hd_windows_top: 1` | la mejor ventana de cada plano se baja ya en HD | `--youtube-stats` (archivo a360 + archivo hd) y `--tiempos` (analysis + ingest) |
+| `analysis: chapter_windows: true` | una ventana donde un capítulo del vídeo fuente nombra el momento | «De dónde salió cada plano» |
+| `judge: frames_per_candidate / tile_width / model_hook` | hojas del juez más ricas, modelo fuerte en el gancho | `python -m pipeline.rejuzgar <vídeo> <modelo>` y gasto del juez |
+| `fallback: judge_pexels / judge_filler: true` | el stock de Pexels y el relleno del protagonista pasan por el juez | «De dónde salió cada plano» (relleno sin juzgar) |
+
+Sin red, con lo que ya hay en el servidor: `python -m pipeline.diag_hls 7` dice por qué los tramos no van por HLS.
+
+**El límite de 5 s por clip de terceros** (`MAX_THIRD_PARTY_SECONDS`) es la protección frente a reclamaciones de Content
+ID; hoy sigue fijo en el código (`pipeline/schemas.py`).
 
 ## 4. Métricas (lo que decide)
 

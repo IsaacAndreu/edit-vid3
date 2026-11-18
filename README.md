@@ -87,6 +87,19 @@ Per-video options: `materiales/<slug>/config.yaml` is merged over `config.yaml` 
 
 Preview a project in Remotion Studio: `npx remotion studio remotion/index.ts --props=work/<slug>/timeline.json --public-dir=work/<slug>`
 
+## Tests, CI and the deploy gate
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q        # tests/test_e2e_stages.py runs all real stages with the outside world doubled
+python -m pipeline.puerta        # pyflakes + import of main and every pipeline module
+npm run typecheck
+```
+
+GitHub Actions runs the three on every push and PR (`.github/workflows/tests.yml`). On the server the studio, the
+queue and `--actualizar` only fast-forward to a commit that passes `pipeline.puerta` (docs/VPS.md, 3h). Progress of
+the reliability/aim/speed work: `prompts/pipeline-progress.md`.
+
 ## Adding a template
 
 1. Create a component in `templates/components/` that accepts `SceneProps`.
