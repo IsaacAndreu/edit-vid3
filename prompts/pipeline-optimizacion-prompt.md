@@ -259,6 +259,16 @@ Qué hacer, por orden. Lo que no cuesta proxy ni llamadas entra encendido; lo qu
    se habla aunque no haya protagonista, y da ejemplos de varios tipos de canal, no solo de deporte. Cambiar
    estas instrucciones no debe rehacer los vídeos ya planificados.
 
+9. **Que la cuota de la API no pare vídeos.** Hoy, con claves pero sin cuota, el vídeo espera
+   (`api_overflow: esperar`; 4 vídeos en «espera cuota» en la cola), y cada vídeo gasta unas 30.000 unidades de
+   las 10.000-50.000 diarias. La búsqueda por yt-dlp a través del proxy ya existe (`search`, rama `ytsearch`) pero
+   solo entra sin claves. Reduce el gasto de cuota sin perder puntería: una búsqueda por suceso y no por plano
+   donde los planos comparten suceso (es lo que hace `scene_search`, apagado: mide con `--comparar-escenas`),
+   caché de búsquedas compartida entre vídeos del mismo tema, y `playlistItems` (1 unidad) para recorrer los
+   canales de confianza en vez de `search` (100). Y añade un modo mixto: cuando la cuota se acaba, las búsquedas
+   que faltan salen por yt-dlp con la sesión de búsqueda del proxy, con su propio tope por hora, en lugar de
+   esperar al día siguiente. Los detalles de vídeo (`videos.list`, 1 unidad por 50 vídeos) siguen por la API.
+
 La fiabilidad de las descargas es también calidad: cada tramo que falla empuja el plano a una opción peor, y cada
 ventana de análisis que falla hace que el juez decida sobre miniaturas. Los puntos de descargas de arriba cuentan
 para esto tanto como estos ocho.
