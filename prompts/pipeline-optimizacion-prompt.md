@@ -191,6 +191,78 @@ añade a `out/<slug>/diagnostico.md` una tabla «Material descartado»: por cada
 planos se quedaron sin vídeo por él. No cambies ningún valor por defecto: el usuario decidirá con esa tabla. El
 límite de 5 s es su protección frente a reclamaciones de Content ID; déjalo configurable y dilo en la documentación.
 
+### Que el clip sea de lo que se está contando
+
+La queja principal del usuario sobre el resultado: a menudo el clip no tiene que ver con lo que dice la voz en ese
+momento, incluso en temas con mucho material en YouTube. La auditoría del camino completo (planner → búsqueda →
+análisis → juez → relleno) encontró estas causas, todas comprobadas en el código salvo donde se dice:
+
+- **Solo se lanzan dos búsquedas por plano y una es la del suceso, igual para todos sus planos.**
+  `queries_for` (`pipeline/sourcing/youtube.py`) corta a `api_queries_per_shot: 2` cuando hay API: quedan la
+  etiqueta del suceso y la primera búsqueda del LLM. La búsqueda en el idioma del guion, `placeQuery` y las
+  búsquedas 2-5 del planner no se ejecutan nunca. Una búsqueda de la API cuesta 100 unidades pida 8 resultados o
+  50, y se piden 8.
+- **Se miran 3 vídeos por plano**, ordenados por la posición en la búsqueda más un bono si *cualquier* palabra de
+  una entidad sale en el título o el canal (`candidates`). La descripción que devuelve la API no se usa; no se
+  exige que el título nombre el suceso ni el año. Con un 13 % de extracciones fallidas, muchos planos se quedan
+  con uno o dos vídeos.
+- **Dentro de un vídeo, el momento se busca en 40 miniaturas como mucho** (`storyboard_frames`,
+  `analysis.max_frames_per_video`): en un vídeo de 20 minutos, una cada 27 s para un plano de 2-4 s. Los subtítulos
+  de la fuente solo se usan cuando el plano tiene `moment`; no se usan capítulos ni descripción.
+- **El texto con el que CLIP puntúa es la media de `visualIntent` y de todas las búsquedas** (`prompts_for`,
+  `pipeline/analysis/__init__.py`), llenas de nombres propios y años que ViT-B-32 no sabe ver. Ese orden decide
+  qué tres opciones llega a ver el juez.
+- **El juez sí lee la narración** (`shot_brief`, `pipeline/judge.py`), pero ve tres fotogramas de 320×180 por
+  candidato, y cuando la ventana a 360p no se pudo bajar ve la misma miniatura del storyboard tres veces. Fuera
+  del gancho solo hay una ronda (`rounds_rest: 1`). Un error de la API del juez cae en silencio al orden de CLIP.
+  En producción `judge.model` se cambió entero a un modelo más barato, también para el gancho y para la revisión
+  final (`pipeline/revision.py`); la opción pensada para eso era `model_rest`.
+- **El código puede pasar por encima del juez** después del veredicto: fragmento del vídeo maestro, continuación
+  de la acción (segundos que el juez no vio), variedad de fuentes, repetidos.
+- **Cuando la descarga del clip elegido falla (39 % de los tramos), entra el relleno** (`pipeline/fallback.py`,
+  `resolve`). Las siguientes opciones se vuelven a juzgar, pero Pexels y el relleno con otros planos del
+  protagonista entran sin juez. Nada registra si el clip final era la primera elección del juez.
+- **Fallo:** el método `"protagonist-photo"` no está en el `Literal` de `FallbackItem.method`
+  (`pipeline/schemas.py`); salta un error de validación que se traga y el plano acaba en rótulo. Ese paso no
+  puede funcionar nunca.
+- Las instrucciones y ejemplos del planner (`LABEL_SYSTEM`, `pipeline/planner.py`) son de deporte y piden
+  búsquedas de «2-6 palabras» a la vez que «persona + competición + año + acción». En vídeos de tema sin
+  protagonista (negocios, megaproyectos, crímenes) las búsquedas salen genéricas. (Inferencia: confírmalo con
+  `shots.json` de un vídeo de cada canal si el usuario te lo pasa.)
+
+Qué hacer, por orden. Lo que no cuesta proxy ni llamadas entra encendido; lo que sube gasto, con opción y medida.
+
+1. Arregla el `Literal` de `protagonist-photo`, con su test.
+2. **Mide antes de tocar.** Añade a `Selection` qué puesto dio el juez a la opción usada y quién decidió al final
+   (juez, maestro, continuación, variedad, nota de CLIP por error del juez), y a `out/<slug>/diagnostico.md` una
+   tabla «De dónde salió cada plano»: primera elección del juez, otra opción juzgada, relleno juzgado, relleno sin
+   juzgar, foto, generado, rótulo; y cuántos planos se juzgaron solo con miniaturas. Amplía
+   `python main.py --informe-analisis` para dar esa tabla por canal. Sin esto no se sabrá si lo siguiente mejora.
+3. **Búsqueda.** Con la API: suceso + la búsqueda más concreta del plano + la del idioma del guion, con las de
+   `moment` primero, y 25-50 resultados por búsqueda (mismo coste de cuota). Ordena los candidatos antes de gastar
+   extracciones usando título y descripción: nombre completo de la entidad, palabras del suceso, año; no des el
+   bono por una sola palabra suelta.
+4. **Momento dentro del vídeo.** Sube las miniaturas analizadas por vídeo (salen directas de `i.ytimg.com`, solo
+   cuestan CPU) y localiza por subtítulos en todos los planos, no solo los que tienen `moment`: lo que dice la
+   narración de ese plano, traducido, contra lo que se dice en la fuente. Usa también los capítulos del vídeo.
+5. **Texto de CLIP**: `visualIntent` y `moment`, sin la lista de búsquedas con nombres y años. Prueba un modelo
+   CLIP mejor o multilingüe midiendo cuántos planos acepta el juez a la primera con uno y otro.
+6. **Juez.** Nunca tres copias de la misma miniatura; más fotogramas y más grandes por candidato; un error de la
+   API manda el plano al relleno o lo reintenta, no al orden de CLIP; modelo fuerte en el gancho y el barato
+   solo en `model_rest`. Deja una herramienta que repita el juez con otro modelo sobre las hojas ya guardadas
+   (`work/*/judge/*.jpg`) y compare veredictos, para decidir el modelo con datos. Revisa cada regla que cambia la
+   elección del juez tras el veredicto: que solo se aplique entre opciones que el juez aceptó.
+7. **Relleno.** Antes de reordenar por CLIP, usa las opciones 2 y 3 que el juez ya aceptó. Pexels y el relleno
+   del protagonista pasan por el juez. Sube `rounds_rest` a 2 solo si la tabla del punto 2 lo justifica.
+8. **Planner.** Reescribe las instrucciones de búsquedas para que sirvan a cualquier tema: explica al modelo para
+   qué son (encontrar en YouTube el vídeo donde se ve exactamente eso), que nombre siempre de quién, qué y cuándo
+   se habla aunque no haya protagonista, y da ejemplos de varios tipos de canal, no solo de deporte. Cambiar
+   estas instrucciones no debe rehacer los vídeos ya planificados.
+
+La fiabilidad de las descargas es también calidad: cada tramo que falla empuja el plano a una opción peor, y cada
+ventana de análisis que falla hace que el juez decida sobre miniaturas. Los puntos de descargas de arriba cuentan
+para esto tanto como estos ocho.
+
 ## Forma de trabajar
 
 - Rama: la que te indique la sesión. Un commit por mejora, con mensaje que diga qué problema resuelve.
