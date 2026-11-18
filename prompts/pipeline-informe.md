@@ -1,6 +1,6 @@
 # Informe: fiabilidad, puntería y velocidad del pipeline (18-11-2026)
 
-Rama: `claude/jolly-clarke-zttbs8` · 40 commits · suite: 1028 tests en verde (antes: 922 y 1 fallo del propio test).
+Rama: `claude/jolly-clarke-zttbs8` · 38 commits · suite: 1028 tests en verde (antes: 922 y 1 fallo del propio test).
 Nada está fusionado en `main`. El detalle punto por punto está en `prompts/pipeline-progress.md`.
 
 ---
