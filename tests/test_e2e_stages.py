@@ -42,10 +42,10 @@ import sys
 import threading
 import time
 import types
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
@@ -846,6 +846,20 @@ def build_project(tmp: Path, s: Scenario) -> None:
 # --- the doubles, all at once ---------------------------------------------------------------------------------------
 
 
+@contextmanager
+def _fake_modules(modules: dict[str, Any]) -> Iterator[None]:
+    before = {name: sys.modules.get(name) for name in modules}
+    sys.modules.update(modules)
+    try:
+        yield
+    finally:
+        for name, module in before.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+
 def outside_world(world: World, monkeypatch: pytest.MonkeyPatch) -> ExitStack:
     import openai
 
@@ -920,8 +934,10 @@ def outside_world(world: World, monkeypatch: pytest.MonkeyPatch) -> ExitStack:
         patch.object(cv2, "FaceRecognizerSF", FakeFaceRecognizer),
         patch.object(render.Renderer, "remotion", remotion),
         patch.object(render.Renderer, "stills", stills),
-        patch.dict(sys.modules, {"rembg": _rembg_module(), "faster_whisper": _whisper_module(world),
-                                 "rapidocr_onnxruntime": types.SimpleNamespace(RapidOCR=FakeOCR)}),
+        # only these three entries: patch.dict(sys.modules) would also drop, on the way out, every module first
+        # imported meanwhile, leaving two copies of them for the tests that run later
+        _fake_modules({"rembg": _rembg_module(), "faster_whisper": _whisper_module(world),
+                       "rapidocr_onnxruntime": types.SimpleNamespace(RapidOCR=FakeOCR)}),
     ]
     for p in patches:
         stack.enter_context(p)
