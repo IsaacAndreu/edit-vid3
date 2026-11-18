@@ -64,17 +64,16 @@ fallback:
   generate: false
 
 content:
-  # Rockstar sube sus tráilers a su canal: solo de ahí entra metraje del juego (el filtro de «gta» y «official
-  # trailer» sigue para todo lo demás: gameplay, reacciones y vídeos de otros canales de GTA = contenido reutilizado).
-  official_channels: [Rockstar Games]
-  title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, leak, leaks, reaction, react,
-                    minecraft, roblox, fortnite, red dead, videojuego, video game, simulator, speedrun,
-                    slag, julex, frametime, vprimix, taymetic, venom aimz, jakevi, gamestar, coletheman]
+  # Vale cualquier vídeo del tema, de cualquier canal (gameplay, tráilers, otros youtubers), como en gimnasia y
+  # patinaje. Solo quedan los filtros de todos los canales (reacciones, pódcasts, películas…: common.py).
+  official_channels: [Rockstar Games]   # sus subidas pasan incluso con «official trailer» en el título
+  title_blocklist: [minecraft, roblox, fortnite, sims 4]
 
 planner:
   shots_note: |
-    - EL JUEGO: solo tráilers y capturas OFICIALES de Rockstar Games ('Grand Theft Auto VI Trailer 2 Rockstar
-      Games', 'GTA VI Trailer 1 Vice City beach'). Nunca gameplay, filtraciones ni vídeos de otros youtubers.
+    - EL JUEGO: tráilers, capturas y gameplay de GTA 6 (o de GTA Vice City / GTA 5 si se habla de ellos) que
+      ENSEÑEN lo que dice la frase: 'GTA 6 trailer 2 Vice City beach', 'GTA 6 Leonida Keys gameplay',
+      'GTA 6 map Port Gellhorn'.
     - LA REALIDAD: metraje real del lugar o del caso, lo más concreto posible: tomas de dron ('Miami Beach Ocean
       Drive aerial drone 4K', 'Seven Mile Bridge Florida Keys drone', 'Everglades airboat alligator'), noticias
       locales del caso con año ('WSVN Miami news 2019 …', 'Florida man arrested news report'), fotos de prensa.
@@ -85,10 +84,11 @@ planner:
 
 judge:
   trusted_bonus: 0.06
-  note: "This is a German channel about the real Florida behind GTA 6. Official Rockstar Games trailers are
-    ACCEPTABLE for any line about the game (Vice City, Leonida, the characters). For lines about a real place or a
-    real case, prefer real footage of that exact place or case (drone shots, local news). Reject gameplay recorded
-    by other creators, reaction videos, streamers, a presenter talking to camera, or burned-in subtitles."
+  note: "This is a German channel about the real Florida behind GTA 6. Any footage of the game (trailers,
+    gameplay, screenshots, from any channel) is ACCEPTABLE for any line about the game (Vice City, Leonida, the
+    characters). For lines about a real place or a real case, prefer real footage of that exact place or case
+    (drone shots, local news). Reject only what is off-topic, a presenter or streamer's face talking to camera,
+    or burned-in subtitles."
   trusted_channels: [Rockstar Games, WSVN 7News, Local 10 News, NBC 6 South Florida, WPLG Local 10, CBS News Miami,
                      WPTV News, FOX 13 Tampa Bay, Miami Herald, Associated Press, Reuters, NBC News, ABC News,
                      DW Documentary, Florida Keys, Visit Florida, National Park Service]
