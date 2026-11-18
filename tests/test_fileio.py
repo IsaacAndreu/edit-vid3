@@ -99,3 +99,34 @@ def test_a_corrupt_state_file_is_kept_aside_not_taken_for_empty_in_silence(tmp_p
     aside = list(tmp_path.glob(".rechazados.json.corrupto-*"))
     assert aside and aside[0].read_text() == '{"abc": [1, "bot"'
     assert "roto" in capsys.readouterr().out
+
+
+def test_refusals_of_another_process_are_seen_and_none_is_lost(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    one = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
+    two = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never"})
+    assert not one.refused("aaaaaaaaaaa")                    # cached empty in `one`
+    two._refuse("aaaaaaaaaaa", "vpn")
+    os.utime(two._refused_path(), ns=(time.time_ns() + 10**9,) * 2)   # a later mtime, as another process would leave
+    assert one.refused_why("aaaaaaaaaaa") == "vpn"            # reloaded by mtime
+    one._refuse("bbbbbbbbbbb", "sin-hls")
+    assert set(json.loads(one._refused_path().read_text())) == {"aaaaaaaaaaa", "bbbbbbbbbbb"}   # not overwritten
+    one.close()
+    two.close()
+
+
+def test_a_quarantine_is_never_shortened_by_another_process(tmp_path, monkeypatch):
+    from pipeline.sourcing.youtube import quarantined_until
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never",
+                                                                  "bot_quarantine_minutes": 10})
+    far = time.time() + 5 * 3600
+    path = tmp_path / "videos"
+    path.mkdir(parents=True, exist_ok=True)
+    from pipeline.sourcing.youtube import quarantine_file
+
+    quarantine_file(tmp_path, "").write_text(f"{far:.0f}")
+    yt._quarantine(0)
+    assert quarantined_until(tmp_path, "") >= far - 1
+    yt.close()

@@ -25,7 +25,8 @@ import requests
 
 from ..clients.youtube_client import YouTubeClient as _LegacyParsers
 from ..schemas import BrollSpec, Candidate, Storyboard
-from ..fileio import clean_parts, file_lock, media_problem, part_for, publish
+from ..fileio import (atomic_write_text, clean_parts, file_lock, media_problem, part_for, publish, read_json,
+                      update_json)
 from .common import (USER_AGENT, HourlyBudget, Pacer, SharedPacer, SourceUnavailable, blocked_by_title, cached_json,
                      fuse_ranks, key, tokens)
 from .proxy_sessions import SESSION_SUFFIX, ProxySessions, is_residential, with_sticky_session
@@ -713,10 +714,15 @@ class YouTubeSource:
             if copies and origin is not None:
                 newest = max(copies, key=lambda p: p.stat().st_mtime).read_text(encoding="utf-8")
                 if "youtube.com" in newest and newest != text:
-                    tmp = origin.with_name(origin.name + ".tmp")
-                    tmp.write_text(newest, encoding="utf-8")
-                    os.chmod(tmp, 0o600)
-                    tmp.replace(origin)
+                    # two videos closing at once wrote the same «origin.tmp»: a lock and a temporary name of its own
+                    with file_lock(origin.with_name(origin.name + ".lock")):
+                        tmp = part_for(origin)
+                        try:
+                            tmp.write_text(newest, encoding="utf-8")
+                            os.chmod(tmp, 0o600)
+                            tmp.replace(origin)
+                        finally:
+                            tmp.unlink(missing_ok=True)
             for path in copies:
                 path.unlink(missing_ok=True)
         self._cookie_copies.clear()
@@ -770,7 +776,7 @@ class YouTubeSource:
     def _store_player_js(self, path: Path, data: bytes) -> None:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(path.name + ".tmp")
+            tmp = part_for(path)
             tmp.write_bytes(data)
             tmp.replace(path)
             for old in path.parent.glob("*.js"):      # player versions change every few days: a handful stay
@@ -1126,31 +1132,34 @@ class YouTubeSource:
         the residential proxy: every shot that picked it again paid another extraction, 12 times one night) or «vpn»
         (YouTube does not serve it to a proxy's IP). The last two hold for refused_days whatever the proxy."""
 
-        import json
-
+        entry = time.time() if why == "bot" else {"at": time.time(), "why": why}
+        try:
+            # every video's process writes here: read-modify-write under an flock (a plain write lost the refusals
+            # another process had just added) and an atomic write
+            data = update_json(self._refused_path(), lambda d: {**(d if isinstance(d, dict) else {}), video: entry}, {})
+        except OSError:
+            data = {**self._refusals(), video: entry}
         with self._turn_lock:
-            try:
-                data = json.loads(self._refused_path().read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                data = {}
-            data[video] = time.time() if why == "bot" else {"at": time.time(), "why": why}
-            try:
-                self._refused_path().parent.mkdir(parents=True, exist_ok=True)
-                self._refused_path().write_text(json.dumps(data), encoding="utf-8")
-            except OSError:
-                pass
             self._refused_cache = data
+            self._refused_mtime = self._refused_stamp()
+
+    def _refused_stamp(self) -> tuple[int, int] | None:
+        try:
+            stat = self._refused_path().stat()
+            return stat.st_mtime_ns, stat.st_size
+        except OSError:
+            return None
 
     def _refusals(self) -> dict[str, Any]:
-        import json
+        """Reloaded when the file changes (another video's process refused something): the refusals of every process."""
 
+        stamp = self._refused_stamp()
         data = getattr(self, "_refused_cache", None)
-        if data is None:
-            try:
-                data = json.loads(self._refused_path().read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                data = {}
-            self._refused_cache = data
+        if data is None or stamp != getattr(self, "_refused_mtime", None):
+            data = read_json(self._refused_path(), {})
+            data = data if isinstance(data, dict) else {}
+            with self._turn_lock:
+                self._refused_cache, self._refused_mtime = data, stamp
         return data
 
     def refused(self, video: str) -> bool:
@@ -1182,24 +1191,19 @@ class YouTubeSource:
         """[time, video, refused 1/0] of the last bot_breaker_minutes on that way, plus `add`; kept in a file per way
         (every process, across restarts)."""
 
-        import json
-
         window = 60 * float(self.cfg.get("bot_breaker_minutes", 10))
         path = self._bots_path(way)
         now = time.time()
-        with self._turn_lock:
-            try:
-                rows = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                rows = []
-            rows = [r for r in rows if isinstance(r, list) and len(r) == 3 and now - float(r[0]) < window]
-            rows = (rows + [[now, *add]])[-500:]
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(rows), encoding="utf-8")
-            except OSError:
-                pass
-        return rows
+
+        def change(rows: Any) -> list[list[Any]]:
+            rows = [r for r in (rows if isinstance(rows, list) else [])
+                    if isinstance(r, list) and len(r) == 3 and now - float(r[0]) < window]
+            return (rows + [[now, *add]])[-500:]
+
+        try:
+            return update_json(path, change, [])            # every process: an flock and an atomic write
+        except OSError:
+            return change([])
 
     def _bot_answered(self, way: int) -> None:
         self._bots_rows(way, ["", 0])
@@ -1239,8 +1243,8 @@ class YouTubeSource:
             self._quarantine_until[way] = max(self._quarantine_until[way], until)
         try:
             path = quarantine_file(self.cache_dir, proxy)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(f"{until:.0f}", encoding="utf-8")
+            with file_lock(path.with_name(path.name + ".lock")):      # never shortens another process's quarantine
+                atomic_write_text(path, f"{max(until, quarantined_until(self.cache_dir, proxy)):.0f}")
         except OSError:
             pass
         self._remember_block()
@@ -1584,9 +1588,7 @@ class YouTubeSource:
         cached["wholeMb"] = whole_estimate_mb(formats)
         cached["wholeMbV"] = WHOLE_ESTIMATE_VERSION
         try:
-            tmp = path.with_name(path.name + ".tmp")
-            tmp.write_text(json.dumps(cached), encoding="utf-8")
-            tmp.replace(path)
+            atomic_write_text(path, json.dumps(cached))
         except OSError:
             pass
 
@@ -1699,11 +1701,8 @@ class YouTubeSource:
         slim["_edit_vid3_via"] = via                     # metadata_proxy: its stream URLs are another IP's
         slim["_edit_vid3_session"] = session             # residential proxy: the sticky session (IP) they belong to
         path = self._full_info_path(video_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".tmp")
         with self._ydl() as ydl:
-            tmp.write_text(json.dumps(ydl.sanitize_info(slim)), encoding="utf-8")
-        tmp.replace(path)
+            atomic_write_text(path, json.dumps(ydl.sanitize_info(slim)))
 
     def _fresh_full_info(self, video_id: str) -> Path:
         """Path to a full info JSON whose stream URLs are still valid (re-extracting if needed).
