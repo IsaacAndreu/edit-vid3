@@ -57,8 +57,8 @@ Cada una de estas reglas costó una noche. Si una mejora choca con alguna, gana 
 Trabajas en un contenedor sin los datos del servidor: no hay `work/`, `out/`, `cache/`, claves, proxies ni acceso
 fiable a YouTube. Por tanto:
 
-- No hay tiempos reales por etapa en el repo. No inventes cifras de mejora: describe el cambio y cómo medirlo en el
-  servidor con `python main.py --tiempos` y `work/*/.stages/*.json`.
+- Los únicos tiempos reales son los de la sección «Datos del servidor» de más abajo. No inventes cifras de mejora:
+  describe el cambio y cómo medirlo en el servidor con `python main.py --tiempos` y `--youtube-stats`.
 - Todo cambio de descargas se demuestra con tests que usan dobles (como hacen `tests/test_residential_*.py` y
   `tests/test_cookie_rotation.py`), nunca contra YouTube.
 - Lo que solo puede confirmarse en el servidor (velocidad real, tasa de bloqueos, GB de proxy) queda detrás de una
@@ -67,6 +67,103 @@ fiable a YouTube. Por tanto:
   Chromium instalado. Antes de dar por buena una optimización de render, renderiza el mismo tramo antes y después y
   compara fotogramas (por ejemplo con el filtro `ssim` de ffmpeg); si no es idéntico o casi (SSIM ≥ 0,99 donde el
   cambio implique recodificar), no entra.
+
+## Datos del servidor (18-11-2026)
+
+Máquina: 16 núcleos, 62 GB de RAM, sin gráfica. Una sola salida a YouTube: proxy residencial de pago (Rainproxy),
+`concurrency: 2`, `min_interval: 2.0`, PO Token forzado, clientes `default, web_safari`. Cola: 4 vídeos a la vez,
+3 de metraje, `slots: {red: 1, cpu: 3}`. Alineación por OpenAI, `render.concurrency: 6`.
+
+**Tiempo por vídeo de metraje** (50 vídeos, 30 días): mediana 4 h 15 min. Analizar clips 1 h 14 min (30 %), render
+36 min (19 %), buscar material 31 min (17 %), planos alternativos 33 min (16 %), descargar clips 14 min (8 %),
+Shorts 8 min. Todo lo demás, menos de 5 min por etapa. Los máximos llegan a 4-5 h por etapa. Vídeos dibujados (91):
+mediana 9 min, el 91 % es render, con máximos de 1 h 30 min en los Atlas.
+
+**Tiempo en peticiones a YouTube** (suma de todos los vídeos): esperas 484 h, tramo HD 290 h, tramo de análisis a
+360p 161 h, metadatos 117 h, descarga HLS 111 h, descarga completa 32 h. Es decir: la mayor partida es esperar turno.
+
+**YouTube en 7 días** (24 vídeos empezados, solo **8 terminados**): 14.632 peticiones, 16,8 % fallidas. Tramos
+conseguidos 5.492 de 8.950 (61 %), 87 s de media por tramo, unos 1,6 MB cada uno. Errores: «otros» 1.127, 429 930,
+timeout 181, «no eres un bot» 139, no disponible 56, 403 21.
+
+**GB por el proxy en 7 días**: 69 GB, 8,6 GB por vídeo terminado. Descargas completas 43,8 GB (63 %, 2.169 veces,
+unos 20 MB cada una), metadatos 19,3 GB (28 %, 9.092 extracciones, 2,1 MB cada una, 13 % fallidas), HLS 5,8 GB
+(8 %, 1.220 veces). Dentro de los metadatos: `youtube.com/watch` 12,1 GB y `youtube.com/` 8,3 GB.
+
+**Errores acumulados por etapa y acción** (270.249 peticiones en `work/*/youtube_downloads.jsonl`): metadatos en
+sourcing «otros» 18.363 y «bot» 7.426; tramo a360 en análisis «otros» 8.264; metadatos en análisis «otros» 4.606;
+tramo HD en fallback «otros» 3.514 y en ingest 2.540; `get` en análisis 429 1.108; HLS en coldopen «no disponible»
+1.070. Los 429 salen casi todos de `get`, que no pasa por el proxy.
+
+**Descartes más repetidos**: «sin HLS y entero supera el tope del proxy residencial», el mismo vídeo hasta 43 veces.
+
+### Lo que dicen estos datos, por orden de impacto
+
+Haz estos puntos justo después de la fase 0 y de los puntos 1-3 de la fase 1, antes que el resto. Los que cambian
+qué se pide a YouTube entran con una opción apagada por defecto y el comando para comparar; el usuario los
+activará en un vídeo y mirará `--youtube-stats`.
+
+1. **Dos de cada tres vídeos no terminan.** Antes de optimizar nada, averigua por qué con lo que haya en el repo
+   (clasificación de errores en `main.py`, `pipeline/diag.py`, `out/_cola.md`) y pide al usuario la salida que
+   te falte. Si la causa son esperas (`ProxyDown`, `YouTubeBlocked`, retención de 6 h tras un fallo), es de cola y
+   va con la fase 2; si son etapas que fallan, va primero.
+2. **«Otros» es el error más frecuente y no dice nada.** Amplía la clasificación de errores de `youtube.py`
+   (`_metric`, `error_detail` y quien asigne `error`) hasta que «otros» sea residual: fallo del túnel del proxy,
+   formato no disponible, sin HLS, descartado por tope, fragmento vacío, ffmpeg, etc. Los descartes ya decididos
+   («descartado … no se vuelve a pedir») no son peticiones fallidas: que no cuenten como tales ni se repitan 43
+   veces; un vídeo descartado sale de los candidatos de todos los planos de una vez.
+3. **Tramos por rango de bytes para los vídeos sin HLS.** Hoy un vídeo sin HLS se baja entero (63 % de los GB) o
+   se descarta si pasa de 10 min / 80 MB, que es el descarte más repetido y lo que el usuario vive como «no me
+   deja bajar lo que quiero». Los formatos DASH en mp4 llevan un índice (`sidx`) al principio: bajando los
+   primeros KB con una petición `Range` se sabe qué bytes cubren los segundos pedidos, y se piden solo esos (más
+   la cabecera) por la misma sesión del vídeo, en trozos de menos de 10 MB como ya hace `http_chunk_size`. ffmpeg
+   corta en local, igual que con HLS. Prefiere formatos `avc1` en mp4; para webm (índice `Cues`) o si el índice no
+   aparece, se queda el comportamiento actual. Pruébalo con un servidor HTTP local y un mp4 fragmentado generado
+   con ffmpeg. Con esto, el tope de `whole_max_*_residential` deja de descartar vídeos largos.
+4. **El ritmo se mide por proxy, pero cada sesión del proxy residencial es una IP distinta.** `SharedPacer` es uno
+   por salida y para todos los procesos: con `min_interval: 2.0`, los tres vídeos de metraje comparten una
+   petición cada 2 s, y de ahí las 484 h de espera. Para la vía residencial, añade la opción de medir el ritmo y
+   la concurrencia por sesión (por vídeo de YouTube), con un tope global de conexiones abiertas al proxy. La
+   regla «no subas el ritmo» nació con proxies de casa, que son una sola IP; aquí hay que comprobarla con datos,
+   no darla por buena ni por mala.
+5. **Los 429 vienen de `get`, que sale directo desde la IP del servidor**, y falla más de la mitad de las veces
+   (1.186 de 2.113). Mira qué host es (miniaturas del storyboard o subtítulos), aplícale su propio ritmo y caché
+   negativa, y si es el de subtítulos pásalo por la sesión del vídeo.
+6. **Metadatos: 379 extracciones y 0,8 GB por vídeo.** Averigua qué es la partida `youtube.com/` (8,3 GB) y si se
+   puede evitar; revisa cuándo se aplica ya `player_skip: webpage` y si puede aplicarse más sin perder formatos
+   (opción apagada, con sonda). Filtra antes con lo que la API de datos ya devuelve gratis (duración, definición,
+   bloqueo regional, edad: `pipeline/ytapi.py`) para no gastar una extracción en un vídeo que se va a descartar,
+   y baja el número de candidatos con detalles por plano si los datos muestran que los últimos casi nunca ganan.
+7. **El análisis es la etapa más lenta (30 %) y baja dos veces los mismos segundos**: a 360p para puntuar y en HD
+   para montar, cada tramo con sus 87 s de media. Como un tramo más rico ya sirve a una petición más pobre
+   (`RANGE_FAMILY`), prueba a bajar la ventana de análisis directamente en la calidad final para los mejores
+   candidatos, de modo que ingest la encuentre hecha. Cambia bytes por peticiones: opción apagada, y que el
+   informe diga GB y minutos de las dos formas. Mira también `analysis.adaptive`, que existe y está apagado.
+8. **Coldopen pide 1.070 veces HLS de vídeos «no disponibles».** Caché negativa: un vídeo no disponible no se
+   vuelve a pedir en esa etapa ni en las siguientes.
+9. **El aviso de proxy caído habla de Tailscale y de «ese PC» también con un proxy de pago** (2.722 notas con
+   `gw.dataimpulse.com`). Texto distinto para la vía residencial, y comprueba que esas notas no se guardan como
+   resultado definitivo del plano.
+10. **Render: 36 min de mediana con 16 núcleos y 62 GB.** La fase 4 se mide aquí contra ese número. Con esta
+    máquina, `render.concurrency: 6` y tres turnos de `cpu` dejan núcleos libres cuando solo hay un render.
+
+### Contenido sin topes fijos
+
+El usuario quiere poder usar cualquier vídeo que encuentre. Los límites que hoy descartan material son de tres
+clases, y solo la primera no depende de él:
+
+- Lo que YouTube niega (bot, geo, edad, privado). No se puede saltar; sí se puede dejar de perder tiempo en ello.
+- Topes para ahorrar GB de proxy: `whole_max_minutes_residential`, `whole_max_mb_residential`, `max_height`,
+  `max_fps`, `max_details_per_shot`, `min_height`, `min_duration`, `max_duration`. Con el punto 3 los dos
+  primeros dejan de hacer falta para tramos.
+- Filtros editoriales: `content.title_blocklist`, el bloqueo de QA a clips de terceros de más de 5 s, 
+  `judge.avoid_other_videos`, las comprobaciones de cara, género y texto en pantalla de `fallback` y `analysis`.
+
+Haz que todos los de la segunda y tercera clase se puedan cambiar por canal y por vídeo desde la configuración
+(algunos ya se puede; comprueba cuáles tienen el valor escrito en el código) sin rehacer los vídeos a medias, y
+añade a `out/<slug>/diagnostico.md` una tabla «Material descartado»: por cada motivo, cuántos candidatos y cuántos
+planos se quedaron sin vídeo por él. No cambies ningún valor por defecto: el usuario decidirá con esa tabla. El
+límite de 5 s es su protección frente a reclamaciones de Content ID; déjalo configurable y dilo en la documentación.
 
 ## Forma de trabajar
 
