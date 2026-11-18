@@ -97,23 +97,49 @@ tramo HD en fallback «otros» 3.514 y en ingest 2.540; `get` en análisis 429 1
 
 **Descartes más repetidos**: «sin HLS y entero supera el tope del proxy residencial», el mismo vídeo hasta 43 veces.
 
+**HLS**: de los `cache/videos/*/info.json` con el campo `hls`, 4.980 dicen `true` y solo 10 `false` (otros 16.150 no
+lo tienen todavía). Casi todos los vídeos extraídos tienen HLS, y aun así las descargas completas doblan a las de
+HLS (2.169 frente a 1.220 en 7 días) y se llevan el 63 % de los GB.
+
+**Qué hay dentro de «otros»** (acumulado): metadatos sin ningún detalle 20.524; metadatos «Unable to connect to
+proxy … Tunnel» 4.442; tramo HD sin detalle 3.952; tramo a360 «el proxy no responde» 2.747 y sin detalle 2.308;
+HLS sin detalle 1.653; y unas 4.800 filas que no son peticiones sino el aviso «descartado (sin HLS…)» repetido.
+
+**Por qué no terminan los vídeos** (`out/_cola.md`, 22 filas): 11 murieron con `NameError: name 'official' is not
+defined` (ya arreglado en `eaa0c7d`) **después de 3,5 a 7 horas de trabajo cada uno**, casi todo en análisis; 4 en
+«espera cuota» tras 48-77 min de búsqueda; 4 doblajes con «2 validation errors for Timeline»; 2 con «Hay voz pero no
+hay transcriptor (OPENAI_API_KEY para Whisper)» aunque `--doctor` da la clave por buena; 1 porque el planner
+devolvió JSON inválido en todos sus intentos; 1 retenido por la verificación de datos.
+
 ### Lo que dicen estos datos, por orden de impacto
 
 Haz estos puntos justo después de la fase 0 y de los puntos 1-3 de la fase 1, antes que el resto. Los que cambian
 qué se pide a YouTube entran con una opción apagada por defecto y el comando para comparar; el usuario los
 activará en un vídeo y mirará `--youtube-stats`.
 
-1. **Dos de cada tres vídeos no terminan.** Antes de optimizar nada, averigua por qué con lo que haya en el repo
-   (clasificación de errores en `main.py`, `pipeline/diag.py`, `out/_cola.md`) y pide al usuario la salida que
-   te falte. Si la causa son esperas (`ProxyDown`, `YouTubeBlocked`, retención de 6 h tras un fallo), es de cola y
-   va con la fase 2; si son etapas que fallan, va primero.
-2. **«Otros» es el error más frecuente y no dice nada.** Amplía la clasificación de errores de `youtube.py`
-   (`_metric`, `error_detail` y quien asigne `error`) hasta que «otros» sea residual: fallo del túnel del proxy,
-   formato no disponible, sin HLS, descartado por tope, fragmento vacío, ffmpeg, etc. Los descartes ya decididos
-   («descartado … no se vuelve a pedir») no son peticiones fallidas: que no cuenten como tales ni se repitan 43
-   veces; un vídeo descartado sale de los candidatos de todos los planos de una vez.
-3. **Tramos por rango de bytes para los vídeos sin HLS.** Hoy un vídeo sin HLS se baja entero (63 % de los GB) o
-   se descarta si pasa de 10 min / 80 MB, que es el descarte más repetido y lo que el usuario vive como «no me
+1. **Un error de código tiró 11 vídeos tras 3,5-7 horas cada uno.** Es la razón principal de que solo terminaran 8
+   de 24, y confirma que la fase 0 va primero. Además de la puerta antes del despliegue, haz que un error de
+   programación (`NameError`, `AttributeError`, `TypeError`, `KeyError`…) en una etapa tardía no se descubra tan
+   tarde: la prueba de extremo a extremo con dobles debe recorrer todas las ramas de `apertura`, `coldopen`,
+   `fallback` y `shorts`, que es donde se esconden. De paso, mira los otros fallos de la tabla: el planner debe
+   sobrevivir a un JSON inválido (pedir salida JSON estricta al modelo o reparar antes de dar el intento por
+   perdido); el aviso «no hay transcriptor» con la clave presente (puede ser la clave por socio de
+   `pipeline/usuarios.py`); y los «validation errors for Timeline» de los doblajes.
+2. **«Otros» es el error más frecuente y la mayoría de sus filas no llevan detalle.** Haz que toda fila fallida de
+   `_metric` lleve el texto del error, y amplía la clasificación hasta que «otros» sea residual: túnel del proxy
+   caído, proxy sin respuesta, formato no disponible, ffmpeg, fragmento vacío, etc. Los avisos «descartado … no se
+   vuelve a pedir» no son peticiones: que no cuenten como fallos ni se repitan miles de veces; un vídeo
+   descartado sale de los candidatos de todos los planos de una vez. Los fallos de túnel del proxy (4.442) son
+   transitorios: reintento con otra sesión antes de dar el vídeo por perdido.
+3. **Casi todos los vídeos tienen HLS y aun así dos de cada tres descargas son del vídeo entero.** Es la mayor
+   partida de GB y no debería existir. Averigua por qué `_download_range` no entra por HLS o sale de él: si
+   `_has_hls` da falso sobre el `ytdlp-info.json` recién extraído aunque `info.json` diga que sí (por ejemplo,
+   porque `web_safari` no devuelve formatos en esa extracción, o porque yt-dlp descarta los que piden PO Token),
+   si `hls_format` devuelve vacío para algún prefijo, o si es `_fetch_hls_locally` quien falla con «format is not
+   available» y cae a la descarga entera. Registra en cada tramo por qué vía bajó y por qué no fue HLS, y arregla
+   la causa. Si hace falta un dato del servidor para saberlo, pídelo con el comando exacto.
+   **Además, tramos por rango de bytes para los que de verdad no tienen HLS.** Hoy esos se bajan enteros o se
+   descartan si pasan de 10 min / 80 MB, que es lo que el usuario vive como «no me
    deja bajar lo que quiero». Los formatos DASH en mp4 llevan un índice (`sidx`) al principio: bajando los
    primeros KB con una petición `Range` se sabe qué bytes cubren los segundos pedidos, y se piden solo esos (más
    la cabecera) por la misma sesión del vídeo, en trozos de menos de 10 MB como ya hace `http_chunk_size`. ffmpeg
