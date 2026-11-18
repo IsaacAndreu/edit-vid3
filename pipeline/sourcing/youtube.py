@@ -1530,6 +1530,11 @@ class YouTubeSource:
 
     def search(self, query: str) -> list[dict[str, Any]]:
         limit = int(self.cfg.get("results_per_query", 8))
+        if self.api is not None:
+            # an API search costs 100 units whether it brings 8 or 50: more to rank by title and description before
+            # paying any extraction (api_results_per_query, 30); the yt-dlp search keeps results_per_query
+            limit = int(self.cfg.get("api_results_per_query", 30))
+        scrape_limit = min(limit, int(self.cfg.get("results_per_query", 8)))
         days = int(self.cfg.get("recent_days", 0) or 0)     # news videos: only footage uploaded lately
 
         def produce() -> list[dict[str, Any]]:
@@ -1546,9 +1551,9 @@ class YouTubeSource:
                 from urllib.parse import quote_plus
 
                 target = f"https://www.youtube.com/results?search_query={quote_plus(query)}&sp={_upload_filter(days)}"
-                extra = {"extract_flat": "in_playlist", "skip_download": True, "playlistend": limit}
+                extra = {"extract_flat": "in_playlist", "skip_download": True, "playlistend": scrape_limit}
             else:
-                target = f"ytsearch{limit}:{query}"
+                target = f"ytsearch{scrape_limit}:{query}"
                 extra = {"extract_flat": "in_playlist", "skip_download": True}
             self._local.video_id = None             # a search is nobody's video: the shared sticky session
             info = self._call("search", lambda: self._extract(target, extra))
@@ -1604,6 +1609,7 @@ class YouTubeSource:
                  "live_status": "is_live" if details[i].get("live") == "live" else
                                 "is_upcoming" if details[i].get("live") == "upcoming" else None,
                  "definition": details[i].get("definition"),
+                 "description": str(details[i].get("description") or "")[:500],   # ranks before any extraction
                  "unplayable": unplayable(details[i], str(self.cfg.get("region", "ES"))),
                  "view_count": details[i]["views"]} for i in ids if i in details]
 
@@ -2721,7 +2727,19 @@ class YouTubeSource:
             *broll.queries[: int(self.cfg.get("queries_en", 2))],
             *broll.queriesLocal[: int(self.cfg.get("queries_local", 1))],
         ]
-        if self.api is not None:   # API quota: the event search + one more (~30k units a video instead of ~46k)
+        if self.api is not None and self.cfg.get("api_concrete_query", True):
+            # API quota: still `api_queries_per_shot` (2) searches — but the event's and the shot's MOST CONCRETE one
+            # (the narrated moment, the full name, the year), the moment's first; before, the event's and the LLM's
+            # first, whatever it was, and queries 2-5, the local one and placeQuery never ran
+            event = broll.queries[0] if broll.event and broll.queries and \
+                broll.queries[0].casefold() == broll.event.casefold() else None
+            rest = list(broll.queries[1:] if event else broll.queries)
+            concrete = most_concrete(rest, broll)
+            picked = [concrete, event] if broll.moment else [event, concrete]
+            queries = [q for q in picked if q][: int(self.cfg.get("api_queries_per_shot", 2))]
+            if self.cfg.get("api_local_query", False):           # +1 search per shot: +100 units (off)
+                queries += broll.queriesLocal[:1]
+        elif self.api is not None:   # API quota: the event search + one more (~30k units a video instead of ~46k)
             queries = queries[: int(self.cfg.get("api_queries_per_shot", 2))]
         elif broll.placeQuery and self.cfg.get("place_queries", True):
             queries.append(broll.placeQuery)   # the news from where it happened (the same for the whole event: cached)
@@ -2822,10 +2840,8 @@ class YouTubeSource:
         queries = self.queries_for(broll)[:max_queries] if max_queries else self.queries_for(broll)
         per_query, entries = self.search_pool(queries, notes)
         scores = fuse_ranks(per_query)
-        entity_terms = tokens(" ".join(broll.entities))
         for video_id, entry in entries.items():
-            if entity_terms and entity_terms & tokens(f"{entry.get('title')} {entry.get('channel')}"):
-                scores[video_id] = scores.get(video_id, 0.0) + 0.3
+            scores[video_id] = scores.get(video_id, 0.0) + relevance_bonus(entry, broll)
 
         wanted = int(self.cfg.get("videos_per_shot", 3))
         # a hard shot (most results fail the filters: short, low resolution, refused) stops after a few videos'
@@ -2845,6 +2861,52 @@ class YouTubeSource:
 
 
 GAVE_UP = "plano difícil, se deja de buscar"
+
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def most_concrete(queries: list[str], broll: BrollSpec) -> str | None:
+    """The search that names the most of what this shot shows: the narrated moment's words, an entity's full name,
+    the year (a tie keeps the planner's order)."""
+
+    moment = tokens(broll.moment or "")
+    names = [tokens(e) for e in broll.entities if tokens(e)]
+    years = set(_YEAR.findall(" ".join([broll.event or "", broll.moment or "", *broll.queries])))
+
+    def score(q: str) -> float:
+        words = tokens(q)
+        return (3 * len(words & moment) + 2 * sum(1 for n in names if n <= words)
+                + (1 if years & set(_YEAR.findall(q)) else 0) + 0.1 * min(len(words), 8))
+
+    return max(queries, key=lambda q: (score(q), -queries.index(q)), default=None)
+
+
+def relevance_bonus(entry: dict[str, Any], broll: BrollSpec) -> float:
+    """What the title (and, from the API, the description) say before paying an extraction: an entity's FULL name
+    (one loose word of it gave the whole bonus before: «Simone» in any title), the event's words, the year."""
+
+    entities = list(getattr(broll, "entities", None) or [])
+    event_text, moment = str(getattr(broll, "event", None) or ""), str(getattr(broll, "moment", None) or "")
+    queries = list(getattr(broll, "queries", None) or [])
+    title = tokens(f"{entry.get('title') or ''} {entry.get('channel') or ''}")
+    description = tokens(str(entry.get("description") or ""))
+    bonus = 0.0
+    for name in (tokens(e) for e in entities):
+        if name and name <= title:
+            bonus += 0.3
+        elif name and name <= description:
+            bonus += 0.12
+    bonus = min(bonus, 0.45)
+    event = tokens(event_text) - set(_YEAR.findall(event_text))
+    for name in entities:
+        event -= tokens(name)
+    if event:
+        bonus += 0.2 * len(event & title) / len(event)
+    years = set(_YEAR.findall(" ".join([event_text, moment, *queries])))
+    if years:
+        said = set(_YEAR.findall(f"{entry.get('title') or ''} {entry.get('description') or ''}"))
+        bonus += 0.1 if said & years else (-0.05 if said else 0.0)
+    return bonus
 
 
 def _parse_rate(value: str) -> int:
