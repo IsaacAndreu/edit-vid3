@@ -1,12 +1,17 @@
-# Prompt: fiabilidad y velocidad del pipeline de vídeos
+# Prompt: fiabilidad, puntería y velocidad del pipeline de vídeos
 
 Pega todo lo que hay debajo de la línea en una sesión nueva sobre este repositorio.
 
 ---
 
-Vas a mejorar el pipeline de vídeos de este repositorio (`edit-vid3`) en dos frentes, por este orden de
-importancia: que **ninguna noche se pierda** por una descarga, un proxy o un proceso colgado, y que **cada vídeo
-tarde lo menos posible** de guion a `video-final.mp4`. El resultado visual y sonoro de los vídeos no debe cambiar.
+Vas a mejorar el pipeline de vídeos de este repositorio (`edit-vid3`) en tres frentes, por este orden de
+importancia: que **ninguna noche se pierda** por un error de código, una descarga, un proxy o un proceso colgado;
+que **cada plano muestre lo que la voz está contando**; y que **cada vídeo tarde lo menos posible** de guion a
+`video-final.mp4`. Fuera de qué clip se elige para cada plano, el aspecto y el sonido de los vídeos no deben cambiar.
+
+El trabajo es grande y no cabe en una sesión. Avanza en orden, deja el estado en el archivo de progreso (ver
+«Forma de trabajar») y para en un punto limpio cuando haga falta: otra sesión seguirá desde ahí con este mismo
+documento.
 
 Este documento sale de una auditoría de solo lectura del repositorio (noviembre de 2026). Los hallazgos llevan
 archivo y línea, pero las líneas se mueven: localiza siempre por nombre de función y confirma en el código antes
@@ -41,6 +46,8 @@ Cada una de estas reglas costó una noche. Si una mejora choca con alguna, gana 
   `sourcing.parallel: 6` también bloqueó más. Paralelizar está bien cuando el número de peticiones por hora no
   sube (el `Pacer` y el `HourlyBudget` de `pipeline/sourcing/common.py` siguen mandando) o cuando los bytes van a
   hosts que no cuentan (segmentos de un tramo ya extraído, miniaturas de `i.ytimg.com`, bancos de imágenes).
+  Única excepción prevista: el ritmo por sesión en la vía residencial (punto 4 de «Lo que dicen estos datos»),
+  que entra apagado y lo decide el usuario con sus estadísticas.
 - **Proxy residencial: todo lo de un vídeo por la misma sesión/IP.** Extraer por una IP y bajar por otra dio un 1 %
   de éxito. Las URLs de vídeo están atadas a la IP que extrajo.
 - **`web_safari` como único cliente falla todas las extracciones**; se mantiene `[default, web_safari]`.
@@ -297,7 +304,18 @@ para esto tanto como estos ocho.
   suite ya tenía fallos antes de empezar, apúntalos al principio y no los mezcles con los tuyos.
 - Lleva el progreso en `prompts/pipeline-progress.md`: por cada punto, hecho / descartado (por qué) / pendiente de
   probar en el servidor (con el comando). Si la sesión se corta, la siguiente continúa desde ahí.
-- Sigue las fases en orden. La 0 y la 1 protegen a las demás: no adelantes trabajo de velocidad hasta tenerlas.
+- **El servidor de producción hace `git pull` de `main` cada 2 minutos.** Trabaja solo en tu rama y no fusiones
+  nada en `main`: el usuario fusionará por partes, y cada parte debe poder desplegarse sola sin romper los vídeos
+  a medias. Por eso los commits van agrupados por bloque, cada bloque con la suite en verde.
+- Orden de trabajo:
+  1. Fase 0 entera.
+  2. Fase 1, puntos 1 a 3 (cachés que no se envenenan, cerrojos entre procesos, plazos).
+  3. «Lo que dicen estos datos», puntos 1 a 10.
+  4. «Que el clip sea de lo que se está contando», puntos 1 a 9, y «Contenido sin topes fijos».
+  5. El resto de la fase 1 y la fase 2.
+  6. Fases 3, 4 y 5.
+  Donde un punto de una fase repite uno de las secciones de datos, vale la versión de la sección de datos.
+  No adelantes trabajo de velocidad de render o de paralelismo hasta tener los bloques 1 a 4.
 - No cambies el comportamiento por defecto en nada que afecte a peticiones a YouTube, calidad de imagen o gasto;
   esas mejoras entran apagadas y documentadas. Todo lo demás (escrituras atómicas, timeouts, cachés, paralelismo
   local) entra encendido.
