@@ -207,16 +207,20 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
         bounds[len(shots) - 1] = total - end               # the end screen keeps its length
     for i in range(len(shots) - 1, 0, -1):               # squeeze back if the end was overrun
         bounds[i] = min(bounds[i], bounds[i + 1] - MIN_SHOT_FRAMES)
+    _keep_third_party_cap(shots, bounds, fps, max_third_party)
     for shot, a, b in zip(shots, bounds, bounds[1:]):
         shot["from"], shot["durationInFrames"] = a, b - a
+    last = max(0, total - 1)
     for item in [*out["groups"], *(out.get("labels") or [])]:
-        a = frame(item["from"])
+        # a shorter voice can map an overlay of the last seconds past the new end: it stays inside the video with
+        # at least one frame («2 validation errors for Timeline» in 4 dubs on 17-11: durationInFrames < 1)
+        a = min(frame(item["from"]), last)
         b = min(total, max(a + 1, frame(item["from"] + item["durationInFrames"])))
-        item["from"], item["durationInFrames"] = a, b - a
+        item["from"], item["durationInFrames"] = a, max(1, b - a)
     for sfx in out["audio"].get("sfx", []):
-        sfx["from"] = frame(sfx["from"])
+        sfx["from"] = min(frame(sfx["from"]), last)
     for shake in (out.get("shakes") or []):
-        shake["from"] = frame(shake["from"])
+        shake["from"] = min(frame(shake["from"]), max(0, total - int(shake.get("durationInFrames", 10))))
     starts = {s["from"] for s in shots}
     for tr in (out.get("transitions") or []):             # centred on a cut: follow the cut, keep the length
         half = tr["durationInFrames"] // 2
@@ -228,6 +232,41 @@ def retime(timeline: dict[str, Any], f, new_voice_seconds: float, max_third_part
     out["audio"]["voiceGaps"] = [list(g) for g in new_gaps]
     out["durationInFrames"] = total
     return out
+
+
+def _keep_third_party_cap(shots: list[dict[str, Any]], bounds: list[int], fps: int, max_third_party: float) -> None:
+    """Third-party clips stay within the limit after the squeeze (which lengthens the shot after each boundary it
+    moves back): the extra frames go to the next shot, or back to the nearest earlier one with room. The limit counts the
+    source seconds shown (a sped-up clip shows more), as Timeline's validation does."""
+
+    def cap(i: int) -> int | None:
+        media = shots[i].get("media") or {}
+        if media.get("kind") != "video" or media.get("source") != "youtube":
+            return None
+        limit = 15.0 if shots[i].get("coldOpen") else max_third_party
+        return max(MIN_SHOT_FRAMES, int(limit * fps / float(media.get("rate") or 1.0)))
+
+    for i in range(len(shots)):
+        top = cap(i)
+        if top is None or bounds[i + 1] - bounds[i] <= top:
+            continue
+        if i + 1 < len(shots):
+            bounds[i + 1] = bounds[i] + top               # the next shot starts earlier
+    # What is still over (the last shot, or a squeeze): the extra frames go back to the nearest earlier shot with
+    # room (no limit, or under its own), moving the shots in between whole; never into the cold open.
+    for i in range(len(shots) - 1, 0, -1):
+        top = cap(i)
+        extra = (bounds[i + 1] - bounds[i] - top) if top is not None else 0
+        j = i - 1
+        while extra > 0 and j >= 0 and not shots[j].get("coldOpen"):
+            limit = cap(j)
+            room = extra if limit is None else max(0, limit - (bounds[j + 1] - bounds[j]))
+            move = min(extra, room)
+            if move:
+                for k in range(j + 1, i + 1):
+                    bounds[k] += move
+                extra -= move
+            j -= 1
 
 
 def final_frame(voice_frame: int, gaps: list) -> int:
