@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from pipeline.render import condensed_props, music_volume_curve, music_volume_expr, plan_segments
@@ -117,8 +118,37 @@ class AudioMixTests(unittest.TestCase):
                 "duckedVolume": 0.03, "speech": [[30, 60]],
                 "clips": [{"src": "coldopen/c01.mp4", "from": 0, "durationInFrames": 30, "volume": 1.0}],
                 "sfx": [{"src": "audio/pop.wav", "from": 45, "volume": 0.5}]}}
-            out = Renderer(ctx).audio(timeline)
+            from pipeline import render as render_module
+
+            commands = []
+            real_run = render_module._run
+            with patch.object(render_module, "_run", lambda command, what, *a, **k: commands.append(command) or
+                              real_run(command, what, *a, **k)):
+                out = Renderer(ctx).audio(timeline)
             self.assertAlmostEqual(probe(out)["duration"], 3.0, delta=0.05)
+
+            # fase 4.6: mixed once, measured and applied on that file — byte-identical to mixing twice as before
+            import hashlib
+            import json
+            import re
+
+            measure = next(c for c in commands if any("print_format=json" in str(w) for w in c))
+            graph = measure[measure.index("-filter_complex") + 1]
+            base = graph.split(",asplit[keep]")[0]
+            inputs = measure[measure.index("-y") + 1:measure.index("-filter_complex")]
+            target, peak = -16.0, -1.5
+            old = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", *inputs, "-filter_complex",
+                                  f"{base},loudnorm=I={target}:TP={peak}:LRA=11:print_format=json", "-f", "null", "-"],
+                                 capture_output=True, text=True)
+            stats = json.loads(re.findall(r"\{[^{}]*\"input_i\"[^{}]*\}", old.stderr)[-1])
+            norm = (f"loudnorm=I={target}:TP={peak}:LRA=11:measured_I={stats['input_i']}:measured_TP={stats['input_tp']}:"
+                    f"measured_LRA={stats['input_lra']}:measured_thresh={stats['input_thresh']}:"
+                    f"offset={stats['target_offset']}:linear=true")
+            twice = root / "dos-pasadas.wav"
+            subprocess.run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", f"{base},{norm},aresample=48000",
+                            "-c:a", "pcm_s16le", str(twice)], check=True)
+            self.assertEqual(hashlib.md5(out.read_bytes()).hexdigest(), hashlib.md5(twice.read_bytes()).hexdigest())
+            self.assertFalse(list(ctx.work_dir.rglob("*.mezcla.wav")))      # the float mix does not stay
 
 
 class DuckingTests(unittest.TestCase):

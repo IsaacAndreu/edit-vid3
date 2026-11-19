@@ -504,20 +504,33 @@ def _run(cmd: list[str], what: str, timeout: float = RUN_TIMEOUT) -> subprocess.
     return result
 
 
-def ensure_node_modules(root: Path) -> None:
-    """`npm install` when package.json lists a package node_modules lacks (new fonts after a git pull)."""
+NPM_TIMEOUT = 600
 
+
+def missing_node_packages(root: Path) -> list[str]:
     try:
         manifest = json.loads((root / "package.json").read_text("utf-8"))
     except (OSError, ValueError):
-        return
+        return []
     wanted = {**manifest.get("dependencies", {}), **manifest.get("devDependencies", {})}
-    missing = [name for name in wanted if not (root / "node_modules" / name / "package.json").is_file()]
+    return [name for name in wanted if not (root / "node_modules" / name / "package.json").is_file()]
+
+
+def ensure_node_modules(root: Path) -> None:
+    """`npm install` when package.json lists a package node_modules lacks (new fonts after a git pull)."""
+
+    missing = missing_node_packages(root)
     if not missing:
         return
     print(f"   Instalando paquetes de Node que faltan ({', '.join(missing[:4])}…): npm install")
     npm = shutil.which("npm") or "npm"
-    result = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(root), capture_output=True, text=True)
+    try:
+        # normally done by the queue's preflight (preflight.prepare_assets) before any video starts: here only as the
+        # last resort, and never without a time limit (behind a proxy a hung install was a lost night)
+        result = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(root), capture_output=True,
+                                text=True, timeout=NPM_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"npm install no terminó en {NPM_TIMEOUT // 60} min (ejecútalo a mano: npm ci)") from None
     if result.returncode != 0:
         raise RuntimeError(f"Falló npm install (ejecútalo a mano):\n{(result.stderr or result.stdout)[-800:]}")
 
@@ -1084,17 +1097,24 @@ class Renderer:
         out = self.dir / f"audio-{key}.wav"
         if out.is_file():
             return out
-        measure = _run(["ffmpeg", "-hide_banner", "-nostats", *inputs, "-filter_complex",
-                        f"{base},loudnorm=I={target}:TP={peak}:LRA=11:print_format=json", "-f", "null", "-"],
-                       "la medición de sonoridad")
-        stats = json.loads(re.findall(r"\{[^{}]*\"input_i\"[^{}]*\}", measure.stderr)[-1])
-        norm = (f"loudnorm=I={target}:TP={peak}:LRA=11:measured_I={stats['input_i']}:measured_TP={stats['input_tp']}:"
-                f"measured_LRA={stats['input_lra']}:measured_thresh={stats['input_thresh']}:offset={stats['target_offset']}:"
-                f"linear=true")
-        tmp = out.with_suffix(".tmp.wav")
-        _run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", f"{base},{norm},aresample=48000",
-              "-c:a", "pcm_s16le", str(tmp)], "la mezcla de audio")
-        tmp.replace(out)
+        # fase 4.6: the mix is made once. The measuring pass also writes it, losslessly (32-bit float, the mixer's own
+        # samples), and the second pass only applies the measured gain to that file: byte-identical to mixing twice
+        mixed_once = out.with_suffix(".mezcla.wav")
+        try:
+            measure = _run(["ffmpeg", "-hide_banner", "-nostats", "-y", *inputs, "-filter_complex",
+                            f"{base},asplit[keep][probe];[probe]loudnorm=I={target}:TP={peak}:LRA=11:print_format=json[gone]",
+                            "-map", "[keep]", "-c:a", "pcm_f32le", str(mixed_once), "-map", "[gone]", "-f", "null", "-"],
+                           "la medición de sonoridad")
+            stats = json.loads(re.findall(r"\{[^{}]*\"input_i\"[^{}]*\}", measure.stderr)[-1])
+            norm = (f"loudnorm=I={target}:TP={peak}:LRA=11:measured_I={stats['input_i']}:measured_TP={stats['input_tp']}:"
+                    f"measured_LRA={stats['input_lra']}:measured_thresh={stats['input_thresh']}:offset={stats['target_offset']}:"
+                    f"linear=true")
+            tmp = out.with_suffix(".tmp.wav")
+            _run(["ffmpeg", "-y", "-v", "error", "-i", str(mixed_once), "-filter_complex", f"[0:a]{norm},aresample=48000",
+                  "-c:a", "pcm_s16le", str(tmp)], "la mezcla de audio")
+            tmp.replace(out)
+        finally:
+            mixed_once.unlink(missing_ok=True)
         print(f"   Audio: {stats['input_i']} LUFS → {target} LUFS (pico {peak} dBTP)")
         return out
 

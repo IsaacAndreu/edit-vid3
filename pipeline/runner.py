@@ -117,17 +117,78 @@ def _without_speed(value):
     return value
 
 
-def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
-    """What a stage's result depends on: its input files and its config sections, minus the speed knobs
-    (`legacy`: with them, as markers written before SPEED_KEYS existed were hashed)."""
+def _stat_signature(paths: list[Path], sections: list[str]) -> str:
+    """Names, sizes and modification times of every input file (no bytes read) plus the config text: when it is the
+    same as last time, so are the bytes, and the fingerprint is too."""
 
     digest = hashlib.sha256()
-    for path in stage.inputs(ctx):
-        _hash_path(digest, path)
-    for section in stage.config_sections:
-        value = ctx.section(section)
-        digest.update(json.dumps(value if legacy else _without_speed(value), sort_keys=True).encode())
+    for path in paths:
+        digest.update(f"\0{path}".encode())
+        children = sorted(c for c in path.rglob("*") if c.is_file()) if path.is_dir() else [path] if path.is_file() else []
+        for child in children:
+            info = child.stat()
+            digest.update(f"|{child}|{info.st_size}|{info.st_mtime_ns}|{info.st_ino}".encode())
+    for text in sections:
+        digest.update(text.encode())
     return digest.hexdigest()
+
+
+_FINGERPRINTS: dict[tuple[str, str], tuple[str, str]] = {}     # (work dir + stage, legacy) → (signature, fingerprint)
+_FINGERPRINTS_LOCK = threading.Lock()
+
+
+def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
+    """What a stage's result depends on: its input files and its config sections, minus the speed knobs
+    (`legacy`: with them, as markers written before SPEED_KEYS existed were hashed).
+
+    Fase 4.4: the bytes are read only when a file's name, size or modification time changed since the last
+    fingerprint of this stage (kept in work/<slug>/.stages/huellas.cache): the stage's own inputs include whole
+    folders (remotion/, assets/) re-read on every check. The value is the same as before: markers stay valid."""
+
+    paths = list(stage.inputs(ctx))
+    sections = [json.dumps(ctx.section(name) if legacy else _without_speed(ctx.section(name)), sort_keys=True)
+                for name in stage.config_sections]
+    work_dir, name = getattr(ctx, "work_dir", None), getattr(stage, "name", None)
+    key = f"{name}{'@legacy' if legacy else ''}"
+    store = Path(work_dir or ".") / ".stages" / "huellas.cache"     # not .json: readers take every .json as a marker
+    try:
+        signature = _stat_signature(paths, sections) if work_dir and name else ""   # no work folder: plain hash
+    except OSError:
+        signature = ""
+    with _FINGERPRINTS_LOCK:
+        memo = _FINGERPRINTS.get((str(work_dir), key))
+        if signature and memo and memo[0] == signature:
+            return memo[1]
+        try:
+            saved = json.loads(store.read_text("utf-8")).get(key) or {}
+        except (OSError, ValueError, AttributeError):
+            saved = {}
+        if signature and saved.get("signature") == signature and saved.get("fingerprint"):
+            _FINGERPRINTS[(str(work_dir), key)] = (signature, str(saved["fingerprint"]))
+            return str(saved["fingerprint"])
+    digest = hashlib.sha256()
+    for path in paths:
+        _hash_path(digest, path)
+    for text in sections:
+        digest.update(text.encode())
+    value = digest.hexdigest()
+    if signature and signature == _stat_signature(paths, sections):     # nothing changed while it was being read
+        with _FINGERPRINTS_LOCK:
+            _FINGERPRINTS[(str(work_dir), key)] = (signature, value)
+            try:
+                from .fileio import atomic_write_text
+
+                try:
+                    every = json.loads(store.read_text("utf-8"))
+                except (OSError, ValueError):
+                    every = {}
+                every = every if isinstance(every, dict) else {}
+                every[key] = {"signature": signature, "fingerprint": value}
+                store.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write_text(store, json.dumps(every, indent=1))
+            except OSError:
+                pass
+    return value
 
 
 def _turn_group(ctx: RunContext, stage: str) -> str:

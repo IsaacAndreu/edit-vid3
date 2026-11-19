@@ -88,12 +88,10 @@ def _take(path: Path, label: str) -> bool:
     return False
 
 
-@contextlib.contextmanager
-def turn(root: Path, stage: str, label: str = "", poll: float = 5.0) -> Iterator[None]:
-    group = GROUPS.get(stage)
-    if not group or not os.environ.get(ENV):
-        yield
-        return
+_HELD: dict[str, list] = {}       # group → [place file, label, root, poll] held by this process (for lend)
+
+
+def _acquire(root: Path, group: str, label: str, poll: float) -> Path:
     places = [root / "work" / (f".turno-{group}" if i == 1 else f".turno-{group}-{i}") for i in range(1, slots(root, group) + 1)]
     places[0].parent.mkdir(parents=True, exist_ok=True)
     waited = 0.0
@@ -108,7 +106,52 @@ def turn(root: Path, stage: str, label: str = "", poll: float = 5.0) -> Iterator
         waited += poll
     if waited:
         print(f"   turno conseguido tras {waited / 60:.0f} min")
+    return path
+
+
+@contextlib.contextmanager
+def turn(root: Path, stage: str, label: str = "", poll: float = 5.0) -> Iterator[None]:
+    group = GROUPS.get(stage)
+    if not group or not os.environ.get(ENV):
+        yield
+        return
+    held = [_acquire(root, group, label, poll), label, root, poll]
+    _HELD[group] = held
     try:
         yield
     finally:
-        path.unlink(missing_ok=True)
+        _HELD.pop(group, None)
+        held[0].unlink(missing_ok=True)          # the place it holds now (lend may have changed it)
+
+
+def release_red_turn(root: Path) -> bool:
+    """queue.release_red_turn (off): lend the network turn during a stage's work that does not touch the network."""
+
+    try:
+        from .context import RunContext
+
+        return bool(RunContext.create("_cola", root=root).section("queue").get("release_red_turn", False))
+    except Exception:
+        return False
+
+
+@contextlib.contextmanager
+def lend(root: Path, stage: str) -> Iterator[None]:
+    """Fase 3.7, behind `queue.release_red_turn` (off by default): while this block does no network work (the CLIP
+    features computed at the end of sourcing), the stage's turn is given back so another video's searches can go,
+    and taken again (waiting if needed) before the stage asks the network for anything else. Off: nothing changes.
+
+    To compare: `python main.py --youtube-stats 1` a night with it off and one with it on — «bot» and «429» per
+    hour (## Por horas) and the share of failed requests; `red: 2` once doubled them."""
+
+    group = GROUPS.get(stage)
+    held = _HELD.get(group or "")
+    if group != "red" or held is None or not release_red_turn(root):
+        yield
+        return
+    held[0].unlink(missing_ok=True)
+    print("   (turno de red prestado mientras se calcula en local)")
+    try:
+        yield
+    finally:
+        held[0] = _acquire(held[2], group, held[1], held[3])

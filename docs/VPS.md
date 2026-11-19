@@ -258,8 +258,14 @@ queda en `out/_puerta.json` (no se vuelve a comprobar hasta que llegue otro). A 
 | `analysis: chapter_windows: true` | una ventana donde un capítulo del vídeo fuente nombra el momento | «De dónde salió cada plano» |
 | `judge: frames_per_candidate / tile_width / model_hook` | hojas del juez más ricas, modelo fuerte en el gancho | `python -m pipeline.rejuzgar <vídeo> <modelo>` y gasto del juez |
 | `fallback: judge_pexels / judge_filler: true` | el stock de Pexels y el relleno del protagonista pasan por el juez | «De dónde salió cada plano» (relleno sin juzgar) |
+| `queue: release_red_turn: true` | el turno de red se presta a otro vídeo mientras la búsqueda solo calcula CLIP en local | `--youtube-stats 1` una noche con y otra sin: bot y 429 por hora, % fallidas |
+| `hls_format_test: false` | yt-dlp no prueba por la red los formatos HLS de vídeos subidos hace ≤ 2 días antes de elegir | `diag_hls 1`: «Ningún formato HLS encaja», vídeos «por probar» |
 
 Sin red, con lo que ya hay en el servidor: `python -m pipeline.diag_hls 7` dice por qué los tramos no van por HLS.
+
+**Antes de cada ronda de la cola** (desde el 20-11-2026) se descarga lo que una etapa bajaría a mitad de la noche:
+paquetes de Node que falten, el navegador de Remotion y los modelos de caras, cada uno con límite de tiempo. Si algo
+no se puede bajar sale como «Aviso antes de la cola» en el registro del servicio.
 
 **Servicio (desde el 19-11-2026):** `scripts/vps/install-service.sh` lleva `KillMode=mixed` y
 `TimeoutStopSec=120`: al parar o reiniciar, el vigilante cierra bien cada proceso de vídeo. En un servidor instalado

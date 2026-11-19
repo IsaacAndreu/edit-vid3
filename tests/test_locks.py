@@ -104,3 +104,30 @@ def test_whisper_threads_are_a_speed_knob():
     from pipeline.runner import SPEED_KEYS
 
     assert "cpu_threads" in SPEED_KEYS                                  # changing it never re-runs align
+
+
+def test_the_network_turn_is_lent_during_local_work_only_when_asked(tmp_path, monkeypatch):
+    """3.7: queue.release_red_turn (off by default) gives the network turn back while sourcing only computes CLIP,
+    and takes it again afterwards."""
+
+    monkeypatch.setenv(locks.ENV, "1")
+    place = tmp_path / "work" / ".turno-red"
+    monkeypatch.setattr(locks, "release_red_turn", lambda root: False)
+    with locks.turn(tmp_path, "sourcing", "A"):
+        with locks.lend(tmp_path, "sourcing"):
+            assert place.is_file()                                   # off: kept, as always
+    monkeypatch.setattr(locks, "release_red_turn", lambda root: True)
+    with locks.turn(tmp_path, "sourcing", "A", poll=0.05):
+        with locks.lend(tmp_path, "sourcing"):
+            assert not place.exists()                                # another video may search now
+            with locks.turn(tmp_path, "ingest", "B", poll=0.05):     # …and does
+                assert "B" in place.read_text()
+        assert "A" in place.read_text()                              # taken back before going on
+    assert not place.exists()
+    with locks.lend(tmp_path, "render"):                             # not the network turn: nothing to lend
+        pass
+
+
+def test_release_red_turn_is_off_by_default(tmp_path):
+    (tmp_path / "config.yaml").write_text("{}\n")
+    assert locks.release_red_turn(tmp_path) is False
