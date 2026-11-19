@@ -53,7 +53,7 @@ def note_reason(note: str) -> str | None:
 
 
 def analysis_reason(discarded: str) -> str:
-    return "análisis: " + re.split(r" \(|:", discarded, 1)[0].strip()
+    return "análisis: " + re.split(r" \(|:", discarded, maxsplit=1)[0].strip()
 
 
 def collect(work: Path, out: Path, cache: Path) -> dict[str, dict[str, int]]:
