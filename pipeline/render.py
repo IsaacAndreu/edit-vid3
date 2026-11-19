@@ -1277,40 +1277,50 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     audio_pool = ThreadPoolExecutor(max_workers=1)
     audio_job = audio_pool.submit(r.audio, timeline)
 
-    # 1. Remotion: the condensed timeline of slow shots, one pass.
+    # 1. Remotion: the condensed timeline of slow shots, one pass — in the background: the plain footage does not need
+    # it, and before it waited for the whole pass (each Remotion job has its own folder now: they can overlap)
     condensed_path = None
     if slow:
         props = condensed_props(timeline, segments)
         key = _hash(VERSION, props, r._remotion_sig(),
                     sorted(_file_sig(ctx.work_dir / s["media"]["src"]) for s in props["shots"] if s.get("media")))
         condensed_path = r.dir / f"remotion-{key}.mp4"
-        if not condensed_path.is_file():
-            t = time.monotonic()
-            public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
-            public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
-            public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
-            tmp = r.dir / "remotion.tmp.mp4"
-            # an intermediate: every piece is cut from it and encoded again, so the cheapest preset (same crf 12)
-            r.remotion("Documentary", props, tmp,
-                       ["--muted", f"--concurrency={r.concurrency()}", "--codec=h264", "--crf=12",
-                        "--x264-preset=ultrafast"], public)
-            tmp.replace(condensed_path)
-            spent = time.monotonic() - t
-            print(f"   Remotion: {slow_frames} fotogramas en {spent:.0f} s ({slow_frames / max(spent, 0.1):.1f} fps)")
 
-    # 2. ffmpeg: fast shots with their credit badge, and the slow runs cut from the condensed render.
+    def condensed() -> None:
+        if condensed_path is None or condensed_path.is_file():
+            return
+        t = time.monotonic()
+        public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
+        public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
+        public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
+        tmp = r.dir / "remotion.tmp.mp4"
+        # an intermediate: every piece is cut from it and encoded again, so the cheapest preset (same crf 12)
+        r.remotion("Documentary", props, tmp,
+                   ["--muted", f"--concurrency={r.concurrency()}", "--codec=h264", "--crf=12",
+                    "--x264-preset=ultrafast"], public)
+        tmp.replace(condensed_path)
+        spent = time.monotonic() - t
+        print(f"   Remotion: {slow_frames} fotogramas en {spent:.0f} s ({slow_frames / max(spent, 0.1):.1f} fps)")
+
+    remotion_pool = ThreadPoolExecutor(max_workers=1)
+    remotion_job = remotion_pool.submit(condensed)
+
+    # 2. ffmpeg: fast shots with their credit badge (meanwhile), and the slow runs cut from the condensed render.
     t = time.monotonic()
     source_word = (timeline.get("locale") or {}).get("source")
 
     def shown(credit: str) -> str:   # dubbed versions: "Fuente: X" → "Source: X"
         return f"{source_word}: {credit[len('Fuente: '):]}" if source_word and credit.startswith("Fuente: ") else credit
 
-    credits = sorted({shown(s.shots[0]["media"]["credit"]) for s in fast if s.shots[0]["media"].get("credit")})
-    badges = r.badges(credits) if credits else {}
-
-    # Remotion jobs share one work folder: the backdrop and the end screen before the parallel part
-    if any(s.kind == "ffmpeg" and s.shots[0]["media"].get("layout") == "card" for s in segments):
-        r.backdrop()
+    try:
+        credits = sorted({shown(s.shots[0]["media"]["credit"]) for s in fast if s.shots[0]["media"].get("credit")})
+        badges = r.badges(credits) if credits else {}
+        if any(s.kind == "ffmpeg" and s.shots[0]["media"].get("layout") == "card" for s in segments):
+            r.backdrop()
+    except BaseException:
+        remotion_job.cancel()
+        remotion_pool.shutdown(wait=True)
+        raise
     ends: dict[int, Path] = {}
 
     def build(segment: Segment, stretch: float | None = None) -> Path:
@@ -1331,17 +1341,30 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     def build_all() -> list[Path]:
         ends.clear()
         ends.update({s.start: r.endscreen(timeline, s) for s in segments if s.kind == "endscreen"})
-        with ThreadPoolExecutor(max_workers=max(1, int(r.cfg.get("parallel", 3)))) as pool:
-            return list(pool.map(build, segments))
+        files: list[Path | None] = [None] * len(segments)
+        workers = max(1, int(r.cfg.get("parallel", 3)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            # what needs no condensed render first (while Chrome works), then the pieces cut from it
+            for i, path in zip([i for i, s in enumerate(segments) if s.kind != "remotion"],
+                               pool.map(build, [s for s in segments if s.kind != "remotion"])):
+                files[i] = path
+            remotion_job.result()
+            for i, path in zip([i for i, s in enumerate(segments) if s.kind == "remotion"],
+                               pool.map(build, [s for s in segments if s.kind == "remotion"])):
+                files[i] = path
+        return [f for f in files if f is not None]
 
     try:
-        files = build_all()
-    except RuntimeError as error:
-        if not r.nvenc:
-            raise
-        print(f"   La gráfica falló al codificar ({str(error).splitlines()[-1][:100]}); repito con x264")
-        r.set_encoder(False)
-        files = build_all()
+        try:
+            files = build_all()
+        except RuntimeError as error:
+            if not r.nvenc or (remotion_job.done() and remotion_job.exception() is not None):
+                raise
+            print(f"   La gráfica falló al codificar ({str(error).splitlines()[-1][:100]}); repito con x264")
+            r.set_encoder(False)
+            files = build_all()
+    finally:
+        remotion_pool.shutdown(wait=True)
     print(f"   ffmpeg: {len(files)} segmentos en {time.monotonic() - t:.0f} s"
           + (" (codificados con la gráfica)" if r.nvenc else ""))
 
@@ -1374,7 +1397,11 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     from . import subtitulos
 
     try:                                 # timeline.subtitles: burned in last; the clean cut stays as video-limpio.mp4
-        subtitulos.burn(ctx, final, timeline)
+        # with the render's encoder: NVENC when the render uses it (it always went through libx264 before); without a
+        # graphics card the arguments are exactly the ones burn() used, so the picture does not change
+        from .encoder import video_args
+
+        subtitulos.burn(ctx, final, timeline, encoder=video_args(r.cfg, 18, "veryfast", nvenc=True) if r.nvenc else None)
     except Exception as error:          # never costs the video: it goes out without them
         print(f"   Subtítulos no quemados: {str(error)[:120]}")
     from . import simulacion
