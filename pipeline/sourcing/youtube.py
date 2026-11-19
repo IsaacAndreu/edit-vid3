@@ -1013,7 +1013,7 @@ class YouTubeSource:
             print(f"   YouTube pide calma: vuelvo a {self.concurrency * len(self._pacers) - extra} descargas a la vez")
             threading.Thread(target=lambda: [self._slots.acquire() for _ in range(extra)], daemon=True).start()
 
-    def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
+    def _call(self, action: str, fn: Any) -> Any:
         if self.offline:
             raise SourceUnavailable(self.offline)
         if self.blocked:
@@ -1200,12 +1200,26 @@ class YouTubeSource:
                     raise Refused(f"yt-dlp {action}: {video} no está disponible ({message[:120]}); "
                                   "no se vuelve a pedir") from None
                 if any(marker in lowered for marker in _RATE_MARKERS):
-                    # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry
+                    # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry —
+                    # and the extra slots of several accounts are given back for the rest of the run
+                    self._calm_down()
                     self._quarantine(way, "YouTube responde 429 (demasiadas peticiones)")
                     if self._all_in_quarantine():
                         self._blocked_everywhere()
                     raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429); esa conexión queda en "
                                       "cuarentena") from None
+                # A passing failure at home or straight from the server (a timeout, a 5xx, a cut connection): two more
+                # tries with a growing, random pause before the candidate is lost — the residential way already
+                # retries from another session above. Never for «are you a bot» or a 429, which have their own rules.
+                if not is_residential((self.proxies or [""])[way]) and kind not in ("bot", "429", "auth") \
+                        and error_cause(message) in ("timeout", "conexión-cortada", "http-5xx") \
+                        and tries <= int(self.cfg.get("transient_retries", 2)):
+                    import random
+
+                    pause = random.uniform(2.0, 6.0) * tries
+                    time.sleep(pause)
+                    self._count("espera por error pasajero", pause)
+                    continue
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
 
     def _rotate_after(self, kind: str, action: str, tries: int) -> bool:
