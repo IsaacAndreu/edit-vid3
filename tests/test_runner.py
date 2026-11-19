@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -95,3 +96,43 @@ class PerVideoConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_fingerprints_read_the_bytes_only_when_a_file_changed(tmp_path, monkeypatch):
+    """4.4: the same value as hashing everything (markers stay valid), but files untouched since the last
+    fingerprint are not read again; a change of size or time is."""
+
+    import hashlib
+    import os
+
+    from pipeline import runner
+    from pipeline.context import RunContext
+    from pipeline.runner import Stage
+
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    ctx = RunContext.create("v", root=tmp_path, config={"x": {"a": 1}})
+    folder = tmp_path / "datos"
+    folder.mkdir()
+    (folder / "uno.txt").write_text("1")
+    (folder / "dos.txt").write_text("22")
+    stage = Stage("s", lambda c: [], lambda c: [folder, tmp_path / "falta.json"], None, None, ("x",))
+
+    def plain():
+        digest = hashlib.sha256()
+        for path in stage.inputs(ctx):
+            runner._hash_path(digest, path)
+        digest.update(json.dumps(runner._without_speed(ctx.section("x")), sort_keys=True).encode())
+        return digest.hexdigest()
+
+    first = runner.fingerprint(ctx, stage)
+    assert first == plain()                                              # the same value as always
+    reads = []
+    real = runner._hash_path
+    monkeypatch.setattr(runner, "_hash_path", lambda d, p: reads.append(p) or real(d, p))
+    runner._FINGERPRINTS.clear()                                         # a new process: from huellas.cache
+    assert runner.fingerprint(ctx, stage) == first and reads == []
+    assert not list((ctx.work_dir / ".stages").glob("*.json"))           # never taken for a stage marker
+    (folder / "dos.txt").write_text("33")
+    os.utime(folder / "dos.txt", ns=(1, 1))                              # same size, another time
+    changed = runner.fingerprint(ctx, stage)
+    assert reads and changed != first and changed == plain()
