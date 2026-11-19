@@ -94,17 +94,17 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 | 3.4 detalles y búsquedas en paralelo | descartado: no se puede garantizar el mismo número de peticiones (el bucle para al tener 3 vídeos válidos) | — |
 | 3.5 ingest `-ss` antes de `-i` | pendiente (los tramos HD ya empiezan casi en el segundo pedido: poco que ganar) | — |
 | 3.6 sonda de recursos directos | hecho: `python -m pipeline.sonda_directo [vídeo]` → `out/_sonda_directo.md`. **Lánzala en el servidor** | `tests/test_sonda_directo.py` |
-| 3.7 soltar el turno `red` | pendiente | — |
+| 3.7 soltar el turno `red` | hecho, apagado: `queue.release_red_turn` presta el turno de red durante el precálculo CLIP del final de la búsqueda y lo recupera antes de seguir. **No hecho** en ingest: allí las descargas y los cortes locales van mezclados en los mismos hilos. Comparar: `--youtube-stats 1` una noche con y otra sin (bot/429 por hora) | `tests/test_locks.py` |
 | 4.1 empaquetar Remotion una vez | hecho: paquete por firma del código en `cache/render/bundles/`, carpeta propia por trabajo (pueden solaparse), `_remotion_sig` memorizado. Comprobado: PNG idéntico byte a byte, 2,1 s frente a 4,7 s por llamada | `tests/test_render_bundle.py` |
 | 4.2 ffmpeg sin esperar a Remotion | hecho: la pasada condensada en segundo plano; mismas órdenes, otro orden | `tests/test_e2e_stages.py`, `tests/test_render.py` |
 | 4.3 pasada condensada por tramos | pendiente | — |
-| 4.4 claves de caché más estrechas | pendiente (riesgo: invalidar mal) | — |
+| 4.4 claves de caché más estrechas | en parte: las huellas de etapa solo releen los bytes cuando cambia el nombre, tamaño, fecha o inodo de una entrada (`.stages/huellas.cache`); el valor es el mismo, los marcadores siguen valiendo. **No hecho**: limitar la huella de render a los archivos de `remotion/` que usa cada composición (riesgo de no rehacer lo que sí cambió) | `tests/test_runner.py` |
 | 4.5 subtítulos con el codificador del render | hecho (paso seguro): NVENC si el render lo usa; sin gráfica, los mismos argumentos. **No hecho**: meterlos en el grafo de cada segmento | — |
-| 4.6 comprobaciones en una pasada | pendiente | — |
+| 4.6 comprobaciones en una pasada | en parte: la mezcla de audio se hace una vez (la pasada de medida la guarda en float 32 y la segunda solo aplica la ganancia; idéntica byte a byte). **No hecho**: juntar doctor/ritmo/simulación en una decodificación | `tests/test_render.py` |
 | 4.7 Shorts | hecho: `shorts.parallel` (2) a la vez, carpeta temporal por Short, paquete compartido. **No hecho**: intermedio ultrafast/crf 12 (cambia píxeles) | `tests/test_shorts_native.py` |
 | 4.8 doblajes con caché global | pendiente | — |
 | 4.9 Atlas/MapStory `useMemo` | pendiente (necesita el bucle visual de `CLAUDE.md` contra `referencias/atlas/frames/`) | — |
-| 4.10 nada de red en el render | en parte: el preflight avisa si Remotion no tiene navegador; `npm install` sigue en `ensure_node_modules` | `tests/test_preflight_checks.py` |
+| 4.10 nada de red en el render | hecho: `preflight.prepare_assets` baja antes de cada ronda los paquetes de Node que falten, el navegador de Remotion y los modelos de caras, con límite de tiempo; `npm install` en el render (último recurso) ya no puede colgarse | `tests/test_preflight_checks.py` |
 | 5.1 people en paralelo | **descartado**: su plan B usa los clips HD que baja ingest; adelantarlo cambiaría el resultado | — |
 | 5.2 factcheck en paralelo | hecho: al lado de align y planner, esperado antes de la primera etapa de pago (`speed.parallel_stages`) | `tests/test_parallel_stages.py` |
 | 5.3 package a la vez que el render | hecho (la parte que no necesita el vídeo): package usa el vídeo terminado (fotogramas de las miniaturas de los vídeos dibujados, vista previa, el aviso con los Shorts), así que sigue tras render y shorts; lo que pide fuera, la llamada al LLM de títulos y las imágenes conceptuales, se lanza al empezar el render con las mismas palabras y package lo encuentra en caché. Mismo resultado | `tests/test_parallel_stages.py` |
