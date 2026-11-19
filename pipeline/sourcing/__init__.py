@@ -563,7 +563,10 @@ def run(ctx: RunContext) -> None:
         if getattr(youtube, "merged_queries", 0):
             print(f"   Búsquedas casi iguales unidas: {youtube.merged_queries} (las respondió la caché)")
     if precompute is not None:
-        precompute.finish()
+        from ..locks import lend
+
+        with lend(ctx.root, "sourcing"):        # CLIP only: the network turn can go to another video (3.7, off)
+            precompute.finish()
 
     by_source: dict[str, int] = {}
     empty = []
