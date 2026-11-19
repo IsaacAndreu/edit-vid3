@@ -70,3 +70,37 @@ def test_stats_split_other_and_leave_out_old_skip_rows():
     s = ytstats.summary(rows)
     assert s["failed"] == 1 and s["skipped"] == 1 and s["causes"] == {"proxy-túnel": 1}
     assert any("Causas" in line for line in ytstats.lines(s))
+
+
+def test_the_stats_break_down_where_unclear_failures_come_from(tmp_path):
+    import json
+    import time
+
+    from pipeline import ytstats
+
+    log = tmp_path / "work" / "newatlet1" / "youtube_downloads.jsonl"
+    log.parent.mkdir(parents=True)
+    now = time.time()
+    rows = [{"ts": now, "action": "metadata", "ok": False, "error": "429",
+             "detail": "ERROR: [youtube] dQw4w9WgXcQ: HTTP Error 429: Too Many Requests"},
+            {"ts": now, "action": "metadata", "ok": False, "error": "429",
+             "detail": "ERROR: [youtube] aaaaaaaaaaa: HTTP Error 429: Too Many Requests"},
+            {"ts": now, "action": "get", "ok": False, "error": "other"},
+            {"ts": now, "action": "metadata", "ok": True}]
+    log.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    table = ytstats.failure_breakdown([{**r, "_slug": "newatlet1"} for r in rows])
+    assert table["429"]["total"] == 2 and table["429"]["actions"] == {"metadata": 2}
+    assert table["429"]["texts"] == {"ERROR: [youtube] <id>: HTTP Error N: Too Many Requests": 2}   # ids folded
+    assert table["sin-texto"]["actions"] == {"get": 1}
+    text = ytstats.report(tmp_path, 1).read_text()
+    assert "## De dónde salen los fallos poco claros" in text and "### 429 · 2" in text and "newatlet1 2" in text
+
+
+def test_old_refused_rows_are_not_errors_of_the_proxy():
+    from pipeline import ytstats
+
+    rows = [{"proxy": "resi", "action": "metadata", "ok": False, "error": "other",
+             "detail": "x: descartado (bot en 3 sesiones); no se vuelve a pedir"},
+            {"proxy": "resi", "action": "metadata", "ok": True}]
+    table = ytstats.proxy_summary({"v": rows}, set())
+    assert table[0]["requests"] == 1 and table[0]["details"] == [] and table[0]["errors"] == {}
