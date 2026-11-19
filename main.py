@@ -633,7 +633,15 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
             problems.append("YouTube no responde")
     except requests.RequestException as error:
         problems.append(f"sin conexión con YouTube ({type(error).__name__})")
-    return problems
+    from pipeline import preflight as checks       # the code imports, tools, Remotion, channel profiles… (fase 2.5)
+
+    try:
+        blockers, warnings = checks.queue_problems(root)
+    except Exception as error:                     # the check itself never stops the night
+        blockers, warnings = [], [f"comprobación previa incompleta: {type(error).__name__}: {str(error)[:120]}"]
+    for warning in warnings:
+        print(f"Aviso antes de la cola: {warning}")
+    return problems + blockers
 
 
 WATCH_STATE = "out/_vigilar.json"

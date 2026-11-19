@@ -240,6 +240,7 @@ def run_stages(
     learned = feedback.load_learned(ctx.root)            # channels your «Errores» labels taught it to avoid
     if learned:
         print(f"Canales de YouTube bloqueados por tus correcciones: {', '.join(learned)}")
+    proxy_checked = False
     for number, stage in enumerate(STAGES, start=1):
         label = f"[{number}/{len(STAGES)}] {stage.name}"
         forced = "all" in force or stage.name in force
@@ -249,7 +250,17 @@ def run_stages(
             if stage.run is None:
                 raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
             budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
+            from . import stickman
+
             if stage.name in PROXY_STAGES and not offline:
+                if not proxy_checked and not (stage.name in stickman.SKIP and stickman.drawn(ctx)):
+                    # what a later stage will need and is missing: found now, not after hours of paid downloads
+                    from .preflight import video_problems
+
+                    problems = video_problems(ctx)
+                    if problems:
+                        raise RuntimeError("No empiezo a gastar proxy: " + "; ".join(problems))
+                    proxy_checked = True
                 budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
             print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
             current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
