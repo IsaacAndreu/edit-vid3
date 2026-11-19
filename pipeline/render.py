@@ -504,20 +504,33 @@ def _run(cmd: list[str], what: str, timeout: float = RUN_TIMEOUT) -> subprocess.
     return result
 
 
-def ensure_node_modules(root: Path) -> None:
-    """`npm install` when package.json lists a package node_modules lacks (new fonts after a git pull)."""
+NPM_TIMEOUT = 600
 
+
+def missing_node_packages(root: Path) -> list[str]:
     try:
         manifest = json.loads((root / "package.json").read_text("utf-8"))
     except (OSError, ValueError):
-        return
+        return []
     wanted = {**manifest.get("dependencies", {}), **manifest.get("devDependencies", {})}
-    missing = [name for name in wanted if not (root / "node_modules" / name / "package.json").is_file()]
+    return [name for name in wanted if not (root / "node_modules" / name / "package.json").is_file()]
+
+
+def ensure_node_modules(root: Path) -> None:
+    """`npm install` when package.json lists a package node_modules lacks (new fonts after a git pull)."""
+
+    missing = missing_node_packages(root)
     if not missing:
         return
     print(f"   Instalando paquetes de Node que faltan ({', '.join(missing[:4])}…): npm install")
     npm = shutil.which("npm") or "npm"
-    result = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(root), capture_output=True, text=True)
+    try:
+        # normally done by the queue's preflight (preflight.prepare_assets) before any video starts: here only as the
+        # last resort, and never without a time limit (behind a proxy a hung install was a lost night)
+        result = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(root), capture_output=True,
+                                text=True, timeout=NPM_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"npm install no terminó en {NPM_TIMEOUT // 60} min (ejecútalo a mano: npm ci)") from None
     if result.returncode != 0:
         raise RuntimeError(f"Falló npm install (ejecútalo a mano):\n{(result.stderr or result.stdout)[-800:]}")
 

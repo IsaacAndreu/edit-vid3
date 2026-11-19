@@ -636,10 +636,14 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
     from pipeline import preflight as checks       # the code imports, tools, Remotion, channel profiles… (fase 2.5)
 
     try:
+        early = checks.prepare_assets(root)        # downloads a stage would make at night, made now (fase 4.10)
+    except Exception as error:
+        early = [f"descargas previas incompletas: {type(error).__name__}: {str(error)[:120]}"]
+    try:
         blockers, warnings = checks.queue_problems(root)
     except Exception as error:                     # the check itself never stops the night
         blockers, warnings = [], [f"comprobación previa incompleta: {type(error).__name__}: {str(error)[:120]}"]
-    for warning in warnings:
+    for warning in early + warnings:
         print(f"Aviso antes de la cola: {warning}")
     return problems + blockers
 
