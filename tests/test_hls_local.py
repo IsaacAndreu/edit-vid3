@@ -119,7 +119,7 @@ def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tm
     ffmpeg, kwargs = commands[-1]
     assert ffmpeg[0] == "ffmpeg" and "-http_proxy" not in ffmpeg and "http" not in " ".join(ffmpeg)   # local files only
     assert ffmpeg[ffmpeg.index("-ss") + 1] == "1.995" and ffmpeg[ffmpeg.index("-t") + 1] == "4.000"   # 7.0 s is 1.995 s into segment 1
-    assert ffmpeg[ffmpeg.index("-i") + 1].endswith("local.m3u8") and "libx264" in ffmpeg and "-an" in ffmpeg
+    assert ffmpeg[ffmpeg.index("-i") + 1].endswith(".m3u8") and "libx264" in ffmpeg and "-an" in ffmpeg
     assert "HTTPS_PROXY" not in kwargs["env"] and "http_proxy" not in kwargs["env"]
     assert not (tmp_path / "videos" / VIDEO / "hls_hd_7.00_11.00").exists()          # temporary segments gone
     assert yt._range_sidecar(result) == {"height": 720, "cap": 720}
@@ -319,4 +319,56 @@ def test_a_new_session_extracts_again_before_asking_with_old_links(tmp_path, mon
     yt.download_range(VIDEO, 7.0, 11.0, fmt="bv*[height<=1080]", prefix="hd")
     assert refreshed == [VIDEO]
     assert asked[0].endswith("index.m3u8") and len([u for u in asked if u.endswith("index.m3u8")]) == 1
+    yt.close()
+
+
+def test_split_video_and_audio_tracks_are_fetched_separately_and_joined_locally(tmp_path, monkeypatch):
+    """No muxed HLS (YouTube, November 2026): the video track and the audio track come apart, each from its own
+    segments, and one local ffmpeg joins them, each input from its own first segment."""
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, whole_fallback=False)
+    _info(yt)
+    audio_playlist = PLAYLIST.replace("5.005", "4.000").replace("/sq/", "/aud/sq/")
+    video = {"format_id": "232", "protocol": "m3u8_native", "vcodec": "avc1", "acodec": "none", "height": 720,
+             "url": "https://manifest.googlevideo.com/v/index.m3u8", "http_headers": {"User-Agent": "UA"}}
+    sound = {"format_id": "234", "protocol": "m3u8_native", "vcodec": "none", "acodec": "mp4a",
+             "url": "https://manifest.googlevideo.com/a/index.m3u8", "http_headers": {"User-Agent": "UA"}}
+
+    class Split(FakeYdl):
+        def process_ie_result(self, data, download):
+            assert "+ba[protocol^=m3u8]" in self.options["format"]
+            return {**data, "requested_formats": [video, sound]}
+
+    monkeypatch.setattr(yt, "_ydl", lambda extra=None: Split(extra or {}))
+    fetched = []
+
+    def get(url, headers=None, timeout=None, proxies=None, stream=False):
+        fetched.append(url)
+        if url.endswith("/v/index.m3u8"):
+            return Got(PLAYLIST.encode())
+        if url.endswith("/a/index.m3u8"):
+            return Got(audio_playlist.encode())
+        return Got(b"x" * 10)
+
+    monkeypatch.setattr(yt._sessions[0], "get", get)
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        open(command[-1], "wb").write(b"mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    result = yt.download_range(VIDEO, 7.0, 11.0, fmt="bv*[height<=720]+ba/b[height<=720]", prefix="hd", audio=True)
+    assert result.name == "hd_7.000_11.000.mp4"
+    audio_segments = sorted(u.rsplit("/", 3)[-3] for u in fetched if "/aud/sq/" in u)
+    assert audio_segments == ["1", "2"]                     # 4-8 and 8-12 s of the audio track only
+    ffmpeg = commands[-1]
+    inputs = [i for i, word in enumerate(ffmpeg) if word == "-i"]
+    assert len(inputs) == 2 and ffmpeg[inputs[0] + 1].endswith("local_232.m3u8") and ffmpeg[inputs[1] + 1].endswith("local_234.m3u8")
+    seeks = [ffmpeg[i + 1] for i, word in enumerate(ffmpeg) if word == "-ss"]
+    assert seeks == ["1.995", "3.000"]                      # 7.0 s inside each track's own first segment
+    assert ffmpeg[ffmpeg.index("-map") + 1] == "0:v:0" and "1:a:0" in ffmpeg and "-an" not in ffmpeg
+    assert yt._range_sidecar(result)["height"] == 720
     yt.close()
