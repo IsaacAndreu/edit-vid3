@@ -39,7 +39,8 @@ WHOLE_SOURCE = {"dibujo_animado", "texto_marca_agua"}   # the whole source video
 WIDER = {"persona_equivocada": 4.0}           # another athlete is usually on screen for a while: block around it too
 METHODS = {"judge": "Juez (búsqueda del plano)", "score": "Puntuación directa", "editor": "Elegido a mano",
            "next-option": "Siguiente opción", "protagonist": "Otro clip del protagonista",
-           "protagonist-filler": "Relleno del protagonista", "event-footage": "Clip del mismo evento",
+           "protagonist-filler": "Relleno del protagonista", "protagonist-photo": "Foto del protagonista",
+           "event-footage": "Clip del mismo evento",
            "web-photo": "Foto de la web", "library-photo": "Foto de la biblioteca", "pexels-video": "Vídeo de stock",
            "pexels-photo": "Foto de stock", "generated": "Imagen generada", "coldopen": "Arranque (cold open)"}
 _LOCK = threading.Lock()

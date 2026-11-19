@@ -22,48 +22,16 @@ Avatar remains reserved for a future iteration and is disabled in the current
 segmentation prompt. If the model returns `avatar` anyway, the segment is
 normalized to a regular narrative scene instead of requiring an avatar clip.
 
-Run from the repository root:
+Run from the repository root (the old one-shot command line `--guion/--voz/--output` no longer exists; the
+pipeline is driven by stages, see the main README):
 
 ```bash
-python -m pip install -r requirements.txt
-python main.py --guion guion.txt --voz narracion.mp3 --output video_final.mp4
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python main.py --slug <vídeo>           # one video, every stage (pipeline/runner.py STAGES)
+python main.py --vigilar                # the server's queue
+python -m pipeline.puerta               # the quick check the deploy gate runs (pyflakes + import everything)
+python -m pytest tests -q               # the suite (tests/test_e2e_stages.py runs every real stage, ~5 min)
 ```
 
-For a first smoke test without rendering:
-
-```bash
-python main.py --guion guion.txt --voz narracion.mp3 --output video_final.mp4 --skip-render
-```
-
-The stable boundary between the LLM and the rest of the pipeline is the JSON object with a `scenes` array and `start_word_index` / `end_word_index` fields. The segmenter also restricts the LLM to templates compatible with currently available assets, avoids generic lower-thirds, requires concrete English visual search queries, repairs skipped timeline gaps, and keeps visual text short enough for title/overlay templates.
-
-## Selección de material de terceros
-
-Para cada escena narrativa, el segmenter añade `visualIntent`, `mustContain`,
-`avoid` y `preferredShot`. El pipeline busca primero candidatos públicos en
-YouTube con yt-dlp, puntúa ventanas temporales de subtítulos, descarga solo los
-finalistas (máximo 5 s), genera contact sheets y pide a DeepSeek Flash que
-confirme la relevancia visual. Si faltan subtítulos, no se inventa un timestamp:
-esa escena pasa a Pexels y, como último recurso, GPT Image.
-
-Los contact sheets quedan en `public/pipeline-assets/<run>/third-party/contact-sheets/`
-para revisar la decisión. El `.timeline.json` y `props.json` guardan URL,
-uploader, título, consulta, timestamps, puntuaciones y motivo de selección.
-El flag `--skip-third-party` desactiva YouTube para comparar con los fallbacks.
-No se usan cookies ni cuentas. yt-dlp depende de cambios del sitio y puede
-fallar temporalmente; en ese caso se continúa con Pexels.
-
-Antes del primer uso, instalar dependencias Python y comprobar que `ffmpeg` y
-`ffprobe` y Deno estén disponibles en `PATH`. yt-dlp usa un runtime JavaScript
-para resolver los desafíos actuales de YouTube; Deno queda habilitado por
-defecto. La guía oficial de yt-dlp también documenta cómo configurar Node si
-preferís usarlo:
-
-[Configuración oficial de runtimes EJS de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
-
-```powershell
-python -m pip install -r requirements.txt
-deno --version
-ffmpeg -version
-ffprobe -version
-```
+Note: `fetch_media.py` and `clients/youtube_client.py` belong to that old path; nothing in the stage pipeline
+imports `fetch_media.py` (youtube.py only reuses the client's json3 subtitle parser).

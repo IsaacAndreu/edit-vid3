@@ -243,10 +243,15 @@ OUT_HEAVY = ("*.mp4", "shorts/*.mp4", "*.mov", "*.mkv", "*.wav", "*.zip", "premi
 
 
 def is_done(root: Path, slug: str) -> bool:
-    """A finished video: its final file, or already uploaded and cleaned up (never made again by the queue)."""
+    """A finished video: its final file with every stage through, or already uploaded and cleaned up (never made again
+    by the queue). out/<slug>/.haciendo (render.IN_PROGRESS) is written when the render starts and removed when the last
+    stage ends: a video whose Shorts or package failed after the render is not «finished» for ever. Videos finished
+    before it existed have no such mark and stay finished."""
 
     out = root / "out" / slug
-    return (out / "video-final.mp4").is_file() or (out / REMOVED).is_file()
+    if (out / REMOVED).is_file():
+        return True
+    return (out / "video-final.mp4").is_file() and not (out / ".haciendo").is_file()
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -64,7 +64,7 @@ def probe(path: Path) -> dict[str, Any]:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height,r_frame_rate:format=duration",
          "-of", "json", str(path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=60,
     )
     data = json.loads(result.stdout)
     video = next((s for s in (data.get("streams") or []) if s.get("codec_type") == "video"), {})
@@ -186,7 +186,8 @@ def normalise_video(source: Path, target: Path, *, offset: float, duration: floa
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-ss", f"{max(0.0, offset):.3f}",
          "-frames:v", str(frames), "-vf", vf, "-an", "-c:v", "libx264", "-preset", str(cfg.get("preset", "veryfast")),
          "-crf", str(cfg.get("crf", 18)), "-movflags", "+faststart", str(tmp)],
-        check=True, capture_output=True, text=True,
+        # a few seconds of 1080p: minutes at most even on a busy machine; a hung ffmpeg never holds the stage
+        check=True, capture_output=True, text=True, timeout=600 + 2 * frames / FPS * 10,
     )
     tmp.replace(target)
 
@@ -199,7 +200,7 @@ def normalise_image(source: Path, target: Path, *, lut: Path | None, grade: dict
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-vf", vf, "-frames:v", "1",
          "-q:v", "2", str(tmp)],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, timeout=180,
     )
     tmp.replace(target)
 

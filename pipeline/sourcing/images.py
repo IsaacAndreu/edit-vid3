@@ -332,7 +332,7 @@ class ImageSources:
         except ImportError as error:
             raise SourceUnavailable("instala 'ddgs' o define SERPER_API_KEY para buscar fotos web") from error
         self.pacers["web"].wait()
-        return [dict(i) for i in DDGS().images(query, max_results=num)]
+        return [dict(i) for i in DDGS(timeout=20).images(query, max_results=num)]   # never an endless wait
 
     def _search_openverse(self, query: str) -> list[dict[str, Any]]:
         params = {"q": query, "page_size": 20, "license_type": "commercial,modification", "mature": "false"}

@@ -112,6 +112,8 @@ sourcing:
     force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
     # (sin HLS se baja el vídeo entero a trozos y se corta aquí: whole_fallback, whole_max_minutes 30, whole_max_mb 600;
     #  no se escriben aquí para no rehacer las búsquedas de los vídeos a medias)
+    # byte_ranges: false       # sin HLS, solo los bytes del tramo (índice sidx del mp4 DASH) en vez del vídeo entero o
+    #                          # el descarte; apagado hasta probarlo en el servidor (prompts/pipeline-progress.md)
   images:
     max_per_shot: 6
     min_width: 1280

@@ -3,6 +3,9 @@
 import json
 
 from pipeline.sourcing.youtube import YouTubeSource, cap_fps, cap_height, hls_format, requested_height, whole_format
+import pytest
+
+pytestmark = pytest.mark.usefixtures("fake_media_ok")    # ffmpeg is a double here
 
 VIDEO = "vid00000000"
 

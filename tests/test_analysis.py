@@ -56,7 +56,7 @@ class StoryboardFrameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             candidate = _board_candidate(root, [_noise(i) for i in range(9)], duration=900, interval=10)
-            times, _ = storyboard_frames(candidate, root, {"max_frames_per_video": 3, "edge_margin": 0})
+            times, _ = storyboard_frames(candidate, root, {"max_frames_per_video": 3, "max_frames_cap": 3, "edge_margin": 0})
         self.assertEqual(times, [0, 40, 80])
 
 
@@ -118,6 +118,9 @@ class _FakeDetectors:
 
     def face_area(self, frame):
         return self.face
+
+    def text_edges(self, frames):
+        return None                                  # no burnt-in text on the edges (detectors.text_edges)
 
 
 class FineTests(unittest.TestCase):

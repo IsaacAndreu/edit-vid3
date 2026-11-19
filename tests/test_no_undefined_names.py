@@ -7,15 +7,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 FATAL = ("undefined name", "referenced before assignment", "syntax error", "invalid syntax", "unexpected indent",
          "import * used; unable to detect undefined names")
 
 
 def test_no_undefined_names_in_the_code():
-    pytest.importorskip("pyflakes")
+    # never skipped: without pyflakes this test passed in silence while the bug reached production
+    import pyflakes  # noqa: F401  (pip install -r requirements-dev.txt)
     done = subprocess.run([sys.executable, "-m", "pyflakes", "main.py", "pipeline", "scripts"], cwd=ROOT,
                           capture_output=True, text=True, timeout=300)
     bad = [line for line in (done.stdout + done.stderr).splitlines() if any(f in line for f in FATAL)]

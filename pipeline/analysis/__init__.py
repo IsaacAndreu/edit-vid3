@@ -76,12 +76,56 @@ def storyboard_frames(candidate: Candidate, root: Path, cfg: dict[str, Any]) -> 
         previous = tile
         times.append(t)
         tiles.append(tile)
-    limit = int(cfg.get("max_frames_per_video", 40))
+    limit = frames_limit(duration, cfg)
     if len(tiles) > limit:
         keep = np.linspace(0, len(tiles) - 1, limit).round().astype(int)
         times = [times[i] for i in keep]
         tiles = [tiles[i] for i in keep]
     return times, tiles
+
+
+def frames_limit(duration: float, cfg: dict[str, Any]) -> int:
+    """How many storyboard thumbnails of a video CLIP looks at: `max_frames_per_video` (40) was one every 27 s in a
+    20 min video, for a shot of 2-4 s. Now one every `frames_every_seconds` (6) up to `max_frames_cap` (120), never
+    fewer than before. The thumbnails come straight from i.ytimg.com: only CPU, no proxy, no YouTube request."""
+
+    base = int(cfg.get("max_frames_per_video", 40))
+    cap = int(cfg.get("max_frames_cap", 120))
+    every = float(cfg.get("frames_every_seconds", 6.0) or 0)
+    wanted = int(duration / every) if every > 0 else base
+    return max(base, min(cap, wanted))
+
+
+def chapter_moment(chapters: list[dict[str, Any]], shot: Shot) -> float | None:
+    """The start of the source's own chapter about this shot (YouTube chapters: «03:12 The fall on the beam»): its
+    title names the shot's moment or event words, or its entity. None when no chapter does."""
+
+    if not chapters or shot.broll is None:
+        return None
+    wanted = tokens(" ".join([shot.broll.moment or "", shot.broll.event or ""])) - MOMENT_STOP
+    best, at = 0.0, None
+    for chapter in chapters:
+        title = str(chapter.get("title") or "")
+        words = tokens(title)
+        score = (len(words & wanted) / max(1, min(len(wanted), 4)) if wanted else 0.0) \
+            + 0.5 * entity_match(title, shot.broll.entities)
+        if score > best + 1e-6:
+            best, at = score, float(chapter.get("start_time") or 0)
+    return at if best >= 0.75 else None
+
+
+def source_chapters(root: Path, cache_dir: Path, candidate_id: str) -> list[dict[str, Any]]:
+    """The chapters yt-dlp already brought with the video's details (cache/videos/<id>/ytdlp-info.json): no request."""
+
+    if not candidate_id.startswith("yt:"):
+        return []
+    try:
+        import json
+
+        data = json.loads((cache_dir / "videos" / candidate_id.removeprefix("yt:") / "ytdlp-info.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [c for c in (data.get("chapters") or []) if isinstance(c, dict)]
 
 
 def coarse_moments(times: np.ndarray, sims: np.ndarray, interval: float, per_video: int) -> list[tuple[float, float]]:
@@ -101,7 +145,8 @@ def coarse_moments(times: np.ndarray, sims: np.ndarray, interval: float, per_vid
 
 
 def frames_key(candidate_id: str, cfg: dict[str, Any]) -> str:
-    settings = (cfg.get("edge_margin", 0.05), cfg.get("max_frames_per_video", 40), cfg.get("dedupe_difference", 4))
+    settings = (cfg.get("edge_margin", 0.05), cfg.get("max_frames_per_video", 40), cfg.get("dedupe_difference", 4),
+                cfg.get("max_frames_cap", 120), cfg.get("frames_every_seconds", 6.0))
     return f"{candidate_id.replace(':', '_')}-{key(*settings)[:8]}"
 
 
@@ -326,11 +371,17 @@ def make_models(ctx: RunContext) -> tuple[ClipScorer, det.Detectors]:
     return clip, det.Detectors(cache_dir=ctx.cache_dir, ocr_side=int(cfg.get("ocr_side", 480)))
 
 
-def prompts_for(shot: Shot) -> list[str]:
+def prompts_for(shot: Shot, with_queries: bool = False) -> list[str]:
+    """What CLIP compares the pictures with: what is SEEN — the narrated moment and the visual intent. The searches
+    (and the entity before the moment) are proper names and years ViT-B-32 cannot see; averaged in, they pulled the
+    ranking that decides which three options the judge sees. `analysis.clip_queries: true` puts them back."""
+
     assert shot.broll is not None
-    moment = [f"{shot.broll.entities[0]} {shot.broll.moment}" if shot.broll.entities else shot.broll.moment] \
-        if shot.broll.moment else []
-    return list(dict.fromkeys([*moment, shot.broll.visualIntent, *shot.broll.queries]))
+    if with_queries:
+        moment = [f"{shot.broll.entities[0]} {shot.broll.moment}" if shot.broll.entities else shot.broll.moment] \
+            if shot.broll.moment else []
+        return list(dict.fromkeys([*moment, shot.broll.visualIntent, *shot.broll.queries]))
+    return list(dict.fromkeys([*([shot.broll.moment] if shot.broll.moment else []), shot.broll.visualIntent]))
 
 
 MOMENT_STOP = set("the a an on in of at to and with his her their from first after before into over".split())
@@ -433,7 +484,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         return
 
     clip, detectors = make_models(ctx)
-    shot_vectors = {s.id: clip.shot_vector(prompts_for(s)) for s in todo}
+    with_queries = bool(cfg.get("clip_queries", False))
+    shot_vectors = {s.id: clip.shot_vector(prompts_for(s, with_queries)) for s in todo}
 
     # 1. Coarse embeddings, once per source (cached globally).
     videos: dict[str, Candidate] = {}
@@ -516,6 +568,21 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     first = int(cfg.get("adaptive_first", 2))
     round_one = [job for shot in todo for job in plan(shot, min(first, limit_for[shot.id]) if adaptive else limit_for[shot.id])]
 
+    # analysis.hd_windows_top (0, off): the best N windows of each shot come down at once in the HD the clip will be
+    # cut from, not at 360p: fewer requests (ingest finds them), more bytes (the windows that do not win are HD too).
+    # Compare with python main.py --youtube-stats (MB and minutes of «archivo a360» + «archivo hd») on and off.
+    hd_top = int(cfg.get("hd_windows_top", 0) or 0)
+    hd_jobs: set[tuple[str, float, float]] = set()
+    if hd_top:
+        for shot in todo:
+            mine = [job for job in round_one if shot.id in jobs.get(job, []) and job[0].startswith("yt:")]
+            hd_jobs.update(list(dict.fromkeys(mine))[:hd_top])
+    from ..sourcing.youtube import cap_height
+
+    ingest_cfg = ctx.section("ingest")
+    hd_format = cap_height(str(ingest_cfg.get("format", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b[height<=1080]")),
+                           ingest_cfg.get("max_height"))
+
     # 3. Fine pass: downloads in threads, analysis in this thread as they arrive.
     yt_cfg = ctx.section("sourcing").get("youtube", {})
     youtube = youtube_source(ctx)
@@ -584,7 +651,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         options.sort(key=lambda o: (o.discarded is not None, o.pass_ != "fine", -o.total))
         result = ShotScores(
             shotId=shot.id, inputsHash=shot_hash[shot.id], needed=round(needed, 3),
-            prompts=prompts_for(shot), options=options, notes=notes[shot.id],
+            prompts=prompts_for(shot, with_queries), options=options, notes=notes[shot.id],
         )
         ctx.write_json(f"{folder}/{shot.id}.json", result.model_dump(by_alias=True, exclude_none=True))
         written.add(shot.id)
@@ -628,6 +695,13 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             out: list[tuple[tuple[str, float, float], Path | Exception]] = []
             for job in its:
                 try:
+                    if job in hd_jobs:
+                        # analysis.hd_windows_top: this window in the clip's final quality (and 1 s more, ingest's
+                        # margin): ingest finds it on disk (RANGE_FAMILY) instead of asking the same seconds again
+                        end = min(job[2] + 1.0, float(videos[video].durationSeconds or job[2] + 1.0))
+                        out.append((job, youtube.download_range(video.removeprefix("yt:"), job[1], end,
+                                                                fmt=hd_format, prefix="hd")))
+                        continue
                     out.append((job, youtube.download_section(video.removeprefix("yt:"), job[1], job[2])))
                 except (ApiSearchesShort, BudgetReached):
                     raise                      # the proxy down or the quota: the stage stops and the video waits
@@ -703,7 +777,40 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 break                                    # one «said» window per shot
         if said:
             print(f"   Momentos localizados por lo que dice la fuente: {said} planos")
+    # analysis.chapter_windows (false): a window at the start of the source's own chapter about the shot (its title
+    # names the moment, the event or the person). Finding it costs nothing (the details already on disk); its 360p
+    # window is one more download for the shots where a chapter matches, so it is off until measured
+    by_chapter = 0
+    if cfg.get("chapter_windows", False):
+        for shot in todo:
+            if not shot.broll:
+                continue
+            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            for option in coarse[shot.id]:
+                c = option["candidate"]
+                if c.kind != "video" or not c.id.startswith("yt:"):
+                    continue
+                t = chapter_moment(source_chapters(ctx.root, ctx.cache_dir, c.id), shot)
+                if t is None:
+                    continue
+                duration = float(c.durationSeconds or 0)
+                margin = duration * float(cfg.get("edge_margin", 0.05))
+                a = round(max(margin, t), 2)
+                b = round(min(duration - margin, a + needed + 2 * pad + 4), 2)
+                if b - a < needed or any(o.get("window") and o["candidate"].id == c.id and o["window"][0] < b
+                                         and a < o["window"][1] for o in coarse[shot.id]):
+                    continue
+                job = (c.id, a, b)
+                jobs.setdefault(job, []).append(shot.id)
+                coarse[shot.id].append({"candidate": c, "t": a, "clip": 0.0, "entity": 0.0, "window": (a, b),
+                                        "chapter": True})
+                round_one.append(job)
+                by_chapter += 1
+                break                                    # one chapter window per shot
+        if by_chapter:
+            print(f"   Momentos localizados por los capítulos de la fuente: {by_chapter} planos")
     print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
+          + (f" ({len(hd_jobs)} de ellas ya en HD, hd_windows_top {hd_top})" if hd_jobs else "")
           + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
     for job in set(round_one):
         for sid in jobs.get(job, []):

@@ -184,13 +184,41 @@ class RunTests(unittest.TestCase):
         def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
             return {"ranking": ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
 
+        def run(**judge_cfg):
+            with tempfile.TemporaryDirectory() as tmp:
+                ctx = self._write(Path(tmp), shots, {sid: [trial] for sid in scores}, scores, hook=100)   # all judged
+                ctx.config["judge"].update(judge_cfg)
+                with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+                    J.run(ctx)
+                return [r["start"] for r in json.loads((ctx.work_dir / "selection.json").read_text())["selections"]]
+
+        # continue_unseen (the old rule): s001 continues s000 (2 s + 2 s ≤ 5 s); s002 would make 6 s: its own again
+        self.assertEqual(run(continue_unseen=True), [100.0, 102.0, 180.0])
+        # by default only seconds the judge saw and accepted for that shot: 102-104 s were never on its sheet
+        self.assertEqual(run(), [100.0, 140.0, 180.0])
+
+    def test_a_judge_error_is_retried_and_then_goes_to_the_fallback_not_to_clips_order(self) -> None:
+        broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+        shots = [{"id": "s000", "type": "broll", "startWord": 0, "endWord": 0, "start": 0.0, "end": 2.0,
+                  "text": "t", "chapter": 0, "broll": broll}]
+        board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+        video = {"id": "yt:a", "source": "youtube", "kind": "video", "url": "https://y/a", "title": "t", "channel": "A",
+                 "license": "l", "credit": "Fuente: A", "attribution": "a", "query": "q", "rankScore": 1,
+                 "durationSeconds": 500, "storyboard": board}
+        calls = []
+
+        def broken(*args, **kwargs):
+            calls.append(1)
+            raise RuntimeError("Error code: 500 - server error")
+
         with tempfile.TemporaryDirectory() as tmp:
-            ctx = self._write(Path(tmp), shots, {sid: [trial] for sid in scores}, scores, hook=100)   # all judged
-            with patch.object(J, "call_judge", side_effect=fake_judge), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+            ctx = self._write(Path(tmp), shots, {"s000": [video]}, {"s000": [opt("yt:a", 0.40, start=10, end=12)]}, hook=100)
+            ctx.config["judge"]["error_pause_seconds"] = 0
+            with patch.object(J, "call_judge", side_effect=broken), patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
                 J.run(ctx)
-            starts = [r["start"] for r in json.loads((ctx.work_dir / "selection.json").read_text())["selections"]]
-        # s001 continues s000 (2 s + 2 s ≤ 5 s); s002 would make 6 s: its own fragment again
-        self.assertEqual(starts, [100.0, 102.0, 180.0])
+            selection = json.loads((ctx.work_dir / "selection.json").read_text())["selections"][0]
+        self.assertEqual(len(calls), 2)                                   # retried once
+        self.assertEqual(selection["status"], "fallback")
 
     def test_second_round_then_fallback_never_blind_pick(self) -> None:
         broll = {"visualIntent": "roulette", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
@@ -334,7 +362,9 @@ def test_a_narrated_moment_reaches_clip_the_commentary_and_the_judge():
                                 "broll": {"visualIntent": "figure skater on ice", "queries": ["a", "b", "c"],
                                           "queriesLocal": ["x"], "entities": ["Ilia Malinin"],
                                           "moment": "falls on the quad lutz landing"}})
-    assert prompts_for(shot)[0] == "Ilia Malinin falls on the quad lutz landing"
+    # CLIP gets what is seen (the moment, the intent), never names or the searches (it cannot see a name)
+    assert prompts_for(shot) == ["falls on the quad lutz landing", "figure skater on ice"]
+    assert prompts_for(shot, with_queries=True)[0] == "Ilia Malinin falls on the quad lutz landing"
     said = [(10.0, 12.0, "oh and he falls on the lutz"), (40.0, 41.0, "beautiful landing")]
     assert moment_score(said, shot.broll.moment, 9.0, 11.0) >= 0.7 and moment_score(said, shot.broll.moment, 38.0, 40.0) < 0.2
     assert "EXACT MOMENT narrated: falls on the quad lutz landing" in shot_brief(shot)

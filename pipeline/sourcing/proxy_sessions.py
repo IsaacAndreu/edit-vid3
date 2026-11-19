@@ -124,11 +124,10 @@ class ProxySessions:
         if path is None:
             return
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(path.name + ".tmp")
-            tmp.write_text(json.dumps({"id": session.id, "started": session.started, "rotations": session.rotations}),
-                           encoding="utf-8")
-            tmp.replace(path)
+            from ..fileio import atomic_write_text      # a temporary name per process: two videos never mix
+
+            atomic_write_text(path, json.dumps({"id": session.id, "started": session.started,
+                                                "rotations": session.rotations}))
         except OSError:
             pass
 

@@ -99,6 +99,18 @@ def run(ctx: RunContext) -> None:
         cold = {str((ctx.root / c.path).relative_to(ctx.work_dir)): c for c in [*opening.clips, *opening.moments]}
     fps = timeline.fps
 
+    def _in_work(path: str) -> str:
+        try:
+            return str((ctx.root / path).resolve().relative_to(ctx.work_dir.resolve())).replace("\\", "/")
+        except ValueError:
+            return path
+
+    owners: dict[str, str] = {}               # media file (relative to work/<slug>) → the shot that chose it
+    for shot_id, media in ingest.items():
+        owners.setdefault(_in_work(str(media.get("path") or "")), shot_id)
+    for shot_id, item in fallback.items():
+        owners.setdefault(_in_work(item.path), shot_id)
+
     blockers: list[str] = []
     warnings: list[str] = []
     rows: list[dict[str, Any]] = []   # manifest entries
@@ -164,6 +176,11 @@ def run(ctx: RunContext) -> None:
                 "sourceStart": item.start, "sourceEnd": item.end, "fallbackReason": item.reason,
                 "attribution": item.attribution, "score": item.clip,
             })
+        else:
+            # media this shot did not choose itself (decidedBy was null: «sin dato» in up to 119 shots of a video):
+            # the clip of another shot it continues, or something the timeline put there — said which
+            owner = owners.get(shot.media.src)
+            entry["decidedBy"] = f"heredado:{owner}" if owner else f"otro:{shot.media.src.split('/')[0]}"
         frame = middle_frame(path, shot.media.kind)
         entry["_frame"] = frame
         entry["phash"] = det.phash(frame) if frame is not None else None

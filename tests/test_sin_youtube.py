@@ -20,6 +20,8 @@ from pipeline.sourcing.youtube import YouTubeSource
 
 from tests.test_scenes import BOARD, _broll, _plan
 
+pytestmark = pytest.mark.usefixtures("fake_media_ok")    # ffmpeg is a double here
+
 
 @pytest.fixture
 def offline():

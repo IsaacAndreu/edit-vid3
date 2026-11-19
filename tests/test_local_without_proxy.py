@@ -6,6 +6,9 @@ import subprocess
 import requests
 
 from pipeline.sourcing.youtube import YouTubeSource, local_env
+import pytest
+
+pytestmark = pytest.mark.usefixtures("fake_media_ok")    # ffmpeg is a double here
 
 RESI = "http://user:pass@resi-bridge-eu.rainproxy.io:1111"
 HOME = "http://100.64.0.2:8899"
@@ -32,6 +35,8 @@ def test_cutting_and_probing_run_without_proxy_variables(tmp_path, monkeypatch):
 
     def run(command, **kwargs):
         seen.append((command[0], kwargs.get("env")))
+        if command[0] == "ffmpeg":
+            open(command[-1], "wb").write(b"m")
         return subprocess.CompletedProcess(command, 0, json.dumps({"streams": [{"start_time": "10.0"}], "format": {"duration": "5"}}), "")
 
     monkeypatch.setattr(subprocess, "run", run)

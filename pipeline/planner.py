@@ -280,14 +280,20 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
         error: Exception | None = None
         for _ in range(int(ctx.section("planner").get("max_attempts", 3))):
             feedback = f"\n\nTu respuesta anterior no era válida: {error}. Corrígela." if error else ""
-            result = complete_json(
-                ctx,
-                stage=STAGE,
-                section="planner",
-                system=outline_system(ctx),
-                user=f"TÍTULO: {words_file.title}\n\nFRASES:\n{listing}{feedback}",
-                max_tokens=room,
-            )
+            try:
+                result = complete_json(
+                    ctx,
+                    stage=STAGE,
+                    section="planner",
+                    system=outline_system(ctx),
+                    user=f"TÍTULO: {words_file.title}\n\nFRASES:\n{listing}{feedback}",
+                    max_tokens=room,
+                )
+            except LLMError as exc:          # invalid or truncated JSON: one more attempt, telling it why
+                if "no respondió a tiempo" in str(exc):
+                    raise
+                error, result = exc, {}
+                continue
             try:
                 chapters = _validate_outline(result, sentences, words)
                 break
@@ -487,7 +493,7 @@ del protagonista (p. ej. "Kohei Uchimura"). "nota": una puntuación o marca dich
 
 Objeto "broll" (metraje a buscar en YouTube/bancos de imágenes):
 {"visualIntent": "qué se ve, concreto y observable, en inglés",
- "queriesEn": ["3-5 búsquedas en inglés de 2-6 palabras, como las escribiría un editor buscando b-roll: 'las vegas strip aerial night', 'roulette wheel spinning close up'"],
+ "queriesEn": ["3-5 búsquedas en inglés de 3-10 palabras para encontrar en YouTube EL vídeo donde se ve exactamente esto (ver BÚSQUEDAS abajo)"],
  "queriesEs": ["1-2 búsquedas en el idioma del guion, p. ej. 'Gran Casino de Madrid Torrelodones'"],
  "entities": ["personas, lugares, empresas o marcas concretas que aparecen; [] si no hay"],
  "mustContain": ["1-3 elementos que DEBEN verse"],
@@ -497,6 +503,23 @@ Objeto "broll" (metraje a buscar en YouTube/bancos de imágenes):
    celebración, lágrimas en el podio, una lesión, un gol, un abrazo, la llegada a meta): esa acción EN INGLÉS,
    observable y corta ('falls on the quad lutz landing', 'cries on the podium', 'crosses the finish line first');
    si no, null"}
+
+BÚSQUEDAS (sirven para cualquier tema, con o sin protagonista):
+- Son para encontrar en YouTube el vídeo concreto donde SE VE lo que cuenta este plano: un reportaje, un
+  informativo, una grabación del hecho, el vídeo oficial. No describen una imagen de stock.
+- Cada búsqueda nombra siempre DE QUIÉN o DE QUÉ se habla (nombre propio de la persona, empresa, lugar, caso,
+  obra o producto), QUÉ pasa y CUÁNDO (año, competición, edición), aunque el vídeo no tenga protagonista.
+- La primera es la más concreta (quién + qué + cuándo); las siguientes, variantes que un archivo o un informativo
+  usaría (el nombre del caso, el lugar, el medio que lo cubrió, la palabra «footage», «news report», «documentary»).
+- Ejemplos por tipo de canal:
+  · deporte: 'Simone Biles vault final 2023 Antwerp', 'Ilia Malinin quad axel Milan 2026 free skate'
+  · crimen: 'Ted Bundy trial Miami 1979 courtroom footage', 'Pazos case Galicia 2004 news report'
+  · negocios: 'Steve Jobs iPhone keynote Macworld 2007', 'WeWork headquarters New York 2019 news'
+  · megaproyectos / ingeniería: 'Burj Khalifa construction Dubai 2008 timelapse', 'Panama canal expansion locks 2016'
+  · historia: 'Berlin Wall fall November 1989 crowd footage', 'Apollo 11 launch July 1969 archive'
+  · videojuegos: 'GTA 6 trailer Vice City beach', 'GTA San Andreas Grove Street gameplay 2004'
+  Nunca búsquedas genéricas ('man walking', 'business meeting', 'city at night') cuando el plano habla de algo
+  con nombre.
 
 Tipos:
 - "broll" (la mayoría, ~70-80 %): metraje que ilustra lo que se dice. Si el texto

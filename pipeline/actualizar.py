@@ -3,7 +3,8 @@
 1. Writes out/_actualizando: the queue stops STARTING third-party videos (simulations and drawn ones go on).
 2. Waits, at most `horas` (3), until no third-party video is running (their downloads and renders are what a
    restart wastes). With no gap in time it gives up and changes nothing.
-3. git pull --ff-only (local changes on the server are never overwritten: it stops and says which).
+3. git pull --ff-only through pipeline/puerta.py: the new code must pass pyflakes and import cleanly first
+   (local changes on the server are never overwritten: it stops and says which).
 4. pip install -r requirements.txt only when it changed, npm ci only when package-lock.json changed.
 5. Restarts edit-vid3, edit-vid3-web and edit-vid3-bot, and removes the mark (also when anything fails).
 """
@@ -83,9 +84,11 @@ def main(root: Path, max_hours: float = 3.0, every: float = 60.0) -> int:
             flag.write_text(str(time.time()))          # still waiting: the mark stays fresh
             time.sleep(every)
         before = _git(root, "rev-parse", "HEAD").stdout.strip()
-        pulled = _git(root, "pull", "--ff-only")
-        if pulled.returncode != 0:
-            print("git pull no se pudo (no he reiniciado nada):\n" + (pulled.stderr or pulled.stdout).strip()[-600:]
+        from . import puerta
+
+        moved, message = puerta.pull(root, who="--actualizar")     # pyflakes + import of the new code first
+        if not moved and message:
+            print("git pull no se pudo (no he reiniciado nada):\n" + message[-600:]
                   + "\nSi hay cambios locales en el servidor: git status, y guárdalos (git stash) o descártalos.")
             return 1
         after = _git(root, "rev-parse", "HEAD").stdout.strip()

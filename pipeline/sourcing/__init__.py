@@ -33,7 +33,8 @@ STAGE = "sourcing"
 OUTPUT = "candidates"
 SUMMARY = "_summary.json"
 WIDENED = "búsqueda amplia hecha"
-STALE_NOTES = ("bloquea", "no responde")   # searched while YouTube blocked us or the proxy was down: not a result
+# searched while YouTube blocked us or the proxy was down (or could not open its tunnel): not a result
+STALE_NOTES = ("bloquea", "no responde", "no pudo abrir el túnel")
 
 
 def stale_note(note: str) -> bool:
@@ -229,9 +230,10 @@ def youtube_source(ctx: RunContext) -> YouTubeSource:
     if source.proxies and len(down) == len(source.proxies):     # before any search: say it, wait, retry soon
         from ..budget import ProxyDown
 
+        from .youtube import proxy_down_text
+
         names = ", ".join(source.way_name(source.proxies.index(p)) for p in down)
-        raise ProxyDown(f"El proxy de YouTube ({names}) no responde: abre proxy-youtube en ese PC y comprueba "
-                        "Tailscale. El vídeo se reintenta solo en 15 min; la cola sigue con los demás")
+        raise ProxyDown(proxy_down_text(down[0], names) + "; la cola sigue con los demás")
     for p in down:
         source._rest(source.proxies.index(p), max(60.0, _PROXY_DOWN[p] - now), "no responde")
     source.metrics_path = ctx.work_dir / "youtube_downloads.jsonl"

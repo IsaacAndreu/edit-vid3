@@ -563,6 +563,23 @@ def is_atlas_folder(folder: Path, config: dict[str, Any] | None = None) -> bool:
     return (config.get("visual") or {}).get("engine") == "storyboard"
 
 
+def queue_transcriber(ctx: Any) -> Callable[[Path], dict[str, Any]] | None:
+    """Whisper (API de OpenAI) con la clave del .env, como `--atlas-guion`; None si no hay clave."""
+
+    key = ctx.env("OPENAI_API_KEY", required=False)
+    if not key:
+        return None
+
+    def transcribe(audio: Path) -> dict[str, Any]:
+        from types import SimpleNamespace
+
+        from .transcribe import transcribe_audio
+
+        return dict(transcribe_audio(audio, SimpleNamespace(openai_api_key=key)))   # solo usa la clave
+
+    return transcribe
+
+
 def make_in_queue(root: Path, slug: str, ask: Callable[[str, str], dict[str, Any]] | None, log: Callable[[str], None] = print) -> Path:
     """Desde la cola: la voz del canal (GenAIPro) si falta, el vídeo y out/<slug>/video-final.mp4, que es lo que el
     estudio y «Para subir» esperan de cualquier vídeo terminado."""
@@ -573,7 +590,8 @@ def make_in_queue(root: Path, slug: str, ask: Callable[[str, str], dict[str, Any
     ctx = RunContext.create(slug, root=root)
     tts.ensure(ctx)                      # sin voz configurada sigue sin ella (borrador mudo)
     try:
-        out = run(slug, ask=ask, log=log)
+        # la cola no pasaba transcriptor: «Hay voz pero no hay transcriptor» con la clave puesta (2 vídeos el 17-11)
+        out = run(slug, ask=ask, transcribe=queue_transcriber(ctx), log=log)
     except SystemExit as error:          # un fallo del vídeo no para la cola entera
         raise RuntimeError(str(error)) from None
     final = root / "out" / slug / "video-final.mp4"

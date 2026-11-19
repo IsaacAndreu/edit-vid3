@@ -216,7 +216,8 @@ def _to_mp4(source: Path, target: Path) -> None:
 
     tmp = target.with_suffix(".part.mp4")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(source), "-an", "-vf", "scale=-2:360", "-c:v", "libx264",
-                    "-preset", "veryfast", "-crf", "28", str(tmp)], check=True, capture_output=True)
+                    "-preset", "veryfast", "-crf", "28", str(tmp)], check=True, capture_output=True,
+                   timeout=3600)          # a whole archive film at 360p: never more than this
     tmp.replace(target)
 
 
@@ -231,7 +232,7 @@ def storyboard(preview: Path, folder: Path, root: Path, seconds: float) -> Story
     pattern = folder / "sb_%02d.jpg"
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(preview), "-vf",
                     f"fps=1/{interval},scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2,tile=10x10",
-                    "-q:v", "4", str(pattern)], check=True, capture_output=True)
+                    "-q:v", "4", str(pattern)], check=True, capture_output=True, timeout=1800)
     sheets = sorted(folder.glob("sb_*.jpg"))
     if not sheets:
         raise RuntimeError("sin fotogramas")

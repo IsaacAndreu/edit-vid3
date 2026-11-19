@@ -121,3 +121,20 @@ def test_atlas_satellite_credit_follows_the_dub_language():
     timeline = {"groups": [{"id": "g", "graphic": {"type": "atlas", "view": "sat", "sat": {"credit": SAT_CREDIT["es"]}}}]}
     dub.sat_credits(timeline, "fr")
     assert timeline["groups"][0]["graphic"]["sat"]["credit"] == SAT_CREDIT["fr"]
+
+
+def test_retime_output_always_validates_as_a_timeline():
+    """4 dubs died on 17-11 with «2 validation errors for Timeline»: a shorter voice mapped the overlays of the last
+    seconds past the new end (negative durations), and the squeeze could leave a third-party clip over 5 s."""
+
+    from pipeline.schemas import Timeline
+
+    t = _timeline()
+    t["shots"][3]["media"] = {"src": "media/b.jpg", "kind": "image", "source": "web", "credit": "Fuente: Y", "layout": "full"}
+    t["groups"].append({"id": "g2", "kind": "stat", "from": 320, "durationInFrames": 10, "steps": [], "words": [],
+                        "stat": {"value": "1", "label": "x", "sign": "positive"}})
+    t["labels"].append({"kind": "place", "text": "FIN", "from": 325, "durationInFrames": 5})
+    for f, seconds in ((lambda v: v * 0.3, 3.0), (lambda v: v * 3, 30.0), (lambda v: v, 10.0)):
+        out = dub.retime(t, f, seconds, 5.0)
+        Timeline.model_validate(out)
+        assert all(s["durationInFrames"] <= 150 for s in out["shots"][1:] if s["media"]["source"] == "youtube")

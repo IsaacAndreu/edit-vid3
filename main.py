@@ -542,6 +542,8 @@ QUOTA_WAIT = ".espera-cuota"           # in a video's folder: epoch of the API q
 
 QUOTA_EXIT = 75                        # `--slug` exit code (EX_TEMPFAIL): the video waits for the API quota
 YOUTUBE_EXIT = 76                      # `--slug` exit code: made without YouTube it fell short, it waits for YouTube
+CREDIT_EXIT = 77                       # `--slug` exit code: an API out of balance or a dead key (out_of_credit)
+BUDGET_EXIT = 78                       # `--slug` exit code: the spend cap reached (budget.BudgetReached)
 WAITING = ("espera cuota", "en espera", "espera YouTube")     # statuses of the queue that are not failures
 
 
@@ -682,9 +684,14 @@ def _git_update(root: Path, running: str) -> bool:
 
     import subprocess
 
-    pulled = subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=root, capture_output=True, text=True, timeout=120)
-    if pulled.returncode != 0:
-        print(f"(git pull no se pudo: {(pulled.stderr or pulled.stdout).strip()[-200:]})")
+    from pipeline import puerta
+
+    try:
+        _, message = puerta.pull(root, who="cola")      # only code that passes the quick check reaches the disk
+    except (OSError, subprocess.SubprocessError) as error:
+        message = f"{type(error).__name__}"
+    if message and "→" not in message:
+        print(f"(git pull no se pudo: {message[-300:]})")
     now = git_head(root)
     return bool(running) and bool(now) and now != running
 
@@ -1028,8 +1035,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             # the whole round (sim videos sat for hours behind one third-party video)
             results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root, refill=refill)
             slugs = []
-        from pipeline import ytpause
+        from pipeline import cortacircuitos, ytpause
 
+        breaker = cortacircuitos.from_config(root)
         for number, slug in enumerate(slugs, start=1):
             if waits_for_youtube(root, slug):
                 print(f"{slug}: necesita YouTube, que está bloqueado: espera (sigo con los que ya no lo necesitan)")
@@ -1050,6 +1058,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             try:
                 run_one(slug, force=force, until=until, review=review, root=root)
                 results.append((slug, "OK", time.monotonic() - started, ""))
+                breaker.succeeded()
             except KeyboardInterrupt:
                 results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
                 raise
@@ -1085,6 +1094,12 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 traceback.print_exc()
                 results.append((slug, "ERROR", time.monotonic() - started, _describe(error)))
                 print(f"✗ {slug}: {_describe(error)} — sigo con el siguiente")
+                # the same bug in two videos, or N failures in a row at one stage: the rest would fail the same way
+                tripped = breaker.failed(slug, _describe(error), error=error)
+                if tripped:
+                    stop_for_bug(root, *tripped)
+                    _write_report(root, results)
+                    break
             _write_report(root, results)
     finally:
         lock.unlink(missing_ok=True)
@@ -1189,6 +1204,20 @@ def is_light(root: Path, slug: str) -> bool:
         return False
 
 
+def _trim_log(path: Path, keep: int = 5 * 1024 * 1024, limit: int = 20 * 1024 * 1024) -> None:
+    """The queue's logs are appended across retries: past `limit` only the last `keep` bytes stay."""
+
+    try:
+        if path.stat().st_size <= limit:
+            return
+        with path.open("rb") as handle:
+            handle.seek(-keep, os.SEEK_END)
+            tail = handle.read()
+        path.write_bytes(b"(recortado: solo el final)\n" + tail)
+    except OSError:
+        pass
+
+
 def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
                  root: Path, refill: Callable[[], list[str]] | None = None) -> list[tuple[str, str, float, str]]:
     """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
@@ -1213,7 +1242,10 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         if review:
             args.append("--review")
         tail: deque[str] = deque(maxlen=200)
-        with (logs / f"{slug}.log").open("w", encoding="utf-8", buffering=1) as log:   # line by line: readable while it runs
+        _trim_log(logs / f"{slug}.log")
+        # line by line: readable while it runs; appended, so the attempt that failed before a retry is still there
+        with (logs / f"{slug}.log").open("a", encoding="utf-8", buffering=1) as log:
+            log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} · intento nuevo =====\n")
             process = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                        encoding="utf-8", errors="replace",
                                        env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1",
@@ -1228,20 +1260,25 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
             code = process.wait()
         detail = "" if code == 0 else _error_line(list(tail), code)
         status = "OK" if code == 0 else "espera cuota" if code == QUOTA_EXIT else "espera YouTube" if code == YOUTUBE_EXIT \
-            else "ERROR"
+            else "en espera" if code in (CREDIT_EXIT, BUDGET_EXIT) else "ERROR"
         with lock:
             results.append((slug, status, time.monotonic() - started, detail))
             if status == "ERROR":
                 failed_at[slug] = time.time()
             _write_report(root, results)
-            bug = code_bug(detail) if status == "ERROR" else None
-            if bug:
-                hit = bugs.setdefault(bug, [])
-                if slug not in hit:
-                    hit.append(slug)
-                if len(hit) >= 2 and not stopped[0]:
+            if code in (CREDIT_EXIT, BUDGET_EXIT) and not stopped[0]:
+                # an API without balance, a dead key or the spend cap: not this video's fault — every next one would
+                # stop the same way (and be held 6 h as failed); nothing more starts, as in the sequential queue
+                stopped[0] = True
+                print(f"⏸ {detail}")
+                notify(root, f"⏸ {detail}")
+            if status == "OK":
+                breaker.succeeded()
+            elif status == "ERROR" and not stopped[0]:
+                tripped = breaker.failed(slug, detail, list(tail))
+                if tripped:
                     stopped[0] = True            # running videos finish; no new one starts
-                    stop_for_bug(root, bug, hit)
+                    stop_for_bug(root, *tripped)
 
     # third-party footage videos at once (queue.footage_at_once, 1): the other lines are for videos drawn in code
     # (simulation, stick figures), which need neither YouTube nor the footage analysis; and one more line only for
@@ -1258,7 +1295,9 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     failed_at: dict[str, float] = {}
     folders: dict[str, Path] = {}
     running_by: dict[str, int] = {}                # person → their videos running now (partners: usuarios.py)
-    bugs: dict[str, list[str]] = {}                # an error of the program → the videos it stopped
+    from pipeline import cortacircuitos
+
+    breaker = cortacircuitos.from_config(root)     # the same bug twice, or N failures in a row at one stage
     stopped = [False]
     owners_of: dict[str, str] = {}
 
@@ -1781,7 +1820,7 @@ def main() -> None:
     if args.all:
         failures = run_queue(force=set(args.force), until=args.until, review=args.review, limit=args.limit)
         sys.exit(1 if failures else 0)
-    from pipeline.budget import ApiSearchesShort
+    from pipeline.budget import ApiSearchesShort, BudgetReached
     from pipeline.sin_youtube import WaitingForYouTube
 
     try:
@@ -1793,12 +1832,21 @@ def main() -> None:
     except WaitingForYouTube as error:         # made without YouTube it fell short: it waits for YouTube
         print(f"⏸ {error}")
         sys.exit(YOUTUBE_EXIT)
+    except BudgetReached as error:             # the spend cap: the parallel queue stops starting videos
+        print(f"⏸ {error}")
+        sys.exit(BUDGET_EXIT)
     except StageNotImplemented as error:
         raise SystemExit(f"Parada: {error}") from error
     except QABlocked as error:
         raise SystemExit(f"Render bloqueado por la QA: {error}. Revisa out/{args.slug}/qa/report.md") from error
-    except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as error:
-        raise SystemExit(f"Error: {error}") from error
+    except Exception as error:
+        dry = out_of_credit(error)
+        if dry:
+            print(f"⏸ {dry}")                   # no balance or a dead key: the parallel queue stops starting videos
+            sys.exit(CREDIT_EXIT)
+        if isinstance(error, (ConfigError, FileNotFoundError, RuntimeError, ValueError)):
+            raise SystemExit(f"Error: {error}") from error
+        raise
 
 
 if __name__ == "__main__":

@@ -153,3 +153,50 @@ def test_a_restart_in_the_middle_keeps_the_shots_already_analysed(tmp_path, monk
     monkeypatch.setattr(analysis, "youtube_source", lambda ctx: again)
     analysis.analyse(ctx)
     assert {v[:14] for v in again.downloaded} == {"yt:00000000003", "yt:00000000004"}   # only what was missing
+
+
+def test_hd_windows_top_brings_the_best_windows_in_hd(tmp_path, monkeypatch):
+    """«Lo que dicen estos datos» 7 (off by default): the best window of each shot comes down in HD at once."""
+
+    ctx = RunContext.create("v", root=tmp_path, config={"analysis": {"hd_windows_top": 1, "fine_windows": 2,
+                                                                     "extra_windows_with_entities": 0,
+                                                                     "said_windows": False}})
+    shots = [_shot(1)]
+    ctx.write_json("shots.json", ShotsFile.model_validate({
+        "slug": "v", "title": "v", "durationSeconds": 4.0, "chapters": [{"title": "c", "startWord": 0, "fromScript": False}],
+        "shots": [s.model_dump() for s in shots]}).model_dump(by_alias=True))
+    ctx.write_json("candidates/s001.json", ShotCandidates(shotId="s001", specHash="h", queries={},
+                                                          candidates=[_candidate(1), _candidate(2)]).model_dump())
+    better = {"yt:00000000001": 0.9, "yt:00000000002": 0.5}
+    monkeypatch.setattr(analysis, "make_models", lambda ctx: (FakeClip(), None))
+    monkeypatch.setattr(analysis, "video_features", lambda clip, c, root, cfg: (
+        np.array([50.0]), np.full((1, 4), better[c.id], np.float32)))
+    fake = FakeYouTube(tmp_path)
+    hd = []
+    fake.download_range = lambda video, a, b, fmt, prefix: hd.append((video, prefix, fmt)) or tmp_path / f"hd_{a}_{b}.mp4"
+    monkeypatch.setattr(analysis, "youtube_source", lambda ctx: fake)
+    monkeypatch.setattr(analysis, "fine_options", lambda window_path, window, needed, **_: [
+        {"start": window[0], "end": window[0] + needed, "scores": {"clip": 0.3}, "phash": "0" * 16, "discarded": None}])
+    monkeypatch.setattr(analysis, "_write_summary", lambda ctx, shots: None)
+    analysis.analyse(ctx)
+    assert [h[:2] for h in hd] == [("00000000001", "hd")] and "avc1" in hd[0][2]
+    assert fake.downloaded == ["yt:00000000002"]                 # the second window stays at 360p
+
+
+def test_more_thumbnails_for_long_videos_never_fewer():
+    from pipeline.analysis import frames_limit
+
+    assert frames_limit(20 * 60, {}) == 120              # one every 10 s instead of one every 30 s
+    assert frames_limit(3 * 60, {}) == 40                 # never fewer than before
+    assert frames_limit(20 * 60, {"max_frames_cap": 60}) == 60
+
+
+def test_a_chapter_named_after_the_moment_gives_its_start():
+    from pipeline.analysis import chapter_moment
+
+    shot = _shot(1).model_copy(update={"broll": _shot(1).broll.model_copy(update={
+        "moment": "falls off the beam", "event": "Simone Biles Tokyo 2020", "entities": ["Simone Biles"]})})
+    chapters = [{"title": "Intro", "start_time": 0}, {"title": "Simone falls off the beam", "start_time": 192.0},
+                {"title": "Floor final", "start_time": 300.0}]
+    assert chapter_moment(chapters, shot) == 192.0
+    assert chapter_moment([{"title": "Intro", "start_time": 0}], shot) is None

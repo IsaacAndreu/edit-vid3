@@ -17,3 +17,4 @@ ddgs                # fotos web sin clave (DuckDuckGo) cuando no hay SERPER_API_
 rembg[cpu]          # recorte de atletas sin fondo (tarjetas de presentación); opcional
 fonttools           # convierte la fuente Inter a TTF para los subtítulos de los Shorts
 av<19                    # faster-whisper 1.2 + PyAV 19: open(metadata_errors) ya no existe
+pyflakes            # puerta antes del despliegue (pipeline/puerta.py): el código nuevo se comprueba antes del git pull

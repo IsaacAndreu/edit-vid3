@@ -48,6 +48,33 @@ def _within(seconds: float, call):
     return value
 
 
+def parse_json_reply(text: str) -> Any:
+    """The JSON of a model's reply, repairing what models get wrong and the meaning survives: a ```json fence, words
+    before or after the object, raw line breaks or tabs inside strings, a trailing comma before } or ]. A planner
+    run died on 17-11 with «JSON inválido» in every attempt; most such replies are one of these. Raises
+    json.JSONDecodeError when it still does not parse."""
+
+    import re
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as first:
+        error = first
+    body = text.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", body, re.S)
+    if fenced:
+        body = fenced.group(1).strip()
+    start, end = body.find("{"), body.rfind("}")
+    if start != -1 and end > start:
+        body = body[start:end + 1]
+    for candidate in (body, re.sub(r",\s*([}\]])", r"\1", body)):
+        try:
+            return json.loads(candidate, strict=False)          # strict=False: control characters inside strings
+        except json.JSONDecodeError:
+            continue
+    raise error
+
+
 def complete_json(
     ctx: RunContext,
     *,
@@ -111,7 +138,7 @@ def complete_json(
     if choice.finish_reason == "length":
         raise LLMError(f"{model} truncó la respuesta (max_tokens={max_tokens}).")
     try:
-        parsed = json.loads(choice.message.content or "")
+        parsed = parse_json_reply(choice.message.content or "")
     except json.JSONDecodeError as error:
         raise LLMError(f"{model} devolvió JSON inválido: {error}") from error
     if not isinstance(parsed, dict):
