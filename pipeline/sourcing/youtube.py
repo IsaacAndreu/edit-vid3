@@ -343,6 +343,16 @@ def requested_height(fmt: str) -> int | None:
 RANGE_FAMILY = {"a360": ("a360", "hd", "hdav"), "hd": ("hd", "hdav"), "hdav": ("hdav",), "au": ("au",)}
 
 
+def cut_codec(prefix: str) -> list[str]:
+    """The codec of a range cut here. The clips that end up in the video (hd, hdav…) keep x264 crf 16; the 360p windows
+    the analysis only looks at (a360) go with crf 26 and the fastest preset: they were cut at the final clips'
+    quality, a wasted encode on CPU and disk nobody ever sees."""
+
+    if prefix == "a360":
+        return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "26"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "16"]
+
+
 def parse_media_playlist(text: str, base_url: str = "") -> tuple[list[tuple[str, float, float]], str | None]:
     """An HLS media playlist → ([(segment url, start s, end s)…], init segment url or None). Only what YouTube's
     VOD playlists use: #EXTINF durations, #EXT-X-MAP and plain URL lines (relative ones resolved against base_url)."""
@@ -2380,7 +2390,7 @@ class YouTubeSource:
                 command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
             else:
                 command += ["-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)]
+                            *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
             try:
                 done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
             except subprocess.TimeoutExpired:
@@ -2490,7 +2500,7 @@ class YouTubeSource:
                 command += ["-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
             else:
                 command += ["-map", "0:v:0", *(["-map", "1:a:0", "-c:a", "aac"] if audio and len(tracks) > 1 else ["-an"]),
-                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)]
+                            *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
             try:
                 done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
             except subprocess.TimeoutExpired:
@@ -2601,7 +2611,7 @@ class YouTubeSource:
             subprocess.run(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
                  "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)],
+                 *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)],
                 check=True, env=local_env(), timeout=600,
             )
         except subprocess.TimeoutExpired:

@@ -113,3 +113,10 @@ def test_the_format_test_can_be_switched_off(tmp_path, monkeypatch):
     off = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"cookies": "never", "hls_format_test": False})
     off._ydl({"simulate": True})
     assert captured["check_formats"] is False
+
+
+def test_analysis_windows_are_not_cut_at_the_final_clips_quality():
+    from pipeline.sourcing.youtube import cut_codec
+
+    assert cut_codec("a360")[cut_codec("a360").index("-crf") + 1] == "26"
+    assert cut_codec("hd")[cut_codec("hd").index("-crf") + 1] == "16"       # the clips in the video: as before
