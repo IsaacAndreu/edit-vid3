@@ -19,6 +19,7 @@ import requests
 
 from ..schemas import BrollSpec, Candidate
 from .common import (
+    HostPacers,
     USER_AGENT,
     Pacer,
     SourceUnavailable,
@@ -125,7 +126,8 @@ class ImageSources:
             "wikimedia": Pacer(float(config.get("wikimedia", {}).get("min_interval", 0.5))),
             "openverse": Pacer(float(config.get("openverse", {}).get("min_interval", 3.2))),
             "pixabay": Pacer(float(config.get("pixabay", {}).get("min_interval", 1.0))),
-            "download": Pacer(1.0),  # upload.wikimedia.org blocks bursts (robot policy)
+            # upload.wikimedia.org blocks bursts (robot policy): 1 s there; the other hosts their own pace, in parallel
+            "download": HostPacers(),
         }
         self.disabled: dict[str, str] = {}
 
@@ -318,13 +320,24 @@ class ImageSources:
         return results
 
     def _serper(self, query: str, num: int) -> dict[str, Any]:
-        self.pacers["web"].wait()
-        response = self.session.post(SERPER_IMAGES_API, json={"q": query, "num": num},
-                                     headers={"X-API-KEY": self.serper_key}, timeout=30)
-        if response.status_code in (401, 403):
-            raise SourceUnavailable(f"Serper rechazó la clave ({response.status_code})")
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(3):                 # a network error or a 5xx is retried, never a refused key
+            self.pacers["web"].wait()
+            try:
+                response = self.session.post(SERPER_IMAGES_API, json={"q": query, "num": num},
+                                             headers={"X-API-KEY": self.serper_key}, timeout=30)
+            except requests.RequestException:
+                if attempt == 2:
+                    raise
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            if response.status_code in (401, 403):
+                raise SourceUnavailable(f"Serper rechazó la clave ({response.status_code})")
+            if response.status_code >= 500 and attempt < 2:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            response.raise_for_status()
+            return response.json()
+        raise AssertionError("inalcanzable")
 
     def _ddg(self, query: str, num: int) -> list[dict[str, Any]]:
         try:

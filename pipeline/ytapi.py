@@ -218,7 +218,7 @@ class YouTubeAPI:
                 self._save_ledger(ledger)
                 self._journal({"endpoint": endpoint, "units": cost, "unitsUsed": ledger["used"][kid],
                                "searches": ledger["searches"].get(kid, 0), "searchesPerDay": self.searches_per_day})
-            response = self.session.get(f"{API}/{endpoint}", params={**params, "key": key}, timeout=30)
+            response = self._get_with_refund(endpoint, params, key, kid, cost)
             if response.status_code == 403:
                 reasons = {e.get("reason") for e in _error(response).get("errors", [])}
                 if reasons & QUOTA_ERRORS:
@@ -242,6 +242,42 @@ class YouTubeAPI:
             _write(cache, json.dumps(data))
             return data
         raise NoKeysLeft(f"Cuota diaria de la API agotada en las {len(self.keys)} claves (se renueva {reset_text()})")
+
+    def _refund(self, endpoint: str, kid: str, cost: int) -> None:
+        """Give back what was counted before a request that never got an answer: the ledger counts quota spent."""
+
+        with _LOCK:
+            ledger = self._ledger()
+            ledger["used"][kid] = max(0, ledger["used"].get(kid, 0) - cost)
+            if endpoint == "search":
+                ledger["searches"][kid] = max(0, int(ledger["searches"].get(kid, 0)) - 1)
+            self._save_ledger(ledger)
+
+    def _get_with_refund(self, endpoint: str, params: dict[str, Any], key: str, kid: str, cost: int) -> Any:
+        """The GET, retried twice on a network error or a 5xx (no answer from Google = no quota spent): the units
+        counted for it are given back before each retry and when it finally fails."""
+
+        for attempt in range(3):
+            try:
+                response = self.session.get(f"{API}/{endpoint}", params={**params, "key": key}, timeout=30)
+            except requests.RequestException:
+                self._refund(endpoint, kid, cost)
+                if attempt == 2:
+                    raise
+            else:
+                if response.status_code < 500 or attempt == 2:
+                    if response.status_code >= 500:
+                        self._refund(endpoint, kid, cost)
+                    return response
+                self._refund(endpoint, kid, cost)
+            time.sleep(2.0 * (attempt + 1))
+            with _LOCK:                                   # counted again for the retry
+                ledger = self._ledger()
+                ledger["used"][kid] = ledger["used"].get(kid, 0) + cost
+                if endpoint == "search":
+                    ledger["searches"][kid] = int(ledger["searches"].get(kid, 0)) + 1
+                self._save_ledger(ledger)
+        raise AssertionError("inalcanzable")
 
     # ---- building blocks -----------------------------------------------------------------------
     def search(self, query: str, *, days: int = 0, duration: str = "any", order: str = "viewCount",
