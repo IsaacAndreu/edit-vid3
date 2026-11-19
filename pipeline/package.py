@@ -193,8 +193,9 @@ def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "timeline.json", ctx.work_dir / "people.json", ctx.materials_dir / "guion.txt"]
 
 
-def run(ctx: RunContext) -> None:
-    timeline = Timeline.model_validate(ctx.read_json("timeline.json"))
+def ask_titles(ctx: RunContext) -> dict[str, Any]:
+    """The LLM's titles, thumbnail texts (and concepts): one request, cached by its words (pipeline/llm.py)."""
+
     from .align import read_title
 
     title = read_title(ctx)
@@ -216,6 +217,41 @@ def run(ctx: RunContext) -> None:
     except Exception as error:
         print(f"   Sin títulos/textos del LLM: {str(error)[:120]}")
         result = {}
+    return result
+
+
+def _concept_ideas(result: dict[str, Any]) -> list[dict[str, Any]]:
+    return [c for c in (result.get("concepts") or []) if isinstance(c, dict) and str(c.get("scene") or "").strip()][:3]
+
+
+def _accents(ctx: RunContext) -> list[str]:
+    brand = ctx.section("brand")
+    return [str(brand.get("accent") or ACCENTS[0]), str(brand.get("accent2") or ACCENTS[1]), ACCENTS[2]] if brand else ACCENTS
+
+
+def prepare(ctx: RunContext) -> None:
+    """Fase 5.3, while the video renders: what package asks outside (the titles' LLM request and, with concept
+    thumbnails on, their pictures) is asked now with the very same words, so package finds it in the cache. Nothing
+    of package's own result changes: what needs the finished video (frames, the notice) stays in package."""
+
+    result = ask_titles(ctx)
+    if ctx.section("miniaturas").get("enabled", False) \
+            and str(ctx.section("package").get("thumbnail_style", "frame")) == "concept":
+        for i, idea in enumerate(_concept_ideas(result)):
+            side = "left" if str(idea.get("side")) == "left" else "right"
+            try:
+                concept_image(ctx, str(idea["scene"]), _accents(ctx)[0], side, i + 1)
+            except Exception:
+                pass                                # package tries again and says why
+
+
+def run(ctx: RunContext) -> None:
+    timeline = Timeline.model_validate(ctx.read_json("timeline.json"))
+    from .align import read_title
+
+    title = read_title(ctx)
+    concept = str(ctx.section("package").get("thumbnail_style", "frame")) == "concept"
+    result = ask_titles(ctx)
     titles = [str(t).strip() for t in (result.get("titles") or []) if str(t).strip()][:3] or [title]
     texts = [str(t).strip() for t in (result.get("thumbTexts") or []) if str(t).strip()][:3] or [title]
     while len(texts) < 3:
@@ -236,13 +272,13 @@ def run(ctx: RunContext) -> None:
         return
     backgrounds = background_frames(ctx, timeline)
     brand = ctx.section("brand")
-    accents = [str(brand.get("accent") or ACCENTS[0]), str(brand.get("accent2") or ACCENTS[1]), ACCENTS[2]] if brand else ACCENTS
+    accents = _accents(ctx)
     variants = [{"text": texts[i], "accent": accents[i], "flip": i == 1, "cutout": cutout,
                  "background": backgrounds[i % len(backgrounds)] if backgrounds else None} for i in range(3)]
     if cutout and ctx.section("miniaturas").get("poster", True):    # the third one: the poster style
         variants[2] = {"text": texts[2], "accent": accents[0], "cutout": cutout, "poster": True, "focus": _face(ctx, cutout)}
     if concept:
-        ideas = [c for c in (result.get("concepts") or []) if isinstance(c, dict) and str(c.get("scene") or "").strip()][:3]
+        ideas = _concept_ideas(result)
         for i, idea in enumerate(ideas):
             side = "left" if str(idea.get("side")) == "left" else "right"
             try:

@@ -372,9 +372,35 @@ def run_stages(
         own.unlink(missing_ok=True)
         return True
 
+    warming: list[threading.Thread] = []
+
+    def warm_package() -> None:
+        """5.3: package's outside requests (titles LLM, concept pictures) asked while the video renders."""
+
+        if "package" not in STAGE_NAMES or (last is not None and STAGE_NAMES.index(last) < STAGE_NAMES.index("package")):
+            return
+        stage = STAGES[STAGE_NAMES.index("package")]
+        if not ("all" in force or "package" in force) and is_up_to_date(ctx, stage):
+            return
+
+        def target() -> None:
+            try:
+                package.prepare(ctx)
+            except Exception as error:            # package itself asks again and fails, or not, there
+                print(f"   (títulos por adelantado no disponibles: {str(error)[:120]})")
+
+        thread = threading.Thread(target=target, name="adelanto-package", daemon=True)
+        warming.append(thread)
+        thread.start()
+
     try:
         for number, stage in enumerate(STAGES, start=1):
             started_here = False
+            if parallel and stage.name == "render":
+                warm_package()
+            if stage.name == "package":
+                for thread in warming:
+                    thread.join()
             if parallel and stage.name == "factcheck" and "align" in STAGE_NAMES and stage.name != last:
                 launch("factcheck")               # waited for before the first paid stage, not here
                 started_here = "factcheck" in background
@@ -393,6 +419,8 @@ def run_stages(
     finally:
         for name in list(background):            # never left running behind the video
             thread, _ = background.pop(name)
+            thread.join()
+        for thread in warming:
             thread.join()
     executed.sort(key=lambda name: STAGE_NAMES.index(name) if name in STAGE_NAMES else len(STAGE_NAMES))
     if stage is STAGES[-1] and not (review and last == "qa"):
