@@ -14,6 +14,7 @@ from contextlib import nullcontext
 import hashlib
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -241,99 +242,159 @@ def run_stages(
     learned = feedback.load_learned(ctx.root)            # channels your «Errores» labels taught it to avoid
     if learned:
         print(f"Canales de YouTube bloqueados por tus correcciones: {', '.join(learned)}")
-    proxy_checked = False
-    for number, stage in enumerate(STAGES, start=1):
+    checked = [False]                     # the per-video check before the first paid stage, once
+    executed_lock = threading.Lock()
+
+    def execute(number: int, stage: Stage, track: bool = True) -> None:
         label = f"[{number}/{len(STAGES)}] {stage.name}"
         forced = "all" in force or stage.name in force
         if not forced and is_up_to_date(ctx, stage):
             print(f"{label}: al día, se salta.")
-        else:
-            if stage.run is None:
-                raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
-            budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
-            from . import stickman
+            return
+        if stage.run is None:
+            raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
+        budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
+        from . import stickman
 
-            if stage.name in PROXY_STAGES and not offline:
-                if not proxy_checked and not (stage.name in stickman.SKIP and stickman.drawn(ctx)):
-                    # what a later stage will need and is missing: found now, not after hours of paid downloads
-                    from .preflight import video_problems
+        if stage.name in PROXY_STAGES and not offline:
+            if not checked[0] and not (stage.name in stickman.SKIP and stickman.drawn(ctx)):
+                # what a later stage will need and is missing: found now, not after hours of paid downloads
+                from .preflight import video_problems
 
-                    problems = video_problems(ctx)
-                    if problems:
-                        raise RuntimeError("No empiezo a gastar proxy: " + "; ".join(problems))
-                    proxy_checked = True
-                budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
-            print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
-            current = ctx.work_dir / "current.json"          # what the web studio shows as «haciendo ahora»
-            state = {"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),
-                     "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "waiting": True}
-            current.write_text(json.dumps(state), encoding="utf-8")
-            from .housekeeping import Sampler
+                problems = video_problems(ctx)
+                if problems:
+                    raise RuntimeError("No empiezo a gastar proxy: " + "; ".join(problems))
+                checked[0] = True
+            budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
+        print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
+        # what the web studio shows as «haciendo ahora»; a stage running in the background keeps its own file
+        current = ctx.work_dir / ("current.json" if track else f".current-{stage.name}.json")
+        state = {"stage": stage.name, "number": number, "of": len(STAGES), "pid": os.getpid(),
+                 "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "waiting": True}
+        current.write_text(json.dumps(state), encoding="utf-8")
+        from .housekeeping import Sampler
 
-            from . import stickman
+        from . import stickman
 
-            skipped = stage.name in stickman.SKIP and stickman.drawn(ctx)    # drawn in code: no footage
-            queued = time.monotonic()
-            started = None
+        skipped = stage.name in stickman.SKIP and stickman.drawn(ctx)    # drawn in code: no footage
+        queued = time.monotonic()
+        started = None
+        try:
+            # a drawn video skips these stages without queueing for the network turn (atlas1pt waited behind
+            # other videos' searches with «esperando turno de red» for a stage it never runs)
+            with nullcontext() if skipped else turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):
+                started = time.monotonic()
+                waited = started - queued                   # the turn's wait, never counted as the stage's work
+                state.pop("waiting", None)
+                current.write_text(json.dumps({**state, "waitSeconds": round(waited, 1),
+                                               "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
+                                   encoding="utf-8")
+                with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
+                    if skipped:
+                        stickman.skip(ctx, stage.name)
+                    else:
+                        stage.run(ctx)
+            if stage.validate is not None:
+                stage.validate(ctx)
+        except BaseException as error:
+            _record_failure(ctx, stage, error, queued, started)
+            # The stage stopped (an error, waiting for the API quota…): the file stays for the failure notice
+            # (which stage), marked as ended, or the studio would show it «haciendo» while the queue (the same
+            # process, still alive) goes on with other videos — mega11 showed «Buscar material desde hace 6 h».
             try:
-                # a drawn video skips these stages without queueing for the network turn (atlas1pt waited behind
-                # other videos' searches with «esperando turno de red» for a stage it never runs)
-                with nullcontext() if skipped else turn(ctx.root, _turn_group(ctx, stage.name), ctx.slug):
-                    started = time.monotonic()
-                    waited = started - queued                   # the turn's wait, never counted as the stage's work
-                    state.pop("waiting", None)
-                    current.write_text(json.dumps({**state, "waitSeconds": round(waited, 1),
-                                                   "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
-                                       encoding="utf-8")
-                    with Sampler() as usage:                    # peak RAM / CPU of the machine during the stage
-                        if skipped:
-                            stickman.skip(ctx, stage.name)
-                        else:
-                            stage.run(ctx)
-                if stage.validate is not None:
-                    stage.validate(ctx)
-            except BaseException as error:
-                _record_failure(ctx, stage, error, queued, started)
-                # The stage stopped (an error, waiting for the API quota…): the file stays for the failure notice
-                # (which stage), marked as ended, or the studio would show it «haciendo» while the queue (the same
-                # process, still alive) goes on with other videos — mega11 showed «Buscar material desde hace 6 h».
-                try:
-                    current.write_text(json.dumps({**json.loads(current.read_text("utf-8")),
-                                                   "ended": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
-                                       encoding="utf-8")
-                except (OSError, ValueError):
-                    pass
-                raise
-            marker = _marker(ctx, stage)
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text(
-                json.dumps(
-                    {
-                        "stage": stage.name,
-                        "inputsHash": fingerprint(ctx, stage),
-                        "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                        "seconds": round(time.monotonic() - started, 1),
-                        "waitSeconds": round(waited, 1),
-                        **_failed_attempts(ctx, stage),
-                        **usage.fields(),
-                        **({"withoutYouTube": True} if offline and stage.name in sin_youtube.STAGES else {}),
-                    },
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
+                current.write_text(json.dumps({**json.loads(current.read_text("utf-8")),
+                                               "ended": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
+                                   encoding="utf-8")
+            except (OSError, ValueError):
+                pass
+            raise
+        marker = _marker(ctx, stage)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(
+            json.dumps(
+                {
+                    "stage": stage.name,
+                    "inputsHash": fingerprint(ctx, stage),
+                    "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "seconds": round(time.monotonic() - started, 1),
+                    "waitSeconds": round(waited, 1),
+                    **_failed_attempts(ctx, stage),
+                    **usage.fields(),
+                    **({"withoutYouTube": True} if offline and stage.name in sin_youtube.STAGES else {}),
+                },
+                indent=2,
             )
-            current.unlink(missing_ok=True)
-            _failures_path(ctx, stage).unlink(missing_ok=True)       # now inside the marker
+            + "\n",
+            encoding="utf-8",
+        )
+        current.unlink(missing_ok=True)
+        _failures_path(ctx, stage).unlink(missing_ok=True)       # now inside the marker
+        with executed_lock:
             executed.append(stage.name)
-            spent = time.monotonic() - started
-            print(f"{label}: hecho en {spent:.1f} s" + (f" ({spent / 60:.0f} min)" if spent >= 120 else ""))
-        if offline and stage.name == "coldopen":
-            sin_youtube.gate(ctx)        # worse than the channel's usual without YouTube: it waits (WaitingForYouTube)
-        if stage.name == last:
-            if review and stage.name == "qa":
-                print("Revisión: pipeline detenido tras la QA (--review). Revisa out/<slug>/qa/ y relanza sin --review.")
-            break
+        spent = time.monotonic() - started
+        print(f"{label}: hecho en {spent:.1f} s" + (f" ({spent / 60:.0f} min)" if spent >= 120 else ""))
+
+    # speed.parallel_stages (on): factcheck, which feeds no other stage, runs beside align and planner, and is waited
+    # for before the first paid stage (when it holds a video, nothing was spent). Same markers. Not people: its plan B
+    # takes frames of the protagonist's HD clips already downloaded (the library ingest fills), so moving it before
+    # ingest would change what it finds.
+    parallel = bool(ctx.section("speed").get("parallel_stages", True))
+    background: dict[str, tuple[threading.Thread, list[BaseException]]] = {}
+
+    def launch(name: str) -> None:
+        index = STAGE_NAMES.index(name) if name in STAGE_NAMES else -1
+        if index < 0 or name in background or (last is not None and STAGE_NAMES.index(last) < index):
+            return
+        errors: list[BaseException] = []
+
+        def target() -> None:
+            try:
+                execute(index + 1, STAGES[index], track=False)
+            except BaseException as error:        # handed to the main thread where it is waited for
+                errors.append(error)
+
+        thread = threading.Thread(target=target, name=f"etapa-{name}", daemon=True)
+        background[name] = (thread, errors)
+        thread.start()
+
+    def join(name: str) -> bool:
+        """Wait for a stage started in the background; True if it was (it must not run again here)."""
+
+        if name not in background:
+            return False
+        thread, errors = background.pop(name)
+        thread.join()
+        own = ctx.work_dir / f".current-{name}.json"
+        if errors:
+            if own.is_file():                     # the failure notice and the studio name the stage that stopped
+                own.replace(ctx.work_dir / "current.json")
+            raise errors[0]
+        own.unlink(missing_ok=True)
+        return True
+
+    try:
+        for number, stage in enumerate(STAGES, start=1):
+            started_here = False
+            if parallel and stage.name == "factcheck" and "align" in STAGE_NAMES and stage.name != last:
+                launch("factcheck")               # waited for before the first paid stage, not here
+                started_here = "factcheck" in background
+            elif stage.name in PROXY_STAGES and "factcheck" in background:
+                join("factcheck")                 # before the first paid stage
+            if not started_here and not join(stage.name):
+                execute(number, stage)
+            if offline and stage.name == "coldopen":
+                sin_youtube.gate(ctx)        # worse than the channel's usual without YouTube: it waits (WaitingForYouTube)
+            if stage.name == last:
+                if review and stage.name == "qa":
+                    print("Revisión: pipeline detenido tras la QA (--review). Revisa out/<slug>/qa/ y relanza sin --review.")
+                break
+        for name in list(background):            # stopped before their join point (--until): theirs too
+            join(name)
+    finally:
+        for name in list(background):            # never left running behind the video
+            thread, _ = background.pop(name)
+            thread.join()
+    executed.sort(key=lambda name: STAGE_NAMES.index(name) if name in STAGE_NAMES else len(STAGE_NAMES))
     if stage is STAGES[-1] and not (review and last == "qa"):
         # every stage through, the last one included: the video is finished (housekeeping.is_done)
         (ctx.out_dir / render.IN_PROGRESS).unlink(missing_ok=True)
