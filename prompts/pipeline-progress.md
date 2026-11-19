@@ -83,4 +83,33 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 | 2.4 estado y reinicio | hecho: `out/_vigilar.json` tras cada vídeo; la cola en paralelo mira el código nuevo cada 2 min; al parar se cierran los procesos de vídeo; `install-service.sh` con `KillMode=mixed` y `TimeoutStopSec=120` (**hay que volver a ejecutarlo en el servidor**) | `tests/test_guardian.py` |
 | 2.5 preflight | hecho: `pipeline/preflight.py` (importación, config, herramientas, Remotion; avisos de perfiles rotos, voz, navegador, proxies) y comprobación por vídeo antes de la primera etapa de pago | `tests/test_preflight_checks.py` |
 | 2.6 topes de gasto | hecho: `budget.guard` antes de cada hoja del juez y cada plano del relleno, con el gasto de este intento. **Propuesta de valores** (no cambiados): `budget.daily_usd: 15`, `budget.proxy_gb_per_day: 25` (≈3 vídeos de metraje con los 8,6 GB por vídeo terminado de la semana), `per_video_usd` sigue en 1,5 | `tests/test_budget_guard.py` |
-| Fases 3, 4, 5 | pendiente | — |
+
+## Fases 3-5 · el motor (19-11-2026)
+
+| Punto | Estado | Test |
+|---|---|---|
+| 3.1 doble codificación | en parte: las ventanas a360 ya no van a crf 16 (crf 26, ultrafast). **No hecho**: unir los segmentos HD sin recodificar y dejar el corte a `normalise_video` (cambia los píxeles de los clips finales: hay que medir SSIM con material real) | `tests/test_hls_route.py` |
+| 3.2 re-extracciones | pendiente: no borrar `info.json` cuando solo caducan las URLs | — |
+| 3.3 rasgos por ventana en el análisis | pendiente (CPU; el análisis espera sobre todo a las descargas) | — |
+| 3.4 detalles y búsquedas en paralelo | descartado: no se puede garantizar el mismo número de peticiones (el bucle para al tener 3 vídeos válidos) | — |
+| 3.5 ingest `-ss` antes de `-i` | pendiente (los tramos HD ya empiezan casi en el segundo pedido: poco que ganar) | — |
+| 3.6 sonda de recursos directos | hecho: `python -m pipeline.sonda_directo [vídeo]` → `out/_sonda_directo.md`. **Lánzala en el servidor** | `tests/test_sonda_directo.py` |
+| 3.7 soltar el turno `red` | pendiente | — |
+| 4.1 empaquetar Remotion una vez | hecho: paquete por firma del código en `cache/render/bundles/`, carpeta propia por trabajo (pueden solaparse), `_remotion_sig` memorizado. Comprobado: PNG idéntico byte a byte, 2,1 s frente a 4,7 s por llamada | `tests/test_render_bundle.py` |
+| 4.2 ffmpeg sin esperar a Remotion | hecho: la pasada condensada en segundo plano; mismas órdenes, otro orden | `tests/test_e2e_stages.py`, `tests/test_render.py` |
+| 4.3 pasada condensada por tramos | pendiente | — |
+| 4.4 claves de caché más estrechas | pendiente (riesgo: invalidar mal) | — |
+| 4.5 subtítulos con el codificador del render | hecho (paso seguro): NVENC si el render lo usa; sin gráfica, los mismos argumentos. **No hecho**: meterlos en el grafo de cada segmento | — |
+| 4.6 comprobaciones en una pasada | pendiente | — |
+| 4.7 Shorts | hecho: `shorts.parallel` (2) a la vez, carpeta temporal por Short, paquete compartido. **No hecho**: intermedio ultrafast/crf 12 (cambia píxeles) | `tests/test_shorts_native.py` |
+| 4.8 doblajes con caché global | pendiente | — |
+| 4.9 Atlas/MapStory `useMemo` | pendiente (necesita el bucle visual de `CLAUDE.md` contra `referencias/atlas/frames/`) | — |
+| 4.10 nada de red en el render | en parte: el preflight avisa si Remotion no tiene navegador; `npm install` sigue en `ensure_node_modules` | `tests/test_preflight_checks.py` |
+| 5.1 people en paralelo | **descartado**: su plan B usa los clips HD que baja ingest; adelantarlo cambiaría el resultado | — |
+| 5.2 factcheck en paralelo | hecho: al lado de align y planner, esperado antes de la primera etapa de pago (`speed.parallel_stages`) | `tests/test_parallel_stages.py` |
+| 5.3 package a la vez que el render | pendiente (ya posible: los trabajos de Remotion tienen carpeta propia) | — |
+| 5.4 voces en paralelo | pendiente | — |
+| 5.5 align con su propio hueco | pendiente | — |
+
+**Cómo medirlo en el servidor**: `python main.py --tiempos 7` antes y después (columna «render» y «Shorts»), y en el
+registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos en Y s» ahora se solapan.
