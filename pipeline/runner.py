@@ -148,14 +148,15 @@ def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
     paths = list(stage.inputs(ctx))
     sections = [json.dumps(ctx.section(name) if legacy else _without_speed(ctx.section(name)), sort_keys=True)
                 for name in stage.config_sections]
-    key = f"{stage.name}{'@legacy' if legacy else ''}"
-    store = ctx.work_dir / ".stages" / "huellas.cache"     # not .json: readers take every .json as a marker
+    work_dir, name = getattr(ctx, "work_dir", None), getattr(stage, "name", None)
+    key = f"{name}{'@legacy' if legacy else ''}"
+    store = Path(work_dir or ".") / ".stages" / "huellas.cache"     # not .json: readers take every .json as a marker
     try:
-        signature = _stat_signature(paths, sections)
+        signature = _stat_signature(paths, sections) if work_dir and name else ""   # no work folder: plain hash
     except OSError:
         signature = ""
     with _FINGERPRINTS_LOCK:
-        memo = _FINGERPRINTS.get((str(ctx.work_dir), key))
+        memo = _FINGERPRINTS.get((str(work_dir), key))
         if signature and memo and memo[0] == signature:
             return memo[1]
         try:
@@ -163,7 +164,7 @@ def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
         except (OSError, ValueError, AttributeError):
             saved = {}
         if signature and saved.get("signature") == signature and saved.get("fingerprint"):
-            _FINGERPRINTS[(str(ctx.work_dir), key)] = (signature, str(saved["fingerprint"]))
+            _FINGERPRINTS[(str(work_dir), key)] = (signature, str(saved["fingerprint"]))
             return str(saved["fingerprint"])
     digest = hashlib.sha256()
     for path in paths:
@@ -173,7 +174,7 @@ def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
     value = digest.hexdigest()
     if signature and signature == _stat_signature(paths, sections):     # nothing changed while it was being read
         with _FINGERPRINTS_LOCK:
-            _FINGERPRINTS[(str(ctx.work_dir), key)] = (signature, value)
+            _FINGERPRINTS[(str(work_dir), key)] = (signature, value)
             try:
                 from .fileio import atomic_write_text
 
