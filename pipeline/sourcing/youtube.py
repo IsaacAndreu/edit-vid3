@@ -343,6 +343,16 @@ def requested_height(fmt: str) -> int | None:
 RANGE_FAMILY = {"a360": ("a360", "hd", "hdav"), "hd": ("hd", "hdav"), "hdav": ("hdav",), "au": ("au",)}
 
 
+def cut_codec(prefix: str) -> list[str]:
+    """The codec of a range cut here. The clips that end up in the video (hd, hdav…) keep x264 crf 16; the 360p windows
+    the analysis only looks at (a360) go with crf 26 and the fastest preset: they were cut at the final clips'
+    quality, a wasted encode on CPU and disk nobody ever sees."""
+
+    if prefix == "a360":
+        return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "26"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "16"]
+
+
 def parse_media_playlist(text: str, base_url: str = "") -> tuple[list[tuple[str, float, float]], str | None]:
     """An HLS media playlist → ([(segment url, start s, end s)…], init segment url or None). Only what YouTube's
     VOD playlists use: #EXTINF durations, #EXT-X-MAP and plain URL lines (relative ones resolved against base_url)."""
@@ -1013,7 +1023,7 @@ class YouTubeSource:
             print(f"   YouTube pide calma: vuelvo a {self.concurrency * len(self._pacers) - extra} descargas a la vez")
             threading.Thread(target=lambda: [self._slots.acquire() for _ in range(extra)], daemon=True).start()
 
-    def _call(self, action: str, fn: Any, *, rate_retries: int = 2) -> Any:
+    def _call(self, action: str, fn: Any) -> Any:
         if self.offline:
             raise SourceUnavailable(self.offline)
         if self.blocked:
@@ -1200,12 +1210,26 @@ class YouTubeSource:
                     raise Refused(f"yt-dlp {action}: {video} no está disponible ({message[:120]}); "
                                   "no se vuelve a pedir") from None
                 if any(marker in lowered for marker in _RATE_MARKERS):
-                    # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry
+                    # «too many requests» is YouTube's other «stop»: the same quarantine as a bot check, no retry —
+                    # and the extra slots of several accounts are given back for the rest of the run
+                    self._calm_down()
                     self._quarantine(way, "YouTube responde 429 (demasiadas peticiones)")
                     if self._all_in_quarantine():
                         self._blocked_everywhere()
                     raise RateLimited(f"yt-dlp {action}: YouTube limita peticiones (429); esa conexión queda en "
                                       "cuarentena") from None
+                # A passing failure at home or straight from the server (a timeout, a 5xx, a cut connection): two more
+                # tries with a growing, random pause before the candidate is lost — the residential way already
+                # retries from another session above. Never for «are you a bot» or a 429, which have their own rules.
+                if not is_residential((self.proxies or [""])[way]) and kind not in ("bot", "429", "auth") \
+                        and error_cause(message) in ("timeout", "conexión-cortada", "http-5xx") \
+                        and tries <= int(self.cfg.get("transient_retries", 2)):
+                    import random
+
+                    pause = random.uniform(2.0, 6.0) * tries
+                    time.sleep(pause)
+                    self._count("espera por error pasajero", pause)
+                    continue
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
 
     def _rotate_after(self, kind: str, action: str, tries: int) -> bool:
@@ -2104,7 +2128,8 @@ class YouTubeSource:
         try:
             with self._ydl({"format": whole_format(fmt), "simulate": True, "quiet": True}) as ydl:
                 chosen = ydl.process_ie_result(dict(data), download=False)
-        except Exception:
+        except Exception as error:
+            print(f"   yt:{video_id}: no se pudo estimar el tamaño en HD ({type(error).__name__}: {str(error)[:100]})")
             return None                          # yt-dlp cannot tell: let the download find out, as before
         pieces = chosen.get("requested_formats") or [chosen]
         size = sum(float(f.get("filesize") or f.get("filesize_approx") or 0) for f in pieces)
@@ -2365,7 +2390,7 @@ class YouTubeSource:
                 command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
             else:
                 command += ["-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)]
+                            *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
             try:
                 done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
             except subprocess.TimeoutExpired:
@@ -2475,7 +2500,7 @@ class YouTubeSource:
                 command += ["-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
             else:
                 command += ["-map", "0:v:0", *(["-map", "1:a:0", "-c:a", "aac"] if audio and len(tracks) > 1 else ["-an"]),
-                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)]
+                            *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
             try:
                 done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
             except subprocess.TimeoutExpired:
@@ -2586,7 +2611,7 @@ class YouTubeSource:
             subprocess.run(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", f"{start:.3f}", "-i", str(whole),
                  "-t", f"{end - start:.3f}", "-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(part)],
+                 *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)],
                 check=True, env=local_env(), timeout=600,
             )
         except subprocess.TimeoutExpired:
@@ -2799,7 +2824,9 @@ class YouTubeSource:
             return self._fetch_whole(video_id, self.SECTION_FORMAT, "a360", info_path) is not None
         except SourceUnavailable:
             raise
-        except Exception:
+        except Exception as error:
+            print(f"   yt:{video_id}: el vídeo entero a 360p no se pudo bajar ({type(error).__name__}: "
+                  f"{str(error)[:100]}); van por tramos")
             return False
 
     # --- per shot ---------------------------------------------------------------------

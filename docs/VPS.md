@@ -261,6 +261,11 @@ queda en `out/_puerta.json` (no se vuelve a comprobar hasta que llegue otro). A 
 
 Sin red, con lo que ya hay en el servidor: `python -m pipeline.diag_hls 7` dice por qué los tramos no van por HLS.
 
+**Servicio (desde el 19-11-2026):** `scripts/vps/install-service.sh` lleva `KillMode=mixed` y
+`TimeoutStopSec=120`: al parar o reiniciar, el vigilante cierra bien cada proceso de vídeo. En un servidor instalado
+antes hay que volver a ejecutarlo una vez (`bash scripts/vps/install-service.sh`). El perro guardián
+(`queue.stage_minutes`, `queue.silent_minutes`) corta un vídeo colgado y lo deja para reintentar.
+
 **El límite de 5 s por clip de terceros** (`MAX_THIRD_PARTY_SECONDS`) es la protección frente a reclamaciones de Content
 ID; hoy sigue fijo en el código (`pipeline/schemas.py`).
 

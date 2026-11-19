@@ -633,7 +633,15 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
             problems.append("YouTube no responde")
     except requests.RequestException as error:
         problems.append(f"sin conexión con YouTube ({type(error).__name__})")
-    return problems
+    from pipeline import preflight as checks       # the code imports, tools, Remotion, channel profiles… (fase 2.5)
+
+    try:
+        blockers, warnings = checks.queue_problems(root)
+    except Exception as error:                     # the check itself never stops the night
+        blockers, warnings = [], [f"comprobación previa incompleta: {type(error).__name__}: {str(error)[:120]}"]
+    for warning in warnings:
+        print(f"Aviso antes de la cola: {warning}")
+    return problems + blockers
 
 
 WATCH_STATE = "out/_vigilar.json"
@@ -867,12 +875,32 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             return while_updating(root, fresh + [_dub.prepare(root, slug, lang) for slug, lang in _dub.pending(root)
                                                  if _dub.dub_slug(slug, lang) not in fresh])
 
+        def on_result(slug: str, status: str) -> None:
+            """Each video's result into out/_vigilar.json as soon as it ends: a restart in the middle of a long round
+            used to forget which videos had failed (and retry them at once, failing again)."""
+
+            if status in WAITING:
+                return
+            from pipeline.fileio import update_json
+
+            def change(now: object) -> dict:
+                now = dict(now) if isinstance(now, dict) else {}
+                if status == "OK":
+                    now.pop(slug, None)
+                else:
+                    now[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
+                                 "code": running_code or git_head(root)}
+                return now
+
+            update_json(state_path, change, {})
+
         if waiting:
             idle_since = None
             LAST_RESULTS.clear()
             try:
                 run_queue(force=set(), until=None, review=False, root=root, skip=skip, refill=refill,
-                          new_code=(lambda: _git_update(root, running_code)) if running_code else None)
+                          new_code=(lambda: _git_update(root, running_code)) if running_code else None,
+                          on_result=on_result)
             except Stopped:                          # systemctl stop / «Parar» in the studio: end now
                 raise
             except SystemExit as stop:               # preflight said no (keys, disk…): look again later
@@ -887,8 +915,9 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 else:
                     state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
                                    "code": running_code or git_head(root)}
-            state_path.parent.mkdir(parents=True, exist_ok=True)
-            state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+            from pipeline.fileio import atomic_write_text
+
+            atomic_write_text(state_path, json.dumps(state, indent=1))
             if waited:
                 time.sleep(30 * 60)                                  # over the daily budget: look again later
         elif idle_since is None:
@@ -918,16 +947,26 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             wake.unlink(missing_ok=True)
 
 
-def update_ytdlp() -> None:
-    """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night."""
-
-    import subprocess
+def update_ytdlp(root: Path = PROJECT_ROOT) -> None:
+    """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night — with a
+    probe and a way back when a new release does not download here (pipeline/ytupdate.py)."""
 
     try:
         # [default] also updates yt-dlp-ejs, the part that solves YouTube's challenges: with an old one
         # next to a new yt-dlp, YouTube serves downloads at a crawl (hours for one video's clips)
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp[default]"],
-                                capture_output=True, text=True, timeout=300)
+        from pipeline import ytupdate
+
+        try:
+            check = bool((RunContext.create("_cola", root=root).section("sourcing").get("youtube") or {})
+                         .get("youtube_update_probe", True))
+        except Exception:
+            check = True
+        outcome = ytupdate.update(root, notify=lambda text: notify(root, text), check=check)
+        if outcome.get("rolledBack"):
+            print(f"yt-dlp {outcome.get('to')} no descarga aquí: sigo con la {outcome.get('kept')} ({outcome.get('probe')})")
+        elif outcome.get("probe"):
+            print(f"yt-dlp {outcome.get('from')} → {outcome.get('to')}: sonda {outcome.get('probe')}")
+
         from importlib.metadata import PackageNotFoundError, version
 
         try:
@@ -936,7 +975,7 @@ def update_ytdlp() -> None:
             ejs = "FALTA"
         runtime = next((name for name in ("deno", "node", "bun") if shutil.which(name)), None)
         print(f"yt-dlp {version('yt-dlp')} · retos (yt-dlp-ejs) {ejs} · JavaScript: {runtime or 'NINGUNO'}"
-              + ("" if result.returncode == 0 else " (no se pudo actualizar)"))
+              + ("" if outcome.get("updated", True) else " (no se pudo actualizar)"))
         if ejs == "FALTA" or runtime is None:
             print("AVISO: sin yt-dlp-ejs o sin deno/node las descargas de YouTube van lentísimas: "
                   "pip install -U \"yt-dlp[default]\" deno")
@@ -989,7 +1028,8 @@ LAST_RESULTS: list[tuple[str, str, float, str]] = []      # the last queue's (sl
 
 def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 0, root: Path = PROJECT_ROOT,
               check: bool = True, skip: set[str] | None = None, new_code: Callable[[], bool] | None = None,
-              refill: Callable[[], list[str]] | None = None) -> int:
+              refill: Callable[[], list[str]] | None = None,
+              on_result: Callable[[str, str], None] | None = None) -> int:
     """Process every pending video; never stop the night because one video failed. Returns failures."""
 
     lock = root / QUEUE_LOCK
@@ -1007,7 +1047,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         if not check:
             problems = []
         else:
-            update_ytdlp()
+            update_ytdlp(root)
             from pipeline import housekeeping
 
             try:
@@ -1033,7 +1073,8 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         if workers > 1 and (len(slugs) > 1 or refill is not None):
             # with `refill` (the watcher) a free line takes what becomes pending meanwhile, instead of waiting for
             # the whole round (sim videos sat for hours behind one third-party video)
-            results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root, refill=refill)
+            results += run_parallel(slugs, workers, force=force, until=until, review=review, root=root, refill=refill,
+                                    new_code=new_code, on_result=on_result)
             slugs = []
         from pipeline import cortacircuitos, ytpause
 
@@ -1100,6 +1141,8 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                     stop_for_bug(root, *tripped)
                     _write_report(root, results)
                     break
+            if on_result is not None and results and results[-1][0] == slug:
+                on_result(slug, results[-1][1])          # out/_vigilar.json now, not at the end of the round
             _write_report(root, results)
     finally:
         lock.unlink(missing_ok=True)
@@ -1219,7 +1262,9 @@ def _trim_log(path: Path, keep: int = 5 * 1024 * 1024, limit: int = 20 * 1024 * 
 
 
 def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str | None, review: bool,
-                 root: Path, refill: Callable[[], list[str]] | None = None) -> list[tuple[str, str, float, str]]:
+                 root: Path, refill: Callable[[], list[str]] | None = None,
+                 new_code: Callable[[], bool] | None = None,
+                 on_result: Callable[[str, str], None] | None = None) -> list[tuple[str, str, float, str]]:
     """Several videos at once, each in its own process. The heavy stages take turns (pipeline/locks.py):
     while one video downloads from YouTube, another one analyses or renders. Each video's lines are
     prefixed with its name and kept in out/_cola/<video>.log."""
@@ -1233,6 +1278,10 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
     pending = deque(slugs)
     results: list[tuple[str, str, float, str]] = []
     lock = threading.Lock()
+    from pipeline.guardian import Guardian
+
+    guardian = Guardian(root, _queue_cfg(root))      # a stage that hangs or a silent process is cut, not only reported
+    code_checked = [time.monotonic()]
 
     def run(slug: str) -> None:
         started = time.monotonic()
@@ -1251,16 +1300,26 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                                        env={**os.environ, "EDITVID_TURNS": "1", "PYTHONUNBUFFERED": "1",
                                             "PYTHONIOENCODING": "utf-8"})   # accents intact on Windows
             assert process.stdout is not None
+            guardian.watch(slug, process)
             for line in process.stdout:
+                guardian.heard(slug)
                 log.write(line)
                 line = line.rstrip()
                 tail.append(line)
                 if line and not line.startswith(("[h264", "libpng", "[ WARN")):
                     print(f"[{slug}] {line}", flush=True)
             code = process.wait()
-        detail = "" if code == 0 else _error_line(list(tail), code)
-        status = "OK" if code == 0 else "espera cuota" if code == QUOTA_EXIT else "espera YouTube" if code == YOUTUBE_EXIT \
-            else "en espera" if code in (CREDIT_EXIT, BUDGET_EXIT) else "ERROR"
+        cut = guardian.done(slug)
+        detail = cut or ("" if code == 0 else _error_line(list(tail), code))
+        status = "OK" if code == 0 and not cut else "espera cuota" if code == QUOTA_EXIT else \
+            "espera YouTube" if code == YOUTUBE_EXIT else "en espera" if code in (CREDIT_EXIT, BUDGET_EXIT) else "ERROR"
+        if cut:
+            notify(root, f"✂ {slug}: {cut}. Se reintenta solo.")
+        if on_result is not None:
+            try:
+                on_result(slug, status)      # out/_vigilar.json now, not at the end of the round
+            except Exception as error:
+                print(f"(estado de la cola no guardado: {type(error).__name__}: {error})")
         with lock:
             results.append((slug, status, time.monotonic() - started, detail))
             if status == "ERROR":
@@ -1379,6 +1438,13 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         while True:
             if stopped[0]:                       # the same bug twice: nothing more starts (stop_for_bug)
                 return
+            if new_code is not None and time.monotonic() - code_checked[0] > 120:
+                code_checked[0] = time.monotonic()
+                if new_code():                   # --vigilar: the round ends and the watcher restarts on the new code
+                    print("Código nuevo (git pull): no arranco más vídeos; la cola se reinicia con él al acabar los "
+                          "que están en marcha")
+                    stopped[0] = True
+                    return
             with lock:
                 fits = [s for s in pending if (shorts[s] if only_shorts else True) and (kinds[s] or footage_running[0] < footage_max)
                         and not voice_in_background(root, s, folders)]   # it goes in once its voice is there
@@ -1430,11 +1496,18 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
           + (f" · y {short_lines} línea(s) más solo para Shorts" if short_lines else "") + " · registros en out/_cola/")
     threads = [threading.Thread(target=worker, args=(False,), daemon=True) for _ in range(workers)] + \
         [threading.Thread(target=worker, args=(True,), daemon=True) for _ in range(short_lines)]
-    for thread in threads:
-        thread.start()
-        time.sleep(2)
-    for thread in threads:
-        thread.join()
+    try:
+        for thread in threads:
+            thread.start()
+            time.sleep(2)
+        for thread in threads:
+            while thread.is_alive():             # join in short waits: a stop signal reaches this thread at once
+                thread.join(1)
+    except BaseException:
+        # systemctl stop/restart, Ctrl+C: every video process is closed cleanly here (SIGTERM, then SIGKILL), none
+        # outlives the service (19-11: «Unit process … remains running after unit stopped»)
+        guardian.stop_all()
+        raise
     return results
 
 

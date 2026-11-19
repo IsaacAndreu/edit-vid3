@@ -32,7 +32,7 @@ from .context import RunContext
 from .grade import grade_filter
 from .schemas import MAX_THIRD_PARTY_SECONDS, IngestedMedia, IngestFile, Selection, SelectionFile, ShotsFile
 from .sourcing import youtube_source
-from .sourcing.common import USER_AGENT, Pacer, key
+from .sourcing.common import USER_AGENT, HostPacers, key
 from .sourcing.youtube import YouTubeSource
 
 
@@ -220,8 +220,9 @@ def wikimedia_thumbnails(url: str) -> list[str]:
     return [f"{base}/{width}px-{name}" for width in (1920, 1280)]
 
 
-_IMAGE_LOCK = threading.Lock()
-_IMAGE_PACER = Pacer(1.0)  # Wikimedia's robot policy: serial, unhurried downloads (https://w.wiki/4wJS)
+# Wikimedia's robot policy (https://w.wiki/4wJS): serial, unhurried downloads there (1 s); every other host its own
+# pace, in parallel (one global lock around every GET made the whole video's images wait for each other)
+_IMAGE_PACERS = HostPacers()
 
 
 def fetch_image(http: requests.Session, url: str, target: Path, attempts: int = 4) -> None:
@@ -230,9 +231,13 @@ def fetch_image(http: requests.Session, url: str, target: Path, attempts: int = 
     last = ""
     for candidate_url in wikimedia_thumbnails(url):
         for attempt in range(attempts):
-            with _IMAGE_LOCK:
-                _IMAGE_PACER.wait()
+            _IMAGE_PACERS.wait(candidate_url)
+            try:
                 response = http.get(candidate_url, timeout=60)
+            except requests.RequestException as error:     # a cut connection: once more, then the next size
+                last = type(error).__name__
+                time.sleep(2 * (attempt + 1))
+                continue
             if response.status_code == 429 or response.status_code >= 500:
                 last = f"HTTP {response.status_code}"
                 time.sleep(3 * 2**attempt)

@@ -227,7 +227,8 @@ def scene_spans(path: Path, lo: float, hi: float, threshold: float) -> list[tupl
     logging.getLogger("pyscenedetect").setLevel(logging.WARNING)
     try:
         scenes = detect(str(path), ContentDetector(threshold=threshold), start_time=lo, end_time=hi)
-    except Exception:
+    except Exception as error:
+        print(f"   (cortes de escena no detectados en {path.name}: {type(error).__name__}: {str(error)[:80]})")
         scenes = []
     spans = [(max(lo, s.get_seconds()), min(hi, e.get_seconds())) for s, e in scenes]
     return [(a, b) for a, b in spans if b > a] or [(lo, hi)]
@@ -690,8 +691,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             if len(its) >= whole_from:
                 try:
                     youtube.prefetch_sections(video.removeprefix("yt:"))
-                except Exception:
-                    pass
+                except Exception as error:      # its windows go one by one, as without prefetch
+                    print(f"   {video}: sin vídeo entero a 360p ({type(error).__name__}: {str(error)[:100]})")
             out: list[tuple[tuple[str, float, float], Path | Exception]] = []
             for job in its:
                 try:
@@ -758,7 +759,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             for c in seen_videos:
                 try:
                     captions = youtube.captions(c.id.removeprefix("yt:"))
-                except Exception:
+                except Exception as error:
+                    print(f"   {c.id}: subtítulos no disponibles ({type(error).__name__}: {str(error)[:100]})")
                     continue
                 t = said_moment(captions, shot.broll.moment, shot.broll.entities, needed)
                 if t is None:

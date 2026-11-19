@@ -758,6 +758,9 @@ def run(ctx: RunContext) -> None:
             options = plans[shot.id][round_number * shown : (round_number + 1) * shown]
             if not options:
                 break
+            from .budget import guard
+
+            guard(ctx)                       # the daily and per-video caps before each paid call, not only between stages
             sheet = contact_sheet(options, candidates, ctx.root, frames=int(cfg.get("frames_per_candidate", 3)),
                                   tile_width=int(cfg.get("tile_width", TILE[0])))
             suffix = "" if round_number == 0 else f"-{round_number + 1}"
@@ -777,13 +780,21 @@ def run(ctx: RunContext) -> None:
 
     errors: list[str] = []
     failed_shots: set[str] = set()
+    over_budget: Exception | None = None
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 4))) as pool:
         for shot, future in [(s, pool.submit(judge, s)) for s in doubtful]:
             try:
                 future.result()
             except Exception as error:  # a failed call falls back to the local ranking for that shot
+                from .budget import BudgetReached, VideoOverBudget
+
+                if isinstance(error, (BudgetReached, VideoOverBudget)):
+                    over_budget = over_budget or error   # a cap is the run's problem, never one shot's
+                    continue
                 errors.append(f"{shot.id}: {str(error)[:160]}")
                 failed_shots.add(shot.id)
+    if over_budget is not None:
+        raise over_budget
     from .budget import dead_key
 
     if any(dead_key(e) for e in errors):     # no key: the judge did nothing; the stage fails, the queue waits for a key

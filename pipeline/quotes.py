@@ -150,7 +150,8 @@ def transcript(ctx: RunContext, youtube: Any, video_id: str, language: str, minu
 
     try:
         path = youtube.subtitle_file(video_id, language)
-    except Exception:
+    except Exception as error:
+        print(f"   yt:{video_id}: subtítulos ({language}) no disponibles ({type(error).__name__}: {str(error)[:100]})")
         if getattr(youtube, "offline", None):       # modo sin YouTube: no subtitles on disk, none to ask for
             return []
         raise
@@ -176,7 +177,8 @@ def subtitles(ctx: RunContext, original: str, clip_seconds: float, lead: float, 
     try:
         text = str(complete_json(ctx, stage="coldopen", section="planner", max_tokens=400, user=original,
                                  system=TRANSLATE_SYSTEM.format(lang=lang)).get("text") or "").strip()
-    except Exception:
+    except Exception as error:
+        print(f"   (traducción de la cita no disponible: {type(error).__name__}: {str(error)[:100]}; va en el original)")
         text = ""
     words = (text or original).split()
     chunks = [" ".join(words[i:i + 8]) for i in range(0, len(words), 8)] or [original]

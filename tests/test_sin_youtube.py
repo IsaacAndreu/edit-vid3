@@ -197,7 +197,10 @@ def test_the_judge_keeps_a_downloaded_youtube_clip_and_otherwise_picks_what_need
 
 # --- the runner: done without YouTube → redone with it; the gate after coldopen --------------------------------
 
-def test_stages_done_without_youtube_run_again_when_youtube_is_back_and_not_while_paused(tmp_path):
+def test_stages_done_without_youtube_run_again_when_youtube_is_back_and_not_while_paused(tmp_path, monkeypatch):
+    from pipeline import preflight
+
+    monkeypatch.setattr(preflight, "video_problems", lambda ctx: [])      # stages are doubles: no keys or Remotion here
     calls = []
 
     def make(name):

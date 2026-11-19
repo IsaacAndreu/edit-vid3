@@ -212,7 +212,7 @@ def font_dir(ctx: RunContext) -> Path:
 def render_short(ctx: RunContext, video: Path, start: float, length: float, subtitles: str, out: Path) -> None:
     zoom = float(ctx.section("shorts").get("zoom", 1.1))    # the 16:9 shot a bit wider than the screen
     fg_w = round(W * zoom / 2) * 2
-    work = out.parent / "_tmp"
+    work = out.parent / f"_tmp-{out.stem}"           # each short its own: several are made at once
     work.mkdir(parents=True, exist_ok=True)
     (work / "subs.ass").write_text(subtitles, encoding="utf-8")
     fonts = font_dir(ctx)
@@ -288,7 +288,7 @@ def render_native(ctx: RunContext, timeline: dict[str, Any], captions: list[dict
     raw = out.with_name(out.stem + ".raw.mp4")
     renderer.remotion("Documentary", props, raw, ["--muted", f"--concurrency={renderer.concurrency()}", "--codec=h264",
                                                   "--crf=18"], public)
-    work = out.parent / "_tmp"
+    work = out.parent / f"_tmp-{out.stem}"           # each short its own: several are made at once
     work.mkdir(parents=True, exist_ok=True)
     (work / "hook.ass").write_text(ass([], "" if kinetic else hook, 0.0, length), encoding="utf-8")
     fonts = font_dir(ctx)
@@ -484,7 +484,8 @@ def run(ctx: RunContext) -> None:
     for old in out_dir.glob("short-*.mp4"):
         old.unlink()
     notes = ["SHORTS · súbelos con «Vídeo relacionado» apuntando al vídeo largo", ""]
-    for n, item in enumerate(chosen, 1):
+
+    def make(n: int, item: dict[str, Any]) -> float:
         first, last = sents[item["from"]], sents[item["to"]]
         start = final(first["start"]) - 0.15
         length = final(last["end"]) - final(first["start"]) + 0.6
@@ -502,13 +503,20 @@ def run(ctx: RunContext) -> None:
         if not made:
             render_short(ctx, source_video(ctx), start, length, subtitles, target)
         print(f"   short-{n}.mp4 · {length:.0f} s · {plain_hook(str(item.get('hook') or ''))}")
+        return length
+
+    # shorts.parallel (2): the shorts were made one after another; the same commands, a couple at once
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=max(1, int(ctx.section("shorts").get("parallel", 2)))) as pool:
+        lengths = list(pool.map(lambda pair: make(*pair), list(enumerate(chosen, 1))))
+    for n, (item, length) in enumerate(zip(chosen, lengths), 1):
         notes += [f"short-{n}.mp4 ({length:.0f} s)", f"TÍTULO: {item.get('title', '')}",
                   f"DESCRIPCIÓN: {item.get('description', '')}", ""]
-    tmp = out_dir / "_tmp"
-    if tmp.is_dir():
-        for f in sorted(tmp.rglob("*"), reverse=True):
-            f.unlink() if f.is_file() else f.rmdir()
-        tmp.rmdir()
+    import shutil
+
+    for tmp in [out_dir / "_tmp", *out_dir.glob("_tmp-*")]:
+        shutil.rmtree(tmp, ignore_errors=True)
     (out_dir / "shorts.txt").write_text("\n".join(notes), encoding="utf-8")
     ctx.write_json("shorts.json", {"shorts": chosen})
 

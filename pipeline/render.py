@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -488,8 +489,15 @@ def _file_sig(path: Path) -> list:
     return [path.name, stat.st_size, int(stat.st_mtime)]
 
 
-def _run(cmd: list[str], what: str) -> subprocess.CompletedProcess:
-    result = subprocess.run(cmd, capture_output=True, text=True)
+_SIG_CACHE: dict[str, tuple[tuple[int, int], str]] = {}     # remotion/ file → (mtime, size), content hash
+RUN_TIMEOUT = 4 * 3600      # one ffmpeg pass of the whole film at most: a hung ffmpeg never holds the render for ever
+
+
+def _run(cmd: list[str], what: str, timeout: float = RUN_TIMEOUT) -> subprocess.CompletedProcess:
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Falló {what}: más de {timeout / 3600:.1f} h sin terminar") from None
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip()[-1500:]
         raise RuntimeError(f"Falló {what}:\n{tail}")
@@ -545,28 +553,83 @@ class Renderer:
 
     # --- Remotion -------------------------------------------------------------------------
 
-    def remotion(self, composition: str, props: dict[str, Any], output: Path, extra: list[str], public: set[str]) -> None:
-        """Bundle a slim public dir (hard links to just the files used) and render once."""
+    def _job_bundle(self, public: set[str], name: str) -> Path:
+        """The code bundled once per code signature (cache/render/bundles/<sig>/, built under a lock by whichever
+        process needs it first), and for this job a folder of hard links to it with its own public/ (hard links to
+        just the files it uses). Before, every call bundled the whole code again (6-10 times a video, ~15 s each)
+        and shared one bundle/ folder, so two renders could not overlap. The picture is the same: same code."""
 
-        public_dir = self.dir / "public"
-        bundle_dir = self.dir / "bundle"
-        shutil.rmtree(public_dir, ignore_errors=True)
-        shutil.rmtree(bundle_dir, ignore_errors=True)
-        for rel in public:
-            source, target = self.ctx.work_dir / rel, public_dir / rel
+        bundle = self._shared_bundle()
+        job = self.dir / f"bundle-{name}-{os.getpid()}-{threading.get_ident()}"
+        shutil.rmtree(job, ignore_errors=True)
+        for source in bundle.rglob("*"):
+            relative = source.relative_to(bundle)
+            if relative.parts and relative.parts[0] == "public":
+                continue
+            target = job / relative
+            if source.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
                 os.link(source, target)
             except OSError:
                 shutil.copy2(source, target)
-        props_file = self.dir / f"{composition}.props.json"
+        for rel in public:
+            source, target = self.ctx.work_dir / rel, job / "public" / rel
+            if not rel or not source.is_file():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(source, target)
+            except OSError:
+                shutil.copy2(source, target)
+        (job / "public").mkdir(parents=True, exist_ok=True)
+        return job
+
+    def _shared_bundle(self) -> Path:
+        from .fileio import file_lock
+
+        folder = self.ctx.cache_dir / "render" / "bundles"
+        ready = folder / _hash(self._remotion_sig())[:16]
+        if (ready / "index.html").is_file():
+            return ready
+        ensure_node_modules(self.ctx.root)
+        with file_lock(folder / ".lock"):
+            if (ready / "index.html").is_file():
+                return ready
+            empty = folder / f".public-{os.getpid()}"
+            building = folder / f".part{os.getpid()}-{ready.name}"
+            shutil.rmtree(building, ignore_errors=True)
+            empty.mkdir(parents=True, exist_ok=True)
+            npx = shutil.which("npx") or "npx"
+            try:
+                subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={empty}",
+                                f"--out-dir={building}", "--log=error"], cwd=str(self.ctx.root), check=True,
+                               capture_output=True, text=True, timeout=1800)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError("Falló el bundle de Remotion: más de 30 min sin terminar") from None
+            except subprocess.CalledProcessError as error:
+                raise RuntimeError(f"Falló el bundle de Remotion:\n{(error.stderr or error.stdout or '')[-1500:]}") from error
+            finally:
+                shutil.rmtree(empty, ignore_errors=True)
+            building.replace(ready)
+            for old in folder.iterdir():                 # older code's bundles: a few stay, the rest go
+                if old.is_dir() and old != ready and not old.name.startswith(".") \
+                        and time.time() - old.stat().st_mtime > 7 * 86400:
+                    shutil.rmtree(old, ignore_errors=True)
+        return ready
+
+    def remotion(self, composition: str, props: dict[str, Any], output: Path, extra: list[str], public: set[str]) -> None:
+        """Render once from the shared bundle with this job's own public files (_job_bundle)."""
+
+        props_file = self.dir / f"{composition}.{os.getpid()}-{threading.get_ident()}.props.json"
+        self.dir.mkdir(parents=True, exist_ok=True)
         props_file.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
         npx = shutil.which("npx") or "npx"
         root = str(self.ctx.root)
-        ensure_node_modules(self.ctx.root)
+        bundle_dir = self._job_bundle(public, composition)
         try:
-            subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
-                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
             cmd = [npx, "remotion", "render", str(bundle_dir), composition, str(output), f"--props={props_file}",
                    "--log=error", *self.video_cache(), *extra]
             text = props_file.read_text("utf-8")
@@ -575,50 +638,43 @@ class Renderer:
             browser = _browser(self.cfg)
             if browser:
                 cmd.append(f"--browser-executable={browser}")
-            result = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
+            # render.remotion_timeout_minutes (360): a Chrome that hangs never holds the render (and its CPU turn)
+            limit = 60 * float(self.cfg.get("remotion_timeout_minutes", 360))
+            try:
+                result = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=limit)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"Falló el render de Remotion ({composition}): más de {limit / 60:.0f} min sin "
+                                   "terminar") from None
             if result.returncode != 0:
                 raise RuntimeError(f"Falló el render de Remotion ({composition}):\n{(result.stderr or result.stdout)[-1500:]}")
-        except subprocess.CalledProcessError as error:
-            raise RuntimeError(f"Falló el bundle de Remotion:\n{(error.stderr or error.stdout or '')[-1500:]}") from error
         finally:
             shutil.rmtree(bundle_dir, ignore_errors=True)
-            shutil.rmtree(public_dir, ignore_errors=True)
+            props_file.unlink(missing_ok=True)
 
     def stills(self, composition: str, props: dict[str, Any], frames: list[int], public: set[str]) -> list[Path]:
-        """A few frames of a composition as JPEGs (one bundle, one still each): the scenes' preview."""
+        """A few frames of a composition as JPEGs (the shared bundle, one still each): the scenes' preview."""
 
-        public_dir = self.dir / "public"
-        bundle_dir = self.dir / "bundle-stills"
-        shutil.rmtree(public_dir, ignore_errors=True)
-        shutil.rmtree(bundle_dir, ignore_errors=True)
-        for rel in public:
-            source, target = self.ctx.work_dir / rel, public_dir / rel
-            if not rel or not source.is_file():
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.link(source, target)
-            except OSError:
-                shutil.copy2(source, target)
         props_file = self.dir / f"{composition}.stills.props.json"
+        self.dir.mkdir(parents=True, exist_ok=True)
         props_file.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
         npx = shutil.which("npx") or "npx"
         root = str(self.ctx.root)
-        ensure_node_modules(self.ctx.root)
         out: list[Path] = []
+        bundle_dir = self._job_bundle(public, f"{composition}-stills")
         try:
-            subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
-                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
             browser = _browser(self.cfg)
             for n, frame in enumerate(frames):
                 target = self.dir / f"still-{n:02d}.jpg"
                 cmd = [npx, "remotion", "still", str(bundle_dir), composition, str(target), f"--props={props_file}", f"--frame={frame}",
                        "--image-format=jpeg", "--jpeg-quality=70", "--log=error", *([f"--browser-executable={browser}"] if browser else [])]
-                if subprocess.run(cmd, cwd=root, capture_output=True, text=True).returncode == 0 and target.is_file():
+                try:
+                    done = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=300)
+                except subprocess.TimeoutExpired:
+                    continue                     # a preview frame: never worth a hung Chrome
+                if done.returncode == 0 and target.is_file():
                     out.append(target)
         finally:
             shutil.rmtree(bundle_dir, ignore_errors=True)
-            shutil.rmtree(public_dir, ignore_errors=True)
         return out
 
     def sequence_dir(self, name: str) -> Path:
@@ -854,8 +910,18 @@ class Renderer:
         return out
 
     def _remotion_sig(self) -> list:
-        files = sorted(p for p in (self.ctx.root / "remotion").rglob("*") if p.is_file())
-        return [[str(p.relative_to(self.ctx.root)), hashlib.sha256(p.read_bytes()).hexdigest()[:12]] for p in files]
+        """[path, content hash] of every file under remotion/ — each file read again only when its size or mtime
+        changed (it was 177 files read on every call, several times per render)."""
+
+        out = []
+        for p in sorted(p for p in (self.ctx.root / "remotion").rglob("*") if p.is_file()):
+            stat = p.stat()
+            hit = _SIG_CACHE.get(str(p))
+            if hit is None or hit[0] != (stat.st_mtime_ns, stat.st_size):
+                hit = ((stat.st_mtime_ns, stat.st_size), hashlib.sha256(p.read_bytes()).hexdigest()[:12])
+                _SIG_CACHE[str(p)] = hit
+            out.append([str(p.relative_to(self.ctx.root)), hit[1]])
+        return out
 
     # --- ffmpeg segments ------------------------------------------------------------------
 
@@ -1211,40 +1277,50 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     audio_pool = ThreadPoolExecutor(max_workers=1)
     audio_job = audio_pool.submit(r.audio, timeline)
 
-    # 1. Remotion: the condensed timeline of slow shots, one pass.
+    # 1. Remotion: the condensed timeline of slow shots, one pass — in the background: the plain footage does not need
+    # it, and before it waited for the whole pass (each Remotion job has its own folder now: they can overlap)
     condensed_path = None
     if slow:
         props = condensed_props(timeline, segments)
         key = _hash(VERSION, props, r._remotion_sig(),
                     sorted(_file_sig(ctx.work_dir / s["media"]["src"]) for s in props["shots"] if s.get("media")))
         condensed_path = r.dir / f"remotion-{key}.mp4"
-        if not condensed_path.is_file():
-            t = time.monotonic()
-            public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
-            public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
-            public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
-            tmp = r.dir / "remotion.tmp.mp4"
-            # an intermediate: every piece is cut from it and encoded again, so the cheapest preset (same crf 12)
-            r.remotion("Documentary", props, tmp,
-                       ["--muted", f"--concurrency={r.concurrency()}", "--codec=h264", "--crf=12",
-                        "--x264-preset=ultrafast"], public)
-            tmp.replace(condensed_path)
-            spent = time.monotonic() - t
-            print(f"   Remotion: {slow_frames} fotogramas en {spent:.0f} s ({slow_frames / max(spent, 0.1):.1f} fps)")
 
-    # 2. ffmpeg: fast shots with their credit badge, and the slow runs cut from the condensed render.
+    def condensed() -> None:
+        if condensed_path is None or condensed_path.is_file():
+            return
+        t = time.monotonic()
+        public = {s["media"]["src"] for s in props["shots"] if s.get("media")} | {props["audio"]["voice"]}
+        public |= {f for s in props["shots"] if s.get("media") for f in depth.files(s["media"])}
+        public |= {m["src"] for g in props["groups"] for m in graphic_media(g.get("graphic"))}
+        tmp = r.dir / "remotion.tmp.mp4"
+        # an intermediate: every piece is cut from it and encoded again, so the cheapest preset (same crf 12)
+        r.remotion("Documentary", props, tmp,
+                   ["--muted", f"--concurrency={r.concurrency()}", "--codec=h264", "--crf=12",
+                    "--x264-preset=ultrafast"], public)
+        tmp.replace(condensed_path)
+        spent = time.monotonic() - t
+        print(f"   Remotion: {slow_frames} fotogramas en {spent:.0f} s ({slow_frames / max(spent, 0.1):.1f} fps)")
+
+    remotion_pool = ThreadPoolExecutor(max_workers=1)
+    remotion_job = remotion_pool.submit(condensed)
+
+    # 2. ffmpeg: fast shots with their credit badge (meanwhile), and the slow runs cut from the condensed render.
     t = time.monotonic()
     source_word = (timeline.get("locale") or {}).get("source")
 
     def shown(credit: str) -> str:   # dubbed versions: "Fuente: X" → "Source: X"
         return f"{source_word}: {credit[len('Fuente: '):]}" if source_word and credit.startswith("Fuente: ") else credit
 
-    credits = sorted({shown(s.shots[0]["media"]["credit"]) for s in fast if s.shots[0]["media"].get("credit")})
-    badges = r.badges(credits) if credits else {}
-
-    # Remotion jobs share one work folder: the backdrop and the end screen before the parallel part
-    if any(s.kind == "ffmpeg" and s.shots[0]["media"].get("layout") == "card" for s in segments):
-        r.backdrop()
+    try:
+        credits = sorted({shown(s.shots[0]["media"]["credit"]) for s in fast if s.shots[0]["media"].get("credit")})
+        badges = r.badges(credits) if credits else {}
+        if any(s.kind == "ffmpeg" and s.shots[0]["media"].get("layout") == "card" for s in segments):
+            r.backdrop()
+    except BaseException:
+        remotion_job.cancel()
+        remotion_pool.shutdown(wait=True)
+        raise
     ends: dict[int, Path] = {}
 
     def build(segment: Segment, stretch: float | None = None) -> Path:
@@ -1265,17 +1341,30 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     def build_all() -> list[Path]:
         ends.clear()
         ends.update({s.start: r.endscreen(timeline, s) for s in segments if s.kind == "endscreen"})
-        with ThreadPoolExecutor(max_workers=max(1, int(r.cfg.get("parallel", 3)))) as pool:
-            return list(pool.map(build, segments))
+        files: list[Path | None] = [None] * len(segments)
+        workers = max(1, int(r.cfg.get("parallel", 3)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            # what needs no condensed render first (while Chrome works), then the pieces cut from it
+            for i, path in zip([i for i, s in enumerate(segments) if s.kind != "remotion"],
+                               pool.map(build, [s for s in segments if s.kind != "remotion"])):
+                files[i] = path
+            remotion_job.result()
+            for i, path in zip([i for i, s in enumerate(segments) if s.kind == "remotion"],
+                               pool.map(build, [s for s in segments if s.kind == "remotion"])):
+                files[i] = path
+        return [f for f in files if f is not None]
 
     try:
-        files = build_all()
-    except RuntimeError as error:
-        if not r.nvenc:
-            raise
-        print(f"   La gráfica falló al codificar ({str(error).splitlines()[-1][:100]}); repito con x264")
-        r.set_encoder(False)
-        files = build_all()
+        try:
+            files = build_all()
+        except RuntimeError as error:
+            if not r.nvenc or (remotion_job.done() and remotion_job.exception() is not None):
+                raise
+            print(f"   La gráfica falló al codificar ({str(error).splitlines()[-1][:100]}); repito con x264")
+            r.set_encoder(False)
+            files = build_all()
+    finally:
+        remotion_pool.shutdown(wait=True)
     print(f"   ffmpeg: {len(files)} segmentos en {time.monotonic() - t:.0f} s"
           + (" (codificados con la gráfica)" if r.nvenc else ""))
 
@@ -1308,7 +1397,11 @@ def _render(ctx: RunContext, hybrid: bool | None = None) -> None:
     from . import subtitulos
 
     try:                                 # timeline.subtitles: burned in last; the clean cut stays as video-limpio.mp4
-        subtitulos.burn(ctx, final, timeline)
+        # with the render's encoder: NVENC when the render uses it (it always went through libx264 before); without a
+        # graphics card the arguments are exactly the ones burn() used, so the picture does not change
+        from .encoder import video_args
+
+        subtitulos.burn(ctx, final, timeline, encoder=video_args(r.cfg, 18, "veryfast", nvenc=True) if r.nvenc else None)
     except Exception as error:          # never costs the video: it goes out without them
         print(f"   Subtítulos no quemados: {str(error)[:120]}")
     from . import simulacion

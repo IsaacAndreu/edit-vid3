@@ -225,20 +225,64 @@ def http_get_json(
     raise RuntimeError(f"{url}: {last_error}")
 
 
-def download_file(session: requests.Session, url: str, target: Path, *, pacer: Pacer | None = None) -> Path:
+class HostPacers:
+    """One minimum interval per host instead of one for every image of the video (≈1 image/s in all, with the wait
+    taken holding the lock): upload.wikimedia.org keeps its robot-policy pace (`slow`, 1 s), every other host
+    `default` (0.25 s), and different hosts go in parallel."""
+
+    SLOW_HOSTS = ("wikimedia.org", "wikipedia.org")
+
+    def __init__(self, default: float = 0.25, slow: float = 1.0) -> None:
+        self._default, self._slow = default, slow
+        self._pacers: dict[str, Pacer] = {}
+        self._lock = threading.Lock()
+
+    def for_url(self, url: str) -> Pacer:
+        from urllib.parse import urlsplit
+
+        host = (urlsplit(url).hostname or "").lower()
+        with self._lock:
+            if host not in self._pacers:
+                slow = any(host.endswith(h) for h in self.SLOW_HOSTS)
+                self._pacers[host] = Pacer(self._slow if slow else self._default)
+            return self._pacers[host]
+
+    def wait(self, url: str = "") -> None:
+        self.for_url(url).wait()
+
+
+def download_file(session: requests.Session, url: str, target: Path, *, pacer: "Pacer | HostPacers | None" = None,
+                  attempts: int = 3) -> Path:
+    """`url` → `target` (streamed, a temporary name per thread). A passing error (network, 429, 5xx) is retried
+    `attempts` times with a growing pause; a 4xx other than 429 is final."""
+
     if target.is_file() and target.stat().st_size > 0:
         return target
-    if pacer:
-        pacer.wait()
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f"{target.name}.{os.getpid()}.{threading.get_ident()}.part")   # two shots, same file
-    with session.get(url, stream=True, timeout=60) as response:
-        response.raise_for_status()
-        with tmp.open("wb") as handle:
-            for chunk in response.iter_content(1 << 16):
-                handle.write(chunk)
-    tmp.replace(target)
-    return target
+    for attempt in range(attempts):
+        if isinstance(pacer, HostPacers):
+            pacer.wait(url)
+        elif pacer:
+            pacer.wait()
+        try:
+            with session.get(url, stream=True, timeout=60) as response:
+                if response.status_code == 429 or response.status_code >= 500:
+                    raise requests.HTTPError(f"HTTP {response.status_code}", response=response)
+                response.raise_for_status()
+                with tmp.open("wb") as handle:
+                    for chunk in response.iter_content(1 << 16):
+                        handle.write(chunk)
+            tmp.replace(target)
+            return target
+        except requests.RequestException as error:
+            tmp.unlink(missing_ok=True)
+            status = getattr(getattr(error, "response", None), "status_code", None)
+            final = status is not None and 400 <= status < 500 and status != 429
+            if final or attempt + 1 >= attempts:
+                raise
+            time.sleep(2.0 * (attempt + 1))
+    raise AssertionError("inalcanzable")
 
 
 _FLIGHTS: dict[str, threading.Lock] = {}

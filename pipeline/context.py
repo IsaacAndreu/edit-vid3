@@ -171,6 +171,11 @@ class RunContext:
                 merged["canal"] = str(name)
             if serie:
                 merged["serie"] = str(serie)
+            if name:
+                # a channel about a video game: its own topic unblocks the game's footage (pipeline/canal_juego.py)
+                from .canal_juego import adjust
+
+                merged = adjust(merged, deep_merge(deep_merge(profile, chosen), video))
             return merged
 
         ctx.config = layered({})

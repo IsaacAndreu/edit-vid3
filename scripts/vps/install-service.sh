@@ -22,7 +22,11 @@ Restart=always
 RestartSec=60
 Nice=5
 LimitNOFILE=65536
-TimeoutStopSec=30
+# mixed: the stop signal goes to the watcher only, which closes each video's process cleanly (pipeline/guardian.py);
+# whatever is still alive after TimeoutStopSec is killed with the whole group. Before, a video's process could outlive
+# the restart («Unit process … remains running after unit stopped», 19-11).
+KillMode=mixed
+TimeoutStopSec=120
 
 [Install]
 WantedBy=multi-user.target
