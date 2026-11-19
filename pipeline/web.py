@@ -1016,11 +1016,11 @@ def retry(root: Path, slug: str) -> dict[str, Any]:
     find_video(root, slug)
     if running(_json(root / "work" / slug / "current.json")):
         raise ValueError("Este vídeo ya se está haciendo")
-    path = root / "out" / "_vigilar.json"
-    state = _json(path) or {}
-    state.pop(slug, None)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+    from .fileio import update_json
+
+    # the same lock the queue writes each result with (main.watch → on_result): neither loses the other's change
+    update_json(root / "out" / "_vigilar.json",
+                lambda state: {k: v for k, v in (state if isinstance(state, dict) else {}).items() if k != slug}, {})
     if watcher_alive(root):
         ask_retry(root, slug)
         return {"ok": True, "message": "El vigilante lo vuelve a intentar en su próxima vuelta (unos minutos)."}

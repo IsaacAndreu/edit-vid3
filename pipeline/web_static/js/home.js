@@ -103,7 +103,8 @@ function drawHome(force = false) {               // the channel buttons redraw f
   // everything that is not going to finish on its own: failed, waiting for a retry, held, missing files, voice error
   const attention = vids.filter((v) => (v.status === "error" || v.status === "incompleto" || v.status === "en pausa" || v.lastError || (v.voice || "").startsWith("error")) && !v.quotaWait);
   const queue = by("en cola").filter((v) => !attention.includes(v)).sort((a, c) => a.updated - c.updated);
-  const failed = all.filter((v) => (v.status === "error" || v.lastError) && !v.quotaWait).length;
+  const failedSlugs = all.filter((v) => (v.status === "error" || v.lastError) && !v.quotaWait).map((v) => v.slug);
+  const failed = failedSlugs.length;
   const late = toUpload.filter((v) => (slot[v.slug] || {}).date && slot[v.slug].date < today).length;
   const when = (v) => { const d = (slot[v.slug] || {}).date; if (!d) return '<span class="muted">sin día</span>';
     return d < today ? `<span class="t-bad">${icon("alert")} tocaba ${DAY(d)}</span>` : d === today ? `<b class="t-warn">hoy · ${esc(slot[v.slug].time || "")}</b>` : `${icon("calendar")} ${DAY(d)}`; };
@@ -221,7 +222,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
       return `<details class="block warn attn" id="h-warn" ${openSections.atencion ? "open" : ""} ontoggle="openSections.atencion=this.open;try{localStorage.setItem('inicio:secciones',JSON.stringify(openSections))}catch(e){}">
       <summary><span class="t-bad b">${icon("alert")} ${attention.length} necesitan tu atención</span>
         <span class="causes">${sorted.slice(0, 4).map(([t, g]) => `<span class="chip">${esc(t)} <b class="t-bad">${g.vids.length}</b></span>`).join("")}${sorted.length > 4 ? `<span class="muted small">y ${sorted.length - 4} causas más</span>` : ""}</span>
-        ${failed > 1 ? `<button class="main sm" onclick="event.preventDefault();event.stopPropagation();retryAll()">Reintentar los ${failed}</button> <span id="retrymsg" class="muted small"></span>` : ""}</summary>
+        ${failed > 1 ? `<button class="main sm" onclick="event.preventDefault();event.stopPropagation();${window.partner ? `retryMany(${esc(JSON.stringify(failedSlugs))}, this)` : "retryAll()"}">Reintentar los ${failed}</button> <span id="retrymsg" class="muted small"></span>` : ""}</summary>
       ${sorted.map(causeRow).join("")}</details>`; })() : ""}
     <div class="hb"><div class="tools">${channelPick}${kindPick}</div><div class="tools">${viewPick}</div></div>
     ${sections}
