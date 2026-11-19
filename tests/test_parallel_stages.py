@@ -75,3 +75,53 @@ def test_off_keeps_the_old_order(tmp_path, monkeypatch):
     with patch.multiple(runner, STAGES=_stages(log), STAGE_NAMES=NAMES):
         run_stages(_ctx(tmp_path, parallel_stages=False))
     assert [e[1] for e in log if e[0] == "start"] == NAMES
+
+
+def test_package_titles_are_asked_while_the_video_renders(tmp_path, monkeypatch):
+    """5.3: package's LLM request (and concept pictures) start with the render and are waited for before package,
+    which then finds them in the cache; package itself still runs after render and shorts (it needs the video)."""
+
+    from pipeline import package, preflight
+
+    monkeypatch.setattr(preflight, "video_problems", lambda ctx: [])
+    names = ["timeline", "render", "shorts", "package"]
+    log = []
+
+    def make(name):
+        def run(ctx):
+            log.append(("start", name))
+            if name == "render":
+                time.sleep(0.3)
+            (ctx.work_dir / f"{name}.json").write_text("{}")
+            log.append(("end", name))
+        return Stage(name, lambda c, n=name: [c.work_dir / f"{n}.json"], lambda c: [], run, None, ())
+
+    def prepare(ctx):
+        log.append(("start", "titles"))
+        time.sleep(0.1)
+        log.append(("end", "titles"))
+
+    monkeypatch.setattr(package, "prepare", prepare)
+    with patch.multiple(runner, STAGES=[make(n) for n in names], STAGE_NAMES=names):
+        run_stages(_ctx(tmp_path))
+    order = log
+    assert order.index(("start", "titles")) < order.index(("end", "render"))          # during the render
+    assert order.index(("end", "titles")) < order.index(("start", "package"))
+    assert order.index(("end", "shorts")) < order.index(("start", "package"))
+
+    log.clear()                                                                         # package up to date: nothing asked
+    with patch.multiple(runner, STAGES=[make(n) for n in names], STAGE_NAMES=names):
+        run_stages(RunContext.create("v", root=tmp_path, config={"speed": {}}))
+    assert ("start", "titles") not in log
+
+
+def test_package_prepare_asks_the_same_request_package_asks(tmp_path, monkeypatch):
+    from pipeline import package
+
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    (tmp_path / "materiales" / "v" / "guion.txt").write_text("Un guion.")
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    asked = []
+    monkeypatch.setattr(package, "complete_json", lambda ctx, **kw: asked.append(kw) or {"titles": ["T"]})
+    package.prepare(ctx)
+    assert package.ask_titles(ctx) == {"titles": ["T"]} and asked[0] == asked[1]          # same words: same cache key

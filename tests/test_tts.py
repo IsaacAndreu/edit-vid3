@@ -198,7 +198,56 @@ def test_a_restart_reuses_the_pieces_already_made(tmp_path, monkeypatch):
     created = len(fake.created)
     tts.generate("k", text, voice, target, session=fake, log=lambda *_: None)
     assert target.is_file() and len(fake.created) == created          # no task paid twice
-    assert not (target.parent / ".voz-trozos").exists()
+    work = target.parent / ".voz-trozos"
+    assert len(list(work.glob("*.mp3"))) == len(tts.pieces(text, 40)) and not list(work.glob("*.bajando")) and not (work / "list.txt").exists()
+    # the pieces stay after the end (fase 5.4): a script changed in one paragraph pays only that paragraph
+    target.unlink()
+    tts.generate("k", text.replace("Tercer párrafo", "Otro párrafo"), voice, target, session=fake, log=lambda *_: None)
+    assert len(fake.created) == created + 1
+
+
+def test_the_pieces_are_made_several_at_once_and_joined_in_order(tmp_path, monkeypatch):
+    import threading
+    import time as real_time
+
+    pause = real_time.sleep                                            # tts.time is this same module
+    monkeypatch.setattr(tts.time, "sleep", lambda s: pause(0.01))
+    fake = _FakeGenAIPro(_mp3(tmp_path / "piece.mp3"))
+    lock, running, peak = threading.Lock(), [0], [0]
+    real_request = fake.request
+
+    def request(method, url, **kw):
+        if method == "GET":
+            with lock:
+                running[0] += 1
+                peak[0] = max(peak[0], running[0])
+            pause(0.05)
+            with lock:
+                running[0] -= 1
+        return real_request(method, url, **kw)
+
+    fake.request = request
+    text = "\n\n".join(f"Párrafo número {n} del guion." for n in range(6))
+    voice = {**tts.DEFAULTS, "voice_id": "V1", "max_chars": 30, "parallel": 2}
+    target = tmp_path / "voz.mp3"
+    joined = []
+    real_run = tts.subprocess.run
+
+    def run(command, **kw):
+        if "concat" in command:
+            joined.extend(Path(command[command.index("-i") + 1]).read_text().splitlines())
+        return real_run(command, **kw)
+
+    monkeypatch.setattr(tts.subprocess, "run", run)
+    result = tts.generate("k", text, voice, target, session=fake, log=lambda *_: None)
+    assert result["pieces"] == 6 and peak[0] == 2                     # two at a time, never more
+    parts = tts.pieces(text, 30)
+    import hashlib
+    import json as _json
+
+    settings = _json.dumps({k: voice.get(k) for k in ("voice_id", *tts.DEFAULTS)}, sort_keys=True)
+    expected = [hashlib.sha1((settings + part).encode()).hexdigest()[:16] for part in parts]
+    assert [line.split("/")[-1].split(".")[0] for line in joined] == expected   # joined in the script's order
 
 
 class _FakeWithSubtitles(_FakeGenAIPro):

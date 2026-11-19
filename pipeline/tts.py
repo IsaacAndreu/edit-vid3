@@ -25,11 +25,15 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import requests
+
+from .fileio import atomic_write_text
 
 BASE = "https://genaipro.io/api"
 AI84_BASE = "https://api.ai84.pro"
@@ -67,6 +71,8 @@ def provider_name(voice: dict[str, Any] | None) -> str:
     return PROVIDERS.get(str((voice or {}).get("provider") or "genaipro"), "GenAIPro")
 MAX_CHARS = 4500
 WAIT_SECONDS = 1800
+SPENT_LOCK = threading.Lock()
+PARALLEL = 3                     # pieces of one narration made at once (voices.json «parallel» per voice)
 LOCK = ".voz.generando"          # in the video's folder while its narration is being made (pid, time)
 FAILED = "voz.error.json"        # the last failure: the background retries it after RETRY_MINUTES
 RETRY_MINUTES = 30
@@ -491,7 +497,8 @@ class AI84:
                 if cost is None:
                     self.unpriced.append(job_id)
                 else:
-                    self.spent += cost
+                    with SPENT_LOCK:            # several pieces finish at once (fase 5.4)
+                        self.spent += cost
                 return str(url)
             if status in ("failed", "error"):
                 message = job.get("errorMessage") or job.get("error_message") or "sin detalle"
@@ -612,8 +619,9 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
              log: Any = print) -> dict[str, Any]:
     """The whole text as one mp3 at `target`. Returns {"chars", "pieces", "tasks"}.
 
-    Each piece's task and audio are kept in `.voz-trozos/` next to `target` until the end: after a restart (or a
-    failure half way) the pieces already made are reused, not paid again."""
+    Each piece's task and audio are kept in `.voz-trozos/` next to `target`, also after the end: after a restart (or a
+    failure half way, or a script changed in one paragraph) the pieces already made are reused, not paid again.
+    Up to `parallel` pieces (voices.json, per voice; PARALLEL by default) are made at once."""
 
     import hashlib
 
@@ -631,37 +639,47 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
     # the pieces' names: GenAIPro's as always (a narration half made before an update is not paid again)
     fields = ("voice_id", *MINIMAX_DEFAULTS, "language_boost") if voice.get("provider") == "ai84" else ("voice_id", *DEFAULTS)
     settings = json.dumps({k: voice.get(k) for k in fields}, sort_keys=True)
-    tasks, files = [], []
-    reused = 0
-    for number, part in enumerate(parts, start=1):
-        key = hashlib.sha1((settings + part).encode("utf-8")).hexdigest()[:16]
-        piece = work / f"{key}.mp3"
-        files.append(piece)
+    keys_ = [hashlib.sha1((settings + part).encode("utf-8")).hexdigest()[:16] for part in parts]
+    files = [work / f"{key}.mp3" for key in keys_]
+    reused = sum(len(part) for part, piece in zip(parts, files) if piece.is_file() and piece.stat().st_size > 0)
+    state_lock = threading.Lock()
+
+    def make(number: int, part: str, key: str, piece: Path) -> str:
+        """One piece: its task created (or resumed), waited for and downloaded."""
+
         if piece.is_file() and piece.stat().st_size > 0:
             log(f"   Voz {number}/{len(parts)}: ya hecha antes, la reutilizo")
-            tasks.append(state.get(key, ""))
-            reused += len(part)
-            continue
-        task_id = state.get(key)
+            return str(state.get(key, ""))
+        with state_lock:
+            task_id = state.get(key)
         if task_id:
             log(f"   Voz {number}/{len(parts)}: retomo la tarea {task_id}")
         else:
             task_id = api.create(part, voice)
-            state[key] = task_id
-            state_file.write_text(json.dumps(state), encoding="utf-8")
+            with state_lock:
+                state[key] = task_id
+                atomic_write_text(state_file, json.dumps(state))
             log(f"   Voz {number}/{len(parts)}: {len(part)} caracteres → tarea {task_id}")
-        tasks.append(task_id)
         if (target.parent / LOCK).is_file():                  # still alive: a long narration is not a stale lock
             (target.parent / LOCK).touch()
         url = api.wait(task_id)
         if task_id in getattr(api, "unpriced", []):     # resumed after a restart: its price by the characters
-            api.spent += len(part) * ai84_credits_per_char(str(voice.get("model_id") or ""))
+            with SPENT_LOCK:
+                api.spent += len(part) * ai84_credits_per_char(str(voice.get("model_id") or ""))
         log(f"   Voz {number}/{len(parts)}: lista, descargando")
-        partial_piece = piece.with_suffix(".bajando")
+        partial_piece = piece.with_suffix(f".{number}.bajando")
         api.download(url, partial_piece)
         if partial_piece.stat().st_size == 0:
+            partial_piece.unlink(missing_ok=True)
             raise TTSError(f"{getattr(api, 'NAME', 'GenAIPro')} devolvió un audio vacío (tarea {task_id})")
         partial_piece.replace(piece)
+        return str(task_id)
+
+    # fase 5.4: up to `parallel` pieces at once (voices.json, per voice; PARALLEL by default), each created, waited
+    # for and downloaded in its own thread: the same pieces and characters as one after another, in the same order
+    workers = max(1, min(len(parts), int(voice.get("parallel", PARALLEL))))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        tasks = list(pool.map(make, range(1, len(parts) + 1), parts, keys_, files))
     timed = getattr(api, "subtitles", True)
     cues: list[list[tuple[float, float, str]]] | None = [] if timed else None
     for number, (task_id, piece) in enumerate(zip(tasks, files) if timed else [], start=1):
@@ -695,9 +713,10 @@ def generate(token: str | dict[str, str], text: str, voice: dict[str, Any], targ
             write_timings(target, files, cues)
         except Exception as error:
             log(f"   No se pudieron guardar los tiempos de palabras ({str(error)[:120]}): se alineará con Whisper")
-    import shutil
-
-    shutil.rmtree(work, ignore_errors=True)
+    # the pieces stay (fase 5.4): a script corrected in one paragraph pays only that paragraph next time. A new take
+    # of the very same text: delete the .voz-trozos folder as well as voz.mp3
+    for leftover in [work / "list.txt", *work.glob("*.bajando")]:
+        leftover.unlink(missing_ok=True)
     total = sum(len(p) for p in parts)
     # «chars» is the whole narration; only paidChars were generated (and billed) this time
     return {"chars": total, "paidChars": total - reused, "reusedChars": reused, "pieces": len(parts), "tasks": tasks,

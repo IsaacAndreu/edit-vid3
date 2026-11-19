@@ -107,9 +107,9 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 | 4.10 nada de red en el render | en parte: el preflight avisa si Remotion no tiene navegador; `npm install` sigue en `ensure_node_modules` | `tests/test_preflight_checks.py` |
 | 5.1 people en paralelo | **descartado**: su plan B usa los clips HD que baja ingest; adelantarlo cambiaría el resultado | — |
 | 5.2 factcheck en paralelo | hecho: al lado de align y planner, esperado antes de la primera etapa de pago (`speed.parallel_stages`) | `tests/test_parallel_stages.py` |
-| 5.3 package a la vez que el render | pendiente (ya posible: los trabajos de Remotion tienen carpeta propia) | — |
-| 5.4 voces en paralelo | pendiente | — |
-| 5.5 align con su propio hueco | pendiente | — |
+| 5.3 package a la vez que el render | hecho (la parte que no necesita el vídeo): package usa el vídeo terminado (fotogramas de las miniaturas de los vídeos dibujados, vista previa, el aviso con los Shorts), así que sigue tras render y shorts; lo que pide fuera, la llamada al LLM de títulos y las imágenes conceptuales, se lanza al empezar el render con las mismas palabras y package lo encuentra en caché. Mismo resultado | `tests/test_parallel_stages.py` |
+| 5.4 voces en paralelo | hecho: hasta `parallel` trozos a la vez (voices.json por voz, 3 por defecto), unidos en el orden del guion; los trozos se conservan en `.voz-trozos/` tras el éxito (un guion corregido en un párrafo paga solo ese párrafo; para otra toma del mismo texto, borrar también `.voz-trozos/`) | `tests/test_tts.py` |
+| 5.5 align con su propio hueco | hecho: turno «align» propio (`queue.slots.align`, 1) y `align.cpu_threads` (mitad de los núcleos por defecto; clave de velocidad). **No hecho**: el filtro VAD (hay que comprobar con voces reales que la alineación da lo mismo) | `tests/test_locks.py` |
 
 **Cómo medirlo en el servidor**: `python main.py --tiempos 7` antes y después (columna «render» y «Shorts»), y en el
 registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos en Y s» ahora se solapan.

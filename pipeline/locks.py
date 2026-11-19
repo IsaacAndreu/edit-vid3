@@ -23,7 +23,9 @@ from typing import Iterator
 # analysis takes no turn: its fine pass is ~95 % waiting for YouTube's 360p windows (gym4.0: 279 windows in 104 min,
 # the CLIP work itself 32 s) and holding a CPU place meanwhile kept simulations and renders waiting for nothing; its
 # downloads already go through the shared YouTube pace and hourly budget of every process
-GROUPS = {"sourcing": "red", "ingest": "red", "fallback": "cpu", "align": "cpu", "render": "cpu"}
+# align has a turn of its own (fase 5.5): two minutes of Whisper, on half the cores (align.cpu_threads), no longer wait
+# behind two renders; two alignments at once still wait for each other (queue.slots.align, 1)
+GROUPS = {"sourcing": "red", "ingest": "red", "fallback": "cpu", "align": "align", "render": "cpu"}
 ENV = "EDITVID_TURNS"           # set by the queue for its videos; single runs never wait
 
 
@@ -100,7 +102,8 @@ def turn(root: Path, stage: str, label: str = "", poll: float = 5.0) -> Iterator
         if path is not None:
             break
         if waited == 0:
-            print(f"   esperando turno de {'red' if group == 'red' else 'CPU'} (lo usan otros vídeos)…")
+            print(f"   esperando turno de {'red' if group == 'red' else 'alineación' if group == 'align' else 'CPU'} "
+                  "(lo usan otros vídeos)…")
         time.sleep(poll)
         waited += poll
     if waited:
