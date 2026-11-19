@@ -441,9 +441,10 @@ def whole_estimate_mb(formats: list[dict[str, Any]], max_height: int = 720) -> f
     return round(total, 1)
 
 
-def unreachable_videos(cache_dir: Path, days: float = 7) -> set[str]:
+def unreachable_videos(cache_dir: Path, days: float = 7, without_hls: bool = True) -> set[str]:
     """YouTube ids no clip can come from now (refused «sin-hls», «vpn» or «geo» in the last `days`): the judge leaves
-    them out, so a shot takes a clip that can be downloaded instead of failing at «Descargar en HD»."""
+    them out, so a shot takes a clip that can be downloaded instead of failing at «Descargar en HD». `without_hls`
+    False (sourcing.youtube.byte_ranges on): a video without HLS can come by byte ranges, so «sin-hls» is not one."""
 
     import json
 
@@ -453,7 +454,8 @@ def unreachable_videos(cache_dir: Path, days: float = 7) -> set[str]:
         return set()
     now = time.time()
     return {video for video, entry in data.items() if isinstance(entry, dict)
-            and entry.get("why") in ("sin-hls", "vpn", "geo", "no-disponible") and now - float(entry.get("at") or 0) < 86400 * days}
+            and entry.get("why") in ("sin-hls", "vpn", "geo", "no-disponible") and (without_hls or entry.get("why") != "sin-hls")
+            and now - float(entry.get("at") or 0) < 86400 * days}
 
 
 def _has_hls(info_path: Path) -> bool:
@@ -1330,6 +1332,12 @@ class YouTubeSource:
                 self._refused_cache, self._refused_mtime = data, stamp
         return data
 
+    def _blocking_refusals(self) -> tuple[str, ...]:
+        """What keeps a video from being downloaded at all: with byte ranges on, «sin-hls» no longer does (its
+        ranges come from the DASH mp4) — the videos refused that way before can be used again at once."""
+
+        return ("vpn", "geo") if self.cfg.get("byte_ranges", False) else ("sin-hls", "vpn", "geo")
+
     def refused(self, video: str) -> bool:
         return self.refused_why(video) is not None
 
@@ -1685,6 +1693,8 @@ class YouTubeSource:
     def _info(self, video_id: str) -> dict[str, Any]:
         self._local.video_id = video_id
         why = self.refused_why(video_id)
+        if why == "sin-hls" and self.cfg.get("byte_ranges", False):
+            why = None                     # its ranges come by byte ranges now: not a reason to skip it
         if why is not None and (why != "bot" or not self._info_path(video_id).is_file()):
             raise Refused(f"{video_id}: descartado ({self._refusal_text(why)}); no se vuelve a pedir")
         path = self._info_path(video_id)
@@ -2003,7 +2013,7 @@ class YouTubeSource:
         if existing is not None:
             return existing
         self._local.route = None
-        if (self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo")) \
+        if (self.residential and self.refused_why(video_id) in self._blocking_refusals()) \
                 or self.refused_why(video_id) == "no-disponible":
             raise Refused(f"yt-dlp download: {video_id} descartado ({self._refusal_text(self.refused_why(video_id) or '')}); "
                           "se pasa al siguiente candidato")
@@ -2813,7 +2823,7 @@ class YouTubeSource:
 
         try:
             info_path = self._fresh_full_info(video_id)
-            if self.residential and self.refused_why(video_id) in ("sin-hls", "vpn", "geo"):
+            if self.residential and self.refused_why(video_id) in self._blocking_refusals():
                 return False
             if self.hd_unreachable(video_id, info_path):
                 return False                     # download_section says why (and the video is not asked for again)

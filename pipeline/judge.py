@@ -961,8 +961,10 @@ def _unreachable(ctx: RunContext) -> set[str]:
 
     from .sourcing.youtube import unreachable_videos
 
-    days = float(ctx.section("sourcing").get("youtube", {}).get("refused_days", 7))
-    return {f"yt:{video}" for video in unreachable_videos(ctx.cache_dir, days)}
+    yt_cfg = ctx.section("sourcing").get("youtube", {})
+    days = float(yt_cfg.get("refused_days", 7))
+    return {f"yt:{video}" for video in unreachable_videos(ctx.cache_dir, days,
+                                                          without_hls=not yt_cfg.get("byte_ranges", False))}
 
 
 def validate(ctx: RunContext) -> bool:

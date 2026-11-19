@@ -133,3 +133,24 @@ def test_off_by_default(tmp_path, monkeypatch, server):
         yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720]", prefix="hd")
     assert RangeHandler.seen == []
     yt.close()
+
+
+def test_with_byte_ranges_a_video_refused_for_no_hls_can_be_used_again(tmp_path, monkeypatch):
+    """19-11: «800 opciones de vídeos que no se pueden bajar en HD» in a GTA video: refused «sin-hls» for 7 days.
+    With byte_ranges on that refusal no longer applies (their ranges come by byte ranges)."""
+
+    from pipeline.sourcing.youtube import Refused, unreachable_videos
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    resi = "http://u:p@resi.rainproxy.io:1"
+    off = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"min_interval": 0, "cookies": "never", "proxy": resi})
+    off._refuse(VIDEO, "sin-hls")
+    with pytest.raises(Refused):
+        off.download_range(VIDEO, 1.0, 2.0, fmt="bv*[height<=720]", prefix="hd")
+    assert VIDEO in unreachable_videos(tmp_path)
+    on = YouTubeSource(root=tmp_path, cache_dir=tmp_path,
+                       config={"min_interval": 0, "cookies": "never", "proxy": resi, "byte_ranges": True})
+    assert "sin-hls" not in on._blocking_refusals()
+    assert VIDEO not in unreachable_videos(tmp_path, without_hls=False)
+    off.close()
+    on.close()
