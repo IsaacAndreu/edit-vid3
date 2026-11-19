@@ -80,3 +80,40 @@ def test_a_home_way_with_a_residential_metadata_proxy_still_extracts_twice(tmp_p
     yt._fresh_full_info(VIDEO)
     assert seen[1] == "http://100.64.0.2:8899" and len(seen) == 2           # the download's URLs: from home
     yt.close()
+
+
+def test_expired_links_keep_the_metadata_until_the_new_extraction_replaces_it(tmp_path, monkeypatch):
+    """Fase 3.2: only the stream links expired, so info.json (title, storyboard, HLS flag…) is not deleted first: a
+    failed re-extraction leaves it, and a shot that waited for the video's lock while another re-extracted reuses
+    those fresh links instead of extracting again."""
+
+    import pytest
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, proxy=RESI)
+    seen = []
+    monkeypatch.setattr(yt, "_extract", lambda url, extra: seen.append(1) or _data(expire_in=10 * 60))
+    yt.info(VIDEO)
+    meta = yt._info_path(VIDEO)
+    before = json.loads(meta.read_text())
+
+    def refused(url, extra):
+        raise RuntimeError("ERROR: [youtube] x: Sign in to confirm you're not a bot")
+
+    monkeypatch.setattr(yt, "_extract", refused)
+    with pytest.raises(Exception):
+        yt._fresh_full_info(VIDEO)                        # links 10 min from expiry: a new extraction, which fails
+    assert json.loads(meta.read_text()) == before          # the metadata is still there
+    assert yt._local.refresh_links is False
+
+    monkeypatch.setattr(yt, "_extract", lambda url, extra: seen.append(1) or _data())
+    yt._fresh_full_info(VIDEO)
+    after = json.loads(meta.read_text())
+    assert len(seen) == 2 and after["title"] == "t" and after["fetchedAt"] >= before["fetchedAt"]
+    yt._local.refresh_links = True                        # as a second shot that waited for the lock would arrive
+    try:
+        yt.info(VIDEO)
+    finally:
+        yt._local.refresh_links = False
+    assert len(seen) == 2                                 # the links are fresh now: no third extraction
+    yt.close()

@@ -1706,7 +1706,11 @@ class YouTubeSource:
         if why is not None and (why != "bot" or not self._info_path(video_id).is_file()):
             raise Refused(f"{video_id}: descartado ({self._refusal_text(why)}); no se vuelve a pedir")
         path = self._info_path(video_id)
-        if path.is_file():
+        refresh = getattr(self._local, "refresh_links", False)
+        if refresh and self._full_info_usable(video_id) and path.is_file():
+            # another shot of this video re-extracted while this one waited for the video's lock: its links serve
+            refresh = False
+        if path.is_file() and not refresh:
             try:
                 import json
 
@@ -1772,6 +1776,14 @@ class YouTubeSource:
                 "captions": captions,
             }
 
+        if refresh:
+            # only the stream links expired (fase 3.2): the metadata is rewritten in place, never deleted first — a
+            # failed extraction keeps it, and nothing else of the video is worked out again
+            import json
+
+            value = produce()
+            atomic_write_text(path, json.dumps(value, ensure_ascii=False) + "\n")
+            return value
         return cached_json(path, produce)
 
     def _backfill_hls(self, video_id: str, cached: dict[str, Any], path: Path) -> None:
@@ -1947,35 +1959,40 @@ class YouTubeSource:
         proxy — by this video's sticky session while it is still alive (the IP the URLs are bound to). Otherwise one
         extraction, the same price as before, and the result is cached for the next ranges of the video."""
 
-        import json
-
         self._local.info_reused = False
         path = self._full_info_path(video_id)
-        if path.is_file():
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                formats = data.get("formats") or []
-                expiries = [
-                    int(found.group(1)) for f in formats if f.get("vcodec") not in (None, "none") and f.get("url")
-                    # stream URLs carry ?expire=…, HLS manifests /expire/…/
-                    for found in [re.search(r"[/?&]expire[/=](\d+)", f["url"])] if found
-                ]
-                margin = 60 * float(self.cfg.get("info_expiry_margin_minutes", 15))
-                ours = not data.get("_edit_vid3_via") and (
-                    not self.residential or self.sessions.matches(video_id, data.get("_edit_vid3_session")))
-                if expiries and min(expiries) - time.time() > margin and data.get("_edit_vid3_clients") == self._clients() \
-                        and ours:
-                    self._local.info_reused = True
-                    return path
-            except (OSError, ValueError, KeyError):
-                pass
-        self._info_path(video_id).unlink(missing_ok=True)
+        if self._full_info_usable(video_id):
+            self._local.info_reused = True
+            return path
         self._local.for_download = True     # extracted the way the download goes out (never the metadata proxy)
+        self._local.refresh_links = True    # info.json stays until the new extraction replaces it
         try:
             self.info(video_id)  # re-extracts and re-saves the full info
         finally:
             self._local.for_download = False
+            self._local.refresh_links = False
         return path
+
+    def _full_info_usable(self, video_id: str) -> bool:
+        """The full info on disk has stream links this download can still use (see _fresh_full_info)."""
+
+        import json
+
+        try:
+            data = json.loads(self._full_info_path(video_id).read_text(encoding="utf-8"))
+            formats = data.get("formats") or []
+            expiries = [
+                int(found.group(1)) for f in formats if f.get("vcodec") not in (None, "none") and f.get("url")
+                # stream URLs carry ?expire=…, HLS manifests /expire/…/
+                for found in [re.search(r"[/?&]expire[/=](\d+)", f["url"])] if found
+            ]
+            margin = 60 * float(self.cfg.get("info_expiry_margin_minutes", 15))
+            ours = not data.get("_edit_vid3_via") and (
+                not self.residential or self.sessions.matches(video_id, data.get("_edit_vid3_session")))
+            return bool(expiries) and min(expiries) - time.time() > margin \
+                and data.get("_edit_vid3_clients") == self._clients() and bool(ours)
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
 
     def download_range(self, video_id: str, start: float, end: float, *, fmt: str, prefix: str,
                        audio: bool = False, audio_only: bool = False) -> Path:
