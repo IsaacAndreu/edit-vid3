@@ -1,3 +1,7 @@
+"""OBSOLETO (ruta antigua `--guion/--voz`): el pipeline por etapas solo usa de aquí `_parse_json3` (subtítulos
+json3, desde pipeline/sourcing/youtube.py). Las descargas sin proxy ni caché de este cliente no se usan; las de verdad
+están en pipeline/sourcing/youtube.py."""
+
 from __future__ import annotations
 
 import hashlib

@@ -12,7 +12,6 @@ The pipeline is intentionally split into small stages:
 - `clients/openai_images.py` — GPT Image 2 generation and local asset persistence.
 - `transcribe.py` — Whisper API wrapper with word and segment timestamps plus source duration.
 - `segment.py` — converts LLM word-index boundaries into `durationInFrames` using real timestamps and repairs sparse boundaries into a continuous audio timeline.
-- `fetch_media.py` — third-party YouTube clips first, Pexels fallback, GPT Image final fallback, media provenance, and legacy avatar clip copying.
 - `qa.py` — pre-render validation and `.qa.json` report; blocks invalid scene plans and any YouTube clip over five seconds before Remotion.
 - `analytics.py` — writes `.timeline.json` scene markers for later YouTube retention analysis.
 - `postflight.py` — normalizes final audio to -16 LUFS and verifies the rendered container/streams without re-encoding video.
@@ -33,5 +32,5 @@ python -m pipeline.puerta               # the quick check the deploy gate runs (
 python -m pytest tests -q               # the suite (tests/test_e2e_stages.py runs every real stage, ~5 min)
 ```
 
-Note: `fetch_media.py` and `clients/youtube_client.py` belong to that old path; nothing in the stage pipeline
-imports `fetch_media.py` (youtube.py only reuses the client's json3 subtitle parser).
+Note: `fetch_media.py` (the old path) was removed in 11-2026; `third_party_media.py`, `candidate_analyzer.py` and
+`clients/youtube_client.py` are marked obsolete (youtube.py only reuses the client's json3 subtitle parser).

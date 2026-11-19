@@ -1,3 +1,6 @@
+"""OBSOLETO: lo usaba pipeline/fetch_media.py (ruta antigua, retirada en 11-2026). Ninguna etapa lo importa; se
+conserva por sus tests hasta borrarlo junto con third_party_media.py."""
+
 from __future__ import annotations
 
 import base64

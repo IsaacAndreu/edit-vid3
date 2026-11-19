@@ -947,16 +947,26 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             wake.unlink(missing_ok=True)
 
 
-def update_ytdlp() -> None:
-    """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night."""
-
-    import subprocess
+def update_ytdlp(root: Path = PROJECT_ROOT) -> None:
+    """YouTube changes its protections every few weeks and yt-dlp follows: update it before the night — with a
+    probe and a way back when a new release does not download here (pipeline/ytupdate.py)."""
 
     try:
         # [default] also updates yt-dlp-ejs, the part that solves YouTube's challenges: with an old one
         # next to a new yt-dlp, YouTube serves downloads at a crawl (hours for one video's clips)
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp[default]"],
-                                capture_output=True, text=True, timeout=300)
+        from pipeline import ytupdate
+
+        try:
+            check = bool((RunContext.create("_cola", root=root).section("sourcing").get("youtube") or {})
+                         .get("youtube_update_probe", True))
+        except Exception:
+            check = True
+        outcome = ytupdate.update(root, notify=lambda text: notify(root, text), check=check)
+        if outcome.get("rolledBack"):
+            print(f"yt-dlp {outcome.get('to')} no descarga aquí: sigo con la {outcome.get('kept')} ({outcome.get('probe')})")
+        elif outcome.get("probe"):
+            print(f"yt-dlp {outcome.get('from')} → {outcome.get('to')}: sonda {outcome.get('probe')}")
+
         from importlib.metadata import PackageNotFoundError, version
 
         try:
@@ -965,7 +975,7 @@ def update_ytdlp() -> None:
             ejs = "FALTA"
         runtime = next((name for name in ("deno", "node", "bun") if shutil.which(name)), None)
         print(f"yt-dlp {version('yt-dlp')} · retos (yt-dlp-ejs) {ejs} · JavaScript: {runtime or 'NINGUNO'}"
-              + ("" if result.returncode == 0 else " (no se pudo actualizar)"))
+              + ("" if outcome.get("updated", True) else " (no se pudo actualizar)"))
         if ejs == "FALTA" or runtime is None:
             print("AVISO: sin yt-dlp-ejs o sin deno/node las descargas de YouTube van lentísimas: "
                   "pip install -U \"yt-dlp[default]\" deno")
@@ -1037,7 +1047,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         if not check:
             problems = []
         else:
-            update_ytdlp()
+            update_ytdlp(root)
             from pipeline import housekeeping
 
             try:

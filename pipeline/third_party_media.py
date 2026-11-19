@@ -1,3 +1,6 @@
+"""OBSOLETO: lo usaba pipeline/fetch_media.py (ruta antigua, retirada en 11-2026). Ninguna etapa lo importa; se
+conserva por sus tests hasta borrarlo junto con candidate_analyzer.py."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
