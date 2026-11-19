@@ -488,8 +488,14 @@ def _file_sig(path: Path) -> list:
     return [path.name, stat.st_size, int(stat.st_mtime)]
 
 
-def _run(cmd: list[str], what: str) -> subprocess.CompletedProcess:
-    result = subprocess.run(cmd, capture_output=True, text=True)
+RUN_TIMEOUT = 4 * 3600      # one ffmpeg pass of the whole film at most: a hung ffmpeg never holds the render for ever
+
+
+def _run(cmd: list[str], what: str, timeout: float = RUN_TIMEOUT) -> subprocess.CompletedProcess:
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Falló {what}: más de {timeout / 3600:.1f} h sin terminar") from None
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip()[-1500:]
         raise RuntimeError(f"Falló {what}:\n{tail}")
@@ -566,7 +572,8 @@ class Renderer:
         ensure_node_modules(self.ctx.root)
         try:
             subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
-                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
+                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True,
+                           timeout=1800)
             cmd = [npx, "remotion", "render", str(bundle_dir), composition, str(output), f"--props={props_file}",
                    "--log=error", *self.video_cache(), *extra]
             text = props_file.read_text("utf-8")
@@ -575,9 +582,17 @@ class Renderer:
             browser = _browser(self.cfg)
             if browser:
                 cmd.append(f"--browser-executable={browser}")
-            result = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
+            # render.remotion_timeout_minutes (360): a Chrome that hangs never holds the render (and its CPU turn)
+            limit = 60 * float(self.cfg.get("remotion_timeout_minutes", 360))
+            try:
+                result = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=limit)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"Falló el render de Remotion ({composition}): más de {limit / 60:.0f} min sin "
+                                   "terminar") from None
             if result.returncode != 0:
                 raise RuntimeError(f"Falló el render de Remotion ({composition}):\n{(result.stderr or result.stdout)[-1500:]}")
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Falló el bundle de Remotion: más de 30 min sin terminar") from None
         except subprocess.CalledProcessError as error:
             raise RuntimeError(f"Falló el bundle de Remotion:\n{(error.stderr or error.stdout or '')[-1500:]}") from error
         finally:
@@ -608,13 +623,18 @@ class Renderer:
         out: list[Path] = []
         try:
             subprocess.run([npx, "remotion", "bundle", "remotion/index.ts", f"--public-dir={public_dir}",
-                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True)
+                            f"--out-dir={bundle_dir}", "--log=error"], cwd=root, check=True, capture_output=True, text=True,
+                           timeout=1800)
             browser = _browser(self.cfg)
             for n, frame in enumerate(frames):
                 target = self.dir / f"still-{n:02d}.jpg"
                 cmd = [npx, "remotion", "still", str(bundle_dir), composition, str(target), f"--props={props_file}", f"--frame={frame}",
                        "--image-format=jpeg", "--jpeg-quality=70", "--log=error", *([f"--browser-executable={browser}"] if browser else [])]
-                if subprocess.run(cmd, cwd=root, capture_output=True, text=True).returncode == 0 and target.is_file():
+                try:
+                    done = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=300)
+                except subprocess.TimeoutExpired:
+                    continue                     # a preview frame: never worth a hung Chrome
+                if done.returncode == 0 and target.is_file():
                     out.append(target)
         finally:
             shutil.rmtree(bundle_dir, ignore_errors=True)
