@@ -392,6 +392,15 @@ queue:                             # cola nocturna (python main.py --all)
   #                                  en local. Compara una noche con y otra sin: python main.py --youtube-stats 1
   #                                  (bot y 429 por hora, % de peticiones fallidas)
 
+# Revisor automático, modo informe (no cambia nada): python -m pipeline.revisor <vídeo> [--telegram] [--modelo M]
+# Marca solo fallos objetivos (no tiene que ver con la frase, otra persona, dibujos/videojuego, marca de agua,
+# roto, repetido) con su prueba; escribe out/<vídeo>/revisor/ (informe.md y hojas con imagen y frase).
+# revisor:
+#   model: gpt-5-mini        # por defecto el del juez; mejor uno más fuerte que el juez para no repetir sus fallos
+#   usd_per_mtok: {input: 0.25, output: 2.0}
+#   max_usd: 1.0             # tope por vídeo
+#   shots_per_sheet: 8
+
 qa:
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar

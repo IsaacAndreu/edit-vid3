@@ -130,3 +130,10 @@ registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos
 |---|---|---|
 | Fallos poco claros | `python main.py --youtube-stats 1` añade «De dónde salen los fallos poco claros»: para other, sin-texto, 429, bot y proxy-túnel, qué petición falló, en qué vídeo, a qué horas y los textos más repetidos | `tests/test_error_causes.py` |
 | Filas «descartado» antiguas | ya no cuentan como peticiones ni errores del proxy | `tests/test_error_causes.py` |
+
+## Motor: revisor automático (20-11)
+
+| Qué | Estado | Test |
+|---|---|---|
+| Revisor, modo informe | hecho: `python -m pipeline.revisor <vídeo> [--telegram] [--modelo M] [--max-usd 1]`. Solo fallos objetivos: roto y repetido medidos (sin modelo); no tiene que ver, otra persona, dibujos/videojuego y marca de agua por un modelo de visión que ve dos fotogramas del momento exacto, la frase, su contexto y la foto del protagonista. Cada marca lleva su prueba y su seguridad. Escribe `out/<vídeo>/revisor/` (informe.md, revisor.json, hojas). No cambia nada | `tests/test_revisor.py` |
+| Revisor en la cola (cambia planos antes del render) | pendiente: primero ver en 2-3 vídeos si acierta |  — |
