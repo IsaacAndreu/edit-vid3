@@ -96,7 +96,7 @@ SPEED_KEYS = frozenset({
     "metadata_proxy_retries", "query_merge", "max_details_per_shot",
     "proxy_session_minutes", "proxy_session_rotations", "proxy_session_suffix", "info_expiry_margin_minutes",   # residential proxy sessions
     "player_client_residential", "max_fps", "proxy_usd_per_gb", "whole_max_minutes_residential", "whole_max_mb_residential", "prefetch_whole_residential",
-    "refused_hours_residential",
+    "refused_hours_residential", "cpu_threads",
     "timeout_retries_residential",
     "whole_min_rate_kb", "whole_deadline_seconds_per_mb", "fragment_retries", "byte_ranges",
     "pace_per_session", "session_min_interval", "session_concurrency", "proxy_connections_max",

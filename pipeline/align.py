@@ -261,6 +261,7 @@ def run(ctx: RunContext) -> None:
         compute_type=str(cfg.get("compute_type", "int8")),
         openai_api_key=ctx.env("OPENAI_API_KEY") if provider == "openai" else "",
         device=str(cfg.get("device", "auto")),      # auto: an NVIDIA card if it works, else the processor
+        threads=cfg.get("cpu_threads"),             # half the cores by default: it runs beside a render (fase 5.5)
     )
     if provider == "openai" and not cached:
         record_cost(

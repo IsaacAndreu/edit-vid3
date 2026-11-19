@@ -38,13 +38,22 @@ def decode_audio(audio_path: Path, rate: int = 16000):
     return np.frombuffer(done.stdout, np.int16).astype(np.float32) / 32768.0
 
 
-def _transcribe_local(audio_path: Path, model: str, language: str, compute_type: str, device: str = "cpu") -> dict[str, Any]:
-    from faster_whisper import WhisperModel
+def cpu_threads(wanted: Any = None) -> int:
+    """Whisper's threads: align.cpu_threads, else half the cores (at least 2) — with its own turn (fase 5.5) it runs
+    beside a render, and every core made both slower."""
 
     import os
 
-    # every core: faster-whisper uses 4 threads by default, half of an 8-core server
-    whisper = WhisperModel(model, device=device, compute_type=compute_type, cpu_threads=os.cpu_count() or 4)
+    if wanted:
+        return max(1, int(wanted))
+    return max(2, (os.cpu_count() or 4) // 2)
+
+
+def _transcribe_local(audio_path: Path, model: str, language: str, compute_type: str, device: str = "cpu",
+                      threads: int | None = None) -> dict[str, Any]:
+    from faster_whisper import WhisperModel
+
+    whisper = WhisperModel(model, device=device, compute_type=compute_type, cpu_threads=threads or cpu_threads())
     segments, info = whisper.transcribe(
         decode_audio(audio_path),
         language=language or None,
@@ -174,6 +183,7 @@ def transcribe(
     compute_type: str = "int8",
     openai_api_key: str = "",
     device: str = "auto",
+    threads: int | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Return (raw transcript, served_from_cache)."""
 
@@ -189,7 +199,7 @@ def transcribe(
     if provider == "local":
         raw = _transcribe_gpu(audio_path, model, language) if device in ("auto", "cuda") else None
         if raw is None:
-            raw = _transcribe_local(audio_path, model, language, compute_type)
+            raw = _transcribe_local(audio_path, model, language, compute_type, threads=cpu_threads(threads))
     elif provider == "openai":
         if not openai_api_key:
             raise RuntimeError("align.provider=openai necesita OPENAI_API_KEY en .env.")

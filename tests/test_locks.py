@@ -11,7 +11,7 @@ def test_turns_only_in_the_queue_and_one_at_a_time(tmp_path, monkeypatch):
     order = []
 
     def second():
-        with locks.turn(tmp_path, "align", "B", poll=0.05):
+        with locks.turn(tmp_path, "fallback", "B", poll=0.05):
             order.append("B")
 
     with locks.turn(tmp_path, "render", "A"):
@@ -68,3 +68,39 @@ def test_a_bigger_machine_gives_a_group_more_places(tmp_path, monkeypatch):
     for w in workers:
         w.join(3)
     assert most[0] == 2 and not list((tmp_path / "work").glob(".turno-*"))
+
+
+def test_align_has_a_turn_of_its_own(tmp_path, monkeypatch):
+    """5.5: Whisper no longer waits behind renders, and two alignments still wait for each other."""
+
+    monkeypatch.setenv(locks.ENV, "1")
+    with locks.turn(tmp_path, "render", "R"):
+        with locks.turn(tmp_path, "align", "A", poll=0.05):           # beside the render, at once
+            assert (tmp_path / "work" / ".turno-align").is_file()
+            order = []
+
+            def second():
+                with locks.turn(tmp_path, "align", "B", poll=0.05):
+                    order.append("B")
+
+            worker = threading.Thread(target=second)
+            worker.start()
+            time.sleep(0.2)
+            order.append("A")
+    worker.join(2)
+    assert order == ["A", "B"]
+
+
+def test_whisper_uses_half_the_cores_unless_told(monkeypatch):
+    from pipeline import whisper_local
+
+    monkeypatch.setattr("os.cpu_count", lambda: 8)
+    assert whisper_local.cpu_threads() == 4 and whisper_local.cpu_threads(6) == 6
+    monkeypatch.setattr("os.cpu_count", lambda: 2)
+    assert whisper_local.cpu_threads() == 2
+
+
+def test_whisper_threads_are_a_speed_knob():
+    from pipeline.runner import SPEED_KEYS
+
+    assert "cpu_threads" in SPEED_KEYS                                  # changing it never re-runs align
