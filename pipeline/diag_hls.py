@@ -2,7 +2,8 @@
 
     python -m pipeline.diag_hls [días]      (7 by default; no request to YouTube, only files on disk)
 
-1. For every `cache/videos/<id>/ytdlp-info.json` (the extraction the downloads use): does it carry m3u8 formats, and
+1. For every `cache/videos/<id>/ytdlp-info.json` (the extraction the downloads use): does it carry m3u8 formats, are
+   they marked «to be tested» (yt-dlp's `__needs_testing`, videos uploaded ≤ 2 days before extraction), and
    does yt-dlp's own format selection find an HLS stream for the requests the pipeline makes (analysis 360p, HD
    clip, clip with sound)? A video with m3u8 formats where the selection finds none is the bug to fix.
 2. For every «download (completo)» and «archivo» row of the last `días` in work/*/youtube_downloads.jsonl: the route
@@ -32,7 +33,10 @@ def _select(info: dict[str, Any], fmt: str) -> str | None:
     import yt_dlp
 
     try:
-        with yt_dlp.YoutubeDL({"format": fmt, "simulate": True, "quiet": True, "no_warnings": True}) as ydl:
+        # check_formats False: never test a format by downloading a piece of it (yt-dlp does it for the HLS formats of
+        # videos uploaded in the last 2 days, `__needs_testing`): this look stays offline
+        with yt_dlp.YoutubeDL({"format": fmt, "simulate": True, "quiet": True, "no_warnings": True,
+                               "check_formats": False}) as ydl:
             chosen = ydl.process_ie_result(dict(info), download=False)
     except Exception as error:
         return f"ERROR {str(error)[:80]}"
@@ -43,7 +47,7 @@ def _select(info: dict[str, Any], fmt: str) -> str | None:
 def extractions(root: Path, limit: int = 400) -> dict[str, Any]:
     paths = sorted((root / "cache" / "videos").glob("*/ytdlp-info.json"), key=lambda p: -p.stat().st_mtime)[:limit]
     out: dict[str, Any] = {"total": len(paths), "withHls": 0, "selectionFails": {k: 0 for k in REQUESTS},
-                           "examples": [], "clients": {}}
+                           "examples": [], "clients": {}, "untested": 0}
     for path in paths:
         try:
             info = json.loads(path.read_text("utf-8"))
@@ -55,6 +59,10 @@ def extractions(root: Path, limit: int = 400) -> dict[str, Any]:
         if not any(str(f.get("protocol") or "").startswith("m3u8") for f in formats):
             continue
         out["withHls"] += 1
+        if any(f.get("__needs_testing") for f in formats if str(f.get("protocol") or "").startswith("m3u8")):
+            # a video uploaded ≤ 2 days before its extraction: yt-dlp downloads a piece of each HLS format to test it
+            # before choosing, and drops the HLS ones whose test fails (→ the whole file is downloaded instead)
+            out["untested"] += 1
         for name, (fmt, audio) in REQUESTS.items():
             request = hls_format(cap_fps(cap_height(fmt, 720), 30), audio=audio)
             chosen = _select(info, request)
@@ -110,6 +118,8 @@ def markdown(ext: dict[str, Any], log: dict[str, Any], days: float) -> str:
              f"## Extracciones en caché (las {ext['total']} más recientes)", "",
              f"- Con formatos m3u8: {ext['withHls']} de {ext['total']}",
              "- Clientes: " + ", ".join(f"{k} {n}" for k, n in ext["clients"].items()),
+             f"- Con HLS «por probar» (vídeo subido ≤ 2 días antes de extraerlo; yt-dlp prueba cada formato HLS antes de "
+             f"usarlo y descarta los que fallan): {ext['untested']} de {ext['withHls']}",
              "- La selección de yt-dlp NO encuentra HLS aunque los hay: "
              + ", ".join(f"{k} {n}" for k, n in ext["selectionFails"].items()), ""]
     for e in ext["examples"]:

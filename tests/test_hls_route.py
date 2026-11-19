@@ -76,3 +76,40 @@ def test_the_offline_diagnosis_finds_hls_the_selection_misses(tmp_path):
     assert "Con formatos m3u8: 2 de 2" in text
     ext = diag_hls.extractions(tmp_path)
     assert ext["selectionFails"]["clip HD"] == 0          # what the pipeline asks finds the HLS streams
+
+
+def test_the_diagnosis_never_tests_formats_over_the_network(tmp_path, monkeypatch):
+    """yt-dlp tests the HLS formats of videos uploaded ≤ 2 days before extraction (`__needs_testing`) by downloading a
+    piece: on the server the diagnosis did that straight from its IP (403s). It must stay offline, and count them."""
+
+    import socket
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("the diagnosis touched the network")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    folder = tmp_path / "cache" / "videos" / VIDEO
+    folder.mkdir(parents=True)
+    fresh = {**_hls("95", 720), "__needs_testing": True}
+    (folder / "ytdlp-info.json").write_text(json.dumps({
+        "id": VIDEO, "title": "t", "extractor": "youtube", "extractor_key": "Youtube",
+        "webpage_url": f"https://www.youtube.com/watch?v={VIDEO}", "formats": [fresh, _https("136", 720)]}))
+    ext = diag_hls.extractions(tmp_path)
+    assert ext["untested"] == 1 and ext["selectionFails"]["clip HD"] == 0
+
+
+def test_the_format_test_can_be_switched_off(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    captured = {}
+
+    class Ydl:
+        def __init__(self, options):
+            captured.update(options)
+
+    monkeypatch.setattr("yt_dlp.YoutubeDL", Ydl)
+    on = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"cookies": "never"})
+    on._ydl({"simulate": True})
+    assert "check_formats" not in captured                       # default: as before
+    off = YouTubeSource(root=tmp_path, cache_dir=tmp_path, config={"cookies": "never", "hls_format_test": False})
+    off._ydl({"simulate": True})
+    assert captured["check_formats"] is False

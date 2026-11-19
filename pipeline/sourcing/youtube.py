@@ -830,6 +830,11 @@ class YouTubeSource:
         import yt_dlp
 
         options = {**self.base_options, **(extra or {})}
+        if not self.cfg.get("hls_format_test", True):
+            # yt-dlp marks the HLS formats of videos uploaded ≤ 2 days before the extraction «to be tested» and, before
+            # choosing a format, downloads a piece of each one; one whose test fails is dropped and the range falls to
+            # the whole-file download. Off by default until `python -m pipeline.diag_hls` shows how many it affects
+            options["check_formats"] = False
         if getattr(self._local, "via_metadata_proxy", False):
             options["proxy"] = self._proxy_for(self.metadata_proxy)   # no account through it, ever
             options.pop("cookiefile", None)
