@@ -60,5 +60,5 @@ else
   echo "Bot de Telegram sin activar: conecta Telegram (estudio → Ajustes) y luego: sudo systemctl enable --now edit-vid3-bot"
 fi
 sleep 2
-systemctl --no-pager status edit-vid3 | head -5
+systemctl --no-pager status edit-vid3 | head -5 || true      # head closes the pipe early: not a failure
 echo "Listo: mete guiones en materiales/<canal>/<vídeo>/ y se harán solos. Registro: journalctl -u edit-vid3 -f"
