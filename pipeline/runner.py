@@ -234,6 +234,7 @@ def run_stages(
     from . import budget
 
     spent_before = budget.video_spent(ctx.work_dir)      # budget.per_video_usd counts this attempt only
+    budget.ATTEMPT_START[str(ctx.work_dir)] = spent_before   # budget.guard: the same cap inside judge and fallback
     from . import feedback, sin_youtube
 
     offline = sin_youtube.active()                       # modo sin YouTube: YouTube's pause lasts (sin_youtube.py)

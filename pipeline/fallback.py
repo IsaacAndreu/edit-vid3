@@ -687,9 +687,14 @@ def run(ctx: RunContext) -> None:
             print(f"   {shot_id}: {item.method} ({item.source}){' — ' + item.credit if item.credit else ''}")
         return item, tried
 
+    from .budget import BudgetReached, VideoOverBudget, guard
+
     def safely(job: tuple[str, str]) -> tuple[FallbackItem | None, list[str]]:
         try:
+            guard(ctx)                     # the daily and per-video caps before each shot's paid calls (judge, images)
             return resolve(*job)
+        except (BudgetReached, VideoOverBudget):
+            raise                          # a cap is the run's problem, never one shot's: the stage stops here
         except Exception as error:         # one shot's trouble never stops the others
             return None, [f"error: {str(error)[:160]}"]
 

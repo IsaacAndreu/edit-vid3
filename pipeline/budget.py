@@ -19,6 +19,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 class BudgetReached(RuntimeError):
@@ -193,6 +194,18 @@ def check_video(root: Path, config: dict, work_dir: Path, folder: Path, started_
         raise VideoOverBudget(
             f"Este intento ya ha gastado {spent:.2f} $ (límite por vídeo {cap:.2f} $): se para y sale de la cola para "
             "que lo mires. Si está bien, súbelo en Ajustes → «Límite por vídeo» y pulsa «Volver a la cola».")
+
+
+ATTEMPT_START: dict[str, float] = {}      # work dir → what the video had spent when this attempt began (run_stages)
+
+
+def guard(ctx: Any) -> None:
+    """Inside the stages that spend by the call (judge, fallback): the daily cap of whoever owns the video and this
+    attempt's per-video cap, checked before each paid call — not only between stages, when a long stage could already
+    have gone far past them."""
+
+    check(ctx.root, ctx.config, ctx.slug)
+    check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, ATTEMPT_START.get(str(ctx.work_dir), 0.0))
 
 
 class ProxyBudgetReached(ApiSearchesShort):
