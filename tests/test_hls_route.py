@@ -120,3 +120,26 @@ def test_analysis_windows_are_not_cut_at_the_final_clips_quality():
 
     assert cut_codec("a360")[cut_codec("a360").index("-crf") + 1] == "26"
     assert cut_codec("hd")[cut_codec("hd").index("-crf") + 1] == "16"       # the clips in the video: as before
+
+
+def test_the_diagnosis_says_which_videos_found_no_fitting_hls(tmp_path):
+    """«Ningún formato HLS encaja» rows grouped by video, each checked against its extraction: are they the videos
+    whose HLS formats yt-dlp tests over the network before choosing?"""
+
+    import time
+
+    folder = tmp_path / "cache" / "videos" / VIDEO
+    folder.mkdir(parents=True)
+    (folder / "ytdlp-info.json").write_text(json.dumps({
+        "id": VIDEO, "title": "t", "extractor": "youtube", "extractor_key": "Youtube",
+        "webpage_url": f"https://www.youtube.com/watch?v={VIDEO}",
+        "formats": [{**_hls("230", 360), "acodec": "none", "__needs_testing": True}]}))
+    log = tmp_path / "work" / "v" / "youtube_downloads.jsonl"
+    log.parent.mkdir(parents=True)
+    row = {"ts": time.time(), "action": "download (completo)", "video": VIDEO,
+           "notHls": "ningún formato HLS encaja con «bv*[height<=360]»"}
+    log.write_text("\n".join(json.dumps(r) for r in (row, row, {**row, "video": "bbbbbbbbbbb"})) + "\n")
+    text = diag_hls.main(tmp_path, 7)
+    assert "3 filas de 2 vídeos distintos (sin su extracción en disco: 1)" in text
+    assert "Con HLS «por probar»: 1 vídeos, 2 filas" in text
+    assert "La selección sin red sí encuentra HLS en 1 de ellos" in text

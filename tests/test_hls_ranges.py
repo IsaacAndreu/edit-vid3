@@ -1,3 +1,4 @@
+import pytest
 """Ranges come over HLS (small segment requests, exact cut); the throttled HTTPS path is the fallback."""
 
 import json
@@ -66,7 +67,34 @@ def test_info_from_other_clients_is_extracted_again(tmp_path, monkeypatch):
 
 def test_hls_format_strings():
     assert hls_format("bv*[height<=1080]+ba/b[height<=1080]", audio=True).startswith("b[height<=1080][protocol^=m3u8][acodec!=none]")
-    assert hls_format("ba", audio_only=True) == "worst[protocol^=m3u8][acodec!=none]"
+    assert hls_format("ba", audio_only=True) == "worst[protocol^=m3u8][acodec!=none]/wa[protocol^=m3u8]"
+
+
+def _hls(fid, vcodec, acodec, height=None, fps=None, tbr=500):
+    return {"format_id": fid, "protocol": "m3u8_native", "ext": "mp4", "vcodec": vcodec, "acodec": acodec,
+            "height": height, "width": height and height * 16 // 9, "fps": fps, "tbr": tbr,
+            "url": f"https://manifest.googlevideo.com/{fid}/index.m3u8"}
+
+
+def test_split_hls_tracks_are_chosen_when_there_is_no_muxed_stream():
+    """November 2026: YouTube's HLS is video-only formats + audio-only 233/234; real yt-dlp selection."""
+
+    yt_dlp = pytest.importorskip("yt_dlp")
+    info = {"id": "vid00000000", "title": "t", "extractor": "youtube", "extractor_key": "Youtube",
+            "webpage_url": "https://www.youtube.com/watch?v=vid00000000",
+            "formats": [_hls("233", "none", "mp4a.40.5", tbr=48), _hls("234", "none", "mp4a.40.2", tbr=128),
+                        _hls("230", "avc1.4D401E", "none", 360, 30, 600), _hls("232", "avc1.4D401F", "none", 720, 30, 1500),
+                        _hls("311", "avc1.4D4020", "none", 720, 60, 2800)]}
+    request = hls_format("bv*[height<=720][fps<=30]+ba/b[height<=720]", audio=True)
+    with yt_dlp.YoutubeDL({"format": request, "simulate": True, "quiet": True, "check_formats": False}) as ydl:
+        chosen = ydl.process_ie_result(dict(info), download=False)
+    assert [f["format_id"] for f in chosen["requested_formats"]] == ["232", "234"]
+    with yt_dlp.YoutubeDL({"format": hls_format("ba", audio_only=True), "simulate": True, "quiet": True,
+                           "check_formats": False}) as ydl:
+        assert ydl.process_ie_result(dict(info), download=False)["format_id"] == "233"
+    muxed = dict(info, formats=info["formats"] + [_hls("94", "avc1.4d401e", "mp4a.40.2", 480, 30, 900)])
+    with yt_dlp.YoutubeDL({"format": request, "simulate": True, "quiet": True, "check_formats": False}) as ydl:
+        assert ydl.process_ie_result(muxed, download=False)["format_id"] == "94"       # one muxed stream still first
 
 
 class _FakeYdl:

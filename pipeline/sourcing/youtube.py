@@ -285,18 +285,26 @@ _POT_WARNED = False          # the PO Token provider missing with a residential 
 
 
 def hls_format(fmt: str, *, audio: bool = False, audio_only: bool = False) -> str:
-    """The same request limited to YouTube's HLS formats (muxed video+audio, served in small segments)."""
+    """The same request limited to YouTube's HLS formats (served in small segments).
+
+    With sound: a muxed HLS stream if there is one, else the HLS video track + the HLS audio track (233/234), fetched
+    separately and joined locally. Since November 2026 YouTube serves almost no muxed HLS (389 of 398 extractions on
+    the server had only the split ones), so without the second form every clip with sound went whole."""
 
     height = re.search(r"height<=(\d+)", fmt)
     limit = f"[height<={height.group(1)}]" if height else ""
     if audio_only:
-        return "worst[protocol^=m3u8][acodec!=none]"          # the sound only: the lightest muxed stream
+        # the sound only: the lightest muxed stream, else the lightest audio-only HLS track
+        return "worst[protocol^=m3u8][acodec!=none]/wa[protocol^=m3u8]"
     if audio:
         # 30 fps first, as cap_fps does for the video-only request: the 60 fps HLS stream is twice the bytes
         found = re.search(r"fps<=(\d+)", fmt)
         fps = f"[fps<={found.group(1)}]" if found else ""
         alts = [f"b{limit}{fps}[protocol^=m3u8][acodec!=none][vcodec^=avc1]", f"b{limit}{fps}[protocol^=m3u8][acodec!=none]",
-                f"b{limit}[protocol^=m3u8][acodec!=none][vcodec^=avc1]", f"b{limit}[protocol^=m3u8][acodec!=none]"]
+                f"b{limit}[protocol^=m3u8][acodec!=none][vcodec^=avc1]", f"b{limit}[protocol^=m3u8][acodec!=none]",
+                f"bv*{limit}{fps}[protocol^=m3u8][vcodec^=avc1]+ba[protocol^=m3u8]",
+                f"bv*{limit}{fps}[protocol^=m3u8]+ba[protocol^=m3u8]",
+                f"bv*{limit}[protocol^=m3u8]+ba[protocol^=m3u8]"]
         return "/".join(dict.fromkeys(alts))
     parts = [alt.split("+")[0] for alt in fmt.split("/") if alt.strip()]
     return "/".join(f"{alt}[protocol^=m3u8]" for alt in dict.fromkeys(parts))
@@ -2268,14 +2276,16 @@ class YouTubeSource:
         suffix = ".m4a" if audio_only else ".mp4"
         work = part_for(target_dir / f"hls_{prefix}_{start:.2f}_{end:.2f}")      # this process's own folder
 
-        def choose(path: Path) -> dict[str, Any]:
+        def choose(path: Path) -> list[dict[str, Any]]:
+            """The HLS pieces yt-dlp would take: one (muxed, or video/audio only) or two (video track + audio track)."""
+
             data = json.loads(path.read_text(encoding="utf-8"))
             with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
                 chosen = ydl.process_ie_result(dict(data), download=False)
-            piece = (chosen.get("requested_formats") or [chosen])[0]
-            if not str(piece.get("protocol") or "").startswith("m3u8"):
+            pieces = list(chosen.get("requested_formats") or [chosen])[:2]
+            if not pieces or not all(str(p.get("protocol") or "").startswith("m3u8") for p in pieces):
                 raise RuntimeError("yt-dlp download (HLS): Requested format is not available (no HLS stream)")
-            return piece
+            return pieces
 
         stale = object()                     # the session (exit IP) changed since the links were extracted
         workers = max(1, int(self.cfg.get("hls_segment_workers", 3)))
@@ -2284,11 +2294,14 @@ class YouTubeSource:
         def session_now() -> str | None:
             return self.sessions.session_id(self._session_key()) if self.residential else None
 
-        def fetch(piece: dict[str, Any], session_at: str | None) -> Any:
+        def fetch(pieces: list[dict[str, Any]], session_at: str | None) -> Any:
             if session_now() != session_at:
                 # a rotation (bot, 429, tunnel) moved this video to another IP: its URLs belong to the old one, and
                 # trying them from the new IP is a paid 403 for sure — extract again first (outside this request)
                 return stale
+            return [fetch_piece(piece) for piece in pieces]      # [(start of its first segment, local playlist)]
+
+        def fetch_piece(piece: dict[str, Any]) -> tuple[float, Path]:
             way = getattr(self._local, "way", 0) or 0
             headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
             proxies = self._requests_proxies(way)
@@ -2369,38 +2382,42 @@ class YouTubeSource:
             for path, (_, a, b) in zip(paths, wanted):
                 lines += [f"#EXTINF:{b - a:.3f},", path.name]
             lines.append("#EXT-X-ENDLIST")
-            local = work / "local.m3u8"
+            local = work / f"local_{tag}.m3u8"
             local.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            return paths, wanted[0][1], local
+            return wanted[0][1], local
 
-        def attempt(piece: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+        def attempt(pieces: list[dict[str, Any]]) -> tuple[Any, list[dict[str, Any]]]:
             for _ in range(3):
                 session_at = session_now()
-                got = self._call("download (HLS)", lambda: fetch(piece, session_at))
+                got = self._call("download (HLS)", lambda: fetch(pieces, session_at))
                 if got is not stale:
-                    return got, piece
-                piece = choose(self._fresh_full_info(video_id))     # the new session's own links
+                    return got, pieces
+                pieces = choose(self._fresh_full_info(video_id))     # the new session's own links
             raise RuntimeError("yt-dlp download (HLS): la sesión del proxy cambió de IP tres veces seguidas")
 
-        piece = choose(info_path)
+        pieces = choose(info_path)
         try:
             try:
-                (_, first_start, playlist), piece = attempt(piece)
+                inputs, pieces = attempt(pieces)
             except RuntimeError as error:
                 if not any(code in str(error) for code in ("HTTP Error 403", "HTTP Error 410", "HTTP Error 404")):
                     raise
                 self._full_info_path(video_id).unlink(missing_ok=True)      # stale links: fresh ones, once more
-                (_, first_start, playlist), piece = attempt(choose(self._fresh_full_info(video_id)))
+                inputs, pieces = attempt(choose(self._fresh_full_info(video_id)))
             target = target_dir / f"{prefix}_{start:.3f}_{end:.3f}{suffix}"
             part = part_for(target)                    # the final name only once it is complete and checked
-            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                       "-protocol_whitelist", "file,crypto,data", "-allowed_extensions", "ALL",
-                       "-ss", f"{max(0.0, start - first_start):.3f}", "-i", str(playlist), "-t", f"{end - start:.3f}"]
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+            for first_start, playlist in inputs:       # each track from its own first segment (their edges differ)
+                command += ["-protocol_whitelist", "file,crypto,data", "-allowed_extensions", "ALL",
+                            "-ss", f"{max(0.0, start - first_start):.3f}", "-i", str(playlist)]
+            command += ["-t", f"{end - start:.3f}"]
             if audio_only:
                 command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
             else:
-                command += ["-map", "0:v:0", *(["-map", "0:a:0?", "-c:a", "aac"] if audio else ["-an"]),
-                            *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
+                # split tracks: the video from the first input, the sound from the second
+                sound = (["-map", "1:a:0", "-c:a", "aac"] if len(inputs) > 1
+                         else ["-map", "0:a:0?", "-c:a", "aac"]) if audio else ["-an"]
+                command += ["-map", "0:v:0", *sound, *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
             try:
                 done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
             except subprocess.TimeoutExpired:
@@ -2411,7 +2428,8 @@ class YouTubeSource:
                 words = " ".join((done.stderr or "").split())[:200]
                 raise RuntimeError(f"yt-dlp download (HLS): el corte local falló: {words or f'ffmpeg código {done.returncode}'}")
             if not audio_only:
-                height = piece.get("height")
+                height = next((p.get("height") for p in pieces if p.get("vcodec") not in (None, "none")),
+                              pieces[0].get("height"))
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
             self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS")
             return target
