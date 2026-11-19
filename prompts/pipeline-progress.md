@@ -113,3 +113,13 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 
 **Cómo medirlo en el servidor**: `python main.py --tiempos 7` antes y después (columna «render» y «Shorts»), y en el
 registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos en Y s» ahora se solapan.
+
+## HLS con pistas separadas (19-11)
+
+| Qué | Estado | Test |
+|---|---|---|
+| Clips con sonido por HLS | hecho: YouTube ya casi no da HLS con audio dentro (389 de 398 extracciones del servidor solo tenían vídeo 230/232/… y audio 233/234 aparte), así que todo clip con sonido se bajaba entero. Ahora, si no hay HLS mezclado, se bajan los segmentos de la pista de vídeo y los de la de audio (los mismos segundos) y un ffmpeg local los junta, cada uno desde su propio primer segmento. Audio solo: `wa[protocol^=m3u8]` si no hay mezclado | `tests/test_hls_local.py`, `tests/test_hls_ranges.py` (selección real de yt-dlp) |
+| «Ningún formato HLS encaja» (594 en 360p, 255 en HD) | diagnóstico: `python -m pipeline.diag_hls 2` agrupa esas filas por vídeo y dice cuántos tienen HLS «por probar» (la prueba de formatos de yt-dlp) y si la selección sin red sí encuentra HLS | `tests/test_hls_route.py` |
+
+**Cómo medirlo**: `python -m pipeline.diag_hls 1` al día siguiente: «Vía de cada tramo» con más `hls-local` y menos
+`entero`; `python main.py --youtube-stats 1`: menos GB por descargas enteras.

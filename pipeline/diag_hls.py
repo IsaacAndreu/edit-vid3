@@ -78,7 +78,8 @@ def extractions(root: Path, limit: int = 400) -> dict[str, Any]:
 
 def rows(root: Path, days: float) -> dict[str, Any]:
     since = time.time() - days * 86400
-    out: dict[str, Any] = {"whole": 0, "routes": {}, "notHls": {}, "oldWhole": {"conHlsEnDisco": 0, "sinHls": 0, "sinInfo": 0}}
+    out: dict[str, Any] = {"whole": 0, "routes": {}, "notHls": {}, "oldWhole": {"conHlsEnDisco": 0, "sinHls": 0, "sinInfo": 0},
+                           "noFit": {}}
     for log in (root / "work").glob("*/youtube_downloads.jsonl") if (root / "work").is_dir() else []:
         try:
             if log.stat().st_mtime < since:
@@ -99,6 +100,8 @@ def rows(root: Path, days: float) -> dict[str, Any]:
             if row.get("notHls"):
                 reason = str(row["notHls"]).split(":")[0][:90]
                 out["notHls"][reason] = out["notHls"].get(reason, 0) + 1
+                if str(row["notHls"]).startswith("ningún formato HLS encaja") and row.get("video"):
+                    out["noFit"][str(row["video"])] = out["noFit"].get(str(row["video"]), 0) + 1
             if action == "download (completo)":
                 out["whole"] += 1
                 if not row.get("notHls"):
@@ -110,6 +113,35 @@ def rows(root: Path, days: float) -> dict[str, Any]:
                     except (OSError, ValueError):
                         key = "sinInfo"
                     out["oldWhole"][key] += 1
+    return out
+
+
+def no_fit(root: Path, videos: dict[str, int]) -> dict[str, Any]:
+    """The videos whose ranges said «ningún formato HLS encaja» on the server: how many, and what their extraction on
+    disk says. If they are the ones with HLS «por probar», the culprit is yt-dlp's test download of those formats
+    (`hls_format_test: false` skips it); if offline selection finds HLS for them, something else in the pipeline's
+    own selection differs."""
+
+    out: dict[str, Any] = {"videos": len(videos), "rows": sum(videos.values()), "untested": 0, "untestedRows": 0,
+                           "offlineFinds": 0, "noInfo": 0, "examples": []}
+    request = hls_format(cap_fps(cap_height(YouTubeSource.SECTION_FORMAT, 720), 30))
+    for video, count in sorted(videos.items(), key=lambda kv: -kv[1]):
+        try:
+            info = json.loads((root / "cache" / "videos" / video / "ytdlp-info.json").read_text("utf-8"))
+        except (OSError, ValueError):
+            out["noInfo"] += 1
+            continue
+        hls = [f for f in info.get("formats") or [] if str(f.get("protocol") or "").startswith("m3u8")]
+        untested = any(f.get("__needs_testing") for f in hls)
+        if untested:
+            out["untested"] += 1
+            out["untestedRows"] += count
+        chosen = _select(info, request) if hls else None
+        if chosen and not chosen.startswith("ERROR"):
+            out["offlineFinds"] += 1
+        if len(out["examples"]) < 6:
+            out["examples"].append(f"{video} ×{count}: {len(hls)} HLS, {'por probar' if untested else 'probados'}, "
+                                   f"selección sin red → {chosen}")
     return out
 
 
@@ -130,11 +162,21 @@ def markdown(ext: dict[str, Any], log: dict[str, Any], days: float) -> str:
               "- Por qué no fue HLS (filas nuevas): " + (", ".join(f"{k} {n}" for k, n in log["notHls"].items()) or "—"),
               "- Descargas enteras antiguas (sin motivo apuntado), según su extracción en disco: "
               + ", ".join(f"{k} {n}" for k, n in log["oldWhole"].items()), ""]
+    fit = log.get("noFitDetail")
+    if fit and fit["videos"]:
+        lines += ["## «Ningún formato HLS encaja»: qué vídeos", "",
+                  f"- {fit['rows']} filas de {fit['videos']} vídeos distintos (sin su extracción en disco: {fit['noInfo']})",
+                  f"- Con HLS «por probar»: {fit['untested']} vídeos, {fit['untestedRows']} filas → si son casi todas, "
+                  "la culpa es la prueba de formatos de yt-dlp: `hls_format_test: false` la quita",
+                  f"- La selección sin red sí encuentra HLS en {fit['offlineFinds']} de ellos"]
+        lines += [f"  - {e}" for e in fit["examples"]] + [""]
     return "\n".join(lines) + "\n"
 
 
 def main(root: Path, days: float = 7.0) -> str:
-    text = markdown(extractions(root), rows(root, days), days)
+    log = rows(root, days)
+    log["noFitDetail"] = no_fit(root, log["noFit"])
+    text = markdown(extractions(root), log, days)
     path = root / "out" / "_diag_hls.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
