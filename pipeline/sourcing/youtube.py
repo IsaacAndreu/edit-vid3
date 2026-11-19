@@ -2118,7 +2118,8 @@ class YouTubeSource:
         try:
             with self._ydl({"format": whole_format(fmt), "simulate": True, "quiet": True}) as ydl:
                 chosen = ydl.process_ie_result(dict(data), download=False)
-        except Exception:
+        except Exception as error:
+            print(f"   yt:{video_id}: no se pudo estimar el tamaño en HD ({type(error).__name__}: {str(error)[:100]})")
             return None                          # yt-dlp cannot tell: let the download find out, as before
         pieces = chosen.get("requested_formats") or [chosen]
         size = sum(float(f.get("filesize") or f.get("filesize_approx") or 0) for f in pieces)
@@ -2813,7 +2814,9 @@ class YouTubeSource:
             return self._fetch_whole(video_id, self.SECTION_FORMAT, "a360", info_path) is not None
         except SourceUnavailable:
             raise
-        except Exception:
+        except Exception as error:
+            print(f"   yt:{video_id}: el vídeo entero a 360p no se pudo bajar ({type(error).__name__}: "
+                  f"{str(error)[:100]}); van por tramos")
             return False
 
     # --- per shot ---------------------------------------------------------------------
