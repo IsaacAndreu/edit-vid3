@@ -89,7 +89,7 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 | Punto | Estado | Test |
 |---|---|---|
 | 3.1 doble codificación | en parte: las ventanas a360 ya no van a crf 16 (crf 26, ultrafast). **No hecho**: unir los segmentos HD sin recodificar y dejar el corte a `normalise_video` (cambia los píxeles de los clips finales: hay que medir SSIM con material real) | `tests/test_hls_route.py` |
-| 3.2 re-extracciones | pendiente: no borrar `info.json` cuando solo caducan las URLs | — |
+| 3.2 re-extracciones | hecho (parte segura): `info.json` ya no se borra cuando solo caducan los enlaces; se reescribe al volver a extraer (si la extracción falla, sigue ahí, y un vídeo rechazado una vez por «bot» no pasa a darse por perdido), y un plano que esperaba el turno de ese vídeo mientras otro lo re-extraía usa esos enlaces nuevos en vez de extraer otra vez. **No hecho**: bajar el HD de los finalistas mientras vive la sesión del análisis (cambia los bytes pedidos: iría apagado) | `tests/test_single_extraction.py` |
 | 3.3 rasgos por ventana en el análisis | pendiente (CPU; el análisis espera sobre todo a las descargas) | — |
 | 3.4 detalles y búsquedas en paralelo | descartado: no se puede garantizar el mismo número de peticiones (el bucle para al tener 3 vídeos válidos) | — |
 | 3.5 ingest `-ss` antes de `-i` | pendiente (los tramos HD ya empiezan casi en el segundo pedido: poco que ganar) | — |
@@ -123,3 +123,10 @@ registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos
 
 **Cómo medirlo**: `python -m pipeline.diag_hls 1` al día siguiente: «Vía de cada tramo» con más `hls-local` y menos
 `entero`; `python main.py --youtube-stats 1`: menos GB por descargas enteras.
+
+## Estadísticas de fallos (19-11)
+
+| Qué | Estado | Test |
+|---|---|---|
+| Fallos poco claros | `python main.py --youtube-stats 1` añade «De dónde salen los fallos poco claros»: para other, sin-texto, 429, bot y proxy-túnel, qué petición falló, en qué vídeo, a qué horas y los textos más repetidos | `tests/test_error_causes.py` |
+| Filas «descartado» antiguas | ya no cuentan como peticiones ni errores del proxy | `tests/test_error_causes.py` |

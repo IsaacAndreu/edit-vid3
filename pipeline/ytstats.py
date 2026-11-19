@@ -141,7 +141,7 @@ def proxy_summary(per_video: dict[str, list[dict[str, Any]]], finished: set[str]
     for slug, rows in per_video.items():
         for row in rows:
             name = str(row.get("proxy") or "")
-            if not name:
+            if not name or is_skip(row):            # a refused video's old row: nothing was asked
                 continue
             entry = by_proxy.setdefault(name, {"proxy": name, "requests": 0, "ok": 0, "errors": {}, "bytes": 0,
                                                "videos": set(), "finished": set(), "sessions": set(), "details": {}})
@@ -214,6 +214,54 @@ def by_destination(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     total = sum(table.values()) or 1
     return [{"where": where, "mb": round(amount / 1e6, 1), "share": round(100 * amount / total, 1)}
             for where, amount in sorted(table.items(), key=lambda kv: -kv[1])]
+
+
+BROKEN_DOWN = ("other", "sin-texto", "429", "bot", "proxy-túnel")
+
+
+def failure_breakdown(rows: list[dict[str, Any]], causes: tuple[str, ...] = BROKEN_DOWN) -> dict[str, dict[str, Any]]:
+    """For the causes that say little on their own: which request failed (action), the video at work, the UTC hours,
+    and the most frequent words of the error (ids and numbers folded, credentials already masked in the log)."""
+
+    import re
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row.get("ok") or is_skip(row):
+            continue
+        cause = cause_of(row)
+        if cause not in causes:
+            continue
+        entry = out.setdefault(cause, {"total": 0, "actions": {}, "videos": {}, "hours": {}, "texts": {}})
+        entry["total"] += 1
+        action = str(row.get("action") or "?")
+        action = "archivo" if action.startswith("archivo ") else action
+        entry["actions"][action] = entry["actions"].get(action, 0) + 1
+        if row.get("_slug"):
+            entry["videos"][row["_slug"]] = entry["videos"].get(row["_slug"], 0) + 1
+        hour = time.strftime("%Hh", time.gmtime(float(row.get("ts") or 0)))
+        entry["hours"][hour] = entry["hours"].get(hour, 0) + 1
+        words = re.sub(r"\b[A-Za-z0-9_-]{11}\b", "<id>", str(row.get("detail") or "(sin texto)"))
+        words = re.sub(r"\d+(\.\d+)?", "N", words)[:140]
+        entry["texts"][words] = entry["texts"].get(words, 0) + 1
+    return out
+
+
+def breakdown_lines(table: dict[str, dict[str, Any]]) -> list[str]:
+    def top(counts: dict[str, int], n: int) -> str:
+        return ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1])[:n])
+
+    out: list[str] = []
+    for cause in sorted(table, key=lambda c: -table[c]["total"]):
+        e = table[cause]
+        out += [f"### {cause} · {e['total']}", "",
+                f"- Petición: {top(e['actions'], 6)}",
+                f"- Vídeos: {top(e['videos'], 5) or '—'}",
+                f"- Horas (UTC): {top(e['hours'], 6)}",
+                "- Textos más frecuentes:"]
+        out += [f"  - {n}× {text}" for text, n in sorted(e["texts"].items(), key=lambda kv: -kv[1])[:5]]
+        out.append("")
+    return out
 
 
 def hourly(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -304,6 +352,9 @@ def report(root: Path, days: float = 7.0) -> Path:
             for e in hourly(tagged):
                 text.append(f"| {e['hour']} | {e['requests']} | {e['failed']} | {e['refused']} | {e['files_ok']}/{e['files']} | "
                             f"{e['mb']} | {', '.join(e['videos'])} |")
+    breakdown = failure_breakdown([{**row, "_slug": slug} for slug, rows in per_video.items() for row in rows])
+    if breakdown:
+        text += ["", "## De dónde salen los fallos poco claros", "", *breakdown_lines(breakdown)]
     ways = sorted({str(r["proxy"]) for r in everything if r.get("proxy")})
     if ways:                                       # several proxies: how each way out is doing
         text += ["", "## Por proxy", "", "| Proxy | Peticiones | Fallidas | Bot | Archivos | MB/s | s por archivo |",
