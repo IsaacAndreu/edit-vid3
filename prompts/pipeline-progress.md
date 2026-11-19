@@ -74,9 +74,13 @@ También entró aquí la fase 1.6 (esperas sin hueco cogido), porque tocaba el m
 | 1.6 esperas sin hueco cogido | hecho (bloque 3) | `tests/test_session_pace.py` |
 | 2.1 vídeo a medias «terminado» | hecho: el render trabaja sobre `.video-final.render.mp4` y renombra tras el postflight; marca `out/<slug>/.haciendo` desde el render hasta la última etapa; `is_done` la exige ausente (los vídeos antiguos sin marca siguen hechos) | `tests/test_done_only_when_finished.py` |
 | 2.2 cortacircuitos | hecho: en los dos modos de cola; bug = tipo + archivo:línea; `queue.breaker_same_stage` (3) fallos seguidos en una etapa; en paralelo «sin saldo / clave muerta» (salida 77) y «tope de gasto» (78) paran los arranques | `tests/test_cortacircuitos.py` |
-| 1.5, 1.7-1.10 | pendiente | — |
-| 2.3 perro guardián que mata | pendiente | — |
-| 2.4 estado tras cada resultado, `KillMode=mixed` | pendiente | — |
-| 2.5 preflight completo | pendiente | — |
-| 2.6 topes de gasto dentro de judge y fallback | pendiente | — |
+| 1.5 reintentos pasajeros en casa/directo | hecho: 2 reintentos con espera aleatoria (`transient_retries`), nunca ante bot/429; `_calm_down` conectado al primer 429; `rate_retries` (muerto) fuera | `tests/test_transient_retries.py` |
+| 1.7 except silenciosos | hecho: dejan una línea en el registro (youtube.py, análisis, citas); los subtítulos ya tenían caché negativa | — |
+| 1.8 imágenes y APIs | hecho: un ritmo por host (`HostPacers`; Wikimedia 1 s, el resto 0,25 s, en paralelo), sin cerrojo global; `download_file` y `fetch_image` reintentan; Serper reintenta; la API de YouTube reintenta y devuelve la cuota | `tests/test_images_and_api_retries.py` |
+| 1.9 yt-dlp con vuelta atrás | hecho: sonda tras cada versión nueva, vuelta a la anterior si la nueva falla y la vieja no, versión mala recordada (`out/_ytdlp.json`); `youtube_update_probe: false` la apaga | `tests/test_ytupdate.py` |
+| 1.10 ruta antigua | hecho: `fetch_media.py` retirado (nadie lo importaba); `third_party_media`, `candidate_analyzer` y `clients/youtube_client` marcados obsoletos | — |
+| 2.3 perro guardián | hecho: corta la etapa que pasa de `queue.stage_minutes` (360) + 20 min por minuto de vídeo, o el proceso que lleva `queue.silent_minutes` (180) sin escribir con una etapa en marcha; plazos en `render._run`, el bundle y el render de Remotion | `tests/test_guardian.py` |
+| 2.4 estado y reinicio | hecho: `out/_vigilar.json` tras cada vídeo; la cola en paralelo mira el código nuevo cada 2 min; al parar se cierran los procesos de vídeo; `install-service.sh` con `KillMode=mixed` y `TimeoutStopSec=120` (**hay que volver a ejecutarlo en el servidor**) | `tests/test_guardian.py` |
+| 2.5 preflight | hecho: `pipeline/preflight.py` (importación, config, herramientas, Remotion; avisos de perfiles rotos, voz, navegador, proxies) y comprobación por vídeo antes de la primera etapa de pago | `tests/test_preflight_checks.py` |
+| 2.6 topes de gasto | hecho: `budget.guard` antes de cada hoja del juez y cada plano del relleno, con el gasto de este intento. **Propuesta de valores** (no cambiados): `budget.daily_usd: 15`, `budget.proxy_gb_per_day: 25` (≈3 vídeos de metraje con los 8,6 GB por vídeo terminado de la semana), `per_video_usd` sigue en 1,5 | `tests/test_budget_guard.py` |
 | Fases 3, 4, 5 | pendiente | — |
