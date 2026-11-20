@@ -102,3 +102,32 @@ Darle la vuelta al flujo: **primero un índice, luego la búsqueda**.
 Una sola cifra, por vídeo: **planos marcados por el revisor por cada 100**, separando huecos tapados, repetidos
 (por parejas) y «no tiene que ver» en planos literales. `newgym3` hoy: 80 de 221. Pasar el revisor a tres vídeos
 ya hechos de canales distintos (uno de crimen, uno de GTA) antes de tocar nada, y a los mismos guiones después.
+
+## Anexo: dos vídeos de referencia que no son nuestros (20-11)
+
+Vistos por fotogramas cada 2-4 s y recuento de cortes, sin audio.
+
+**Canal de GTA en inglés (9 min 34 s, hecho a mano o con herramienta propia).** Un corte cada 3,5 s, como
+nosotros. La diferencia: casi todos los planos llevan una línea de texto diseñada con la palabra clave destacada
+y la fuente del dato («Rockstar:», «Per previews:», «IGN:»), así que la imagen de detrás solo acompaña y no
+tiene que encajar con la frase al milímetro. Gráficos propios que imitan la interfaz del juego (tarjetas, cajero,
+medidor de niveles, mapa con marcador, móvil), capítulos con título y barra de progreso, citas en tarjeta con foto
+y nombre en vez del vídeo de la persona hablando, y un solo mundo visual: todo metraje del juego, sin logos ajenos.
+
+**Vídeo de crimen en español hecho con una herramienta parecida a la nuestra (3 min).** Nunca enseña algo ajeno
+al caso: sale de unas diez fuentes, todas del caso, y se queda en cada una entre 4 y 12 s seguidos. Paga por ello
+con lo que nosotros evitamos: rótulos de cadena a la vista (Court TV, ABC, Inside Edition, AP, la marca de agua
+de un canal en todos los planos de la casa), bustos parlantes de 8-12 s bajo la narración, y los mismos planos de
+ambiente tres y cuatro veces. Tiene tarjetas de persona, sellos de fecha y texto a máquina muy parecidos a los
+nuestros, pocos (unos cinco en tres minutos).
+
+Qué sale de aquí:
+
+1. **Una línea de texto en pantalla por idea**, escrita por el planner, con palabra clave y fuente. Es lo que más
+   reduce el daño de un clip flojo y lo que hace el canal que mejor queda.
+2. **Pocas fuentes buenas por vídeo y más tiempo en cada una** refuerza «ideas en vez de trozos» y «material de
+   partida»: la otra herramienta no desvaría porque no busca frase a frase.
+3. **No copiar sus defectos**: mantener los filtros de busto parlante y de texto en pantalla, y recortar el
+   encuadre cuando el rótulo de la cadena solo ocupa la franja de abajo.
+4. **Citas en tarjeta** y **un juego de gráficos por canal** (para GTA: estrellas de búsqueda, móvil, mapa,
+   medidores), hecho una vez en Remotion.
