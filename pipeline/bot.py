@@ -32,7 +32,7 @@ from .context import RunContext
 STATE = "out/_bot.json"
 STAGES = {"factcheck": "Verificar datos", "align": "Alinear la voz", "planner": "Planificar planos",
           "sourcing": "Buscar material", "analysis": "Analizar clips", "judge": "Elegir clips", "ingest": "Descargar en HD",
-          "people": "Personas", "fallback": "Rellenar huecos", "coldopen": "Apertura", "timeline": "Montaje",
+          "people": "Personas", "fallback": "Rellenar huecos", "coldopen": "Apertura", "timeline": "Montaje", "revisor": "Revisión automática",
           "qa": "Revisión", "render": "Render", "shorts": "Shorts", "package": "Títulos"}
 ICONS = {"hecho": "✅", "haciendo": "▶️", "en cola": "⏳", "error": "❌", "incompleto": "📝"}
 COMMANDS = [("hoy", "Qué toca publicar hoy"), ("semana", "Calendario de los próximos 7 días"),
@@ -112,7 +112,7 @@ def status_text(root: Path) -> str:
     lines.append(state)
     for v in (groups.get("haciendo") or []):
         st = v.get("stage") or {}
-        lines.append(f"▶️ {v['slug']} · {st.get('number', '?')}/{st.get('of', 15)} {STAGES.get(st.get('stage'), st.get('stage', ''))}"
+        lines.append(f"▶️ {v['slug']} · {st.get('number', '?')}/{st.get('of', 16)} {STAGES.get(st.get('stage'), st.get('stage', ''))}"
                      f" · {_ago(st.get('started'))}" + (f" · {_money(v['costUsd'])}" if v.get("costUsd") else ""))
     if not groups.get("haciendo"):
         lines.append("Nada en marcha ahora.")
@@ -146,7 +146,7 @@ def videos_text(root: Path, limit: int = 12) -> str:
     if not videos:
         return "Aún no hay vídeos."
     return "\n".join(f"{ICONS.get(v['status'], '•')} {v['slug']} ({v['channel'] or '—'})"
-                     + (f" · {(v.get('stage') or {}).get('number', '?')}/15" if v["status"] == "haciendo" else "")
+                     + (f" · {(v.get('stage') or {}).get('number', '?')}/16" if v["status"] == "haciendo" else "")
                      + (f" · {_money(v['costUsd'])}" if v.get("costUsd") else "")
                      + (" · en YouTube" if v.get("published") else "") for v in videos)
 

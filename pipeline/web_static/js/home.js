@@ -155,8 +155,8 @@ function drawHome(force = false) {               // the channel buttons redraw f
   const makingRows = (v) => { const st = v.stage || {}; return `<td><span class="t-work">${esc(STAGES[st.stage] || st.stage || "")}</span> <span class="muted small">${st.number}/${st.of}</span></td>
     <td class="r"><span class="mini"><i style="--v:${Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))}%"></i></span></td><td class="r wide">${ago(st.started)}</td>`; };
   const uploadRows = (v) => `<td>${when(v)}</td><td class="r wide">${v.minutes || "—"} min</td><td class="r"><a class="btn sm" href="#/video/${encodeURIComponent(v.slug)}">Abrir</a></td>`;
-  const queueRows = (v) => `<td>${v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : v.stagesDone ? `${v.stagesDone}/15 pasos` : '<span class="muted">por empezar</span>'}</td>
-    <td class="r wide">${v.stagesDone ? `<span class="mini wait"><i style="--v:${Math.round(100 * v.stagesDone / 15)}%"></i></span>` : ""}</td>`;
+  const queueRows = (v) => `<td>${v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : v.stagesDone ? `${v.stagesDone}/16 pasos` : '<span class="muted">por empezar</span>'}</td>
+    <td class="r wide">${v.stagesDone ? `<span class="mini wait"><i style="--v:${Math.round(100 * v.stagesDone / 16)}%"></i></span>` : ""}</td>`;
   const doneRows = (v) => `<td>${v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"}</td><td class="r wide">${v.published && v.published.url ? `<a href="${esc(v.published.url)}" target="_blank" rel="noopener">ver ↗</a>` : ""}</td>`;
   const channelPick = channels.length > 6
     ? `<select class="w-auto" aria-label="Canal" onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
@@ -181,8 +181,8 @@ function drawHome(force = false) {               // the channel buttons redraw f
       ${list.slice(0, 6).map(card).join("") || '<p class="muted small m-0">Nada aquí.</p>'}${list.length > 6 ? `<a class="more" href="${more}">y ${list.length - 6} más</a>` : ""}</section>`;
   const board = `<div class="pboard">
       ${col("idea", "Ideas", "wait", ideas, icard, "#/tablero")}
-      ${col("voz", "Guion y voz", "accent", waiting, (v) => pcard(v, v.voice === "generando" ? "generando la voz" : v.status === "incompleto" ? "falta guion o voz" : "voz", v.stagesDone ? `${v.stagesDone}/15` : "", null, v.voice && v.voice.startsWith("error") ? "bad" : "warn"), "#/videos")}
-      ${col("cola", "En cola", "muted", queue, (v) => pcard(v, v.quotaWait ? "espera YouTube" : v.stagesDone ? `${v.stagesDone}/15` : "", v.retryAt ? "reintenta " + v.retryAt : v.stagesDone ? "" : "por empezar", v.stagesDone ? Math.round(100 * v.stagesDone / 15) : null), "#/videos")}
+      ${col("voz", "Guion y voz", "accent", waiting, (v) => pcard(v, v.voice === "generando" ? "generando la voz" : v.status === "incompleto" ? "falta guion o voz" : "voz", v.stagesDone ? `${v.stagesDone}/16` : "", null, v.voice && v.voice.startsWith("error") ? "bad" : "warn"), "#/videos")}
+      ${col("cola", "En cola", "muted", queue, (v) => pcard(v, v.quotaWait ? "espera YouTube" : v.stagesDone ? `${v.stagesDone}/16` : "", v.retryAt ? "reintenta " + v.retryAt : v.stagesDone ? "" : "por empezar", v.stagesDone ? Math.round(100 * v.stagesDone / 16) : null), "#/videos")}
       ${col("now", "Haciéndose", "work", making, (v) => { const st = v.stage || {}; return pcard(v, `${esc(STAGES[st.stage] || st.stage || "")} ${st.number}/${st.of}`, "hace " + ago(st.started), Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))); }, "#/videos")}
       ${col("subir", "Para subir", "ok", toUpload, (v) => { const d = (slot[v.slug] || {}).date, lateOne = d && d < today;
         return pcard(v, !d ? "sin día" : lateOne ? "tocaba " + DAY(d) : d === today ? "hoy " + esc(slot[v.slug].time || "") : DAY(d), `${steps(v)}/${UPLOAD_STEPS.length} pasos`, Math.round(100 * steps(v) / UPLOAD_STEPS.length), lateOne ? "bad" : d === today ? "warn" : ""); }, "#/subir")}
@@ -195,7 +195,7 @@ function drawHome(force = false) {               // the channel buttons redraw f
     : `${splitBlock("Haciéndose ahora", making, {cls: "now", id: "h-now"})}
        ${splitBlock("Para subir", toUpload, {hideShorts: "subir", more: '<a href="#/subir">Abrir «Para subir» →</a>', right: when})}
        ${splitBlock("En cola", queue, {hideShorts: "cola", more: !s.watching && !s.queueRunning ? '<button class="main" onclick="startQueue()">Hacer la cola ahora</button>' : "",
-         right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : `<span class="muted">${v.stagesDone ? v.stagesDone + "/15 pasos" : "por empezar"}</span>`})}
+         right: (v) => v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : `<span class="muted">${v.stagesDone ? v.stagesDone + "/16 pasos" : "por empezar"}</span>`})}
        ${splitBlock("Subidos a YouTube", uploaded, {collapsible: true, open: false, limit: 30, more: '<a href="#/videos">Ver la lista entera →</a>',
          right: (v) => v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"})}`;
   show(`
