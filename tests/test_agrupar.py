@@ -133,3 +133,42 @@ def test_a_stronger_model_only_for_literal_ideas(tmp_path, monkeypatch):
     ctx.config["judge"]["model_literal"] = None
     judge.call_judge(ctx, _idea_shot("literal"), sheet, "A")
     assert used[2] != used[0]
+
+
+def test_an_ideas_line_and_its_fact_go_on_screen(tmp_path):
+    """Bloque 2.1-2.2: the planner's line for an ambient idea over its first seconds, the key word marked; never over
+    another graphic; the idea's first fact as a label on its first shot."""
+
+    import json
+
+    from pipeline.context import RunContext
+    from pipeline.schemas import ShotsFile, TimelineGroup, TimelineShot
+    from pipeline.timeline import fact_kind, idea_lines, place_labels
+
+    assert [fact_kind(f) for f in ("Guarulhos", "Río 2016", "14.166", "19 años")] == ["place", "date", "score", "score"]
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    broll = {"visualIntent": "a view", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+    planned = []
+    for n in range(4):
+        idea = {"id": "i001", "kind": "ambiente", "screenLine": "*11* medallas olímpicas", "facts": ["Río 2016"]} if n < 2 \
+            else {"id": "i002", "kind": "literal", "screenLine": "la caída"}
+        planned.append({"id": f"s00{n + 1}", "type": "broll", "startWord": n, "endWord": n, "start": 3.0 * n,
+                        "end": 3.0 * n + 3, "text": f"frase {n}", "chapter": 0, "broll": broll, "idea": idea})
+    ctx.write_json("shots.json", {"slug": "v", "title": "t", "durationSeconds": 12, "chapters": [{"title": "c", "startWord": 0, "fromScript": False, "showTitle": False}],
+                                  "shots": planned})
+    media = {"src": "m.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: x"}
+    shots = [TimelineShot.model_validate({"id": f"s00{n + 1}", "type": "broll", "from": 90 * n, "durationInFrames": 90,
+                                          "text": "x", "media": media}) for n in range(4)]
+    lines = idea_lines(ctx, shots, [], 30)
+    assert [(g.from_, g.graphic["lines"]) for g in lines] == [(4, ["*11* medallas olímpicas"])]   # literal: not by default
+    ctx.config.setdefault("timeline", {})["idea_lines"] = "siempre"
+    assert len(idea_lines(ctx, shots, [], 30)) == 1                  # the literal one is too close (12 s apart at most)
+    busy = TimelineGroup.model_validate({"id": "g", "kind": "graphic", "from": 0, "durationInFrames": 60,
+                                         "graphic": {"type": "kinetic", "lines": ["x"]}})
+    ctx.config["timeline"]["idea_lines"] = "ambiente"
+    assert idea_lines(ctx, shots, [busy], 30) == []                   # never over another graphic
+    ctx.config["timeline"]["idea_lines"] = "no"
+    assert idea_lines(ctx, shots, [], 30) == []
+    labels = place_labels(ShotsFile.model_validate(json.loads((ctx.work_dir / "shots.json").read_text())), shots, [], 30, {})
+    assert [(l.kind, l.text) for l in labels] == [("date", "Río 2016")]

@@ -62,8 +62,10 @@ Además, para cada idea:
   habla, otro gimnasta, otro acusado), [] si nada.
 - "era": la época o el suceso concreto («Mundial de Amberes 2013», «infancia en Spring, Texas, años 2000»,
   «juicio de Miami 1979»), null si da igual. Sirve para no poner París 2024 cuando se habla de 2013.
-- "screenLine": UNA línea corta para escribir en pantalla (máx. 60 caracteres), con el dato o la palabra clave; si el
-  dato tiene fuente, la fuente delante («Rockstar: no habrá mapa en 2025»). null si no aporta.
+- "screenLine": UNA línea corta para escribir en pantalla (máx. 60 caracteres), con el dato o la palabra clave
+  entre asteriscos; si el dato tiene fuente, la fuente delante («Rockstar: *sin mapa* hasta 2026», «*11* medallas
+  olímpicas»). Es lo que el espectador lee mientras la voz lo dice: corta, sin repetir la frase entera. null si no
+  aporta.
 - "facts": lo que se puede rotular sobre la imagen: lugar, año, edad, nota, cifra (como lo dice el guion), [].
 - "summary": de qué va la idea en una frase.
 
