@@ -125,7 +125,7 @@ def test_borrowed_unreadable_and_final_video_frames(tmp_path):
     (work / "timeline.json").write_text(json.dumps(timeline))
     result = revisor.review(tmp_path, "v", ask_model=lambda entries: ([], 0.0))
     flagged = {r["id"]: r for r in result["flagged"]}
-    assert flagged["s005"]["problem"] == "repetido" and "tapado con el clip del plano s003" in flagged["s005"]["evidence"]
+    assert flagged["s005"]["problem"] == "hueco_tapado" and "tapado con el clip del plano s003" in flagged["s005"]["evidence"]
     assert "s006" not in flagged and result["unreadable"] == ["s006"]
 
     final = tmp_path / "out" / "v" / "video-final.mp4"                       # now the finished video exists
@@ -134,3 +134,25 @@ def test_borrowed_unreadable_and_final_video_frames(tmp_path):
                     "yuv420p", str(final)], check=True)
     result = revisor.review(tmp_path, "v", ask_model=lambda entries: ([], 0.0))
     assert result["unreadable"] == []                                        # read from the final video instead
+
+
+def test_the_borrowed_copy_is_blamed_not_the_judges_choice():
+    """newgym3: the wedding chosen by the judge for 9:57 and borrowed at 0:58. The early copy is the fault; a pair is
+    counted once, on its weaker side (borrowed < filler < protagonist < the judge)."""
+
+    items = [{"id": "s028", "at": 58, "method": "", "hashes": [7]},              # borrowed, first on screen
+             {"id": "s100", "at": 300, "method": "protagonist-filler", "hashes": [99], "candidateId": "yt:A",
+              "start": 10.0, "end": 12.0},
+             {"id": "s217", "at": 603, "method": "judge", "hashes": [7]},          # the original, later
+             {"id": "s220", "at": 610, "method": "judge", "hashes": [12345], "candidateId": "yt:A",
+              "start": 10.5, "end": 12.5}]
+    blamed = revisor.repeats(items, already={"s028"})
+    assert "s217" not in blamed and "s028" not in blamed                       # the copy is flagged elsewhere, once
+    assert list(blamed) == ["s100"] and "repite el plano s220" in blamed["s100"]   # the filler, not the judge
+
+
+def test_the_baseline_puts_every_video_in_one_table():
+    results = [{"slug": "newgym3", "shots": 200, "model": "m", "usd": 0.01, "unreadable": ["s9"],
+                "flagged": [{"problem": "hueco_tapado"}] * 20 + [{"problem": "repetido"}] * 10 + [{"problem": "roto"}]}]
+    text = revisor.baseline(results)
+    assert "| newgym3 | 200 | 16 | 20 | 10 | 0 | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text

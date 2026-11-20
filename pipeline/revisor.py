@@ -48,7 +48,12 @@ PROBLEMS = {
     "roto": "Roto, negro o muy mala calidad",
     "texto_marca_agua": "Texto encima o marca de agua",
     "repetido": "Repetido",
+    "hueco_tapado": "Hueco tapado con el clip de otro plano",
 }
+# who chose a shot, from least to most deliberate: in a repeated pair the reviewer blames the least deliberate one
+# (newgym3: the judge's right choices at 9:27-10:39 were blamed for the borrowed copies of the first minutes)
+AUTHORITY = {"": 0, "protagonist-filler": 1, "protagonist": 2, "event-footage": 2, "protagonist-photo": 2,
+             "library-photo": 2, "web-photo": 2, "editor": 9, "coldopen": 8}
 MODEL_PROBLEMS = ("no_tiene_que_ver", "persona_equivocada", "dibujo_animado", "texto_marca_agua", "roto")
 TILE = (384, 216)                     # each frame on the sheet; two per shot, side by side
 
@@ -69,6 +74,12 @@ for «la gente», a stadium for «la competición», a city for a place, archive
 - watermark: a large watermark, logo or foreign text overlay that covers the picture (small channel logos in a
   corner and the video's own subtitles at the bottom are OK).
 - broken: black, blank, frozen-looking, corrupted or unreadable frames.
+
+Ambient shots are OK. Many sentences have no image of their own: a decision, a feeling, school, family or money
+facts, an age, a height, a list of titles, a chapter title read aloud, the goodbye («suscríbete»). The edit then shows
+the person the video is about (from the VIDEO SUBJECT line), at work or in their usual setting: that is OK, never
+unrelated — unless the footage clearly contradicts the sentence (another event that the sentence places elsewhere,
+a wedding over a sentence about a competition).
 
 Be strict with yourself: when in doubt, answer ok. For every flagged shot write the evidence in ONE short sentence in
 Spanish with this shape: «la frase dice …; en la imagen sale …». confidence: 0.0-1.0, how sure you are that a viewer
@@ -161,16 +172,20 @@ def broken(images: list[np.ndarray]) -> str | None:
     return None
 
 
-def repeats(items: list[dict[str, Any]], max_hamming: int = 6) -> dict[str, str]:
-    """shot id → proof, for every shot that shows again what an earlier one showed: the same stretch of the same
-    source video, or nearly identical frames. Pieces of one shot (s012, s012-2) are one shot."""
+def repeats(items: list[dict[str, Any]], max_hamming: int = 6, already: set[str] | None = None) -> dict[str, str]:
+    """shot id → proof, one per repeated PAIR: the same stretch of the same source video, or nearly identical frames.
+    The shot blamed is the least deliberate of the two (AUTHORITY: a borrowed copy before the filler, the filler
+    before the judge's choice), the later one on a tie. Pieces of one shot (s012, s012-2) are one shot. A pair whose
+    weaker side is already flagged (`already`, the borrowed shots) adds nothing: the original is never blamed for it."""
 
+    already = set(already or ())
     out: dict[str, str] = {}
     seen: list[dict[str, Any]] = []
+    rank = lambda item: AUTHORITY.get(str(item.get("method") or ""), 3)       # noqa: E731
     for item in items:
         base = item["id"].split("-")[0]
         for earlier in seen:
-            if earlier["id"].split("-")[0] == base:
+            if earlier["id"].split("-")[0] == base or earlier["id"] in out:
                 continue
             same_source = (item.get("candidateId") and item.get("candidateId") == earlier.get("candidateId")
                            and None not in (item.get("start"), item.get("end"), earlier.get("start"), earlier.get("end"))
@@ -178,7 +193,9 @@ def repeats(items: list[dict[str, Any]], max_hamming: int = 6) -> dict[str, str]
             close = [bin(a ^ b).count("1") for a in item.get("hashes", []) for b in earlier.get("hashes", [])]
             if same_source or (close and min(close) <= max_hamming):
                 why = "el mismo tramo del mismo vídeo de origen" if same_source else "fotogramas casi idénticos"
-                out[item["id"]] = f"repite el plano {earlier['id']} (a los {_clock(earlier['at'])}): {why}"
+                blamed, kept = (earlier, item) if rank(earlier) < rank(item) else (item, earlier)
+                if blamed["id"] not in already:
+                    out[blamed["id"]] = f"repite el plano {kept['id']} (a los {_clock(kept['at'])}): {why}"
                 break
         seen.append(item)
     return out
@@ -306,13 +323,19 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
     print(f"{slug}: leyendo los fotogramas de {len(on_screen)} planos…", flush=True)
     with ThreadPoolExecutor(max_workers=4) as pool:
         grabbed = list(pool.map(lambda shot: frames_of(work, shot, fps, final), on_screen))
-    owner: dict[str, str] = {}                    # media file → the first shot that shows it
+    # media file → the shot that chose it (the one with a selection of its own, wherever it is in the video: in
+    # newgym3 the wedding chosen for 9:57 was the original, its copies at 0:58-1:48 the borrowed ones)
+    owner: dict[str, str] = {}
+    for shot in on_screen:
+        if listed[shot["id"]].get("method"):
+            owner.setdefault(str((shot.get("media") or {}).get("src") or ""), shot["id"])
+    for shot in on_screen:                         # a file only borrowed shots show: the first of them owns it
+        owner.setdefault(str((shot.get("media") or {}).get("src") or ""), shot["id"])
     items: list[dict[str, Any]] = []
     for shot, images in zip(on_screen, grabbed):
         base = shot["id"].split("-")[0]
         src = str((shot.get("media") or {}).get("src") or "")
-        borrowed = owner.get(src) if not listed[shot["id"]].get("method") else None
-        owner.setdefault(src, shot["id"])
+        borrowed = owner.get(src) if not listed[shot["id"]].get("method") and owner.get(src) != shot["id"] else None
         spec = plan.get(base)
         broll = spec.broll if spec is not None else None
         items.append({**listed[shot["id"]], "images": images, "hashes": [dhash(i) for i in images], "borrowed": borrowed,
@@ -324,13 +347,13 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
     for item in items:
         if item.get("borrowed"):
             # a shot with no clip of its own, covered in the edit with another shot's (timeline.fill_empty_shots)
-            flagged[item["id"]] = {"problem": "repetido", "confidence": 1.0, "by": "medida",
+            flagged[item["id"]] = {"problem": "hueco_tapado", "confidence": 1.0, "by": "medida",
                                    "evidence": f"hueco sin clip propio, tapado con el clip del plano {item['borrowed']}"}
             continue
         why = broken(item["images"]) if item["images"] else None
         if why:
             flagged[item["id"]] = {"problem": "roto", "evidence": why, "confidence": 1.0, "by": "medida"}
-    for shot_id, why in repeats(items).items():
+    for shot_id, why in repeats(items, already=set(flagged)).items():
         flagged.setdefault(shot_id, {"problem": "repetido", "evidence": why, "confidence": 1.0, "by": "medida"})
 
     per_sheet = max(1, int(cfg.get("shots_per_sheet", 8)))
@@ -456,15 +479,53 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--modelo", default=None)
     parser.add_argument("--max-usd", type=float, default=None)
     parser.add_argument("--telegram", action="store_true", help="manda el resumen y las hojas al Telegram del canal")
+    parser.add_argument("--base", action="store_true",
+                        help="junta el resumen de todos en out/_revisor_base.md (la línea base para comparar)")
     args = parser.parse_args(argv)
+    results = []
     for slug in args.videos:
         result = review(PROJECT_ROOT, slug, args.modelo, args.max_usd)
+        results.append(result)
         line = (f"{slug}: {len(result['flagged'])} de {result['shots']} planos marcados · {result['usd']:.3f} $ · "
                 f"out/{slug}/{OUT_DIR}/informe.md")
         print(line)
         if args.telegram:
             send_telegram(PROJECT_ROOT, slug, result)
+    if args.base:
+        target = PROJECT_ROOT / "out" / "_revisor_base.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(baseline(results), encoding="utf-8")
+        print(f"Línea base: {target.relative_to(PROJECT_ROOT)}")
     return 0
+
+
+BASE_COLUMNS = ("hueco_tapado", "repetido", "no_tiene_que_ver", "persona_equivocada", "dibujo_animado",
+                "texto_marca_agua", "roto")
+
+
+def baseline(results: list[dict[str, Any]]) -> str:
+    """One row per video: shots flagged per 100, and by reason (repeats counted as pairs: one per pair, on its
+    weaker side). The number to compare before and after each change to the engine."""
+
+    import time
+
+    head = ["Vídeo", "Planos", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
+            "Otra persona", "Dibujos", "Marca de agua", "Roto", "No revisados", "Modelo", "$"]
+    lines = [f"# Línea base del revisor · {time.strftime('%Y-%m-%d %H:%M')}", "",
+             "Marcados por cada 100 planos con imagen; cada pareja de repetidos cuenta una vez, en su lado más débil "
+             "(un préstamo antes que el relleno, el relleno antes que la elección del juez).", "",
+             "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for r in results:
+        counts = {k: 0 for k in BASE_COLUMNS}
+        for row in r["flagged"]:
+            counts[row["problem"]] = counts.get(row["problem"], 0) + 1
+        per100 = 100 * len(r["flagged"]) / max(1, r["shots"])
+        lines.append(f"| {r['slug']} | {r['shots']} | {per100:.0f} | "
+                     + " | ".join(str(counts[k]) for k in BASE_COLUMNS)
+                     + f" | {len(r.get('unreadable') or [])} | {r['model']} | {r['usd']:.3f} |")
+    lines += ["", "«No tiene que ver» todavía no separa planos literales de planos de ambiente: llegará con la etiqueta "
+              "de cada idea (planner.ideas).", ""]
+    return "\n".join(lines)
 
 
 def send_telegram(root: Path, slug: str, result: dict[str, Any], limit: int = 8) -> bool:

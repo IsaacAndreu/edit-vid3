@@ -146,3 +146,12 @@ registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos
 | Mismos segundos de una fuente en varios planos | hecho: `fallback.same_stretch` en todas las vías del relleno y otra vez al reservar (varios hilos elegían el mismo tramo a la vez): newgym3 tenía 58-60 s de un entrenamiento en siete planos | `tests/test_fallback_methods.py` |
 | Huecos tapados con clips de otra parte del vídeo | hecho: `fill_empty_shots` presta el clip más cercano dentro de `timeline.borrow_window_seconds` (40 s), no el más lejano; sin ninguno cerca, pizarra de palabras clave (newgym3: la boda en 0:58 con «seis títulos mundiales») | `tests/test_qash_style.py` |
 | Informe para una segunda opinión | `prompts/motor-informe-para-fable.md` | — |
+
+## Puntería · bloque 0: medir bien (plan `prompts/motor-punteria-prompt.md`, rama claude/quirky-johnson-6m1428)
+
+| Punto | Estado | Test |
+|---|---|---|
+| 0.1 a quién culpa en los repetidos | hecho: el dueño de un clip es el plano que lo eligió (aunque salga después); los planos tapados en el montaje son «hueco tapado» (motivo propio); cada pareja de repetidos cuenta una vez y se culpa al lado más débil (préstamo < relleno < protagonista < juez < a mano) | `tests/test_revisor.py` |
+| 0.2 «no tiene que ver» en planos de ambiente | hecho por instrucción al modelo: frase sin imagen posible + metraje de la persona del vídeo = válido, salvo que lo contradiga (la boda en una frase de competición). Con la etiqueta del bloque 1 se hará por plano | — (instrucción; se mide en la línea base) |
+| 0.3 línea base | hecho: `.venv/bin/python -m pipeline.revisor newgym3 tedbundy guiadelmapa elcrimendepazos --base --max-usd 0.3` → `out/_revisor_base.md` (marcados por 100, por motivo, repetidos por parejas, no revisados) | `tests/test_revisor.py` |
+| 0.4 el juez barato | herramienta lista: `.venv/bin/python -m pipeline.rejuzgar newgym3 gpt-5-mini s065,s074,s097,s127` → `out/newgym3/rejuzgar-gpt-5-mini.md`. Mirar si el modelo fuerte rechaza esas hojas (columna «Ahora» vacía) y su motivo. s074 vino del relleno: probablemente sin hoja del juez (lo dice el informe). **Lo lanza el usuario** | `tests/test_judge_sheets.py` |
