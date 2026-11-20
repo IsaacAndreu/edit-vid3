@@ -173,3 +173,15 @@ copiar el guion y la voz de newgym3 a una carpeta nueva (p. ej. `newgym3-ideas`)
 `.venv/bin/python -m pipeline.revisor newgym3 newgym3-ideas --base --max-usd 0.3`. Comparar «marcados por 100» y
 «huecos tapados». **No comprobado aquí**: la calidad real de las ideas que escribe el modelo (en las pruebas responde
 uno simulado).
+
+## Puntería · bloque 2: una salida digna cuando no hay vídeo (con `planner.ideas`)
+
+| Punto | Estado | Test |
+|---|---|---|
+| 2.1 línea de pantalla por idea | hecho: `timeline.idea_lines` (ambiente por defecto · siempre · no), palabra clave entre asteriscos (la resalta el componente kinetic), nunca sobre otro gráfico, una cada 12 s como mucho (`idea_line_gap_seconds`) | `tests/test_agrupar.py` |
+| 2.2 rótulo de dato | hecho: el primer dato de cada idea como rótulo abajo a la izquierda (año → fecha, cifra → nota, palabra → lugar); `timeline.idea_facts` | `tests/test_agrupar.py` |
+| 2.3 orden del relleno en ambiente | hecho: primero el clip del plano de al lado en la misma idea (sus segundos siguientes, tras un salto de 1,5 s: nunca un fragmento contiguo de más de 5 s), luego lo de siempre (otro clip del protagonista, el mismo suceso, fotos); sin segunda búsqueda en YouTube (nada que buscar). El clip prestado del montaje sigue siendo de la misma ventana de 40 s | `tests/test_fallback_methods.py`, e2e «ideas» |
+| 2.4 stock de concepto sin caras | hecho, apagado: `fallback.concept_stock`; el planner escribe la búsqueda (`concept`) solo en ideas de ambiente; siempre pasa por el juez | `tests/test_agrupar.py` |
+| 2.5 orden en una idea literal | hecho (bloque 1.5): nunca relleno del protagonista ni clip prestado; foto o pizarra | e2e «ideas» |
+| 2.6 citas en tarjeta | ya existía: el gráfico `cita` (graphics.py) cuando el guion reproduce lo que alguien dijo. `quotes.count` sigue en 2: subirlo son más búsquedas y extracciones en YouTube (por canal, midiendo) | — |
+| 2.7 el gancho solo con juez | hecho: en los primeros `judge.hook_seconds` de un vídeo con ideas, todo lo del relleno pasa por el juez (fotos incluidas), el stock sin juez no entra y el montaje no presta clips | e2e «ideas» |

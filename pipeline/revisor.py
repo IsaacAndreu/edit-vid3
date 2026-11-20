@@ -52,7 +52,7 @@ PROBLEMS = {
 }
 # who chose a shot, from least to most deliberate: in a repeated pair the reviewer blames the least deliberate one
 # (newgym3: the judge's right choices at 9:27-10:39 were blamed for the borrowed copies of the first minutes)
-AUTHORITY = {"": 0, "protagonist-filler": 1, "protagonist": 2, "event-footage": 2, "protagonist-photo": 2,
+AUTHORITY = {"": 0, "protagonist-filler": 1, "neighbour": 2, "protagonist": 2, "event-footage": 2, "protagonist-photo": 2,
              "library-photo": 2, "web-photo": 2, "editor": 9, "coldopen": 8}
 MODEL_PROBLEMS = ("no_tiene_que_ver", "persona_equivocada", "dibujo_animado", "texto_marca_agua", "roto")
 TILE = (384, 216)                     # each frame on the sheet; two per shot, side by side

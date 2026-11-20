@@ -40,6 +40,10 @@ planner:
   #                          cortes de una idea del mismo vídeo, los rótulos («SECRETO 4…», «suscríbete») como texto.
   #                          Por canal (canales/<canal>.yaml → planner: {ideas: true}); solo cambia los vídeos que se
   #                          planifiquen desde entonces. Se mide con: python -m pipeline.revisor <vídeo> --base
+  #                          Con ideas, timeline.idea_lines: ambiente (por defecto) | siempre | no → la línea de
+  #                          pantalla de cada idea; timeline.idea_facts (true) → sus datos como rótulo.
+  #                          fallback.concept_stock: true (apagado) → stock de concepto sin caras para ideas de
+  #                          ambiente, siempre pasado por el juez (una llamada más por plano así).
 
 pacing:                            # ritmo que respira (planner): planos más largos en lo emotivo, rápidos en la acción
   enabled: true                    # cambiarlo no rehace los vídeos ya planificados (python main.py --slug X --force planner)

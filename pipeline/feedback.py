@@ -38,7 +38,8 @@ NOT_BLOCKED = {"habia_mejor", "repetido"}       # the clip itself is fine elsewh
 WHOLE_SOURCE = {"dibujo_animado", "texto_marca_agua"}   # the whole source video is out
 WIDER = {"persona_equivocada": 4.0}           # another athlete is usually on screen for a while: block around it too
 METHODS = {"judge": "Juez (búsqueda del plano)", "score": "Puntuación directa", "editor": "Elegido a mano",
-           "next-option": "Siguiente opción", "protagonist": "Otro clip del protagonista",
+           "next-option": "Siguiente opción", "neighbour": "Sigue el clip del plano de al lado",
+           "protagonist": "Otro clip del protagonista",
            "protagonist-filler": "Relleno del protagonista", "protagonist-photo": "Foto del protagonista",
            "event-footage": "Clip del mismo evento",
            "web-photo": "Foto de la web", "library-photo": "Foto de la biblioteca", "pexels-video": "Vídeo de stock",

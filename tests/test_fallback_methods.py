@@ -54,3 +54,27 @@ def test_the_same_seconds_of_a_source_are_never_on_screen_twice():
     assert not same_stretch("yt:otro", 58.0, 60.0, used)              # another video
     assert not same_stretch("yt:uXjKbxrlQyM", None, None, used)       # a photo has no stretch
     assert same_stretch("yt:uXjKbxrlQyM", 56.0, None, used, needed=3.0)   # no end: as long as the shot needs
+
+
+def test_an_ambient_shot_runs_on_with_its_neighbours_clip_after_a_jump():
+    """Bloque 2.3: the shot next to it in the same idea took 40-43 s of a video: this one takes 44.5 s on (a 1.5 s
+    jump: never one excerpt over 5 s with it); a neighbour of another idea is not used."""
+
+    from types import SimpleNamespace
+
+    from pipeline.fallback import JUMP, neighbour_option
+    from pipeline.schemas import Candidate
+
+    def shot(sid, idea):
+        return SimpleNamespace(id=sid, idea=SimpleNamespace(id=idea, kind="ambiente"))
+
+    story = [shot("s001", "i001"), shot("s002", "i001"), shot("s003", "i002")]
+    used = [SimpleNamespace(shotId="s001", kind="video", candidateId="yt:A", start=40.0, end=43.0)]
+    board = {"sheets": ["sb.jpg"], "columns": 10, "rows": 1, "tileWidth": 160, "tileHeight": 90, "interval": 10.0, "frames": 10}
+    video = Candidate.model_validate({"id": "yt:A", "source": "youtube", "kind": "video", "url": "u", "title": "t",
+                                      "channel": "c", "license": "l", "credit": "Fuente: c", "attribution": "a", "query": "q",
+                                      "rankScore": 0.1, "durationSeconds": 100, "storyboard": board})
+    options, found = neighbour_option(story, story[1], used, 2.5, {"yt:A": video}.get)
+    assert [(o.candidateId, o.start, o.end) for o in options] == [("yt:A", 43.0 + JUMP, 43.0 + JUMP + 2.5)] and "yt:A" in found
+    assert neighbour_option(story, story[2], used, 2.5, {"yt:A": video}.get) == ([], {})       # another idea
+    assert neighbour_option(story, story[1], used, 2.5, {}.get) == ([], {})                     # unknown source

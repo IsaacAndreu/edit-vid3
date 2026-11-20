@@ -467,6 +467,15 @@ def lineups(ctx: RunContext, shots: list[TimelineShot], groups: list[TimelineGro
     return out
 
 
+def fact_kind(text: str) -> str:
+    """The label's look for a fact: with a year (2016, «Río 2016») → date; another figure (14.166, 19 años) → score;
+    words only (Guarulhos) → place."""
+
+    if re.search(r"\b(1[89]|20)\d\d\b", text):
+        return "date"
+    return "score" if re.search(r"\d", text) else "place"
+
+
 def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
                  cfg: dict[str, Any], names: dict[str, str] | None = None) -> list[TimelineLabel]:
     """Lower-left tags: the place/date of each story event on its first plain shot, and the names and
@@ -486,6 +495,14 @@ def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[
     for shot_id, name in (names or {}).items():       # a person shown full screen for the first time: their name
         if shot_id in by_id:
             wanted.append((by_id[shot_id].from_ - 1, "name", name))     # ahead of a place tag on the same shot
+    if cfg.get("idea_facts", True):                 # planner.ideas, bloque 2.2: what an idea names, labelled
+        seen_ideas: set[str] = set()
+        for shot in shots_file.shots:
+            idea = shot.idea
+            if idea is None or idea.id in seen_ideas or not idea.facts or shot.id not in by_id:
+                continue
+            seen_ideas.add(idea.id)
+            wanted.append((by_id[shot.id].from_ + 1, fact_kind(idea.facts[0]), idea.facts[0]))
     for event in shots_file.events:
         if event.tag:
             first = next((s for s in shots_file.shots if s.startWord >= event.startWord and s.id in by_id), None)
@@ -804,7 +821,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     window = float(ctx.section("timeline").get("borrow_window_seconds", BORROW_WINDOW))
     # planner.ideas: a chapter title or the goodbye read aloud (idea «rotulo») is shown as text, and a literal idea
     # without its own footage too: never another shot's clip
-    rotulos = rotulo_shots(ctx, ("rotulo", "literal"))
+    rotulos = rotulo_shots(ctx, ("rotulo", "literal"), hook_seconds=float(ctx.section("judge").get("hook_seconds", 30)))
     punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
@@ -820,6 +837,11 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     labels = [label for label in labels
               if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames
                          for g in [*added, *boards])]
+    lines = idea_lines(ctx, shots, [*groups, *added, *boards], fps)       # planner.ideas: one line of text per idea
+    if lines:
+        print(f"   Líneas de pantalla de las ideas: {len(lines)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»"
+                                                                       for g in lines[:8]))
+        boards += lines
     if added:
         print("   Gráficos: " + ", ".join(f"{g.graphic['type']} {g.from_ / fps:.0f}s" for g in added))
     if boards:
@@ -1070,13 +1092,62 @@ def footage(shot: TimelineShot) -> float:
 BORROW_WINDOW = 40.0          # s: a shot without footage only borrows a clip shown this close to it
 
 
-def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",)) -> set[str]:
+IDEA_LINE_SECONDS = 2.4
+IDEA_LINE_GAP = 12.0          # s between two lines of text: more read as a slideshow
+
+
+def idea_lines(ctx: RunContext, shots: list[TimelineShot], busy: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+    """planner.ideas, bloque 2.1: the line of text the planner wrote for an idea («*11* medallas olímpicas»,
+    «Rockstar: *sin mapa* hasta 2026») over its first seconds of footage, the key word marked. When
+    (`timeline.idea_lines`): «ambiente» (default) on ambient ideas and on ideas that name a fact, «siempre» on every
+    idea (GTA and explainer channels: the text carries the meaning, the footage goes with it), «no». Never over another
+    graphic, a chapter card or a title read aloud, at most one every IDEA_LINE_GAP seconds."""
+
+    when = str(ctx.section("timeline").get("idea_lines", "ambiente")).lower()
+    if when == "no":
+        return []
+    try:
+        planned = ShotsFile.model_validate(ctx.read_json("shots.json")).shots
+    except Exception:
+        return []
+    by_id = {s.id: s for s in shots}
+    spans = [(g.from_, g.from_ + g.durationInFrames) for g in busy]
+    spans += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"]
+    out: list[TimelineGroup] = []
+    seen: set[str] = set()
+    gap = float(ctx.section("timeline").get("idea_line_gap_seconds", IDEA_LINE_GAP)) * fps
+    for shot in planned:
+        idea = shot.idea
+        if idea is None or idea.id in seen:
+            continue
+        seen.add(idea.id)
+        if not idea.screenLine or idea.kind == "rotulo" or shot.id not in by_id:
+            continue
+        if when != "siempre" and not (idea.kind == "ambiente" or idea.facts):
+            continue
+        first = by_id[shot.id]
+        start = first.from_ + 4
+        members = [s for s in planned if s.idea is not None and s.idea.id == idea.id and s.id in by_id]
+        end_of_idea = max(by_id[s.id].from_ + by_id[s.id].durationInFrames for s in members)
+        length = min(round(IDEA_LINE_SECONDS * fps), end_of_idea - start)
+        if length < round(1.2 * fps) or any(a < start + length and start < b for a, b in spans):
+            continue
+        if out and start - out[-1].from_ < gap:
+            continue
+        out.append(TimelineGroup.model_validate({"id": f"idea-{idea.id}", "kind": "graphic", "from": start,
+                                                 "durationInFrames": length,
+                                                 "graphic": {"type": "kinetic", "lines": [idea.screenLine]}}))
+    return out
+
+
+def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",), hook_seconds: float = 0.0) -> set[str]:
     """The shots whose idea is of these kinds (planner.ideas): a title read aloud, a literal idea with nothing of its
-    own. They keep their text: no borrowed footage."""
+    own — and, with `hook_seconds`, any shot of an idea in the first seconds (bloque 2.7: nothing unjudged in the
+    hook). They keep their text: no borrowed footage."""
 
     try:
         return {s.id for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots
-                if s.idea is not None and s.idea.kind in kinds}
+                if s.idea is not None and (s.idea.kind in kinds or s.start < hook_seconds)}
     except Exception:
         return set()
 

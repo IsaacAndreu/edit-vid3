@@ -62,9 +62,14 @@ Además, para cada idea:
   habla, otro gimnasta, otro acusado), [] si nada.
 - "era": la época o el suceso concreto («Mundial de Amberes 2013», «infancia en Spring, Texas, años 2000»,
   «juicio de Miami 1979»), null si da igual. Sirve para no poner París 2024 cuando se habla de 2013.
-- "screenLine": UNA línea corta para escribir en pantalla (máx. 60 caracteres), con el dato o la palabra clave; si el
-  dato tiene fuente, la fuente delante («Rockstar: no habrá mapa en 2025»). null si no aporta.
+- "screenLine": UNA línea corta para escribir en pantalla (máx. 60 caracteres), con el dato o la palabra clave
+  entre asteriscos; si el dato tiene fuente, la fuente delante («Rockstar: *sin mapa* hasta 2026», «*11* medallas
+  olímpicas»). Es lo que el espectador lee mientras la voz lo dice: corta, sin repetir la frase entera. null si no
+  aporta.
 - "facts": lo que se puede rotular sobre la imagen: lugar, año, edad, nota, cifra (como lo dice el guion), [].
+- "concept": SOLO en ideas de ambiente con un detalle concreto sin imagen propia: una búsqueda corta EN INGLÉS de
+  stock SIN CARAS que lo sugiera con objetos, manos o lugares («hands cleaning with rubber gloves», «empty school
+  corridor», «pill bottle on a table»). Nunca personas reconocibles. null en las demás.
 - "summary": de qué va la idea en una frase.
 
 Devuelve SOLO JSON:
@@ -146,6 +151,8 @@ def assign(shots: list[dict[str, Any]], answer: dict[str, Any]) -> list[dict[str
                 "era": (str(idea.get("era")).strip()[:160] or None) if idea.get("era") else None,
                 "screenLine": (str(idea.get("screenLine")).strip()[:120] or None) if idea.get("screenLine") else None,
                 "facts": _clean(idea.get("facts"), 4, 40),
+                "concept": (str(idea.get("concept")).strip()[:120] or None)
+                if idea.get("concept") and str(idea.get("kind")) == "ambiente" else None,
             })
         else:
             ideas.append({"shots": kept, "kind": guess_kind(by_id[first])})
