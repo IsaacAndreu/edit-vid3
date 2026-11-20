@@ -2,6 +2,7 @@
 with data instead of by price alone:
 
     python -m pipeline.rejuzgar <vídeo> <modelo> [máx. hojas]      (40 by default)
+    python -m pipeline.rejuzgar <vídeo> <modelo> s065,s074,s097    (only those shots' sheets)
 
 It reads work/<vídeo>/judge/<plano>.jpg and the .json saved next to each one (what was asked and answered; sheets
 judged before 11-2026 have none and are skipped), asks `<modelo>` with the same instructions, and writes
@@ -28,7 +29,7 @@ def compare(old: dict[str, Any], new: dict[str, Any]) -> dict[str, bool]:
             "sameSet": set(a) == set(b)}
 
 
-def run(root: Path, slug: str, model: str, limit: int = 40) -> dict[str, Any]:
+def run(root: Path, slug: str, model: str, limit: int = 40, only: set[str] | None = None) -> dict[str, Any]:
     from . import judge
     from .schemas import ShotsFile
 
@@ -36,7 +37,11 @@ def run(root: Path, slug: str, model: str, limit: int = 40) -> dict[str, Any]:
     ctx.config.setdefault("judge", {})["_model_override"] = model
     shots = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots}
     rows = []
-    for context_path in sorted((ctx.work_dir / "judge").glob("*.json"))[:limit]:
+    paths = sorted((ctx.work_dir / "judge").glob("*.json"))
+    if only:                                  # a shot's sheets: <plano>.json, or <plano>-<n>.json for a second sheet
+        paths = [p for p in paths if p.stem.split("-")[0] in only]
+    asked = {p.stem.split("-")[0] for p in paths}
+    for context_path in paths[:limit]:
         try:
             saved = json.loads(context_path.read_text("utf-8"))
         except (OSError, ValueError):
@@ -52,7 +57,8 @@ def run(root: Path, slug: str, model: str, limit: int = 40) -> dict[str, Any]:
     spent = sum(float(e.get("usd") or 0) for e in ((ctx.read_json("costs.json").get("entries") or [])
                                                     if (ctx.work_dir / "costs.json").is_file() else [])
                 if e.get("operation") == model and e.get("stage") == judge.STAGE)
-    return {"slug": slug, "model": model, "rows": rows, "usd": round(spent, 3)}
+    missing = sorted(only - asked) if only else []
+    return {"slug": slug, "model": model, "rows": rows, "usd": round(spent, 3), "missing": missing}
 
 
 def markdown(data: dict[str, Any]) -> str:
@@ -66,17 +72,23 @@ def markdown(data: dict[str, Any]) -> str:
              f"- Los dos lo rechazan todo: {share('bothReject')}",
              f"- Solo el modelo de antes acepta algo: {share('onlyOldAccepts')}",
              f"- Solo {data['model']} acepta algo: {share('onlyNewAccepts')}", "",
-             "| Hoja | Antes | Ahora |", "|---|---|---|"]
+             "| Hoja | Antes | Ahora | Por qué, ahora |", "|---|---|---|---|"]
     for r in rows:
+        why = " ".join(str(r["new"].get("reason") or "").split())[:160].replace("|", "/")
         lines.append(f"| {r['sheet']} | {''.join(r['old'].get('ranking') or []) or '—'} | "
-                     f"{''.join(r['new'].get('ranking') or []) or '—'} |")
+                     f"{''.join(r['new'].get('ranking') or []) or '—'} | {why} |")
+    if data.get("missing"):
+        lines += ["", "Sin hoja del juez guardada (elegidos por el relleno o juzgados antes de 11-2026): "
+                  + ", ".join(data["missing"])]
     return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         raise SystemExit("Uso: python -m pipeline.rejuzgar <vídeo> <modelo> [máx. hojas]")
-    result = run(PROJECT_ROOT, sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 40)
+    third = sys.argv[3] if len(sys.argv) > 3 else "40"
+    only = {x.strip() for x in third.split(",") if x.strip()} if not third.isdigit() else None
+    result = run(PROJECT_ROOT, sys.argv[1], sys.argv[2], 40 if only else int(third), only)
     text = markdown(result)
     out = PROJECT_ROOT / "out" / sys.argv[1] / f"rejuzgar-{sys.argv[2]}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
