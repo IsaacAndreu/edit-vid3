@@ -801,12 +801,14 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     elif simulacion.active(ctx):                               # every shot simulated, the voice choosing what shows
         added += [TimelineGroup.model_validate(g) for g in simulacion.groups(ctx, shots, fps, [*groups, *added])]
     borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
-    punches = fill_empty_shots(shots, [*groups, *added], fps) if borrow else []
+    window = float(ctx.section("timeline").get("borrow_window_seconds", BORROW_WINDOW))
+    punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
-        fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False)
+        fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window)
     boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
     if borrow:   # a shot only partly under a graphic: footage for the rest of it, never the bare canvas
-        fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True)
+        fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True,
+                         window_seconds=window)
     if punches:
         print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
               + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»" for g in punches[:12]))
@@ -1061,11 +1063,19 @@ def footage(shot: TimelineShot) -> float:
     return shot.durationInFrames * float(shot.media.rate or 1.0) if shot.media else 0.0
 
 
+BORROW_WINDOW = 40.0          # s: a shot without footage only borrows a clip shown this close to it
+
+
 def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
-                     words: bool = True, partial: bool = False) -> list[TimelineGroup]:
-    """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the clip used
-    farthest away in time, pushed in so it does not look repeated, and at the start of each stretch the 1-3 key
-    words of what is said flash over it for ~2 s. Changes `shots` in place; returns the word overlays."""
+                     words: bool = True, partial: bool = False,
+                     window_seconds: float = BORROW_WINDOW) -> list[TimelineGroup]:
+    """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the NEAREST clip
+    within `window_seconds` (timeline.borrow_window_seconds, 40), the same passage of the story, pushed in, and at the
+    start of each stretch the 1-3 key words of what is said flash over it for ~2 s. Nothing that close: the shot
+    stays empty (the key-word board covers it). Changes `shots` in place; returns the word overlays.
+
+    It used to take the clip FARTHEST away, so it would not look repeated — newgym3 showed Simone Biles' wedding
+    (9:57) over «tiene seis títulos mundiales» at 0:58 and three more lines of the first two minutes."""
 
     donors = [s for s in shots if s.media is not None and s.media.kind == "video" and not s.coldOpen
               and (s.media.layout or "full") in ("full", "archive") and s.media.credit]
@@ -1103,11 +1113,13 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
             continue
         # only a donor with footage for the whole shot at ≥0.6× speed: a slower floor would play past the end of
         # its file and show more than 5 s of someone else's clip (avion9 s202: 5.27 s blocked the render)
+        reach = window_seconds * fps
         fitting = [d for d in donors if uses.get(d.id, 0) < max_uses
-                   and footage(d) >= MIN_RATE * shot.durationInFrames]
+                   and footage(d) >= MIN_RATE * shot.durationInFrames
+                   and abs(d.from_ - start) <= reach]
         if not fitting:
             continue
-        donor = max(fitting, key=lambda d: abs(d.from_ - start) - 600 * uses.get(d.id, 0))
+        donor = min(fitting, key=lambda d: (uses.get(d.id, 0), abs(d.from_ - start)))
         uses[donor.id] = uses.get(donor.id, 0) + 1
         rate = min(1.0, footage(donor) / shot.durationInFrames)
         shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
