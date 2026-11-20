@@ -84,3 +84,52 @@ def test_a_title_read_aloud_is_not_searched_nor_covered_with_footage():
     assert shots[0].media is None                                  # stays for the key-word board
     fill_empty_shots(shots, [], 30)
     assert shots[0].media is not None                              # without the idea: borrowed, as before
+
+
+def _idea_shot(kind, **idea):
+    from pipeline.schemas import Shot
+
+    return Shot.model_validate({"id": "s001", "type": "broll", "startWord": 0, "endWord": 1, "start": 0, "end": 2,
+                                "text": "las abejas", "chapter": 0,
+                                "broll": {"visualIntent": "a bee", "queries": ["a", "b", "c"], "queriesLocal": ["d"]},
+                                "idea": {"id": "i001", "kind": kind, **idea}})
+
+
+def test_the_judge_reads_the_label_who_must_and_must_not_be_seen_and_the_time():
+    from pipeline.judge import shot_brief
+
+    literal = shot_brief(_idea_shot("literal", mustShow=["Simone Biles"], mustNotShow=["Jordan Chiles"], era="Río 2016"))
+    assert "LITERAL" in literal and "Must be on screen: Simone Biles" in literal
+    assert "Must NOT be on screen (reject if clearly shown): Jordan Chiles" in literal and "Río 2016" in literal
+    assert "AMBIENT" in shot_brief(_idea_shot("ambiente"))
+
+
+def test_ideas_group_the_search_and_the_master_video():
+    from pipeline.judge import _event_key
+    from pipeline.sourcing.scenes import group_ideas
+
+    a, b = _idea_shot("literal"), _idea_shot("literal").model_copy(update={"id": "s002"})
+    c = _idea_shot("ambiente").model_copy(update={"id": "s003"})
+    c = c.model_copy(update={"idea": c.idea.model_copy(update={"id": "i002"})})
+    assert [[s.id for s in scene] for scene in group_ideas([a, b, c])] == [["s001", "s002"], ["s003"]]
+    assert _event_key(a) == _event_key(b) == "idea:i001" != _event_key(c)
+
+
+def test_a_stronger_model_only_for_literal_ideas(tmp_path, monkeypatch):
+    import numpy as np
+
+    from pipeline import judge
+    from pipeline.context import RunContext
+
+    (tmp_path / "config.yaml").write_text("judge: {model: barato, model_literal: fuerte}\n")
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    ctx = RunContext.create("v", root=tmp_path)
+    used = []
+    monkeypatch.setattr(judge, "cached_json", lambda path, produce: used.append(path) or {"ranking": ["A"], "reason": ""})
+    sheet = np.zeros((10, 10, 3), np.uint8)
+    judge.call_judge(ctx, _idea_shot("literal"), sheet, "A")
+    judge.call_judge(ctx, _idea_shot("ambiente"), sheet, "A")
+    assert used[0] != used[1]                                       # another model, another cache entry
+    ctx.config["judge"]["model_literal"] = None
+    judge.call_judge(ctx, _idea_shot("literal"), sheet, "A")
+    assert used[2] != used[0]

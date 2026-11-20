@@ -24,7 +24,7 @@ from ..schemas import Shot, ShotCandidates, ShotsFile
 from .common import SourceUnavailable, key
 from .archive import ArchiveSource, historical
 from .images import ImageSources
-from .scenes import (finalists, group_scenes, options_per_shot, rank_pool, scene_queries, scene_settings,
+from .scenes import (finalists, group_ideas, group_scenes, options_per_shot, rank_pool, scene_queries, scene_settings,
                      share_out)
 from .youtube import GAVE_UP, YouTubeSource
 
@@ -407,8 +407,9 @@ def run(ctx: RunContext) -> None:
                 pass
         return None
 
-    def process_scene(scene: list[Shot]) -> list[ShotCandidates]:
-        """One search for the whole scene (scenes.py); library and images stay per shot."""
+    def process_scene(scene: list[Shot], same_sources: bool = False) -> list[ShotCandidates]:
+        """One search for the whole scene (scenes.py); library and images stay per shot. `same_sources` (an idea):
+        every shot of it gets every finalist, so its cuts can come from one source."""
 
         api = youtube is not None and youtube.api is not None
         # without YouTube there is no API client either: a scene searched before, with or without it, is kept
@@ -443,7 +444,7 @@ def run(ctx: RunContext) -> None:
 
                 chosen = finalists(per_query, scores, accept, wanted, tries)
                 titles = {v: found[v].title for v in chosen}
-                shared = share_out(scene, chosen, titles, scores, options_per_shot(yt_cfg))
+                shared = share_out(scene, chosen, titles, scores, 0 if same_sources else options_per_shot(yt_cfg))
                 for shot in scene:
                     per_shot[shot.id] = [found[v].model_copy(update={"rankScore": score}) for v, score in shared[shot.id]]
             except SourceUnavailable as error:
@@ -539,8 +540,17 @@ def run(ctx: RunContext) -> None:
             precompute.submit(candidates)
         return widened
 
+    by_ideas = any(s.idea is not None for s in shots)
     with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 3))) as pool:
-        if youtube is not None and yt_cfg.get("scene_search", False):
+        if youtube is not None and by_ideas:
+            # planner.ideas: one search per idea, every shot of it with the same sources (bloque 1.2)
+            ideas = group_ideas([s for s in shots if not hypothetical(s)])
+            print(f"   Búsqueda por ideas: {len(shots)} planos en {len(ideas)} ideas")
+            check_api_searches(youtube, ideas, yt_cfg)
+            by_id = {r.shotId: r for done in pool.map(lambda idea: process_scene(idea, True), ideas) for r in done}
+            by_id.update({r.shotId: r for r in pool.map(process, [s for s in shots if hypothetical(s)])})
+            results = [by_id[s.id] for s in shots]
+        elif youtube is not None and yt_cfg.get("scene_search", False):
             scenes = group_scenes([s for s in shots if not hypothetical(s)], scene_settings(yt_cfg)[0])
             print(f"   Búsqueda por escenas: {len(shots)} planos en {len(scenes)} escenas")
             check_api_searches(youtube, scenes, yt_cfg)

@@ -249,6 +249,12 @@ def prefer_variety(usable: list[Option], selections: list[Selection], margin: fl
 
 
 def _event_key(shot: Any) -> str:
+    """What groups shots around one master video and lets a cut run on: the shot's idea (planner.ideas: its cuts come
+    from one source and one moment, bloque 1.3), else its story event."""
+
+    idea = getattr(shot, "idea", None)
+    if idea is not None:
+        return f"idea:{idea.id}"
     broll = getattr(shot, "broll", None)
     return " ".join(str(getattr(broll, "event", "") or "").casefold().split())
 
@@ -446,6 +452,19 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
         lines.append(f"EXACT MOMENT narrated: {broll.moment}. Accept only footage where THIS action can be seen; the "
                      "right person doing something else (another jump, a clean landing for a fall, a calm moment for "
                      "tears) does not fit this shot — reject it.")
+    idea = getattr(shot, "idea", None)
+    if idea is not None and idea.kind == "literal":
+        lines.append("LITERAL: what is narrated was filmed and THAT must be seen. Accept only footage of this very "
+                     "thing; the right person doing something else, or a similar scene from another time, is a reject.")
+    elif idea is not None and idea.kind == "ambiente":
+        lines.append("AMBIENT: this line has no image of its own. Footage of who or what it is about, in that period "
+                     "or event, is right; the exact scene is not required. Still reject other people and other eras.")
+    if idea is not None and idea.mustShow:
+        lines.append(f"Must be on screen: {', '.join(idea.mustShow)}")
+    if idea is not None and idea.mustNotShow:
+        lines.append(f"Must NOT be on screen (reject if clearly shown): {', '.join(idea.mustNotShow)}")
+    if idea is not None and idea.era:
+        lines.append(f"Time / event: {idea.era} — footage from another time or event does not fit")
     if broll.entities:
         lines.append(f"Named entities: {', '.join(broll.entities)}")
     if broll.mustContain:
@@ -480,6 +499,11 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         model = str(cfg["model_rest"])
     if hook and cfg.get("model_hook"):       # judge.model_hook: a stronger model for the first seconds only
         model = str(cfg["model_hook"])
+    idea = getattr(shot, "idea", None)
+    if not hook and idea is not None and idea.kind == "literal" and cfg.get("model_literal"):
+        # judge.model_literal (off): the stronger model where a wrong clip is a lie (newgym3: the cheap judge
+        # accepted gymnastics for «las abejas» and Simone for «Jordan Chiles»; gpt-5-mini rejected both)
+        model = str(cfg["model_literal"])
     model = str(cfg.get("_model_override") or model)      # pipeline/rejuzgar.py: the same sheets, another model
     if str(cfg.get("provider", "openai")) != "openai":
         raise ValueError("judge.provider: solo 'openai' está implementado (modelo con visión).")
@@ -533,7 +557,9 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
             }],
             text={"format": {"type": "json_schema", "name": "shot_verdict", "strict": True, "schema": VERDICT_SCHEMA}},
         )
-        prices = (cfg.get("usd_per_mtok_rest") if model != str(cfg.get("model", "gpt-5-mini")) else None) or cfg.get("usd_per_mtok", {})
+        prices = ((cfg.get("usd_per_mtok_literal") if cfg.get("model_literal") and model == str(cfg["model_literal"]) else None)
+                  or (cfg.get("usd_per_mtok_rest") if model != str(cfg.get("model", "gpt-5-mini")) else None)
+                  or cfg.get("usd_per_mtok", {}))
         usage = response.usage
         cached = int(getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", 0) or 0)
         fresh = usage.input_tokens - cached
