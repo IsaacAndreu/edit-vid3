@@ -37,3 +37,20 @@ def test_the_fallback_tries_the_judges_accepted_options_first():
     assert first < source.index("ranked(scores.options", first)    # before reordering anything by CLIP
     assert source.index("1b. Protagonist first") > source.index("ranked(scores.options", first)
     assert "judge_pexels" in source and "judge_filler" in source
+
+
+def test_the_same_seconds_of_a_source_are_never_on_screen_twice():
+    """newgym3: protagonist-filler put 58-60 s of one training video in seven shots (0:07, 0:09, 0:10, 0:14, 0:41,
+    6:53, 6:56) and «protagonist» one stretch three or four times in a row. Any overlap with what is on screen goes."""
+
+    from types import SimpleNamespace
+
+    from pipeline.fallback import same_stretch
+
+    used = [SimpleNamespace(candidateId="yt:uXjKbxrlQyM", start=58.0, end=60.0)]
+    assert same_stretch("yt:uXjKbxrlQyM", 58.4, 60.4, used)          # the newgym3 case
+    assert same_stretch("yt:uXjKbxrlQyM", 60.5, 62.5, used)          # touching it (within a second)
+    assert not same_stretch("yt:uXjKbxrlQyM", 64.0, 66.0, used)      # another moment of the same video: fine
+    assert not same_stretch("yt:otro", 58.0, 60.0, used)              # another video
+    assert not same_stretch("yt:uXjKbxrlQyM", None, None, used)       # a photo has no stretch
+    assert same_stretch("yt:uXjKbxrlQyM", 56.0, None, used, needed=3.0)   # no end: as long as the shot needs
