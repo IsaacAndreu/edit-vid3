@@ -155,3 +155,21 @@ registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos
 | 0.2 «no tiene que ver» en planos de ambiente | hecho por instrucción al modelo: frase sin imagen posible + metraje de la persona del vídeo = válido, salvo que lo contradiga (la boda en una frase de competición). Con la etiqueta del bloque 1 se hará por plano | — (instrucción; se mide en la línea base) |
 | 0.3 línea base | hecho: `.venv/bin/python -m pipeline.revisor newgym3 tedbundy guiadelmapa elcrimendepazos --base --max-usd 0.3` → `out/_revisor_base.md` (marcados por 100, por motivo, repetidos por parejas, no revisados) | `tests/test_revisor.py` |
 | 0.4 el juez barato | herramienta lista: `.venv/bin/python -m pipeline.rejuzgar newgym3 gpt-5-mini s065,s074,s097,s127` → `out/newgym3/rejuzgar-gpt-5-mini.md`. Mirar si el modelo fuerte rechaza esas hojas (columna «Ahora» vacía) y su motivo. s074 vino del relleno: probablemente sin hoja del juez (lo dice el informe). **Lo lanza el usuario** | `tests/test_judge_sheets.py` |
+
+## Puntería · bloque 1: planificar por ideas (`planner.ideas`, apagado)
+
+| Punto | Estado | Test |
+|---|---|---|
+| 1.1 ideas con etiqueta | hecho: `pipeline/agrupar.py`, una pasada más del modelo tras el planner; literal / ambiente / rótulo, quién debe y quién no puede salir, época, línea de pantalla, datos rotulables (`Shot.idea`). La respuesta se comprueba (planos seguidos, sin cruzar capítulos, ≤ 14 s) y lo que falte se etiqueta por reglas | `tests/test_agrupar.py` |
+| 1.2 una búsqueda por idea | hecho: la búsqueda por escenas usa las ideas como escenas y da a todos sus planos las mismas fuentes. **No hecho**: un solo análisis y una sola llamada al juez por idea (sigue siendo por plano: misma calidad, sin el ahorro de llamadas) | `tests/test_agrupar.py`, e2e «ideas» |
+| 1.3 cortes de una idea de la misma fuente | hecho en parte: el vídeo maestro y la continuación del juez se agrupan por idea. **Choque con el tope de 5 s**: dos cortes CONTIGUOS de un vídeo son, a efectos de Content ID, un solo fragmento; la continuación ya limita la tanda seguida a 5 s y lo mantengo. Pasados 5 s, el siguiente plano de la idea toma otro tramo aceptado del mismo maestro (no contiguo) u otra fuente. Pedir el tramo con margen: pendiente | e2e «ideas» |
+| 1.4 quién / época / línea / datos | hecho en el esquema y el prompt; el juez ya los lee (3.2); la línea de pantalla y los rótulos se usarán en el bloque 2 | `tests/test_agrupar.py` |
+| 1.5 los demás leen la etiqueta | hecho: un rótulo no se busca ni se tapa con un clip; una idea literal nunca recibe relleno del protagonista ni un clip prestado; el revisor pasa la etiqueta al modelo y la línea base separa «no tiene que ver» en literales | `tests/test_revisor.py`, e2e «ideas» |
+| 3.1 modelo fuerte en lo literal | hecho, apagado: `judge.model_literal` (+ `usd_per_mtok_literal`). Dato: `rejuzgar` con gpt-5-mini rechazó 3 de los 4 fallos sueltos de newgym3 que el barato aceptó | `tests/test_agrupar.py` |
+| 3.2 el juez recibe la etiqueta | hecho: literal / ambiente, quién debe y quién no puede salir, época | `tests/test_agrupar.py` |
+
+**Cómo probarlo**: en `canales/gimnasia.yaml` (o el perfil del canal) → `planner: {ideas: true}` y `judge: {model_literal: gpt-5-mini}`;
+copiar el guion y la voz de newgym3 a una carpeta nueva (p. ej. `newgym3-ideas`), dejar que la cola lo haga y pasar
+`.venv/bin/python -m pipeline.revisor newgym3 newgym3-ideas --base --max-usd 0.3`. Comparar «marcados por 100» y
+«huecos tapados». **No comprobado aquí**: la calidad real de las ideas que escribe el modelo (en las pruebas responde
+uno simulado).
