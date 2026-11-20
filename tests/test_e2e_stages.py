@@ -190,9 +190,11 @@ class Brain:
             self.calls[name] = self.calls.get(name, 0) + 1
 
     def chat(self, system: str, user: str) -> dict[str, Any]:
-        from pipeline import apertura, coldopen, factcheck, fallback, graphics, package, planner, publish, quotes, shorts, timeline
+        from pipeline import (agrupar, apertura, coldopen, factcheck, fallback, graphics, package, planner, publish, quotes,
+                              shorts, timeline)
 
         table = [
+            (agrupar.SYSTEM, self.ideas),
             (planner.OUTLINE_SYSTEM, self.outline), (planner.LABEL_SYSTEM, self.label),
             (planner.PACING_SYSTEM, lambda u: {"slow": [], "fast": [5]}), (planner.LOW_SYSTEM, lambda u: {"low": []}),
             (factcheck.EXTRACT_SYSTEM, self.claims), (factcheck.JUDGE_SYSTEM, self.verdicts),
@@ -236,6 +238,15 @@ class Brain:
                 item["rotulo"] = {"tipo": "nombre", "texto": PERSON}
             out.append(item)
         return {"shots": out}
+
+    def ideas(self, user: str) -> dict[str, Any]:
+        """planner.ideas: pairs of shots, the first idea literal, the last a title read aloud, the rest ambient."""
+
+        ids = re.findall(r"^(s\d{3,4}) \(", user.split("PLANOS:\n", 1)[1], re.M)
+        pairs = [ids[i:i + 2] for i in range(0, len(ids), 2)]
+        kinds = ["literal"] + ["ambiente"] * max(0, len(pairs) - 2) + (["rotulo"] if len(pairs) > 1 else [])
+        return {"ideas": [{"shots": pair, "kind": kind, "mustShow": [PERSON], "era": "Paris 2024",
+                           "screenLine": "Oro en París"} for pair, kind in zip(pairs, kinds)]}
 
     # factcheck
     def claims(self, user: str) -> dict[str, Any]:
@@ -970,6 +981,9 @@ SCENARIOS = [
     # nothing with the original sound: the cold open stage writes its empty file and leaves; no Shorts; the colour
     # grade on (it measures every clip: costly, so only in this short video)
     Scenario("minimo", moments=0, shorts="off", script=SHORT_SCRIPT, grade=True, extra={"quotes": {"count": 0}, "apertura": {"auto": False}}),
+    # planner.ideas: shots grouped into ideas (one search each, the same sources for all their shots), a literal idea
+    # never filled with another moment of the person, the last one a title read aloud: no footage searched for it
+    Scenario("ideas", judge="mixed", moments=0, shorts="off", script=SHORT_SCRIPT, extra={"planner": {"ideas": True}}),
 ]
 
 
@@ -1030,6 +1044,16 @@ def test_every_stage_runs_its_real_code(tmp_path: Path, monkeypatch: pytest.Monk
         from pipeline.context import find_video
 
         assert (find_video(tmp_path, f"{SLUG}-short1") / "config.yaml").is_file()     # a new video in the queue
+    if scenario.name == "ideas":
+        from pipeline.schemas import ShotsFile
+
+        planned = ShotsFile.model_validate(ctx.read_json("shots.json")).shots
+        kinds = {s.id: s.idea.kind for s in planned if s.idea is not None}
+        assert len(kinds) == len(planned) and "literal" in kinds.values() and "rotulo" in kinds.values()
+        rotulos = {sid for sid, kind in kinds.items() if kind == "rotulo"}
+        assert not rotulos & {p.stem for p in (ctx.work_dir / "candidates").glob("*.json")}   # never searched
+        literal = {sid for sid, kind in kinds.items() if kind == "literal"}
+        assert not any(i.shotId in literal and i.method == "protagonist-filler" for i in fallback.items)
     if scenario.name == "minimo":
         assert coldopen == ColdOpenFile(slug=SLUG)
         assert not (ctx.out_dir / "shorts").exists() or not list((ctx.out_dir / "shorts").glob("*.mp4"))

@@ -155,4 +155,7 @@ def test_the_baseline_puts_every_video_in_one_table():
     results = [{"slug": "newgym3", "shots": 200, "model": "m", "usd": 0.01, "unreadable": ["s9"],
                 "flagged": [{"problem": "hueco_tapado"}] * 20 + [{"problem": "repetido"}] * 10 + [{"problem": "roto"}]}]
     text = revisor.baseline(results)
-    assert "| newgym3 | 200 | 16 | 20 | 10 | 0 | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
+    assert "| newgym3 | 200 | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
+    labelled = [{"slug": "v", "shots": 100, "model": "m", "usd": 0.0, "flagged": [
+        {"problem": "no_tiene_que_ver", "kind": "literal"}, {"problem": "no_tiene_que_ver", "kind": "ambiente"}]}]
+    assert "| v | 100 | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea

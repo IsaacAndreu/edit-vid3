@@ -229,6 +229,10 @@ def brief(entries: list[dict[str, Any]], subject: str) -> str:
             lines.append(f"Around it: {e['around']}")
         if e.get("intent"):
             lines.append(f"Meant to show: {e['intent']}")
+        if e.get("kind") == "literal":
+            lines.append("LITERAL: this very thing must be seen")
+        elif e.get("kind") == "ambiente":
+            lines.append("AMBIENT: no image of its own; footage of who it is about is fine")
         if e.get("entities"):
             lines.append(f"Named: {', '.join(e['entities'])}")
     return "\n".join(lines)
@@ -339,6 +343,7 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
         spec = plan.get(base)
         broll = spec.broll if spec is not None else None
         items.append({**listed[shot["id"]], "images": images, "hashes": [dhash(i) for i in images], "borrowed": borrowed,
+                      "kind": spec.idea.kind if spec is not None and spec.idea is not None else None,
                       "intent": broll.visualIntent if broll else "", "entities": list(broll.entities) if broll else [],
                       "around": surrounding(list(plan.values()), base) if plan else ""})
 
@@ -387,7 +392,7 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
     for item in items:
         if item["id"] in flagged:
             rows.append({k: item.get(k) for k in ("id", "at", "text", "method", "source", "title", "url", "channel",
-                                                   "candidateId", "start", "end")} | flagged[item["id"]]
+                                                   "candidateId", "start", "end", "kind")} | flagged[item["id"]]
                         | {"label": (item.get("label") or {}).get("reason") if item.get("label") else None})
     result = {"slug": slug, "model": str(cfg.get("model") or ctx.section("judge").get("model", "gpt-5-mini")),
               "shots": len(items), "reviewedByModel": reviewed, "usd": round(spent, 4),
@@ -510,7 +515,7 @@ def baseline(results: list[dict[str, Any]]) -> str:
     import time
 
     head = ["Vídeo", "Planos", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
-            "Otra persona", "Dibujos", "Marca de agua", "Roto", "No revisados", "Modelo", "$"]
+            "…en literales", "Otra persona", "Dibujos", "Marca de agua", "Roto", "No revisados", "Modelo", "$"]
     lines = [f"# Línea base del revisor · {time.strftime('%Y-%m-%d %H:%M')}", "",
              "Marcados por cada 100 planos con imagen; cada pareja de repetidos cuenta una vez, en su lado más débil "
              "(un préstamo antes que el relleno, el relleno antes que la elección del juez).", "",
@@ -520,11 +525,15 @@ def baseline(results: list[dict[str, Any]]) -> str:
         for row in r["flagged"]:
             counts[row["problem"]] = counts.get(row["problem"], 0) + 1
         per100 = 100 * len(r["flagged"]) / max(1, r["shots"])
+        literal = sum(1 for row in r["flagged"] if row["problem"] == "no_tiene_que_ver" and row.get("kind") == "literal")
+        labelled = any(row.get("kind") for row in r["flagged"])
+        cells = [str(counts[k]) for k in BASE_COLUMNS]
+        cells.insert(3, str(literal) if labelled else "—")
         lines.append(f"| {r['slug']} | {r['shots']} | {per100:.0f} | "
-                     + " | ".join(str(counts[k]) for k in BASE_COLUMNS)
+                     + " | ".join(cells)
                      + f" | {len(r.get('unreadable') or [])} | {r['model']} | {r['usd']:.3f} |")
-    lines += ["", "«No tiene que ver» todavía no separa planos literales de planos de ambiente: llegará con la etiqueta "
-              "de cada idea (planner.ideas).", ""]
+    lines += ["", "«…en literales»: los «no tiene que ver» en ideas que tenían que verse tal cual (planner.ideas); «—» en "
+              "vídeos planificados sin ideas.", ""]
     return "\n".join(lines)
 
 

@@ -47,6 +47,20 @@ def group_scenes(shots: list[Shot], max_shots: int = 6) -> list[list[Shot]]:
     return scenes
 
 
+def group_ideas(shots: list[Shot]) -> list[list[Shot]]:
+    """planner.ideas: the consecutive shots of one idea are one scene (one search, the same sources for all of them).
+    Shots without an idea stay alone."""
+
+    scenes: list[list[Shot]] = []
+    for shot in shots:
+        idea = shot.idea.id if shot.idea is not None else None
+        if scenes and idea is not None and scenes[-1][-1].idea is not None and scenes[-1][-1].idea.id == idea:
+            scenes[-1].append(shot)
+        else:
+            scenes.append([shot])
+    return scenes
+
+
 def _novel(query: str, chosen: list[str], limit: float = 0.6) -> bool:
     words = tokens(query)
     if not words:

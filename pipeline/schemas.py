@@ -155,7 +155,24 @@ class OnScreenLabel(_Strict):
     text: str = Field(min_length=1, max_length=40)
 
 
+class ShotIdea(_Strict):
+    """The idea a shot belongs to (planner.ideas): consecutive shots that say the same thing, searched, judged and cut
+    together. `kind` says how exact the picture must be: literal (that very thing must be seen), ambiente (no image
+    of its own: footage of who or what it is about, of that time, is fine), rotulo (a chapter title or the goodbye
+    read aloud: nothing is searched)."""
+
+    id: str = Field(pattern=r"^i\d{3,4}$")
+    kind: Literal["literal", "ambiente", "rotulo"]
+    summary: str = Field(default="", max_length=240)
+    mustShow: list[str] = Field(default_factory=list, max_length=4)       # who must be on screen
+    mustNotShow: list[str] = Field(default_factory=list, max_length=4)    # who must not (the rival, another athlete)
+    era: str | None = Field(default=None, max_length=160)                  # the time or event: not Paris 2024 for 2013
+    screenLine: str | None = Field(default=None, max_length=120)           # one short line of text for the screen
+    facts: list[str] = Field(default_factory=list, max_length=4)          # what can be labelled: place, year, age, score
+
+
 class Shot(_Strict):
+    _late = frozenset({'idea'})
     id: str = Field(pattern=r"^s\d{3,4}$")
     type: ShotType
     startWord: int = Field(ge=0)
@@ -172,6 +189,7 @@ class Shot(_Strict):
     label: OnScreenLabel | None = None                      # lower-left tag (first mention of a person/score)
     pace: Literal["slow", "fast"] | None = None             # emotional (long shot, slow zoom) / action (quick cuts)
     mood: Literal["low"] | None = None                      # the story's lowest moments (pacing.low_moments): black and white
+    idea: ShotIdea | None = None                            # planner.ideas: the idea it belongs to (agrupar.py)
 
     @property
     def duration(self) -> float:
