@@ -131,3 +131,24 @@ Qué sale de aquí:
    encuadre cuando el rótulo de la cadena solo ocupa la franja de abajo.
 4. **Citas en tarjeta** y **un juego de gráficos por canal** (para GTA: estrellas de búsqueda, móvil, mapa,
    medidores), hecho una vez en Remotion.
+
+**Canal de gimnasia en inglés, vídeo sobre Rebeca Andrade (12 min 13 s).** 233 cortes, uno cada 3,1 s: otra vez
+el mismo ritmo que nosotros, y la misma plantilla de tarjeta sobre cuadrícula. Lo que hace distinto:
+
+- **Cuando no hay vídeo del momento, pone una foto en tarjeta**, no un clip de otra cosa. Alrededor de un tercio de
+  los planos son fotos (familia, infancia, podios, premios). Nosotros dejamos la foto casi al final del relleno
+  y antes prestamos clips.
+- **Lo que se nombra, se ve y se rotula**: «Guarulhos» sobre una vista aérea de la ciudad, «in 2015», «19 year
+  old», «14.166 for Andrade», el nombre de cada persona nueva sobre su imagen. Un rótulo corto cada 20-30 s.
+- **Para detalles biográficos sin imagen usa stock de concepto sin caras**: unas manos con guantes limpiando, una
+  mano sobre una alfombra, una silueta a contraluz, unas manos tecleando. Planos de 2-3 s. Nosotros tenemos
+  `fallback.pexels_for_person: false`, que lo prohíbe del todo en vídeos de persona.
+- **Una entrevista de la propia protagonista vuelve varias veces** (0:00, 4:06, 4:24) y abre el vídeo; también hay
+  entrevistas de Simone Biles hablando de ella. Sin audio no sé si suenan con su voz; por cómo abre, es probable.
+- **Otra persona en pantalla solo cuando la frase va de ella** (Biles, compañeras, un regatista con su nombre).
+- Repite algo (la rueda de prensa, el podio, la entrevista), pero como hilo, no como relleno. Se le cuelan logos
+  de cadena (CGTN, Eurosport, Access Hollywood) igual que a todos.
+
+Qué añade a la lista: **foto antes que clip prestado** en las ideas de ambiente; **stock de concepto sin caras,
+pasado por el juez**, permitido en vídeos de persona para ideas abstractas; y **rótulo de dato cada vez que el
+guion nombra un lugar, un año, una edad o una nota**.
