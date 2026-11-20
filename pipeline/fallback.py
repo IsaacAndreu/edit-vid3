@@ -381,6 +381,20 @@ def run(ctx: RunContext) -> None:
     strikes: dict[str, int] = {}
     max_strikes = int(cfg.get("source_strikes", 2))
 
+    candidate_index: dict[str, Candidate] = {}
+
+    def known_candidate(candidate_id: str) -> Candidate | None:
+        """A candidate of any shot of this video (work/<slug>/candidates/), read once."""
+
+        if not candidate_index:
+            for path in sorted((ctx.work_dir / "candidates").glob("*.json")):
+                try:
+                    for c in ShotCandidates.model_validate_json(path.read_text("utf-8")).candidates:
+                        candidate_index.setdefault(c.id, c)
+                except (OSError, ValueError):
+                    continue
+        return candidate_index.get(candidate_id)
+
     def resolve(shot_id: str, reason: str) -> tuple[FallbackItem | None, list[str]]:
         nonlocal clip
         shot = shots[shot_id]
@@ -391,12 +405,16 @@ def run(ctx: RunContext) -> None:
             digest = key(digest, sin_youtube.NOTE)
         item: FallbackItem | None = None
         tried: list[str] = []
+        kind = shot.idea.kind if shot.idea is not None else None      # planner.ideas: literal / ambiente
+        # bloque 2.7: in the first seconds of a video planned by ideas nothing goes on screen unseen by the judge
+        in_hook = kind is not None and shot.start < float(judge_cfg.get("hook_seconds", 30))
 
         def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str,
                                 vet: bool = True, judged: bool | None = None) -> FallbackItem | None:
             """Nobody has looked at these yet: the vision judge vets them (unless `vet` is off), then the first
             that downloads (and passes the identity check) wins."""
 
+            vet = vet or in_hook
             # whatever pool they come from: never a blocked source, never a source already on screen too often
             per_source = source_cap(judge_cfg, len(story.shots) * 2 // 3)   # about the footage shots
             blocklist = ctx.section("content").get("title_blocklist")
@@ -518,6 +536,13 @@ def run(ctx: RunContext) -> None:
             ][:limit]
             item = vet_and_materialise(options, candidates, "next-option")
 
+        # 1a'. An ambient idea (planner.ideas, bloque 2.3): the clip of the shot next to it in the same idea runs on
+        # (its following seconds, after a short jump so the two never make one excerpt over 5 s) — the same moment,
+        # chosen by the judge for this very idea — before any other source.
+        if item is None and kind == "ambiente":
+            options, neighbour_candidates = neighbour_option(story.shots, shot, used, needed, known_candidate)
+            item = vet_and_materialise(options, neighbour_candidates, "neighbour", vet=False, judged=True)
+
         # 1b. Protagonist first: any other fragment of the protagonist found for the whole video,
         # preferring the shot's own event, before any stock footage.
         who = person_for(story, shot)
@@ -545,6 +570,8 @@ def run(ctx: RunContext) -> None:
         # athlete, a re-edit…), scored like the first ones and vetted by the judge — real footage before photos/stock.
         if item is None and shot.broll and cfg.get("research", True) and offline:
             tried.append(f"segunda búsqueda: {sin_youtube.NOTE}")      # its queries are YouTube's: not even the LLM
+        elif item is None and shot.broll and cfg.get("research", True) and kind == "ambiente":
+            tried.append("segunda búsqueda: idea de ambiente, sin imagen propia que buscar")   # bloque 2.3
         elif item is None and shot.broll and cfg.get("research", True):
             options, research_candidates = research(shot, reason, tried)
             options = [o for o in options if not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
@@ -574,6 +601,7 @@ def run(ctx: RunContext) -> None:
         # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
         # them is left at all: anonymous stock is exactly what that format avoids.
         if (item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False)
+                and not (in_hook and not cfg.get("judge_pexels", False))       # unjudged stock: never in the hook
                 and (not real_people or cfg.get("pexels_for_person", True))):
             with models_lock:
                 if clip is None:
@@ -866,6 +894,40 @@ def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4,
             candidates[c.id] = c
             options.setdefault((option.candidateId, option.start), option)
     return sorted(options.values(), key=lambda o: -o.total), candidates
+
+
+JUMP = 1.5                   # s skipped between a shot's clip and the next one taken from the same source and moment
+
+
+def neighbour_option(story_shots: list[Shot], shot: Shot, used: list[Any], needed: float,
+                     lookup: Any) -> tuple[list[Option], dict[str, Candidate]]:
+    """The seconds right after (or before) the video clip of the shot next to this one in its idea (planner.ideas):
+    the same source and moment, after a JUMP so the two cuts are never one excerpt over the 5 s cap. `lookup(id)`
+    gives a candidate of this video."""
+
+    if shot.idea is None:
+        return [], {}
+    members = [s.id for s in story_shots if s.idea is not None and s.idea.id == shot.idea.id]
+    if shot.id not in members:
+        return [], {}
+    at = members.index(shot.id)
+    sides = ([(members[at - 1], True)] if at > 0 else []) + ([(members[at + 1], False)] if at + 1 < len(members) else [])
+    for other, after in sides:
+        chosen = next((u for u in reversed(used) if u.shotId == other and u.kind == "video" and u.start is not None), None)
+        if chosen is None:
+            continue
+        candidate = lookup(chosen.candidateId)
+        if candidate is None or candidate.kind != "video":
+            continue
+        start = ((chosen.end if chosen.end is not None else chosen.start + needed) + JUMP) if after \
+            else chosen.start - JUMP - needed
+        if start < 0 or (candidate.durationSeconds and start + needed > candidate.durationSeconds):
+            continue
+        option = Option.model_validate({"candidateId": candidate.id, "source": candidate.source, "kind": "video",
+                                        "pass": "coarse", "start": round(start, 3), "end": round(start + needed, 3),
+                                        "scores": {"clip": 0.0}, "total": 0.0})
+        return [option], {candidate.id: candidate}
+    return [], {}
 
 
 def same_stretch(candidate_id: str, start: float | None, end: float | None, used: list[Any], needed: float = 3.0,

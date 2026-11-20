@@ -821,7 +821,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     window = float(ctx.section("timeline").get("borrow_window_seconds", BORROW_WINDOW))
     # planner.ideas: a chapter title or the goodbye read aloud (idea «rotulo») is shown as text, and a literal idea
     # without its own footage too: never another shot's clip
-    rotulos = rotulo_shots(ctx, ("rotulo", "literal"))
+    rotulos = rotulo_shots(ctx, ("rotulo", "literal"), hook_seconds=float(ctx.section("judge").get("hook_seconds", 30)))
     punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
@@ -1140,13 +1140,14 @@ def idea_lines(ctx: RunContext, shots: list[TimelineShot], busy: list[TimelineGr
     return out
 
 
-def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",)) -> set[str]:
+def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",), hook_seconds: float = 0.0) -> set[str]:
     """The shots whose idea is of these kinds (planner.ideas): a title read aloud, a literal idea with nothing of its
-    own. They keep their text: no borrowed footage."""
+    own — and, with `hook_seconds`, any shot of an idea in the first seconds (bloque 2.7: nothing unjudged in the
+    hook). They keep their text: no borrowed footage."""
 
     try:
         return {s.id for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots
-                if s.idea is not None and s.idea.kind in kinds}
+                if s.idea is not None and (s.idea.kind in kinds or s.start < hook_seconds)}
     except Exception:
         return set()
 

@@ -504,7 +504,7 @@ class FallbackItem(_Strict):
     _late = frozenset({'judged'})
     shotId: str
     reason: str                                              # why the shot needed a fallback
-    method: Literal["next-option", "protagonist", "protagonist-filler", "protagonist-photo", "event-footage", "re-search",
+    method: Literal["next-option", "neighbour", "protagonist", "protagonist-filler", "protagonist-photo", "event-footage", "re-search",
                     "web-photo", "library-photo", "pexels-video", "pexels-photo", "generated"]
     kind: Literal["video", "image"]
     path: str                                                # normalised media, relative to the project root
