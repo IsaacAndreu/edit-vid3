@@ -169,6 +169,7 @@ class ShotIdea(_Strict):
     era: str | None = Field(default=None, max_length=160)                  # the time or event: not Paris 2024 for 2013
     screenLine: str | None = Field(default=None, max_length=120)           # one short line of text for the screen
     facts: list[str] = Field(default_factory=list, max_length=4)          # what can be labelled: place, year, age, score
+    concept: str | None = Field(default=None, max_length=120)              # ambient: faceless stock search (EN)
 
 
 class Shot(_Strict):

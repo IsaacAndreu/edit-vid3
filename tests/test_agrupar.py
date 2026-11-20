@@ -172,3 +172,13 @@ def test_an_ideas_line_and_its_fact_go_on_screen(tmp_path):
     assert idea_lines(ctx, shots, [], 30) == []
     labels = place_labels(ShotsFile.model_validate(json.loads((ctx.work_dir / "shots.json").read_text())), shots, [], 30, {})
     assert [(l.kind, l.text) for l in labels] == [("date", "Río 2016")]
+
+
+def test_a_concept_search_only_for_ambient_ideas():
+    """Bloque 2.4: faceless concept stock («hands cleaning with rubber gloves») is written only for ambient ideas."""
+
+    shots = [_shot(1, "Su madre limpiaba casas"), _shot(2, "Se cayó en Tokio")]
+    ideas = agrupar.assign(shots, {"ideas": [
+        {"shots": ["s001"], "kind": "ambiente", "concept": "hands cleaning with rubber gloves"},
+        {"shots": ["s002"], "kind": "literal", "concept": "a fall"}]})
+    assert ideas[0]["concept"] == "hands cleaning with rubber gloves" and ideas[1]["concept"] is None

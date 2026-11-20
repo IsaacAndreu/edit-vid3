@@ -67,6 +67,9 @@ Además, para cada idea:
   olímpicas»). Es lo que el espectador lee mientras la voz lo dice: corta, sin repetir la frase entera. null si no
   aporta.
 - "facts": lo que se puede rotular sobre la imagen: lugar, año, edad, nota, cifra (como lo dice el guion), [].
+- "concept": SOLO en ideas de ambiente con un detalle concreto sin imagen propia: una búsqueda corta EN INGLÉS de
+  stock SIN CARAS que lo sugiera con objetos, manos o lugares («hands cleaning with rubber gloves», «empty school
+  corridor», «pill bottle on a table»). Nunca personas reconocibles. null en las demás.
 - "summary": de qué va la idea en una frase.
 
 Devuelve SOLO JSON:
@@ -148,6 +151,8 @@ def assign(shots: list[dict[str, Any]], answer: dict[str, Any]) -> list[dict[str
                 "era": (str(idea.get("era")).strip()[:160] or None) if idea.get("era") else None,
                 "screenLine": (str(idea.get("screenLine")).strip()[:120] or None) if idea.get("screenLine") else None,
                 "facts": _clean(idea.get("facts"), 4, 40),
+                "concept": (str(idea.get("concept")).strip()[:120] or None)
+                if idea.get("concept") and str(idea.get("kind")) == "ambiente" else None,
             })
         else:
             ideas.append({"shots": kept, "kind": guess_kind(by_id[first])})

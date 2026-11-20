@@ -405,9 +405,13 @@ def run(ctx: RunContext) -> None:
             digest = key(digest, sin_youtube.NOTE)
         item: FallbackItem | None = None
         tried: list[str] = []
-        kind = shot.idea.kind if shot.idea is not None else None      # planner.ideas: literal / ambiente
+        idea_kind = shot.idea.kind if shot.idea is not None else None      # planner.ideas: literal / ambiente
         # bloque 2.7: in the first seconds of a video planned by ideas nothing goes on screen unseen by the judge
-        in_hook = kind is not None and shot.start < float(judge_cfg.get("hook_seconds", 30))
+        in_hook = idea_kind is not None and shot.start < float(judge_cfg.get("hook_seconds", 30))
+        # bloque 2.4 (fallback.concept_stock, off): an ambient idea with no image of its own may take faceless concept
+        # stock (hands, objects, places) written by the planner, always shown to the judge first
+        concept = (shot.idea.concept if cfg.get("concept_stock", False) and idea_kind == "ambiente"
+                   and shot.idea is not None else None)
 
         def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str,
                                 vet: bool = True, judged: bool | None = None) -> FallbackItem | None:
@@ -539,7 +543,7 @@ def run(ctx: RunContext) -> None:
         # 1a'. An ambient idea (planner.ideas, bloque 2.3): the clip of the shot next to it in the same idea runs on
         # (its following seconds, after a short jump so the two never make one excerpt over 5 s) — the same moment,
         # chosen by the judge for this very idea — before any other source.
-        if item is None and kind == "ambiente":
+        if item is None and idea_kind == "ambiente":
             options, neighbour_candidates = neighbour_option(story.shots, shot, used, needed, known_candidate)
             item = vet_and_materialise(options, neighbour_candidates, "neighbour", vet=False, judged=True)
 
@@ -570,7 +574,7 @@ def run(ctx: RunContext) -> None:
         # athlete, a re-edit…), scored like the first ones and vetted by the judge — real footage before photos/stock.
         if item is None and shot.broll and cfg.get("research", True) and offline:
             tried.append(f"segunda búsqueda: {sin_youtube.NOTE}")      # its queries are YouTube's: not even the LLM
-        elif item is None and shot.broll and cfg.get("research", True) and kind == "ambiente":
+        elif item is None and shot.broll and cfg.get("research", True) and idea_kind == "ambiente":
             tried.append("segunda búsqueda: idea de ambiente, sin imagen propia que buscar")   # bloque 2.3
         elif item is None and shot.broll and cfg.get("research", True):
             options, research_candidates = research(shot, reason, tried)
@@ -601,13 +605,13 @@ def run(ctx: RunContext) -> None:
         # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
         # them is left at all: anonymous stock is exactly what that format avoids.
         if (item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False)
-                and not (in_hook and not cfg.get("judge_pexels", False))       # unjudged stock: never in the hook
-                and (not real_people or cfg.get("pexels_for_person", True))):
+                and not (in_hook and not cfg.get("judge_pexels", False) and not concept)   # unjudged stock: never in the hook
+                and (not real_people or cfg.get("pexels_for_person", True) or concept)):
             with models_lock:
                 if clip is None:
                     clip, _ = make_models(ctx)
             vector = clip.shot_vector(prompts_for(shot))
-            queries = list(dict.fromkeys(image_query(q, 4) for q in shot.broll.queries[:2]))
+            queries = [concept] if concept else list(dict.fromkeys(image_query(q, 4) for q in shot.broll.queries[:2]))
             for kind in ("video", "photo"):
                 scored: list[tuple[float, dict[str, Any]]] = []
                 for query in queries:
@@ -631,7 +635,7 @@ def run(ctx: RunContext) -> None:
                 if not good:
                     tried.append(f"pexels {kind}: nada con CLIP ≥ {cfg.get('min_clip', 0.22)}")
                     continue
-                if cfg.get("judge_pexels", False):
+                if cfg.get("judge_pexels", False) or concept:
                     # fallback.judge_pexels (off: one judge call per such shot): stock footage chosen by CLIP alone was a
                     # third of guiadelmapa; the judge sees its best ones first and only what it accepts is used
                     good = _judged_stock(ctx, shot, good[:3], kind, story, tried)
