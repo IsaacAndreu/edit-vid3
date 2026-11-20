@@ -132,8 +132,9 @@ def inputs(ctx: RunContext) -> list:
     # people.json: the portraits the identity check compares faces with (the people stage runs first)
     # revision.json: the shots marked wrong in the studio («Errores»), replaced here
     revision = ctx.work_dir / feedback.REVISION
+    auto = ctx.work_dir / feedback.REVISION_AUTO          # the automatic reviewer's (pipeline/revisor.py)
     return [ctx.work_dir / "selection.json", ctx.work_dir / "media" / MANIFEST, ctx.work_dir / "shots.json",
-            ctx.work_dir / "people.json"] + ([revision] if revision.is_file() else [])
+            ctx.work_dir / "people.json"] + [p for p in (revision, auto) if p.is_file()]
 
 
 def run(ctx: RunContext) -> None:
@@ -205,6 +206,11 @@ def run(ctx: RunContext) -> None:
 
     approved = approved_fragments(ctx.root)
     marked_wrong = feedback.wrong_shots(ctx.work_dir)    # you said so in the studio: replace, whoever chose it
+    # the clips marked wrong for this video (by you or by the reviewer): never chosen again for any of its shots
+    from types import SimpleNamespace
+
+    rejected = [SimpleNamespace(candidateId=v.get("candidateId"), start=v.get("start"), end=v.get("end"))
+                for v in feedback.wrong_details(ctx.work_dir).values() if v.get("candidateId") and v.get("start") is not None]
     for shot_id, why in marked_wrong.items():
         if shot_id in shots and shot_id in done:
             done.discard(shot_id)
@@ -425,6 +431,7 @@ def run(ctx: RunContext) -> None:
             official = ctx.section("content").get("official_channels")
             options = [o for o in options
                        if not same_stretch(o.candidateId, o.start, o.end, used, needed)     # those seconds already on screen
+                       and not same_stretch(o.candidateId, o.start, o.end, rejected, needed)   # marked wrong here
                        and not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
                        and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
                                                 official)

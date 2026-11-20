@@ -23,6 +23,7 @@ from typing import Any
 
 LABELS = "out/_errores/etiquetas.json"
 REVISION = "revision.json"                    # in work/<slug>/: this video's wrong shots (input of fallback)
+REVISION_AUTO = "revision.auto.json"          # …and those the automatic reviewer sent back (pipeline/revisor.py)
 VERDICTS = ("correcta", "incorrecta", "dudosa")
 REASONS = {
     "persona_equivocada": "Sale otra persona",
@@ -215,11 +216,25 @@ def is_wrong(fragments: dict[str, list[tuple[float | None, float | None]]], cand
     return False
 
 
-def wrong_shots(work: Path) -> dict[str, str]:
-    """shotId → reason, for this video (from work/<slug>/revision.json)."""
+def wrong_details(work: Path) -> dict[str, dict[str, Any]]:
+    """shotId → {reason, candidateId, start}: the shots marked wrong in the studio (revision.json) and those the
+    automatic reviewer sent back (revision.auto.json, its own file: your labels rewrite revision.json whole)."""
 
-    return {sid: REASONS.get(v.get("reason"), v.get("reason") or "") for sid, v in
-            ((_read(work / REVISION) or {}).get("wrong") or {}).items()}
+    out = dict(((_read(work / REVISION_AUTO) or {}).get("wrong") or {}))
+    out.update(((_read(work / REVISION) or {}).get("wrong") or {}))
+    return out
+
+
+def wrong_shots(work: Path) -> dict[str, str]:
+    """shotId → reason, for this video (revision.json and revision.auto.json)."""
+
+    return {sid: REASONS.get(v.get("reason"), v.get("reason") or "") for sid, v in wrong_details(work).items()}
+
+
+def no_borrow(work: Path) -> set[str]:
+    """Shots the automatic reviewer found covered with another shot's clip: shown as text from now on."""
+
+    return set((_read(work / REVISION_AUTO) or {}).get("noBorrow") or [])
 
 
 # --- what the program learns from the labels ---------------------------------------------------------------

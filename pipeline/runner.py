@@ -21,7 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import align, analysis, coldopen, factcheck, fallback, ingest, judge, package, people, planner, qa, render, shorts, sourcing, timeline
+from . import (align, analysis, coldopen, factcheck, fallback, ingest, judge, package, people, planner, qa, render, revisor,
+               shorts, sourcing, timeline)
 from .context import RunContext
 from .locks import turn
 
@@ -54,6 +55,10 @@ STAGES: list[Stage] = [
     Stage("fallback", _work(fallback.OUTPUT), fallback.inputs, fallback.run, fallback.validate, ("fallback", "content")),
     Stage("coldopen", _work(coldopen.OUTPUT), coldopen.inputs, coldopen.run, coldopen.validate, ("timeline", "judge", "quotes")),
     Stage("timeline", _work(timeline.OUTPUT), timeline.inputs, timeline.run, timeline.validate, ("timeline", "video", "graphics", "brand")),
+    # bloque 3.3 (revisor.enabled, off): the edit reviewed before the render; its config section is not in the
+    # fingerprint, so turning it on changes the videos that reach this stage from then on, never one already past it
+    Stage("revisor", lambda ctx: [ctx.out_dir / revisor.OUT_DIR / "revisor.json"], revisor.stage_inputs, revisor.stage_run,
+          None, ()),
     Stage("qa", lambda ctx: [ctx.out_dir / "qa" / "report.md", ctx.out_dir / "manifest.json", ctx.out_dir / "creditos.txt"],
           qa.inputs, qa.run, qa.validate, ("qa", "judge")),
     Stage("render", lambda ctx: [ctx.out_dir / render.OUTPUT], render.inputs, render.run, render.validate, ("render", "video")),
@@ -190,6 +195,17 @@ def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
             except OSError:
                 pass
     return value
+
+
+def mark_done(ctx: RunContext, stage: Stage, seconds: float = 0.0) -> None:
+    """A stage done again from inside another one (the reviewer redoing the fill-in and the edit): its marker with
+    today's fingerprint, so the next run does not do it a third time."""
+
+    marker = _marker(ctx, stage)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"stage": stage.name, "inputsHash": fingerprint(ctx, stage),
+                                  "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                  "seconds": round(seconds, 1), "redoneBy": "revisor"}, indent=2) + "\n", encoding="utf-8")
 
 
 def _turn_group(ctx: RunContext, stage: str) -> str:
