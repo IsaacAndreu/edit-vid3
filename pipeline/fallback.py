@@ -650,7 +650,9 @@ def run(ctx: RunContext) -> None:
         # another unused moment of the protagonist's own footage, as documentary channels do over narration,
         # rather than a text card. The identity check still applies; the judge does not (it would want the
         # exact scene again).
-        if item is None and who and shot.broll and cfg.get("protagonist_filler", True):
+        literal = shot.idea is not None and shot.idea.kind == "literal"
+        # planner.ideas: a literal idea is that very thing or nothing — never another moment of the person (bloque 1.5)
+        if item is None and who and shot.broll and cfg.get("protagonist_filler", True) and not literal:
             pool, pool_candidates = protagonist_pool(ctx, story, who)
             options = sorted((o for o in pool if o.kind == "video"
                               and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))

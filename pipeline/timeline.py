@@ -802,8 +802,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         added += [TimelineGroup.model_validate(g) for g in simulacion.groups(ctx, shots, fps, [*groups, *added])]
     borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
     window = float(ctx.section("timeline").get("borrow_window_seconds", BORROW_WINDOW))
-    # planner.ideas: a chapter title or the goodbye read aloud (idea «rotulo») is shown as text, never footage
-    rotulos = rotulo_shots(ctx)
+    # planner.ideas: a chapter title or the goodbye read aloud (idea «rotulo») is shown as text, and a literal idea
+    # without its own footage too: never another shot's clip
+    rotulos = rotulo_shots(ctx, ("rotulo", "literal"))
     punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
@@ -1069,12 +1070,13 @@ def footage(shot: TimelineShot) -> float:
 BORROW_WINDOW = 40.0          # s: a shot without footage only borrows a clip shown this close to it
 
 
-def rotulo_shots(ctx: RunContext) -> set[str]:
-    """The shots whose idea is a title read aloud (planner.ideas): they keep their text, no borrowed footage."""
+def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",)) -> set[str]:
+    """The shots whose idea is of these kinds (planner.ideas): a title read aloud, a literal idea with nothing of its
+    own. They keep their text: no borrowed footage."""
 
     try:
         return {s.id for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots
-                if s.idea is not None and s.idea.kind == "rotulo"}
+                if s.idea is not None and s.idea.kind in kinds}
     except Exception:
         return set()
 
