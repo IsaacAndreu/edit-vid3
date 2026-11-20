@@ -489,7 +489,12 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     results = []
     for slug in args.videos:
-        result = review(PROJECT_ROOT, slug, args.modelo, args.max_usd)
+        try:
+            result = review(PROJECT_ROOT, slug, args.modelo, args.max_usd)
+        except FileNotFoundError as error:          # not edited yet: the others still go, and the table says so
+            print(f"{slug}: sin revisar — {error}")
+            results.append({"slug": slug, "missing": str(error)})
+            continue
         results.append(result)
         line = (f"{slug}: {len(result['flagged'])} de {result['shots']} planos marcados · {result['usd']:.3f} $ · "
                 f"out/{slug}/{OUT_DIR}/informe.md")
@@ -521,6 +526,9 @@ def baseline(results: list[dict[str, Any]]) -> str:
              "(un préstamo antes que el relleno, el relleno antes que la elección del juez).", "",
              "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in results:
+        if r.get("missing"):
+            lines.append(f"| {r['slug']} | sin montar todavía |" + " |" * (len(head) - 2))
+            continue
         counts = {k: 0 for k in BASE_COLUMNS}
         for row in r["flagged"]:
             counts[row["problem"]] = counts.get(row["problem"], 0) + 1

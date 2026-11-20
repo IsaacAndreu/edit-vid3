@@ -159,3 +159,13 @@ def test_the_baseline_puts_every_video_in_one_table():
     labelled = [{"slug": "v", "shots": 100, "model": "m", "usd": 0.0, "flagged": [
         {"problem": "no_tiene_que_ver", "kind": "literal"}, {"problem": "no_tiene_que_ver", "kind": "ambiente"}]}]
     assert "| v | 100 | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
+
+
+def test_a_video_not_edited_yet_does_not_stop_the_baseline(tmp_path, monkeypatch, capsys):
+    _video(tmp_path)
+    monkeypatch.setattr(revisor, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(revisor, "ask", lambda *a, **k: ([], 0.0))
+    assert revisor.main(["v", "aun-no", "--base"]) == 0
+    text = (tmp_path / "out" / "_revisor_base.md").read_text()
+    assert "| v | 4 |" in text and "| aun-no | sin montar todavía |" in text
+    assert "aun-no: sin revisar" in capsys.readouterr().out
