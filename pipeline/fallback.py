@@ -402,7 +402,8 @@ def run(ctx: RunContext) -> None:
             blocklist = ctx.section("content").get("title_blocklist")
             official = ctx.section("content").get("official_channels")
             options = [o for o in options
-                       if not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
+                       if not same_stretch(o.candidateId, o.start, o.end, used, needed)     # those seconds already on screen
+                       and not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
                        and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
                                                 official)
                        and not overused(o.candidateId, used,
@@ -458,6 +459,12 @@ def run(ctx: RunContext) -> None:
                 with claim:                    # another shot may have taken the same picture meanwhile
                     if looks_used(ctx.root / media.path, media.kind):
                         tried.append(f"{c.id}: ya está en pantalla")
+                        continue
+                    # …or the same seconds of the same source, chosen at the same time by another thread (newgym3: the
+                    # same 2 s of one training video in seven shots, all picked while none was claimed yet)
+                    if same_stretch(c.id, media.start, media.end, used, needed):
+                        tried.append(f"{c.id}: ese tramo ya está en pantalla")
+                        dead.add(f"{c.id}@{option.start}")
                         continue
                     used.append(selection)
                     pexels_used.add(c.id)
@@ -857,6 +864,23 @@ def event_pool(ctx: RunContext, story: ShotsFile, shot: Any, reach: int = 4,
             candidates[c.id] = c
             options.setdefault((option.candidateId, option.start), option)
     return sorted(options.values(), key=lambda o: -o.total), candidates
+
+
+def same_stretch(candidate_id: str, start: float | None, end: float | None, used: list[Any], needed: float = 3.0,
+                 pad: float = 1.0) -> bool:
+    """These seconds of this source (± `pad`) are already on screen in another shot. A window without an end is taken
+    as `needed` seconds long. Photos (no start) are never a stretch."""
+
+    if start is None:
+        return False
+    stop = end if end is not None else start + needed
+    for other in used:
+        if getattr(other, "candidateId", None) != candidate_id or getattr(other, "start", None) is None:
+            continue
+        other_stop = other.end if getattr(other, "end", None) is not None else other.start + needed
+        if start < other_stop + pad and other.start < stop + pad:
+            return True
+    return False
 
 
 def protagonist_pool(ctx: RunContext, story: ShotsFile, person: str | None = None) -> tuple[list[Option], dict[str, Candidate]]:

@@ -110,7 +110,7 @@ def test_empty_shots_in_a_row_share_one_card_with_the_whole_sentence():
     assert " ".join(boards[0].graphic["lines"]) == "Estuvo bajo su tutela durante años"
 
 
-def test_empty_shots_borrow_far_away_footage_and_flash_their_key_words():
+def test_empty_shots_borrow_nearby_footage_and_flash_their_key_words():
     from pipeline.timeline import fill_empty_shots, punch_words
 
     assert punch_words("Solo uno de esos oros se vendió por 176.321 dólares") == "176.321 dólares"
@@ -120,7 +120,7 @@ def test_empty_shots_borrow_far_away_footage_and_flash_their_key_words():
     shots[5] = shots[5].model_copy(update={"media": None, "text": "y lo sabía"})
     punches = fill_empty_shots(shots, [], 30)
     assert shots[4].media is not None and shots[4].media.zoom and shots[5].media is not None
-    assert shots[4].media.src == shots[0].media.src                          # the clip farthest away in time
+    assert shots[4].media.src == shots[3].media.src                          # the nearest clip: the same passage
     assert len(punches) == 1 and punches[0].graphic["lines"] == ["Gorrión de Minsk"]
     assert punches[0].from_ == shots[4].from_ and punches[0].durationInFrames <= 66
 
@@ -166,3 +166,19 @@ def test_a_shot_only_partly_under_a_graphic_gets_footage_for_the_rest():
     assert shots[1].media is None                                        # the usual pass leaves it alone
     fill_empty_shots(shots, [card], 30, words=False, partial=True)
     assert shots[1].media is not None
+
+
+def test_a_clip_from_another_part_of_the_video_is_never_borrowed():
+    """newgym3: the wedding (9:57) over «tiene seis títulos mundiales» at 0:58. Only clips shown within
+    timeline.borrow_window_seconds (40) of the empty shot; otherwise it stays empty for the key-word board."""
+    from pipeline.timeline import fill_empty_shots
+
+    shots = [_shot(i) for i in range(4)]
+    far = shots[3].model_copy(update={"from_": 30 * 600})                     # a clip ten minutes later
+    shots = [shots[0].model_copy(update={"media": None}), far]
+    fill_empty_shots(shots, [], 30, max_uses=6)
+    assert shots[0].media is None
+    near = far.model_copy(update={"from_": 30 * 20})                          # twenty seconds later: the same passage
+    shots = [shots[0], near]
+    fill_empty_shots(shots, [], 30, max_uses=6)
+    assert shots[0].media is not None and shots[0].media.src == near.media.src

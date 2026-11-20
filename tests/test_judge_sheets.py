@@ -53,3 +53,31 @@ def test_the_sheet_context_is_saved(tmp_path):
     judge._save_sheet_context(tmp_path / "s001.json", shot, [o], "A: youtube", "topic", "", True, {"ranking": ["A"]})
     saved = json.loads((tmp_path / "s001.json").read_text())
     assert saved["letters"] == "A" and saved["verdict"]["ranking"] == ["A"] and saved["hook"]
+
+
+def test_rejudging_only_some_shots(tmp_path, monkeypatch):
+    """Bloque 0.4: `rejuzgar <vídeo> <modelo> s065,s127` re-asks only those shots' sheets and says which have none."""
+
+    from pipeline.context import RunContext
+    from pipeline.schemas import Shot
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    ctx = RunContext.create("v", root=tmp_path)
+    shots = [Shot.model_validate({"id": f"s{n:03d}", "type": "broll", "startWord": 2 * i, "endWord": 2 * i + 1,
+                                  "start": 2.0 * i, "end": 2.0 * i + 2, "text": "t", "chapter": 0,
+                                  "broll": {"visualIntent": "a view", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}})
+             for i, n in enumerate((65, 66, 127))]
+    ctx.write_json("shots.json", {"slug": "v", "title": "t", "durationSeconds": 6, "chapters": [],
+                                  "shots": [s.model_dump(exclude_none=True) for s in shots]})
+    folder = ctx.work_dir / "judge"
+    folder.mkdir(parents=True)
+    for sid in ("s065", "s066", "s127"):
+        cv2.imwrite(str(folder / f"{sid}.jpg"), np.zeros((20, 20, 3), np.uint8))
+        (folder / f"{sid}.json").write_text(json.dumps({"shotId": sid, "letters": "A", "verdict": {"ranking": ["A"]}}))
+    asked = []
+    monkeypatch.setattr(judge, "call_judge", lambda ctx, shot, *a, **k: asked.append(shot.id) or {"ranking": [], "reason": "otra gimnasta"})
+    result = rejuzgar.run(tmp_path, "v", "gpt-5-mini", only={"s065", "s127", "s074"})
+    assert asked == ["s065", "s127"] and result["missing"] == ["s074"]
+    text = rejuzgar.markdown(result)
+    assert "otra gimnasta" in text and "s074" in text
