@@ -802,13 +802,16 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         added += [TimelineGroup.model_validate(g) for g in simulacion.groups(ctx, shots, fps, [*groups, *added])]
     borrow = str(ctx.section("timeline").get("empty_shots", "video")) == "video"
     window = float(ctx.section("timeline").get("borrow_window_seconds", BORROW_WINDOW))
-    punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window) if borrow else []
+    # planner.ideas: a chapter title or the goodbye read aloud (idea «rotulo») is shown as text, never footage
+    rotulos = rotulo_shots(ctx)
+    punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
-        fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window)
+        fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
+                         skip=rotulos)
     boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
     if borrow:   # a shot only partly under a graphic: footage for the rest of it, never the bare canvas
         fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True,
-                         window_seconds=window)
+                         window_seconds=window, skip=rotulos)
     if punches:
         print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
               + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»" for g in punches[:12]))
@@ -1066,9 +1069,19 @@ def footage(shot: TimelineShot) -> float:
 BORROW_WINDOW = 40.0          # s: a shot without footage only borrows a clip shown this close to it
 
 
+def rotulo_shots(ctx: RunContext) -> set[str]:
+    """The shots whose idea is a title read aloud (planner.ideas): they keep their text, no borrowed footage."""
+
+    try:
+        return {s.id for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots
+                if s.idea is not None and s.idea.kind == "rotulo"}
+    except Exception:
+        return set()
+
+
 def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
                      words: bool = True, partial: bool = False,
-                     window_seconds: float = BORROW_WINDOW) -> list[TimelineGroup]:
+                     window_seconds: float = BORROW_WINDOW, skip: set[str] | None = None) -> list[TimelineGroup]:
     """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the NEAREST clip
     within `window_seconds` (timeline.borrow_window_seconds, 40), the same passage of the story, pushed in, and at the
     start of each stretch the 1-3 key words of what is said flash over it for ~2 s. Nothing that close: the shot
@@ -1102,7 +1115,7 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
                                                               "graphic": {"type": "kinetic", "lines": [phrase]}}))
 
     for index, shot in enumerate(shots):
-        if shot.media is not None or shot.type != "broll" or shot.groupId:
+        if shot.media is not None or shot.type != "broll" or shot.groupId or shot.id.split("-")[0] in (skip or ()):
             continue
         start, end = shot.from_, shot.from_ + shot.durationInFrames
         over = [(max(start, g.from_), min(end, g.from_ + g.durationInFrames)) for g in groups

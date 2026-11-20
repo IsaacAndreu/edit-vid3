@@ -1076,6 +1076,14 @@ def run(ctx: RunContext) -> None:
     if simulacion.active(ctx):
         shots = [drawn_shot(s) for s in shots]
     normalize_groups(shots)
+    if cfg.get("ideas", False) and not simulacion.active(ctx):
+        # planner.ideas (off): the shots that say the same thing grouped into ideas, labelled literal / ambiente /
+        # rotulo, searched, judged and cut together by the later stages (pipeline/agrupar.py)
+        from . import agrupar
+
+        counts = agrupar.apply(ctx, shots, header)
+        print(f"   Ideas: {sum(counts.values())} ({counts['literal']} literales · {counts['ambiente']} de ambiente · "
+              f"{counts['rotulo']} rótulos) para {len(shots)} planos")
 
     shots_file = ShotsFile(
         slug=ctx.slug,

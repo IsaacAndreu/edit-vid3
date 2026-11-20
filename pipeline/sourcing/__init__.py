@@ -44,6 +44,8 @@ def stale_note(note: str) -> bool:
 
 
 def needs_footage(shot: Shot) -> bool:
+    if shot.idea is not None and shot.idea.kind == "rotulo":     # planner.ideas: a title read aloud, shown as text
+        return False
     return shot.broll is not None and shot.type in ("broll", "chapter", "split", "stat")
 
 
