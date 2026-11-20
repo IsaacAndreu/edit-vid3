@@ -101,28 +101,43 @@ def _read(path: Path) -> Any:
         return None
 
 
-def frames_of(work: Path, shot: dict[str, Any], fps: float) -> list[np.ndarray]:
-    """Two frames (at 30 % and 70 % of the shot) from the shot's own media, at the seconds the video plays."""
+def _grab(path: Path, at: float | None) -> np.ndarray | None:
+    """One frame of a file at `at` seconds (None: its last frame)."""
+
+    where = ["-sseof", "-0.1"] if at is None else ["-ss", f"{max(0.0, at):.3f}"]
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "error", *where, "-i", str(path), "-frames:v", "1", "-f", "image2pipe",
+                               "-vcodec", "mjpeg", "-"], capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return None
+    return cv2.imdecode(np.frombuffer(done.stdout, np.uint8), cv2.IMREAD_COLOR) if done.stdout else None
+
+
+def frames_of(work: Path, shot: dict[str, Any], fps: float, final: Path | None = None) -> list[np.ndarray]:
+    """Two frames (at 30 % and 70 % of the shot) from the shot's own media, at the seconds the video plays; when that
+    file cannot be read (gone after the render, an odd encoding), from the finished video at the shot's time."""
 
     media = shot.get("media") or {}
     src = work / str(media.get("src") or "")
-    if not src.is_file():
-        return []
-    if media.get("kind") == "image":
+    shares = (0.3, 0.7)
+    out: list[np.ndarray] = []
+    if src.is_file() and media.get("kind") == "image":
         image = cv2.imread(str(src))
-        return [image, image] if image is not None else []
-    rate = float(media.get("rate") or 1.0)
-    out = []
-    for share in (0.3, 0.7):
-        at = (int(shot.get("offset") or 0) + share * int(shot.get("durationInFrames") or 1)) / fps * rate
-        done = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{at:.3f}", "-i", str(src), "-frames:v", "1",
-                               "-f", "image2pipe", "-vcodec", "mjpeg", "-"], capture_output=True)
-        if not done.stdout:                       # past the end of a short clip: its last frame
-            done = subprocess.run(["ffmpeg", "-v", "error", "-sseof", "-0.1", "-i", str(src), "-frames:v", "1",
-                                   "-f", "image2pipe", "-vcodec", "mjpeg", "-"], capture_output=True)
-        image = cv2.imdecode(np.frombuffer(done.stdout, np.uint8), cv2.IMREAD_COLOR) if done.stdout else None
-        if image is not None:
-            out.append(image)
+        out = [image, image] if image is not None else []
+    elif src.is_file():
+        rate = float(media.get("rate") or 1.0)
+        for share in shares:
+            at = (int(shot.get("offset") or 0) + share * int(shot.get("durationInFrames") or 1)) / fps * rate
+            image = _grab(src, at)
+            if image is None:                     # past the end of a short clip: its last frame
+                image = _grab(src, None)
+            if image is not None:
+                out.append(image)
+    if not out and final is not None and final.is_file():
+        for share in shares:
+            image = _grab(final, (int(shot.get("from") or 0) + share * int(shot.get("durationInFrames") or 1)) / fps)
+            if image is not None:
+                out.append(image)
     return out
 
 
@@ -282,24 +297,37 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
     subject = ", ".join(str(p.get("name")) for p in people[:2] if p.get("name"))
     portrait = None
     if people and people[0].get("image"):
-        data = portrait_bytes(root / str(people[0]["image"]))
+        image_path = work / str(people[0]["image"])        # people.json paths are relative to the work folder
+        data = portrait_bytes(image_path if image_path.is_file() else root / str(people[0]["image"]))
         portrait = (str(people[0].get("name") or "el protagonista"), data) if data else None
 
+    final = ctx.out_dir / "video-final.mp4"
+    on_screen = [shot for shot in timeline.get("shots") or [] if shot["id"] in listed]   # no graphics, no end screen
+    print(f"{slug}: leyendo los fotogramas de {len(on_screen)} planos…", flush=True)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        grabbed = list(pool.map(lambda shot: frames_of(work, shot, fps, final), on_screen))
+    owner: dict[str, str] = {}                    # media file → the first shot that shows it
     items: list[dict[str, Any]] = []
-    for shot in timeline.get("shots") or []:
-        if shot["id"] not in listed:              # no clip or photo on screen (graphics, end screen)
-            continue
-        images = frames_of(work, shot, fps)
+    for shot, images in zip(on_screen, grabbed):
         base = shot["id"].split("-")[0]
+        src = str((shot.get("media") or {}).get("src") or "")
+        borrowed = owner.get(src) if not listed[shot["id"]].get("method") else None
+        owner.setdefault(src, shot["id"])
         spec = plan.get(base)
         broll = spec.broll if spec is not None else None
-        items.append({**listed[shot["id"]], "images": images, "hashes": [dhash(i) for i in images],
+        items.append({**listed[shot["id"]], "images": images, "hashes": [dhash(i) for i in images], "borrowed": borrowed,
                       "intent": broll.visualIntent if broll else "", "entities": list(broll.entities) if broll else [],
                       "around": surrounding(list(plan.values()), base) if plan else ""})
 
     flagged: dict[str, dict[str, Any]] = {}
+    unreadable = [i["id"] for i in items if not i["images"]]    # neither its clip nor the final video: not judged
     for item in items:
-        why = broken(item["images"])
+        if item.get("borrowed"):
+            # a shot with no clip of its own, covered in the edit with another shot's (timeline.fill_empty_shots)
+            flagged[item["id"]] = {"problem": "repetido", "confidence": 1.0, "by": "medida",
+                                   "evidence": f"hueco sin clip propio, tapado con el clip del plano {item['borrowed']}"}
+            continue
+        why = broken(item["images"]) if item["images"] else None
         if why:
             flagged[item["id"]] = {"problem": "roto", "evidence": why, "confidence": 1.0, "by": "medida"}
     for shot_id, why in repeats(items).items():
@@ -320,6 +348,7 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
             for entries, (answers, usd) in zip(batch, pool.map(asked, batch)):
                 spent += usd
                 reviewed += len(entries)
+                print(f"   modelo: {reviewed} de {len(todo)} planos vistos · {spent:.3f} $", flush=True)
                 by_n = {e["n"]: e for e in entries}
                 for answer in answers:
                     entry = by_n.get(int(answer.get("n") or -1))
@@ -339,7 +368,7 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
                         | {"label": (item.get("label") or {}).get("reason") if item.get("label") else None})
     result = {"slug": slug, "model": str(cfg.get("model") or ctx.section("judge").get("model", "gpt-5-mini")),
               "shots": len(items), "reviewedByModel": reviewed, "usd": round(spent, 4),
-              "stoppedAtBudget": stopped, "budget": budget, "flagged": rows}
+              "stoppedAtBudget": stopped, "budget": budget, "unreadable": unreadable, "flagged": rows}
     out = ctx.out_dir / OUT_DIR
     out.mkdir(parents=True, exist_ok=True)
     (out / "revisor.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -393,7 +422,9 @@ def markdown(result: dict[str, Any], sheets: list[str]) -> str:
     lines = [f"# Revisión automática · {result['slug']}", "",
              f"Modo informe: no se ha cambiado nada. Modelo {result['model']} · {result['shots']} planos con imagen · "
              f"{result['reviewedByModel']} vistos por el modelo · {result['usd']:.3f} $"
-             + (f" · **parado al llegar al tope de {result['budget']} $**" if result["stoppedAtBudget"] else ""), "",
+             + (f" · **parado al llegar al tope de {result['budget']} $**" if result["stoppedAtBudget"] else "")
+             + (f" · sin poder leer (no revisados): {', '.join(result.get('unreadable') or [])}" if result.get("unreadable") else ""),
+             "",
              f"**Planos marcados: {len(rows)}**", ""]
     if rows:
         counts: dict[str, int] = {}

@@ -136,4 +136,13 @@ registro de un render: «Remotion: N fotogramas en X s» y «ffmpeg: N segmentos
 | Qué | Estado | Test |
 |---|---|---|
 | Revisor, modo informe | hecho: `python -m pipeline.revisor <vídeo> [--telegram] [--modelo M] [--max-usd 1]`. Solo fallos objetivos: roto y repetido medidos (sin modelo); no tiene que ver, otra persona, dibujos/videojuego y marca de agua por un modelo de visión que ve dos fotogramas del momento exacto, la frase, su contexto y la foto del protagonista. Cada marca lleva su prueba y su seguridad. Escribe `out/<vídeo>/revisor/` (informe.md, revisor.json, hojas). No cambia nada | `tests/test_revisor.py` |
-| Revisor en la cola (cambia planos antes del render) | pendiente: primero ver en 2-3 vídeos si acierta |  — |
+| Revisor: arreglos tras newgym3 | hecho: fotogramas del vídeo final si no puede leer el clip (los 5 «roto» de newgym3 eran eso), un plano ilegible ya no se da por roto (sale como «no revisado»), la foto del protagonista desde work/<vídeo>/people/, progreso en pantalla, y los huecos tapados con el clip de otro plano dicen cuál | `tests/test_revisor.py` |
+| Revisor en la cola (cambia planos antes del render) | pendiente: newgym3 acertó en casi todo lo marcado; falta decidir el umbral de seguridad |  — |
+
+## Motor: puntería (20-11, tras newgym3)
+
+| Qué | Estado | Test |
+|---|---|---|
+| Mismos segundos de una fuente en varios planos | hecho: `fallback.same_stretch` en todas las vías del relleno y otra vez al reservar (varios hilos elegían el mismo tramo a la vez): newgym3 tenía 58-60 s de un entrenamiento en siete planos | `tests/test_fallback_methods.py` |
+| Huecos tapados con clips de otra parte del vídeo | hecho: `fill_empty_shots` presta el clip más cercano dentro de `timeline.borrow_window_seconds` (40 s), no el más lejano; sin ninguno cerca, pizarra de palabras clave (newgym3: la boda en 0:58 con «seis títulos mundiales») | `tests/test_qash_style.py` |
+| Informe para una segunda opinión | `prompts/motor-informe-para-fable.md` | — |

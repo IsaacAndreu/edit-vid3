@@ -110,3 +110,27 @@ def test_the_sheets_can_go_to_telegram(tmp_path, monkeypatch):
     assert revisor.send_telegram(tmp_path, "v", result)
     text, photos = sent[0]
     assert "2 de 4 planos marcados" in text and "Repetido: 1" in text and photos == ["hoja-1.jpg"]
+
+
+def test_borrowed_unreadable_and_final_video_frames(tmp_path):
+    """A shot covered in the edit with another shot's clip says so; a clip that cannot be read is taken from the
+    finished video; one that cannot be read at all is listed as not reviewed, never called broken."""
+
+    work = _video(tmp_path)
+    timeline = json.loads((work / "timeline.json").read_text())
+    timeline["shots"].append({"id": "s005", "type": "broll", "from": 240, "durationInFrames": 60, "text": "hueco",
+                              "media": {"src": "media/s003.mp4", "kind": "video", "source": "youtube"}})
+    timeline["shots"].append({"id": "s006", "type": "broll", "from": 300, "durationInFrames": 60, "text": "se borró",
+                              "media": {"src": "media/gone.mp4", "kind": "video", "source": "youtube"}})
+    (work / "timeline.json").write_text(json.dumps(timeline))
+    result = revisor.review(tmp_path, "v", ask_model=lambda entries: ([], 0.0))
+    flagged = {r["id"]: r for r in result["flagged"]}
+    assert flagged["s005"]["problem"] == "repetido" and "tapado con el clip del plano s003" in flagged["s005"]["evidence"]
+    assert "s006" not in flagged and result["unreadable"] == ["s006"]
+
+    final = tmp_path / "out" / "v" / "video-final.mp4"                       # now the finished video exists
+    _clip(final, "testsrc2")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=14", "-pix_fmt",
+                    "yuv420p", str(final)], check=True)
+    result = revisor.review(tmp_path, "v", ask_model=lambda entries: ([], 0.0))
+    assert result["unreadable"] == []                                        # read from the final video instead
