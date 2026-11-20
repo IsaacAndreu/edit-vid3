@@ -152,3 +152,17 @@ el mismo ritmo que nosotros, y la misma plantilla de tarjeta sobre cuadrícula. 
 Qué añade a la lista: **foto antes que clip prestado** en las ideas de ambiente; **stock de concepto sin caras,
 pasado por el juez**, permitido en vídeos de persona para ideas abstractas; y **rótulo de dato cada vez que el
 guion nombra un lugar, un año, una edad o una nota**.
+
+## Anexo 2: los guiones de dos de las referencias (transcripciones completas, 20-11)
+
+- **Gymnast Icons, Rebeca Andrade** (`_n5-FQWizJ8`, 2.134 palabras, 12 min 13 s). Casi cada párrafo se apoya en algo
+  que se grabó: una competición con fecha y sede (Tokio 2021, final de salto; París, 5 de agosto de 2024, Bercy
+  Arena, final de suelo), una nota (14,166 frente a 14,133), un podio, o una cita literal («She's so amazing.
+  She's queen»). Los tramos sin imagen son cortos y traen una imagen concreta (la madre andando al trabajo para
+  dejarle el billete de autobús). Abre por lo último que pasó, promete el momento con Biles y lo paga a los 6 min.
+- **COLETHEMAN GTA** (`xNcl7EpmYwQ`, 2.393 palabras, 9 min 34 s). Diez apartados con la misma estructura: el error,
+  qué dijo Rockstar o un medio, un ejemplo, cómo evitarlo. Unas veinte afirmaciones atribuidas («Rockstar told
+  Famitsu», «IGN says», «Rob Nelson said»). No hay ni una frase que exija un clip concreto: cualquier metraje del
+  juego vale si el texto en pantalla lleva el dato.
+
+El plan de trabajo que sale de todo esto: `prompts/motor-punteria-prompt.md`.
