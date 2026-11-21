@@ -85,6 +85,8 @@ async function newVideo() {
       <div class="fset"><div class="legend">Comprobaciones</div>
         <div class="actions"><button id="hookbtn" onclick="checkHook()">Revisar el gancho</button><span class="help">Antes de grabar</span><span id="hookmsg" class="small muted"></span></div>
         <div id="hookbox"></div>
+        <div class="actions"><button id="imgbtn" onclick="checkImages()">Revisar qué se puede enseñar</button><span class="help">Antes de grabar: frases sin imagen posible</span><span id="imgmsg" class="small muted"></span></div>
+        <div id="imgbox"></div>
         <div class="actions"><button id="scenebtn" onclick="checkScenes()">Revisar escenas</button><span class="help">Canales de simulación</span><span id="scenemsg" class="small muted"></span></div>
         <div id="scenebox"></div>
       </div>
@@ -272,6 +274,23 @@ function useOpeningClip(i) {
     subtitles: $("#opsubs").checked, credit: $("#opcredit").value};
   window.openings.forEach((c, k) => { const b = $("#opok" + k); if (b) b.textContent = k === i ? "✓ Elegida: irá antes de la voz" : ""; });
 }
+// bloque 5: what of the script can be shown, before the voice (pipeline/imagen_guion.py)
+async function checkImages() {
+  const msg = $("#imgmsg"); msg.textContent = "Leyendo el guion frase a frase… (~20 s)"; $("#imgbtn").disabled = true;
+  try {
+    const r = await post("/api/imagen", {script: $("#script").value, title: $("#title").value, channel: $("#channel").value});
+    msg.textContent = "";
+    const ok = r.verdict.startsWith("✅"), sh = r.shares;
+    $("#imgbox").innerHTML = `<div class="notice ${ok ? "ok" : ""}"><b>${esc(r.verdict)}</b>
+      <div class="bar mix mt-2" role="img" aria-label="Con imagen ${sh.imagen} %, ambiente ${sh.ambiente} %, sin imagen ${sh.sin_imagen} %">
+        <i style="width:${sh.imagen}%;background:var(--ok)"></i><i style="width:${sh.ambiente}%;background:var(--work)"></i><i style="width:${sh.sin_imagen}%;background:var(--bad)"></i></div>
+      <div class="small mt-1"><span class="t-ok">■</span> con imagen propia ${sh.imagen} % · <span style="color:var(--work-fg)">■</span> de ambiente ${sh.ambiente} %
+        · <span class="t-bad">■</span> sin imagen ${sh.sin_imagen} %${sh.sin_revisar ? ` · sin revisar ${sh.sin_revisar} %` : ""}</div>
+      ${r.sinImagen.length ? `<div class="small mt-2"><b>Frases sin imagen posible</b></div><ul class="small">${r.sinImagen.map((x) =>
+        `<li>«${esc(x.text)}»${x.idea ? `<br><span class="muted">Idea:</span> ${esc(x.idea)}` : ""}</li>`).join("")}</ul>` : ""}</div>`;
+  } catch (e) { msg.textContent = e.message; }
+  $("#imgbtn").disabled = false;
+}
 async function checkScenes() {
   const msg = $("#scenemsg"); msg.textContent = "Mirando qué se puede enseñar… (~20 s)"; $("#scenebtn").disabled = true;
   try {
@@ -437,7 +456,59 @@ async function videoPage(slug) {
   window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${icon("download")} ${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics], rhythm: ["Ritmo", v.rhythm],
-                retention: ["Retención", null], audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null]};
+                retention: ["Retención", null], audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null],
+                ...(v.material ? {material: ["Material de partida", null]} : {})};
+  // «Material de partida» of a video already made: links, channels and your clips; the search uses them the next time
+  // the video is made from «Buscar material»
+  const mat = v.material || {videos: [], channels: [], clips: [], channelSaved: {videos: [], channels: []}};
+  const matSaved = [...mat.channelSaved.channels, ...mat.channelSaved.videos.map((x) => "youtu.be/" + x)];
+  const materialView = () => `<p class="help">De aquí saca los clips antes de buscar en YouTube a ciegas. Al cambiarlo, el vídeo
+      se rehace desde la búsqueda (reaprovecha la voz y lo ya descargado).</p>
+    ${field("Vídeos de YouTube", `<textarea id="mvideos" class="mid" placeholder="https://youtu.be/…">${esc(mat.videos.map((x) => "https://youtu.be/" + x).join("\n"))}</textarea>`, "Un enlace por línea", "mvideos")}
+    ${field("Canales", `<textarea id="mchannels" class="mid" placeholder="https://www.youtube.com/@canal">${esc(mat.channels.join("\n"))}</textarea>`,
+      matSaved.length ? `Además, guardado en ${esc(v.channel)} para todos sus vídeos: ${esc(matSaved.join(", "))}` : "", "mchannels")}
+    <div class="field"><label class="check"><input type="checkbox" id="msave"> Guardar estos canales para todos los vídeos de ${esc(v.channel)}</label></div>
+    ${mat.clips.length ? `<div class="field"><label>Tus clips</label><div class="drop-list">${mat.clips.map((c, i) => `<div class="drop-file">${icon("film")}
+        <span class="name" title="${esc(c.name)}">${esc(c.name)}</span><span class="size">${c.mb} MB</span>
+        <button type="button" class="icon ghost" aria-label="Quitar ${esc(c.name)}" onclick="removeClip('${esc(c.name)}', this)">${icon("trash")}</button>
+        <input class="tags mtag" data-name="${esc(c.name)}" value="${esc(c.tags)}" placeholder="Qué se ve" aria-label="Qué se ve en ${esc(c.name)}"></div>`).join("")}</div></div>` : ""}
+    ${field("Añadir clips", dropZone("mclips", "video/*,.mp4,.mov,.mkv,.webm", "Arrastra aquí tus clips o pulsa para elegirlos", "hasta 4 GB cada uno", {multiple: true}), "", "mclips")}
+    <div class="actions"><button onclick="saveMaterial(false)">Guardar</button>
+      <button class="main" onclick="saveMaterial(true)">Guardar y rehacer desde la búsqueda</button><span id="mmsg" class="small muted"></span></div>`;
+  window.removeClip = async (name, btn) => {
+    if (!(await ask(`¿Quitar ${name} del material de este vídeo? Se borra el archivo.`, {ok: "Quitar", danger: true}))) return;
+    btn.disabled = true;
+    try { await post(`/api/video/${encodeURIComponent(slug)}/material`, {remove: [name]}); route(); } catch (e) { oops(e); btn.disabled = false; }
+  };
+  window.saveMaterial = async (redoToo) => {
+    const msg = $("#mmsg"), tags = {};
+    document.querySelectorAll(".mtag").forEach((x) => { tags[x.dataset.name] = x.value; });
+    try {
+      msg.textContent = "Guardando…";
+      await post(`/api/video/${encodeURIComponent(slug)}/material`, {videos: $("#mvideos").value, channels: $("#mchannels").value,
+        saveChannels: $("#msave").checked, tags});
+      const files = window.mclipZone ? window.mclipZone.files() : [];
+      for (const [i, f] of files.entries()) {
+        const row = window.mclipZone.row(i);
+        const what = ($("#mclip-tag-" + i) || {}).value || "";
+        row.insertAdjacentHTML("beforeend", `<div class="bar acc"><i></i></div><span class="state">Subiendo…</span>`);
+        msg.textContent = `Subiendo tus clips (${i + 1} de ${files.length})…`;
+        try {
+          await sendFile(`/api/video/${encodeURIComponent(slug)}/material/clip?name=${encodeURIComponent(f.name)}&tags=${encodeURIComponent(what)}`,
+                         f, row.querySelector(".bar"));
+          row.classList.add("done"); row.querySelector(".state").textContent = "Subido";
+        } catch (e) { row.classList.add("failed"); row.querySelector(".state").textContent = e.message; }
+      }
+      if (redoToo) {
+        const r = await post(`/api/video/${encodeURIComponent(slug)}/redo`, {stages: ["sourcing"]});
+        msg.textContent = r.message || "En la cola: se rehace desde la búsqueda.";
+        setTimeout(route, 2000);
+      } else {
+        msg.textContent = "Guardado. Se usará la próxima vez que el vídeo se haga desde la búsqueda.";
+        setTimeout(route, 1500);
+      }
+    } catch (e) { msg.textContent = "No se pudo: " + e.message; }
+  };
   window.uploadRetention = async () => {
     const file = $("#retfile").files[0], msg = $("#retmsg");
     if (!file) { msg.textContent = "Elige el CSV exportado de YouTube Studio"; return; }
@@ -465,6 +536,7 @@ async function videoPage(slug) {
         : "Todavía no hay montaje (sale después de la etapa «timeline»).")
     : tab === "script" ? `<div class="row mb-2"><audio controls preload="none" src="/api/video/${encodeURIComponent(v.slug)}/voz.mp3"></audio>
         <a class="btn" href="/api/video/${encodeURIComponent(v.slug)}/voz.mp3?download">${icon("download")} Descargar voz</a></div><pre>${esc(v.script)}</pre>`
+    : tab === "material" ? materialView()
     : tab === "stages" ? `<table><tr><th>Etapa</th><th class="r">Tiempo</th><th class="r">RAM máx.</th><th class="r">CPU máx.</th></tr>${v.stages.map((s) =>
         `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td class="r nw">${mins(s.seconds)}</td><td class="r nw">${s.ram ?? "—"} GB</td><td class="r nw">${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
     : `<div class="md">${md(docs[tab][1], base)}</div>`;
@@ -513,6 +585,11 @@ async function videoPage(slug) {
     <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';window.tabPicked=1;route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div></div>
     <aside class="vside">${v.hasVideo ? doing : ""}${ytView}<div class="row" id="pilotBox"></div><div id="pilotReport"></div>${titles}${thumbs}${shorts}</aside></div>`);
+  window.mclipTags = {};
+  window.mclipZone = tab === "material" && $("#mclips") ? wireDrop("mclips", {multiple: true, render: (f, i) =>
+    `<input class="tags" id="mclip-tag-${i}" data-name="${esc(f.name)}" placeholder="Qué se ve: «Vice Beach de noche, persecución»"
+      aria-label="Qué se ve en ${esc(f.name)}" value="${esc(window.mclipTags[f.name] || "")}">`}) : null;
+  if (window.mclipZone) $("#mclips-list").addEventListener("input", (e) => { if (e.target.dataset.name) window.mclipTags[e.target.dataset.name] = e.target.value; });
   // the storyboard: every shot with its frame, its minute, where the footage came from and its line of the script
   if ($("#storyBox")) api("/api/review/" + encodeURIComponent(slug)).then((r) => {
     const shots = r.shots || [], seen = {correcta: 0, dudosa: 0, incorrecta: 0};

@@ -685,6 +685,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "dubs": _dubs(root, slug),
         "youtube": _video_youtube(work),
         "costs": _costs_by_stage(root, slug),
+        "material": video_material(root, slug) if folder.is_dir() else None,
     }
 
 
@@ -995,6 +996,49 @@ def save_clip(root: Path, slug: str, name: str, tags: str, stream: Any, length: 
     partial.replace(target)
     material.save(folder, clips={clean: tags})
     return {"ok": True, "file": clean, "bytes": target.stat().st_size}
+
+
+def video_material(root: Path, slug: str) -> dict[str, Any]:
+    """A video's material de partida for its page: its links, channels and clips, and what its channel saved."""
+
+    from . import material
+
+    folder = find_video(root, slug)
+    own = material.read(folder)
+    clips_dir = folder / material.CLIPS_DIR
+    files = sorted(p for p in clips_dir.iterdir() if p.suffix.lower() in material.VIDEO_EXTENSIONS) if clips_dir.is_dir() else []
+    group = folder.parent
+    shared = material.read(group) if group.name != "materiales" else {"videos": [], "channels": [], "clips": {}}
+    return {"videos": own["videos"], "channels": own["channels"],
+            "clips": [{"name": p.name, "tags": own["clips"].get(p.name, ""), "mb": round(p.stat().st_size / 1e6, 1)}
+                      for p in files],
+            "channelSaved": {"videos": shared["videos"], "channels": shared["channels"]}}
+
+
+def set_material(root: Path, slug: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Change a video's material: links and channels as given, the tags of its clips, clips removed. The search uses it
+    the next time the video is made from «Buscar material» (the material is part of that stage's fingerprint)."""
+
+    from . import material
+
+    folder = find_video(root, slug)
+    if not folder.is_dir():
+        raise FileNotFoundError(slug)
+    for name in body.get("remove") or []:
+        clean = Path(str(name)).name
+        (folder / material.CLIPS_DIR / clean).unlink(missing_ok=True)
+        data = material.read(folder)
+        data["clips"].pop(clean, None)
+        (folder / material.FILE).write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    material.save(folder, videos=body.get("videos") if "videos" in body else None,
+                  channels=body.get("channels") if "channels" in body else None,
+                  clips={str(k): str(v) for k, v in (body.get("tags") or {}).items()} or None)
+    channel = video_channel(root, slug)
+    refs = material.channel_refs(body.get("channels") or "")
+    if refs and body.get("saveChannels") and channel:
+        shared = material.read(root / "materiales" / channel)
+        material.save(root / "materiales" / channel, channels=[*shared["channels"], *refs])
+    return video_material(root, slug)
 
 
 def channel_material(root: Path, channel: str) -> dict[str, Any]:
@@ -1394,17 +1438,17 @@ def spending(root: Path, days: int = 14, owner: str | None = None) -> list[dict[
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
                "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar",
                "/api/stats", "/api/spending", "/api/canales")
-PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
+PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes", "/api/imagen",
                 "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
                 "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas",
                 "/api/ideas", "/api/ideas/save")
-PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test",
+PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/imagen", "/api/voices", "/api/voices/test",
                         "/api/scripts/draft", "/api/board/temas")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
                      r"/api/decisions/([^/]+)", r"/api/decisions/([^/]+)/frame", r"/files/([^/]+)/.+")
 PARTNER_VIDEO_POST = (r"/api/video/([^/]+)/(?:voz|retencion|doblaje|retry|archive|hold|unhold|stop|redo|for-claude|porque"
-                      r"|capcut|exportar|published|fix|channel|material/clip)",
+                      r"|capcut|exportar|published|fix|channel|material|material/clip)",
                       r"/api/review/([^/]+)/[A-Za-z0-9_-]+", r"/api/decisions/([^/]+)/[A-Za-z0-9_-]+")
 
 
@@ -2211,6 +2255,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok({"file": ticket})
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz", path):
                     return self._ok(save_voice(root, urllib.parse.unquote(match.group(1)), self.rfile.read(length)))
+                if match := re.fullmatch(r"/api/video/([^/]+)/material", path):           # links, channels, tags
+                    return self._ok(set_material(root, urllib.parse.unquote(match.group(1)),
+                                                 json.loads(self.rfile.read(length) or b"{}")))
                 if match := re.fullmatch(r"/api/video/([^/]+)/material/clip", path):     # an own clip, streamed
                     query = urllib.parse.parse_qs(url.query)
                     return self._ok(save_clip(root, urllib.parse.unquote(match.group(1)), (query.get("name") or [""])[0],
@@ -2494,6 +2541,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if not title:
                         raise ValueError("Pon el título que vas a usar: el gancho se mide contra él")
                     return self._ok(hook.review(ctx, title, str(body.get("script") or "")))
+                if path == "/api/imagen":                  # {script, title, channel}: what can be shown, before recording
+                    from . import imagen_guion
+
+                    channel = str(body.get("channel") or "")
+                    ctx = RunContext.create("_imagen", root=root, channel=channel if channel in channels(root) else None)
+                    return self._ok(imagen_guion.review(ctx, str(body.get("script") or ""), str(body.get("title") or "")))
                 if path == "/api/scenes":                  # {script, channel}: the lines no simulated world can show
                     from . import simulacion
 

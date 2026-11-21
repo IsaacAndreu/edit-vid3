@@ -225,4 +225,12 @@ donde antes había un clip sin sentido.
 | Clips propios | hecho: fuente `propio`; sin «Fuente:» en pantalla ni en los créditos; la QA y el montaje no lo exigen. Los planos siguen siendo de ≤ 4 s, así que el tope de 5 s no se notaba | `tests/test_material.py`, e2e |
 | Estudio | hecho: apartado «Material de partida» al crear un vídeo (enlaces, canales con «guardar para todo el canal», clips con «qué se ve»), el vídeo espera en la cola mientras suben los clips (`hold`), subida por trozos hasta 4 GB; zonas de arrastrar y soltar para guion, voz, vídeo de apertura y clips | capturas en escritorio y móvil |
 | Índice por escenas (2ª tanda) | hecho: `pipeline/indice.py` corta cada fuente del material en escenas (CLIP sobre las miniaturas del storyboard, sin proxy), un modelo de visión barato describe cada escena (inglés + palabras clave en español) y se guarda una vez por fuente; cada plano añade la ventana de la escena que más palabras comparte con él (`hint: indice`), que no se descarta por CLIP bajo y que el juez ve primero entre el material | `tests/test_indice.py`, e2e «ideas» |
-| Pendiente | material al vídeo ya creado desde su ficha; gráficos de GTA en Remotion; transcripción por escena | — |
+| Material desde la ficha del vídeo | hecho: pestaña «Material de partida» (enlaces, canales, clips con «qué se ve», quitar clips) y «Guardar y rehacer desde la búsqueda» | `tests/test_material.py` |
+| Pendiente | gráficos de GTA en Remotion; transcripción por escena | — |
+
+## Puntería · bloque 5.1: aviso antes de grabar la voz
+
+| Qué | Estado | Test |
+|---|---|---|
+| ¿Qué se puede enseñar? | hecho: «Nuevo vídeo» → «Revisar qué se puede enseñar» (`pipeline/imagen_guion.py`, `/api/imagen`): el modelo barato del planner etiqueta cada frase (imagen propia / ambiente / sin imagen), barra con los porcentajes y las frases sin imagen con una idea para reescribirlas. Aviso, no bloqueo; solo cuando se pulsa | `tests/test_imagen_guion.py` |
+| Pendiente (5.2) | que los borradores de guion reciban antes el material que existe (sucesos con vídeo, citas reales) | — |
