@@ -154,3 +154,84 @@ def test_with_byte_ranges_a_video_refused_for_no_hls_can_be_used_again(tmp_path,
     assert VIDEO not in unreachable_videos(tmp_path, without_hls=False)
     off.close()
     on.close()
+
+
+@pytest.fixture
+def odd_server(tmp_path_factory):
+    """v.mp4 that is really a webm, and n.mp4 an mp4 with its moov but no sidx (descargas-rango-fallo.md)."""
+
+    folder = tmp_path_factory.mktemp("odd")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=30:duration=20",
+                    "-c:v", "libvpx", "-b:v", "200k", "-f", "webm", str(folder / "v.mp4")], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=30:duration=20",
+                    "-c:v", "libx264", "-movflags", "+faststart", "-f", "mp4", str(folder / "n.mp4")], check=True)
+    handler = lambda *a, **k: RangeHandler(*a, directory=str(folder), **k)   # noqa: E731
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    RangeHandler.seen = []
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def _fails_by_range(tmp_path, monkeypatch, yt):
+    monkeypatch.setattr(yt, "_fetch_range", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("ffmpeg path")))
+    with pytest.raises(RuntimeError, match="ffmpeg path"):
+        yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720][vcodec^=avc1]/bv*[height<=720]", prefix="hd")
+    return [json.loads(line) for line in yt.metrics_path.read_text().splitlines()]
+
+
+def test_a_webm_answer_says_what_came_and_is_not_asked_again(tmp_path, monkeypatch, odd_server):
+    """22-11: 884 of 886 ranges failed with «faltan moov o sidx» counted as «other»: the row now carries the format,
+    the HTTP answer and the first bytes (1a 45 df a3 = Matroska), its own cause, and the video is not asked again."""
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, odd_server)
+    rows = _fails_by_range(tmp_path, monkeypatch, yt)
+    failed = [r for r in rows if r["action"] == "download (rango)" and not r["ok"]]
+    assert len(failed) == 1 and failed[0]["cause"] == "rango-sin-indice"
+    assert "webm (Matroska)" in failed[0]["detail"] and "1a 45 df a3" in failed[0]["detail"]
+    assert "itag 136" in failed[0]["detail"] and "HTTP 206" in failed[0]["detail"]
+    asked = len(RangeHandler.seen)
+    _fails_by_range(tmp_path, monkeypatch, yt)                 # the next shot of the same video
+    assert len(RangeHandler.seen) == asked                    # no new range request for it
+    yt.close()
+
+
+def test_an_mp4_without_sidx_says_so(tmp_path, monkeypatch, odd_server):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, odd_server)
+    info = yt._full_info_path(VIDEO)
+    data = json.loads(info.read_text())
+    data["formats"][0]["url"] = f"{odd_server}/n.mp4?expire=9999999999"
+    info.write_text(json.dumps(data))
+    rows = _fails_by_range(tmp_path, monkeypatch, yt)
+    failed = [r for r in rows if r["action"] == "download (rango)" and not r["ok"]]
+    assert failed and failed[0]["cause"] == "rango-sin-indice" and "ftyp" not in failed[0]["detail"][:5]
+    assert "00 00 00" in failed[0]["detail"]                     # the first bytes, in hex
+    yt.close()
+
+
+def test_new_causes_and_one_row_per_video():
+    from pipeline.sourcing.youtube import error_cause
+
+    assert error_cause("faltan moov o sidx (['\\x9fB\\x86\\x81'])") == "rango-sin-indice"
+    assert error_cause("yt-dlp download: X no tiene HLS y entero supera el tope del proxy residencial (1000 MB)") \
+        == "sin-hls-tope"
+
+
+def test_the_probe_says_what_comes_back(tmp_path, monkeypatch, odd_server):
+    """python -m pipeline.sonda_rango: one request of 64 KB per format and what the parser makes of it."""
+
+    from types import SimpleNamespace
+
+    from pipeline import sonda_rango
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, odd_server)
+    info = yt._full_info_path(VIDEO)
+    monkeypatch.setattr(yt, "_fresh_full_info", lambda video_id: info)
+    lines = sonda_rango.probe(SimpleNamespace(), f"https://youtu.be/{VIDEO}", youtube=yt)
+    assert len(lines) == 1 and "1a 45 df a3" in lines[0] and "webm (Matroska)" in lines[0]
+    assert RangeHandler.seen == ["bytes=0-65535"]                 # only the first 64 KB
+    assert "sidx" in sonda_rango.verdict(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 24)
+    yt.close()
