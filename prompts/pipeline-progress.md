@@ -275,3 +275,22 @@ newgym3-ideas2, 18 eran «Repetido».
 | (nuevo vídeo) | «Nuevo vídeo» con dos tarjetas: tu guion o desde un título e información (enlaces de referencia, biblioteca, arreglar frases sin imagen) | vídeos hechos desde un título: % sin imagen antes y después del arreglo |
 | (parar) | `judge.parar_si_rechaza: 60`: se para antes de las descargas HD si el juez rechazó ese % | GB de proxy en vídeos que acaban sin imagen |
 | (retención) | `guion.retencion: true`: reglas de retención al escribir y arreglar guiones (minutos 3 y 6, escalada, final en seco) | duración media y % visto en «Estadísticas» de los vídeos escritos con ellas frente a la mediana del canal |
+
+## Rangos de bytes (descargas-rango-fallo.md, 22-11)
+
+| Qué | Estado |
+|---|---|
+| El NoIndex ya no se convierte en RuntimeError dentro de `_call`: el plano pasa a la siguiente vía en vez de perder el clip | hecho (era la causa de que los 884 fallos dejaran planos vacíos) |
+| Diagnóstico en el error (formato, HTTP, Content-Type, 16 bytes) + reconocimiento de WebM | hecho |
+| Sin repetir el rango de un vídeo que ya falló (por proceso) | hecho |
+| Causas `rango-sin-indice` y `sin-hls-tope`, una fila por vídeo | hecho |
+| `python -m pipeline.sonda_rango <vídeo>` | hecho: **falta que el dueño la lance** con un vídeo de rompergtavitrucos |
+| Arreglar la selección o leer `Cues` de Matroska | pendiente de lo que diga la sonda |
+| 502 del túnel | ya se reintenta con otra sesión (`tunnel_failure` reconoce «Tunnel connection failed: 502»); las 328 filas son intentos antes de rotar |
+| 429 de `timedtext` de 1 a 3 UTC | sin datos del servidor: los subtítulos salen por la misma vía que el vídeo; mirar en `--youtube-stats` la columna de proxy de esas filas |
+
+## Tope de clip de terceros (segunda tanda), 1.ª parte
+
+`content.max_third_party_seconds` (5 por defecto): esquemas con techo de 180 s, etapas con el tope del vídeo, sin rehacer
+etapas (SPEED_KEYS). Falta: salto entre cortes, relleno de huecos, Shorts, valores por canal, segundos por fuente en la
+página del vídeo, prueba de extremo a extremo y documentación.
