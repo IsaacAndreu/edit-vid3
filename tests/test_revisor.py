@@ -226,3 +226,37 @@ def test_your_labels_and_the_reviewers_are_both_read_yours_win(tmp_path):
     (tmp_path / feedback.REVISION).write_text(json.dumps({"wrong": {"s002": {"reason": "persona_equivocada"}}}))
     assert feedback.wrong_shots(tmp_path) == {"s001": "Repetido", "s002": "Sale otra persona"}
     assert feedback.no_borrow(tmp_path) == {"s009"}
+
+
+def test_the_score_of_every_video_and_the_panel(tmp_path):
+    """1: with revisor.nota the stage scores the edit without sending anything back; «Puntería» gathers the scores per
+    channel (the last five averaged) and each video's page shows its own."""
+
+    import os
+    import time
+
+    from pipeline import web
+
+    (tmp_path / "config.yaml").write_text("revisor: {nota: true}\n")
+    (tmp_path / "materiales" / "gimnasia" / "a").mkdir(parents=True)
+    (tmp_path / "materiales" / "gimnasia" / "config.yaml").write_text("canal: gimnasia\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("{}\n")
+    ctx = RunContext.create("a", root=tmp_path)
+    revisor.stage_run(ctx, review_fn=lambda: {"shots": 200, "asText": 7, "flagged": [{"problem": "repetido"}] * 30})
+    saved = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
+    assert saved["mode"] == "nota" and not (ctx.work_dir / "revision.auto.json").exists()      # nothing sent back
+    older = tmp_path / "out" / "b" / "revisor" / "revisor.json"
+    older.parent.mkdir(parents=True)
+    older.write_text(json.dumps({"shots": 100, "flagged": [{"problem": "roto"}] * 25}))
+    os.utime(older, (time.time() - 86400, time.time() - 86400))
+    (tmp_path / "out" / "c" / "revisor").mkdir(parents=True)
+    (tmp_path / "out" / "c" / "revisor" / "revisor.json").write_text(json.dumps({"skipped": "off"}))
+    panel = web.punteria(tmp_path)
+    by_channel = {c["channel"]: c for c in panel["channels"]}
+    assert panel["videos"] == 2 and set(by_channel) == {"gimnasia", "—"}            # the skipped one is not a score
+    gym = by_channel["gimnasia"]
+    assert [v["slug"] for v in gym["videos"]] == ["a"] and gym["videos"][0]["per100"] == 15.0 and gym["recent"] == 15.0
+    assert by_channel["—"]["videos"][0]["per100"] == 25.0 and gym["videos"][0]["asText"] == 7
+    assert web.punteria(tmp_path, mine=["otro"])["videos"] == 0                    # a partner sees only theirs
+    assert web._video_score(tmp_path / "out" / "a") == {"flagged": 30, "shots": 200, "per100": 15.0, "asText": 7}

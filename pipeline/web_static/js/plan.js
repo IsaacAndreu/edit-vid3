@@ -463,3 +463,39 @@ async function boardPage() {
     try { sessionStorage.setItem("prefill", JSON.stringify({idea, channel: x.channel})); } catch (e) {}
     window.prefill = {idea, channel: x.channel}; location.hash = "#/nuevo"; };
 }
+
+// «Puntería»: the automatic reviewer's score of each video (flagged shots per 100 with a picture), per channel, oldest
+// first — lower is better. One series per channel: columns in one hue, the details on hover and in the table under it.
+async function punteriaPage() {
+  const p = await api("/api/punteria");
+  const P = p.problems || {};
+  const name = (k) => esc(P[k] || k);
+  const bars = (videos) => {
+    const max = Math.max(10, ...videos.map((v) => v.per100));
+    const W = 640, H = 120, gap = 2, bw = Math.max(4, Math.min(28, (W - gap * videos.length) / Math.max(1, videos.length)));
+    return `<svg class="pchart" viewBox="0 0 ${W} ${H + 18}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Marcados por cada 100 planos, vídeo a vídeo">
+      <line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="var(--line)" stroke-width="1"/>
+      ${videos.map((v, i) => { const h = Math.max(2, H * v.per100 / max), x = i * (bw + gap);
+        return `<g class="pbar"><rect x="${x}" y="0" width="${bw}" height="${H}" fill="transparent"/>
+          <path d="M${x} ${H}V${H - h + 4}q0-4 4-4h${Math.max(0, bw - 8)}q4 0 4 4V${H}z" fill="var(--work)"/>
+          <title>${esc(v.slug)} · ${v.at} · ${v.per100} marcados por 100${v.asText != null ? ` · ${v.asText} en texto` : ""}</title></g>`; }).join("")}
+      <text x="0" y="${H + 14}" class="ptick">${esc(videos[0].at.slice(0, 10))}</text>
+      ${videos.length >= 4 ? `<text x="${videos.length * (bw + gap) - gap}" y="${H + 14}" class="ptick" text-anchor="end">${esc(videos[videos.length - 1].at.slice(0, 10))}</text>` : ""}</svg>`;
+  };
+  show(`<h1>Puntería</h1>
+    <div class="small muted">Lo que el revisor automático marca en cada vídeo: planos que no tienen que ver con la frase, otra persona,
+      repetidos, huecos tapados… por cada 100 planos con imagen. <b>Cuanto más bajo, mejor.</b> «En texto»: planos que acabaron sin imagen
+      (no cuentan como fallo, pero si suben, el vídeo enseña menos).</div>
+    ${p.videos ? "" : `<div class="notice mt-3">Aún no hay notas. Se calculan solas al montar cada vídeo con <code>revisor: {nota: true}</code>
+      en config.local.yaml (1-2 céntimos por vídeo), o a mano: <code>python -m pipeline.revisor &lt;vídeo&gt;</code>.</div>`}
+    ${(p.channels || []).map((c) => `<section class="card mt-3"><div class="hb"><h2>${esc(c.channel)}</h2>
+        <span class="small">últimos 5: <b>${c.recent}</b> por 100${c.videos.length > 1 ? ` · el primero: ${c.first}` : ""}</span></div>
+      ${bars(c.videos)}
+      <div class="tablewrap"><table class="small"><tr><th>Vídeo</th><th>Fecha</th><th class="r">Planos</th><th class="r">Por 100</th>
+        <th class="r">En texto</th><th>Lo más marcado</th></tr>
+        ${[...c.videos].reverse().map((v) => { const top = Object.entries(v.counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+          return `<tr><td><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></td><td class="nw">${esc(v.at)}</td>
+          <td class="r">${v.shots}</td><td class="r"><b>${v.per100}</b></td><td class="r">${v.asText ?? "—"}</td>
+          <td>${top.map(([k, n]) => `${name(k)} ${n}`).join(" · ") || "—"}${v.sentBack ? ` <span class="muted">(${v.sentBack} corregidos antes del render)</span>` : ""}</td></tr>`; }).join("")}
+      </table></div></section>`).join("")}`);
+}

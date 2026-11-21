@@ -537,6 +537,13 @@ def stage_run(ctx: RunContext, review_fn: Any = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     target = out / "revisor.json"
     if not cfg.get("enabled", False):
+        if cfg.get("nota", False):
+            # revisor.nota: the score only (the studio's «Puntería» panel), nothing sent back — 1-2 cents a video
+            look = review_fn or (lambda: review(ctx.root, ctx.slug))
+            noted = look()
+            target.write_text(json.dumps({**noted, "mode": "nota"}, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"   Revisor (nota): {len(noted.get('flagged') or [])} de {noted.get('shots', 0)} planos marcados")
+            return
         target.write_text(json.dumps({"skipped": "revisor.enabled apagado"}), encoding="utf-8")
         return
     look = review_fn or (lambda: review(ctx.root, ctx.slug))
@@ -559,7 +566,7 @@ def stage_run(ctx: RunContext, review_fn: Any = None) -> None:
         final, again = look(), True
     elif auto.is_file():
         print("   Revisor: ya devolvió sus planos al relleno una vez; no se repite")
-    summary = {**final, "before": len(first.get("flagged") or []), "sentBack": len(wrong) if again else 0,
+    summary = {**final, "mode": "cola", "before": len(first.get("flagged") or []), "sentBack": len(wrong) if again else 0,
                "asText": len(as_text) if again else 0}
     target.write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"   Revisor: {summary['before']} marcados antes, {len(final.get('flagged') or [])} después")
