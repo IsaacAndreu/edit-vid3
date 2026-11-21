@@ -41,6 +41,21 @@ def cost(model: str, usage: Any, prices: dict[str, Any] | None = None) -> float:
             + read * float(p.get("input_cache_hit", float(p["input"]) / 10)) + out * float(p["output"])) / 1e6
 
 
+UNSUPPORTED = {"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength",
+               "pattern", "format", "minItems", "maxItems"}
+
+
+def plain_schema(schema: Any) -> Any:
+    """The schema without the constraints structured outputs may refuse (numeric ranges, lengths…): the judge's asks
+    for a score between 0 and 1, which the prompt already says and `usable` checks."""
+
+    if isinstance(schema, dict):
+        return {k: plain_schema(v) for k, v in schema.items() if k not in UNSUPPORTED}
+    if isinstance(schema, list):
+        return [plain_schema(v) for v in schema]
+    return schema
+
+
 def image_block(jpeg: bytes) -> dict[str, Any]:
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                         "data": base64.standard_b64encode(jpeg).decode()}}
@@ -60,7 +75,7 @@ def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[st
         client = anthropic.Anthropic(api_key=ctx.env("ANTHROPIC_API_KEY"), max_retries=2)
     output: dict[str, Any] = {"effort": str(cfg.get("effort", "high"))}
     if schema is not None:
-        output["format"] = {"type": "json_schema", "schema": schema}
+        output["format"] = {"type": "json_schema", "schema": plain_schema(schema)}
     with client.beta.messages.stream(
         model=model, max_tokens=max_tokens, betas=[FALLBACK_BETA], fallbacks="default",
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],   # the same rules every time

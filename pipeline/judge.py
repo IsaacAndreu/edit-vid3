@@ -536,8 +536,11 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
         # accepted gymnastics for «las abejas» and Simone for «Jordan Chiles»; gpt-5-mini rejected both)
         model = str(cfg["model_literal"])
     model = str(cfg.get("_model_override") or model)      # pipeline/rejuzgar.py: the same sheets, another model
-    if str(cfg.get("provider", "openai")) != "openai":
-        raise ValueError("judge.provider: solo 'openai' está implementado (modelo con visión).")
+    from . import claude
+
+    if str(cfg.get("provider", "openai")) != "openai" and not claude.is_claude(model):
+        raise ValueError("judge.provider: solo 'openai' está implementado (modelo con visión); Claude se elige "
+                         "con judge.model: claude-…")
     ok, encoded = cv2.imencode(".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
     if not ok:
         raise RuntimeError("No se pudo codificar la hoja de contactos.")
@@ -566,6 +569,20 @@ def call_judge(ctx: RunContext, shot: Shot, sheet: np.ndarray, letters: str, top
     ).hexdigest()[:32]
 
     def produce() -> dict[str, Any]:
+        if claude.is_claude(model):     # judge.model: claude-… — the same sheet, prompt and verdict schema, on Claude
+            content: list[dict[str, Any]] = [{"type": "text", "text": prompt}, claude.image_block(image_bytes)]
+            for name, data in portraits:
+                content += [{"type": "text", "text": f"Reference photo: {name}"}, claude.image_block(data)]
+            effort = str(cfg.get("effort") or cfg.get("reasoning_effort", "low"))
+            effort = effort if effort in ("low", "medium", "high", "xhigh", "max") else "low"   # minimal: OpenAI's only
+            text, _ = claude.ask(ctx, stage=STAGE, system=instructions, content=content, max_tokens=16000,
+                                 schema=VERDICT_SCHEMA,
+                                 cfg={"model": model, "effort": effort, "usd_per_mtok": cfg.get("claude_usd_per_mtok")})
+            verdict = json.loads(text)
+            for field in ("score", "confidence"):        # the schema's 0-1 range is not enforced for Claude
+                verdict[field] = min(1.0, max(0.0, float(verdict.get(field) or 0)))
+            return verdict
+
         from openai import OpenAI
 
         client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=180, max_retries=2)

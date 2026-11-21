@@ -134,3 +134,37 @@ def test_a_section_moved_to_claude_is_charged_at_claudes_prices(monkeypatch, tmp
     assert seen[0]["usd_per_mtok"] is None and seen[0]["model"] == "claude-sonnet-5-5"
     usage = SimpleNamespace(input_tokens=1_000_000, output_tokens=0)
     assert claude.cost("claude-sonnet-5-5", usage, seen[0]["usd_per_mtok"]) == 2.0
+
+
+def test_the_judge_asks_claude_with_its_own_schema_and_clamps_the_score(monkeypatch, tmp_path):
+    """judge.model: claude-… — the same sheet and verdict schema; a score off the 0-1 range is brought back."""
+
+    import numpy as np
+
+    from pipeline import judge
+
+    asked = []
+
+    def fake_ask(ctx, **kw):
+        asked.append(kw)
+        return json.dumps({"candidates": [{"letter": "A", "shows": "x", "screenOrText": False, "onTopic": True}],
+                           "ranking": ["A"], "score": 1.4, "reason": "r", "confidence": 0.8}), 0.001
+
+    monkeypatch.setattr(claude, "ask", fake_ask)
+    monkeypatch.setattr(judge, "_lessons", lambda ctx: "")
+    section = {"model": "claude-haiku-5-5", "reasoning_effort": "minimal"}
+    fake_ctx = SimpleNamespace(section=lambda name: section if name == "judge" else {}, cache_dir=tmp_path,
+                               work_dir=tmp_path, channel="c")
+    monkeypatch.setattr(judge, "shot_brief", lambda *a, **k: "brief")
+    verdict = judge.call_judge(fake_ctx, SimpleNamespace(id="s001", idea=None), np.zeros((90, 160, 3), np.uint8), "AB")
+    assert verdict["ranking"] == ["A"] and verdict["score"] == 1.0
+    kw = asked[0]
+    assert kw["schema"] is judge.VERDICT_SCHEMA and kw["cfg"]["effort"] == "low"      # «minimal» is OpenAI's only
+    assert kw["content"][1]["type"] == "image"
+
+
+def test_structured_outputs_get_a_schema_without_numeric_ranges():
+    from pipeline import judge
+
+    plain = claude.plain_schema(judge.VERDICT_SCHEMA)
+    assert "minimum" not in json.dumps(plain) and plain["required"] == judge.VERDICT_SCHEMA["required"]
