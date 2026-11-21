@@ -583,3 +583,7 @@ tts:
 # guion:
 #   model: claude-opus-5-5     # los escribe Claude (ANTHROPIC_API_KEY en .env); sin esto, el modelo del planner
 #   effort: high               # low | medium | high | xhigh
+#   revisar_antes: false       # antes de buscar nada, lee el guion frase a frase (lo que no tendrá imagen y cómo
+#                              reescribirlo): aviso = te lo manda al Telegram y sigue; parar = además se para si
+#                              max_sin_imagen % o más no se puede enseñar. Una llamada por guion (lee otra vez si lo cambias)
+#   max_sin_imagen: 35

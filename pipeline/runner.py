@@ -343,6 +343,11 @@ def run_stages(
                 problems = video_problems(ctx)
                 if problems:
                     raise RuntimeError("No empiezo a gastar proxy: " + "; ".join(problems))
+                from .imagen_guion import gate
+
+                stopped = gate(ctx)                 # guion.revisar_antes (off): a script nobody can show, said now
+                if stopped:
+                    raise RuntimeError("No empiezo a buscar: " + stopped)
                 checked[0] = True
             budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
         print(f"{label}: ejecutando… ({datetime.now():%H:%M})")

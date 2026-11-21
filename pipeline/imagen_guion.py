@@ -57,7 +57,9 @@ def review(ctx: Any, script: str, title: str = "", ask: Any = None) -> dict[str,
         user = (f"TÍTULO: {title or '(sin título)'}\n\nFRASES:\n{listing}")
         if ask is not None:
             return ask(user)
-        return complete_json(ctx, stage="guion", section="planner", max_tokens=6000, system=SYSTEM, user=user)
+        # guion.model (claude-…): the same model that writes the drafts reads them; else the planner's
+        section = "guion" if ctx.section("guion").get("model") else "planner"
+        return complete_json(ctx, stage="guion", section=section, max_tokens=6000, system=SYSTEM, user=user)
 
     numbered = list(enumerate(sentences, start=1))
     labels: dict[int, dict[str, Any]] = {}
@@ -97,3 +99,62 @@ def verdict(shares: dict[str, int]) -> str:
         return (f"⚠️ Solo {shares.get('imagen', 0)} % de las frases tienen imagen propia: el vídeo será sobre todo "
                 "material de ambiente de la persona. Apóyalo en momentos grabados (competiciones, fechas, citas).")
     return f"✅ {shares.get('imagen', 0)} % con imagen propia y {shares.get('ambiente', 0)} % de ambiente: se puede enseñar."
+
+
+GATE_FILE = "imagen_guion.json"        # work/<slug>/: the last check, with the hash of the script it read
+
+
+def gate(ctx: Any, review_fn: Any = None, send: Any = None) -> str | None:
+    """`guion.revisar_antes` (off): before the first stage that searches and downloads, this video's script is read
+    once (again only if you change it). «aviso»: the share without an image and the ideas to fix it go to Telegram
+    and the video goes on; «parar»: when `guion.max_sin_imagen` % (35) or more cannot be shown, it also stops here,
+    before any money goes to searches — the message (returned) says what to rewrite. elasesinodelkickboxing: 70 % of
+    its 343 shots ended without an image after all the searching."""
+
+    import hashlib
+    import json
+
+    mode = str(ctx.section("guion").get("revisar_antes") or "").strip().lower()
+    if mode in ("", "false", "no", "0", "off"):
+        return None
+    script_path = ctx.materials_dir / "guion.txt"
+    if not script_path.is_file():
+        return None
+    script = script_path.read_text("utf-8")
+    digest = hashlib.sha256(script.encode()).hexdigest()[:16]
+    target = ctx.work_dir / GATE_FILE
+    try:
+        old = json.loads(target.read_text("utf-8"))
+    except (OSError, ValueError):
+        old = {}
+    if old.get("hash") == digest:                     # this very script was read already (and you went on)
+        return None
+    title_path = ctx.materials_dir / "titulo.txt"
+    title = title_path.read_text("utf-8").strip().splitlines()[0] if title_path.is_file() else ""
+    try:
+        result = (review_fn or review)(ctx, script, title)
+    except Exception as error:                        # the check never stops a video by failing itself
+        print(f"   revisión del guion antes de empezar: {str(error)[:160]}")
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps({"hash": digest, **result}, ensure_ascii=False, indent=1), encoding="utf-8")
+    share = int(result["shares"].get("sin_imagen", 0))
+    limit = int(ctx.section("guion").get("max_sin_imagen", 35))
+    stop = mode == "parar" and share >= limit
+    ideas = [f"[{r['n']}] {r['text'][:90]} → {r['idea']}" for r in result["sinImagen"] if r.get("idea")][:8]
+    text = (f"{ctx.slug}: {result['verdict']}\n" + ("\n".join(ideas) + "\n" if ideas else "")
+            + ("PARADO antes de buscar: reescribe esas frases en guion.txt y dale a «Hacer ahora» (o pon "
+               "guion: {revisar_antes: aviso} en su config.yaml para hacerlo tal cual)." if stop else ""))
+    if share >= limit or result["shares"].get("imagen", 0) < 25:
+        if send is not None:
+            send(text)
+        else:
+            from . import notify
+
+            notify.telegram(ctx, text)
+    if stop:
+        target.write_text(json.dumps({"hash": "", **result}, ensure_ascii=False, indent=1), encoding="utf-8")
+        return (f"{share} % del guion no tiene imagen posible (límite {limit} %): reescribe las frases que dice "
+                f"work/{ctx.slug}/{GATE_FILE} y vuelve a darle")
+    return None
+
