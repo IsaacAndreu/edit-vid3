@@ -1084,6 +1084,14 @@ def run(ctx: RunContext) -> None:
         counts = agrupar.apply(ctx, shots, header)
         print(f"   Ideas: {sum(counts.values())} ({counts['literal']} literales · {counts['ambiente']} de ambiente · "
               f"{counts['rotulo']} rótulos) para {len(shots)} planos")
+        if cfg.get("cobertura", False):
+            # planner.cobertura (off): the key events told by function — action, angle, reaction, commentary,
+            # testimony, aftermath — one search per function, the judge told which, held reactions (cobertura.py)
+            from . import cobertura
+
+            got = cobertura.apply(ctx, shots, header)
+            print(f"   Cobertura: {got['events']} sucesos clave · {got['shots']} planos con función · "
+                  f"{got['swaps']} funciones reordenadas · {got['held']} planos unidos (reacción/testimonio enteros)")
 
     shots_file = ShotsFile(
         slug=ctx.slug,

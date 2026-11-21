@@ -28,6 +28,13 @@ align:
   # cpu_threads: 4         # hilos de Whisper local; por defecto la mitad de los núcleos (corre junto a un render)
 
 planner:
+  # cobertura: false            # con ideas: los sucesos clave (3-6) se cuentan por funciones — acción, otro ángulo,
+  #                               reacción, comentario original, testimonio, después (y prueba en canales de teoría) —
+  #                               una búsqueda por función y suceso en el idioma de ese material, el juez sabe qué función
+  #                               juzga, nunca dos tomas seguidas de la misma función, y una reacción o un testimonio
+  #                               ocupan su idea entera (cobertura_hold_seconds: 6, sin pasar del tope del canal). Una
+  #                               llamada más al modelo por vídeo; más búsquedas por suceso clave y menos por plano.
+  #                               Se mide en revisor --base: «Fuentes/min» y «Funciones» (encontradas/pedidas).
   model: deepseek-flash
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
