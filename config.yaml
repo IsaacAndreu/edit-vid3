@@ -410,6 +410,7 @@ queue:                             # cola nocturna (python main.py --all)
 #   usd_per_mtok: {input: 0.25, output: 2.0}
 #   max_usd: 1.0             # tope por vídeo
 #   shots_per_sheet: 8
+#   aviso: true              # al acabar, lo que sigue marcado y sus hojas al Telegram del canal
 #   nota: false              # solo la nota de cada vídeo (panel «Puntería»), sin cambiar nada: 1-2 céntimos por vídeo
 #   enabled: false           # en la cola, entre el montaje y la QA (bloque 3.3): lo que marque vuelve UNA vez al
 #                            relleno (work/<vídeo>/revision.auto.json) y se rehacen relleno, apertura y montaje.

@@ -260,3 +260,27 @@ def test_the_score_of_every_video_and_the_panel(tmp_path):
     assert by_channel["—"]["videos"][0]["per100"] == 25.0 and gym["videos"][0]["asText"] == 7
     assert web.punteria(tmp_path, mine=["otro"])["videos"] == 0                    # a partner sees only theirs
     assert web._video_score(tmp_path / "out" / "a") == {"flagged": 30, "shots": 200, "per100": 15.0, "asText": 7}
+
+
+def test_what_is_still_wrong_goes_to_the_phone_with_its_sheets(tmp_path, monkeypatch):
+    from pipeline import notify
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    ctx = RunContext.create("v", root=tmp_path)
+    sent = []
+    monkeypatch.setattr(notify, "telegram", lambda c, text, photos=(): sent.append((text, list(photos))) or True)
+    assert not revisor.still_wrong(ctx)                                    # the revisor did not run: nothing
+    out = ctx.out_dir / revisor.OUT_DIR
+    out.mkdir(parents=True)
+    (out / "revisor.json").write_text(json.dumps({"skipped": "x"}))
+    assert not revisor.still_wrong(ctx) and not sent
+    for n in (1, 2, 10):
+        (out / f"hoja-{n}.jpg").write_bytes(b"x")
+    (out / "revisor.json").write_text(json.dumps({"mode": "cola", "shots": 50, "before": 6, "sentBack": 4, "flagged": [
+        {"problem": "repetido"}, {"problem": "no_tiene_que_ver"}, {"problem": "repetido"}]}))
+    assert revisor.still_wrong(ctx)
+    text, photos = sent[-1]
+    assert "3 de 50" in text and "antes 6" in text and revisor.PROBLEMS["repetido"] + ": 2" in text
+    assert [p.name for p in photos] == ["hoja-1.jpg", "hoja-2.jpg", "hoja-10.jpg"]
+    (tmp_path / "config.yaml").write_text("revisor: {aviso: false}\n")
+    assert not revisor.still_wrong(RunContext.create("v", root=tmp_path))

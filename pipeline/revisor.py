@@ -663,5 +663,41 @@ def send_telegram(root: Path, slug: str, result: dict[str, Any], limit: int = 8)
     return notify.telegram(ctx, text, sheets)
 
 
+
+def still_wrong(ctx: RunContext, limit: int = 8) -> bool:
+    """After «vídeo listo»: what the revisor still flags in the finished video, with its sheets, to the phone.
+
+    Only when the revisor ran in the queue (revisor.enabled or revisor.nota) and something is still flagged;
+    `revisor.aviso: false` turns it off. Nothing is sent when Telegram is not configured."""
+
+    from . import notify
+
+    if not dict(ctx.section("revisor") or {}).get("aviso", True):
+        return False
+    try:
+        result = json.loads((ctx.out_dir / OUT_DIR / "revisor.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return False
+    flagged = result.get("flagged") or []
+    if result.get("skipped") or not flagged:
+        return False
+    counts: dict[str, int] = {}
+    for row in flagged:
+        name = PROBLEMS.get(row.get("problem"), str(row.get("problem")))
+        counts[name] = counts.get(name, 0) + 1
+    fixed = ""
+    if result.get("mode") == "cola" and result.get("sentBack"):
+        fixed = f" (antes {result.get('before')}; {result['sentBack']} planos ya se cambiaron solos)"
+    shots = int(result.get("shots") or 0)
+    text = (f"🔎 Lo que sigue mal en {ctx.slug}: {len(flagged)} de {shots} planos{fixed}\n"
+            + "\n".join(f"• {k}: {n}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
+            + "\n\nEn las hojas, cada plano con su minuto, su frase y la prueba. Cámbialos en Revisar clips.")
+    link = notify.studio_link(ctx, f"revisar/{ctx.slug}")
+    if link:
+        text += f"\n{link}"
+    sheets = sorted((ctx.out_dir / OUT_DIR).glob("hoja-*.jpg"), key=lambda p: int(p.stem.split("-")[1]))[:limit]
+    return notify.telegram(ctx, text, sheets)
+
+
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
