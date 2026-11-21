@@ -343,7 +343,8 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         format_name = str(ctx.config.get("format") or "")
         writing = str((ctx.format or {}).get("escritura") or "").strip()
     brief = [f"CANAL: {channel}", f"IDEA: {title}"]
-    for key, label in (("note", "NOTA"), ("angle", "ÁNGULO"), ("hook", "GANCHO"), ("research", "COMPROBAR")):
+    for key, label in (("note", "NOTA"), ("info", "INFORMACIÓN DEL VÍDEO"), ("angle", "ÁNGULO"), ("hook", "GANCHO"),
+                       ("research", "COMPROBAR")):
         if idea.get(key):
             brief.append(f"{label}: {idea[key]}")
     if idea.get("outline"):
@@ -379,6 +380,14 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     reference = _reference_script(root, channel)
     if reference:
         brief.append(f"GUION DE REFERENCIA DEL CANAL (solo el estilo):\n{reference}")
+    if idea.get("references"):                   # «Enlaces de referencia»: what the script is written from
+        from .referencias import read as read_references
+
+        sources = read_references(ctx, idea["references"])
+        if sources:
+            brief.append("MATERIAL DE REFERENCIA (lo que cuentan estos vídeos y páginas: úsalo como fuente de los "
+                         "hechos, fechas y citas; no copies sus frases ni su orden; lo que no salga aquí ni sepas "
+                         "seguro, márcalo [COMPROBAR]):\n" + sources)
     existing = existing_material(root, channel, " ".join(
         [title, str(idea.get("note") or ""), str(idea.get("angle") or ""), " ".join(idea.get("outline") or [])]))
     if existing:                                 # what can already be shown: the script leans on it

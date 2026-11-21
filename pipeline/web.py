@@ -929,6 +929,8 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     (folder / "guion.txt").write_text(script + "\n", encoding="utf-8")
     if str(body.get("title") or "").strip():
         (folder / "titulo.txt").write_text(str(body["title"]).strip() + "\n", encoding="utf-8")
+    if str(body.get("references") or "").strip():         # «Enlaces de referencia»: what the script was written from
+        (folder / "referencias.txt").write_text(str(body["references"]).strip() + "\n", encoding="utf-8")
     if str(body.get("scenes") or "").strip():             # the scene list for a simulation video (simulacion.DIRECTOR)
         (folder / "escenas.txt").write_text(str(body["scenes"]).strip() + "\n", encoding="utf-8")
     if opening:
@@ -1488,10 +1490,11 @@ PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/ap
                "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar",
                "/api/stats", "/api/spending", "/api/canales", "/api/punteria")
 PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes", "/api/imagen",
-                "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
+                "/api/scripts/fix", "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
                 "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas",
                 "/api/ideas", "/api/ideas/save")
-PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/imagen", "/api/voices", "/api/voices/test",
+PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/imagen", "/api/scripts/fix", "/api/voices",
+                        "/api/voices/test",
                         "/api/scripts/draft", "/api/board/temas")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
@@ -2594,6 +2597,14 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if not title:
                         raise ValueError("Pon el título que vas a usar: el gancho se mide contra él")
                     return self._ok(hook.review(ctx, title, str(body.get("script") or "")))
+                if path == "/api/scripts/fix":             # {script, title, channel, references}: the sentences without an
+                    from . import imagen_guion, referencias          # image rewritten over something filmed
+
+                    channel = str(body.get("channel") or "")
+                    ctx = RunContext.create("_imagen", root=root, channel=channel if channel in channels(root) else None)
+                    sources = referencias.read(ctx, body.get("references") or "")
+                    return self._ok(imagen_guion.fix(ctx, str(body.get("script") or ""), str(body.get("title") or ""),
+                                                     sources))
                 if path == "/api/imagen":                  # {script, title, channel}: what can be shown, before recording
                     from . import imagen_guion
 

@@ -48,7 +48,7 @@ async function route() {
     else if (hash === "#/competencia") await radarPage();
     else if (hash === "#/canal") await channelPage();
     else if (hash === "#/canal-nuevo") await newChannelPage();
-    else if (hash === "#/nuevo") await newVideo();
+    else if (hash === "#/nuevo" || hash.startsWith("#/nuevo/")) await newVideo(hash.split("/")[2] || "");
     else if (hash === "#/calendario") await calendarPage();
     else if (hash === "#/canales") await canalesPage();
     else if (hash === "#/subir") await uploadPage();
@@ -95,7 +95,7 @@ async function logout() { await post("/api/logout").catch(() => {}); location.ha
 // A partner (another person with their own channels) sees only these pages; the server refuses the rest anyway
 const PARTNER_PAGES = ["#/", "#/nuevo", "#/canal-nuevo", "#/subir", "#/videos", "#/guiones", "#/calendario", "#/canales", "#/tablero",
   "#/competencia", "#/canal", "#/estadisticas", "#/gasto", "#/voces", "#/cuenta", "#/punteria"];
-const PARTNER_PREFIXES = ["#/editor/", "#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
+const PARTNER_PREFIXES = ["#/nuevo/", "#/editor/", "#/video/", "#/revisar/", "#/decisiones/", "#/buscar/"];
 function partnerMay(hash) { return PARTNER_PAGES.includes(hash) || PARTNER_PREFIXES.some((p) => hash.startsWith(p)); }
 
 async function start() {

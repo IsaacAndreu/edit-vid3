@@ -3,14 +3,45 @@ const vMark = (cls, name, label) => `<span class="${cls}">${icon(name, label)}</
 const V_FIT = {bien: vMark("t-ok", "check", "Bien"), dudoso: vMark("t-warn", "alert", "Dudoso"), regular: vMark("t-warn", "alert", "Regular"),
   mal: vMark("t-bad", "x", "Mal"), no: vMark("t-bad", "x", "No")};
 
-async function newVideo() {
+// «Nuevo vídeo»: first the way in, as two cards (#/nuevo), then its form (#/nuevo/guion, #/nuevo/titulo)
+function chooseStart() {
+  show(`<div class="start">
+    <h1>Nuevo vídeo</h1>
+    <p class="start-lead">¿Cómo quieres empezar?</p>
+    <div class="choices">
+      <a class="choice" href="#/nuevo/guion">
+        <span class="choice-icon">${icon("pen")}</span>
+        <span class="choice-title">Tengo el guion</span>
+        <span class="choice-text">Pegas o subes tu guion; la voz, la tuya o la del canal.</span>
+        <ul><li>${icon("check")}Tú decides cada palabra</li><li>${icon("check")}Enlaces de referencia y biblioteca</li>
+          <li>${icon("check")}Revisa el gancho y lo que se puede enseñar</li></ul>
+        <span class="choice-go">Empezar con mi guion →</span>
+      </a>
+      <a class="choice featured" href="#/nuevo/titulo">
+        <span class="choice-badge">Con IA</span>
+        <span class="choice-icon">${icon("bulb")}</span>
+        <span class="choice-title">Desde un título e información</span>
+        <span class="choice-text">Escribes el título y lo que sepas: el guion sale con el estilo del canal.</span>
+        <ul><li>${icon("check")}Lee tus vídeos y páginas de referencia</li><li>${icon("check")}Reescribe lo que no se puede enseñar</li>
+          <li>${icon("check")}Si quieres, lo pone en cola solo</li></ul>
+        <span class="choice-go">Empezar desde un título →</span>
+      </a>
+    </div>
+  </div>`);
+}
+async function newVideo(sub = "") {
   window.opening = null; window.openings = [];
   data = data || await api("/api/overview");
   let pre = window.prefill;
   if (!pre) { try { pre = JSON.parse(sessionStorage.getItem("prefill") || "null"); } catch (e) {} }
   window.prefill = pre;
   const idea = pre && pre.idea;
-  show(`<h1>Nuevo vídeo</h1>
+  if (!sub) sub = pre && pre.script ? "guion" : idea ? "titulo" : "";
+  if (!sub) return chooseStart();
+  window.newMode = sub === "titulo" ? "title" : "own";
+  const fromTitle = window.newMode === "title";
+  show(`<div class="row between"><h1>${fromTitle ? "Nuevo vídeo desde un título" : "Nuevo vídeo con tu guion"}</h1>
+      <a href="#/nuevo" class="small">← Cambiar de opción</a></div>
     ${idea ? `<div class="notice"><div class="row between"><b>Idea: ${esc(idea.title)}</b>
         <button onclick="window.prefill=null;try{sessionStorage.removeItem('prefill')}catch(e){};route()">Quitar idea</button></div>
       <div class="small">${esc(idea.angle || "")}</div>${idea.hook ? `<div class="small"><b>Gancho:</b> ${esc(idea.hook)}</div>` : ""}
@@ -35,6 +66,17 @@ async function newVideo() {
           ${field(`Título de trabajo <span class="opt">opcional</span>`, `<input id="title">`, "Los títulos de YouTube se escriben solos", "title")}
         </div>
       </div>
+      <div class="fset ${fromTitle ? "" : "hide"}" id="titlemode"><div class="legend">Desde un título</div>
+        ${field("Información del vídeo", `<textarea id="info" class="mid" placeholder="De qué va, el enfoque, los hechos que tiene que contar, a quién va dirigido…"></textarea>`,
+          "Con el título de arriba: lo que sepas. Lo que no esté aquí ni en los enlaces de referencia lo marca [COMPROBAR]", "info")}
+        <div class="actions"><button class="main" id="writebtn" onclick="writeFromTitle()">Escribir el guion</button>
+          <label class="check"><input type="checkbox" id="autoqueue"> Al terminar, crear y poner en cola</label>
+          <span id="writemsg" class="small muted"></span></div>
+      </div>
+      <div class="fset"><div class="legend">Enlaces de referencia <span class="opt">opcional</span></div>
+        ${field("Vídeos y páginas en los que se basa", `<textarea id="refs" class="mid" placeholder="https://www.youtube.com/watch?v=…&#10;https://es.wikipedia.org/wiki/…"></textarea>`,
+          "Se leen (subtítulos o texto) para escribir el guion y arreglar frases: de ahí salen los hechos. Hasta 6. Para sacar CLIPS de un vídeo, ponlo abajo en «Biblioteca»", "refs")}
+      </div>
       <div class="fset"><div class="legend">Guion</div>
         <div class="field"><label for="script">Guion</label>
           <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
@@ -48,7 +90,7 @@ async function newVideo() {
         ${field("Voz", dropZone("voice", "audio/*,.mp3,.wav,.m4a", "Arrastra aquí la voz o pulsa para elegirla", "mp3, wav o m4a"),
           "Si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola", "voice")}
       </div>
-      <div class="fset"><div class="legend">Material de partida <span class="opt">opcional</span></div>
+      <div class="fset"><div class="legend">Biblioteca: material de partida <span class="opt">opcional</span></div>
         <p class="help mt-2">De aquí saca los clips antes de buscar en YouTube a ciegas: vídeos en los que te inspiras, canales
           de los que te fías y tus propias grabaciones. Imprescindible en GTA y útil en cualquier canal.</p>
         ${field("Vídeos de YouTube", `<textarea id="matvideos" class="mid" placeholder="https://www.youtube.com/watch?v=…&#10;https://youtu.be/…"></textarea>`,
@@ -87,6 +129,7 @@ async function newVideo() {
         <div id="hookbox"></div>
         <div class="actions"><button id="imgbtn" onclick="checkImages()">Revisar qué se puede enseñar</button><span class="help">Antes de grabar: frases sin imagen posible</span><span id="imgmsg" class="small muted"></span></div>
         <div id="imgbox"></div>
+        <div class="actions"><button id="fixbtn" onclick="fixScript()">Arreglar lo que no se puede enseñar</button><span class="help">Reescribe esas frases sobre algo que sí se grabó</span><span id="fixmsg" class="small muted"></span></div>
         <div class="actions"><button id="scenebtn" onclick="checkScenes()">Revisar escenas</button><span class="help">Canales de simulación</span><span id="scenemsg" class="small muted"></span></div>
         <div id="scenebox"></div>
       </div>
@@ -119,6 +162,13 @@ async function newVideo() {
   showMaterial();
   $("#channel").addEventListener("change", () => showMaterial());
   if (pre && pre.script) $("#script").value = pre.script;
+  if (fromTitle) {
+    const label = document.querySelector("label[for=title]");
+    if (label) label.textContent = "Título del vídeo";
+    $("#title").placeholder = "«Simone Biles: la gimnasta que dijo basta»";
+    if (idea) $("#info").value = [idea.angle, idea.hook && "Gancho: " + idea.hook, ...(idea.outline || []).map((x) => "- " + x),
+      idea.research && "Comprobar: " + idea.research].filter(Boolean).join("\n");
+  }
   if (idea && idea.escenas) $("#scenelist").value = idea.escenas;      // a board idea comes with its scene list
   // a simulation channel: the languages it can be dubbed to, each only if it has a GenAIPro voice
   window.dubOptions = {};
@@ -316,6 +366,41 @@ function useOpening() {
   $("#hookmsg").textContent = "Añadida al principio: ajusta el resto del arranque para que no se repita y vuelve a revisar.";
 }
 
+// «Desde un título e información»: the draft (organizar.draft_script, with the reference links), then what cannot be
+// shown rewritten (imagen_guion.fix), then — if ticked — the same «Crear y poner en cola»
+async function writeFromTitle() {
+  const title = $("#title").value.trim(), msg = $("#writemsg");
+  if (!title) { msg.textContent = "Pon arriba el título del vídeo"; $("#title").focus(); return; }
+  if (!$("#name").value.trim())
+    $("#name").value = title.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  if ($("#script").value.trim() && !(await ask("Ya hay un guion escrito. ¿Reemplazarlo por uno nuevo?", {ok: "Reemplazar"}))) return;
+  $("#writebtn").disabled = true;
+  try {
+    msg.textContent = "Escribiendo el guion… (1-3 min)";
+    const d = await post("/api/scripts/draft", {channel: $("#channel").value,
+      idea: {title, info: $("#info").value, format: $("#format").value, references: $("#refs").value}});
+    $("#script").value = d.script;
+    msg.textContent = "Mirando qué se puede enseñar y reescribiendo lo que no… (~1 min)";
+    const f = await fixScript(true);
+    msg.textContent = `Guion listo: ${d.words} palabras` + (d.check ? `, ${d.check} datos por comprobar [COMPROBAR]` : "") +
+      (f && f.changed ? `, ${f.changed} frases reescritas` : "") + (f ? ". " + f.after.verdict : "");
+    if ($("#autoqueue").checked) await createVideo();
+  } catch (e) { msg.textContent = e.message; } finally { $("#writebtn").disabled = false; }
+}
+async function fixScript(quiet) {
+  const msg = $("#fixmsg");
+  if (!$("#script").value.trim()) { msg.textContent = "Primero el guion"; return null; }
+  if (!quiet) msg.textContent = "Reescribiendo las frases sin imagen… (~1 min)";
+  $("#fixbtn").disabled = true;
+  try {
+    const r = await post("/api/scripts/fix", {script: $("#script").value, title: $("#title").value, channel: $("#channel").value,
+      references: $("#refs").value});
+    $("#script").value = r.script;
+    msg.textContent = r.changed ? `${r.changed} frases reescritas: sin imagen ${r.before.shares.sin_imagen} % → ${r.after.shares.sin_imagen} %. Repásalas en el guion.`
+      : "Nada que arreglar. " + r.after.verdict;
+    return r;
+  } catch (e) { msg.textContent = e.message; return null; } finally { $("#fixbtn").disabled = false; }
+}
 async function createVideo() {
   const voice = $("#voice").files[0], msg = $("#msg");
   let auto = false;
@@ -344,6 +429,7 @@ async function createVideo() {
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
       serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, scenes: $("#scenelist").value,
+      references: $("#refs").value,
       material: {videos: $("#matvideos").value, channels: $("#matchannels").value, saveChannels: $("#matsave").checked},
       hold: clips.length > 0,            // your clips first: the queue waits for them
       ...((window.dubOptions || {})[$("#channel").value] ? {dub: [...document.querySelectorAll(".dublang:checked")].map((x) => x.value)} : {}), idea: window.prefill ? window.prefill.idea : null, opening: window.opening || null});

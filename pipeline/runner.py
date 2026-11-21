@@ -349,6 +349,12 @@ def run_stages(
                 if stopped:
                     raise RuntimeError("No empiezo a buscar: " + stopped)
                 checked[0] = True
+            if stage.name == "ingest":
+                from .judge import too_rejected
+
+                rejected = too_rejected(ctx)       # judge.parar_si_rechaza (off): no HD downloads for a story nobody filmed
+                if rejected:
+                    raise RuntimeError("No sigo descargando: " + rejected)
             budget.check_proxy(ctx.root, ctx.config, ctx.slug)   # its owner's GB a day: it waits for tomorrow here
         print(f"{label}: ejecutando… ({datetime.now():%H:%M})")
         # what the web studio shows as «haciendo ahora»; a stage running in the background keeps its own file
