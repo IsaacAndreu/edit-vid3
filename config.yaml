@@ -253,6 +253,12 @@ quotes:                            # declaraciones originales con subtítulos (p
   max_video_minutes: 40            # no se leen vídeos más largos
   whisper: true                    # sin subtítulos de YouTube: transcribir el audio (más lento)
   whisper_minutes: 12              # …solo los primeros minutos
+  # sound_passages: false          # pasajes con sonido original: en el plano que la cobertura marca «sound» (narración
+  #                                  del gol, la grada, la frase del entrenador) la voz se aparta y suena el clip con su
+  #                                  audio y subtítulos. Requiere planner.cobertura. Mide: descargas con audio en --youtube-stats
+  # passages: 2                    # …como mucho por vídeo (uno por suceso)
+  # passage_seconds: 7             # …duración máxima de cada pasaje
+  # passage_language: es           # …idioma de los subtítulos de la fuente que se leen (sin subtítulos: suena sin ellos)
 
 fallback:
   # literal_ambient: true          # idea literal sin su clip: foto de la persona y luego un clip suyo que el juez acepte,

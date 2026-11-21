@@ -257,3 +257,76 @@ def pick_quotes(ctx: RunContext, youtube: Any, out_dir: Path) -> list[dict[str, 
         if not done:
             print(f"   Declaración de {q['speaker']}: no se encontró el vídeo donde lo dice")
     return found
+
+
+PASSAGE_LABEL = {"comentario": "narración original", "reaccion": "sonido original", "testimonio": "declaración",
+                 "accion": "sonido original", "angulo": "sonido original", "despues": "sonido original",
+                 "prueba": "sonido original"}
+
+
+def passage_plan(shots: list[Any], selections: dict[str, Any], replaced: set[str], limit: int,
+                 longest: float) -> list[tuple[Any, Any, float]]:
+    """Segunda tanda, point 2: the shots where the script leaves room for another voice (coverage.sound, set by
+    planner.cobertura) whose clip the judge took from YouTube: [(shot, selection, seconds)], at most `limit`, one per
+    event, each at most `longest` seconds and never shorter than 2 s."""
+
+    out, events = [], set()
+    for shot in shots:
+        cover = getattr(shot, "coverage", None)
+        if not cover or not cover.sound or cover.event in events or shot.id in replaced:
+            continue
+        sel = selections.get(shot.id)
+        if (sel is None or sel.status != "selected" or sel.source != "youtube" or sel.kind != "video"
+                or sel.start is None or not str(sel.candidateId or "").startswith("yt:")):
+            continue
+        out.append((shot, sel, max(2.0, min(longest, (sel.end or sel.start + longest) - sel.start + 2.0))))
+        events.add(cover.event)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def pick_passages(ctx: RunContext, youtube: Any, out_dir: Path) -> list[dict[str, Any]]:
+    """quotes.sound_passages (off): the clip of those shots plays with ITS sound and Spanish subtitles while the voice
+    steps aside (the same pause as a quote: QuoteClip, afterSeconds = the shot's end). Up to `quotes.passages` per
+    video, each up to `quotes.passage_seconds`. Each costs one download WITH audio (counted in the YouTube metrics)
+    and, for the subtitles, the source's captions."""
+
+    from .schemas import FallbackFile, SelectionFile, ShotsFile
+
+    cfg = ctx.section("quotes")
+    if not cfg.get("sound_passages", False):
+        return []
+    story = ShotsFile.model_validate(ctx.read_json("shots.json"))
+    selections = {s.shotId: s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections}
+    replaced = set()
+    if (ctx.work_dir / "fallback.json").is_file():
+        replaced = {i.shotId for i in FallbackFile.model_validate(ctx.read_json("fallback.json")).items}
+    longest = min(float(cfg.get("passage_seconds", 7)), float(cfg.get("max_seconds", 12)), 15.0)
+    found = []
+    for shot, sel, length in passage_plan(story.shots, selections, replaced, int(cfg.get("passages", 2) or 0), longest):
+        video_id = str(sel.candidateId)[3:]
+        start = max(0.0, float(sel.start) - 1.0)
+        target = out_dir / f"p{len(found) + 1:02d}-{video_id}-{start:.1f}.mp4"
+        info = fetch(youtube, video_id, start, length, target)
+        if not info:
+            continue
+        said = ""
+        try:                              # captions only (no Whisper): one request, cached
+            path = youtube.subtitle_file(video_id, str(cfg.get("passage_language", "es") or "es"))
+            words = timed_words(parse_vtt(path.read_text("utf-8", errors="replace"))) if path else []
+            said = " ".join(w for w, a, b in words if b > start and a < start + info["duration"])
+        except Exception:                 # no captions: the passage plays without subtitles (a chant, a crowd)
+            said = ""
+        cover = shot.coverage
+        channel = sel.channel or "YouTube"
+        found.append({"path": str(target.relative_to(ctx.root)), "candidateId": sel.candidateId,
+                      "url": sel.url or f"https://www.youtube.com/watch?v={video_id}", "title": sel.title,
+                      "channel": channel, "start": round(start, 3), "end": round(start + info["duration"], 3),
+                      "durationSeconds": round(info["duration"], 3), "width": info["width"], "height": info["height"],
+                      "credit": sel.credit or f"Fuente: {channel}", "attribution": f"\"{sel.title}\" — {channel}",
+                      "afterSeconds": round(float(shot.end), 3), "speaker": cover.name or "Sonido original",
+                      "role": PASSAGE_LABEL.get(cover.role, "sonido original"), "match": None,
+                      "subtitles": subtitles(ctx, said, info["duration"], 0.2) if said.strip() else []})
+        print(f"   Pasaje con sonido original ({cover.role}): {sel.candidateId} {start:.1f} s, {info['duration']:.1f} s")
+    return found
