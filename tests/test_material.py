@@ -110,3 +110,24 @@ def test_your_own_clips_have_no_credit_on_screen_nor_in_the_credits():
              "title": "t", "url": "https://youtu.be/x"}]
     text = credits_text(rows)
     assert "IGN" in text and "propio" not in text
+
+
+def test_the_material_of_a_video_already_made_from_its_page(tmp_path):
+    """Its links, channels and clips on the video's page; changed there (tags, a clip removed, channels saved for the
+    channel); the video's detail carries it."""
+
+    _project(tmp_path)
+    web.create_video(tmp_path, {"name": "gta2", "channel": "aviacion", "script": SCRIPT})
+    folder = tmp_path / "materiales" / "aviacion" / "gta2"
+    data = b"\0" * 1000
+    web.save_clip(tmp_path, "gta2", "partida.mp4", "", io.BytesIO(data), len(data))
+    made = web.set_material(tmp_path, "gta2", {"videos": "https://youtu.be/aaaaaaaaaaa", "channels": "@IGN",
+                                                "saveChannels": True, "tags": {"partida.mp4": "atraco al banco"}})
+    assert made["videos"] == ["aaaaaaaaaaa"] and made["channels"] == ["@IGN"]
+    assert made["clips"] == [{"name": "partida.mp4", "tags": "atraco al banco", "mb": 0.0}]
+    assert made["channelSaved"]["channels"] == ["@IGN"]
+    assert web.video_detail(tmp_path, "gta2")["material"]["clips"][0]["tags"] == "atraco al banco"
+    gone = web.set_material(tmp_path, "gta2", {"remove": ["partida.mp4"]})
+    assert gone["clips"] == [] and not (folder / "material" / "partida.mp4").exists()
+    assert gone["videos"] == ["aaaaaaaaaaa"]                                  # what was not sent stays as it was
+    assert web.partner_may(tmp_path, ["aviacion"], "POST", "/api/video/gta2/material")
