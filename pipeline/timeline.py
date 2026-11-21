@@ -1607,7 +1607,8 @@ def run(ctx: RunContext) -> None:
         if item.kind == "video" and ((item.year and item.year < before) or (item.sourceHeight and item.sourceHeight <= low)):
             old.add(item.shotId)
         media[item.shotId] = TimelineMedia(
-            src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source, credit=item.credit,
+            src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
+            credit=item.credit if item.source != "propio" else None,      # your own clip: no «Fuente:» on screen
             width=item.width, height=item.height,
         )
     for item in FallbackFile.model_validate(ctx.read_json("fallback.json")).items:
@@ -1618,7 +1619,8 @@ def run(ctx: RunContext) -> None:
         media[item.shotId] = TimelineMedia(
             src=str((ctx.root / item.path).relative_to(ctx.work_dir)), kind=item.kind, source=item.source,
             # a generated image says so on screen, like a source badge (timeline.generated_badge: "" hides it)
-            credit=item.credit if item.source != "generated" else (str(cfg.get("generated_badge", "Imagen generada (IA)")) or None),
+            credit=(item.credit if item.source not in ("generated", "propio") else None if item.source == "propio"
+                    else (str(cfg.get("generated_badge", "Imagen generada (IA)")) or None)),
             width=size[0], height=size[1],
         )
 

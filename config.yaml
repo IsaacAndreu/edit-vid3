@@ -416,6 +416,16 @@ queue:                             # cola nocturna (python main.py --all)
 #                            en ideas de ambiente solo otra persona, dibujos o marca de agua; sin ideas, eso mismo
 #                            con min_confidence_sin_ideas (0.95). Los huecos tapados pasan a texto.
 
+# Material de partida (pipeline/material.py): lo que pegas o subes al crear un vídeo (estudio → «Material de partida»),
+# en materiales/<vídeo>/material.json y, para todo un canal, materiales/<canal>/material.json. Se busca primero ahí.
+# material:
+#   youtube_search: true     # false: con material, sin búsqueda a ciegas en YouTube (p. ej. GTA con material suficiente)
+#   channel_videos: 50       # últimos vídeos de cada canal que se miran (API: ~2 unidades por 50, sin proxy, caché 1 semana)
+#   channel_per_shot: 2      # de esos, los de título más parecido que recibe cada plano
+#   own_per_shot: 4          # clips propios por plano (los de etiquetas más parecidas)
+#   max_videos: 12           # enlaces de vídeos que se usan
+# judge.material_first: 2    # opciones del material en la primera hoja del juez (con la mejor de fuera al lado)
+
 qa:
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar

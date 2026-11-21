@@ -145,7 +145,7 @@ def run(ctx: RunContext) -> None:
                 blockers.append(f"{shot.id}: clip de terceros de {shown:.2f} s (máximo {limit:.0f} s)")
             elif shot.media.source in THIRD_PARTY and seconds > limit + 1:
                 warnings.append(f"{shot.id}: el fichero dura {seconds:.2f} s (en pantalla solo {shown:.2f} s)")
-        if shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
+        if shot.media.source not in ("generated", "propio") and not (shot.media.credit or "").startswith("Fuente: "):
             blockers.append(f"{shot.id}: material de terceros sin crédito")
         # provenance
         if shot.media.layout == "person":
@@ -343,6 +343,8 @@ def credits_text(rows: list[dict[str, Any]]) -> str:
             continue
         if source == "generated":
             generated += 1
+            continue
+        if source == "propio":                 # your own clips (material de partida): nobody to credit
             continue
         key = entry.get("url") or entry.get("candidateId") or entry["shotId"]
         group = groups.setdefault(key, {"entry": entry, "times": []})

@@ -34,6 +34,7 @@ from .context import RunContext
 from .costs import record_cost
 from .ingest import MANIFEST, Materialiser, find_lut, normalise_image, normalise_video, probe
 from . import feedback
+from .material import chosen_material
 from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, own_event, ranked, seen_elsewhere, source_cap,
                     source_lines,
                     surrounding, used_elsewhere)
@@ -435,8 +436,9 @@ def run(ctx: RunContext) -> None:
                        if not same_stretch(o.candidateId, o.start, o.end, used, needed)     # those seconds already on screen
                        and not same_stretch(o.candidateId, o.start, o.end, rejected, needed)   # marked wrong here
                        and not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
-                       and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
-                                                official)
+                       and (chosen_material(candidates[o.candidateId])
+                            or not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
+                                                    blocklist, official))
                        and not overused(o.candidateId, [u for u in used if u.shotId not in same_idea],
                                         per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
                        and f"{o.candidateId}@{o.start}" not in dead
@@ -541,9 +543,10 @@ def run(ctx: RunContext) -> None:
             options = [
                 o for total, o in ranked(scores.options, judge_cfg.get("source_bonus", {"youtube": 0.02}))
                 if total >= float(judge_cfg.get("min_accept", 0.22)) and o.candidateId != failed_id
-                and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
-                                         ctx.section("content").get("title_blocklist"),
-                                         ctx.section("content").get("official_channels"))
+                and (chosen_material(candidates[o.candidateId])
+                     or not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel,
+                                             ctx.section("content").get("title_blocklist"),
+                                             ctx.section("content").get("official_channels")))
                 and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
                 and not seen_elsewhere(o, elsewhere)
             ][:limit]

@@ -429,6 +429,7 @@ class Scenario:
     grade: bool = False                         # the colour grade of every clip (one more filter on each)
     script: str = SCRIPT
     extra: dict[str, Any] = field(default_factory=dict)
+    own_clip: bool = False                      # a clip of your own in the material de partida (pipeline/material.py)
     picks: int = 0
 
 
@@ -842,6 +843,11 @@ def build_project(tmp: Path, s: Scenario) -> None:
     _ffmpeg("-f", "lavfi", "-i", f"sine=frequency=180:duration={world_seconds:.2f}", "-ac", "1", "-b:a", "64k",
             str(folder / "voz.mp3"))
     (folder / "config.yaml").write_text(yaml.safe_dump(scenario_config(s), allow_unicode=True), encoding="utf-8")
+    if s.own_clip:                              # a recording of your own, with what it shows
+        (folder / "material").mkdir()
+        _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=12", "-pix_fmt", "yuv420p", str(folder / "material" / "yulo-suelo.mp4"))
+        (folder / "material.json").write_text(json.dumps({"clips": {"yulo-suelo.mp4": "Carlos Yulo suelo Manila gimnasio"}}),
+                                              encoding="utf-8")
     if s.apertura in ("youtube", "broken"):
         (folder / "apertura.json").write_text(json.dumps({
             "id": "yuloInterv5", "url": "https://www.youtube.com/watch?v=yuloInterv5", "title": "Carlos Yulo interview",
@@ -985,7 +991,7 @@ SCENARIOS = [
     # planner.ideas: shots grouped into ideas (one search each, the same sources for all their shots), a literal idea
     # never filled with another moment of the person, the last one a title read aloud: no footage searched for it
     Scenario("ideas", judge="mixed", moments=0, shorts="off", script=SHORT_SCRIPT,
-             extra={"planner": {"ideas": True}, "revisor": {"enabled": True, "max_usd": 0.2}}),
+             extra={"planner": {"ideas": True}, "revisor": {"enabled": True, "max_usd": 0.2}}, own_clip=True),
 ]
 
 
@@ -1061,6 +1067,14 @@ def test_every_stage_runs_its_real_code(tmp_path: Path, monkeypatch: pytest.Monk
         assert not rotulos & {p.stem for p in (ctx.work_dir / "candidates").glob("*.json")}   # never searched
         literal = {sid for sid, kind in kinds.items() if kind == "literal"}
         assert not any(i.shotId in literal and i.method == "protagonist-filler" for i in fallback.items)
+        offered = [json.loads(p.read_text()) for p in (ctx.work_dir / "candidates").glob("s*.json")]
+        assert all(any(c["source"] == "propio" for c in o["candidates"]) for o in offered)   # your clip, for every shot
+        from pipeline.schemas import Timeline
+
+        mine = [x for x in Timeline.model_validate(ctx.read_json("timeline.json")).shots if x.media and x.media.source == "propio"]
+        assert all(x.media.credit is None for x in mine)                       # no «Fuente:» over your own clip
+        # the judge accepted it, and material it accepted wins over any master video — however CLIP scored it
+        assert mine and any(x.source == "propio" and x.pickedBy == "material" for x in selection.selections)
         reviewed = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
         assert "skipped" not in reviewed and reviewed["shots"] > 0            # the reviewer ran in the queue
     if scenario.name == "minimo":

@@ -214,3 +214,14 @@ idea agotaba el tope por fuente. Arreglado: literal solo donde el planner oyó u
 el tope y el juez no fuerza variedad entre sus cortes. Ojo: newgym3 tenía solo 10 vacíos porque tapaba 40 huecos con
 clips de otras partes (antes del arreglo de los préstamos); un vídeo nuevo sin ideas también mostrará ahora más texto
 donde antes había un clip sin sentido.
+
+## Puntería · bloque 4 (primera tanda): material de partida
+
+| Qué | Estado | Test |
+|---|---|---|
+| Guardar el material | hecho: `materiales/<vídeo>/material.json` (vídeos, canales, etiquetas de tus clips) y clips en `materiales/<vídeo>/material/`; para todo el canal, `materiales/<canal>/material.json` | `tests/test_material.py` |
+| La búsqueda empieza por él | hecho: tus clips (por etiquetas), los vídeos pegados y los de los canales con título parecido (API, sin proxy) delante de cada plano; el filtro de títulos no los quita; `material.youtube_search: false` quita la búsqueda a ciegas; añadir material vuelve a buscar ese vídeo (huella) | `tests/test_material.py` |
+| El juez los ve primero | hecho: hasta `judge.material_first` (2) opciones del material en la primera hoja, con la mejor de fuera al lado; esos planos siempre pasan por el juez; si acepta tu material, gana al vídeo maestro | e2e «ideas» (un clip propio llega a pantalla) |
+| Clips propios | hecho: fuente `propio`; sin «Fuente:» en pantalla ni en los créditos; la QA y el montaje no lo exigen. Los planos siguen siendo de ≤ 4 s, así que el tope de 5 s no se notaba | `tests/test_material.py`, e2e |
+| Estudio | hecho: apartado «Material de partida» al crear un vídeo (enlaces, canales con «guardar para todo el canal», clips con «qué se ve»), el vídeo espera en la cola mientras suben los clips (`hold`), subida por trozos hasta 4 GB; zonas de arrastrar y soltar para guion, voz, vídeo de apertura y clips | capturas en escritorio y móvil |
+| Pendiente (segunda tanda) | el índice por escenas (descripción por escena con un modelo de visión barato, búsqueda por texto y CLIP), material al vídeo ya creado desde su ficha, gráficos de GTA en Remotion | — |
