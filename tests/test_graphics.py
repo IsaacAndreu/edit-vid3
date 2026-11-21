@@ -45,3 +45,33 @@ def test_portrait_prefers_full_name_and_refuses_ambiguous_surnames(tmp_path, mon
     assert graphics.portrait(ctx, "Carlos Yulo", people)["src"] == "people/carlos.png"
     assert graphics.portrait(ctx, "Yulo", people) is None
     assert graphics.portrait(ctx, "Eldrew", people)["focus"] == [50.0, 20.0]
+
+
+def test_the_video_game_graphics_carry_only_what_the_script_says():
+    from pipeline.graphics import game_graphic
+
+    text = "Si robas un coche de policía te caen tres estrellas. Lucia te escribe: te espero en el puerto. Vas a Vice Beach, a 2 km."
+    assert game_graphic("wanted", {"title": "robas un coche de policía", "stars": 3}, text) == {
+        "type": "wanted", "title": "robas un coche de policía", "stars": 3}
+    assert game_graphic("wanted", {"title": "robas un coche de policía", "stars": 5}, text)["stars"] is None   # 5 not said
+    assert game_graphic("wanted", {"title": "atracas un banco"}, text) is None
+    assert game_graphic("phone", {"from": "Lucia", "text": "te espero en el puerto", "kind": "llamada"}, text) == {
+        "type": "phone", "from": "Lucia", "text": "te espero en el puerto", "kind": "sms"}                 # no call said
+    assert game_graphic("phone", {"from": "Jason", "text": "te espero en el puerto"}, text) is None
+    assert game_graphic("gps", {"place": "Vice Beach", "note": "la misión del atraco", "distance": "2 km"}, text) == {
+        "type": "gps", "place": "Vice Beach", "note": None, "distance": "2 km"}
+
+
+def test_only_a_channel_about_a_video_game_gets_the_game_graphics(tmp_path, monkeypatch):
+    from pipeline import graphics
+    from pipeline.context import RunContext
+
+    asked = {}
+    monkeypatch.setattr(graphics, "complete_json", lambda ctx, **kw: asked.update(kw) or {"graphics": []})
+    sents = [{"n": i, "start": i * 5.0, "end": i * 5.0 + 4.5, "text": "Frase."} for i in range(40)]
+    (tmp_path / "config.yaml").write_text("graphics:\n  types: [map, chart]\n  extra_types: []\n")
+    graphics.plan(RunContext.create("v", root=tmp_path), sents, 200.0)
+    assert "Tipos permitidos en este canal: map, chart." in asked["system"]
+    (tmp_path / "config.yaml").write_text("graphics:\n  types: [map, chart]\n  extra_types: []\nideas:\n  about: GTA 6\n")
+    graphics.plan(RunContext.create("v", root=tmp_path), sents, 200.0)
+    assert "Tipos permitidos en este canal: map, chart, wanted, phone, gps." in asked["system"]

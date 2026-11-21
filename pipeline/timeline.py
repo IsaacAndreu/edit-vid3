@@ -1500,6 +1500,10 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
         return [("pop", 4), *[("pop", 10 + (i + 1) * step) for i in range(min(n, 5))]]
     if kind == "post":
         return [("pop", 6)]
+    if kind == "wanted":    # one pop per star as it lights up (Wanted.tsx: every 7 frames from 18)
+        return [("pop", 18 + 7 * i) for i in range(int(graphic.get("stars") or 5))]
+    if kind in ("phone", "gps"):
+        return [("pop", 10)]
     if kind == "compare":
         return [("pop", 14 + i * 10) for i in range(min(len(graphic.get("rows") or []), 5))]
     if kind == "specs":

@@ -47,6 +47,7 @@ import { Atlas } from './Atlas';
 import { MapStory } from './MapStory';
 import { SimScene } from './SimScene';
 import { Post } from './Post';
+import { Gps, Phone, Wanted } from './Game';
 import { GraphicFrame } from './GraphicFrame';
 import { ClipInsert, SceneInsert } from './Insert';
 import { Grain } from './Paper';
@@ -121,6 +122,12 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <Board graphic={graphic} durationInFrames={durationInFrames} />;
     case 'post':
       return <Post graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'wanted':
+      return <Wanted graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'phone':
+      return <Phone graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'gps':
+      return <Gps graphic={graphic} durationInFrames={durationInFrames} />;
     case 'rank':
       return <RankCard graphic={graphic} durationInFrames={durationInFrames} />;
     case 'compare':
