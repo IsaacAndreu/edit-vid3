@@ -911,6 +911,8 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         if not (group / "config.yaml").is_file():
             (group / "config.yaml").write_text(f"canal: {channel}\n", encoding="utf-8")
     folder.mkdir(parents=True, exist_ok=False)
+    if body.get("hold"):                   # your clips are still on their way: the queue waits for them (unhold after)
+        (folder / HOLD).write_text("subiendo el material de partida\n", encoding="utf-8")
     (folder / "guion.txt").write_text(script + "\n", encoding="utf-8")
     if str(body.get("title") or "").strip():
         (folder / "titulo.txt").write_text(str(body["title"]).strip() + "\n", encoding="utf-8")
@@ -943,8 +945,66 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         if skip:
             with (folder / "config.yaml").open("a", encoding="utf-8") as f:
                 f.write(f"dub_skip: [{', '.join(skip)}]\n")
+    if isinstance(body.get("material"), dict):             # material de partida (pipeline/material.py)
+        from . import material
+
+        given = body["material"]
+        videos, refs = material.video_ids(given.get("videos") or ""), material.channel_refs(given.get("channels") or "")
+        if videos or refs:
+            material.save(folder, videos=videos, channels=refs)
+        if refs and given.get("saveChannels") and channel:           # «for every video of the channel»
+            shared = material.read(root / "materiales" / channel)
+            material.save(root / "materiales" / channel, channels=[*shared["channels"], *refs])
     wake_watcher(root)                     # a video with its voice (or an automatic one) starts now, not in 5 min
     return {"slug": name, "folder": str(folder.relative_to(root))}
+
+
+MAX_CLIP_UPLOAD = 4 * 1024 ** 3            # an own clip (material de partida): a recorded game session can be big
+
+
+def save_clip(root: Path, slug: str, name: str, tags: str, stream: Any, length: int) -> dict[str, Any]:
+    """One of your own clips for a video's material de partida, streamed to materiales/<vídeo>/material/<name>
+    (never whole in memory), with its tags in material.json."""
+
+    from . import material
+
+    folder = find_video(root, slug)
+    if not folder.is_dir():
+        raise FileNotFoundError(slug)
+    if length <= 0:
+        raise ValueError("El archivo está vacío")
+    if length > MAX_CLIP_UPLOAD:
+        raise ValueError(f"El clip pesa más de {MAX_CLIP_UPLOAD // 1024 ** 3} GB: recórtalo o súbelo en partes")
+    if shutil.disk_usage(folder).free < length + 2 * 1024 ** 3:
+        raise ValueError("No queda espacio en el disco del servidor para ese clip")
+    clean = material.clip_name(name)
+    target = folder / material.CLIPS_DIR / clean
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".subiendo")
+    left = length
+    with partial.open("wb") as f:
+        while left > 0:
+            chunk = stream.read(min(left, 1 << 20))
+            if not chunk:
+                break
+            f.write(chunk)
+            left -= len(chunk)
+    if left > 0:
+        partial.unlink(missing_ok=True)
+        raise ValueError("La subida se cortó: vuelve a intentarlo")
+    partial.replace(target)
+    material.save(folder, clips={clean: tags})
+    return {"ok": True, "file": clean, "bytes": target.stat().st_size}
+
+
+def channel_material(root: Path, channel: str) -> dict[str, Any]:
+    """What a channel has saved for every video (materiales/<canal>/material.json)."""
+
+    from . import material
+
+    if channel not in channels(root):
+        raise FileNotFoundError(channel)
+    return material.read(root / "materiales" / channel)
 
 
 def wake_watcher(root: Path) -> None:
@@ -1344,7 +1404,7 @@ PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|p
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
                      r"/api/decisions/([^/]+)", r"/api/decisions/([^/]+)/frame", r"/files/([^/]+)/.+")
 PARTNER_VIDEO_POST = (r"/api/video/([^/]+)/(?:voz|retencion|doblaje|retry|archive|hold|unhold|stop|redo|for-claude|porque"
-                      r"|capcut|exportar|published|fix|channel)",
+                      r"|capcut|exportar|published|fix|channel|material/clip)",
                       r"/api/review/([^/]+)/[A-Za-z0-9_-]+", r"/api/decisions/([^/]+)/[A-Za-z0-9_-]+")
 
 
@@ -1363,6 +1423,8 @@ def partner_may(root: Path, mine: list[str], method: str, path: str) -> bool:
     if path in (PARTNER_GET if method == "GET" else PARTNER_POST):
         return True
     if match := re.fullmatch(r"/api/mychannel/([^/]+)(?:/handle)?", path):     # «Mi canal» of one of their channels
+        return urllib.parse.unquote(match.group(1)) in mine
+    if method == "GET" and (match := re.fullmatch(r"/api/material/([^/]+)", path)):   # their channel's material
         return urllib.parse.unquote(match.group(1)) in mine
     if method == "GET" and re.fullmatch(r"/api/apertura/[0-9a-f]{12}", path):
         return True
@@ -1942,6 +2004,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(notify.status(RunContext.create("_web", root=root)))
                 if match := re.fullmatch(r"/api/video/([^/]+)", path):
                     return self._ok(video_detail(root, urllib.parse.unquote(match.group(1))))
+                if match := re.fullmatch(r"/api/material/([^/]+)", path):     # a channel's saved material
+                    return self._ok(channel_material(root, urllib.parse.unquote(match.group(1))))
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz\.mp3", path):     # to check it is the right voice
                     slug = urllib.parse.unquote(match.group(1))
                     voice = find_video(root, slug) / "voz.mp3"
@@ -2058,7 +2122,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             url = urllib.parse.urlparse(self.path)
             path = url.path
             length = int(self.headers.get("Content-Length") or 0)
-            if length > MAX_UPLOAD:
+            clip_upload = re.fullmatch(r"/api/video/[^/]+/material/clip", path) is not None   # checked in save_clip
+            if length > MAX_UPLOAD and not clip_upload:
                 return self._fail(413, "Archivo demasiado grande")
             if path == "/api/login":
                 body = json.loads(self.rfile.read(length) or b"{}")
@@ -2146,6 +2211,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok({"file": ticket})
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz", path):
                     return self._ok(save_voice(root, urllib.parse.unquote(match.group(1)), self.rfile.read(length)))
+                if match := re.fullmatch(r"/api/video/([^/]+)/material/clip", path):     # an own clip, streamed
+                    query = urllib.parse.parse_qs(url.query)
+                    return self._ok(save_clip(root, urllib.parse.unquote(match.group(1)), (query.get("name") or [""])[0],
+                                              (query.get("tags") or [""])[0], self.rfile, length))
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if who:                                    # a partner: the channel named in the body is theirs too
                     if path in PARTNER_WITH_CHANNEL and str(body.get("channel") or "") not in mine:

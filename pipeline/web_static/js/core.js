@@ -195,3 +195,44 @@ function channelOptions(d) {
   }).join("");
   return html || d.channels.map((c) => `<option>${esc(c)}</option>`).join("");
 }
+
+// --- file drop zones: drag files onto them or click to choose; the chosen ones listed with their size --------------
+const fileSize = (n) => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+const dropZone = (id, accept, title, hint = "", {multiple = false, compact = false} = {}) =>
+  `<div class="drop${compact ? " compact" : ""}" id="${id}-zone">
+    <input type="file" id="${id}" class="drop-input" accept="${accept}"${multiple ? " multiple" : ""}>
+    <label for="${id}" class="drop-target">${icon("upload")}<b>${title}</b>${hint ? `<span class="help">${hint}</span>` : ""}</label>
+    <div class="drop-list" id="${id}-list" aria-live="polite"></div></div>`;
+// files: the zone's current list (kept across drops when multiple); render(file, index) → the row's extra HTML
+function wireDrop(id, {multiple = false, render = null, onChange = null} = {}) {
+  const zone = $("#" + id + "-zone"), input = $("#" + id), list = $("#" + id + "-list");
+  let files = [];
+  const draw = () => {
+    zone.classList.toggle("has", files.length > 0);
+    list.innerHTML = files.map((f, i) => `<div class="drop-file" data-i="${i}">${icon(f.type.startsWith("video") ? "film" : f.type.startsWith("audio") ? "mic" : "doc")}
+      <span class="name" title="${esc(f.name)}">${esc(f.name)}</span><span class="size">${fileSize(f.size)}</span>
+      <button type="button" class="icon ghost" aria-label="Quitar ${esc(f.name)}" data-drop-remove="${i}">${icon("x")}</button>
+      ${render ? render(f, i) : ""}</div>`).join("");
+    list.querySelectorAll("[data-drop-remove]").forEach((b) => b.onclick = () => { files.splice(+b.dataset.dropRemove, 1); sync(); });
+    if (onChange) onChange(files);
+  };
+  const sync = () => { const dt = new DataTransfer(); files.forEach((f) => dt.items.add(f)); input.files = dt.files; draw(); };
+  const take = (picked) => { files = multiple ? [...files, ...picked] : picked.slice(0, 1); sync(); };
+  input.onchange = () => { const picked = [...input.files]; files = multiple ? [...new Set([...files, ...picked])] : picked.slice(0, 1); draw(); };
+  ["dragenter", "dragover"].forEach((e) => zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.add("over"); }));
+  ["dragleave", "dragend"].forEach((e) => zone.addEventListener(e, () => zone.classList.remove("over")));
+  zone.addEventListener("drop", (ev) => { ev.preventDefault(); zone.classList.remove("over"); take([...ev.dataTransfer.files]); });
+  return {files: () => files, row: (i) => list.querySelector(`.drop-file[data-i="${i}"]`), clear: () => { files = []; sync(); }};
+}
+// one file to the studio, with its progress in `bar` (an element with an <i>)
+function sendFile(url, file, bar) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && bar) bar.querySelector("i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
+    xhr.onload = () => xhr.status < 300 ? resolve(JSON.parse(xhr.responseText || "{}")) : reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));
+    xhr.onerror = () => reject(new Error("Fallo de red al subir " + file.name));
+    xhr.send(file);
+  });
+}

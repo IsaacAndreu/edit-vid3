@@ -440,3 +440,29 @@ details.upl > summary input.pick { width: 18px; height: 18px; margin: 0; accent-
   .upl > summary:has(> input.pick) { grid-template-columns: 18px 10px minmax(0, 1fr); }
   .upl > summary:has(> input.pick) > :last-child { grid-column: 3; }
 }
+
+/* file drop zones (new video: voice, script, opening, own clips) */
+.drop { position: relative; min-width: 0; }
+.drop-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.drop-target { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: var(--s5) var(--s4);
+  border: 1.5px dashed var(--line); border-radius: var(--r); background: var(--panel2); text-align: center; cursor: pointer;
+  transition: border-color .15s, background-color .15s; }
+.drop-target .i { width: 26px; height: 26px; color: var(--accent-fg); }
+.drop-target b { font-size: var(--sm); }
+.drop-target:hover, .drop.over .drop-target { border-color: var(--accent-fg); background: color-mix(in srgb, var(--accent) 7%, var(--panel2)); }
+.drop-input:focus-visible + .drop-target { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
+.drop.compact .drop-target { flex-direction: row; padding: var(--s3) var(--s4); gap: 10px; }
+.drop.compact .drop-target .i { width: 20px; height: 20px; }
+.drop.has .drop-target { padding-block: var(--s3); }
+.drop-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.drop-list:empty { display: none; }
+.drop-file { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 6px 10px; align-items: center; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.drop-file > .i { width: 18px; height: 18px; color: var(--muted); }
+.drop-file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--sm); }
+.drop-file .size { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.drop-file .tags { grid-column: 1 / -1; }
+.drop-file .bar { grid-column: 1 / -1; margin: 0; }
+.drop-file .state { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+.drop-file.done .state { color: var(--ok-fg); } .drop-file.failed .state { color: var(--bad-fg); }
+@media (max-width: 640px) { .drop-target { padding: var(--s4) var(--s3); } }

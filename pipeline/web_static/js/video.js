@@ -38,15 +38,28 @@ async function newVideo() {
       <div class="fset"><div class="legend">Guion</div>
         <div class="field"><label for="script">Guion</label>
           <textarea id="script" placeholder="## Capítulo 1&#10;Texto del guion…"></textarea>
-          <div class="row"><label for="scriptfile" class="help n4">Pégalo o</label><input type="file" id="scriptfile" class="w-auto" accept=".txt,.md"></div></div>
+          ${dropZone("scriptfile", ".txt,.md", "…o suelta aquí el guion (.txt)", "", {compact: true})}</div>
         ${field(`Lista de escenas <span class="opt">opcional</span>`,
           `<textarea id="scenelist" class="mid" placeholder="Escena 1 · bloque 1 · ~30 s · tráfico&#10;Qué se ve: …&#10;Momento clave: …"></textarea>`,
           "Canales de simulación: la escena de cada bloque del guion; el programa la sigue", "scenelist")}
       </div>
       <div class="fset"><div class="legend">Voz y doblaje</div>
         <div id="dubbox"></div>
-        ${field("Voz", `<input type="file" id="voice" accept="audio/*,.mp3,.wav,.m4a">`,
-          "Mp3; también wav o m4a · si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola", "voice")}
+        ${field("Voz", dropZone("voice", "audio/*,.mp3,.wav,.m4a", "Arrastra aquí la voz o pulsa para elegirla", "mp3, wav o m4a"),
+          "Si el canal tiene voz en Ajustes → Voces, déjalo vacío y se genera sola", "voice")}
+      </div>
+      <div class="fset"><div class="legend">Material de partida <span class="opt">opcional</span></div>
+        <p class="help mt-2">De aquí saca los clips antes de buscar en YouTube a ciegas: vídeos en los que te inspiras, canales
+          de los que te fías y tus propias grabaciones. Imprescindible en GTA y útil en cualquier canal.</p>
+        ${field("Vídeos de YouTube", `<textarea id="matvideos" class="mid" placeholder="https://www.youtube.com/watch?v=…&#10;https://youtu.be/…"></textarea>`,
+          "Un enlace por línea; aunque sean en inglés. El juez elige de ellos el momento que encaja con cada frase", "matvideos")}
+        ${field("Canales", `<textarea id="matchannels" class="mid" placeholder="https://www.youtube.com/@canal"></textarea>`,
+          "Se miran sus últimos 50 vídeos y a cada frase se le dan los de título más parecido", "matchannels")}
+        <div class="field"><label class="check"><input type="checkbox" id="matsave"> Guardar estos canales para todos los vídeos de este canal</label>
+          <p class="help" id="matsaved"></p></div>
+        ${field("Tus clips", dropZone("matclips", "video/*,.mp4,.mov,.mkv,.webm", "Arrastra aquí tus clips o pulsa para elegirlos",
+          "Partidas grabadas, tomas propias… hasta 4 GB cada uno", {multiple: true}),
+          "Escribe al lado de cada clip qué se ve (lugar, misión, personaje): así sabe para qué frase usarlo. Son tuyos: sin límite de 5 s ni «Fuente:» en pantalla", "matclips")}
       </div>
       <div class="fset"><div class="legend">Clip de apertura</div>
         <p class="help mt-2">Opcional: un momento real con su sonido y subtítulos traducidos, antes de la voz. Lo ves aquí antes de crear el vídeo</p>
@@ -60,7 +73,7 @@ async function newVideo() {
           </div>
         </div>
         <div class="two">
-          ${field("O sube tú el vídeo entero", `<input type="file" id="opfile" accept="video/*,.mp4,.mov,.mkv,.webm">`, "Lo recorto yo", "opfile")}
+          ${field("O sube tú el vídeo entero", dropZone("opfile", "video/*,.mp4,.mov,.mkv,.webm", "Suelta aquí el vídeo", "Lo recorto yo", {compact: true}), "", "opfile")}
           ${field(`Fuente en pantalla <span class="opt">opcional</span>`, `<input id="opcredit">`, "«Vogue»; vacío = el canal de YouTube o quien habla", "opcredit")}
         </div>
         <div class="field"><label class="check"><input type="checkbox" id="opsubs" checked> Poner subtítulos traducidos</label>
@@ -83,7 +96,26 @@ async function newVideo() {
   $("#opsubs").onchange = $("#opcredit").oninput = () => {
     if (window.opening) Object.assign(window.opening, {subtitles: $("#opsubs").checked, credit: $("#opcredit").value});
   };
-  $("#scriptfile").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => $("#script").value = t); };
+  wireDrop("scriptfile", {onChange: (files) => { if (files[0]) files[0].text().then((t) => $("#script").value = t); }});
+  wireDrop("voice");
+  wireDrop("opfile");
+  // your clips: each one with what it shows, which tells the search when to use it
+  window.clipTags = {};                  // what you wrote for each clip, kept when the list is drawn again
+  window.clipZone = wireDrop("matclips", {multiple: true, render: (f, i) =>
+    `<input class="tags" id="clip-tag-${i}" data-name="${esc(f.name)}" placeholder="Qué se ve: «Vice Beach de noche, persecución»"
+      aria-label="Qué se ve en ${esc(f.name)}" value="${esc(window.clipTags[f.name] || "")}">`});
+  $("#matclips-list").addEventListener("input", (e) => { if (e.target.dataset.name) window.clipTags[e.target.dataset.name] = e.target.value; });
+  // what the channel already has saved for every video
+  window.showMaterial = () => {
+    const box = $("#matsaved"), ch = $("#channel").value;
+    box.textContent = "";
+    if (ch) api("/api/material/" + encodeURIComponent(ch)).then((m) => {
+      const saved = [...(m.channels || []), ...(m.videos || []).map((v) => "youtu.be/" + v)];
+      box.textContent = saved.length ? `Ya guardado en ${ch} (se usa siempre): ${saved.join(", ")}` : "";
+    }).catch(() => {});
+  };
+  showMaterial();
+  $("#channel").addEventListener("change", () => showMaterial());
   if (pre && pre.script) $("#script").value = pre.script;
   if (idea && idea.escenas) $("#scenelist").value = idea.escenas;      // a board idea comes with its scene list
   // a simulation channel: the languages it can be dubbed to, each only if it has a GenAIPro voice
@@ -289,22 +321,33 @@ async function createVideo() {
     } catch (e) {}
   }
   $("#create").disabled = true; msg.textContent = "Creando…";
+  const clips = window.clipZone ? window.clipZone.files() : [];
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
       serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, scenes: $("#scenelist").value,
+      material: {videos: $("#matvideos").value, channels: $("#matchannels").value, saveChannels: $("#matsave").checked},
+      hold: clips.length > 0,            // your clips first: the queue waits for them
       ...((window.dubOptions || {})[$("#channel").value] ? {dub: [...document.querySelectorAll(".dublang:checked")].map((x) => x.value)} : {}), idea: window.prefill ? window.prefill.idea : null, opening: window.opening || null});
     window.prefill = null; try { sessionStorage.removeItem("prefill"); } catch (e) {}
+    if (clips.length) {                   // one by one, each with its progress; then the video goes into the queue
+      for (const [i, f] of clips.entries()) {
+        const row = window.clipZone.row(i);
+        const tags = ($("#clip-tag-" + i) || {}).value || "";
+        row.insertAdjacentHTML("beforeend", `<div class="bar acc"><i></i></div><span class="state">Subiendo…</span>`);
+        msg.textContent = `Subiendo tus clips (${i + 1} de ${clips.length})…`;
+        try {
+          await sendFile(`/api/video/${encodeURIComponent(made.slug)}/material/clip?name=${encodeURIComponent(f.name)}&tags=${encodeURIComponent(tags)}`,
+                         f, row.querySelector(".bar"));
+          row.classList.add("done"); row.querySelector(".state").textContent = "Subido";
+        } catch (e) {
+          row.classList.add("failed"); row.querySelector(".state").textContent = e.message;
+        }
+      }
+      await post(`/api/video/${encodeURIComponent(made.slug)}/unhold`, {});
+    }
     if (auto) { location.hash = "#/video/" + encodeURIComponent(made.slug); return; }   // GenAIPro makes the voice
     msg.textContent = "Subiendo la voz…"; $("#upbar").classList.remove("hide");
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/video/${encodeURIComponent(made.slug)}/voz`);
-      xhr.setRequestHeader("Content-Type", "application/octet-stream");
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#upbar i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
-      xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));
-      xhr.onerror = () => reject(new Error("Fallo de red al subir"));
-      xhr.send(voice);
-    });
+    await sendFile(`/api/video/${encodeURIComponent(made.slug)}/voz`, voice, $("#upbar"));
     location.hash = "#/video/" + encodeURIComponent(made.slug);
   } catch (e) { msg.textContent = e.message; $("#create").disabled = false; }
 }
