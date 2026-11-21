@@ -441,17 +441,19 @@ def run(ctx: RunContext) -> None:
                    and shot.idea is not None else None)
 
         def vet_and_materialise(options: list[Option], candidates: dict[str, Candidate], method: str,
-                                vet: bool = True, judged: bool | None = None) -> FallbackItem | None:
+                                vet: bool = True, judged: bool | None = None, exempt: str | None = None) -> FallbackItem | None:
             """Nobody has looked at these yet: the vision judge vets them (unless `vet` is off), then the first
-            that downloads (and passes the identity check) wins."""
+            that downloads (and passes the identity check) wins. `exempt`: the shot whose clip this one continues
+            on purpose (its seconds touch, they never overlap): not counted as already on screen."""
 
             vet = vet or in_hook
+            others = [u for u in used if u.shotId != exempt] if exempt else used
             # whatever pool they come from: never a blocked source, never a source already on screen too often
             per_source = source_cap(judge_cfg, len(story.shots) * 2 // 3)   # about the footage shots
             blocklist = ctx.section("content").get("title_blocklist")
             official = ctx.section("content").get("official_channels")
             options = [o for o in options
-                       if not same_stretch(o.candidateId, o.start, o.end, used, needed)     # those seconds already on screen
+                       if not same_stretch(o.candidateId, o.start, o.end, others, needed)     # those seconds already on screen
                        and not same_stretch(o.candidateId, o.start, o.end, rejected, needed)   # marked wrong here
                        and not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
                        and (chosen_material(candidates[o.candidateId])
@@ -513,7 +515,8 @@ def run(ctx: RunContext) -> None:
                         continue
                     # …or the same seconds of the same source, chosen at the same time by another thread (newgym3: the
                     # same 2 s of one training video in seven shots, all picked while none was claimed yet)
-                    if same_stretch(c.id, media.start, media.end, used, needed):
+                    if same_stretch(c.id, media.start, media.end,
+                                    [u for u in used if u.shotId != exempt] if exempt else used, needed):
                         tried.append(f"{c.id}: ese tramo ya está en pantalla")
                         dead.add(f"{c.id}@{option.start}")
                         continue
@@ -575,8 +578,10 @@ def run(ctx: RunContext) -> None:
         # (its following seconds, after a short jump so the two never make one excerpt over 5 s) — the same moment,
         # chosen by the judge for this very idea — before any other source.
         if item is None and idea_kind == "ambiente":
-            options, neighbour_candidates = neighbour_option(story.shots, shot, used, needed, known_candidate)
-            item = vet_and_materialise(options, neighbour_candidates, "neighbour", vet=False, judged=True)
+            options, neighbour_candidates, continued = neighbour_option(story.shots, shot, used, needed, known_candidate,
+                                                                        cap=tope.seconds(ctx))
+            item = vet_and_materialise(options, neighbour_candidates, "neighbour", vet=False, judged=True,
+                                       exempt=continued)
 
         # 1b. Protagonist first: any other fragment of the protagonist found for the whole video,
         # preferring the shot's own event, before any stock footage.
@@ -947,16 +952,17 @@ JUMP = 1.5                   # s skipped between a shot's clip and the next one 
 
 
 def neighbour_option(story_shots: list[Shot], shot: Shot, used: list[Any], needed: float,
-                     lookup: Any) -> tuple[list[Option], dict[str, Candidate]]:
+                     lookup: Any, cap: float = 5.0) -> tuple[list[Option], dict[str, Candidate], str | None]:
     """The seconds right after (or before) the video clip of the shot next to this one in its idea (planner.ideas):
-    the same source and moment, after a JUMP so the two cuts are never one excerpt over the 5 s cap. `lookup(id)`
-    gives a candidate of this video."""
+    the same source and moment. When both together fit the video's cap (content.max_third_party_seconds) they run on
+    with no gap — one clip cut in two, the idea held on one source; past it, after a JUMP so neither excerpt runs over.
+    `lookup(id)` gives a candidate of this video. Also returns the shot it continues (None when it is not seamless)."""
 
     if shot.idea is None:
-        return [], {}
+        return [], {}, None
     members = [s.id for s in story_shots if s.idea is not None and s.idea.id == shot.idea.id]
     if shot.id not in members:
-        return [], {}
+        return [], {}, None
     at = members.index(shot.id)
     sides = ([(members[at - 1], True)] if at > 0 else []) + ([(members[at + 1], False)] if at + 1 < len(members) else [])
     for other, after in sides:
@@ -966,15 +972,18 @@ def neighbour_option(story_shots: list[Shot], shot: Shot, used: list[Any], neede
         candidate = lookup(chosen.candidateId)
         if candidate is None or candidate.kind != "video":
             continue
-        start = ((chosen.end if chosen.end is not None else chosen.start + needed) + JUMP) if after \
-            else chosen.start - JUMP - needed
+        span = (chosen.end if chosen.end is not None else chosen.start + needed) - chosen.start
+        seamless = span + needed <= cap + 1e-6
+        jump = 0.0 if seamless else JUMP
+        start = ((chosen.end if chosen.end is not None else chosen.start + needed) + jump) if after \
+            else chosen.start - jump - needed
         if start < 0 or (candidate.durationSeconds and start + needed > candidate.durationSeconds):
             continue
         option = Option.model_validate({"candidateId": candidate.id, "source": candidate.source, "kind": "video",
                                         "pass": "coarse", "start": round(start, 3), "end": round(start + needed, 3),
                                         "scores": {"clip": 0.0}, "total": 0.0})
-        return [option], {candidate.id: candidate}
-    return [], {}
+        return [option], {candidate.id: candidate}, (other if seamless else None)
+    return [], {}, None
 
 
 def reused_selection(item: FallbackItem) -> Selection:

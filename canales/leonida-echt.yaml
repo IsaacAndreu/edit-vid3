@@ -64,6 +64,7 @@ fallback:
   generate: false
 
 content:
+  max_third_party_seconds: 60   # juego: escenas largas con su diálogo, como los canales de referencia (21-11)
   # Vale cualquier vídeo del tema, de cualquier canal (gameplay, tráilers, otros youtubers), como en gimnasia y
   # patinaje. Solo quedan los filtros de todos los canales (reacciones, pódcasts, películas…: common.py).
   official_channels: [Rockstar Games]   # sus subidas pasan incluso con «official trailer» en el título

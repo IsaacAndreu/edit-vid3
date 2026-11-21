@@ -272,8 +272,14 @@ no se puede bajar sale como «Aviso antes de la cola» en el registro del servic
 antes hay que volver a ejecutarlo una vez (`bash scripts/vps/install-service.sh`). El perro guardián
 (`queue.stage_minutes`, `queue.silent_minutes`) corta un vídeo colgado y lo deja para reintentar.
 
-**El límite de 5 s por clip de terceros** (`MAX_THIRD_PARTY_SECONDS`) es la protección frente a reclamaciones de Content
-ID; hoy sigue fijo en el código (`pipeline/schemas.py`).
+**El tope de un clip de terceros** era 5 s fijos (`MAX_THIRD_PARTY_SECONDS`), la protección frente a reclamaciones de
+Content ID. Desde el 21-11 el dueño trabaja como la competencia y asume ese riesgo: el tope es
+`content.max_third_party_seconds`, por canal y por vídeo (`pipeline/tope.py`): 12 s en general (`config.yaml`) y 60 s en
+`leonida-echt`; los clips propios no tienen tope y los pasajes con sonido original siguen `quotes.max_seconds`. Cambiarlo
+no rehace vídeos a medias (`SPEED_KEYS`): lo que ya está cortado con 5 s sigue así. Si un canal empieza a recibir
+reclamaciones, bájalo solo en su perfil (`canales/<canal>.yaml` → `content: {max_third_party_seconds: 5}`). La pestaña
+«Fuentes» de cada vídeo dice cuántos segundos seguidos se ven de cada fuente, para relacionar una reclamación con lo
+que la causó. QA bloquea el render si un clip pasa del tope de su canal.
 
 ## 4. Métricas (lo que decide)
 

@@ -277,6 +277,11 @@ fallback:
   image_usd_per_mtok: {text_input: 5.0, image_output: 40.0}
 
 content:
+  # Tope de un clip de terceros en pantalla (s). Decisión del dueño (21-11): como la competencia, asumiendo el riesgo
+  # de reclamaciones; 5 s era la regla de antes. Por canal en su perfil (si un canal recibe reclamaciones, bájalo solo
+  # ahí); no rehace vídeos a medias. Los clips propios no tienen tope; los pasajes con sonido, quotes.max_seconds.
+  # La pestaña «Fuentes» de cada vídeo dice cuánto se ve seguido de cada fuente.
+  max_third_party_seconds: 12
   # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
   title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
                     fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun,

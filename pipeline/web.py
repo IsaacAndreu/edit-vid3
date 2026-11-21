@@ -655,6 +655,16 @@ def audit_text(root: Path, slug: str) -> str | None:
     return module.report(slug)
 
 
+def source_runs(root: Path, slug: str) -> list[dict[str, Any]]:
+    """Per source on screen, its longest unbroken run in seconds (pipeline/tope.py): what a claim can be matched with,
+    now that the cap of a third-party clip is set per channel (content.max_third_party_seconds)."""
+
+    from . import tope
+
+    timeline = _json(root / "work" / slug / "timeline.json")
+    return tope.longest_runs(timeline)[:40] if isinstance(timeline, dict) else []
+
+
 def video_detail(root: Path, slug: str) -> dict[str, Any]:
     folder = find_video(root, slug)
     out, work = root / "out" / slug, root / "work" / slug
@@ -674,7 +684,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "stages": stages,
         "log": log.read_text("utf-8", errors="replace")[-12000:] if log.is_file() else "",
         "diagnosis": read("diagnostico.md"), "factcheck": read("verificacion.md"), "youtubeTxt": read("youtube.txt"),
-        "graphics": read("graficos.md"), "hook": read("gancho.md"), "retention": read("retencion.md"), "rhythm": read("qa/ritmo.md"), "audit": audit_text(root, slug),
+        "graphics": read("graficos.md"), "hook": read("gancho.md"), "retention": read("retencion.md"), "rhythm": read("qa/ritmo.md"), "audit": audit_text(root, slug), "sources": source_runs(root, slug),
         "thumbnails": [f for f in files if f.startswith("miniaturas/") or re.match(r"miniatura", f)],
         "scenesPreview": "vista-previa.jpg" if "vista-previa.jpg" in files else "",
         "shorts": [f for f in files if f.startswith("shorts/") and f.endswith(".mp4")],

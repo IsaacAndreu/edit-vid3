@@ -74,10 +74,14 @@ def test_an_ambient_shot_runs_on_with_its_neighbours_clip_after_a_jump():
     video = Candidate.model_validate({"id": "yt:A", "source": "youtube", "kind": "video", "url": "u", "title": "t",
                                       "channel": "c", "license": "l", "credit": "Fuente: c", "attribution": "a", "query": "q",
                                       "rankScore": 0.1, "durationSeconds": 100, "storyboard": board})
-    options, found = neighbour_option(story, story[1], used, 2.5, {"yt:A": video}.get)
+    options, found, continued = neighbour_option(story, story[1], used, 2.5, {"yt:A": video}.get)   # cap 5 s
     assert [(o.candidateId, o.start, o.end) for o in options] == [("yt:A", 43.0 + JUMP, 43.0 + JUMP + 2.5)] and "yt:A" in found
-    assert neighbour_option(story, story[2], used, 2.5, {"yt:A": video}.get) == ([], {})       # another idea
-    assert neighbour_option(story, story[1], used, 2.5, {}.get) == ([], {})                     # unknown source
+    assert continued is None
+    # content.max_third_party_seconds 12: 3 + 2.5 s fit, so the idea runs on without a jump (one clip cut in two)
+    options, _, continued = neighbour_option(story, story[1], used, 2.5, {"yt:A": video}.get, cap=12.0)
+    assert [(o.start, o.end) for o in options] == [(43.0, 45.5)] and continued == "s001"
+    assert neighbour_option(story, story[2], used, 2.5, {"yt:A": video}.get) == ([], {}, None)       # another idea
+    assert neighbour_option(story, story[1], used, 2.5, {}.get) == ([], {}, None)                     # unknown source
 
 
 def test_an_item_kept_from_an_earlier_run_counts_as_on_screen():
