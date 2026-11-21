@@ -476,6 +476,95 @@ def markdown(result: dict[str, Any], sheets: list[str]) -> str:
     return "\n".join(lines)
 
 
+# --- in the queue (bloque 3.3): the «revisor» stage, between the edit and the QA -------------------------------
+
+OBJECTIVE = ("persona_equivocada", "dibujo_animado", "texto_marca_agua")
+
+
+def to_fix(result: dict[str, Any], cfg: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """What goes back to the fill-in: (shot id → {reason, candidateId, start, end, evidence}, shots to show as text).
+
+    Measured faults (a repeated stretch, a broken clip) always; in a literal idea anything the model is sure of
+    (`revisor.min_confidence`, 0.85); in an ambient idea only the objective ones (another person, a cartoon, a
+    watermark); in a video planned without ideas only those, and only when it is very sure
+    (`revisor.min_confidence_sin_ideas`, 0.95). A shot covered with another shot's clip becomes text."""
+
+    sure = float(cfg.get("min_confidence", 0.85))
+    very_sure = float(cfg.get("min_confidence_sin_ideas", 0.95))
+    wrong: dict[str, dict[str, Any]] = {}
+    as_text: list[str] = []
+    for row in result.get("flagged") or []:
+        problem, confidence, kind = row["problem"], float(row.get("confidence") or 0), row.get("kind")
+        if problem == "hueco_tapado":
+            as_text.append(row["id"])
+            continue
+        if row.get("by") == "medida":
+            act = problem in ("repetido", "roto")
+        elif kind == "literal":
+            act = confidence >= sure
+        elif kind == "ambiente":
+            act = problem in OBJECTIVE and confidence >= sure
+        elif kind is None:
+            act = problem in OBJECTIVE and confidence >= very_sure
+        else:
+            act = False                                  # a title read aloud: nothing to fix
+        if act:
+            wrong[row["id"].split("-")[0]] = {"reason": problem, "candidateId": row.get("candidateId"),
+                                              "start": row.get("start"), "end": row.get("end"),
+                                              "evidence": row.get("evidence"), "by": "revisor"}
+    return wrong, as_text
+
+
+AGAIN = ("fallback", "coldopen", "timeline")         # what is done again with the reviewer's corrections
+
+
+def stage_run(ctx: RunContext, review_fn: Any = None) -> None:
+    """`revisor.enabled` (off): the finished edit is reviewed before the render; what `to_fix` picks goes back to the
+    fill-in ONCE (work/<slug>/revision.auto.json, its own file next to your revision.json), the fill-in, the cold
+    open and the edit are done again, and the result is reviewed again: what is still flagged stays in
+    out/<slug>/revisor/ (informe.md, hojas) for you."""
+
+    import time as _time
+
+    from . import feedback
+
+    cfg = dict(ctx.section("revisor") or {})
+    out = ctx.out_dir / OUT_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "revisor.json"
+    if not cfg.get("enabled", False):
+        target.write_text(json.dumps({"skipped": "revisor.enabled apagado"}), encoding="utf-8")
+        return
+    look = review_fn or (lambda: review(ctx.root, ctx.slug))
+    first = look()
+    auto = ctx.work_dir / feedback.REVISION_AUTO
+    wrong, as_text = to_fix(first, cfg)
+    final, again = first, False
+    if (wrong or as_text) and not auto.is_file():
+        auto.parent.mkdir(parents=True, exist_ok=True)
+        auto.write_text(json.dumps({"wrong": wrong, "noBorrow": as_text, "at": _time.strftime("%Y-%m-%d %H:%M")},
+                                   ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"   Revisor: {len(wrong)} planos vuelven al relleno y {len(as_text)} huecos tapados pasan a texto; "
+              f"se rehacen {', '.join(AGAIN)}")
+        from .runner import STAGES, mark_done
+
+        for stage in [s for s in STAGES if s.name in AGAIN]:
+            began = _time.monotonic()
+            stage.run(ctx)
+            mark_done(ctx, stage, _time.monotonic() - began)
+        final, again = look(), True
+    elif auto.is_file():
+        print("   Revisor: ya devolvió sus planos al relleno una vez; no se repite")
+    summary = {**final, "before": len(first.get("flagged") or []), "sentBack": len(wrong) if again else 0,
+               "asText": len(as_text) if again else 0}
+    target.write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"   Revisor: {summary['before']} marcados antes, {len(final.get('flagged') or [])} después")
+
+
+def stage_inputs(ctx: RunContext) -> list:
+    return [ctx.work_dir / "timeline.json"]
+
+
 def main(argv: list[str]) -> int:
     import argparse
 
@@ -489,7 +578,12 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     results = []
     for slug in args.videos:
-        result = review(PROJECT_ROOT, slug, args.modelo, args.max_usd)
+        try:
+            result = review(PROJECT_ROOT, slug, args.modelo, args.max_usd)
+        except FileNotFoundError as error:          # not edited yet: the others still go, and the table says so
+            print(f"{slug}: sin revisar — {error}")
+            results.append({"slug": slug, "missing": str(error)})
+            continue
         results.append(result)
         line = (f"{slug}: {len(result['flagged'])} de {result['shots']} planos marcados · {result['usd']:.3f} $ · "
                 f"out/{slug}/{OUT_DIR}/informe.md")
@@ -521,6 +615,9 @@ def baseline(results: list[dict[str, Any]]) -> str:
              "(un préstamo antes que el relleno, el relleno antes que la elección del juez).", "",
              "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in results:
+        if r.get("missing"):
+            lines.append(f"| {r['slug']} | sin montar todavía |" + " |" * (len(head) - 2))
+            continue
         counts = {k: 0 for k in BASE_COLUMNS}
         for row in r["flagged"]:
             counts[row["problem"]] = counts.get(row["problem"], 0) + 1

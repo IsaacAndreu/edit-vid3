@@ -324,7 +324,7 @@ async function videoPage(slug) {
   if (tab === "diagnosis" && !window.tabPicked && (v.error || v.lastError) && v.log) tab = "log";   // the answer is in the log
   const base = `/files/${encodeURIComponent(slug)}/`;
   const st = v.stage;
-  const ORDER = ["factcheck", "align", "planner", "sourcing", "analysis", "judge", "ingest", "people", "fallback", "coldopen", "timeline", "qa", "render", "shorts", "package"];
+  const ORDER = ["factcheck", "align", "planner", "sourcing", "analysis", "judge", "ingest", "people", "fallback", "coldopen", "timeline", "revisor", "qa", "render", "shorts", "package"];
   const done = Object.fromEntries(v.stages.map((x) => [x.name, x]));
   const costs = v.costs || {};
   const failedAt = !st && (v.error || v.lastError) ? ORDER.find((n) => !done[n]) : null;
@@ -410,7 +410,7 @@ async function videoPage(slug) {
         ${v.retention ? `<div class="md">${md(v.retention, base)}</div>` : ""}`
     : tab === "log" ? (() => {
         const lines = (v.log || "").split("\n");
-        const important = lines.filter((l) => /AVISO|ERROR|Error|Traceback|Tráfico|sesión|descarta|siguiente candidato|=====|\[\d+\/15\]/.test(l));
+        const important = lines.filter((l) => /AVISO|ERROR|Error|Traceback|Tráfico|sesión|descarta|siguiente candidato|=====|\[\d+\/16\]/.test(l));
         const paint = (l) => /ERROR|Traceback|FALLO/.test(l) ? `<span class="err">${esc(l)}</span>` : /AVISO|descarta/.test(l) ? `<span class="warn">${esc(l)}</span>` : /hecho en/.test(l) ? `<span class="ok">${esc(l)}</span>` : esc(l);
         const all = window.logAll;
         return `<div class="tools"><span class="small muted">${all ? `${lines.length} líneas` : `${important.length} líneas con avisos, errores y etapas (de ${lines.length})`}</span>

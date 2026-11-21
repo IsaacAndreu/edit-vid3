@@ -983,7 +983,8 @@ SCENARIOS = [
     Scenario("minimo", moments=0, shorts="off", script=SHORT_SCRIPT, grade=True, extra={"quotes": {"count": 0}, "apertura": {"auto": False}}),
     # planner.ideas: shots grouped into ideas (one search each, the same sources for all their shots), a literal idea
     # never filled with another moment of the person, the last one a title read aloud: no footage searched for it
-    Scenario("ideas", judge="mixed", moments=0, shorts="off", script=SHORT_SCRIPT, extra={"planner": {"ideas": True}}),
+    Scenario("ideas", judge="mixed", moments=0, shorts="off", script=SHORT_SCRIPT,
+             extra={"planner": {"ideas": True}, "revisor": {"enabled": True, "max_usd": 0.2}}),
 ]
 
 
@@ -1054,6 +1055,8 @@ def test_every_stage_runs_its_real_code(tmp_path: Path, monkeypatch: pytest.Monk
         assert not rotulos & {p.stem for p in (ctx.work_dir / "candidates").glob("*.json")}   # never searched
         literal = {sid for sid, kind in kinds.items() if kind == "literal"}
         assert not any(i.shotId in literal and i.method == "protagonist-filler" for i in fallback.items)
+        reviewed = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
+        assert "skipped" not in reviewed and reviewed["shots"] > 0            # the reviewer ran in the queue
     if scenario.name == "minimo":
         assert coldopen == ColdOpenFile(slug=SLUG)
         assert not (ctx.out_dir / "shorts").exists() or not list((ctx.out_dir / "shorts").glob("*.mp4"))

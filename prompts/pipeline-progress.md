@@ -185,3 +185,16 @@ uno simulado).
 | 2.5 orden en una idea literal | hecho (bloque 1.5): nunca relleno del protagonista ni clip prestado; foto o pizarra | e2e «ideas» |
 | 2.6 citas en tarjeta | ya existía: el gráfico `cita` (graphics.py) cuando el guion reproduce lo que alguien dijo. `quotes.count` sigue en 2: subirlo son más búsquedas y extracciones en YouTube (por canal, midiendo) | — |
 | 2.7 el gancho solo con juez | hecho: en los primeros `judge.hook_seconds` de un vídeo con ideas, todo lo del relleno pasa por el juez (fotos incluidas), el stock sin juez no entra y el montaje no presta clips | e2e «ideas» |
+
+## Puntería · bloque 3.3: el revisor en la cola (`revisor.enabled`, apagado)
+
+| Qué | Estado | Test |
+|---|---|---|
+| Etapa `revisor` entre el montaje y la QA | hecho: revisa el montaje antes del render; lo que `revisor.to_fix` elige vuelve UNA vez al relleno en `work/<vídeo>/revision.auto.json` (archivo propio: tus etiquetas reescriben `revision.json` entero), se rehacen relleno, apertura y montaje (con sus marcadores al día: `runner.mark_done`) y se revisa otra vez; lo que siga marcado queda en `out/<vídeo>/revisor/` | `tests/test_revisor.py`, e2e «ideas» |
+| Qué se devuelve | repetidos y rotos siempre; literales con seguridad ≥ `min_confidence` (0.85); ambiente solo otra persona / dibujos / marca de agua; sin ideas, eso con ≥ `min_confidence_sin_ideas` (0.95); los huecos tapados pasan a texto (el montaje no les presta clip) | `tests/test_revisor.py` |
+| El relleno no repite lo marcado | hecho: ningún tramo marcado (tuyo o del revisor) vuelve a elegirse para ningún plano del vídeo | — |
+| Encenderlo no rehace nada | la sección `revisor` no está en la huella de la etapa: solo los vídeos que lleguen a ella desde entonces | — |
+| Pendiente | el aviso al móvil con las hojas de lo que siga marcado (hoy: `--telegram` a mano) | — |
+
+**Cómo probarlo**: `revisor: {enabled: true}` en el config.yaml de un vídeo (como `newgym3-ideas`) o del canal; en el registro
+sale «Revisor: N planos vuelven al relleno…» y «N marcados antes, M después».

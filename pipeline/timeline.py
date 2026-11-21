@@ -822,6 +822,9 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     # planner.ideas: a chapter title or the goodbye read aloud (idea «rotulo») is shown as text, and a literal idea
     # without its own footage too: never another shot's clip
     rotulos = rotulo_shots(ctx, ("rotulo", "literal"), hook_seconds=float(ctx.section("judge").get("hook_seconds", 30)))
+    from . import feedback
+
+    rotulos |= feedback.no_borrow(ctx.work_dir)    # the reviewer found another shot's clip there: text instead
     punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
@@ -1582,7 +1585,8 @@ def inputs(ctx: RunContext) -> list:
     return [
         ctx.work_dir / "shots.json", ctx.work_dir / "words.json", ctx.work_dir / "media" / "_ingest.json",
         ctx.work_dir / "fallback.json", ctx.work_dir / "coldopen.json", ctx.work_dir / "people.json", ctx.materials_dir / "voz.mp3", ctx.root / "assets",
-    ] + ([ctx.materials_dir / "datos.csv"] if ctx.config.get("format") == "datos" else [])
+    ] + ([ctx.materials_dir / "datos.csv"] if ctx.config.get("format") == "datos" else []) \
+        + ([ctx.work_dir / "revision.auto.json"] if (ctx.work_dir / "revision.auto.json").is_file() else [])
 
 
 def run(ctx: RunContext) -> None:

@@ -159,3 +159,70 @@ def test_the_baseline_puts_every_video_in_one_table():
     labelled = [{"slug": "v", "shots": 100, "model": "m", "usd": 0.0, "flagged": [
         {"problem": "no_tiene_que_ver", "kind": "literal"}, {"problem": "no_tiene_que_ver", "kind": "ambiente"}]}]
     assert "| v | 100 | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
+
+
+def test_a_video_not_edited_yet_does_not_stop_the_baseline(tmp_path, monkeypatch, capsys):
+    _video(tmp_path)
+    monkeypatch.setattr(revisor, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(revisor, "ask", lambda *a, **k: ([], 0.0))
+    assert revisor.main(["v", "aun-no", "--base"]) == 0
+    text = (tmp_path / "out" / "_revisor_base.md").read_text()
+    assert "| v | 4 |" in text and "| aun-no | sin montar todavía |" in text
+    assert "aun-no: sin revisar" in capsys.readouterr().out
+
+
+def test_what_goes_back_to_the_fill_in():
+    """Bloque 3.3: measured faults always; literal ideas when sure; ambient ideas only objective faults; videos without
+    ideas only objective and very sure; a borrowed clip becomes text."""
+
+    rows = [{"id": "s001", "problem": "repetido", "by": "medida", "confidence": 1.0, "candidateId": "yt:A", "start": 1.0},
+            {"id": "s002-2", "problem": "no_tiene_que_ver", "by": "modelo", "confidence": 0.9, "kind": "literal"},
+            {"id": "s003", "problem": "no_tiene_que_ver", "by": "modelo", "confidence": 0.99, "kind": "ambiente"},
+            {"id": "s004", "problem": "persona_equivocada", "by": "modelo", "confidence": 0.9, "kind": "ambiente"},
+            {"id": "s005", "problem": "persona_equivocada", "by": "modelo", "confidence": 0.9, "kind": None},
+            {"id": "s006", "problem": "dibujo_animado", "by": "modelo", "confidence": 0.97, "kind": None},
+            {"id": "s007", "problem": "hueco_tapado", "by": "medida", "confidence": 1.0},
+            {"id": "s008", "problem": "no_tiene_que_ver", "by": "modelo", "confidence": 0.7, "kind": "literal"}]
+    wrong, as_text = revisor.to_fix({"flagged": rows}, {})
+    assert sorted(wrong) == ["s001", "s002", "s004", "s006"] and as_text == ["s007"]
+    assert wrong["s001"]["candidateId"] == "yt:A" and wrong["s002"]["by"] == "revisor"
+
+
+def test_the_reviewer_stage_sends_back_once_and_redoes_the_fill_in_and_the_edit(tmp_path, monkeypatch):
+    from pipeline import feedback, runner
+    from pipeline.runner import Stage
+
+    (tmp_path / "config.yaml").write_text("revisor: {enabled: false}\n")
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    ctx = RunContext.create("v", root=tmp_path)
+    revisor.stage_run(ctx, review_fn=lambda: pytest.fail("off: not reviewed"))
+    assert "skipped" in json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
+
+    ctx.config["revisor"]["enabled"] = True
+    ran = []
+    stages = [Stage(name, lambda c: [], lambda c: [], lambda c, n=name: ran.append(n), None, ()) for name in revisor.AGAIN]
+    monkeypatch.setattr(runner, "STAGES", stages)
+    looks = iter([{"flagged": [{"id": "s004", "problem": "repetido", "by": "medida", "confidence": 1.0,
+                                "candidateId": "yt:A", "start": 3.0, "end": 5.0}]}, {"flagged": []}])
+    revisor.stage_run(ctx, review_fn=lambda: next(looks))
+    assert ran == list(revisor.AGAIN)
+    assert all((ctx.work_dir / ".stages" / f"{n}.json").is_file() for n in revisor.AGAIN)    # not done a third time
+    assert feedback.wrong_shots(ctx.work_dir) == {"s004": "Repetido"}
+    summary = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
+    assert summary["before"] == 1 and summary["flagged"] == [] and summary["sentBack"] == 1
+
+    ran.clear()                                                                  # once per video, never in a loop
+    revisor.stage_run(ctx, review_fn=lambda: {"flagged": [{"id": "s009", "problem": "repetido", "by": "medida",
+                                                           "confidence": 1.0}]})
+    assert ran == []
+
+
+def test_your_labels_and_the_reviewers_are_both_read_yours_win(tmp_path):
+    from pipeline import feedback
+
+    (tmp_path / feedback.REVISION_AUTO).write_text(json.dumps({"wrong": {"s001": {"reason": "repetido"},
+                                                                         "s002": {"reason": "roto"}},
+                                                               "noBorrow": ["s009"]}))
+    (tmp_path / feedback.REVISION).write_text(json.dumps({"wrong": {"s002": {"reason": "persona_equivocada"}}}))
+    assert feedback.wrong_shots(tmp_path) == {"s001": "Repetido", "s002": "Sale otra persona"}
+    assert feedback.no_borrow(tmp_path) == {"s009"}
