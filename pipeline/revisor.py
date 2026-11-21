@@ -260,6 +260,17 @@ def ask(ctx: RunContext, cfg: dict[str, Any], entries: list[dict[str, Any]], sub
     spent = [0.0]
 
     def produce() -> dict[str, Any]:
+        from . import claude
+
+        if claude.is_claude(model):   # revisor.model: claude-… — another eye than the judge's (OpenAI) on the same frames
+            content_c: list[dict[str, Any]] = [claude.image_block(image), {"type": "text", "text": prompt}]
+            if portrait:
+                content_c += [{"type": "text", "text": f"Reference photo of {portrait[0]}"}, claude.image_block(portrait[1])]
+            text, spent[0] = claude.ask(ctx, stage=STAGE, system=INSTRUCTIONS, content=content_c,
+                                        cfg={**cfg, "model": model, "effort": cfg.get("effort", "medium")},
+                                        max_tokens=16000, schema=SCHEMA)
+            return json.loads(text)
+
         from openai import OpenAI
 
         from .costs import record_cost
