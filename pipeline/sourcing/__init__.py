@@ -355,7 +355,11 @@ def check_api_searches(youtube: YouTubeSource, scenes: list[list[Shot]], yt_cfg:
 
 
 def inputs(ctx: RunContext) -> list:
-    return [ctx.work_dir / "shots.json"]
+    from ..material import FILE, CLIPS_DIR
+
+    # the material de partida only when there is one: the other videos keep their fingerprint
+    material = [ctx.materials_dir / FILE, ctx.materials_dir.parent / FILE, ctx.materials_dir / CLIPS_DIR]
+    return [ctx.work_dir / "shots.json"] + [p for p in material if p.exists()]
 
 
 def run(ctx: RunContext) -> None:
@@ -383,6 +387,20 @@ def run(ctx: RunContext) -> None:
     )
 
     precompute = Precomputer(ctx) if ctx.section("analysis").get("precompute_during_sourcing", True) else None
+    # material de partida (pipeline/material.py): your videos, channels and clips, first for every shot
+    from ..material import Material
+
+    material = Material(ctx, youtube)
+
+    def spec(shot: Shot) -> str:
+        """A shot's search fingerprint; with material de partida, that too (adding a link searches the shot again)."""
+
+        base = _spec_hash(shot, cfg)
+        return key(base, material.signature()) if material.active else base
+    if material.active:
+        print(f"   Material de partida: {len(material.data['videos'])} vídeos · {len(material.data['channels'])} canales · "
+              f"{len(material.data['clips'])} clips propios"
+              + ("" if material.youtube_search else " · sin búsqueda a ciegas en YouTube (material.youtube_search: false)"))
     # public-domain historical footage for the old stretches (Commons, Internet Archive): no YouTube, no proxy
     archive_cfg = cfg.get("archive", {})
     archive = ArchiveSource(root=ctx.root, cache_dir=ctx.cache_dir, config=archive_cfg) \
@@ -418,10 +436,10 @@ def run(ctx: RunContext) -> None:
         for flag in flags:
             queries = scene_queries(scene, yt_cfg, api=flag)
             signature = [[s.id for s in scene], queries, scene_settings(yt_cfg, len(scene)), options_per_shot(yt_cfg)]
-            hashes = {s.id: key(_spec_hash(s, cfg), signature) for s in scene}
+            hashes = {s.id: key(spec(s), signature) for s in scene}
             done = [found or existing(s, hashes[s.id]) for found, s in zip(done, scene)]
         # searched shot by shot before the scene search was turned on (a video half way): kept, not searched again
-        done = [found or existing(s, _spec_hash(s, cfg)) for found, s in zip(done, scene)]
+        done = [found or existing(s, spec(s)) for found, s in zip(done, scene)]
         if all(done):
             for result in done:
                 if precompute is not None:
@@ -429,7 +447,7 @@ def run(ctx: RunContext) -> None:
             return done
         notes: list[str] = [f"escena {scene[0].id}-{scene[-1].id}"]
         per_shot: dict[str, list] = {s.id: [] for s in scene}
-        if youtube is not None:
+        if youtube is not None and material.youtube_search:
             try:
                 per_query, entries = youtube.search_pool(queries, notes)
                 scores = rank_pool(per_query, entries, scene)
@@ -462,7 +480,7 @@ def run(ctx: RunContext) -> None:
         return results
 
     def _process(shot: Shot) -> ShotCandidates:
-        spec_hash = _spec_hash(shot, cfg)
+        spec_hash = spec(shot)
         found = existing(shot, spec_hash)
         if found is not None:
             return found
@@ -480,7 +498,7 @@ def run(ctx: RunContext) -> None:
         # is quicker to source).
         per_shot = int(cfg.get("library_per_shot", 3))
         from_library = library.candidates_for(ctx, shot.broll, set(), per_shot)
-        if youtube is not None:
+        if youtube is not None and material.youtube_search:
             # a narrated moment always gets every search: the library has the person, rarely that moment
             fewer = 1 if per_shot and len(from_library) >= per_shot and not shot.broll.moment else None
             queries["youtube"] = youtube.queries_for(shot.broll)[:fewer] if fewer else youtube.queries_for(shot.broll)
@@ -497,6 +515,14 @@ def run(ctx: RunContext) -> None:
         if from_library is None:
             from_library = library.candidates_for(ctx, shot.broll, set(), int(cfg.get("library_per_shot", 3)))
         candidates = list(candidates)
+        if material.active:                      # yours first: before what the blind search found
+            try:
+                mine = material.for_shot(shot, notes)
+            except SourceUnavailable as error:
+                notes.append(str(error))
+                mine = []
+            ids = {c.id for c in mine}
+            candidates = mine + [c for c in candidates if c.id not in ids]
         present = {c.id for c in candidates}
         candidates += [c for c in from_library if c.id not in present]
         image_queries, image_candidates = images.search(shot.broll, notes)

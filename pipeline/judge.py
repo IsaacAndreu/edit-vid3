@@ -28,6 +28,7 @@ import numpy as np
 from .analysis import detectors as det
 from .context import RunContext
 from .costs import record_cost
+from .material import chosen_material
 from .schemas import (
     MAX_THIRD_PARTY_SECONDS,
     Candidate,
@@ -279,6 +280,8 @@ def event_masters(shots: list[Any], verdicts: dict[str, Any], candidates: dict[s
             if candidate is None or option.kind != "video":
                 continue
             score = 2.0 if rank == 0 else 1.0
+            if chosen_material(candidate):           # material de partida the judge accepted: the master first
+                score += 2.0
             if own_event(candidate.title, shot):
                 score += 1.0
                 titled.setdefault(event, set()).add(option.candidateId)
@@ -738,13 +741,21 @@ def run(ctx: RunContext) -> None:
         order = sorted((
             (s + official(o), o) for s, o in ranked(scores[shot.id].options, bonus)
             if not (offline and o.source == "youtube")
-            and s >= min_accept and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
-                                                                   allowed)
+            and s >= min_accept and (chosen_material(candidates[o.candidateId]) or not blocked_by_title(
+                candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist, allowed))
             and not seen_elsewhere(o, elsewhere)
         ), key=lambda pair: -pair[0])
         plans[shot.id] = [o for _, o in order]
-        if order and (judge_all or is_doubtful([s for s, _ in order], margin, min_score) or shot.start < hook_seconds
-                      or unnamed(shot, order[0][1])):
+        # material de partida (pipeline/material.py): what you gave is shown to the judge first — up to
+        # `judge.material_first` (2) of its options on the first sheet with the best of the rest beside them — however
+        # CLIP scored it (a GTA recording scores low against a sentence), and such a shot is always judged
+        firsts = int(cfg.get("material_first", 2))
+        mine = [o for o in plans[shot.id] if chosen_material(candidates[o.candidateId])]
+        if mine and firsts:
+            rest = [o for o in plans[shot.id] if o not in mine[:firsts]]
+            plans[shot.id] = mine[:firsts] + rest
+        if order and (judge_all or bool(mine) or is_doubtful([s for s, _ in order], margin, min_score)
+                      or shot.start < hook_seconds or unnamed(shot, order[0][1])):
             doubtful.append(shot)
     print(f"   {len(shots)} planos · {len(doubtful)} {'en total' if judge_all else 'con duda, en el gancho o sin el protagonista en el título'} → juez ({cfg.get('model', 'gpt-5-mini')})")
 
@@ -866,9 +877,14 @@ def run(ctx: RunContext) -> None:
                   and not overused(o.candidateId, counted,
                                    per_source * (3 if o.candidateId == master else
                                                  2 if own_event(candidates[o.candidateId].title, shot) else 1))]
-        chosen = follow if follow is not None and follow in usable else (
-            next((o for o in usable if o.candidateId == master), None) if judged else None)
-        picked_by = "continuación" if chosen is not None and chosen is follow else "maestro" if chosen is not None else None
+        chosen = follow if follow is not None and follow in usable else None
+        picked_by = "continuación" if chosen is not None else None
+        if chosen is None and judged:            # material de partida the judge accepted wins over any master
+            chosen = next((o for o in usable if chosen_material(candidates[o.candidateId])), None)
+            picked_by = "material" if chosen is not None else None
+        if chosen is None and judged:
+            chosen = next((o for o in usable if o.candidateId == master), None)
+            picked_by = "maestro" if chosen is not None else None
         if chosen is None and same_idea and selections and selections[-1].shotId in same_idea and usable:
             chosen = usable[0]                           # the idea's next cut: the judge's first choice, no variety push
         if chosen is None:

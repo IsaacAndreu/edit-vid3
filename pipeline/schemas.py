@@ -264,7 +264,7 @@ class ShotsFile(_Strict):
 
 # --- Stage 3: candidates/<shot_id>.json ---------------------------------------------
 
-Source = Literal["youtube", "wikimedia", "openverse", "pixabay", "web", "archive"]
+Source = Literal["youtube", "wikimedia", "openverse", "pixabay", "web", "archive", "propio"]   # propio: your own clips
 
 
 class AnalysisRange(_Strict):
@@ -830,7 +830,8 @@ class Timeline(_Strict):
             # a chapter card with nothing found behind it shows its title on the channel background
             if shot.type not in ("datacard", "endscreen", "chapter") and shot.media is None and not under_graphic(shot):
                 raise ValueError(f"{shot.id}: plano {shot.type} sin medio")
-            if shot.media and shot.media.source != "generated" and not (shot.media.credit or "").startswith("Fuente: "):
+            if shot.media and shot.media.source not in ("generated", "propio") \
+                    and not (shot.media.credit or "").startswith("Fuente: "):         # propio: your own clips
                 raise ValueError(f"{shot.id}: medio de terceros sin crédito")
             # seconds of the source actually used (a slowed-down shot shows fewer); real statements with their own
             # sound (shots marked coldOpen) may run up to 15 s
