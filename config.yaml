@@ -199,6 +199,8 @@ judge:
                                    # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
   lessons_refresh: 10              # las lecciones de «Errores» se renuevan cada 10 correcciones nuevas (si no, cada etiqueta invalida la caché del juez)
   # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
+  # parar_si_rechaza: 0       # % de planos que el juez rechaza a partir del cual el vídeo se para ANTES de las descargas
+  #                            HD y las segundas búsquedas del relleno (lo que más proxy gasta). 60 recomendado; 0 = nunca
   # model: claude-haiku-5-5   # con un modelo claude-… (aquí o en model_rest / model_literal / model_hook) esas hojas las
   #                            juzga Claude (ANTHROPIC_API_KEY); effort: low | medium | high. Entonces revisa con el otro
   #                            (revisor.model: gpt-…) o con los dos: si juez y revisor son el mismo, comparten puntos ciegos

@@ -1098,3 +1098,28 @@ def validate(ctx: RunContext) -> bool:
               "se eligen otros")
         return False
     return True
+
+
+def too_rejected(ctx: RunContext) -> str | None:
+    """`judge.parar_si_rechaza` (off: 0): when the judge turned down that % of the footage shots or more, the video
+    stops before the HD downloads and the fill-in's second searches — the part that spends the most proxy on a story
+    nobody filmed. elasesinodelkickboxing: 254 of 343 rejected, then 7.9 GB of proxy and 6 h to end with 70 % of the
+    shots empty. A message saying why, or None to go on."""
+
+    limit = float(ctx.section("judge").get("parar_si_rechaza") or 0)
+    if limit <= 0 or not (ctx.work_dir / OUTPUT).is_file():
+        return None
+    try:
+        selections = SelectionFile.model_validate(ctx.read_json(OUTPUT)).selections
+    except ValueError:
+        return None
+    if len(selections) < 20:                     # too few shots to judge a whole story by
+        return None
+    rejected = sum(1 for s in selections if s.status == "fallback")
+    share = 100 * rejected / len(selections)
+    if share < limit:
+        return None
+    return (f"el juez rechazó {rejected} de {len(selections)} planos ({share:.0f} %, límite {limit:.0f} %): de esta historia "
+            f"casi no hay imágenes. Reescribe el guion sobre lo que sí se grabó, añade material de partida o permite el "
+            f"stock (fallback: {{pexels_for_person: true}}); para seguir igualmente, judge: {{parar_si_rechaza: 0}} en su config.yaml")
+
