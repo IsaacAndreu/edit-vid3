@@ -17,6 +17,7 @@ It is a warning, never a block: the studio shows the shares and the sentences, a
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 SYSTEM = """
@@ -157,4 +158,61 @@ def gate(ctx: Any, review_fn: Any = None, send: Any = None) -> str | None:
         return (f"{share} % del guion no tiene imagen posible (límite {limit} %): reescribe las frases que dice "
                 f"work/{ctx.slug}/{GATE_FILE} y vuelve a darle")
     return None
+
+
+FIX_SYSTEM = """
+Eres el guionista de un canal documental de YouTube. Te paso el guion entero y, numeradas, las frases que no se
+podrán enseñar en pantalla (nadie grabó lo que cuentan), cada una con una idea de cómo arreglarla. Reescribe SOLO
+esas frases para que cuenten lo mismo apoyándose en algo que sí se grabó o se fotografió: el momento concreto, con
+su fecha y su lugar; una cita real; un dato que se pueda rotular. Mismo idioma, mismo tono, misma longitud más o
+menos, y que encaje con la frase de antes y la de después. No inventes hechos: si hay MATERIAL DE REFERENCIA, sácalos
+de ahí; si una frase no tiene arreglo sin inventar, déjala igual.
+
+Devuelve SOLO JSON: {"cambios": [{"n": 3, "nueva": "la frase reescrita"}]}
+"""
+
+
+def replace_sentence(script: str, old: str, new: str) -> str:
+    """The script with `old` (as split_sentences gave it: spaces joined) replaced once by `new`."""
+
+    pattern = r"\s+".join(re.escape(word) for word in old.split())
+    return re.sub(pattern, lambda _: new, script, count=1)
+
+
+def fix(ctx: Any, script: str, title: str = "", references: str = "", review_fn: Any = None,
+        ask: Any = None) -> dict[str, Any]:
+    """«Arreglar lo que no se puede enseñar»: the sentences without an image rewritten over something filmed, then the
+    script read again. {"script", "changed", "before", "after"} (before/after: review()'s result)."""
+
+    from .llm import complete_json
+
+    look = review_fn or review
+    before = look(ctx, script, title)
+    todo = [r for r in before["sinImagen"]]
+    if not todo:
+        return {"script": script, "changed": 0, "before": before, "after": before}
+    listing = "\n".join(f"[{r['n']}] {r['text']}" + (f"  (idea: {r['idea']})" if r.get("idea") else "") for r in todo)
+    user = f"TÍTULO: {title or '(sin título)'}\n\nGUION:\n{script}\n\nFRASES SIN IMAGEN:\n{listing}"
+    if references:
+        user += f"\n\nMATERIAL DE REFERENCIA:\n{references}"
+    if ask is not None:
+        answer = ask(user)
+    else:
+        section = "guion" if ctx.section("guion").get("model") else "planner"
+        answer = complete_json(ctx, stage="guion", section=section, max_tokens=8000, system=FIX_SYSTEM, user=user,
+                               use_cache=False)
+    by_n = {r["n"]: r["text"] for r in todo}
+    fixed, changed = script, 0
+    for item in answer.get("cambios") or []:
+        try:
+            n = int(item.get("n"))
+        except (TypeError, ValueError):
+            continue
+        new = " ".join(str(item.get("nueva") or "").split())
+        if n in by_n and new and new != by_n[n]:
+            again = replace_sentence(fixed, by_n[n], new)
+            if again != fixed:
+                fixed, changed = again, changed + 1
+    after = look(ctx, fixed, title) if changed else before
+    return {"script": fixed, "changed": changed, "before": before, "after": after}
 
