@@ -1438,11 +1438,11 @@ def spending(root: Path, days: int = 14, owner: str | None = None) -> list[dict[
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
                "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar",
                "/api/stats", "/api/spending", "/api/canales")
-PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes",
+PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes", "/api/imagen",
                 "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
                 "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas",
                 "/api/ideas", "/api/ideas/save")
-PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/voices", "/api/voices/test",
+PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/imagen", "/api/voices", "/api/voices/test",
                         "/api/scripts/draft", "/api/board/temas")
 PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
@@ -2541,6 +2541,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if not title:
                         raise ValueError("Pon el título que vas a usar: el gancho se mide contra él")
                     return self._ok(hook.review(ctx, title, str(body.get("script") or "")))
+                if path == "/api/imagen":                  # {script, title, channel}: what can be shown, before recording
+                    from . import imagen_guion
+
+                    channel = str(body.get("channel") or "")
+                    ctx = RunContext.create("_imagen", root=root, channel=channel if channel in channels(root) else None)
+                    return self._ok(imagen_guion.review(ctx, str(body.get("script") or ""), str(body.get("title") or "")))
                 if path == "/api/scenes":                  # {script, channel}: the lines no simulated world can show
                     from . import simulacion
 

@@ -85,6 +85,8 @@ async function newVideo() {
       <div class="fset"><div class="legend">Comprobaciones</div>
         <div class="actions"><button id="hookbtn" onclick="checkHook()">Revisar el gancho</button><span class="help">Antes de grabar</span><span id="hookmsg" class="small muted"></span></div>
         <div id="hookbox"></div>
+        <div class="actions"><button id="imgbtn" onclick="checkImages()">Revisar qué se puede enseñar</button><span class="help">Antes de grabar: frases sin imagen posible</span><span id="imgmsg" class="small muted"></span></div>
+        <div id="imgbox"></div>
         <div class="actions"><button id="scenebtn" onclick="checkScenes()">Revisar escenas</button><span class="help">Canales de simulación</span><span id="scenemsg" class="small muted"></span></div>
         <div id="scenebox"></div>
       </div>
@@ -271,6 +273,23 @@ function useOpeningClip(i) {
   window.opening = {candidate: window.openings[i], start: $("#opa" + i).value, end: $("#opb" + i).value,
     subtitles: $("#opsubs").checked, credit: $("#opcredit").value};
   window.openings.forEach((c, k) => { const b = $("#opok" + k); if (b) b.textContent = k === i ? "✓ Elegida: irá antes de la voz" : ""; });
+}
+// bloque 5: what of the script can be shown, before the voice (pipeline/imagen_guion.py)
+async function checkImages() {
+  const msg = $("#imgmsg"); msg.textContent = "Leyendo el guion frase a frase… (~20 s)"; $("#imgbtn").disabled = true;
+  try {
+    const r = await post("/api/imagen", {script: $("#script").value, title: $("#title").value, channel: $("#channel").value});
+    msg.textContent = "";
+    const ok = r.verdict.startsWith("✅"), sh = r.shares;
+    $("#imgbox").innerHTML = `<div class="notice ${ok ? "ok" : ""}"><b>${esc(r.verdict)}</b>
+      <div class="bar mix mt-2" role="img" aria-label="Con imagen ${sh.imagen} %, ambiente ${sh.ambiente} %, sin imagen ${sh.sin_imagen} %">
+        <i style="width:${sh.imagen}%;background:var(--ok)"></i><i style="width:${sh.ambiente}%;background:var(--work)"></i><i style="width:${sh.sin_imagen}%;background:var(--bad)"></i></div>
+      <div class="small mt-1"><span class="t-ok">■</span> con imagen propia ${sh.imagen} % · <span style="color:var(--work-fg)">■</span> de ambiente ${sh.ambiente} %
+        · <span class="t-bad">■</span> sin imagen ${sh.sin_imagen} %${sh.sin_revisar ? ` · sin revisar ${sh.sin_revisar} %` : ""}</div>
+      ${r.sinImagen.length ? `<div class="small mt-2"><b>Frases sin imagen posible</b></div><ul class="small">${r.sinImagen.map((x) =>
+        `<li>«${esc(x.text)}»${x.idea ? `<br><span class="muted">Idea:</span> ${esc(x.idea)}` : ""}</li>`).join("")}</ul>` : ""}</div>`;
+  } catch (e) { msg.textContent = e.message; }
+  $("#imgbtn").disabled = false;
 }
 async function checkScenes() {
   const msg = $("#scenemsg"); msg.textContent = "Mirando qué se puede enseñar… (~20 s)"; $("#scenebtn").disabled = true;
