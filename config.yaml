@@ -42,6 +42,8 @@ planner:
   #                          planifiquen desde entonces. Se mide con: python -m pipeline.revisor <vídeo> --base
   #                          Con ideas, timeline.idea_lines: ambiente (por defecto) | siempre | no → la línea de
   #                          pantalla de cada idea; timeline.idea_facts (true) → sus datos como rótulo.
+  #                          timeline.idea_facts_max (1) → cuántos datos de cada idea se rotulan (uno por plano);
+  #                          timeline.idea_quotes (apagado) → la cita literal de una idea («…») como tarjeta.
   #                          fallback.concept_stock: true (apagado) → stock de concepto sin caras para ideas de
   #                          ambiente, siempre pasado por el juez (una llamada más por plano así).
 

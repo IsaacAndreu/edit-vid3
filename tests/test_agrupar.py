@@ -192,3 +192,34 @@ def test_literal_only_where_an_action_must_be_seen():
     shots = [_shot(1, "tiene seis títulos mundiales"), _shot(2, "bajó del podio de un salto", broll={"moment": "jumps off"})]
     ideas = agrupar.assign(shots, {"ideas": [{"shots": ["s001"], "kind": "literal"}, {"shots": ["s002"], "kind": "literal"}]})
     assert [i["kind"] for i in ideas] == ["ambiente", "literal"]
+
+
+def test_more_labels_per_idea_and_its_quote_as_a_card_when_asked(tmp_path):
+    import json
+
+    from pipeline.context import RunContext
+    from pipeline.schemas import ShotsFile, TimelineShot
+    from pipeline.timeline import idea_quotes, place_labels
+
+    (tmp_path / "materiales" / "v").mkdir(parents=True)
+    ctx = RunContext.create("v", root=tmp_path, config={})
+    broll = {"visualIntent": "a view", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+    idea = {"id": "i001", "kind": "ambiente", "facts": ["Río 2016", "14.166"], "mustShow": ["Simone Biles"]}
+    texts = ["Aquel día en Río Biles lo dijo claro:", "«Ya no disfruto de este deporte, solo quiero acabar», confesó.",
+             "Y nadie la creyó."]
+    planned = [{"id": f"s00{n + 1}", "type": "broll", "startWord": n, "endWord": n, "start": 4.0 * n, "end": 4.0 * n + 4,
+                "text": t, "chapter": 0, "broll": broll, "idea": idea} for n, t in enumerate(texts)]
+    ctx.write_json("shots.json", {"slug": "v", "title": "t", "durationSeconds": 12, "chapters": [
+        {"title": "c", "startWord": 0, "fromScript": False, "showTitle": False}], "shots": planned})
+    media = {"src": "m.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: x"}
+    shots = [TimelineShot.model_validate({"id": f"s00{n + 1}", "type": "broll", "from": 120 * n, "durationInFrames": 120,
+                                          "text": "x", "media": media}) for n in range(3)]
+    shots_file = ShotsFile.model_validate(json.loads((ctx.work_dir / "shots.json").read_text()))
+    assert [l.text for l in place_labels(shots_file, shots, [], 30, {})] == ["Río 2016"]
+    assert [l.text for l in place_labels(shots_file, shots, [], 30, {"idea_facts_max": 2})] == ["Río 2016", "14.166"]
+    assert idea_quotes(ctx, shots, [], 30) == []                                   # off by default
+    ctx.config["timeline"] = {"idea_quotes": True}
+    cards = idea_quotes(ctx, shots, [], 30, lambda name: {"src": f"{name}.png"})
+    assert len(cards) == 1 and cards[0].from_ == 122
+    assert cards[0].graphic["text"] == "Ya no disfruto de este deporte, solo quiero acabar"
+    assert cards[0].graphic["speaker"] == "Simone Biles"
