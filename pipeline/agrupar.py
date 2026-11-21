@@ -42,15 +42,16 @@ Una IDEA son planos SEGUIDOS que cuentan lo mismo: normalmente una frase o dos, 
 capítulo o un cambio claro de tema empiezan idea nueva.
 
 Etiqueta de cada idea:
-- "literal": lo que se cuenta se grabó y TIENE que verse eso: una competición concreta, una caída, un gol, una
-  boda, un juicio, una rueda de prensa, una escena del juego, un lugar nombrado. Si no está, mejor otra cosa sobria
-  que un clip de otra cosa.
-  Ej.: «en plena ceremonia de medallas bajó del podio de un salto» (gimnasia); «el jurado le declaró culpable en
-  Miami en 1979» (crimen); «la misión del atraco al banco de Vice City» (GTA); «la caída del Muro en noviembre de
-  1989» (historia).
-- "ambiente": la frase no tiene imagen propia (una decisión, un sentimiento, el colegio, la familia, el dinero, una
-  edad, una altura, una lista de títulos): vale material de la persona o el tema del que se habla, de esa época o
-  de ese suceso.
+- "literal": SOLO cuando la voz narra una ACCIÓN concreta que alguien grabó y que el espectador espera ver en ese
+  momento: una caída, un salto, salirse del podio, un gol, el veredicto leído en el juicio, la explosión. Si en la
+  pantalla saliera otra acción de la misma persona, sería mentira. Es la excepción: en un vídeo normal, una de cada
+  cinco o seis ideas como mucho. Si no hay ese clip, el plano se queda en texto, así que no marques literal lo que
+  admite material de la persona.
+  Ej.: «en plena ceremonia de medallas bajó del podio de un salto» (gimnasia); «el jurado le declaró culpable» con
+  la lectura del veredicto (crimen); «el coche explota al final de la misión» (GTA).
+- "ambiente": todo lo demás que se ilustra con metraje: hablar de una competición, de sus títulos, de un lugar, de
+  su familia, una decisión, una edad, una cifra. Vale material de la persona o el tema del que se habla, de esa
+  época o de ese suceso (la competición de la que se habla, si es posible). Es lo normal.
   Ej.: «con unos quince años dejó el instituto»; «sus padres nunca dejaron de creer en ella»; «nadie sabía qué
   había pasado aquella noche»; «muchos jugadores cometen este error al empezar».
 - "rotulo": la voz lee un título o una fórmula fija: «SECRETO 4: SUS PADRES SON SUS ABUELOS», «ERROR NÚMERO 3»,
@@ -144,8 +145,13 @@ def assign(shots: list[dict[str, Any]], answer: dict[str, Any]) -> list[dict[str
             kept.append(sid)
             seconds += length
         if idea and str(idea.get("kind")) in ("literal", "ambiente", "rotulo"):
+            kind = str(idea["kind"])
+            # literal only where the planner heard an action that must be seen (broll.moment): newgym3-ideas got 120
+            # of 229 shots labelled literal, and a literal idea with no exact clip becomes text — 92 empty shots
+            if kind == "literal" and not any((by_id[sid].get("broll") or {}).get("moment") for sid in kept):
+                kind = "ambiente"
             ideas.append({
-                "shots": kept, "kind": str(idea["kind"]),
+                "shots": kept, "kind": kind,
                 "summary": str(idea.get("summary") or "").strip()[:240],
                 "mustShow": _clean(idea.get("mustShow"), 4, 80), "mustNotShow": _clean(idea.get("mustNotShow"), 4, 80),
                 "era": (str(idea.get("era")).strip()[:160] or None) if idea.get("era") else None,

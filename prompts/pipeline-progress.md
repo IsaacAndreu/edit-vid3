@@ -198,3 +198,19 @@ uno simulado).
 
 **Cómo probarlo**: `revisor: {enabled: true}` en el config.yaml de un vídeo (como `newgym3-ideas`) o del canal; en el registro
 sale «Revisor: N planos vuelven al relleno…» y «N marcados antes, M después».
+
+## Prueba newgym3-ideas (21-11): peor, y por qué
+
+| | newgym3 | newgym3-ideas |
+|---|---|---|
+| planos sin imagen en el montaje | 10 de 231 | 92 de 231 |
+| pantallas de texto (kinetic) | 4 | 47 |
+| sin resolver en el relleno | 51 | 86 |
+| ideas | — | 97 (120 planos literales, 88 ambiente, 21 rótulo) |
+
+Causas: el modelo marcó literal la mitad del vídeo (y una idea literal sin su clip va a texto); compartir fuentes por
+idea agotaba el tope por fuente. Arreglado: literal solo donde el planner oyó una acción que tiene que verse
+(`broll.moment`), el prompt lo pide como excepción; dentro de una idea sus propios usos de una fuente no cuentan para
+el tope y el juez no fuerza variedad entre sus cortes. Ojo: newgym3 tenía solo 10 vacíos porque tapaba 40 huecos con
+clips de otras partes (antes del arreglo de los préstamos); un vídeo nuevo sin ideas también mostrará ahora más texto
+donde antes había un clip sin sentido.

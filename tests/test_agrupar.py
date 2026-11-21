@@ -32,7 +32,7 @@ def test_ideas_are_checked_chapters_length_gaps_and_leftovers():
                         {"shots": ["s006", "s009"], "kind": "ambiente"}]}                        # an unknown shot
     ideas = agrupar.assign(shots, answer)
     assert [i["shots"] for i in ideas] == [["s001", "s002", "s003"], ["s004", "s005"], ["s006"], ["s007"]]
-    assert ideas[1]["kind"] == "literal"                           # the split part keeps the model's label
+    assert ideas[1]["kind"] == "ambiente"                          # the split part: no narrated moment, not literal
     assert ideas[3]["kind"] == "literal"                           # left out, with a moment: literal by rule
     long = [_shot(n, f"frase {n}", seconds=4.0) for n in range(1, 6)]
     split = agrupar.assign(long, {"ideas": [{"shots": [s["id"] for s in long], "kind": "ambiente"}]})
@@ -48,6 +48,7 @@ def test_simple_rules_when_the_model_does_not_answer():
 
 def test_apply_numbers_ideas_over_the_whole_video_and_sets_each_shot():
     shots = [_shot(n, f"frase {n}") for n in range(1, 5)]
+    shots[0]["broll"]["moment"] = "jumps off the podium"           # a narrated action: literal stays literal
     ctx = SimpleNamespace(section=lambda name: {})
     asked = []
 
@@ -182,3 +183,12 @@ def test_a_concept_search_only_for_ambient_ideas():
         {"shots": ["s001"], "kind": "ambiente", "concept": "hands cleaning with rubber gloves"},
         {"shots": ["s002"], "kind": "literal", "concept": "a fall"}]})
     assert ideas[0]["concept"] == "hands cleaning with rubber gloves" and ideas[1]["concept"] is None
+
+
+def test_literal_only_where_an_action_must_be_seen():
+    """newgym3-ideas: the model called 120 of 229 shots literal and 92 ended as text. An idea is literal only where
+    the planner heard an action that must be seen (broll.moment); talking about a competition or a title is ambient."""
+
+    shots = [_shot(1, "tiene seis títulos mundiales"), _shot(2, "bajó del podio de un salto", broll={"moment": "jumps off"})]
+    ideas = agrupar.assign(shots, {"ideas": [{"shots": ["s001"], "kind": "literal"}, {"shots": ["s002"], "kind": "literal"}]})
+    assert [i["kind"] for i in ideas] == ["ambiente", "literal"]
