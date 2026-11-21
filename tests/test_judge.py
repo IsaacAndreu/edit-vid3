@@ -380,3 +380,36 @@ def test_the_footage_of_the_shots_own_event_may_fill_more_shots():
     assert own_event("Kamila VALIEVA Free Skate | Beijing 2022 Figure Skating", shot)
     assert not own_event("Kamila Valieva - Bolero (Russian Nationals 2022)", shot)       # only one word: 2022
     assert not own_event("Beijing 2022 free skate", SimpleNamespace(broll=None))
+
+
+def test_one_judge_decision_per_idea_and_the_others_follow_its_source(tmp_path):
+    """judge.per_idea: the idea's first shot is judged; the next takes its own moment of the accepted source without a
+    call; a shot whose options lack that source is judged on its own."""
+
+    idea = {"id": "i001", "kind": "ambiente"}
+    broll = {"visualIntent": "the gym", "queries": ["a", "b", "c"], "queriesLocal": ["d"]}
+    shots = [{"id": f"s00{i}", "type": "broll", "startWord": i, "endWord": i, "start": 2.0 * i, "end": 2.0 * i + 2,
+              "text": "t", "chapter": 0, "broll": broll, "idea": idea} for i in range(3)]
+    board = {"sheets": ["x.jpg"], "columns": 1, "rows": 1, "tileWidth": 1, "tileHeight": 1, "interval": 5, "frames": 1}
+    base = {"source": "youtube", "kind": "video", "license": "l", "attribution": "a", "query": "q", "rankScore": 1,
+            "durationSeconds": 900, "storyboard": board, "url": "https://y/a", "credit": "Fuente: X", "channel": "X"}
+    a, b = {**base, "id": "yt:a", "title": "A"}, {**base, "id": "yt:b", "title": "B"}
+    scores = {"s000": [opt("yt:b", 0.41, start=5, end=7), opt("yt:a", 0.40, start=10, end=12)],
+              "s001": [opt("yt:b", 0.41, start=30, end=32), opt("yt:a", 0.40, start=40, end=42)],
+              "s002": [opt("yt:b", 0.40, start=60, end=62)]}
+    asked = []
+
+    def fake_judge(ctx, shot, sheet, letters, *args, **kwargs):
+        asked.append(shot.id)
+        return {"ranking": ["B"] if shot.id == "s000" else ["A"], "score": 0.8, "reason": "ok", "confidence": 0.9}
+
+    ctx = J_ctx = RunTests._write(None, tmp_path, shots, {"s000": [b, a], "s001": [b, a], "s002": [b]}, scores)
+    ctx.config["judge"].update({"per_idea": True, "all": True})
+    with patch.object(J, "call_judge", side_effect=fake_judge), \
+            patch.object(J, "contact_sheet", return_value=__import__("numpy").zeros((10, 10, 3), "uint8")):
+        J.run(J_ctx)
+    data = json.loads((ctx.work_dir / "selection.json").read_text())
+    assert sorted(asked) == ["s000", "s002"]
+    assert [(r["candidateId"], r["start"]) for r in data["selections"]] == [("yt:a", 10), ("yt:a", 40), ("yt:b", 60)]
+    assert data["stats"]["judgeCalls"] == 2 and data["stats"]["byIdea"] == 1
+    assert "misma idea que s000" in data["selections"][1]["judge"]["reason"]

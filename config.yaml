@@ -190,6 +190,9 @@ judge:
                                    # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
   lessons_refresh: 10              # las lecciones de «Errores» se renuevan cada 10 correcciones nuevas (si no, cada etiqueta invalida la caché del juez)
   # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
+  # per_idea: false           # con planner.ideas: el juez decide una vez por idea (su primer plano); los demás
+  #                           # planos toman su momento de la misma fuente y solo se juzgan si no la tienen.
+  #                           # Menos llamadas; mídelo con python -m pipeline.revisor <antes> <después> --base
   # model_literal: gpt-5-mini   # con planner.ideas: un modelo más fuerte solo en las ideas literales (lo que tiene
   #                              que verse tal cual); usd_per_mtok_literal: {input: …, output: …} para el gasto
   # usd_per_mtok_rest: {input: …, output: …}        # los precios de model_rest (para que el gasto de API salga bien)
