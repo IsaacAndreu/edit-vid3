@@ -267,6 +267,11 @@ content:
                     excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop,
                     gymnast icons]   # canales de la competencia: su material ya está editado
 
+# guion.estructura (en el perfil del canal): cómo se construye cada bloque de sus borradores de guion. Un nombre
+# (juego_errores: error → fuente → ejemplo → cómo evitarlo; juego; atleta) o tu propio texto. Un canal de
+# videojuegos sin formato propio usa «juego». Ver pipeline/organizar.py (STRUCTURES).
+# guion: {estructura: juego_errores}
+
 ideas:
   my_channel: ""                   # tu canal, p. ej. "@TuCanal" (sus mejores vídeos también inspiran las ideas)
   competitors: ["@GymnastIcons"]   # canales de la competencia (añade los que quieras: @handle o URL)

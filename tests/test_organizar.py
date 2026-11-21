@@ -216,3 +216,12 @@ def test_a_draft_leans_on_the_material_that_already_exists(tmp_path: Path, monke
     monkeypatch.setattr("pipeline.llm.complete_json", fake)
     organizar.draft_script(root, "negocios", {"title": "Booking.com y la CNMC"})
     assert "MATERIAL QUE YA EXISTE" in seen["user"]
+
+
+def test_each_channel_writes_its_scripts_with_its_own_structure():
+    assert "La fuente" in organizar.script_structure({"guion": {"estructura": "juego_errores"}})
+    assert organizar.script_structure({"guion": {"estructura": "Primero A, luego B"}}) == "Primero A, luego B"
+    game = {"ideas": {"about": "un canal sobre GTA 6"}}
+    assert organizar.script_structure(game) == organizar.STRUCTURES["juego"]
+    assert organizar.script_structure(game, has_format=True) == ""            # its format already says how
+    assert organizar.script_structure({"ideas": {"about": "megaproyectos"}}) == ""

@@ -237,6 +237,44 @@ def _words_per_video(root: Path, channel: str) -> int:
     return int(sum(counts) / len(counts)) if counts else 0
 
 
+# guion.estructura: how every block of a channel's scripts is built (a preset name or your own text). The reference
+# channels repeat one shape video after video; a draft that follows it is shown with what was filmed.
+STRUCTURES = {
+    "juego_errores": (
+        "1. El error o el mito, dicho como lo dice la gente («todo el mundo cree que…»).\n"
+        "2. La fuente: dónde se ve de verdad (el tráiler y su minuto, la captura oficial, la misión), con su nombre.\n"
+        "3. El ejemplo en el juego: la escena concreta que lo demuestra, descrita para poder enseñarla.\n"
+        "4. Cómo evitarlo o qué significa de verdad, en una o dos frases claras.\n"
+        "Cada bloque cabe en 45-90 segundos y el siguiente arranca con otro error, sin rótulos de capítulo."),
+    "juego": (
+        "1. Lo que se ve: una escena, un tráiler o una captura concreta del juego, con su nombre y su minuto.\n"
+        "2. Qué significa: el detalle que casi nadie ha visto y por qué importa.\n"
+        "3. La comparación: lo real que imita, o lo que hacía el juego anterior.\n"
+        "4. Qué esperar: la consecuencia para quien lo juegue."),
+    "atleta": (
+        "1. Gancho con el momento cumbre: la competición, la fecha, el lugar y la nota o el resultado.\n"
+        "2. El origen, con fechas y lugares que se puedan rotular.\n"
+        "3. El ascenso, contado con competiciones concretas (cada una con su año y su sede).\n"
+        "4. La caída o el obstáculo, con el momento grabado en que pasó.\n"
+        "5. El momento cumbre narrado paso a paso, como se vio en directo.\n"
+        "6. Qué fue después, con un dato o una cita literal."),
+}
+
+
+def script_structure(config: dict[str, Any], has_format: bool = False) -> str:
+    """The channel's `guion.estructura` (a STRUCTURES name or its own text); a channel about a video game with no
+    format of its own gets «juego»; else ''."""
+
+    from .canal_juego import is_game_channel
+
+    wanted = str((config.get("guion") or {}).get("estructura") or "").strip()
+    if wanted:
+        return STRUCTURES.get(wanted, wanted)
+    if not has_format and is_game_channel(config):
+        return STRUCTURES["juego"]
+    return ""
+
+
 MATERIAL_BRIEF = ("MATERIAL QUE YA EXISTE (lo que ya funcionó en otros vídeos y lo que el canal ha subido): cuando "
                   "cuentes algo, apóyalo en estos momentos grabados si encajan, con su fecha y su lugar; no los "
                   "inventes ni los nombres si no salen en la historia.")
@@ -317,6 +355,9 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         brief.append(f"IDIOMA: escribe el guion y el título en {name}, natural para ese público (nunca traducido).")
     if writing:
         brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
+    structure = script_structure(ctx.config, has_format=bool(writing))
+    if structure:
+        brief.append(f"ESTRUCTURA DEL CANAL (cada bloque del guion sigue estos pasos):\n{structure}")
     from .simulacion import writing as simulation_writing
 
     from . import atlas, cine, mapas
