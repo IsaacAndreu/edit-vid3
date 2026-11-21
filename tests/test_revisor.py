@@ -237,7 +237,19 @@ def test_your_labels_and_the_reviewers_are_both_read_yours_win(tmp_path):
                                                                "noBorrow": ["s009"]}))
     (tmp_path / feedback.REVISION).write_text(json.dumps({"wrong": {"s002": {"reason": "persona_equivocada"}}}))
     assert feedback.wrong_shots(tmp_path) == {"s001": "Repetido", "s002": "Sale otra persona"}
-    assert feedback.no_borrow(tmp_path) == {"s009"}
+    assert feedback.no_borrow(tmp_path) == {"s001", "s002", "s009"}   # sent back too: text if nothing replaces them
+    assert feedback.no_borrow(tmp_path, sent_back=False) == {"s009"}
+
+
+def test_a_shot_sent_back_never_comes_back_as_a_copy_of_its_neighbour():
+    """newgym3-ideas2: s050, s044 and s046 went back to the fill-in, nothing replaced them and the edit covered them
+    with the next shot's clip — flagged again. The timeline reads the switch (revisor.no_borrow_sent_back, on)."""
+
+    import inspect
+
+    from pipeline import timeline
+
+    assert 'get("no_borrow_sent_back", True)' in inspect.getsource(timeline)
 
 
 def test_the_score_of_every_video_and_the_panel(tmp_path):

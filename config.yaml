@@ -430,6 +430,8 @@ queue:                             # cola nocturna (python main.py --all)
 #   aprender: false          # los canales en que el revisor ve dibujos o marcas de agua (3+ veces, 2+ vídeos) dejan de usarse
 #   aviso: true              # al acabar, lo que sigue marcado y sus hojas al Telegram del canal
 #   nota: false              # solo la nota de cada vídeo (panel «Puntería»), sin cambiar nada: 1-2 céntimos por vídeo
+#   no_borrow_sent_back: true  # con enabled: un plano devuelto al relleno que no encuentra otro sale como texto, no con
+#                            el clip del plano de al lado (eso volvía a ser «hueco tapado» o «repetido»)
 #   enabled: false           # en la cola, entre el montaje y la QA (bloque 3.3): lo que marque vuelve UNA vez al
 #                            relleno (work/<vídeo>/revision.auto.json) y se rehacen relleno, apertura y montaje.
 #                            Repetidos y rotos siempre; en ideas literales lo que marque con min_confidence (0.85);
