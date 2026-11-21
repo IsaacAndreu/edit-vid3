@@ -115,6 +115,7 @@ SPEED_KEYS = frozenset({
     # content.max_third_party_seconds (pipeline/tope.py): only what is cut from now on runs longer; a video half made
     # with 5 s goes on as it is. judge.parar_si_rechaza: a stop before the downloads, never a reason to judge again
     "max_third_party_seconds", "parar_si_rechaza",
+    "range_max_mb",           # sourcing.youtube: how big a byte range may be before it takes another way
 })
 
 

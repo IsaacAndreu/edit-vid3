@@ -57,8 +57,16 @@ def probe(ctx: Any, video: str, fmt: str = DEFAULT_FORMAT, youtube: Any = None) 
     lines = []
     try:
         youtube._local.video_id = video_id
+        print(f"{video_id}: extrayendo los formatos (una petición, puede tardar un minuto)…", flush=True)
         info = youtube._fresh_full_info(video_id)
-        for piece in youtube._range_formats(info, fmt, False, False):
+        try:
+            pieces = youtube._range_formats(info, fmt, False, False)
+        except Exception as error:            # NoIndex «sin formato mp4 por HTTPS» and the like: said, not raised
+            return [f"{video_id} · ningún formato mp4 por HTTPS para «{fmt}»: {error}\n   → el rango no se puede "
+                    "intentar con este vídeo (solo HLS o webm)"]
+        if not pieces:
+            return [f"{video_id} · yt-dlp no eligió ningún formato para «{fmt}»"]
+        for piece in pieces:
             url = str(piece["url"])
             headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
 
@@ -82,7 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--formato", default=DEFAULT_FORMAT)
     args = parser.parse_args(argv)
     ctx = RunContext.create("_sonda_rango", root=PROJECT_ROOT)
-    for line in probe(ctx, args.video, args.formato):
+    try:
+        lines = probe(ctx, args.video, args.formato)
+    except Exception as error:               # the extraction itself failed: say it, never end in silence
+        print(f"La sonda no pudo terminar: {type(error).__name__}: {str(error)[:400]}")
+        return 1
+    for line in lines or ["(la sonda no obtuvo ninguna respuesta)"]:
         print(line)
     return 0
 

@@ -107,6 +107,20 @@ def range_diagnosis(piece: dict[str, Any], status: int | None, content_type: str
 
 EBML_MAGIC = b"\x1a\x45\xdf\xa3"         # Matroska / WebM
 
+# what an extraction saves of its OWN format pick (bestvideo+bestaudio) next to the list of formats: left in the
+# details, yt-dlp hands that pick back whatever is asked. sonda_rango 22-11: «HLS» or «mp4 avc1» came back as AV1 4K
+# (701) + opus webm (251), so HLS looked unavailable (4 HLS downloads in a day, 2 134 «ningún formato HLS encaja»),
+# the whole file looked too big (479 «entero supera el tope») and every byte range read AV1 then failed on the webm
+STALE_PICK = ("requested_formats", "requested_downloads", "format_id", "format", "format_note", "url", "manifest_url",
+              "ext", "protocol", "vcodec", "acodec", "http_headers", "filesize", "filesize_approx", "width", "height",
+              "fps", "tbr", "vbr", "abr", "resolution", "dynamic_range", "container")
+
+
+def selectable(data: dict[str, Any]) -> dict[str, Any]:
+    """The saved details without the extraction's own pick: a format request chooses from `formats` again."""
+
+    return {k: v for k, v in data.items() if k not in STALE_PICK}
+
 
 def error_cause(message: str) -> str:
     """The cause of a failure for the request log: error_kind's answer, or for «other» a finer name (proxy tunnel,
@@ -2230,7 +2244,7 @@ class YouTubeSource:
         fmt = cap_fps(cap_height(self.HD_FORMAT, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
         try:
             with self._ydl({"format": whole_format(fmt), "simulate": True, "quiet": True}) as ydl:
-                chosen = ydl.process_ie_result(dict(data), download=False)
+                chosen = ydl.process_ie_result(selectable(data), download=False)
         except Exception as error:
             print(f"   yt:{video_id}: no se pudo estimar el tamaño en HD ({type(error).__name__}: {str(error)[:100]})")
             return None                          # yt-dlp cannot tell: let the download find out, as before
@@ -2366,7 +2380,7 @@ class YouTubeSource:
 
             data = json.loads(path.read_text(encoding="utf-8"))
             with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
-                chosen = ydl.process_ie_result(dict(data), download=False)
+                chosen = ydl.process_ie_result(selectable(data), download=False)
             pieces = list(chosen.get("requested_formats") or [chosen])[:2]
             if not pieces or not all(str(p.get("protocol") or "").startswith("m3u8") for p in pieces):
                 raise RuntimeError("yt-dlp download (HLS): Requested format is not available (no HLS stream)")
@@ -2548,6 +2562,9 @@ class YouTubeSource:
 
             out = []
             work.mkdir(parents=True, exist_ok=True)
+            planned = []
+            # every track's index first: an audio that cannot be cut must not cost the video's megabytes (22-11:
+            # ~23 MB of AV1 per attempt, paid and thrown away when the opus audio came)
             for n, piece in enumerate(pieces_):
                 url = str(piece["url"])
                 headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
@@ -2564,6 +2581,14 @@ class YouTubeSource:
                 except NoIndex as error:      # what came, so one row of the log says why (descargas-rango-fallo.md)
                     raise NoIndex(f"{error} · {range_diagnosis(piece, answer.get('status'), answer.get('type'), head)}") \
                         from None
+                size_mb = (cut.data[1] - cut.data[0] + 1) / 1e6
+                limit_mb = float(self.cfg.get("range_max_mb", 25))
+                if size_mb > limit_mb:
+                    # a coarse index (a few huge fragments: 33 MB for 5 s of 4K AV1) is dearer than any other way
+                    raise NoIndex(f"el tramo pediría {size_mb:.0f} MB (> {limit_mb:g} MB, range_max_mb): índice demasiado "
+                                  f"grueso · {range_diagnosis(piece, answer.get('status'), answer.get('type'), head)}")
+                planned.append((n, url, headers, head, cut))
+            for n, url, headers, head, cut in planned:
                 path = work / f"pista{n}.mp4"
                 with path.open("wb") as handle:
                     handle.write(head[cut.init[0]:cut.init[1] + 1])
@@ -2625,10 +2650,15 @@ class YouTubeSource:
             request = f"({video})+ba[ext=m4a][protocol=https]" if audio else video
         try:
             with self._ydl({"format": request, "simulate": True, "quiet": True}) as ydl:
-                chosen = ydl.process_ie_result(dict(data), download=False)
+                chosen = ydl.process_ie_result(selectable(data), download=False)
         except Exception as error:
             raise NoIndex(f"sin formato mp4 por HTTPS ({str(error)[:80]})") from None
-        return list(chosen.get("requested_formats") or [chosen])
+        pieces = list(chosen.get("requested_formats") or [chosen])
+        for piece in pieces:                   # checked before a single byte is asked for
+            if piece.get("ext") not in ("mp4", "m4a") or piece.get("protocol") != "https":
+                raise NoIndex(f"el formato elegido no es mp4/m4a por HTTPS (itag {piece.get('format_id')}, "
+                              f"{piece.get('ext')}, {piece.get('protocol')})")
+        return pieces
 
     def _range_get(self, way: int, proxies: Any, url: str, headers: dict[str, str], first: int,
                    last: int) -> tuple[bytes, int, str]:
@@ -2673,7 +2703,7 @@ class YouTubeSource:
             return None
         fmt = whole_format(fmt)
         with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
-            chosen = ydl.process_ie_result(dict(data), download=False)
+            chosen = ydl.process_ie_result(selectable(data), download=False)
         pieces = chosen.get("requested_formats") or [chosen]
         if any(str(f.get("protocol") or "").startswith(("m3u8", "http_dash")) for f in pieces):
             return None
@@ -2885,7 +2915,7 @@ class YouTubeSource:
         try:
             data = json.loads(Path(info_file).read_text(encoding="utf-8"))
             with self._ydl({"format": fmt, "simulate": True, "quiet": True}) as ydl:
-                chosen = ydl.process_ie_result(dict(data), download=False)
+                chosen = ydl.process_ie_result(selectable(data), download=False)
             piece = (chosen.get("requested_formats") or [chosen])[0]
             url = piece.get("url")
             if not url:

@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .sourcing.youtube import YouTubeSource, cap_fps, cap_height, hls_format
+from .sourcing.youtube import YouTubeSource, cap_fps, cap_height, hls_format, selectable
 
 REQUESTS = {
     "análisis 360p": (YouTubeSource.SECTION_FORMAT, False),
@@ -37,7 +37,7 @@ def _select(info: dict[str, Any], fmt: str) -> str | None:
         # videos uploaded in the last 2 days, `__needs_testing`): this look stays offline
         with yt_dlp.YoutubeDL({"format": fmt, "simulate": True, "quiet": True, "no_warnings": True,
                                "check_formats": False}) as ydl:
-            chosen = ydl.process_ie_result(dict(info), download=False)
+            chosen = ydl.process_ie_result(selectable(info), download=False)
     except Exception as error:
         return f"ERROR {str(error)[:80]}"
     piece = (chosen.get("requested_formats") or [chosen])[0]
