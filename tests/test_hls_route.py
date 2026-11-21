@@ -143,3 +143,48 @@ def test_the_diagnosis_says_which_videos_found_no_fitting_hls(tmp_path):
     assert "3 filas de 2 vídeos distintos (sin su extracción en disco: 1)" in text
     assert "Con HLS «por probar»: 1 vídeos, 2 filas" in text
     assert "La selección sin red sí encuentra HLS en 1 de ellos" in text
+
+
+def test_untested_hls_is_tried_again_without_the_test_only_when_asked(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    untested = {**_hls("95", 720), "__needs_testing": True}
+    seen = []
+
+    def run(on):
+        yt = _source(tmp_path, [untested, _https("136", 720)])
+        yt.cfg["hls_retry_untested"] = on
+        yt.cfg["whole_fallback"] = False
+
+        def fetch_range(video_id, start, end, fmt, prefix, *rest, exact=False):
+            seen.append((exact, bool(getattr(yt._local, "skip_format_test", False))))
+            if exact and not getattr(yt._local, "skip_format_test", False):
+                raise RuntimeError("Requested format is not available")
+            target = tmp_path / f"{prefix}-{len(seen)}.mp4"
+            target.write_bytes(b"x")
+            return target
+
+        monkeypatch.setattr(yt, "_fetch_range", fetch_range)
+        yt.download_range(VIDEO, 1.0, 3.0, fmt="bv*[height<=720]", prefix="hd")
+        rows = [json.loads(line) for line in yt.metrics_path.read_text().splitlines()]
+        yt.close()
+        return rows[-1]
+
+    last = run(False)
+    assert "por probar" in last.get("notHls", "") and seen == [(True, False), (False, False)]    # off: as before
+    seen.clear()
+    yt_rows_path = tmp_path / "work" / "v" / "youtube_downloads.jsonl"
+    yt_rows_path.unlink()
+    last = run(True)
+    assert seen == [(True, False), (True, True)] and last["route"] == "hls-ffmpeg-sin-prueba"
+
+
+def test_youtube_stats_break_down_the_hls_misses():
+    from pipeline.ytstats import hls_miss_lines, hls_misses
+
+    rows = [{"video": "a", "notHls": "ningún formato HLS encaja con «bv*[height<=360]…» (HLS por probar)"},
+            {"video": "a", "notHls": "ningún formato HLS encaja con «bv*[height<=720]…»"},
+            {"video": "b", "notHls": "la extracción no trae m3u8"}, {"video": "c", "route": "hls-local-sin-prueba"}]
+    m = hls_misses(rows)
+    assert (m["rows"], m["untested"], m["videos"], m["retried"]) == (2, 1, 1, 1)
+    assert m["byPrefix"] == {"análisis 360p": 1, "clip HD": 1}
+    assert "Salvados al repetir" in "\n".join(hls_miss_lines(m))

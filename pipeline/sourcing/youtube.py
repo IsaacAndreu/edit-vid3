@@ -466,6 +466,19 @@ def unreachable_videos(cache_dir: Path, days: float = 7, without_hls: bool = Tru
             and now - float(entry.get("at") or 0) < 86400 * days}
 
 
+def _untested_hls(info_path: Path) -> bool:
+    """The extraction's HLS formats are «to be tested» (yt-dlp's `__needs_testing`: a video uploaded ≤ 2 days before
+    it was extracted); read from disk, no request."""
+
+    import json
+
+    try:
+        formats = json.loads(info_path.read_text(encoding="utf-8")).get("formats") or []
+    except (OSError, ValueError):
+        return False
+    return any(f.get("__needs_testing") for f in formats if str(f.get("protocol") or "").startswith("m3u8"))
+
+
 def _has_hls(info_path: Path) -> bool:
     import json
 
@@ -850,7 +863,7 @@ class YouTubeSource:
         import yt_dlp
 
         options = {**self.base_options, **(extra or {})}
-        if not self.cfg.get("hls_format_test", True):
+        if not self.cfg.get("hls_format_test", True) or getattr(self._local, "skip_format_test", False):
             # yt-dlp marks the HLS formats of videos uploaded ≤ 2 days before the extraction «to be tested» and, before
             # choosing a format, downloads a piece of each one; one whose test fails is dropped and the range falls to
             # the whole-file download. Off by default until `python -m pipeline.diag_hls` shows how many it affects
@@ -2075,7 +2088,28 @@ class YouTubeSource:
             except (RuntimeError, SourceUnavailable) as error:
                 if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
                     raise
-                self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»"
+                untested = _untested_hls(info_path)
+                # sourcing.youtube.hls_retry_untested (off): the HLS formats of a video uploaded ≤ 2 days before
+                # the extraction are «to be tested» and yt-dlp drops the ones whose test piece fails; the same
+                # selection is tried again once without the test (no request: the extraction on disk), and only
+                # if that fails too does the range go whole
+                if untested and self.cfg.get("hls_retry_untested", False) and self.cfg.get("hls_format_test", True):
+                    self._local.skip_format_test = True
+                    try:
+                        if self.residential:
+                            result = self._fetch_hls_locally(video_id, start, end, hls, prefix, audio, audio_only, info_path)
+                        else:
+                            result = self._fetch_range(video_id, start, end, hls, prefix, audio, audio_only, info_path,
+                                                       exact=True)
+                        self._local.route = f"{self._local.route}-sin-prueba"
+                        return result
+                    except (RuntimeError, SourceUnavailable) as again:
+                        if isinstance(again, SourceUnavailable) or "format is not available" not in str(again).lower():
+                            raise
+                    finally:
+                        self._local.skip_format_test = False
+                why = " (HLS por probar)" if untested else ""
+                self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»{why}"
                 missed.add((video_id, hls))
         if self.cfg.get("byte_ranges", False):
             # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
