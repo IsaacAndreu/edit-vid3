@@ -439,6 +439,9 @@ queue:                             # cola nocturna (python main.py --all)
 #   scene_cut: 0.82        # parecido mínimo entre miniaturas seguidas para seguir en la misma escena
 #   max_scene_seconds: 20
 #   per_sheet: 30          # escenas por llamada al modelo
+#   library: false         # también las fuentes de la biblioteca (personas y temas que ya funcionaron): una
+#                          # llamada barata por fuente nueva, que queda para siempre
+#   library_sources: 12    # como mucho, fuentes nuevas de la biblioteca por vídeo
 
 qa:
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)

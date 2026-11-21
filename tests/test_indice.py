@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from pipeline import indice
+from pipeline.context import RunContext
 
 
 def test_scenes_are_cut_where_the_picture_changes_or_every_twenty_seconds():
@@ -57,3 +58,21 @@ def test_a_source_is_described_once_and_kept(tmp_path, monkeypatch):
     scenes = indice.scenes_for(ctx, clip_candidate, fake_clip, {})
     assert len(scenes) == 4 and scenes[0]["tags"] == "Vice Beach de noche" and calls == [4]   # a change and the 20 s cap
     assert indice.scenes_for(ctx, clip_candidate, fake_clip, {}) == scenes and calls == [4]   # kept, not described again
+
+
+def test_library_sources_are_indexed_only_when_asked_and_up_to_a_limit(tmp_path):
+    from types import SimpleNamespace
+
+    from pipeline.analysis import index_sources
+    from pipeline.material import MATERIAL_QUERY
+
+    def c(cid, query):
+        return SimpleNamespace(id=cid, query=query)
+
+    mine, lib1, lib2, other = (c("p:1", MATERIAL_QUERY), c("yt:1", "biblioteca: Biles"), c("yt:2", "biblioteca: Biles"),
+                               c("yt:3", "Biles final"))
+    off = index_sources(RunContext.create("v", root=tmp_path, config={}))
+    assert [off(x) for x in (mine, lib1, other)] == [True, False, False]
+    on = index_sources(RunContext.create("v", root=tmp_path, config={"indice": {"library": True, "library_sources": 1}}))
+    assert [on(x) for x in (lib1, lib1, lib2, other, mine)] == [True, True, False, False, True]
+    assert on.library == {"yt:1"}
