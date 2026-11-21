@@ -38,8 +38,8 @@ from .material import chosen_material
 from .judge import (LETTERS, call_judge, contact_sheet, is_repeat, overused, own_event, ranked, seen_elsewhere, source_cap,
                     source_lines,
                     surrounding, used_elsewhere)
+from . import tope
 from .schemas import (
-    MAX_THIRD_PARTY_SECONDS,
     Candidate,
     FallbackFile,
     FallbackItem,
@@ -296,7 +296,7 @@ def run(ctx: RunContext) -> None:
         # Reuse the cached result unless a shot earlier in this run has already taken that media.
         if (old and old.specHash in (digest, usual) and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used
                 and shot_id not in marked_wrong and not feedback.is_wrong(elsewhere, old.candidateId, old.start, old.end)
-                and not same_stretch(old.candidateId, old.start, old.end, used, MAX_THIRD_PARTY_SECONDS)
+                and not same_stretch(old.candidateId, old.start, old.end, used, tope.seconds(ctx))
                 and not looks_used(ctx.root / old.path, old.kind)):
             items.append(old)
             # on screen like any other pick: newgym3-ideas2 had 5 pairs with the same seconds of one source, a kept
@@ -424,7 +424,7 @@ def run(ctx: RunContext) -> None:
         nonlocal clip
         shot = shots[shot_id]
         event_key = " ".join(sorted(tokens(shot.broll.event))) if shot.broll and shot.broll.event else ""
-        needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+        needed = min(shot.duration, tope.seconds(ctx))
         digest = key(VERSION, reason, shot.model_dump(), cfg, lut.name if lut else None)
         if offline:
             digest = key(digest, sin_youtube.NOTE)

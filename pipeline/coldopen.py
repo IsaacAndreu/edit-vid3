@@ -27,8 +27,8 @@ from .costs import record_cost
 from .llm import complete_json
 from .ingest import FPS, NORMALISE_VERSION, _frame_filter, find_lut, lut_filter, probe
 from .judge import ranked
+from . import tope
 from .schemas import (
-    MAX_THIRD_PARTY_SECONDS,
     ColdOpenClip,
     ColdOpenFile,
     FallbackFile,
@@ -319,7 +319,7 @@ def pick_bites(ctx: RunContext, youtube) -> list[SoundBite]:
     count = int(cfg.get("sound_bites", 0) or 0)
     if count <= 0:
         return []
-    seconds = min(MAX_THIRD_PARTY_SECONDS, float(cfg.get("bite_seconds", 1.6)))
+    seconds = min(tope.seconds(ctx), float(cfg.get("bite_seconds", 1.6)))
     gap, earliest = float(cfg.get("bite_gap", 20)), float(cfg.get("bite_from", 8))
     min_level, min_contrast = float(cfg.get("bite_min_db", -32)), float(cfg.get("bite_contrast", 6))
     shots = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots}
@@ -327,7 +327,7 @@ def pick_bites(ctx: RunContext, youtube) -> list[SoundBite]:
     pool = [s for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections
             if s.status == "selected" and s.source == "youtube" and s.kind == "video" and s.start is not None
             and s.shotId in shots and s.shotId not in replaced and shots[s.shotId].type == "broll"
-            and shots[s.shotId].duration <= MAX_THIRD_PARTY_SECONDS and shots[s.shotId].start >= earliest]
+            and shots[s.shotId].duration <= tope.seconds(ctx) and shots[s.shotId].start >= earliest]
     # probe the best-scored shots, spread over the video (each probe is one small audio download)
     probes: list[Selection] = []
     for sel in sorted(pool, key=lambda s: -(s.score or 0)):
@@ -385,7 +385,7 @@ def run(ctx: RunContext) -> None:
     cfg = ctx.section("timeline")
     seconds = 0.0                                       # no opening before the voice
     moment_count = int(cfg.get("moments", 2) or 0)
-    moment_seconds = min(MAX_THIRD_PARTY_SECONDS, float(cfg.get("moment_seconds", 4.5)))
+    moment_seconds = min(tope.seconds(ctx), float(cfg.get("moment_seconds", 4.5)))
     story = ShotsFile.model_validate(ctx.read_json("shots.json"))
     person = story.subject.split("·")[0].strip() if story.subject else ""
     moments = pick_moments(ctx, moment_count, moment_seconds) if moment_count > 0 else []

@@ -54,8 +54,9 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(J.is_repeat(opt("yt:z", 0.3, phash="0000ffff00000000"), used, 6))
 
     def test_selection_enforces_cap_and_credit(self) -> None:
+        sel("yt:a", 10, 15.5)                  # 5.5 s: fine now; the video's own cap is applied by the stages (tope.py)
         with self.assertRaises(ValidationError):
-            sel("yt:a", 10, 15.5)
+            sel("yt:a", 10, 200.0)             # past the schema's ceiling (HARD_LIMIT_SECONDS)
         bad = sel("yt:a").model_dump()
         bad["credit"] = "Canal X"
         with self.assertRaises(ValidationError):

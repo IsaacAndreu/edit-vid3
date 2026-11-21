@@ -112,6 +112,9 @@ SPEED_KEYS = frozenset({
     "max_height",       # ingest: the HD clips already downloaded are not downloaded again at the new height
     # the judge outside the hook (judge.py): only for the shots judged from now on, never a reason to judge again
     "rounds_rest", "model_rest", "usd_per_mtok_rest", "lessons_refresh",
+    # content.max_third_party_seconds (pipeline/tope.py): only what is cut from now on runs longer; a video half made
+    # with 5 s goes on as it is. judge.parar_si_rechaza: a stop before the downloads, never a reason to judge again
+    "max_third_party_seconds", "parar_si_rechaza",
 })
 
 

@@ -30,7 +30,8 @@ import requests
 
 from .context import RunContext
 from .grade import grade_filter
-from .schemas import MAX_THIRD_PARTY_SECONDS, IngestedMedia, IngestFile, Selection, SelectionFile, ShotsFile
+from . import tope
+from .schemas import IngestedMedia, IngestFile, Selection, SelectionFile, ShotsFile
 from .sourcing import youtube_source
 from .sourcing.common import USER_AGENT, HostPacers, key
 from .sourcing.youtube import YouTubeSource
@@ -263,7 +264,7 @@ class Materialiser:
     def materialise(self, selection: Selection, shot: Any, out_dir: Path, digest: str) -> IngestedMedia:
         ctx, cfg, lut = self.ctx, self.cfg, self.lut
         if selection.kind == "video":
-            duration = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            duration = min(shot.duration, tope.seconds(ctx))
             assert selection.start is not None
             start = selection.start
             video_id = selection.candidateId.removeprefix("yt:")

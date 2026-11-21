@@ -29,8 +29,8 @@ from .analysis import detectors as det
 from .context import RunContext
 from .costs import record_cost
 from .material import chosen_material
+from . import tope
 from .schemas import (
-    MAX_THIRD_PARTY_SECONDS,
     Candidate,
     JudgeVerdict,
     Option,
@@ -325,11 +325,11 @@ def following(plan: list[Option], accepted: list[Option]) -> list[Option]:
 
 
 def continuation(shot: Any, shots: list[Any], selections: list[Any], picked: dict[str, Option], judged: list[Option],
-                 master: str | None, cfg: dict[str, Any]) -> Option | None:
+                 master: str | None, cfg: dict[str, Any], cap: float = 5.0) -> Option | None:
     """judge.continue_action (true): the previous shot took a strong moment of its event's master video (motion or the
     narrated action heard), and the judge accepted that master for this shot too: this shot plays what comes right
     after it, so the action runs on across the cut instead of jumping elsewhere. Both together never pass the 5 s a
-    third-party clip may last (MAX_THIRD_PARTY_SECONDS), so it is still one short excerpt."""
+    third-party clip may last (`cap`: content.max_third_party_seconds, pipeline/tope.py), so it is still one excerpt."""
 
     if not cfg.get("continue_action", True) or not master or not selections or not judged:
         return None
@@ -344,18 +344,18 @@ def continuation(shot: Any, shots: list[Any], selections: list[Any], picked: dic
         return None
     if option.scores.motion < float(cfg.get("continue_motion", 0.3)) and option.scores.moment < 0.5:
         return None
-    first = min(before.duration, MAX_THIRD_PARTY_SECONDS)
+    first = min(before.duration, cap)
     # the whole unbroken run so far (a run of three would be 2 + 2 + 2 s of one excerpt)
     run, k = first, index - 1
     while k > 0 and len(selections) >= index - k + 1:
         prev_sel, cur_sel = selections[-(index - k + 1)], selections[-(index - k)]
-        prev_len = min(shots[k - 1].duration, MAX_THIRD_PARTY_SECONDS)
+        prev_len = min(shots[k - 1].duration, cap)
         if (prev_sel.candidateId != cur_sel.candidateId or prev_sel.start is None or cur_sel.start is None
                 or abs(prev_sel.start + prev_len - cur_sel.start) > 0.05):
             break
         run += prev_len
         k -= 1
-    if run + shot.duration > MAX_THIRD_PARTY_SECONDS:
+    if run + shot.duration > cap:
         return None
     start = round(last.start + first, 3)
     end = round(start + shot.duration, 3)
@@ -942,7 +942,7 @@ def run(ctx: RunContext) -> None:
             selections.append(Selection(shotId=shot.id, status="fallback", decidedBy="fallback"))
             continue
         master = masters.get(_event_key(shot))
-        if (follow := continuation(shot, shots, selections, picked, judged, master, cfg)) is not None:
+        if (follow := continuation(shot, shots, selections, picked, judged, master, cfg, tope.seconds(ctx))) is not None:
             preference = [follow, *preference]           # the strong moment of the shot before runs on (≤ 5 s in all)
         # within an idea (planner.ideas) its own uses of a source do not count: its cuts are meant to share one
         same_idea = {s.id for s in shots if shot.idea is not None and s.idea is not None and s.idea.id == shot.idea.id}

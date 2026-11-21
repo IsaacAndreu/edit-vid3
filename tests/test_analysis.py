@@ -91,8 +91,9 @@ class ScoringTests(unittest.TestCase):
         base = {"candidateId": "yt:x", "source": "youtube", "kind": "video", "pass": "fine",
                 "scores": {"clip": 0.3}, "total": 0.3}
         Option.model_validate({**base, "start": 10, "end": 15})
+        Option.model_validate({**base, "start": 10, "end": 15.2})   # the video's cap is tope.seconds(ctx), not the schema's
         with self.assertRaises(ValidationError):
-            Option.model_validate({**base, "start": 10, "end": 15.2})
+            Option.model_validate({**base, "start": 10, "end": 200.0})
         with self.assertRaises(ValidationError):
             Option.model_validate({**base, "start": 10})
 
