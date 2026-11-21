@@ -61,3 +61,34 @@ y tiene tope.
 8. **Línea base honesta**: `newgym3`, `newgym3-ideas2`, `newgym3-ideas3` y este «newideas» con las dos cifras.
 
 Hasta que 1-5 estén hechos, `planner.ideas` no debería estar encendido en producción. El dueño lo apaga hoy.
+
+## Más cosas del mismo vídeo (segunda pasada, fotogramas sueltos a tamaño real)
+
+Vistas en un fotograma cada una, a 360p: son indicios para comprobar en `timeline.json`, no mediciones.
+
+1. **Pizarras hechas con trozos de frase.** En 3:52 la pizarra dice solo «Y»; en 4:08, «EN SPRING»; en 7:28, «UN
+   SALTO»; en 9:12, «AVERGONZARSE.». La pizarra toma el texto del plano, que es media frase. Una pizarra tiene que
+   salir de la idea entera (su línea de pantalla), nunca del trozo de un plano.
+2. **La misma frase tres veces a la vez**: la dice la voz, la pone la pizarra y la repite el subtítulo de abajo
+   (8:40: pizarra «SECRETO 11: TIENE TDAH Y NO LO ESCONDE», subtítulo «TIENE TDAH Y NO LO ESCONDE»). Cuando hay
+   pizarra o rótulo de capítulo, el subtítulo de esas palabras sobra. Y los títulos de capítulo salen en el
+   subtítulo en mayúsculas, como están en el guion.
+3. **Encuadre que cambia sin criterio.** Clips en 16:9 salen unas veces a pantalla completa y otras en tarjeta
+   pequeña sobre el fondo (1:04, 4:28, 4:48-4:56, 5:52), alternando plano a plano. Los vídeos de referencia usan la
+   tarjeta solo para fotos. Si la tarjeta se está usando para tapar baja resolución, que sea una regla clara y
+   estable dentro de una idea.
+4. **Texto ajeno quemado en el clip**: 1:08 (subtítulos rosas en inglés de otro canal), 4:52 (rótulo de
+   informativo «GOLDEN GIRL … NEWS»), 4:08 (letras gigantes «JORDA…»), 8:04 (anuncio de una tienda, «AVAILABLE AT
+   MARDEL»). `analysis.max_text_area` debería haberlos quitado; mira si el filtro se salta en los clips en tarjeta
+   o en los que vienen del relleno.
+5. **Fotos que no son de eso**: 9:28, «Río 2016» sobre una foto de la delegación británica con su bandera; 3:08,
+   «las clases con sus amigos» con un selfi de un hombre sin camiseta; 3:08-3:12 y 2:24, fotos de adulta para
+   frases de su adolescencia (la época que el planner ya escribe por idea no se está exigiendo a las fotos).
+6. **Bustos parlantes mudos**: 8:00, Simone hablando a cámara bajo la voz. O suena ella (cita), o no es el plano.
+7. **Material muy ampliado**: 1:08 y 1:40 son clips de 2013 en baja resolución a pantalla completa; en 1:16 se ve
+   una franja blanca a la izquierda (recorte mal ajustado).
+8. **El final**: pantalla vacía en 10:32 y 20 s de pantalla final con los recuadros vacíos. Lo segundo es normal
+   si luego se rellenan en YouTube; lo primero, no.
+
+Lo que está bien y hay que conservar: las fichas de dato del principio (8, 7, 23), la ficha de persona de Jonathan
+Owens, el selfi con Zac Efron justo cuando se cuenta, el podio de Nanning con su rótulo, los rótulos de año.
