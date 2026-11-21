@@ -152,13 +152,13 @@ def test_the_borrowed_copy_is_blamed_not_the_judges_choice():
 
 
 def test_the_baseline_puts_every_video_in_one_table():
-    results = [{"slug": "newgym3", "shots": 200, "model": "m", "usd": 0.01, "unreadable": ["s9"],
+    results = [{"slug": "newgym3", "shots": 200, "asText": 7, "model": "m", "usd": 0.01, "unreadable": ["s9"],
                 "flagged": [{"problem": "hueco_tapado"}] * 20 + [{"problem": "repetido"}] * 10 + [{"problem": "roto"}]}]
     text = revisor.baseline(results)
-    assert "| newgym3 | 200 | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
+    assert "| newgym3 | 200 | 7 | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
     labelled = [{"slug": "v", "shots": 100, "model": "m", "usd": 0.0, "flagged": [
         {"problem": "no_tiene_que_ver", "kind": "literal"}, {"problem": "no_tiene_que_ver", "kind": "ambiente"}]}]
-    assert "| v | 100 | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
+    assert "| v | 100 | — | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
 
 
 def test_a_video_not_edited_yet_does_not_stop_the_baseline(tmp_path, monkeypatch, capsys):
@@ -167,7 +167,7 @@ def test_a_video_not_edited_yet_does_not_stop_the_baseline(tmp_path, monkeypatch
     monkeypatch.setattr(revisor, "ask", lambda *a, **k: ([], 0.0))
     assert revisor.main(["v", "aun-no", "--base"]) == 0
     text = (tmp_path / "out" / "_revisor_base.md").read_text()
-    assert "| v | 4 |" in text and "| aun-no | sin montar todavía |" in text
+    assert "| v | 4 | 0 |" in text and "| aun-no | sin montar todavía |" in text
     assert "aun-no: sin revisar" in capsys.readouterr().out
 
 

@@ -324,6 +324,10 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
 
     final = ctx.out_dir / "video-final.mp4"
     on_screen = [shot for shot in timeline.get("shots") or [] if shot["id"] in listed]   # no graphics, no end screen
+    # footage shots that ended with no picture at all (text on screen): the reviewer cannot flag them, so the baseline
+    # counts them apart — fewer pictures must never look like fewer faults (newgym3-ideas: 92 of 231)
+    as_text = sum(1 for shot in timeline.get("shots") or []
+                  if shot.get("type") == "broll" and not shot.get("media") and not shot.get("groupId"))
     print(f"{slug}: leyendo los fotogramas de {len(on_screen)} planos…", flush=True)
     with ThreadPoolExecutor(max_workers=4) as pool:
         grabbed = list(pool.map(lambda shot: frames_of(work, shot, fps, final), on_screen))
@@ -395,7 +399,7 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
                                                    "candidateId", "start", "end", "kind")} | flagged[item["id"]]
                         | {"label": (item.get("label") or {}).get("reason") if item.get("label") else None})
     result = {"slug": slug, "model": str(cfg.get("model") or ctx.section("judge").get("model", "gpt-5-mini")),
-              "shots": len(items), "reviewedByModel": reviewed, "usd": round(spent, 4),
+              "shots": len(items), "asText": as_text, "reviewedByModel": reviewed, "usd": round(spent, 4),
               "stoppedAtBudget": stopped, "budget": budget, "unreadable": unreadable, "flagged": rows}
     out = ctx.out_dir / OUT_DIR
     out.mkdir(parents=True, exist_ok=True)
@@ -608,11 +612,12 @@ def baseline(results: list[dict[str, Any]]) -> str:
 
     import time
 
-    head = ["Vídeo", "Planos", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
+    head = ["Vídeo", "Planos", "En texto", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
             "…en literales", "Otra persona", "Dibujos", "Marca de agua", "Roto", "No revisados", "Modelo", "$"]
     lines = [f"# Línea base del revisor · {time.strftime('%Y-%m-%d %H:%M')}", "",
              "Marcados por cada 100 planos con imagen; cada pareja de repetidos cuenta una vez, en su lado más débil "
-             "(un préstamo antes que el relleno, el relleno antes que la elección del juez).", "",
+             "(un préstamo antes que el relleno, el relleno antes que la elección del juez). «En texto»: planos de "
+             "metraje que acabaron sin imagen (el revisor no puede marcarlos): una mejora no vale si sube esa columna.", "",
              "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in results:
         if r.get("missing"):
@@ -626,7 +631,7 @@ def baseline(results: list[dict[str, Any]]) -> str:
         labelled = any(row.get("kind") for row in r["flagged"])
         cells = [str(counts[k]) for k in BASE_COLUMNS]
         cells.insert(3, str(literal) if labelled else "—")
-        lines.append(f"| {r['slug']} | {r['shots']} | {per100:.0f} | "
+        lines.append(f"| {r['slug']} | {r['shots']} | {r.get('asText', '—')} | {per100:.0f} | "
                      + " | ".join(cells)
                      + f" | {len(r.get('unreadable') or [])} | {r['model']} | {r['usd']:.3f} |")
     lines += ["", "«…en literales»: los «no tiene que ver» en ideas que tenían que verse tal cual (planner.ideas); «—» en "
