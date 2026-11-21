@@ -231,10 +231,14 @@ def wrong_shots(work: Path) -> dict[str, str]:
     return {sid: REASONS.get(v.get("reason"), v.get("reason") or "") for sid, v in wrong_details(work).items()}
 
 
-def no_borrow(work: Path) -> set[str]:
-    """Shots the automatic reviewer found covered with another shot's clip: shown as text from now on."""
+def no_borrow(work: Path, sent_back: bool = True) -> set[str]:
+    """Shots the automatic reviewer found covered with another shot's clip: shown as text from now on. With
+    `sent_back` (revisor.no_borrow_sent_back, on), also the shots it sent back to the fill-in: when nothing replaces
+    them they are text, not a copy of the next shot's clip (newgym3-ideas2: s050, s044, s046 and two more, sent back
+    as repeated, came back covered with a neighbour's clip — the same fault again)."""
 
-    return set((_read(work / REVISION_AUTO) or {}).get("noBorrow") or [])
+    auto = _read(work / REVISION_AUTO) or {}
+    return set(auto.get("noBorrow") or []) | (set(auto.get("wrong") or {}) if sent_back else set())
 
 
 # --- what the program learns from the labels ---------------------------------------------------------------

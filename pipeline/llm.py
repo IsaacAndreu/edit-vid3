@@ -97,6 +97,26 @@ def complete_json(
         except (OSError, json.JSONDecodeError, KeyError):
             pass
 
+    from . import claude
+
+    if claude.is_claude(model):                  # guion.model / planner.model: claude-… (pipeline/claude.py)
+        text, _ = claude.ask(ctx, stage=stage, system=system + "\n\nDevuelve SOLO el objeto JSON, sin nada más.",
+                             content=user, max_tokens=max(max_tokens, 16000),
+                             # the section's usd_per_mtok are the old provider's (DeepSeek: 7× cheaper): Claude's own
+                             # prices, or `claude_usd_per_mtok` when you set them
+                             cfg={**{k: v for k, v in cfg.items() if k != "usd_per_mtok"},
+                                  "usd_per_mtok": cfg.get("claude_usd_per_mtok")})
+        try:
+            parsed = parse_json_reply(text)
+        except json.JSONDecodeError as error:
+            raise LLMError(f"{model} devolvió JSON inválido: {error}") from error
+        if not isinstance(parsed, dict):
+            raise LLMError(f"{model} devolvió JSON que no es un objeto.")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps({"request": request, "parsed": parsed}, ensure_ascii=False) + "\n",
+                              encoding="utf-8")
+        return parsed
+
     client = OpenAI(api_key=ctx.env("LLM_API_KEY"), base_url=str(cfg.get("base_url", DEEPSEEK_BASE_URL)),
                     timeout=120, max_retries=1)
     deadline = float(cfg.get("timeout_seconds", 420))

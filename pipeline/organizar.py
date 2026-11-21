@@ -383,7 +383,9 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         [title, str(idea.get("note") or ""), str(idea.get("angle") or ""), " ".join(idea.get("outline") or [])]))
     if existing:                                 # what can already be shown: the script leans on it
         brief.append(existing)
-    result = complete_json(ctx, stage="guiones", section="planner", system=DRAFT_SYSTEM, user="\n\n".join(brief),
+    # guion.model (off): the drafts with another model than the planner's — claude-opus-5-5 writes them with Claude
+    section = "guion" if ctx.section("guion").get("model") else "planner"
+    result = complete_json(ctx, stage="guiones", section=section, system=DRAFT_SYSTEM, user="\n\n".join(brief),
                            max_tokens=max(9000, int(words * 2.4)), use_cache=False)       # long documentaries too
     script = str(result.get("script") or "").strip()
     if drawn_video:                              # and if the model wrote them anyway, they go

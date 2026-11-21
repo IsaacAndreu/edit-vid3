@@ -156,23 +156,32 @@ def run(ctx: RunContext) -> None:
     ingest = IngestFile.model_validate_json((ctx.work_dir / "media" / MANIFEST).read_text("utf-8"))
     done = {m.shotId for m in ingest.media}
     max_hamming = int(ctx.section("judge").get("max_phash_distance", 6))
+    # fallback.repeat_frames (off: the look-alikes it sends back are searched again): two frames of every clip, at 30 %
+    # and 70 %, compared like the revisor does — the middle frame alone missed half of newgym3-ideas2's «Repetido»
+    repeat_frames = bool(cfg.get("repeat_frames", False))
+    frames = (lambda path, kind: det.clip_dhashes(str(path), kind)) if repeat_frames else (lambda path, kind: [])
 
     # The judge compares fragments before download; different uploads of the same broadcast can
     # still end up on screen twice. Check the downloaded media exactly like QA does (middle frame)
     # and send any later look-alike here for a replacement.
     pending: dict[str, str] = {}
     seen: list[tuple[str, str]] = []
+    seen_frames: list[tuple[str, list[int]]] = []
     for media in sorted(ingest.media, key=lambda m: list(shots).index(m.shotId) if m.shotId in shots else 10**6):
         h = _frame_hash(ctx.root / media.path, media.kind) if (ctx.root / media.path).is_file() else None
         if h is None:
             continue
-        twin = next((sid for sid, other in seen if det.hamming(h, other) <= max_hamming), None)
+        mine = frames(ctx.root / media.path, media.kind)
+        twin = next((sid for sid, other in seen if det.hamming(h, other) <= max_hamming), None) or next(
+            (sid for sid, other in seen_frames if sid.split("-")[0] != media.shotId.split("-")[0]
+             and det.near_frames(mine, other)), None)
         chosen_by_hand = getattr(selections.get(media.shotId), "decidedBy", None) == "editor"
         if twin and not chosen_by_hand:                  # what you pick in the editor stays, repeated or not
             done.discard(media.shotId)
             pending[media.shotId] = f"repite la imagen de {twin}"
         else:
             seen.append((media.shotId, h))
+            seen_frames.append((media.shotId, mine))
 
     # Is the athlete on screen the one the script names? On-screen captions and, in clear cases, faces.
     people_file = ctx.read_json("people.json") if (ctx.work_dir / "people.json").is_file() else {}
@@ -257,9 +266,13 @@ def run(ctx: RunContext) -> None:
     # Hashes of everything on screen: the same stock clip is often re-uploaded to YouTube.
     on_screen: list[str] = [h for sid, h in seen if sid in done] + [s.phash for s in used if s.phash]
 
+    frames_on_screen: list[int] = [x for sid, mine in seen_frames if sid in done for x in mine]
+
     def looks_used(path: Path, kind: str) -> bool:
         h = _frame_hash(path, kind)
-        return h is not None and any(det.hamming(h, other) <= max_hamming for other in on_screen)
+        if h is not None and any(det.hamming(h, other) <= max_hamming for other in on_screen):
+            return True
+        return repeat_frames and det.near_frames(frames(path, kind), frames_on_screen)
 
     http = requests.Session()
     http.headers["User-Agent"] = USER_AGENT
@@ -292,6 +305,7 @@ def run(ctx: RunContext) -> None:
             pexels_used.add(old.candidateId)
             if h := _frame_hash(ctx.root / old.path, old.kind):
                 on_screen.append(h)
+            frames_on_screen.extend(frames(ctx.root / old.path, old.kind))
             continue
         todo.append((shot_id, reason))
 
@@ -507,6 +521,7 @@ def run(ctx: RunContext) -> None:
                     pexels_used.add(c.id)
                     if h := _frame_hash(ctx.root / media.path, media.kind):
                         on_screen.append(h)
+                    frames_on_screen.extend(frames(ctx.root / media.path, media.kind))
                     committed.add(shot_id)
                 return FallbackItem(
                     shotId=shot_id, reason=reason, method=method, kind=media.kind, path=media.path,
@@ -740,6 +755,7 @@ def run(ctx: RunContext) -> None:
                 pexels_used.add(item.candidateId)
                 if h := _frame_hash(ctx.root / item.path, item.kind):
                     on_screen.append(h)
+                frames_on_screen.extend(frames(ctx.root / item.path, item.kind))
         if item is not None:
             print(f"   {shot_id}: {item.method} ({item.source}){' — ' + item.credit if item.credit else ''}")
         return item, tried

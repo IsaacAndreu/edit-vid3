@@ -36,6 +36,8 @@ planner:
   max_attempts: 3            # reintentos si la salida no valida el esquema
   # Precio en horario punta (el valle es la mitad): https://api-docs.deepseek.com/quick_start/pricing
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
+  # model: claude-sonnet-5-5  # con un modelo claude-… las escenas las planifica Claude (ANTHROPIC_API_KEY); entonces
+  # effort: medium              # low | medium | high, y el gasto va a sus precios (claude_usd_per_mtok para cambiarlos)
   # ideas: true            # agrupa los planos en ideas (literal / ambiente / rótulo): una búsqueda por idea, los
   #                          cortes de una idea del mismo vídeo, los rótulos («SECRETO 4…», «suscríbete») como texto.
   #                          Por canal (canales/<canal>.yaml → planner: {ideas: true}); solo cambia los vídeos que se
@@ -243,6 +245,8 @@ quotes:                            # declaraciones originales con subtítulos (p
 fallback:
   photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
+  repeat_frames: false             # dos fotogramas por clip (30 % y 70 %), como el revisor, para ver si ya salió: pilla los
+                                   # «casi idénticos» que el del medio deja pasar; los que manda atrás se buscan otra vez
   pexels: true                     # vídeo y, si no, foto de Pexels (elegidos con CLIP)
   pexels_for_person: false         # en vídeos sobre una persona, NUNCA Pexels (gente y ciudades genéricas que no son él): si no queda
                                    # vídeo suyo, ni foto de lo que se nombra, ni del evento, ni suya en la web, el plano sale como
@@ -421,13 +425,17 @@ queue:                             # cola nocturna (python main.py --all)
 # Marca solo fallos objetivos (no tiene que ver con la frase, otra persona, dibujos/videojuego, marca de agua,
 # roto, repetido) con su prueba; escribe out/<vídeo>/revisor/ (informe.md y hojas con imagen y frase).
 # revisor:
-#   model: gpt-5-mini        # por defecto el del juez; mejor uno más fuerte que el juez para no repetir sus fallos
+#   model: gpt-5-mini        # por defecto el del juez; mejor uno más fuerte que el juez para no repetir sus fallos.
+#                            claude-opus-5-5: lo revisa Claude (otro punto de vista que el juez, que es OpenAI);
+#                            necesita ANTHROPIC_API_KEY en .env. effort: medium (low | medium | high)
 #   usd_per_mtok: {input: 0.25, output: 2.0}
 #   max_usd: 1.0             # tope por vídeo
 #   shots_per_sheet: 8
 #   aprender: false          # los canales en que el revisor ve dibujos o marcas de agua (3+ veces, 2+ vídeos) dejan de usarse
 #   aviso: true              # al acabar, lo que sigue marcado y sus hojas al Telegram del canal
 #   nota: false              # solo la nota de cada vídeo (panel «Puntería»), sin cambiar nada: 1-2 céntimos por vídeo
+#   no_borrow_sent_back: true  # con enabled: un plano devuelto al relleno que no encuentra otro sale como texto, no con
+#                            el clip del plano de al lado (eso volvía a ser «hueco tapado» o «repetido»)
 #   enabled: false           # en la cola, entre el montaje y la QA (bloque 3.3): lo que marque vuelve UNA vez al
 #                            relleno (work/<vídeo>/revision.auto.json) y se rehacen relleno, apertura y montaje.
 #                            Repetidos y rotos siempre; en ideas literales lo que marque con min_confidence (0.85);
@@ -567,3 +575,8 @@ tts:
   usd_per_1k_chars: 0.022         # GenAIPro: lo que cuestan 1.000 caracteres de voz (22 $ el millón), para «Gasto de API»
   ai84_usd_per_1k_credits: 0      # AI84: $ por 1.000 créditos (lo que pagaste ÷ créditos × 1000); 0 = el gasto de voz sale a 0
   ai84_credits_per_char: 1.15     # AI84: créditos por carácter (modelos HD 1,15; turbo 1,0), para avisar antes de medir un vídeo
+
+# Borradores de guion del «Nuevo vídeo» (el título que escribes → guion) con otro modelo que el del planner:
+# guion:
+#   model: claude-opus-5-5     # los escribe Claude (ANTHROPIC_API_KEY en .env); sin esto, el modelo del planner
+#   effort: high               # low | medium | high | xhigh

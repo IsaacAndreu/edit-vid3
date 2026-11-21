@@ -828,7 +828,8 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     rotulos = rotulo_shots(ctx, ("rotulo", "literal"), hook_seconds=float(ctx.section("judge").get("hook_seconds", 30)))
     from . import feedback
 
-    rotulos |= feedback.no_borrow(ctx.work_dir)    # the reviewer found another shot's clip there: text instead
+    rotulos |= feedback.no_borrow(ctx.work_dir,    # the reviewer found another shot's clip there: text instead
+                                  bool(ctx.section("revisor").get("no_borrow_sent_back", True)))
     punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,

@@ -38,6 +38,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from .analysis.detectors import dhash
 from .context import PROJECT_ROOT, RunContext
 
 STAGE = "revisor"
@@ -153,12 +154,6 @@ def frames_of(work: Path, shot: dict[str, Any], fps: float, final: Path | None =
     return out
 
 
-def dhash(image: np.ndarray, size: int = 8) -> int:
-    grey = cv2.resize(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), (size + 1, size), interpolation=cv2.INTER_AREA)
-    bits = (grey[:, 1:] > grey[:, :-1]).flatten()
-    return int("".join("1" if b else "0" for b in bits), 2)
-
-
 def broken(images: list[np.ndarray]) -> str | None:
     """Black or flat frames (no model needed)."""
 
@@ -265,6 +260,17 @@ def ask(ctx: RunContext, cfg: dict[str, Any], entries: list[dict[str, Any]], sub
     spent = [0.0]
 
     def produce() -> dict[str, Any]:
+        from . import claude
+
+        if claude.is_claude(model):   # revisor.model: claude-… — another eye than the judge's (OpenAI) on the same frames
+            content_c: list[dict[str, Any]] = [claude.image_block(image), {"type": "text", "text": prompt}]
+            if portrait:
+                content_c += [{"type": "text", "text": f"Reference photo of {portrait[0]}"}, claude.image_block(portrait[1])]
+            text, spent[0] = claude.ask(ctx, stage=STAGE, system=INSTRUCTIONS, content=content_c,
+                                        cfg={**cfg, "model": model, "effort": cfg.get("effort", "medium")},
+                                        max_tokens=16000, schema=SCHEMA)
+            return json.loads(text)
+
         from openai import OpenAI
 
         from .costs import record_cost
