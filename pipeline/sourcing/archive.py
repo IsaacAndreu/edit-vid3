@@ -242,16 +242,53 @@ def storyboard(preview: Path, folder: Path, root: Path, seconds: float) -> Story
     return board
 
 
-def cut(source: str | Path, start: float, end: float, target: Path, height: int | None = None) -> Path:
+MAX_ORIGINAL_MB = 1500                 # a Commons / archive.org original bigger than this is cut over the network
+_ORIGINAL_LOCKS: dict[str, Any] = {}
+
+
+def original(url: str, folder: Path, max_mb: float = MAX_ORIGINAL_MB, session: Any = None) -> Path | None:
+    """The whole original of an archive video, downloaded ONCE with our User-Agent (cache/archive/original/): gta2-it
+    lost 9 shots because each one opened the same Commons .webm with ffmpeg at the same time, without a User-Agent,
+    and Wikimedia answered every one with a 4XX. None when it is too big (then ffmpeg reads the URL as before)."""
+
+    import threading
+
+    folder.mkdir(parents=True, exist_ok=True)
+    suffix = Path(url.split("?")[0]).suffix or ".mp4"
+    target = folder / f"{key(url)[:24]}{suffix}"
+    lock = _ORIGINAL_LOCKS.setdefault(url, threading.Lock())
+    with lock:                                   # nine shots of one file: one download, eight waits
+        if target.is_file() and target.stat().st_size > 0:
+            return target
+        http = session or requests.Session()
+        http.headers["User-Agent"] = USER_AGENT
+        try:
+            head = http.head(url, allow_redirects=True, timeout=30)
+            size = int(head.headers.get("Content-Length") or 0)
+        except requests.RequestException:
+            size = 0
+        if size > max_mb * 1e6:
+            return None
+        return download_file(http, url, target, attempts=4)
+
+
+def cut(source: str | Path, start: float, end: float, target: Path, height: int | None = None,
+        originals: Path | None = None) -> Path:
     """[start, end] of a file or URL, re-encoded so it starts exactly there (the name keeps the source seconds, as
-    YouTube windows do: «a360_<start>_<end>.mp4»)."""
+    YouTube windows do: «a360_<start>_<end>.mp4»). A URL is downloaded whole once (`original`) and cut locally."""
 
     if target.is_file() and target.stat().st_size > 0:
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(source, str) and source.startswith(("http://", "https://")):
+        # cache/archive/hd/<id>/hd_….mp4 → cache/archive/original/
+        local = original(source, originals or target.parents[2] / "original")
+        if local is not None:
+            source = local
     tmp = target.with_suffix(".part.mp4")
     scale = ["-vf", f"scale=-2:{height}"] if height else []
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", str(source), "-an",
+    agent = ["-user_agent", USER_AGENT] if str(source).startswith(("http://", "https://")) else []
+    subprocess.run(["ffmpeg", "-y", "-v", "error", *agent, "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", str(source), "-an",
                     *scale, "-c:v", "libx264", "-preset", "veryfast", "-crf", "16" if not height else "26", str(tmp)],
                    check=True, capture_output=True, timeout=600)
     tmp.replace(target)
