@@ -166,3 +166,23 @@ def test_the_moment_is_found_where_the_source_says_it():
     assert said_moment(captions, "father lunges at Larry Nassar in court", ["Larry Nassar"], 3.0) == 30.0
     assert said_moment(captions, "judge reads the sentence", [], 3.0) is None
     assert said_moment([], "anything", [], 3.0) is None
+
+
+def test_more_shots_find_their_part_of_the_source_by_what_it_says():
+    from types import SimpleNamespace
+
+    from pipeline.analysis import said_name, said_target
+
+    broll = SimpleNamespace(moment=None, visualIntent="gymnast falls off the beam", entities=["Simone Biles"])
+    plain = SimpleNamespace(broll=broll, idea=None)
+    literal = SimpleNamespace(broll=broll, idea=SimpleNamespace(kind="literal"))
+    title = SimpleNamespace(broll=broll, idea=SimpleNamespace(kind="rotulo"))
+    assert said_target(plain) is None and said_target(literal) is None              # off: only narrated moments
+    assert said_target(literal, True) == "gymnast falls off the beam"
+    assert said_target(plain, True) == "" and said_target(title, True) is None
+    moment = SimpleNamespace(broll=SimpleNamespace(**{**vars(broll), "moment": "she falls"}), idea=None)
+    assert said_target(moment) == "she falls"
+    captions = [(0.0, 4.0, "welcome back to the show"), (60.0, 64.0, "now Simone Biles steps up"),
+                (64.0, 68.0, "on the beam")]
+    assert said_name(captions, ["Simone Biles"], 3.0) == 60.0
+    assert said_name(captions, ["Aly Raisman"], 3.0) is None
