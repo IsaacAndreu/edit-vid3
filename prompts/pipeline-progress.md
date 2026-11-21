@@ -274,3 +274,4 @@ newgym3-ideas2, 18 eran «Repetido».
 | (guion antes) | `guion.revisar_antes: aviso | parar`: el guion se lee antes de buscar y se para si `max_sin_imagen` % (35) no tiene imagen | % de planos sin imagen en los vídeos que lo pasan, frente a los de antes (elasesinodelkickboxing: 70 %) |
 | (nuevo vídeo) | «Nuevo vídeo» con dos tarjetas: tu guion o desde un título e información (enlaces de referencia, biblioteca, arreglar frases sin imagen) | vídeos hechos desde un título: % sin imagen antes y después del arreglo |
 | (parar) | `judge.parar_si_rechaza: 60`: se para antes de las descargas HD si el juez rechazó ese % | GB de proxy en vídeos que acaban sin imagen |
+| (retención) | `guion.retencion: true`: reglas de retención al escribir y arreglar guiones (minutos 3 y 6, escalada, final en seco) | duración media y % visto en «Estadísticas» de los vídeos escritos con ellas frente a la mediana del canal |

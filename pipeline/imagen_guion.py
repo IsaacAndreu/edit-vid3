@@ -199,8 +199,11 @@ def fix(ctx: Any, script: str, title: str = "", references: str = "", review_fn:
         answer = ask(user)
     else:
         section = "guion" if ctx.section("guion").get("model") else "planner"
-        answer = complete_json(ctx, stage="guion", section=section, max_tokens=8000, system=FIX_SYSTEM, user=user,
-                               use_cache=False)
+        from .organizar import retention_rules
+
+        rules = retention_rules(ctx)               # guion.retencion: the rewrites keep the same rules
+        answer = complete_json(ctx, stage="guion", section=section, max_tokens=8000,
+                               system=FIX_SYSTEM + ("\n" + rules if rules else ""), user=user, use_cache=False)
     by_n = {r["n"]: r["text"] for r in todo}
     fixed, changed = script, 0
     for item in answer.get("cambios") or []:

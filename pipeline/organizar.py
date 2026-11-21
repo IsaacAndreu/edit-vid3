@@ -217,6 +217,43 @@ Reglas del guion:
 """.strip()
 
 
+# guion.retencion (off): how the attention is held all through, not only in the hook (MrBeast's rules on what keeps
+# a viewer: the title kept in the first minute, re-engagement around minutes 3 and 6, rising stakes, long explanations
+# in the back half, no announced ending). Measured in «Estadísticas» (average view duration and percentage).
+RETENTION = """
+Reglas de retención (todo el vídeo, no solo el arranque):
+- Lo que promete el título aparece ya en el primer minuto; nunca prometas algo que el vídeo no tiene.
+- Primer minuto: lo más interesante delante, sin rodeos. Después del minuto 1 deja de anunciar lo que va a venir:
+  cuéntalo.
+- Mucha historia en los primeros 3 minutos para que quien mira se implique; nada de ritmo de documental pausado.
+- Hacia la palabra {at3} (minuto 3) un momento fuerte que vuelva a enganchar: lo más sorprendente hasta ahí. Hacia la
+  palabra {at6} (minuto 6) otro que empuje la historia hacia delante.
+- Escalada: cada bloque más fuerte que el anterior; lo mejor y la resolución, al final.
+- Las explicaciones largas (contexto, antecedentes, cifras de fondo) van en la segunda mitad, nunca en los 3 primeros
+  minutos.
+- Ningún momento muerto: cada frase añade algo nuevo.
+- Nunca anuncies el final («para terminar», «por último», «en resumen») salvo para crear expectación por el desenlace.
+""".strip()
+ABRUPT_END = "- Cierra en seco tras la resolución: una sola frase final que lleve al siguiente vídeo, sin resumen ni despedida."
+
+
+def retention_rules(ctx: Any) -> str:
+    """The retention rules with the word counts of minutes 3 and 6 at the voice's pace, or «» when off."""
+
+    if not ctx.section("guion").get("retencion", False):
+        return ""
+    per_minute = float(ctx.section("gancho").get("words_per_second", 2.6)) * 60
+    return RETENTION.format(at3=int(round(3 * per_minute, -1)), at6=int(round(6 * per_minute, -1)))
+
+
+def draft_system(ctx: Any) -> str:
+    rules = retention_rules(ctx)
+    if not rules:
+        return DRAFT_SYSTEM
+    closing = "- Cierra con una pregunta a la audiencia y una frase que lleve al siguiente vídeo."
+    return DRAFT_SYSTEM.replace(closing, ABRUPT_END) + "\n" + rules
+
+
 def _reference_script(root: Path, channel: str) -> str:
     from .context import video_folders
     from .web import _channel_of
@@ -394,7 +431,7 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         brief.append(existing)
     # guion.model (off): the drafts with another model than the planner's — claude-opus-5-5 writes them with Claude
     section = "guion" if ctx.section("guion").get("model") else "planner"
-    result = complete_json(ctx, stage="guiones", section=section, system=DRAFT_SYSTEM, user="\n\n".join(brief),
+    result = complete_json(ctx, stage="guiones", section=section, system=draft_system(ctx), user="\n\n".join(brief),
                            max_tokens=max(9000, int(words * 2.4)), use_cache=False)       # long documentaries too
     script = str(result.get("script") or "").strip()
     if drawn_video:                              # and if the model wrote them anyway, they go
