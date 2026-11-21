@@ -269,3 +269,4 @@ newgym3-ideas2, 18 eran «Repetido».
 | eb45203 | El revisor sabe de quién es un clip por el nombre del archivo: un plano juzgado sin clip, tapado con el de otro, cuenta como hueco tapado y no culpa al otro | misma tabla |
 | 81d7cae | `fallback.repeat_frames` (apagado): el relleno compara dos fotogramas por clip (30 % y 70 %) con la medida del revisor | misma tabla, más `--youtube-stats 1` (lo que manda atrás se busca otra vez) |
 | 3946c9c | Revisor en cola: un plano devuelto que no encuentra sustituto sale como texto, no con el clip del vecino (`revisor.no_borrow_sent_back`, encendido) | columnas «Huecos tapados» y «En texto» |
+| 423e41c | `guion.model` y `revisor.model`: con un modelo `claude-…`, los borradores de guion y el revisor van con Claude (pipeline/claude.py); `ANTHROPIC_API_KEY` en .env | revisor: comparar `--base` de un mismo vídeo con OpenAI y con Claude; gasto en la página de costes (proveedor «anthropic») |
