@@ -81,6 +81,8 @@ def describe(ctx: Any, tiles: list[np.ndarray]) -> list[dict[str, str]]:
 
     cfg = dict(ctx.section("indice") or {})
     model = str(cfg.get("model") or ctx.section("judge").get("model", "gpt-5-mini"))
+    if model.startswith("claude-"):          # a Claude judge (judge.model): the index stays on OpenAI's cheap model
+        model = "gpt-5-mini"
     ok, encoded = cv2.imencode(".jpg", _sheet(tiles), [cv2.IMWRITE_JPEG_QUALITY, 82])
     if not ok:
         return []
