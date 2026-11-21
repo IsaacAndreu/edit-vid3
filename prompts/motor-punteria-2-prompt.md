@@ -62,8 +62,8 @@ Fuente arriba a la derecha en cada clip.
    planos son de 1,5-4 s cortados por tiempo.
 4. **Cuando lo que se dice es un argumento, ponen una tarjeta, no un clip.** Por eso no necesitan encontrar imagen
    para cada frase.
-5. **Pasan del tope de 5 s** (11 s de grada, 50 s de escena). Esto no es una mejora técnica: es un riesgo que ellos
-   asumen. Ver «Decisiones del dueño».
+5. **Pasan del tope de 5 s** (11 s de grada, 50 s de escena). El dueño ha decidido hacer lo mismo: ver «El tope
+   de 5 s».
 
 ## Estado de partida que debes tener en cuenta
 
@@ -113,7 +113,7 @@ Convertir lo que hoy es adorno en parte del relato, para los sucesos clave:
 
 Que una reacción, un testimonio o una prueba puedan ocupar la idea entera (4-5 s) en lugar de partirse en dos o
 tres cortes. El planner ya agrupa por ideas; falta que el montaje pueda decidir «un solo plano» cuando la función
-lo pide. Sin tocar el tope de 5 s.
+lo pide, hasta el tope del canal (ver «El tope de 5 s»).
 
 ### 4. Tarjetas de argumento
 
@@ -144,14 +144,26 @@ concreta: la escena donde se dice, la pantalla donde se lee. El índice por esce
 (`pipeline/indice.py`) es la herramienta; falta la transcripción por escena, que ya tienes pendiente, y es
 justo lo que hace encontrable «la escena donde dice esto».
 
-## Decisiones del dueño (no las tomes tú)
+## El tope de 5 s: decisión tomada por el dueño (21-11)
 
-- **El tope de 5 s por clip de terceros.** Las dos herramientas de la competencia lo ignoran. Es la protección
-  frente a reclamaciones, y no todo el material arriesga igual: una retransmisión deportiva no es lo mismo que
-  una partida de un juego. Si el dueño quiere un tope distinto por canal, hay que pasarlo por el esquema (hoy es
-  una constante en 29 sitios, `MAX_THIRD_PARTY_SECONDS`). Prepara qué habría que tocar y cuánto riesgo tiene para
-  los vídeos a medias, y espera su respuesta.
-- **Cuánto sonido original por vídeo**, por la misma razón.
+El dueño quiere trabajar como la competencia y asume el riesgo de reclamaciones. El tope deja de ser fijo:
+
+- `MAX_THIRD_PARTY_SECONDS` pasa a ser un valor de configuración por canal y por vídeo
+  (`content.max_third_party_seconds`), que el esquema recibe en vez de leer una constante. Son 29 sitios, con las
+  validaciones de `Timeline` y `Selection` entre ellos: hazlo en un commit propio, con la prueba de extremo a
+  extremo, y de forma que **un vídeo a medias planificado con 5 s siga validando y no se rehaga**.
+- Valores que propone este plan, para que el dueño los confirme o cambie en el estudio: 12 s por clip en general;
+  60 s en canales de juegos (`leonida-echt` y los que usen metraje de partida); los pasajes con sonido original,
+  lo que diga `quotes.max_seconds`. Los clips propios siguen sin tope.
+- Todo lo que dependía del tope se revisa con el valor nuevo: la continuación del juez (`continue_action`), el
+  salto de 1,5 s entre cortes contiguos de una fuente, `fill_empty_shots`, el bloqueo de QA, los doblajes
+  (un clip estirado por una voz más larga), los Shorts.
+- Con el tope alto, el punto 3 (duración según la función) y el corte de una idea en tomas contiguas de la misma
+  fuente dejan de chocar con nada: una idea puede ser un solo clip seguido.
+- Deja el tope **por canal** aunque hoy se suba en todos: si un canal empieza a recibir reclamaciones, el dueño
+  podrá bajarlo solo ahí. Añade a la página de cada vídeo cuántos segundos seguidos tiene el clip más largo de
+  cada fuente, para que una reclamación se pueda relacionar con lo que la causó.
+- Actualiza `docs/VPS.md` (apartado 3h) y `README.md`, que hoy describen los 5 s como regla.
 
 ## Cómo se mide
 
