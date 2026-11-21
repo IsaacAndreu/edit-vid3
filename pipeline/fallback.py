@@ -412,6 +412,8 @@ def run(ctx: RunContext) -> None:
         item: FallbackItem | None = None
         tried: list[str] = []
         idea_kind = shot.idea.kind if shot.idea is not None else None      # planner.ideas: literal / ambiente
+        same_idea = {s.id for s in story.shots if shot.idea is not None and s.idea is not None
+                     and s.idea.id == shot.idea.id}          # its own idea's uses of a source do not count
         # bloque 2.7: in the first seconds of a video planned by ideas nothing goes on screen unseen by the judge
         in_hook = idea_kind is not None and shot.start < float(judge_cfg.get("hook_seconds", 30))
         # bloque 2.4 (fallback.concept_stock, off): an ambient idea with no image of its own may take faceless concept
@@ -435,7 +437,7 @@ def run(ctx: RunContext) -> None:
                        and not (offline and candidates[o.candidateId].source == "youtube")   # cannot come without YouTube
                        and not blocked_by_title(candidates[o.candidateId].title, candidates[o.candidateId].channel, blocklist,
                                                 official)
-                       and not overused(o.candidateId, used,
+                       and not overused(o.candidateId, [u for u in used if u.shotId not in same_idea],
                                         per_source * (2 if own_event(candidates[o.candidateId].title, shot) else 1))
                        and f"{o.candidateId}@{o.start}" not in dead
                        and not (max_strikes and strikes.get(o.candidateId, 0) >= max_strikes)

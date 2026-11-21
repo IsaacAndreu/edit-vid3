@@ -240,11 +240,12 @@ class Brain:
         return {"shots": out}
 
     def ideas(self, user: str) -> dict[str, Any]:
-        """planner.ideas: pairs of shots, the first idea literal, the last a title read aloud, the rest ambient."""
+        """planner.ideas: one idea per shot, the last a title read aloud, the rest literal (only the one with a narrated
+        moment stays literal: agrupar.assign downgrades the others to ambient)."""
 
         ids = re.findall(r"^(s\d{3,4}) \(", user.split("PLANOS:\n", 1)[1], re.M)
-        pairs = [ids[i:i + 2] for i in range(0, len(ids), 2)]
-        kinds = ["literal"] + ["ambiente"] * max(0, len(pairs) - 2) + (["rotulo"] if len(pairs) > 1 else [])
+        pairs = [[i] for i in ids]                         # one shot per idea: the short script has only four
+        kinds = ["literal"] * max(0, len(pairs) - 1) + (["rotulo"] if len(pairs) > 1 else [])
         return {"ideas": [{"shots": pair, "kind": kind, "mustShow": [PERSON], "era": "Paris 2024",
                            "screenLine": "Oro en París"} for pair, kind in zip(pairs, kinds)]}
 
@@ -1050,7 +1051,12 @@ def test_every_stage_runs_its_real_code(tmp_path: Path, monkeypatch: pytest.Monk
 
         planned = ShotsFile.model_validate(ctx.read_json("shots.json")).shots
         kinds = {s.id: s.idea.kind for s in planned if s.idea is not None}
-        assert len(kinds) == len(planned) and "literal" in kinds.values() and "rotulo" in kinds.values()
+        has_moment = any(s.broll is not None and s.broll.moment for s in planned)
+        assert len(kinds) == len(planned) and "rotulo" in kinds.values()
+        assert ("literal" in kinds.values()) == has_moment                 # literal only with a narrated action
+        literal_ideas = {s.idea.id for s in planned if s.idea is not None and s.idea.kind == "literal"}
+        assert all(any(x.broll is not None and x.broll.moment for x in planned
+                       if x.idea is not None and x.idea.id == idea) for idea in literal_ideas)   # only with an action
         rotulos = {sid for sid, kind in kinds.items() if kind == "rotulo"}
         assert not rotulos & {p.stem for p in (ctx.work_dir / "candidates").glob("*.json")}   # never searched
         literal = {sid for sid, kind in kinds.items() if kind == "literal"}

@@ -859,13 +859,18 @@ def run(ctx: RunContext) -> None:
         master = masters.get(_event_key(shot))
         if (follow := continuation(shot, shots, selections, picked, judged, master, cfg)) is not None:
             preference = [follow, *preference]           # the strong moment of the shot before runs on (≤ 5 s in all)
+        # within an idea (planner.ideas) its own uses of a source do not count: its cuts are meant to share one
+        same_idea = {s.id for s in shots if shot.idea is not None and s.idea is not None and s.idea.id == shot.idea.id}
+        counted = [s for s in selections if s.shotId not in same_idea]
         usable = [o for o in preference if (o is follow or not is_repeat(o, selections, max_hamming))
-                  and not overused(o.candidateId, selections,
+                  and not overused(o.candidateId, counted,
                                    per_source * (3 if o.candidateId == master else
                                                  2 if own_event(candidates[o.candidateId].title, shot) else 1))]
         chosen = follow if follow is not None and follow in usable else (
             next((o for o in usable if o.candidateId == master), None) if judged else None)
         picked_by = "continuación" if chosen is not None and chosen is follow else "maestro" if chosen is not None else None
+        if chosen is None and same_idea and selections and selections[-1].shotId in same_idea and usable:
+            chosen = usable[0]                           # the idea's next cut: the judge's first choice, no variety push
         if chosen is None:
             chosen = prefer_variety(usable, selections, variety, back_to_back,
                                     lambda o, shot=shot: own_event(candidates[o.candidateId].title, shot))
