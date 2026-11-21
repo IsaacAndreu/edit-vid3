@@ -151,6 +151,18 @@ def test_the_borrowed_copy_is_blamed_not_the_judges_choice():
     assert list(blamed) == ["s100"] and "repite el plano s220" in blamed["s100"]   # the filler, not the judge
 
 
+def test_a_shot_showing_another_shots_file_is_the_borrowed_one_even_with_its_own_selection():
+    """newgym3-ideas2: s050 was judged but ended with no clip, and the edit covered it with s062's file; the revisor
+    took s050 for the owner and blamed s062 as «repetido». The file name says whose it is."""
+
+    assert revisor.file_owner("work/v/media_fallback/s062.mp4") == "s062"
+    assert revisor.file_owner("work/v/media/s012-2.mp4") == "s012"
+    assert revisor.file_owner("biblioteca/clips/abc.mp4") is None
+    items = [{"id": "s050", "at": 111, "method": "judge", "hashes": [7], "borrowed": "s062"},
+             {"id": "s062", "at": 151, "method": "protagonist", "hashes": [7]}]
+    assert revisor.repeats(items, already={"s050"}) == {}                    # flagged once, as hueco tapado
+
+
 def test_the_baseline_puts_every_video_in_one_table():
     results = [{"slug": "newgym3", "shots": 200, "asText": 7, "model": "m", "usd": 0.01, "unreadable": ["s9"],
                 "flagged": [{"problem": "hueco_tapado"}] * 20 + [{"problem": "repetido"}] * 10 + [{"problem": "roto"}]}]

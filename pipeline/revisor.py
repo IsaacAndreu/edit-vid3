@@ -27,6 +27,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import textwrap
@@ -181,7 +182,7 @@ def repeats(items: list[dict[str, Any]], max_hamming: int = 6, already: set[str]
     already = set(already or ())
     out: dict[str, str] = {}
     seen: list[dict[str, Any]] = []
-    rank = lambda item: AUTHORITY.get(str(item.get("method") or ""), 3)       # noqa: E731
+    rank = lambda item: -1 if item.get("borrowed") else AUTHORITY.get(str(item.get("method") or ""), 3)   # noqa: E731
     for item in items:
         base = item["id"].split("-")[0]
         for earlier in seen:
@@ -199,6 +200,14 @@ def repeats(items: list[dict[str, Any]], max_hamming: int = 6, already: set[str]
                 break
         seen.append(item)
     return out
+
+
+def file_owner(src: str) -> str | None:
+    """The shot a media file was made for, from its name (work/<slug>/media/s031.mp4 → s031); None for any other file
+    (a library clip, your own material)."""
+
+    stem = Path(src).stem
+    return stem.split("-")[0] if re.fullmatch(r"s\d+(-\d+)?", stem) else None
 
 
 def _clock(seconds: float) -> str:
@@ -343,7 +352,11 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
     for shot, images in zip(on_screen, grabbed):
         base = shot["id"].split("-")[0]
         src = str((shot.get("media") or {}).get("src") or "")
-        borrowed = owner.get(src) if not listed[shot["id"]].get("method") and owner.get(src) != shot["id"] else None
+        own = file_owner(src)
+        if own is not None:          # media/<id>.mp4, media_fallback/<id>.mp4: the file says whose it is, whatever the
+            borrowed = own if own != base else None     # shot's selection (newgym3-ideas2: s050, judged, showed s062's)
+        else:
+            borrowed = owner.get(src) if not listed[shot["id"]].get("method") and owner.get(src) != shot["id"] else None
         spec = plan.get(base)
         broll = spec.broll if spec is not None else None
         items.append({**listed[shot["id"]], "images": images, "hashes": [dhash(i) for i in images], "borrowed": borrowed,
