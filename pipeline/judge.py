@@ -751,6 +751,7 @@ def run(ctx: RunContext) -> None:
         # CLIP scored it (a GTA recording scores low against a sentence), and such a shot is always judged
         firsts = int(cfg.get("material_first", 2))
         mine = [o for o in plans[shot.id] if chosen_material(candidates[o.candidateId])]
+        mine.sort(key=lambda o: o.hint != "indice")         # the scene the index matched by its description first
         if mine and firsts:
             rest = [o for o in plans[shot.id] if o not in mine[:firsts]]
             plans[shot.id] = mine[:firsts] + rest

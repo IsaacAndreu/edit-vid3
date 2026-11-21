@@ -352,6 +352,7 @@ class OptionScores(_Strict):
 
 class Option(_Strict):
     """One usable fragment (video) or picture (image) for a shot, with its local-analysis score."""
+    _late = frozenset({'hint'})
 
     candidateId: str
     source: Source
@@ -364,6 +365,7 @@ class Option(_Strict):
     total: float
     discarded: str | None = None                             # reason, when the option must not be used
     phash: str | None = None                                 # 64-bit perceptual hash, for de-duplication
+    hint: str | None = None                                  # «indice»: the material's scene whose description fits
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

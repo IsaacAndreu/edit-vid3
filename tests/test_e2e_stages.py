@@ -369,6 +369,10 @@ class FakeOpenAI:
             answer = {"competition": world.s.competition, "why": "live floor final" if world.s.competition else "an interview"}
         elif name == "review":
             answer = {"problems": []}
+        elif name == "scene_log":                    # the material's scene index (pipeline/indice.py)
+            count = int(re.search(r"(\d+) scenes", prompt).group(1))
+            answer = {"scenes": [{"n": n + 1, "en": "Carlos Yulo floor routine in the Manila gym",
+                                  "es": "suelo, gimnasio, Manila"} for n in range(count)]}
         else:
             world.brain.unknown.append(f"responses:{name}")
             answer = {}
@@ -1075,6 +1079,9 @@ def test_every_stage_runs_its_real_code(tmp_path: Path, monkeypatch: pytest.Monk
         assert all(x.media.credit is None for x in mine)                       # no «Fuente:» over your own clip
         # the judge accepted it, and material it accepted wins over any master video — however CLIP scored it
         assert mine and any(x.source == "propio" and x.pickedBy == "material" for x in selection.selections)
+        hinted = [o for p in (ctx.work_dir / "scores").glob("s*.json")
+                  for o in json.loads(p.read_text())["options"] if o.get("hint") == "indice"]
+        assert hinted and all(o["source"] == "propio" for o in hinted)   # the scene found by its description
         reviewed = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
         assert "skipped" not in reviewed and reviewed["shots"] > 0            # the reviewer ran in the queue
     if scenario.name == "minimo":

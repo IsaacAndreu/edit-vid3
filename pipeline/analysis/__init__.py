@@ -632,6 +632,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                         "analysisPath": str(Path(item["path"]).relative_to(ctx.root)),
                         "scores": scores, "total": total_score(scores, weights),
                         "discarded": item["discarded"], "phash": item["phash"],
+                        **({"hint": "indice"} if option.get("indice") else {}),
                     }))
             else:
                 # Not refined (outside the top windows or download failed): keep the thumbnail estimate.
@@ -644,8 +645,10 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 }))
         min_clip = float(cfg.get("min_clip", 0.20))
         min_clip_entity = float(cfg.get("min_clip_entity", 0.15))  # the source names the place/person
+        # a scene the index matched by its description is not dropped for a low CLIP score (game footage scores low
+        # against a sentence even when it is that very scene): the judge decides
         options = [
-            o if o.discarded or o.scores.clip >= (min_clip_entity if o.scores.entity >= 0.5 else min_clip)
+            o if o.discarded or o.hint == "indice" or o.scores.clip >= (min_clip_entity if o.scores.entity >= 0.5 else min_clip)
             else o.model_copy(update={"discarded": f"poco relevante (CLIP {o.scores.clip:.2f})"})
             for o in options
         ]
@@ -811,6 +814,44 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 break                                    # one chapter window per shot
         if by_chapter:
             print(f"   Momentos localizados por los capítulos de la fuente: {by_chapter} planos")
+    # analysis.index_windows (on when there is material de partida): the scene of each material source whose
+    # description best fits the shot (pipeline/indice.py: described once per source, kept for every video)
+    by_index = 0
+    if cfg.get("index_windows", True):
+        from ..indice import best_scene, scenes_for, shot_words
+        from ..material import chosen_material
+
+        for shot in todo:
+            if not shot.broll:
+                continue
+            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            words = shot_words(shot)
+            seen_sources: set[str] = set()
+            for option in list(coarse[shot.id]):
+                c = option["candidate"]
+                if c.kind != "video" or c.id in seen_sources or not chosen_material(c):
+                    continue
+                seen_sources.add(c.id)
+                try:
+                    scene = best_scene(scenes_for(ctx, c, clip, cfg), words)
+                except Exception as error:
+                    print(f"   {c.id}: sin índice de escenas ({type(error).__name__}: {str(error)[:100]})")
+                    continue
+                if scene is None:
+                    continue
+                duration = float(c.durationSeconds or 0)
+                a = round(max(0.0, float(scene["start"])), 2)
+                b = round(min(duration or a + needed + 2 * pad, max(float(scene["end"]), a + needed + 2 * pad)), 2)
+                if b - a < needed:
+                    continue
+                job = (c.id, a, b)
+                jobs.setdefault(job, []).append(shot.id)
+                coarse[shot.id].append({"candidate": c, "t": a, "clip": 0.0, "entity": 0.0, "window": (a, b),
+                                        "indice": True})
+                round_one.append(job)
+                by_index += 1
+        if by_index:
+            print(f"   Escenas del material de partida por su descripción: {by_index} ventanas")
     print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
           + (f" ({len(hd_jobs)} de ellas ya en HD, hd_windows_top {hd_top})" if hd_jobs else "")
           + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))

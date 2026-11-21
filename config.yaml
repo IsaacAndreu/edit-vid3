@@ -425,6 +425,14 @@ queue:                             # cola nocturna (python main.py --all)
 #   own_per_shot: 4          # clips propios por plano (los de etiquetas más parecidas)
 #   max_videos: 12           # enlaces de vídeos que se usan
 # judge.material_first: 2    # opciones del material en la primera hoja del juez (con la mejor de fuera al lado)
+# Índice por escenas del material (pipeline/indice.py; analysis.index_windows: true): cada vídeo o clip se corta en
+# escenas una vez y un modelo de visión barato escribe qué se ve en cada una; cada plano mira la escena que mejor
+# encaja por sus palabras. Se guarda para todos los vídeos (cache/material/indice/).
+# indice:
+#   model: gpt-5-mini      # por defecto el del juez
+#   scene_cut: 0.82        # parecido mínimo entre miniaturas seguidas para seguir en la misma escena
+#   max_scene_seconds: 20
+#   per_sheet: 30          # escenas por llamada al modelo
 
 qa:
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
