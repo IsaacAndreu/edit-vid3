@@ -326,7 +326,7 @@ const VerticalBody: FC<TimelineProps> = ({ shots, groups, captions = [], audio, 
       ) : null}
       {shots
         .filter((shot) => shot.media?.credit)
-        .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.graphic?.type !== 'quote'
+        .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.graphic?.type !== 'quote' && g.graphic?.type !== 'circulo'
         && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
         .map((shot) => (
           <Sequence key={`credit-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
@@ -379,7 +379,9 @@ const DocumentaryBody: FC<TimelineProps> = ({ shots, groups, labels = [], audio,
     {shots
       .filter((shot) => shot.media?.credit)
       // footage hidden under a full-screen graphic does not get its source badge
-      .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
+      // (a circle drawn over the footage is not one: the proof keeps its source)
+      .filter((shot) => !groups.some((g) => g.kind === 'graphic' && g.graphic?.type !== 'circulo'
+        && g.from <= shot.from && shot.from < g.from + g.durationInFrames))
       .map((shot) => (
         <Sequence key={`credit-${shot.id}`} from={shot.from} durationInFrames={shot.durationInFrames}>
           <CreditBadge credit={localCredit(shot.media?.credit as string, locale?.source)} />

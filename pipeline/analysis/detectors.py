@@ -148,6 +148,18 @@ class Detectors:
         return [box for box, text, score in results or []
                 if float(score) >= 0.7 and len(re.findall(r"[^\W\d_]", str(text))) >= 3]
 
+    def text_words(self, frame: np.ndarray) -> list[tuple[Any, str]]:
+        """(polygon, text) of every readable line of text (confident OCR), in the frame's pixels."""
+
+        with self._lock:
+            if self._ocr is None:
+                self._ocr = _make_ocr(self.ocr_side)
+            if self._ocr is False:
+                return []
+            results, _ = self._ocr(frame, use_det=True, use_cls=False, use_rec=True)
+        return [(box, str(text)) for box, text, score in results or []
+                if float(score) >= 0.7 and len(re.findall(r"[^\W\d_]", str(text))) >= 3]
+
     def text_edges(self, frames: list[np.ndarray], top_band: float = 0.2, bottom_band: float = 0.28) -> tuple[float, float] | None:
         """Burned-in text that lives only on the edges (subtitles at the bottom, a channel tag at the top): how much to
         cut from the top and the bottom (fractions of the height) to leave none; (0, 0) with no text at all; None when

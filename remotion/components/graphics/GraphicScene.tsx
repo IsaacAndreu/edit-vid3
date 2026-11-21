@@ -1,5 +1,6 @@
 import type { FC, ReactNode } from 'react';
 import type { Graphic } from '../../graphics';
+import { Afirmacion, Circulo, Ficha, Lista, Prueba } from './Argument';
 import { Chart } from './Chart';
 import { Compare } from './Compare';
 import { Kinetic } from './Kinetic';
@@ -122,6 +123,16 @@ const GraphicBody: FC<{ graphic: Graphic; durationInFrames: number }> = ({ graph
       return <Board graphic={graphic} durationInFrames={durationInFrames} />;
     case 'post':
       return <Post graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'circulo':
+      return <Circulo graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'ficha':
+      return <Ficha graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'prueba':
+      return <Prueba graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'afirmacion':
+      return <Afirmacion graphic={graphic} durationInFrames={durationInFrames} />;
+    case 'lista':
+      return <Lista graphic={graphic} durationInFrames={durationInFrames} />;
     case 'wanted':
       return <Wanted graphic={graphic} durationInFrames={durationInFrames} />;
     case 'phone':

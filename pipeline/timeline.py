@@ -799,6 +799,8 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             graphic["media"] = face or footage()
             if graphic["type"] == "specs":
                 graphic["kicker"] = "EN CIFRAS" if face else "FICHA TÉCNICA"
+        if graphic["type"] == "ficha":                      # its portrait or picture, like the compare card's
+            graphic["media"] = graphics.portrait(ctx, graphic["name"], people)
         if graphic["type"] == "compare":
             from .logos import logo
 
@@ -863,6 +865,10 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         print(f"   Citas de las ideas: {len(quotes)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['text'][:40]}»"
                                                                  for g in quotes[:6]))
         boards += quotes
+    circles = proof_circles(ctx, shots, [*groups, *added, *boards], fps)  # a circle around the proof on screen
+    if circles:
+        print(f"   Círculos sobre la prueba: {len(circles)}")
+        boards += circles
     lines = idea_lines(ctx, shots, [*groups, *added, *boards], fps)       # planner.ideas: one line of text per idea
     if lines:
         print(f"   Líneas de pantalla de las ideas: {len(lines)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»"
@@ -1305,6 +1311,68 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
         counts["gancho" if in_hook else "prestados"] += 1
         previous_text = False
     return counts
+
+
+def circle_box(words: list[tuple[Any, str]], said: str, width: int, height: int) -> list[float] | None:
+    """The on-screen line the narration names (most shared long words, at least one), as [x0, y0, x1, y1] in % of the
+    frame, padded a little; None when nothing on screen is named."""
+
+    wanted = {w for w in re.findall(r"[^\W_]{4,}", said.lower())}
+    best, score = None, 0
+    for box, text in words:
+        shared = len(wanted & set(re.findall(r"[^\W_]{4,}", text.lower())))
+        if shared > score:
+            best, score = box, shared
+    if best is None:
+        return None
+    points = [(float(x), float(y)) for x, y in __import__("numpy").array(best).reshape(-1, 2)]
+    x0, x1 = min(p[0] for p in points), max(p[0] for p in points)
+    y0, y1 = min(p[1] for p in points), max(p[1] for p in points)
+    pad_x, pad_y = (x1 - x0) * 0.12 + 12, (y1 - y0) * 0.35 + 10
+    return [round(max(0.0, (x0 - pad_x) / width * 100), 2), round(max(0.0, (y0 - pad_y) / height * 100), 2),
+            round(min(100.0, (x1 + pad_x) / width * 100), 2), round(min(100.0, (y1 + pad_y) / height * 100), 2)]
+
+
+def proof_circles(ctx: RunContext, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                  reader: Any = None) -> list[TimelineGroup]:
+    """timeline.proof_circles (off; segunda tanda, point 4): on a proof shot (planner.cobertura «prueba») whose footage
+    shows the line the narration names — a name in the credits, an option of a menu — a circle drawn around it, over
+    the footage. The easy case first: text found by OCR on the shot's middle frame."""
+
+    if not ctx.section("timeline").get("proof_circles", False):
+        return []
+    try:
+        plan = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots}
+    except Exception:
+        return []
+    import cv2
+
+    if reader is None:
+        from .analysis import detectors as det
+
+        reader = det.Detectors(cache_dir=ctx.cache_dir).text_words
+    out = []
+    for shot in shots:
+        spec = plan.get(shot.id.split("-")[0])
+        cover = getattr(spec, "coverage", None)
+        if cover is None or cover.role != "prueba" or shot.media is None or shot.media.kind != "video" \
+                or (shot.media.layout or "full") != "full":
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+            continue
+        capture = cv2.VideoCapture(str(ctx.work_dir / shot.media.src))
+        capture.set(cv2.CAP_PROP_POS_FRAMES, (capture.get(cv2.CAP_PROP_FRAME_COUNT) or 1) // 2)
+        ok, frame = capture.read()
+        capture.release()
+        if not ok or frame is None:
+            continue
+        box = circle_box(reader(frame), shot.text, frame.shape[1], frame.shape[0])
+        if box:
+            out.append(TimelineGroup.model_validate({"id": f"circulo-{shot.id}", "kind": "graphic", "from": start,
+                                                     "durationInFrames": shot.durationInFrames,
+                                                     "graphic": {"type": "circulo", "box": box}}))
+    return out
 
 
 def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",), hook_seconds: float = 0.0) -> set[str]:

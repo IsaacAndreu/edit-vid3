@@ -31,10 +31,15 @@ GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
          "strobe", "replay", "standings", "podium", "race", "card", "plazo", "cambio", "scale", "receipt", "tier", "iceberg", "cita",
          "calendar",
-         "search", "marker", "lens", "scroll", "news", "poster", "board", "post", "wanted", "phone", "gps")
+         "search", "marker", "lens", "scroll", "news", "poster", "board", "post", "wanted", "phone", "gps",
+         "ficha", "prueba", "afirmacion", "lista")
 # The video-game graphics (the wanted stars, the in-game phone, the minimap marker): only for a channel about a video
 # game (pipeline/canal_juego.py) or one that lists them in graphics.types / its format's «tipos».
 GAME = ("wanted", "phone", "gps")
+# The argument cards (segunda tanda, point 4): a character card, evidence rows with ✓/✗, a numbered claim with its
+# verdict, a short list. For theory, explainer and game channels: `graphics.argument: true` in the channel, a game
+# channel, or listed in graphics.types. graphics.max_card_share (0.35) caps the part of the video they may take.
+ARGUMENT = ("ficha", "prueba", "afirmacion", "lista")
 # The paper graphics (a search engine, a highlighted phrase over a newspaper, a magnifying glass, a parchment, a
 # news item with the person, a red-sun poster, an evidence board with red string, a social media post): every channel
 # may use them on top of its own list of types, unless it sets graphics.extra_types itself ([] = none).
@@ -189,6 +194,19 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
 - "gps": (videojuegos) el guion lleva a un LUGAR CONCRETO del mapa del juego (una ciudad, un barrio, una misión): el
   minimapa con la ruta y el marcador. data: {{"place": "nombre del lugar como se dice", "note": "dato corto dicho
   (la misión, la zona) o null", "distance": "distancia dicha, como se dice, o null"}}
+- "ficha": (teoría, juegos) el guion PRESENTA a un personaje o una cosa con su origen («Jimmy, el hijo de Michael en GTA
+  5»): retrato, origen, nombre y una línea. data: {{"name": "nombre como se dice", "origin": "de dónde viene, máx. 5
+  palabras del guion, o null", "line": "una línea del guion sobre él, máx. 12 palabras, o null"}}
+- "prueba": (teoría, juegos) el guion contrasta 1-4 PRUEBAS con una afirmación: dónde se ve, qué dice y a qué
+  corresponde, cada una sí o no. data: {{"title": "qué se comprueba, máx. 5 palabras, o null", "rows": [{{"source":
+  "dónde (los créditos, el tráiler 2), como se dice", "fact": "qué dice, como se dice", "match": "a qué o a quién
+  corresponde, como se dice", "ok": true | false}}]}}
+- "afirmacion": (teoría) el guion enuncia una AFIRMACIÓN numerada y su veredicto («mentira 1: que Trevor habla en la
+  radio. Falso»). data: {{"label": "MENTIRA 1 / TEORÍA 3, como se dice", "claim": "la afirmación del guion, máx. 14
+  palabras", "verdict": "el veredicto dicho (FALSO, CONFIRMADO…)", "ok": true si se confirma, false si no}}
+- "lista": el guion ENUMERA 3-6 cosas cortas de un mismo sitio o grupo («dentro de la taquilla: una pistola, la foto…»):
+  la lista se completa una a una. data: {{"title": "de qué es la lista, máx. 5 palabras", "items": ["…", "…"]}}
+  (cada item máx. 5 palabras del guion)
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2; la palabra clave entre *asteriscos* (una sola). data: {{"lines": ["…", "… *clave*"]}}
 - "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
   qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
@@ -700,6 +718,8 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         return {"type": "post", "author": author, "text": line, "platform": platform, "date": date}
     if kind in GAME:
         return game_graphic(kind, data, text)
+    if kind in ARGUMENT:
+        return argument_graphic(kind, data, text)
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in (data.get("lines") or []) if str(line).strip()][:3]
@@ -995,6 +1015,40 @@ CANDIDATES_HINT = ("Propón hasta {ask} candidatos ordenados de mejor a peor: de
 FOOTAGE_TYPES = {"strobe", "replay", "split", "spotlight"}      # these show the shot's own footage: welcome over the best clips
 
 
+def argument_graphic(kind: str, data: dict[str, Any], text: str) -> dict[str, Any] | None:
+    """The argument cards, with only what the script says (nothing invented: every line must be in the passage)."""
+
+    def words(value: Any, most: int, share: float = 0.7) -> str | None:
+        line = " ".join(str(value or "").split()).strip("«»\"“” ")
+        return line if line and len(line.split()) <= most and said_words(line, text, share) else None
+
+    if kind == "ficha":
+        name = words(data.get("name"), 5, 0.75)
+        if not name:
+            return None
+        return {"type": "ficha", "name": name, "origin": words(data.get("origin"), 5), "line": words(data.get("line"), 12)}
+    if kind == "prueba":
+        rows = []
+        for row in (data.get("rows") or [])[:4]:
+            if not isinstance(row, dict):
+                continue
+            source, fact, match = words(row.get("source"), 5), words(row.get("fact"), 6), words(row.get("match"), 5)
+            if source and fact and match and isinstance(row.get("ok"), bool):
+                rows.append({"source": source, "fact": fact, "match": match, "ok": row["ok"]})
+        return {"type": "prueba", "title": words(data.get("title"), 5), "rows": rows} if rows else None
+    if kind == "afirmacion":
+        label, claim, verdict = words(data.get("label"), 4, 0.6), words(data.get("claim"), 14, 0.75), \
+            words(data.get("verdict"), 3, 0.6)
+        if not (label and claim and verdict and isinstance(data.get("ok"), bool)):
+            return None
+        return {"type": "afirmacion", "label": label, "claim": claim, "verdict": verdict, "ok": data["ok"]}
+    if kind == "lista":
+        title = words(data.get("title"), 5)
+        items = [w for w in (words(i, 5) for i in (data.get("items") or [])[:6]) if w]
+        return {"type": "lista", "title": title, "items": items} if title and 3 <= len(items) <= 6 else None
+    return None
+
+
 def game_graphic(kind: str, data: dict[str, Any], text: str) -> dict[str, Any] | None:
     """The video-game graphics, with only what the script says."""
 
@@ -1120,8 +1174,11 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
 
     game = is_game_channel(ctx.config)
     listed = set(cfg.get("types") or []) | set(own)
-    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own, *(extra or []), *(GAME if game else ())])
-               if t in TYPES and not (ranked and t == "rank") and (t not in GAME or game or t in listed)]
+    argument = game or bool(cfg.get("argument", False))
+    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own, *(extra or []), *(GAME if game else ()),
+                                         *(ARGUMENT if argument else ())])
+               if t in TYPES and not (ranked and t == "rank") and (t not in GAME or game or t in listed)
+               and (t not in ARGUMENT or argument or t in listed)]
     weak, strong = weak or set(), (strong or set()) - (weak or set())
     if weak:   # one more graphic per 3 weak sentences, within the channel's maximum
         count = min(int(cfg.get("max", 8)), count + len(weak) // 3)
@@ -1169,6 +1226,17 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
         candidates.append({"start": start, "end": end, "graphic": graphic,
                            "weak": sum(n in weak for n in span), "strong": any(n in strong for n in span)})
     out = choose(candidates, count, duration, cfg, ranked)
+    # graphics.max_card_share: the argument cards never take more than this part of the video (the reference had
+    # 35-40 %, but its other footage was real proof: a video of cards with little footage is not the same)
+    budget, used = float(cfg.get("max_card_share", 0.35)) * duration, 0.0
+    kept = []
+    for o in sorted(out, key=lambda o: o["start"]):
+        if o["graphic"]["type"] in ARGUMENT:
+            if used + (o["end"] - o["start"]) > budget:
+                continue
+            used += o["end"] - o["start"]
+        kept.append(o)
+    out = kept
     if candidates:
         kinds = ", ".join(o["graphic"]["type"] for o in sorted(out, key=lambda o: o["start"]))
         print(f"   Gráficos: {len(out)} elegidos de {len(candidates)} candidatos ({kinds})")

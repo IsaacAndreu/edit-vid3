@@ -347,6 +347,9 @@ report:                            # resumen de la mañana (out/<slug>/resumen.m
   max_weak: 15                     # más de 15 planos flojos → revisar
 
 graphics:                          # gráficos animados elegidos del guion (mapas, A vs B, gráficas, línea de tiempo…)
+  # argument: false             # tarjetas de argumento (ficha, prueba ✓/✗, afirmación con sello, lista) en canales de
+  #                               teoría o explicativos (los de juegos las tienen siempre). max_card_share: 0.35, la parte
+  #                               del vídeo que pueden ocupar: el resto tiene que ser metraje de verdad
   enabled: true
   seconds_per_graphic: 100         # ~1 gráfico cada 100 s de vídeo
   max: 8
@@ -388,6 +391,8 @@ people:
   model: u2net_human_seg           # modelo de rembg para recortar personas
 
 timeline:
+  # proof_circles: false        # con planner.cobertura: en un plano de «prueba» cuyo metraje enseña la línea que nombra la
+  #                               voz (un nombre en los créditos, una opción de un menú), un círculo alrededor (OCR)
   # Texto en pantalla (ideas-pantallas-de-texto.md, 23-11): el orden es clip correcto > clip de ambiente juzgado > foto >
   # texto. max_text_share: tope de la parte del vídeo en pizarra (0.10 en vídeos planificados por ideas; sin poner, sin
   # tope en los demás). Nunca pizarra en el gancho (judge.hook_seconds: va el mejor clip juzgado), nunca dos seguidas,
