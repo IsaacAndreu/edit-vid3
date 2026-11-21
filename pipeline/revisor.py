@@ -38,6 +38,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from .analysis.detectors import dhash
 from .context import PROJECT_ROOT, RunContext
 
 STAGE = "revisor"
@@ -151,12 +152,6 @@ def frames_of(work: Path, shot: dict[str, Any], fps: float, final: Path | None =
             if image is not None:
                 out.append(image)
     return out
-
-
-def dhash(image: np.ndarray, size: int = 8) -> int:
-    grey = cv2.resize(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), (size + 1, size), interpolation=cv2.INTER_AREA)
-    bits = (grey[:, 1:] > grey[:, :-1]).flatten()
-    return int("".join("1" if b else "0" for b in bits), 2)
 
 
 def broken(images: list[np.ndarray]) -> str | None:

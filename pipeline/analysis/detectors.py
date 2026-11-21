@@ -57,6 +57,38 @@ def hamming(a: str, b: str) -> int:
     return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
+def dhash(image: np.ndarray, size: int = 8) -> int:
+    """Difference hash: the revisor's measure of «fotogramas casi idénticos» (Hamming distance ≤ 6)."""
+
+    grey = cv2.resize(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), (size + 1, size), interpolation=cv2.INTER_AREA)
+    bits = (grey[:, 1:] > grey[:, :-1]).flatten()
+    return int("".join("1" if b else "0" for b in bits), 2)
+
+
+def clip_dhashes(path: str, kind: str, shares: tuple[float, ...] = (0.3, 0.7)) -> list[int]:
+    """dhash of a clip at these shares of its length (the revisor's 30 % and 70 %), or of the still."""
+
+    if kind == "image":
+        frame = cv2.imread(str(path))
+        return [dhash(frame)] if frame is not None else []
+    out: list[int] = []
+    capture = cv2.VideoCapture(str(path))
+    count = capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+    for share in shares:
+        capture.set(cv2.CAP_PROP_POS_FRAMES, int(count * share))
+        ok, frame = capture.read()
+        if ok and frame is not None:
+            out.append(dhash(frame))
+    capture.release()
+    return out
+
+
+def near_frames(a: list[int], b: list[int], max_hamming: int = 6) -> bool:
+    """Any frame of one within `max_hamming` of any frame of the other (the revisor's «Repetido»)."""
+
+    return any(bin(x ^ y).count("1") <= max_hamming for x in a for y in b)
+
+
 def _make_ocr(side: int):
     """RapidOCR across its versions: some need det_model_path whenever det_* options are given
     (KeyError 'model_path'); the oldest take no options. False if it cannot start at all."""
