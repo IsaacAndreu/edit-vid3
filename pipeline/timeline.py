@@ -496,13 +496,17 @@ def place_labels(shots_file: ShotsFile, shots: list[TimelineShot], groups: list[
         if shot_id in by_id:
             wanted.append((by_id[shot_id].from_ - 1, "name", name))     # ahead of a place tag on the same shot
     if cfg.get("idea_facts", True):                 # planner.ideas, bloque 2.2: what an idea names, labelled
+        # timeline.idea_facts_max (1): how many of an idea's facts get a label, one per shot of the idea in order
+        most = max(1, int(cfg.get("idea_facts_max", 1)))
         seen_ideas: set[str] = set()
         for shot in shots_file.shots:
             idea = shot.idea
             if idea is None or idea.id in seen_ideas or not idea.facts or shot.id not in by_id:
                 continue
             seen_ideas.add(idea.id)
-            wanted.append((by_id[shot.id].from_ + 1, fact_kind(idea.facts[0]), idea.facts[0]))
+            members = [s for s in shots_file.shots if s.idea is not None and s.idea.id == idea.id and s.id in by_id]
+            for member, fact in zip(members, idea.facts[:most]):
+                wanted.append((by_id[member.id].from_ + 1, fact_kind(fact), fact))
     for event in shots_file.events:
         if event.tag:
             first = next((s for s in shots_file.shots if s.startWord >= event.startWord and s.id in by_id), None)
@@ -840,6 +844,12 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     labels = [label for label in labels
               if not any(g.from_ < label.from_ + label.durationInFrames and label.from_ < g.from_ + g.durationInFrames
                          for g in [*added, *boards])]
+    quotes = idea_quotes(ctx, shots, [*groups, *added, *boards], fps,     # planner.ideas: a literal quote, as a card
+                         lambda name: graphics.portrait(ctx, name, people))
+    if quotes:
+        print(f"   Citas de las ideas: {len(quotes)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['text'][:40]}»"
+                                                                 for g in quotes[:6]))
+        boards += quotes
     lines = idea_lines(ctx, shots, [*groups, *added, *boards], fps)       # planner.ideas: one line of text per idea
     if lines:
         print(f"   Líneas de pantalla de las ideas: {len(lines)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»"
@@ -1140,6 +1150,57 @@ def idea_lines(ctx: RunContext, shots: list[TimelineShot], busy: list[TimelineGr
         out.append(TimelineGroup.model_validate({"id": f"idea-{idea.id}", "kind": "graphic", "from": start,
                                                  "durationInFrames": length,
                                                  "graphic": {"type": "kinetic", "lines": [idea.screenLine]}}))
+    return out
+
+
+QUOTE = re.compile(r"[«“\"]([^«»“”\"]{12,220})[»”\"]")
+
+
+def idea_quotes(ctx: RunContext, shots: list[TimelineShot], busy: list[TimelineGroup], fps: int,
+                portrait: Any = None) -> list[TimelineGroup]:
+    """`timeline.idea_quotes` (off): when the narration of an idea quotes someone word for word («Odio este deporte»,
+    4-25 words between quotation marks), that quote as a «cita» card over the shot where it is said — the speaker
+    is the idea's first «mustShow» when the idea's text names them. Never over another graphic or a chapter card,
+    at most one per idea, `timeline.idea_quotes_max` (6) a video."""
+
+    cfg = ctx.section("timeline")
+    if not cfg.get("idea_quotes", False):
+        return []
+    try:
+        planned = ShotsFile.model_validate(ctx.read_json("shots.json")).shots
+    except Exception:
+        return []
+    by_id = {s.id: s for s in shots}
+    spans = [(g.from_, g.from_ + g.durationInFrames) for g in busy]
+    spans += [(s.from_, s.from_ + s.durationInFrames) for s in shots if s.type == "chapter"]
+    out: list[TimelineGroup] = []
+    done: set[str] = set()
+    for shot in planned:
+        idea = shot.idea
+        if idea is None or idea.id in done or idea.kind == "rotulo" or shot.id not in by_id:
+            continue
+        found = QUOTE.search(shot.text or "")
+        if not found or not 4 <= len(found.group(1).split()) <= 25:
+            continue
+        done.add(idea.id)
+        members = [s for s in planned if s.idea is not None and s.idea.id == idea.id and s.id in by_id]
+        whole = " ".join(s.text for s in members)
+        speaker = next((n for n in idea.mustShow if n and all(w.casefold() in whole.casefold() for w in n.split()[-1:])),
+                       None)
+        body = " ".join(found.group(1).split()).strip(" ,.")
+        start = by_id[shot.id].from_ + 2
+        end_of_idea = max(by_id[s.id].from_ + by_id[s.id].durationInFrames for s in members)
+        length = min(round((1.5 + 0.35 * len(body.split())) * fps), end_of_idea - start)
+        if length < round(2.5 * fps) or any(a < start + length and start < b for a, b in [*spans, *(
+                (g.from_, g.from_ + g.durationInFrames) for g in out)]):
+            continue
+        media = portrait(speaker) if (portrait and speaker) else None
+        out.append(TimelineGroup.model_validate({"id": f"cita-{idea.id}", "kind": "graphic", "from": start,
+                                                 "durationInFrames": length,
+                                                 "graphic": {"type": "cita", "speaker": speaker, "text": body,
+                                                             "highlight": [], "media": media}}))
+        if len(out) >= int(cfg.get("idea_quotes_max", 6)):
+            break
     return out
 
 
@@ -1500,6 +1561,10 @@ def graphic_cues(graphic: dict[str, Any], frames: int) -> list[tuple[str, int]]:
         return [("pop", 4), *[("pop", 10 + (i + 1) * step) for i in range(min(n, 5))]]
     if kind == "post":
         return [("pop", 6)]
+    if kind == "wanted":    # one pop per star as it lights up (Wanted.tsx: every 7 frames from 18)
+        return [("pop", 18 + 7 * i) for i in range(int(graphic.get("stars") or 5))]
+    if kind in ("phone", "gps"):
+        return [("pop", 10)]
     if kind == "compare":
         return [("pop", 14 + i * 10) for i in range(min(len(graphic.get("rows") or []), 5))]
     if kind == "specs":

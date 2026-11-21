@@ -521,7 +521,31 @@ export interface ClipGraphic {
   volume?: number | null; // its own sound (0 / none: muted)
 }
 
+/** Video-game graphics (channels about a game): the wanted stars, the in-game phone, the minimap marker. */
+export interface WantedGraphic {
+  type: 'wanted';
+  title: string; // what brings the police, in the script's words
+  stars?: number | null; // 1-5 when the script says how many; else the five flash
+}
+
+export interface PhoneGraphic {
+  type: 'phone';
+  from: string; // who sends it or calls
+  text: string; // the message, word for word as the script says it
+  kind: 'sms' | 'llamada';
+}
+
+export interface GpsGraphic {
+  type: 'gps';
+  place: string; // where the route leads
+  note?: string | null; // the mission or area, as said
+  distance?: string | null; // as said («2 km»)
+}
+
 export type Graphic =
+  | WantedGraphic
+  | PhoneGraphic
+  | GpsGraphic
   | SceneGraphic
   | ClipGraphic
   | AtlasGraphic

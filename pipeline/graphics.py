@@ -31,7 +31,10 @@ GEO_CACHE = "geo.json"
 TYPES = ("map", "satellite", "compare", "chart", "timeline", "specs", "rank", "kinetic", "score", "press", "article", "rule", "split",
          "strobe", "replay", "standings", "podium", "race", "card", "plazo", "cambio", "scale", "receipt", "tier", "iceberg", "cita",
          "calendar",
-         "search", "marker", "lens", "scroll", "news", "poster", "board", "post")
+         "search", "marker", "lens", "scroll", "news", "poster", "board", "post", "wanted", "phone", "gps")
+# The video-game graphics (the wanted stars, the in-game phone, the minimap marker): only for a channel about a video
+# game (pipeline/canal_juego.py) or one that lists them in graphics.types / its format's «tipos».
+GAME = ("wanted", "phone", "gps")
 # The paper graphics (a search engine, a highlighted phrase over a newspaper, a magnifying glass, a parchment, a
 # news item with the person, a red-sun poster, an evidence board with red string, a social media post): every channel
 # may use them on top of its own list of types, unless it sets graphics.extra_types itself ([] = none).
@@ -177,6 +180,15 @@ vídeo, repartidos por el vídeo (nunca en los primeros 20 s, separados al menos
   recreada. data: {{"author": "quién lo publicó, como se dice", "text": "lo publicado, LITERAL del guion, máx. 35
   palabras", "platform": "x" | "instagram" | "facebook" | "tiktok" | null (solo si se dice), "date": "fecha dicha" o
   null}}. Nunca si el guion no dice que se publicó.
+- "wanted": (videojuegos) el guion cuenta un delito o algo que hace que te busque la policía en el juego: las estrellas
+  de búsqueda. data: {{"title": "qué lo provoca, máx. 6 palabras del guion", "stars": número de estrellas SOLO si el
+  guion lo dice (1-5), si no null}}
+- "phone": (videojuegos) el guion cuenta un mensaje, una llamada o un aviso que llega al móvil del personaje. data:
+  {{"from": "quién lo manda, como se dice", "text": "el mensaje LITERAL del guion, máx. 25 palabras", "kind": "sms" |
+  "llamada"}}
+- "gps": (videojuegos) el guion lleva a un LUGAR CONCRETO del mapa del juego (una ciudad, un barrio, una misión): el
+  minimapa con la ruta y el marcador. data: {{"place": "nombre del lugar como se dice", "note": "dato corto dicho
+  (la misión, la zona) o null", "distance": "distancia dicha, como se dice, o null"}}
 - "kinetic": una frase MUY corta y potente (máx. 8 palabras, literal del guion), como máximo 2; la palabra clave entre *asteriscos* (una sola). data: {{"lines": ["…", "… *clave*"]}}
 - "receipt": el guion desglosa un coste o un precio en al menos 3 partidas con su cifra (lo que cuesta montar algo, de
   qué se compone un precio, en qué se va el dinero): un ticket que se imprime línea a línea. data: {{"title": "qué se
@@ -686,6 +698,8 @@ def clean(kind: str, data: dict[str, Any], text: str, ctx: RunContext, countries
         if date and not (_numbers(date) and said(date, text)):
             date = None
         return {"type": "post", "author": author, "text": line, "platform": platform, "date": date}
+    if kind in GAME:
+        return game_graphic(kind, data, text)
     if kind == "kinetic":
         spoken = set(re.findall(r"\w+", text.lower()))
         lines = [str(line) for line in (data.get("lines") or []) if str(line).strip()][:3]
@@ -981,6 +995,39 @@ CANDIDATES_HINT = ("Propón hasta {ask} candidatos ordenados de mejor a peor: de
 FOOTAGE_TYPES = {"strobe", "replay", "split", "spotlight"}      # these show the shot's own footage: welcome over the best clips
 
 
+def game_graphic(kind: str, data: dict[str, Any], text: str) -> dict[str, Any] | None:
+    """The video-game graphics, with only what the script says."""
+
+    if kind == "wanted":
+        title = " ".join(str(data.get("title") or "").split())
+        if not title or len(title.split()) > 7 or not said_words(title, text, 0.6):
+            return None
+        stars = _num(data.get("stars"))
+        stars = int(stars) if stars is not None and float(stars).is_integer() and 1 <= stars <= 5 \
+            and said(int(stars), text) and re.search(r"estrella|star|stern|étoile|stell|estrela", text, re.IGNORECASE) else None
+        return {"type": "wanted", "title": title, "stars": stars}
+    if kind == "phone":
+        sender = " ".join(str(data.get("from") or "").split())
+        line = " ".join(str(data.get("text") or "").split()).strip("«»\"“” ")
+        if not sender or not said_words(sender, text, 0.5) or not 2 <= len(line.split()) <= 30 \
+                or not said_words(line, text, 0.85):
+            return None
+        call = str(data.get("kind") or "") == "llamada" and re.search(r"llam|call|anruf|appel|chiam|lig", text, re.IGNORECASE)
+        return {"type": "phone", "from": sender, "text": line, "kind": "llamada" if call else "sms"}
+    if kind == "gps":
+        place = " ".join(str(data.get("place") or "").split())
+        if not place or len(place.split()) > 5 or not said_words(place, text, 0.75):
+            return None
+        note = " ".join(str(data.get("note") or "").split()) or None
+        if note and (len(note.split()) > 6 or not said_words(note, text, 0.6)):
+            note = None
+        distance = str(data.get("distance") or "").strip() or None
+        if distance and not (_numbers(distance) and said(distance, text)):
+            distance = None
+        return {"type": "gps", "place": place, "note": note, "distance": distance}
+    return None
+
+
 def reading_seconds(graphic: dict[str, Any]) -> float:
     """Time to take a graphic in: a couple of seconds to land plus ~0.3 s per word on screen."""
 
@@ -1069,8 +1116,12 @@ def plan(ctx: RunContext, sents: list[dict[str, Any]], duration: float, weak: se
     count = min(count, int(cfg.get("max", 8)))
     own = [str(t) for t in ctx.format.get("tipos") or []]             # graphics the format needs, whatever the channel
     extra = cfg.get("extra_types", PAPER)
-    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own, *(extra or [])])
-               if t in TYPES and not (ranked and t == "rank")]
+    from .canal_juego import is_game_channel
+
+    game = is_game_channel(ctx.config)
+    listed = set(cfg.get("types") or []) | set(own)
+    allowed = [t for t in dict.fromkeys([*cfg.get("types", TYPES), *own, *(extra or []), *(GAME if game else ())])
+               if t in TYPES and not (ranked and t == "rank") and (t not in GAME or game or t in listed)]
     weak, strong = weak or set(), (strong or set()) - (weak or set())
     if weak:   # one more graphic per 3 weak sentences, within the channel's maximum
         count = min(int(cfg.get("max", 8)), count + len(weak) // 3)

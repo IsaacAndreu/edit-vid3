@@ -686,7 +686,19 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "youtube": _video_youtube(work),
         "costs": _costs_by_stage(root, slug),
         "material": video_material(root, slug) if folder.is_dir() else None,
+        "punteria": _video_score(out),
     }
+
+
+def _video_score(out: Path) -> dict[str, Any] | None:
+    """The automatic reviewer's score of this video, if it has one (out/<vídeo>/revisor/revisor.json)."""
+
+    data = _json(out / "revisor" / "revisor.json") or {}
+    if data.get("skipped") or not data.get("shots"):
+        return None
+    flagged = len(data.get("flagged") or [])
+    return {"flagged": flagged, "shots": data["shots"], "per100": round(100 * flagged / max(1, data["shots"]), 1),
+            "asText": data.get("asText")}
 
 
 def proxy_report(root: Path, days: float = 7.0) -> dict[str, Any]:
@@ -1039,6 +1051,43 @@ def set_material(root: Path, slug: str, body: dict[str, Any]) -> dict[str, Any]:
         shared = material.read(root / "materiales" / channel)
         material.save(root / "materiales" / channel, channels=[*shared["channels"], *refs])
     return video_material(root, slug)
+
+
+def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
+    """«Puntería»: the automatic reviewer's score of every video that has one (out/<vídeo>/revisor/revisor.json: the
+    queue's `revisor.nota` or `revisor.enabled`, or `python -m pipeline.revisor`), per channel, oldest first, with the
+    average of the last five. Shots flagged per 100 with a picture, and the shots that ended as text."""
+
+    from .revisor import PROBLEMS
+
+    rows: list[dict[str, Any]] = []
+    for path in (root / "out").glob("*/revisor/revisor.json") if (root / "out").is_dir() else []:
+        data = _json(path) or {}
+        if data.get("skipped") or not data.get("shots"):
+            continue
+        slug = path.parent.parent.name
+        channel = video_channel(root, slug) or "—"
+        if mine is not None and channel not in mine:
+            continue
+        counts: dict[str, int] = {}
+        for row in data.get("flagged") or []:
+            counts[row.get("problem", "?")] = counts.get(row.get("problem", "?"), 0) + 1
+        rows.append({"slug": slug, "channel": channel, "at": time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime)),
+                     "shots": data["shots"], "flagged": len(data.get("flagged") or []),
+                     "per100": round(100 * len(data.get("flagged") or []) / max(1, data["shots"]), 1),
+                     "asText": data.get("asText"), "before": data.get("before"), "sentBack": data.get("sentBack"),
+                     "mode": data.get("mode") or "informe", "counts": counts, "usd": data.get("usd", 0)})
+    rows.sort(key=lambda r: r["at"])
+    channels_out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        entry = channels_out.setdefault(r["channel"], {"channel": r["channel"], "videos": []})
+        entry["videos"].append(r)
+    for entry in channels_out.values():
+        last = entry["videos"][-5:]
+        entry["recent"] = round(sum(v["per100"] for v in last) / len(last), 1)
+        entry["first"] = entry["videos"][0]["per100"]
+    return {"channels": sorted(channels_out.values(), key=lambda e: e["channel"]), "problems": PROBLEMS,
+            "videos": len(rows)}
 
 
 def channel_material(root: Path, channel: str) -> dict[str, Any]:
@@ -1437,7 +1486,7 @@ def spending(root: Path, days: int = 14, owner: str | None = None) -> list[dict[
 # one of their channels; the ones with a channel in the body (a new video, moving one), that channel too.
 PARTNER_GET = ("/api/overview", "/api/gasto", "/api/search", "/api/upload", "/api/upload/dates", "/api/factura.csv",
                "/api/voices", "/api/voices/search", "/api/cuenta", "/api/agenda", "/api/scripts", "/api/board", "/api/radar",
-               "/api/stats", "/api/spending", "/api/canales")
+               "/api/stats", "/api/spending", "/api/canales", "/api/punteria")
 PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/subir", "/api/hook", "/api/scenes", "/api/imagen",
                 "/api/voices", "/api/voices/test", "/api/channels", "/api/telegram/link", "/api/telegram/unlink",
                 "/api/agenda", "/api/scripts/draft", "/api/scripts/similar", "/api/board/idea", "/api/board/temas",
@@ -1852,6 +1901,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         return self._ok(partner_agenda(root, mine))
                     if path == "/api/canales":
                         return self._ok(cached(f"canales:{root}:{','.join(mine)}", 30, lambda: channels_health(root, mine)))
+                    if path == "/api/punteria":
+                        return self._ok(punteria(root, mine))
                     if path == "/api/radar":
                         return self._ok(partner_radar(root, mine))
                     if path == "/api/spending":
@@ -2141,6 +2192,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     found = _json(root / ytbench.OUTPUT)
                     return self._ok({"result": found, "job": job_state(root, "velocidad-youtube")})
+                if path == "/api/punteria":                 # the automatic reviewer's score per video and channel
+                    return self._ok(punteria(root))
                 if path == "/api/errors":
                     from . import feedback
 

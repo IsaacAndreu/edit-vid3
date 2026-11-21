@@ -296,6 +296,34 @@ def event_masters(shots: list[Any], verdicts: dict[str, Any], candidates: dict[s
     return masters
 
 
+def per_idea(doubtful: list[Any], hook_seconds: float) -> tuple[list[Any], dict[str, str]]:
+    """(the shots to judge now, {follower shot → the leading shot of its idea}): the first doubtful shot of each idea
+    outside the hook leads; the hook and shots without an idea are judged as always."""
+
+    leaders: list[Any] = []
+    followers: dict[str, str] = {}
+    first: dict[str, str] = {}
+    for shot in doubtful:
+        idea = getattr(shot, "idea", None)
+        if idea is None or shot.start < hook_seconds or idea.kind == "rotulo":
+            leaders.append(shot)
+        elif idea.id in first:
+            followers[shot.id] = first[idea.id]
+        else:
+            first[idea.id] = shot.id
+            leaders.append(shot)
+    return leaders, followers
+
+
+def following(plan: list[Option], accepted: list[Option]) -> list[Option]:
+    """A follower's own options from the sources the judge accepted for its idea's first shot, in the judge's order."""
+
+    rank: dict[str, int] = {}
+    for n, option in enumerate(accepted):
+        rank.setdefault(option.candidateId, n)
+    return sorted((o for o in plan if o.candidateId in rank), key=lambda o: rank[o.candidateId])
+
+
 def continuation(shot: Any, shots: list[Any], selections: list[Any], picked: dict[str, Option], judged: list[Option],
                  master: str | None, cfg: dict[str, Any]) -> Option | None:
     """judge.continue_action (true): the previous shot took a strong moment of its event's master video (motion or the
@@ -819,18 +847,46 @@ def run(ctx: RunContext) -> None:
     errors: list[str] = []
     failed_shots: set[str] = set()
     over_budget: Exception | None = None
-    with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 4))) as pool:
-        for shot, future in [(s, pool.submit(judge, s)) for s in doubtful]:
-            try:
-                future.result()
-            except Exception as error:  # a failed call falls back to the local ranking for that shot
-                from .budget import BudgetReached, VideoOverBudget
 
-                if isinstance(error, (BudgetReached, VideoOverBudget)):
-                    over_budget = over_budget or error   # a cap is the run's problem, never one shot's
-                    continue
-                errors.append(f"{shot.id}: {str(error)[:160]}")
-                failed_shots.add(shot.id)
+    def judge_all_of(batch: list[Shot]) -> None:
+        nonlocal over_budget
+        with ThreadPoolExecutor(max_workers=int(cfg.get("parallel", 4))) as pool:
+            for shot, future in [(s, pool.submit(judge, s)) for s in batch]:
+                try:
+                    future.result()
+                except Exception as error:  # a failed call falls back to the local ranking for that shot
+                    from .budget import BudgetReached, VideoOverBudget
+
+                    if isinstance(error, (BudgetReached, VideoOverBudget)):
+                        over_budget = over_budget or error   # a cap is the run's problem, never one shot's
+                        continue
+                    errors.append(f"{shot.id}: {str(error)[:160]}")
+                    failed_shots.add(shot.id)
+
+    # judge.per_idea (off): one decision per idea — its first shot is judged, the others take what the judge
+    # accepted there (the same source, their own moment of it) and are judged on their own only when their
+    # options have none of it. The hook is always judged shot by shot.
+    leaders, followers = per_idea(doubtful, hook_seconds) if cfg.get("per_idea", False) else (doubtful, {})
+    judge_all_of(leaders)
+    alone: list[Shot] = []
+    inherited = 0
+    for shot in doubtful:
+        leader = followers.get(shot.id)
+        if leader is None:
+            continue
+        taken = verdicts.get(leader)
+        follows = following(plans[shot.id], taken[2] if taken else [])
+        if follows:
+            info = {**taken[0], "reason": f"misma idea que {leader}: " + str(taken[0].get("reason", ""))[:300],
+                    "ranking": taken[0].get("ranking", [])[:1], "inherited": leader}
+            verdicts[shot.id] = (info, follows, follows)
+            inherited += 1
+        else:
+            alone.append(shot)
+    judge_all_of(alone)
+    if followers:
+        print(f"   Una decisión por idea: {inherited} planos siguen la fuente de su idea sin llamar al juez; "
+              f"{len(alone)} se juzgan aparte")
     if over_budget is not None:
         raise over_budget
     from .budget import dead_key
@@ -932,7 +988,8 @@ def run(ctx: RunContext) -> None:
 
     stats: dict[str, int | float] = {
         "shots": len(selections),
-        "judgeCalls": len(verdicts),
+        "judgeCalls": sum(1 for info, _, _ in verdicts.values() if "inherited" not in info),
+        "byIdea": sum(1 for info, _, _ in verdicts.values() if "inherited" in info),
         "judgeErrors": len(errors),
         "byJudge": sum(s.decidedBy == "judge" for s in selections),
         "byScore": sum(s.decidedBy == "score" for s in selections),

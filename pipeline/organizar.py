@@ -237,6 +237,90 @@ def _words_per_video(root: Path, channel: str) -> int:
     return int(sum(counts) / len(counts)) if counts else 0
 
 
+# guion.estructura: how every block of a channel's scripts is built (a preset name or your own text). The reference
+# channels repeat one shape video after video; a draft that follows it is shown with what was filmed.
+STRUCTURES = {
+    "juego_errores": (
+        "1. El error o el mito, dicho como lo dice la gente («todo el mundo cree que…»).\n"
+        "2. La fuente: dónde se ve de verdad (el tráiler y su minuto, la captura oficial, la misión), con su nombre.\n"
+        "3. El ejemplo en el juego: la escena concreta que lo demuestra, descrita para poder enseñarla.\n"
+        "4. Cómo evitarlo o qué significa de verdad, en una o dos frases claras.\n"
+        "Cada bloque cabe en 45-90 segundos y el siguiente arranca con otro error, sin rótulos de capítulo."),
+    "juego": (
+        "1. Lo que se ve: una escena, un tráiler o una captura concreta del juego, con su nombre y su minuto.\n"
+        "2. Qué significa: el detalle que casi nadie ha visto y por qué importa.\n"
+        "3. La comparación: lo real que imita, o lo que hacía el juego anterior.\n"
+        "4. Qué esperar: la consecuencia para quien lo juegue."),
+    "atleta": (
+        "1. Gancho con el momento cumbre: la competición, la fecha, el lugar y la nota o el resultado.\n"
+        "2. El origen, con fechas y lugares que se puedan rotular.\n"
+        "3. El ascenso, contado con competiciones concretas (cada una con su año y su sede).\n"
+        "4. La caída o el obstáculo, con el momento grabado en que pasó.\n"
+        "5. El momento cumbre narrado paso a paso, como se vio en directo.\n"
+        "6. Qué fue después, con un dato o una cita literal."),
+}
+
+
+def script_structure(config: dict[str, Any], has_format: bool = False) -> str:
+    """The channel's `guion.estructura` (a STRUCTURES name or its own text); a channel about a video game with no
+    format of its own gets «juego»; else ''."""
+
+    from .canal_juego import is_game_channel
+
+    wanted = str((config.get("guion") or {}).get("estructura") or "").strip()
+    if wanted:
+        return STRUCTURES.get(wanted, wanted)
+    if not has_format and is_game_channel(config):
+        return STRUCTURES["juego"]
+    return ""
+
+
+MATERIAL_BRIEF = ("MATERIAL QUE YA EXISTE (lo que ya funcionó en otros vídeos y lo que el canal ha subido): cuando "
+                  "cuentes algo, apóyalo en estos momentos grabados si encajan, con su fecha y su lugar; no los "
+                  "inventes ni los nombres si no salen en la historia.")
+
+
+def existing_material(root: Path, channel: str, text: str, per_entity: int = 6, entities: int = 4,
+                      clips: int = 20) -> str:
+    """What can already be shown for an idea, without any search: the library's best sources for the people and
+    topics the idea names (cache/library: sources that went on screen or were approved before), and the tags of the
+    clips the channel uploaded as material de partida (materiales/<canal>/…). '' when there is nothing."""
+
+    from . import library, material
+    from .sourcing.common import tokens
+
+    said = tokens(text)
+    lines: list[str] = []
+    try:
+        known = library.overview(root)
+    except Exception:
+        known = []
+    matched = 0
+    for entry in known:
+        words = {t for t in tokens(entry["name"]) if len(t) >= 4}
+        if not words or not words <= said or matched >= entities:
+            continue
+        try:
+            sources = [s for s in library.entity(root, entry["key"])["sources"] if s["kind"] == "videos"][:per_entity]
+        except (FileNotFoundError, KeyError, ValueError):
+            continue
+        if not sources:
+            continue
+        matched += 1
+        lines.append(f"{entry['name']}:")
+        lines += [f"- {s['title'][:110]}" + (f" ({s['channel'][:40]})" if s.get("channel") else "") for s in sources]
+    tagged: list[str] = []
+    base = root / "materiales" / channel if channel else None
+    for folder in ([base, *sorted(p for p in base.iterdir() if p.is_dir())] if base and base.is_dir() else []):
+        for tags in material.read(folder)["clips"].values():
+            if tags.strip() and tags.strip() not in tagged:
+                tagged.append(tags.strip())
+    if tagged:
+        lines.append("Clips propios del canal:")
+        lines += [f"- {t[:120]}" for t in tagged[:clips]]
+    return (MATERIAL_BRIEF + "\n" + "\n".join(lines)) if lines else ""
+
+
 def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, Any]:
     """{title, script, words} for the «Nuevo vídeo» form."""
 
@@ -271,6 +355,9 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
         brief.append(f"IDIOMA: escribe el guion y el título en {name}, natural para ese público (nunca traducido).")
     if writing:
         brief.append(f"ESTRUCTURA OBLIGATORIA DEL FORMATO «{format_name}»:\n{writing}")
+    structure = script_structure(ctx.config, has_format=bool(writing))
+    if structure:
+        brief.append(f"ESTRUCTURA DEL CANAL (cada bloque del guion sigue estos pasos):\n{structure}")
     from .simulacion import writing as simulation_writing
 
     from . import atlas, cine, mapas
@@ -292,6 +379,10 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     reference = _reference_script(root, channel)
     if reference:
         brief.append(f"GUION DE REFERENCIA DEL CANAL (solo el estilo):\n{reference}")
+    existing = existing_material(root, channel, " ".join(
+        [title, str(idea.get("note") or ""), str(idea.get("angle") or ""), " ".join(idea.get("outline") or [])]))
+    if existing:                                 # what can already be shown: the script leans on it
+        brief.append(existing)
     result = complete_json(ctx, stage="guiones", section="planner", system=DRAFT_SYSTEM, user="\n\n".join(brief),
                            max_tokens=max(9000, int(words * 2.4)), use_cache=False)       # long documentaries too
     script = str(result.get("script") or "").strip()

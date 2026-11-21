@@ -411,6 +411,12 @@ def _finish(ctx: RunContext, timeline: Timeline, titles: list[str], thumbs: list
     notify.video_ready(ctx, title=titles[0], duration=timeline.durationInFrames / timeline.fps, verdict=verdict,
                        details=("\n".join(card.splitlines()[1:]) + extra).strip(),
                        thumbnails=thumbs or ([preview] if preview else []), titles=titles)
+    try:                                                # then what the revisor still flags, with its sheets
+        from .revisor import still_wrong
+
+        still_wrong(ctx)
+    except Exception as error:
+        print(f"Aviso: no se pudieron mandar las hojas del revisor ({type(error).__name__})")
 
 
 def outputs(ctx: RunContext) -> list[Path]:

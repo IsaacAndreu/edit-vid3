@@ -559,7 +559,8 @@ async function videoPage(slug) {
   show(`
     <div class="vhead"><div class="mw0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
         <div class="meta">${esc(v.channel)}${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">(elegido por el guion)</span>` : ""}` : ""}
-          ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API</div></div>
+          ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API
+          ${v.punteria ? ` · <a href="#/punteria" title="${v.punteria.flagged} de ${v.punteria.shots} planos marcados por el revisor automático${v.punteria.asText != null ? ` · ${v.punteria.asText} en texto` : ""}">puntería: ${v.punteria.per100} marcados por 100</a>` : ""}</div></div>
       <div class="primary">${primary}${done.timeline && v.status !== "haciendo" ? `<a class="btn" href="#/editor/${encodeURIComponent(v.slug)}" title="Cambiar planos, cortes, transiciones, efectos, textos y música antes del render">${icon("scissors")} Editar</a>` : ""}
         <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ${icon("down")}</button><div>${secondary.join("")}</div></span></div></div>
     ${whyView}

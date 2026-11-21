@@ -537,6 +537,13 @@ def stage_run(ctx: RunContext, review_fn: Any = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     target = out / "revisor.json"
     if not cfg.get("enabled", False):
+        if cfg.get("nota", False):
+            # revisor.nota: the score only (the studio's «Puntería» panel), nothing sent back — 1-2 cents a video
+            look = review_fn or (lambda: review(ctx.root, ctx.slug))
+            noted = look()
+            target.write_text(json.dumps({**noted, "mode": "nota"}, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"   Revisor (nota): {len(noted.get('flagged') or [])} de {noted.get('shots', 0)} planos marcados")
+            return
         target.write_text(json.dumps({"skipped": "revisor.enabled apagado"}), encoding="utf-8")
         return
     look = review_fn or (lambda: review(ctx.root, ctx.slug))
@@ -559,7 +566,7 @@ def stage_run(ctx: RunContext, review_fn: Any = None) -> None:
         final, again = look(), True
     elif auto.is_file():
         print("   Revisor: ya devolvió sus planos al relleno una vez; no se repite")
-    summary = {**final, "before": len(first.get("flagged") or []), "sentBack": len(wrong) if again else 0,
+    summary = {**final, "mode": "cola", "before": len(first.get("flagged") or []), "sentBack": len(wrong) if again else 0,
                "asText": len(as_text) if again else 0}
     target.write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"   Revisor: {summary['before']} marcados antes, {len(final.get('flagged') or [])} después")
@@ -652,6 +659,42 @@ def send_telegram(root: Path, slug: str, result: dict[str, Any], limit: int = 8)
             f"{len(result['flagged'])} de {result['shots']} planos marcados · {result['usd']:.2f} $\n"
             + "\n".join(f"• {k}: {n}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
             + "\n\nMira las hojas: ¿lo marcado está mal de verdad?")
+    sheets = sorted((ctx.out_dir / OUT_DIR).glob("hoja-*.jpg"), key=lambda p: int(p.stem.split("-")[1]))[:limit]
+    return notify.telegram(ctx, text, sheets)
+
+
+
+def still_wrong(ctx: RunContext, limit: int = 8) -> bool:
+    """After «vídeo listo»: what the revisor still flags in the finished video, with its sheets, to the phone.
+
+    Only when the revisor ran in the queue (revisor.enabled or revisor.nota) and something is still flagged;
+    `revisor.aviso: false` turns it off. Nothing is sent when Telegram is not configured."""
+
+    from . import notify
+
+    if not dict(ctx.section("revisor") or {}).get("aviso", True):
+        return False
+    try:
+        result = json.loads((ctx.out_dir / OUT_DIR / "revisor.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return False
+    flagged = result.get("flagged") or []
+    if result.get("skipped") or not flagged:
+        return False
+    counts: dict[str, int] = {}
+    for row in flagged:
+        name = PROBLEMS.get(row.get("problem"), str(row.get("problem")))
+        counts[name] = counts.get(name, 0) + 1
+    fixed = ""
+    if result.get("mode") == "cola" and result.get("sentBack"):
+        fixed = f" (antes {result.get('before')}; {result['sentBack']} planos ya se cambiaron solos)"
+    shots = int(result.get("shots") or 0)
+    text = (f"🔎 Lo que sigue mal en {ctx.slug}: {len(flagged)} de {shots} planos{fixed}\n"
+            + "\n".join(f"• {k}: {n}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
+            + "\n\nEn las hojas, cada plano con su minuto, su frase y la prueba. Cámbialos en Revisar clips.")
+    link = notify.studio_link(ctx, f"revisar/{ctx.slug}")
+    if link:
+        text += f"\n{link}"
     sheets = sorted((ctx.out_dir / OUT_DIR).glob("hoja-*.jpg"), key=lambda p: int(p.stem.split("-")[1]))[:limit]
     return notify.telegram(ctx, text, sheets)
 

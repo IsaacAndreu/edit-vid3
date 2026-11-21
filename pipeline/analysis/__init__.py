@@ -422,6 +422,39 @@ def said_moment(captions: list[tuple[float, float, str]], moment: str | None, en
     return at if best >= min_score else None
 
 
+def said_target(shot: Any, more: bool = False) -> str | None:
+    """What a shot's «said» window looks for in the source's subtitles: its narrated moment; with
+    `analysis.said_more` (off: more windows to download) also, for a literal idea, what must be seen (its visual
+    intent), and for any other shot about a named person or thing, where the source names it ("" = names only)."""
+
+    broll = getattr(shot, "broll", None)
+    if broll is None:
+        return None
+    if broll.moment:
+        return broll.moment
+    if not more:
+        return None
+    idea = getattr(shot, "idea", None)
+    if idea is not None and idea.kind == "rotulo":
+        return None
+    if idea is not None and idea.kind == "literal":
+        return broll.visualIntent
+    return "" if broll.entities else None
+
+
+def said_name(captions: list[tuple[float, float, str]], entities: list[str], needed: float) -> float | None:
+    """The first second where the source names the shot's main person or thing (and keeps talking about it): for
+    a long report or documentary, the part about them rather than whatever CLIP liked."""
+
+    if not entities or not captions:
+        return None
+    for start, _, _ in captions:
+        near = " ".join(text for a, b, text in captions if b >= start and a <= start + needed + 6)
+        if entity_match(near, entities[:1]) >= 1.0:
+            return start
+    return None
+
+
 def inputs(ctx: RunContext) -> list:
     return [ctx.work_dir / "shots.json", ctx.work_dir / "candidates"]
 
@@ -748,8 +781,10 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     # in its best `said_videos` videos (their subtitles were already read for the scores: no new searches)
     said = 0
     if cfg.get("said_windows", True) and youtube is not None:
+        more = bool(cfg.get("said_more", False))
         for shot in todo:
-            if not (shot.broll and shot.broll.moment):
+            target = said_target(shot, more)
+            if target is None:
                 continue
             needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
             seen_videos: list[Candidate] = []
@@ -765,7 +800,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 except Exception as error:
                     print(f"   {c.id}: subtítulos no disponibles ({type(error).__name__}: {str(error)[:100]})")
                     continue
-                t = said_moment(captions, shot.broll.moment, shot.broll.entities, needed)
+                t = (said_moment(captions, target, shot.broll.entities, needed) if target else
+                     said_name(captions, shot.broll.entities, needed))
                 if t is None:
                     continue
                 duration = float(c.durationSeconds or 0)
@@ -819,7 +855,9 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     by_index = 0
     if cfg.get("index_windows", True):
         from ..indice import best_scene, scenes_for, shot_words
-        from ..material import chosen_material
+
+        indexed = index_sources(ctx)
+        library_indexed = indexed.library
 
         for shot in todo:
             if not shot.broll:
@@ -829,7 +867,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             seen_sources: set[str] = set()
             for option in list(coarse[shot.id]):
                 c = option["candidate"]
-                if c.kind != "video" or c.id in seen_sources or not chosen_material(c):
+                if c.kind != "video" or c.id in seen_sources or not indexed(c):
                     continue
                 seen_sources.add(c.id)
                 try:
@@ -851,7 +889,8 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                 round_one.append(job)
                 by_index += 1
         if by_index:
-            print(f"   Escenas del material de partida por su descripción: {by_index} ventanas")
+            print(f"   Escenas del material de partida{' y de la biblioteca' if library_indexed else ''} por su "
+                  f"descripción: {by_index} ventanas")
     print(f"   Pasada fina: {len(set(round_one))} ventanas de ~{2 * pad + 5:.0f} s a 360p"
           + (f" ({len(hd_jobs)} de ellas ya en HD, hd_windows_top {hd_top})" if hd_jobs else "")
           + (f" (adaptativa: los {first} mejores vídeos de cada plano primero)" if adaptive else ""))
@@ -929,3 +968,31 @@ def validate(ctx: RunContext) -> bool:
         ShotScores.model_validate_json((ctx.work_dir / OUTPUT / f"{shot.id}.json").read_text(encoding="utf-8"))
     json.loads((ctx.work_dir / OUTPUT / SUMMARY).read_text(encoding="utf-8"))
     return True
+
+
+def index_sources(ctx: Any) -> Any:
+    """Which video candidates get their scenes indexed (pipeline/indice.py): the material de partida always; with
+    `indice.library` (off: one cheap vision call per new source, kept for every video after) also library sources
+    (people and topics that worked before), up to `indice.library_sources` (12) a video. `.library`: those taken."""
+
+    from ..material import chosen_material
+
+    own = dict(ctx.section("indice") or {})
+    left = [int(own.get("library_sources", 12)) if own.get("library", False) else 0]
+    taken: set[str] = set()
+
+    def indexed(c: Any) -> bool:
+        if chosen_material(c):
+            return True
+        if not str(getattr(c, "query", "") or "").startswith("biblioteca:"):
+            return False
+        if c.id in taken:
+            return True
+        if left[0] <= 0:
+            return False
+        left[0] -= 1
+        taken.add(c.id)
+        return True
+
+    indexed.library = taken          # type: ignore[attr-defined]
+    return indexed

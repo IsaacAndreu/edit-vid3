@@ -315,6 +315,41 @@ def _usd_per_gb(root: Path) -> float:
         return DEFAULT_USD_PER_GB
 
 
+def hls_misses(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The ranges that went another way because no HLS format fitted: how many, how many of them had HLS «por probar»
+    (yt-dlp's format test), by request (analysis 360p or HD clip) and how many came by HLS on the retry without the
+    test (sourcing.youtube.hls_retry_untested)."""
+
+    out: dict[str, Any] = {"rows": 0, "untested": 0, "videos": set(), "byPrefix": {}, "retried": 0}
+    for row in rows:
+        if str(row.get("route") or "").endswith("-sin-prueba"):
+            out["retried"] += 1
+        why = str(row.get("notHls") or "")
+        if not why.startswith("ningún formato HLS encaja"):
+            continue
+        out["rows"] += 1
+        out["untested"] += "por probar" in why
+        if row.get("video"):
+            out["videos"].add(str(row["video"]))
+        kind = ("análisis 360p" if "height<=360" in why else "clip HD" if re.search(r"height<=(?:720|1080)", why)
+                else "otro")
+        out["byPrefix"][kind] = out["byPrefix"].get(kind, 0) + 1
+    out["videos"] = len(out["videos"])
+    return out
+
+
+def hls_miss_lines(m: dict[str, Any]) -> list[str]:
+    lines = [f"- {m['rows']} tramos de {m['videos']} vídeos: "
+             + ", ".join(f"{k} {n}" for k, n in sorted(m["byPrefix"].items(), key=lambda kv: -kv[1])),
+             f"- Con HLS «por probar» (vídeo subido ≤ 2 días antes de extraerlo): {m['untested']} de {m['rows']}"]
+    if m["retried"]:
+        lines.append(f"- Salvados al repetir la selección sin la prueba de formatos: {m['retried']}")
+    elif m["untested"]:
+        lines.append("- Para salvarlos: `sourcing.youtube.hls_retry_untested: true` en config.local.yaml (sin peticiones "
+                     "nuevas: repite la selección con la extracción del disco)")
+    return lines
+
+
 def report(root: Path, days: float = 7.0) -> Path:
     """Every video's requests of the last `days`, together and per video → out/_youtube_stats.md."""
 
@@ -352,6 +387,9 @@ def report(root: Path, days: float = 7.0) -> Path:
             for e in hourly(tagged):
                 text.append(f"| {e['hour']} | {e['requests']} | {e['failed']} | {e['refused']} | {e['files_ok']}/{e['files']} | "
                             f"{e['mb']} | {', '.join(e['videos'])} |")
+    misses = hls_misses(everything)
+    if misses["rows"]:
+        text += ["", "## «Ningún formato HLS encaja»", "", *hls_miss_lines(misses)]
     breakdown = failure_breakdown([{**row, "_slug": slug} for slug, rows in per_video.items() for row in rows])
     if breakdown:
         text += ["", "## De dónde salen los fallos poco claros", "", *breakdown_lines(breakdown)]

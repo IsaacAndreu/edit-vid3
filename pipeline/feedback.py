@@ -292,8 +292,45 @@ def blocked_channels(root: Path, after: int = BLOCK_AFTER) -> dict[str, int]:
     return {names[k]: n for k, n in sorted(wrong.items(), key=lambda kv: -kv[1]) if n >= after and n > right.get(k, 0)}
 
 
-def load_learned(root: Path) -> list[str]:
-    """Before a video's stages: the channels you taught it to avoid go into the blocklist of every search/choice."""
+REVISOR_FAULTS = {"dibujo_animado", "texto_marca_agua"}   # what the revisor sees of the source itself, not the match
+
+
+def revisor_channels(root: Path, after: int = BLOCK_AFTER, confidence: float = 0.8) -> dict[str, int]:
+    """Source channel → shots the revisor flagged for a fault of the source itself (a cartoon, burnt-in text or a
+    watermark) with at least `confidence`, over every reviewed video; the channels with at least `after` of them
+    in two or more videos, unless your «Correcta» labels for that channel are more."""
+
+    faults: dict[str, int] = {}
+    videos: dict[str, set[str]] = {}
+    names: dict[str, str] = {}
+    for path in sorted((root / "out").glob("*/revisor/revisor.json")):
+        try:
+            rows = json.loads(path.read_text("utf-8")).get("flagged") or []
+        except (OSError, ValueError, AttributeError):
+            continue
+        for row in rows:
+            name = str(row.get("channel") or "").strip()
+            if (not name or row.get("problem") not in REVISOR_FAULTS or row.get("source") not in (None, "youtube")
+                    or float(row.get("confidence") or 0) < confidence):
+                continue
+            key = name.casefold()
+            names.setdefault(key, name)
+            faults[key] = faults.get(key, 0) + 1
+            videos.setdefault(key, set()).add(path.parent.parent.name)
+    if not faults:
+        return {}
+    right: dict[str, int] = {}
+    for entry in _with_channels(root):
+        if entry.get("verdict") == "correcta" and entry.get("channel"):
+            key = str(entry["channel"]).strip().casefold()
+            right[key] = right.get(key, 0) + 1
+    return {names[k]: n for k, n in sorted(faults.items(), key=lambda kv: -kv[1])
+            if n >= after and len(videos[k]) >= 2 and n > right.get(k, 0)}
+
+
+def load_learned(root: Path, from_revisor: bool = False) -> list[str]:
+    """Before a video's stages: the channels you taught it to avoid go into the blocklist of every search/choice;
+    with `revisor.aprender` also those the revisor keeps finding cartoons or watermarks in (revisor_channels)."""
 
     from .sourcing import common
 
@@ -301,6 +338,11 @@ def load_learned(root: Path) -> list[str]:
         names = list(blocked_channels(root))
     except Exception:            # a broken labels file never stops a video
         names = []
+    if from_revisor:
+        try:
+            names += [n for n in revisor_channels(root) if n.casefold() not in {m.casefold() for m in names}]
+        except Exception:
+            pass
     common.LEARNED_BLOCKED_CHANNELS = {n.casefold() for n in names}
     return names
 
@@ -354,6 +396,12 @@ def summary(root: Path) -> dict[str, Any]:
     if blocked:
         tips.append("Canales de YouTube que ya no se usan por tus correcciones: "
                     + ", ".join(f"{name} ({n} mal)" for name, n in blocked.items()) + ".")
+    seen = {k.casefold() for k in blocked}
+    revised = {k: n for k, n in revisor_channels(root).items() if k.casefold() not in seen}
+    if revised:
+        tips.append("El revisor encuentra dibujos o marcas de agua una y otra vez en: "
+                    + ", ".join(f"{name} ({n})" for name, n in revised.items())
+                    + ". Con revisor.aprender: true dejan de usarse.")
     if per_reason.get("persona_equivocada", 0) >= 3:
         tips.append("Muchos clips con otra persona: sube fallback.identity_scope a «all» o añade fotos del atleta a la "
                     "biblioteca para que la comprobación de caras tenga con qué comparar.")

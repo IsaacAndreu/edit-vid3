@@ -42,6 +42,8 @@ planner:
   #                          planifiquen desde entonces. Se mide con: python -m pipeline.revisor <vídeo> --base
   #                          Con ideas, timeline.idea_lines: ambiente (por defecto) | siempre | no → la línea de
   #                          pantalla de cada idea; timeline.idea_facts (true) → sus datos como rótulo.
+  #                          timeline.idea_facts_max (1) → cuántos datos de cada idea se rotulan (uno por plano);
+  #                          timeline.idea_quotes (apagado) → la cita literal de una idea («…») como tarjeta.
   #                          fallback.concept_stock: true (apagado) → stock de concepto sin caras para ideas de
   #                          ambiente, siempre pasado por el juez (una llamada más por plano así).
 
@@ -116,6 +118,9 @@ sourcing:
     refused_hours_residential: 3       # un vídeo con «no eres un bot» desde varias IPs del proxy se vuelve a pedir pasadas estas horas (en casa: refused_days 7)
     timeout_retries_residential: 1     # un timeout por el proxy residencial: tantas veces más desde otra sesión (otra IP) antes de darlo por perdido
     hls_ranges: true           # tramos por HLS con corte exacto: las descargas HTTPS de ffmpeg YouTube las frena a ~30 KB/s
+    # hls_retry_untested: false # «ningún formato HLS encaja» por formatos HLS «por probar» (vídeos subidos ≤ 2 días
+    #                          # antes): repite la selección una vez sin la prueba, sin peticiones nuevas. Mídelo
+    #                          # con python main.py --youtube-stats 1 («Ningún formato HLS encaja»)
     query_merge: 0.8           # búsquedas casi iguales de dos planos (80 % de palabras en común, mismo año) → una sola
     max_details_per_shot: 6    # vídeos como mucho a los que se piden detalles por plano; con 6 sin 3 válidos, al plano dibujado/alternativo
     force_ipv4: true           # con algunos proveedores YouTube va lentísimo por IPv6 (python main.py --probar-youtube lo compara)
@@ -149,6 +154,8 @@ analysis:
   moments_per_video: 2             # mejores momentos por vídeo en la pasada gruesa
   said_windows: true              # una ventana más donde los subtítulos de la fuente DICEN el momento del plano
   said_videos: 3                   # en cuántos de sus mejores vídeos se busca
+  # said_more: false              # también en ideas literales (lo que tiene que verse) y en planos sobre alguien con
+  #                                # nombre (donde la fuente lo nombra): más ventanas que bajar, sin búsquedas nuevas
   fine_windows: 2                  # ventanas por plano que se descargan a 360p (pasada fina)
   extra_windows_with_entities: 1   # +1 si el plano nombra un lugar/persona/marca concreta
   window_padding: 2.0              # s alrededor del momento elegido
@@ -190,6 +197,9 @@ judge:
                                    # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
   lessons_refresh: 10              # las lecciones de «Errores» se renuevan cada 10 correcciones nuevas (si no, cada etiqueta invalida la caché del juez)
   # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
+  # per_idea: false           # con planner.ideas: el juez decide una vez por idea (su primer plano); los demás
+  #                           # planos toman su momento de la misma fuente y solo se juzgan si no la tienen.
+  #                           # Menos llamadas; mídelo con python -m pipeline.revisor <antes> <después> --base
   # model_literal: gpt-5-mini   # con planner.ideas: un modelo más fuerte solo en las ideas literales (lo que tiene
   #                              que verse tal cual); usd_per_mtok_literal: {input: …, output: …} para el gasto
   # usd_per_mtok_rest: {input: …, output: …}        # los precios de model_rest (para que el gasto de API salga bien)
@@ -261,6 +271,11 @@ content:
                     fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun,
                     excel, microsoft word, powerpoint, google sheets, spreadsheet, hoja de cálculo, photoshop,
                     gymnast icons]   # canales de la competencia: su material ya está editado
+
+# guion.estructura (en el perfil del canal): cómo se construye cada bloque de sus borradores de guion. Un nombre
+# (juego_errores: error → fuente → ejemplo → cómo evitarlo; juego; atleta) o tu propio texto. Un canal de
+# videojuegos sin formato propio usa «juego». Ver pipeline/organizar.py (STRUCTURES).
+# guion: {estructura: juego_errores}
 
 ideas:
   my_channel: ""                   # tu canal, p. ej. "@TuCanal" (sus mejores vídeos también inspiran las ideas)
@@ -410,6 +425,9 @@ queue:                             # cola nocturna (python main.py --all)
 #   usd_per_mtok: {input: 0.25, output: 2.0}
 #   max_usd: 1.0             # tope por vídeo
 #   shots_per_sheet: 8
+#   aprender: false          # los canales en que el revisor ve dibujos o marcas de agua (3+ veces, 2+ vídeos) dejan de usarse
+#   aviso: true              # al acabar, lo que sigue marcado y sus hojas al Telegram del canal
+#   nota: false              # solo la nota de cada vídeo (panel «Puntería»), sin cambiar nada: 1-2 céntimos por vídeo
 #   enabled: false           # en la cola, entre el montaje y la QA (bloque 3.3): lo que marque vuelve UNA vez al
 #                            relleno (work/<vídeo>/revision.auto.json) y se rehacen relleno, apertura y montaje.
 #                            Repetidos y rotos siempre; en ideas literales lo que marque con min_confidence (0.85);
@@ -433,6 +451,9 @@ queue:                             # cola nocturna (python main.py --all)
 #   scene_cut: 0.82        # parecido mínimo entre miniaturas seguidas para seguir en la misma escena
 #   max_scene_seconds: 20
 #   per_sheet: 30          # escenas por llamada al modelo
+#   library: false         # también las fuentes de la biblioteca (personas y temas que ya funcionaron): una
+#                          # llamada barata por fuente nueva, que queda para siempre
+#   library_sources: 12    # como mucho, fuentes nuevas de la biblioteca por vídeo
 
 qa:
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)

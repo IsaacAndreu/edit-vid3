@@ -226,3 +226,84 @@ def test_your_labels_and_the_reviewers_are_both_read_yours_win(tmp_path):
     (tmp_path / feedback.REVISION).write_text(json.dumps({"wrong": {"s002": {"reason": "persona_equivocada"}}}))
     assert feedback.wrong_shots(tmp_path) == {"s001": "Repetido", "s002": "Sale otra persona"}
     assert feedback.no_borrow(tmp_path) == {"s009"}
+
+
+def test_the_score_of_every_video_and_the_panel(tmp_path):
+    """1: with revisor.nota the stage scores the edit without sending anything back; «Puntería» gathers the scores per
+    channel (the last five averaged) and each video's page shows its own."""
+
+    import os
+    import time
+
+    from pipeline import web
+
+    (tmp_path / "config.yaml").write_text("revisor: {nota: true}\n")
+    (tmp_path / "materiales" / "gimnasia" / "a").mkdir(parents=True)
+    (tmp_path / "materiales" / "gimnasia" / "config.yaml").write_text("canal: gimnasia\n")
+    (tmp_path / "canales").mkdir()
+    (tmp_path / "canales" / "gimnasia.yaml").write_text("{}\n")
+    ctx = RunContext.create("a", root=tmp_path)
+    revisor.stage_run(ctx, review_fn=lambda: {"shots": 200, "asText": 7, "flagged": [{"problem": "repetido"}] * 30})
+    saved = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
+    assert saved["mode"] == "nota" and not (ctx.work_dir / "revision.auto.json").exists()      # nothing sent back
+    older = tmp_path / "out" / "b" / "revisor" / "revisor.json"
+    older.parent.mkdir(parents=True)
+    older.write_text(json.dumps({"shots": 100, "flagged": [{"problem": "roto"}] * 25}))
+    os.utime(older, (time.time() - 86400, time.time() - 86400))
+    (tmp_path / "out" / "c" / "revisor").mkdir(parents=True)
+    (tmp_path / "out" / "c" / "revisor" / "revisor.json").write_text(json.dumps({"skipped": "off"}))
+    panel = web.punteria(tmp_path)
+    by_channel = {c["channel"]: c for c in panel["channels"]}
+    assert panel["videos"] == 2 and set(by_channel) == {"gimnasia", "—"}            # the skipped one is not a score
+    gym = by_channel["gimnasia"]
+    assert [v["slug"] for v in gym["videos"]] == ["a"] and gym["videos"][0]["per100"] == 15.0 and gym["recent"] == 15.0
+    assert by_channel["—"]["videos"][0]["per100"] == 25.0 and gym["videos"][0]["asText"] == 7
+    assert web.punteria(tmp_path, mine=["otro"])["videos"] == 0                    # a partner sees only theirs
+    assert web._video_score(tmp_path / "out" / "a") == {"flagged": 30, "shots": 200, "per100": 15.0, "asText": 7}
+
+
+def test_what_is_still_wrong_goes_to_the_phone_with_its_sheets(tmp_path, monkeypatch):
+    from pipeline import notify
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    ctx = RunContext.create("v", root=tmp_path)
+    sent = []
+    monkeypatch.setattr(notify, "telegram", lambda c, text, photos=(): sent.append((text, list(photos))) or True)
+    assert not revisor.still_wrong(ctx)                                    # the revisor did not run: nothing
+    out = ctx.out_dir / revisor.OUT_DIR
+    out.mkdir(parents=True)
+    (out / "revisor.json").write_text(json.dumps({"skipped": "x"}))
+    assert not revisor.still_wrong(ctx) and not sent
+    for n in (1, 2, 10):
+        (out / f"hoja-{n}.jpg").write_bytes(b"x")
+    (out / "revisor.json").write_text(json.dumps({"mode": "cola", "shots": 50, "before": 6, "sentBack": 4, "flagged": [
+        {"problem": "repetido"}, {"problem": "no_tiene_que_ver"}, {"problem": "repetido"}]}))
+    assert revisor.still_wrong(ctx)
+    text, photos = sent[-1]
+    assert "3 de 50" in text and "antes 6" in text and revisor.PROBLEMS["repetido"] + ": 2" in text
+    assert [p.name for p in photos] == ["hoja-1.jpg", "hoja-2.jpg", "hoja-10.jpg"]
+    (tmp_path / "config.yaml").write_text("revisor: {aviso: false}\n")
+    assert not revisor.still_wrong(RunContext.create("v", root=tmp_path))
+
+
+def test_channels_the_revisor_keeps_finding_cartoons_in_are_learned_only_when_asked(tmp_path):
+    from pipeline import feedback
+    from pipeline.sourcing import common
+
+    def flagged(slug, rows):
+        out = tmp_path / "out" / slug / "revisor"
+        out.mkdir(parents=True)
+        (out / "revisor.json").write_text(json.dumps({"shots": 10, "flagged": rows}))
+
+    cartoon = {"problem": "dibujo_animado", "channel": "Toons", "source": "youtube", "confidence": 0.9}
+    flagged("a", [cartoon, cartoon, {**cartoon, "confidence": 0.5}])
+    assert feedback.revisor_channels(tmp_path) == {}                       # one video, and one doubt: not yet
+    flagged("b", [cartoon, {**cartoon, "problem": "no_tiene_que_ver", "channel": "News"},
+                  {**cartoon, "channel": "Other"}])
+    assert feedback.revisor_channels(tmp_path) == {"Toons": 3}
+    try:
+        assert feedback.load_learned(tmp_path) == [] and not common.LEARNED_BLOCKED_CHANNELS
+        assert feedback.load_learned(tmp_path, from_revisor=True) == ["Toons"]
+        assert common.LEARNED_BLOCKED_CHANNELS == {"toons"}
+    finally:
+        common.LEARNED_BLOCKED_CHANNELS = set()

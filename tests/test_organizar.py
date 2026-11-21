@@ -185,3 +185,43 @@ def test_a_german_channel_drafts_in_german(tmp_path: Path, monkeypatch):
     assert "unas 1500 palabras" in seen["user"]
     organizar.draft_script(root, "negocios", {"title": "Booking"})
     assert "IDIOMA" not in seen["user"]
+
+
+def test_a_draft_leans_on_the_material_that_already_exists(tmp_path: Path, monkeypatch):
+    import json as _json
+
+    from pipeline import library, material
+
+    root = _site(tmp_path)
+    _video(root, "negocios", "n1")
+    base = library._base(root) / "booking"
+    base.mkdir(parents=True)
+    (base / "library.json").write_text(_json.dumps({"name": "Booking.com", "videos": {
+        "yt:a": {"title": "Booking fined by the CNMC", "channel": "RTVE"}}, "photos": {},
+        "stats": {"yt:a": {"used": 2}}}))
+    (library._base(root) / "otro").mkdir()
+    (library._base(root) / "otro" / "library.json").write_text(_json.dumps({"name": "Airbnb", "videos": {
+        "yt:b": {"title": "Airbnb story", "channel": "X"}}, "photos": {}, "stats": {}}))
+    material.save(root / "materiales" / "negocios" / "n1", clips={"oficina.mp4": "oficinas de Booking en Ámsterdam"})
+    text = organizar.existing_material(root, "negocios", "Booking.com y la multa de la CNMC")
+    assert "Booking fined by the CNMC (RTVE)" in text and "Airbnb" not in text
+    assert "oficinas de Booking en Ámsterdam" in text
+    assert organizar.existing_material(root, "otro-canal", "nada que ver") == ""
+    seen = {}
+
+    def fake(ctx, **kwargs):
+        seen.update(kwargs)
+        return {"title": "Booking", "script": "Frase del guion. " * 250}
+
+    monkeypatch.setattr("pipeline.llm.complete_json", fake)
+    organizar.draft_script(root, "negocios", {"title": "Booking.com y la CNMC"})
+    assert "MATERIAL QUE YA EXISTE" in seen["user"]
+
+
+def test_each_channel_writes_its_scripts_with_its_own_structure():
+    assert "La fuente" in organizar.script_structure({"guion": {"estructura": "juego_errores"}})
+    assert organizar.script_structure({"guion": {"estructura": "Primero A, luego B"}}) == "Primero A, luego B"
+    game = {"ideas": {"about": "un canal sobre GTA 6"}}
+    assert organizar.script_structure(game) == organizar.STRUCTURES["juego"]
+    assert organizar.script_structure(game, has_format=True) == ""            # its format already says how
+    assert organizar.script_structure({"ideas": {"about": "megaproyectos"}}) == ""
