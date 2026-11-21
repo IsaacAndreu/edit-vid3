@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_serializer, model_validator
 
 
 class _Strict(BaseModel):
@@ -89,7 +89,27 @@ class WordsFile(_Strict):
 # --- Stage 2: shots.json ------------------------------------------------------------
 
 ShotType = Literal["broll", "datacard", "stat", "chapter", "split"]
-Sign = Literal["positive", "negative", "neutral"]
+SIGN_WORDS = {"positive": ("positiv", "+", "up", "good", "bueno", "buena", "buono", "bom", "gut", "sube", "subida"),
+              "negative": ("negativ", "négatif", "-", "down", "bad", "malo", "mala", "cattivo", "ruim", "schlecht", "baja",
+                           "bajada")}
+
+
+def _sign(value: Any) -> Any:
+    """The sign in English whatever language the model wrote it in: gta2-it failed its whole edit on «positivo» and
+    «negativo» in a data panel. Anything not understood is neutral, never an error."""
+
+    if not isinstance(value, str):
+        return "neutral" if value is None else value
+    word = value.strip().lower()
+    if word in ("positive", "negative", "neutral"):
+        return word
+    for sign, starts in SIGN_WORDS.items():
+        if word in starts or any(word.startswith(s) for s in starts if len(s) > 2):
+            return sign
+    return "neutral"
+
+
+Sign = Annotated[Literal["positive", "negative", "neutral"], BeforeValidator(_sign)]
 PreferredShot = Literal["wide", "medium", "close-up", "aerial", "detail", "action", "archive"]
 MIN_SHOT_SECONDS = 1.5
 MAX_SHOT_SECONDS = 5.0           # emotional passages hold longer (pacing.slow); third-party clips stay ≤ 5 s
