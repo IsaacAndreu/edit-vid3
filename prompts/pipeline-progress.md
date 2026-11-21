@@ -257,3 +257,13 @@ el perfil del canal y se mide con `python -m pipeline.revisor <antes> <después>
 Sin hacer de lo pensado: en el 7, la búsqueda por la API al pulsar un botón (cada búsqueda gasta cuota; se dejó solo lo
 que ya hay en disco).
 
+
+## Repetidos de newgym3-ideas2 (21-11)
+
+Línea base del revisor: newgym3 29, newgym3-ideas 22, newgym3-ideas2 18 planos marcados por 100. De los 23 de
+newgym3-ideas2, 18 eran «Repetido».
+
+| Commit | Qué | Medida |
+|---|---|---|
+| 612b6a9 | El relleno apunta como ya en pantalla lo que conserva de la pasada anterior (5 parejas con los mismos segundos de una fuente) | `revisor <antes> <después> --base`, columna «Repetidos» |
+| eb45203 | El revisor sabe de quién es un clip por el nombre del archivo: un plano juzgado sin clip, tapado con el de otro, cuenta como hueco tapado y no culpa al otro | misma tabla |
