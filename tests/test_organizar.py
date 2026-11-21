@@ -225,3 +225,26 @@ def test_each_channel_writes_its_scripts_with_its_own_structure():
     assert organizar.script_structure(game) == organizar.STRUCTURES["juego"]
     assert organizar.script_structure(game, has_format=True) == ""            # its format already says how
     assert organizar.script_structure({"ideas": {"about": "megaproyectos"}}) == ""
+
+
+def test_retention_rules_only_when_switched_on_and_with_the_voices_pace(tmp_path: Path, monkeypatch):
+    """guion.retencion: the re-engagement points at minutes 3 and 6 in words, the ending in one dry line."""
+
+    from types import SimpleNamespace
+
+    off = SimpleNamespace(section=lambda name: {})
+    assert organizar.draft_system(off) == organizar.DRAFT_SYSTEM and organizar.retention_rules(off) == ""
+    on = SimpleNamespace(section=lambda name: {"retencion": True} if name == "guion" else
+                         {"words_per_second": 2.5} if name == "gancho" else {})
+    system = organizar.draft_system(on)
+    assert "palabra 450 (minuto 3)" in system and "palabra 900 (minuto 6)" in system
+    assert "Cierra en seco" in system and "Cierra con una pregunta" not in system
+
+    from pipeline import imagen_guion
+
+    seen = {}
+    monkeypatch.setattr("pipeline.llm.complete_json", lambda ctx, **kw: seen.update(kw) or {"cambios": []})
+    look = lambda ctx, text, title: {"shares": {"sin_imagen": 30}, "verdict": "", "sinImagen": [  # noqa: E731
+        {"n": 1, "text": "Imagina que sí.", "idea": ""}]}
+    imagen_guion.fix(on, "Imagina que sí.", review_fn=look)
+    assert "Reglas de retención" in seen["system"]
