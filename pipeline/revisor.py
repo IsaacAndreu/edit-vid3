@@ -214,6 +214,39 @@ def screen_measures(timeline: dict[str, Any]) -> dict[str, float]:
             "firstImage": round(first / fps, 1) if first is not None else None}
 
 
+def coverage_measures(plan: dict[str, Any], timeline: dict[str, Any]) -> dict[str, Any]:
+    """Segunda tanda: different sources per minute; per key event (planner.cobertura) the functions asked for, those
+    found (a shot of that function with a clip of its own, not borrowed) and its different sources."""
+
+    fps = float(timeline.get("fps") or 30)
+    shots = timeline.get("shots") or []
+    total = int(timeline.get("durationInFrames") or 0) or max(
+        (int(s.get("from") or 0) + int(s.get("durationInFrames") or 0) for s in shots), default=0)
+    def source(shot: dict[str, Any]) -> str:
+        media = shot.get("media") or {}
+        return str(media.get("credit") or media.get("src") or "")
+    on_screen = {source(s) for s in shots if (s.get("media") or {}).get("kind") in ("video", "image") and source(s)}
+    minutes = total / fps / 60 if total else 0
+    events: dict[str, dict[str, Any]] = {}
+    for shot in shots:
+        base = str(shot.get("id") or "").split("-")[0]
+        cover = getattr(plan.get(base), "coverage", None)
+        if cover is None:
+            continue
+        entry = events.setdefault(cover.event, {"event": cover.event, "name": cover.name, "asked": set(), "found": set(),
+                                                "sources": set()})
+        entry["asked"].add(cover.role)
+        media = shot.get("media") or {}
+        if media.get("kind") in ("video", "image") and file_owner(str(media.get("src") or "")) in (base, None):
+            entry["found"].add(cover.role)
+            entry["sources"].add(source(shot))
+    rows = [{"event": e["event"], "name": e["name"], "asked": len(e["asked"]), "found": len(e["found"]),
+             "sources": len(e["sources"])} for e in events.values()]
+    return {"sourcesPerMinute": round(len(on_screen) / minutes, 1) if minutes else None,
+            "functions": f"{sum(r['found'] for r in rows)}/{sum(r['asked'] for r in rows)}" if rows else None,
+            "events": rows}
+
+
 def file_owner(src: str) -> str | None:
     """The shot a media file was made for, from its name (work/<slug>/media/s031.mp4 → s031); None for any other file
     (a library clip, your own material)."""
@@ -437,7 +470,7 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
     result = {"slug": slug, "model": str(cfg.get("model") or ctx.section("judge").get("model", "gpt-5-mini")),
               "shots": len(items), "asText": as_text, "reviewedByModel": reviewed, "usd": round(spent, 4),
               "stoppedAtBudget": stopped, "budget": budget, "unreadable": unreadable, "flagged": rows,
-              **screen_measures(timeline)}
+              **screen_measures(timeline), **coverage_measures(plan, timeline)}
     out = ctx.out_dir / OUT_DIR
     out.mkdir(parents=True, exist_ok=True)
     (out / "revisor.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -656,7 +689,7 @@ def baseline(results: list[dict[str, Any]]) -> str:
 
     import time
 
-    head = ["Vídeo", "Planos", "En texto", "Texto o vacío %", "1.ª imagen (s)", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
+    head = ["Vídeo", "Planos", "En texto", "Texto o vacío %", "1.ª imagen (s)", "Fuentes/min", "Funciones", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
             "…en literales", "Otra persona", "Dibujos", "Marca de agua", "Roto", "No revisados", "Modelo", "$"]
     lines = [f"# Línea base del revisor · {time.strftime('%Y-%m-%d %H:%M')}", "",
              "Marcados por cada 100 planos con imagen; cada pareja de repetidos cuenta una vez, en su lado más débil "
@@ -677,12 +710,14 @@ def baseline(results: list[dict[str, Any]]) -> str:
         cells.insert(3, str(literal) if labelled else "—")
         first = r.get("firstImage")
         lines.append(f"| {r['slug']} | {r['shots']} | {r.get('asText', '—')} | {r.get('textShare', '—')} | "
-                     f"{'—' if first is None else first} | {per100:.0f} | "
+                     f"{'—' if first is None else first} | {r.get('sourcesPerMinute') or '—'} | "
+                     f"{r.get('functions') or '—'} | {per100:.0f} | "
                      + " | ".join(cells)
                      + f" | {len(r.get('unreadable') or [])} | {r['model']} | {r['usd']:.3f} |")
     lines += ["", "«Texto o vacío %»: parte del vídeo cuyos planos de metraje no tienen clip ni foto (pizarra, palabras o "
               "nada); «1.ª imagen»: segundo del primer clip o foto. Un vídeo por encima de timeline.max_text_share no "
-              "cuenta como mejora aunque baje «marcados por 100».", "",
+              "cuenta como mejora aunque baje «marcados por 100». «Fuentes/min»: fuentes distintas en pantalla por "
+              "minuto; «Funciones»: de los sucesos clave (planner.cobertura), funciones encontradas / pedidas.", "",
               "«…en literales»: los «no tiene que ver» en ideas que tenían que verse tal cual (planner.ideas); «—» en "
               "vídeos planificados sin ideas.", ""]
     return "\n".join(lines)

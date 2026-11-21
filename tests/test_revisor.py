@@ -167,12 +167,12 @@ def test_the_baseline_puts_every_video_in_one_table():
     results = [{"slug": "newgym3", "shots": 200, "asText": 7, "model": "m", "usd": 0.01, "unreadable": ["s9"],
                 "flagged": [{"problem": "hueco_tapado"}] * 20 + [{"problem": "repetido"}] * 10 + [{"problem": "roto"}]}]
     text = revisor.baseline(results)
-    assert "| newgym3 | 200 | 7 | — | — | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
+    assert "| newgym3 | 200 | 7 | — | — | — | — | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
     measured = revisor.baseline([{**results[0], "textShare": 48.5, "firstImage": 40.0}])
-    assert "| newgym3 | 200 | 7 | 48.5 | 40.0 | 16 |" in measured
+    assert "| newgym3 | 200 | 7 | 48.5 | 40.0 | — | — | 16 |" in measured
     labelled = [{"slug": "v", "shots": 100, "model": "m", "usd": 0.0, "flagged": [
         {"problem": "no_tiene_que_ver", "kind": "literal"}, {"problem": "no_tiene_que_ver", "kind": "ambiente"}]}]
-    assert "| v | 100 | — | — | — | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
+    assert "| v | 100 | — | — | — | — | — | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
 
 
 def test_a_video_not_edited_yet_does_not_stop_the_baseline(tmp_path, monkeypatch, capsys):
@@ -349,3 +349,19 @@ def test_text_share_and_first_image_come_from_the_edit():
              {"id": "s004", "type": "broll", "from": 600, "durationInFrames": 300, "groupId": "panel-1"}]
     got = revisor.screen_measures({"fps": 30, "durationInFrames": 900, "shots": shots})
     assert got == {"textShare": 33.3, "firstImage": 12.0}
+
+
+def test_sources_per_minute_and_functions_per_key_event():
+    from types import SimpleNamespace as NS
+
+    cover = lambda role: NS(coverage=NS(event="k1", name="gol", role=role))   # noqa: E731
+    plan = {"s001": cover("accion"), "s002": cover("reaccion"), "s003": cover("testimonio"), "s004": NS(coverage=None)}
+    shot = lambda n, start, src, credit: {"id": f"s{n:03d}", "type": "broll", "from": start, "durationInFrames": 300,  # noqa: E731
+                                          "media": {"kind": "video", "src": src, "credit": credit}}
+    timeline = {"fps": 30, "durationInFrames": 1800, "shots": [
+        shot(1, 0, "media/s001.mp4", "Fuente: TV"), shot(2, 300, "media/s002.mp4", "Fuente: Grada"),
+        shot(3, 600, "media/s001.mp4", "Fuente: TV"),                  # borrowed: the testimony was not found
+        shot(4, 900, "media/s004.mp4", "Fuente: Otro")]}
+    got = revisor.coverage_measures(plan, timeline)
+    assert got["sourcesPerMinute"] == 3.0 and got["functions"] == "2/3"
+    assert got["events"] == [{"event": "k1", "name": "gol", "asked": 3, "found": 2, "sources": 2}]

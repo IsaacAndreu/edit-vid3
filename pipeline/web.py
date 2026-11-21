@@ -1089,6 +1089,7 @@ def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
                      "per100": round(100 * len(data.get("flagged") or []) / max(1, data["shots"]), 1),
                      "asText": data.get("asText"), "before": data.get("before"), "sentBack": data.get("sentBack"),
                      "textShare": data.get("textShare"), "firstImage": data.get("firstImage"),
+                     "sourcesPerMinute": data.get("sourcesPerMinute"), "functions": data.get("functions"),
                      "mode": data.get("mode") or "informe", "counts": counts, "usd": data.get("usd", 0)})
     rows.sort(key=lambda r: r["at"])
     channels_out: dict[str, dict[str, Any]] = {}
