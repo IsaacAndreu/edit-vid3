@@ -544,7 +544,15 @@ QUOTA_EXIT = 75                        # `--slug` exit code (EX_TEMPFAIL): the v
 YOUTUBE_EXIT = 76                      # `--slug` exit code: made without YouTube it fell short, it waits for YouTube
 CREDIT_EXIT = 77                       # `--slug` exit code: an API out of balance or a dead key (out_of_credit)
 BUDGET_EXIT = 78                       # `--slug` exit code: the spend cap reached (budget.BudgetReached)
-WAITING = ("espera cuota", "en espera", "espera YouTube")     # statuses of the queue that are not failures
+WAITING = ("espera cuota", "en espera", "espera YouTube", "interrumpido")   # statuses of the queue that are not failures
+STOPPED_MARK = "Parado por la señal"      # what a video's process prints when systemctl restart/stop cuts it
+
+
+def was_stopped(lines: list[str]) -> bool:
+    """The video's process was cut by a restart (SIGTERM/SIGHUP), not by a fault of its own: newgym3-haiku was marked
+    «ERROR» by a systemctl restart and waited watch.retry_hours (6 h) instead of going on as soon as the queue started."""
+
+    return any(STOPPED_MARK in line for line in lines[-8:])
 
 
 def wait_for_quota(root: Path, slug: str, error: BaseException) -> None:
@@ -1316,7 +1324,8 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
         cut = guardian.done(slug)
         detail = cut or ("" if code == 0 else _error_line(list(tail), code))
         status = "OK" if code == 0 and not cut else "espera cuota" if code == QUOTA_EXIT else \
-            "espera YouTube" if code == YOUTUBE_EXIT else "en espera" if code in (CREDIT_EXIT, BUDGET_EXIT) else "ERROR"
+            "espera YouTube" if code == YOUTUBE_EXIT else "en espera" if code in (CREDIT_EXIT, BUDGET_EXIT) else \
+            "interrumpido" if not cut and was_stopped(list(tail)) else "ERROR"   # a restart: back at once, not in 6 h
         if cut:
             notify(root, f"✂ {slug}: {cut}. Se reintenta solo.")
         if on_result is not None:
