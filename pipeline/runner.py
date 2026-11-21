@@ -317,9 +317,10 @@ def run_stages(
     from . import feedback, sin_youtube
 
     offline = sin_youtube.active()                       # modo sin YouTube: YouTube's pause lasts (sin_youtube.py)
-    learned = feedback.load_learned(ctx.root)            # channels your «Errores» labels taught it to avoid
+    learned = feedback.load_learned(ctx.root,            # channels your «Errores» labels taught it to avoid
+                                    bool((ctx.section("revisor") or {}).get("aprender", False)))
     if learned:
-        print(f"Canales de YouTube bloqueados por tus correcciones: {', '.join(learned)}")
+        print(f"Canales de YouTube bloqueados por tus correcciones (y el revisor): {', '.join(learned)}")
     checked = [False]                     # the per-video check before the first paid stage, once
     executed_lock = threading.Lock()
 

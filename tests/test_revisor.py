@@ -284,3 +284,26 @@ def test_what_is_still_wrong_goes_to_the_phone_with_its_sheets(tmp_path, monkeyp
     assert [p.name for p in photos] == ["hoja-1.jpg", "hoja-2.jpg", "hoja-10.jpg"]
     (tmp_path / "config.yaml").write_text("revisor: {aviso: false}\n")
     assert not revisor.still_wrong(RunContext.create("v", root=tmp_path))
+
+
+def test_channels_the_revisor_keeps_finding_cartoons_in_are_learned_only_when_asked(tmp_path):
+    from pipeline import feedback
+    from pipeline.sourcing import common
+
+    def flagged(slug, rows):
+        out = tmp_path / "out" / slug / "revisor"
+        out.mkdir(parents=True)
+        (out / "revisor.json").write_text(json.dumps({"shots": 10, "flagged": rows}))
+
+    cartoon = {"problem": "dibujo_animado", "channel": "Toons", "source": "youtube", "confidence": 0.9}
+    flagged("a", [cartoon, cartoon, {**cartoon, "confidence": 0.5}])
+    assert feedback.revisor_channels(tmp_path) == {}                       # one video, and one doubt: not yet
+    flagged("b", [cartoon, {**cartoon, "problem": "no_tiene_que_ver", "channel": "News"},
+                  {**cartoon, "channel": "Other"}])
+    assert feedback.revisor_channels(tmp_path) == {"Toons": 3}
+    try:
+        assert feedback.load_learned(tmp_path) == [] and not common.LEARNED_BLOCKED_CHANNELS
+        assert feedback.load_learned(tmp_path, from_revisor=True) == ["Toons"]
+        assert common.LEARNED_BLOCKED_CHANNELS == {"toons"}
+    finally:
+        common.LEARNED_BLOCKED_CHANNELS = set()
