@@ -267,3 +267,5 @@ newgym3-ideas2, 18 eran «Repetido».
 |---|---|---|
 | 612b6a9 | El relleno apunta como ya en pantalla lo que conserva de la pasada anterior (5 parejas con los mismos segundos de una fuente) | `revisor <antes> <después> --base`, columna «Repetidos» |
 | eb45203 | El revisor sabe de quién es un clip por el nombre del archivo: un plano juzgado sin clip, tapado con el de otro, cuenta como hueco tapado y no culpa al otro | misma tabla |
+| 81d7cae | `fallback.repeat_frames` (apagado): el relleno compara dos fotogramas por clip (30 % y 70 %) con la medida del revisor | misma tabla, más `--youtube-stats 1` (lo que manda atrás se busca otra vez) |
+| 3946c9c | Revisor en cola: un plano devuelto que no encuentra sustituto sale como texto, no con el clip del vecino (`revisor.no_borrow_sent_back`, encendido) | columnas «Huecos tapados» y «En texto» |
