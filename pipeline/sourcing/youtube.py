@@ -71,6 +71,11 @@ _GONE_MARKERS = ("video unavailable. this video has been removed", "this video h
 # What a failure was, finer than error_kind (which drives the retry logic and stays as it was): the request log keeps
 # it as «cause», so «otros» — 1/3 of every failure on 17-11, most rows without a word — can be told apart.
 _CAUSES = (
+    # descargas-rango-fallo.md: 884 range failures and 1 376 whole-over-cap discards counted as «other»
+    ("rango-sin-indice", ("faltan moov o sidx", "sin sidx", "sidx vacío", "sidx jerárquico", "cajas inesperadas",
+                          "índice demasiado grande", "webm (matroska)", "sin formato mp4 por https",
+                          "no atiende peticiones range")),
+    ("sin-hls-tope", ("entero supera el tope",)),
     ("proxy-túnel", ("unable to connect to proxy", "tunnel connection failed")),
     ("proxy-407", ("407", "proxy authentication required")),
     ("proxy-sin-respuesta", ("no responde", "proxy connection refused", "connection refused", "proxyerror")),
@@ -85,6 +90,22 @@ _CAUSES = (
     ("dns", ("name or service not known", "temporary failure in name resolution", "getaddrinfo")),
     ("yt-dlp-roto", ("nonetype", "keyerror", "typeerror", "indexerror", "attributeerror", "expected str instance")),
 )
+
+
+ONCE_PER_VIDEO = ("sin-hls-tope", "rango-sin-indice")     # causes logged once per video and process
+
+
+def range_diagnosis(piece: dict[str, Any], status: int | None, content_type: str | None, head: bytes) -> str:
+    """What a byte-range attempt got, in one line: the format chosen (itag, ext, codec, container, protocol), the
+    answer (HTTP code and Content-Type) and its first 16 bytes in hex. On 22-11 every range came back starting with
+    what looks like a Matroska header (1A 45 DF A3 …) although an mp4 was asked for: this says why."""
+
+    return (f"itag {piece.get('format_id')} ext {piece.get('ext')} vcodec {piece.get('vcodec')} "
+            f"container {piece.get('container')} protocol {piece.get('protocol')} · HTTP {status} "
+            f"{content_type or '-'} · {head[:16].hex(' ')}")
+
+
+EBML_MAGIC = b"\x1a\x45\xdf\xa3"         # Matroska / WebM
 
 
 def error_cause(message: str) -> str:
@@ -754,6 +775,12 @@ class YouTubeSource:
             # every failure carries its words and a cause (20 524 metadata failures without a word on 17-11)
             row["detail"] = error_detail(detail) if detail else f"(sin texto; error {error or 'desconocido'})"
             row["cause"] = error_cause(detail) if detail else (error if error not in ("", "other") else "sin-texto")
+            if row["cause"] in ONCE_PER_VIDEO:
+                # the same video discarded for the same reason by every shot that picked it: one row, not one per shot
+                seen = self.__dict__.setdefault("_logged_once", set())
+                if (row["video"], row["cause"]) in seen:
+                    return
+                seen.add((row["video"], row["cause"]))
         if getattr(self._local, "via_metadata_proxy", False):
             row["proxy"] = "metadatos"
         elif self.proxies:
@@ -1107,6 +1134,11 @@ class YouTubeSource:
                 kind = error_kind(message)
                 self._metric(action, ok=False, seconds=time.monotonic() - began, error=kind, attempt=tries,
                              cookies=self._local.account is not None, detail=message)
+                if isinstance(error, NoIndex):
+                    # not a failure of the connection: the format cannot be cut by byte ranges. Passed on as it is so
+                    # the caller goes to its next way; wrapped in RuntimeError it ended the shot's download (22-11:
+                    # every one of 884 range failures lost its clip instead of trying the next route)
+                    raise
                 way = getattr(self._local, "way", 0) or 0
                 if through:
                     retry = self._metadata_proxy_failed(kind, lowered, tries)
@@ -2111,12 +2143,14 @@ class YouTubeSource:
                 why = " (HLS por probar)" if untested else ""
                 self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»{why}"
                 missed.add((video_id, hls))
-        if self.cfg.get("byte_ranges", False):
+        no_range = self.__dict__.setdefault("_no_range", set())
+        if self.cfg.get("byte_ranges", False) and video_id not in no_range:
             # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
             try:
                 self._local.route = "rango-bytes"
                 return self._fetch_byte_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path)
             except NoIndex as error:
+                no_range.add(video_id)          # its formats will not change: the next shots do not ask again (884 rows)
                 self._local.route = None
                 self._local.not_hls = f"{self._local.not_hls or 'sin HLS'}; sin rango de bytes: {error}"
         # two 403s in a row on whole downloads: this client/connection does not get them today (pati12 14/10: 403 on
@@ -2493,23 +2527,10 @@ class YouTubeSource:
         the fragments covering the seconds, through this video's session, and ffmpeg cuts locally. NoIndex when the
         format is not an indexed mp4 (webm, no sidx): the caller goes on as before."""
 
-        import json
         import subprocess
 
         def choose(path: Path) -> list[dict[str, Any]]:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if audio_only:
-                request = "ba[ext=m4a][protocol=https]"
-            else:
-                video = "/".join(dict.fromkeys(f"{alt.split('+')[0]}[ext=mp4][protocol=https]"
-                                               for alt in fmt.split("/") if alt.strip() and not alt.startswith("ba")))
-                request = f"({video})+ba[ext=m4a][protocol=https]" if audio else video
-            try:
-                with self._ydl({"format": request, "simulate": True, "quiet": True}) as ydl:
-                    chosen = ydl.process_ie_result(dict(data), download=False)
-            except Exception as error:
-                raise NoIndex(f"sin formato mp4 por HTTPS ({str(error)[:80]})") from None
-            return list(chosen.get("requested_formats") or [chosen])
+            return self._range_formats(path, fmt, audio, audio_only)
 
         target_dir = self.cache_dir / "videos" / video_id
         work = part_for(target_dir / f"br_{prefix}_{start:.2f}_{end:.2f}")
@@ -2519,24 +2540,11 @@ class YouTubeSource:
             way = getattr(self._local, "way", 0) or 0
             proxies = self._requests_proxies(way)
 
+            answer: dict[str, Any] = {}
+
             def get(url: str, headers: dict[str, str], first: int, last: int) -> bytes:
-                wanted = last - first + 1
-                response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={first}-{last}"},
-                                                   timeout=60, proxies=proxies, stream=True)
-                try:
-                    if response.status_code >= 400:
-                        raise RuntimeError(f"yt-dlp download (rango): HTTP Error {response.status_code}: {response.reason}")
-                    if response.status_code != 206 and first > 0:
-                        raise NoIndex("el servidor no atiende peticiones Range")
-                    body = bytearray()
-                    for block in response.iter_content(256 * 1024):
-                        body += block
-                        if len(body) >= wanted:
-                            break
-                finally:
-                    response.close()
-                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(body)
-                return bytes(body[:wanted])
+                body, answer["status"], answer["type"] = self._range_get(way, proxies, url, headers, first, last)
+                return body
 
             out = []
             work.mkdir(parents=True, exist_ok=True)
@@ -2544,12 +2552,18 @@ class YouTubeSource:
                 url = str(piece["url"])
                 headers = {k: str(v) for k, v in (piece.get("http_headers") or {}).items()}
                 head = get(url, headers, 0, 64 * 1024 - 1)
-                need = needed_head(head)
-                if need is not None and need > len(head):
-                    if need > 4 * 1024 * 1024:
-                        raise NoIndex(f"índice demasiado grande ({need / 1e6:.1f} MB)")
-                    head += get(url, headers, len(head), need - 1)
-                cut = plan(head, start, end, margin=margin)
+                try:
+                    if head[:4] == EBML_MAGIC:
+                        raise NoIndex("llega un webm (Matroska) aunque se pidió mp4")
+                    need = needed_head(head)
+                    if need is not None and need > len(head):
+                        if need > 4 * 1024 * 1024:
+                            raise NoIndex(f"índice demasiado grande ({need / 1e6:.1f} MB)")
+                        head += get(url, headers, len(head), need - 1)
+                    cut = plan(head, start, end, margin=margin)
+                except NoIndex as error:      # what came, so one row of the log says why (descargas-rango-fallo.md)
+                    raise NoIndex(f"{error} · {range_diagnosis(piece, answer.get('status'), answer.get('type'), head)}") \
+                        from None
                 path = work / f"pista{n}.mp4"
                 with path.open("wb") as handle:
                     handle.write(head[cut.init[0]:cut.init[1] + 1])
@@ -2596,6 +2610,48 @@ class YouTubeSource:
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    def _range_formats(self, info_path: Path, fmt: str, audio: bool, audio_only: bool) -> list[dict[str, Any]]:
+        """The DASH mp4 formats (video, and m4a audio when asked) a byte range would read, as yt-dlp picks them."""
+
+        import json
+
+        data = json.loads(info_path.read_text(encoding="utf-8"))
+        if audio_only:
+            request = "ba[ext=m4a][protocol=https]"
+        else:
+            video = "/".join(dict.fromkeys(f"{alt.split('+')[0]}[ext=mp4][protocol=https]"
+                                           for alt in fmt.split("/") if alt.strip() and not alt.startswith("ba")))
+            request = f"({video})+ba[ext=m4a][protocol=https]" if audio else video
+        try:
+            with self._ydl({"format": request, "simulate": True, "quiet": True}) as ydl:
+                chosen = ydl.process_ie_result(dict(data), download=False)
+        except Exception as error:
+            raise NoIndex(f"sin formato mp4 por HTTPS ({str(error)[:80]})") from None
+        return list(chosen.get("requested_formats") or [chosen])
+
+    def _range_get(self, way: int, proxies: Any, url: str, headers: dict[str, str], first: int,
+                   last: int) -> tuple[bytes, int, str]:
+        """bytes [first, last] of a format's URL through this video's session: (body, HTTP code, Content-Type)."""
+
+        wanted = last - first + 1
+        response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={first}-{last}"},
+                                           timeout=60, proxies=proxies, stream=True)
+        try:
+            status, kind = response.status_code, str(response.headers.get("Content-Type") or "")
+            if status >= 400:
+                raise RuntimeError(f"yt-dlp download (rango): HTTP Error {status}: {response.reason}")
+            if status != 206 and first > 0:
+                raise NoIndex(f"el servidor no atiende peticiones Range (HTTP {status} {kind})")
+            body = bytearray()
+            for block in response.iter_content(256 * 1024):
+                body += block
+                if len(body) >= wanted:
+                    break
+        finally:
+            response.close()
+        self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(body)
+        return bytes(body[:wanted]), status, kind
 
     def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:
         """The whole source, fetched by yt-dlp itself in 10 MB pieces (each one a separate request, which YouTube

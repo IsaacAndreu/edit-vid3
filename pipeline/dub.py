@@ -34,7 +34,8 @@ import yaml
 from . import align
 from .context import RunContext
 from .llm import complete_json
-from .schemas import MAX_THIRD_PARTY_SECONDS, Timeline
+from . import tope
+from .schemas import Timeline
 from .shorts import sentences
 from .doblaje import AUDIENCES
 
@@ -699,7 +700,7 @@ def run(ctx: RunContext) -> None:
     print(f"   {len(points) - 2} anclas de {len(old_s)} frases")
 
     print("[3/6] Reajustando cortes, paneles y rótulos")
-    timeline = retime(old_timeline, time_map(points), new_words["durationSeconds"], MAX_THIRD_PARTY_SECONDS)
+    timeline = retime(old_timeline, time_map(points), new_words["durationSeconds"], tope.seconds(ctx))
     timeline["slug"] = ctx.slug
     from . import simulacion
 

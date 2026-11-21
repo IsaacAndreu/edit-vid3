@@ -30,7 +30,8 @@ import numpy as np
 from pydantic import ValidationError
 
 from ..context import RunContext
-from ..schemas import MAX_THIRD_PARTY_SECONDS, Candidate, Option, OptionScores, Shot, ShotCandidates, ShotScores, ShotsFile
+from .. import tope
+from ..schemas import Candidate, Option, OptionScores, Shot, ShotCandidates, ShotScores, ShotsFile
 from ..sourcing import needs_footage, youtube_source
 from ..budget import ApiSearchesShort, BudgetReached
 from ..sourcing.common import SourceUnavailable, key, tokens
@@ -552,7 +553,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     def plan(shot: Shot, count: int) -> list[tuple[str, float, float]]:
         """The next fine windows of a shot, best coarse moments of different videos first, up to `count` videos."""
 
-        needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+        needed = min(shot.duration, tope.seconds(ctx))
         added: list[tuple[str, float, float]] = []
         for option in coarse[shot.id]:
             if len(picked[shot.id]) >= count:
@@ -633,7 +634,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     written: set[str] = set()
 
     def assemble(shot: Shot) -> None:
-        needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+        needed = min(shot.duration, tope.seconds(ctx))
         entities = shot.broll.entities if shot.broll else []
         options: list[Option] = []
         for option in coarse[shot.id]:
@@ -766,7 +767,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                         for o in fine_options(
                             window_path=path,
                             window=(job[1], job[2]),
-                            needed=min(shot.duration, MAX_THIRD_PARTY_SECONDS),
+                            needed=min(shot.duration, tope.seconds(ctx)),
                             shot_vector=shot_vectors[sid],
                             clip=clip,
                             detectors=detectors,
@@ -786,7 +787,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
             target = said_target(shot, more)
             if target is None:
                 continue
-            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            needed = min(shot.duration, tope.seconds(ctx))
             seen_videos: list[Candidate] = []
             for option in coarse[shot.id]:
                 c = option["candidate"]
@@ -826,7 +827,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         for shot in todo:
             if not shot.broll:
                 continue
-            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            needed = min(shot.duration, tope.seconds(ctx))
             for option in coarse[shot.id]:
                 c = option["candidate"]
                 if c.kind != "video" or not c.id.startswith("yt:"):
@@ -862,7 +863,7 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
         for shot in todo:
             if not shot.broll:
                 continue
-            needed = min(shot.duration, MAX_THIRD_PARTY_SECONDS)
+            needed = min(shot.duration, tope.seconds(ctx))
             words = shot_words(shot)
             seen_sources: set[str] = set()
             for option in list(coarse[shot.id]):

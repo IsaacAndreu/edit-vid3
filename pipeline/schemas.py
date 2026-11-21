@@ -357,7 +357,8 @@ class ShotCandidates(_Strict):
 
 # --- Stage 4: scores/<shot_id>.json ---------------------------------------------------
 
-MAX_THIRD_PARTY_SECONDS = 5.0
+MAX_THIRD_PARTY_SECONDS = 5.0       # the default cap of a third-party clip; each video's own: pipeline/tope.py
+HARD_LIMIT_SECONDS = 180.0          # what the schemas accept whatever a channel sets (content.max_third_party_seconds)
 
 
 class OptionScores(_Strict):
@@ -394,15 +395,15 @@ class Option(_Strict):
         if self.kind == "video":
             if self.start is None or self.end is None or self.end <= self.start:
                 raise ValueError(f"{self.candidateId}: fragmento sin tramo válido")
-            if self.end - self.start > MAX_THIRD_PARTY_SECONDS + 1e-6:
-                raise ValueError(f"{self.candidateId}: fragmento de {self.end - self.start:.2f} s (> 5 s)")
+            if self.end - self.start > HARD_LIMIT_SECONDS + 1e-6:
+                raise ValueError(f"{self.candidateId}: fragmento de {self.end - self.start:.2f} s (> {HARD_LIMIT_SECONDS:.0f} s)")
         return self
 
 
 class ShotScores(_Strict):
     shotId: str
     inputsHash: str
-    needed: float = Field(gt=0, le=MAX_THIRD_PARTY_SECONDS)  # seconds of footage the shot needs (≤ 5)
+    needed: float = Field(gt=0, le=HARD_LIMIT_SECONDS)  # seconds of footage the shot needs (≤ the video's cap)
     prompts: list[str]
     options: list[Option]                                    # best first; discarded ones last
     notes: list[str] = Field(default_factory=list)
@@ -461,8 +462,8 @@ class Selection(_Strict):
             if missing:
                 raise ValueError(f"{self.shotId}: selección incompleta ({', '.join(missing)})")
             if self.kind == "video":
-                if self.start is None or self.end is None or not 0 < self.end - self.start <= MAX_THIRD_PARTY_SECONDS + 1e-6:
-                    raise ValueError(f"{self.shotId}: tramo de vídeo inválido o > 5 s")
+                if self.start is None or self.end is None or not 0 < self.end - self.start <= HARD_LIMIT_SECONDS + 1e-6:
+                    raise ValueError(f"{self.shotId}: tramo de vídeo inválido o > {HARD_LIMIT_SECONDS:.0f} s")
             if not self.credit.startswith("Fuente: "):
                 raise ValueError(f"{self.shotId}: crédito inválido")
         return self
@@ -499,8 +500,8 @@ class IngestedMedia(_Strict):
     @model_validator(mode="after")
     def _checks(self) -> "IngestedMedia":
         if self.kind == "video":
-            if self.durationSeconds is None or self.durationSeconds > MAX_THIRD_PARTY_SECONDS + 1 / 30 + 1e-6:
-                raise ValueError(f"{self.shotId}: clip de {self.durationSeconds} s (máximo 5 s)")
+            if self.durationSeconds is None or self.durationSeconds > HARD_LIMIT_SECONDS + 1 / 30 + 1e-6:
+                raise ValueError(f"{self.shotId}: clip de {self.durationSeconds} s (máximo {HARD_LIMIT_SECONDS:.0f} s)")
             if self.hasAudio:
                 raise ValueError(f"{self.shotId}: el clip conserva audio")
             # widescreen sources are cover-cropped to 1920x1080; narrower ones (4:3, vertical) are fitted
@@ -552,8 +553,8 @@ class FallbackItem(_Strict):
             return self
         if not self.credit or not self.credit.startswith("Fuente: "):
             raise ValueError(f"{self.shotId}: el material de terceros necesita crédito")
-        if self.kind == "video" and (self.durationSeconds is None or self.durationSeconds > MAX_THIRD_PARTY_SECONDS + 1 / 30 + 1e-6):
-            raise ValueError(f"{self.shotId}: clip de más de 5 s")
+        if self.kind == "video" and (self.durationSeconds is None or self.durationSeconds > HARD_LIMIT_SECONDS + 1 / 30 + 1e-6):
+            raise ValueError(f"{self.shotId}: clip de más de {HARD_LIMIT_SECONDS:.0f} s")
         return self
 
 
@@ -594,7 +595,7 @@ class ColdOpenClip(_Strict):
     channel: str | None = None
     start: float
     end: float
-    durationSeconds: float = Field(gt=0, le=MAX_THIRD_PARTY_SECONDS + 1 / 30 + 1e-6)
+    durationSeconds: float = Field(gt=0, le=HARD_LIMIT_SECONDS + 1 / 30 + 1e-6)
     width: int
     height: int
     credit: str
@@ -609,7 +610,7 @@ class SoundBite(_Strict):
     shotId: str
     candidateId: str
     voiceAt: float = Field(ge=0)                             # narration second where it starts (in sync with the picture)
-    durationSeconds: float = Field(gt=0, le=MAX_THIRD_PARTY_SECONDS)
+    durationSeconds: float = Field(gt=0, le=HARD_LIMIT_SECONDS)
     loudness: float                                          # dBFS of the window
     contrast: float                                          # dB above the clip's usual level
 
@@ -858,7 +859,8 @@ class Timeline(_Strict):
             # seconds of the source actually used (a slowed-down shot shows fewer); real statements with their own
             # sound (shots marked coldOpen) may run up to 15 s
             used = shot.durationInFrames * (shot.media.rate or 1.0) if shot.media else 0
-            limit = 15.0 if shot.coldOpen else MAX_THIRD_PARTY_SECONDS
+            # the video's own cap (content.max_third_party_seconds) is checked by QA, which knows the video
+            limit = HARD_LIMIT_SECONDS
             if shot.media and shot.media.kind == "video" and shot.media.source == "youtube" and used > limit * self.fps + 1:
                 raise ValueError(f"{shot.id}: clip de terceros de más de {limit:.0f} s")
         if cursor != self.durationInFrames:

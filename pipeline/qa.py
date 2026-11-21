@@ -30,7 +30,8 @@ from .context import RunContext
 from . import library, publish
 from .costs import COSTS_FILE
 from .judge import register_used
-from .schemas import MAX_THIRD_PARTY_SECONDS, ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
+from . import tope
+from .schemas import ColdOpenFile, FallbackFile, SelectionFile, ShotsFile, Timeline
 
 
 STAGE = "qa"
@@ -140,7 +141,8 @@ def run(ctx: RunContext) -> None:
             # The render plays the file from its start for exactly this long, so this is what counts; the file's
             # own length can run a little over (audio track or container padding: avion9 s202 «5.27 s» showed 5 s)
             shown = shot.durationInFrames / fps * float(shot.media.rate or 1.0)
-            limit = 15.0 if shot.coldOpen else MAX_THIRD_PARTY_SECONDS
+            cap = tope.seconds(ctx)                # content.max_third_party_seconds of this video
+            limit = max(15.0, cap) if shot.coldOpen else cap
             if shot.media.source in THIRD_PARTY and shown > limit + 1 / fps:
                 blockers.append(f"{shot.id}: clip de terceros de {shown:.2f} s (máximo {limit:.0f} s)")
             elif shot.media.source in THIRD_PARTY and seconds > limit + 1:

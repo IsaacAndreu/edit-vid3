@@ -94,7 +94,7 @@ class TimelineSchemaTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 Timeline.model_validate({**self.BASE, "shots": [bad]})
         with self.assertRaises(ValidationError):
-            Timeline.model_validate({**self.BASE, "durationInFrames": 200, "shots": [{**shot, "durationInFrames": 200}]})
+            Timeline.model_validate({**self.BASE, "durationInFrames": 6000, "shots": [{**shot, "durationInFrames": 6000}]})
 
 
 class SpeechTests(unittest.TestCase):

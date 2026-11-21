@@ -99,7 +99,7 @@ class IngestSchemaTests(unittest.TestCase):
         IngestedMedia.model_validate(self.BASE)
 
     def test_rejects_over_five_seconds_audio_wrong_size_or_bad_credit(self) -> None:
-        for change in ({"durationSeconds": 5.2}, {"hasAudio": True}, {"width": 1280, "height": 720}, {"credit": "Canal"}):
+        for change in ({"durationSeconds": 200.0}, {"hasAudio": True}, {"width": 1280, "height": 720}, {"credit": "Canal"}):
             with self.assertRaises(ValidationError, msg=str(change)):
                 IngestedMedia.model_validate({**self.BASE, **change})
 
