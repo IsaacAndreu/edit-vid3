@@ -237,6 +237,52 @@ def _words_per_video(root: Path, channel: str) -> int:
     return int(sum(counts) / len(counts)) if counts else 0
 
 
+MATERIAL_BRIEF = ("MATERIAL QUE YA EXISTE (lo que ya funcionó en otros vídeos y lo que el canal ha subido): cuando "
+                  "cuentes algo, apóyalo en estos momentos grabados si encajan, con su fecha y su lugar; no los "
+                  "inventes ni los nombres si no salen en la historia.")
+
+
+def existing_material(root: Path, channel: str, text: str, per_entity: int = 6, entities: int = 4,
+                      clips: int = 20) -> str:
+    """What can already be shown for an idea, without any search: the library's best sources for the people and
+    topics the idea names (cache/library: sources that went on screen or were approved before), and the tags of the
+    clips the channel uploaded as material de partida (materiales/<canal>/…). '' when there is nothing."""
+
+    from . import library, material
+    from .sourcing.common import tokens
+
+    said = tokens(text)
+    lines: list[str] = []
+    try:
+        known = library.overview(root)
+    except Exception:
+        known = []
+    matched = 0
+    for entry in known:
+        words = {t for t in tokens(entry["name"]) if len(t) >= 4}
+        if not words or not words <= said or matched >= entities:
+            continue
+        try:
+            sources = [s for s in library.entity(root, entry["key"])["sources"] if s["kind"] == "videos"][:per_entity]
+        except (FileNotFoundError, KeyError, ValueError):
+            continue
+        if not sources:
+            continue
+        matched += 1
+        lines.append(f"{entry['name']}:")
+        lines += [f"- {s['title'][:110]}" + (f" ({s['channel'][:40]})" if s.get("channel") else "") for s in sources]
+    tagged: list[str] = []
+    base = root / "materiales" / channel if channel else None
+    for folder in ([base, *sorted(p for p in base.iterdir() if p.is_dir())] if base and base.is_dir() else []):
+        for tags in material.read(folder)["clips"].values():
+            if tags.strip() and tags.strip() not in tagged:
+                tagged.append(tags.strip())
+    if tagged:
+        lines.append("Clips propios del canal:")
+        lines += [f"- {t[:120]}" for t in tagged[:clips]]
+    return (MATERIAL_BRIEF + "\n" + "\n".join(lines)) if lines else ""
+
+
 def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, Any]:
     """{title, script, words} for the «Nuevo vídeo» form."""
 
@@ -292,6 +338,10 @@ def draft_script(root: Path, channel: str, idea: dict[str, Any]) -> dict[str, An
     reference = _reference_script(root, channel)
     if reference:
         brief.append(f"GUION DE REFERENCIA DEL CANAL (solo el estilo):\n{reference}")
+    existing = existing_material(root, channel, " ".join(
+        [title, str(idea.get("note") or ""), str(idea.get("angle") or ""), " ".join(idea.get("outline") or [])]))
+    if existing:                                 # what can already be shown: the script leans on it
+        brief.append(existing)
     result = complete_json(ctx, stage="guiones", section="planner", system=DRAFT_SYSTEM, user="\n\n".join(brief),
                            max_tokens=max(9000, int(words * 2.4)), use_cache=False)       # long documentaries too
     script = str(result.get("script") or "").strip()
