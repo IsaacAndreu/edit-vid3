@@ -3,14 +3,45 @@ const vMark = (cls, name, label) => `<span class="${cls}">${icon(name, label)}</
 const V_FIT = {bien: vMark("t-ok", "check", "Bien"), dudoso: vMark("t-warn", "alert", "Dudoso"), regular: vMark("t-warn", "alert", "Regular"),
   mal: vMark("t-bad", "x", "Mal"), no: vMark("t-bad", "x", "No")};
 
-async function newVideo() {
+// «Nuevo vídeo»: first the way in, as two cards (#/nuevo), then its form (#/nuevo/guion, #/nuevo/titulo)
+function chooseStart() {
+  show(`<div class="start">
+    <h1>Nuevo vídeo</h1>
+    <p class="start-lead">¿Cómo quieres empezar?</p>
+    <div class="choices">
+      <a class="choice" href="#/nuevo/guion">
+        <span class="choice-icon">${icon("pen")}</span>
+        <span class="choice-title">Tengo el guion</span>
+        <span class="choice-text">Pegas o subes tu guion; la voz, la tuya o la del canal.</span>
+        <ul><li>${icon("check")}Tú decides cada palabra</li><li>${icon("check")}Enlaces de referencia y biblioteca</li>
+          <li>${icon("check")}Revisa el gancho y lo que se puede enseñar</li></ul>
+        <span class="choice-go">Empezar con mi guion →</span>
+      </a>
+      <a class="choice featured" href="#/nuevo/titulo">
+        <span class="choice-badge">Con IA</span>
+        <span class="choice-icon">${icon("bulb")}</span>
+        <span class="choice-title">Desde un título e información</span>
+        <span class="choice-text">Escribes el título y lo que sepas: el guion sale con el estilo del canal.</span>
+        <ul><li>${icon("check")}Lee tus vídeos y páginas de referencia</li><li>${icon("check")}Reescribe lo que no se puede enseñar</li>
+          <li>${icon("check")}Si quieres, lo pone en cola solo</li></ul>
+        <span class="choice-go">Empezar desde un título →</span>
+      </a>
+    </div>
+  </div>`);
+}
+async function newVideo(sub = "") {
   window.opening = null; window.openings = [];
   data = data || await api("/api/overview");
   let pre = window.prefill;
   if (!pre) { try { pre = JSON.parse(sessionStorage.getItem("prefill") || "null"); } catch (e) {} }
   window.prefill = pre;
   const idea = pre && pre.idea;
-  show(`<h1>Nuevo vídeo</h1>
+  if (!sub) sub = pre && pre.script ? "guion" : idea ? "titulo" : "";
+  if (!sub) return chooseStart();
+  window.newMode = sub === "titulo" ? "title" : "own";
+  const fromTitle = window.newMode === "title";
+  show(`<div class="row between"><h1>${fromTitle ? "Nuevo vídeo desde un título" : "Nuevo vídeo con tu guion"}</h1>
+      <a href="#/nuevo" class="small">← Cambiar de opción</a></div>
     ${idea ? `<div class="notice"><div class="row between"><b>Idea: ${esc(idea.title)}</b>
         <button onclick="window.prefill=null;try{sessionStorage.removeItem('prefill')}catch(e){};route()">Quitar idea</button></div>
       <div class="small">${esc(idea.angle || "")}</div>${idea.hook ? `<div class="small"><b>Gancho:</b> ${esc(idea.hook)}</div>` : ""}
@@ -18,14 +49,6 @@ async function newVideo() {
       ${idea.research ? `<div class="small muted"><b>Comprobar antes:</b> ${esc(idea.research)}</div>` : ""}
       <div class="small muted mt-2">Se guarda como idea.md junto al guion. Escribe el guion con este esquema y graba la voz.</div></div>` : ""}
     <div class="card">
-      <div class="fset"><div class="legend">Cómo empiezas</div>
-        <div class="row gap-4" role="radiogroup" aria-label="Cómo empiezas">
-          <label class="check"><input type="radio" name="mode" value="own" checked onchange="setMode()"> Tengo el guion</label>
-          <label class="check"><input type="radio" name="mode" value="title" onchange="setMode()"> Desde un título e información</label>
-        </div>
-        <p class="help">Desde un título: escribe el guion con el estilo del canal, mira qué se puede enseñar, reescribe lo que no y, si
-          quieres, lo pone en cola</p>
-      </div>
       <div class="fset"><div class="legend">Vídeo</div>
         <div class="two">
           ${field("Canal", `<select id="channel">${channelOptions(data)}</select>`, `<a href="#/canal-nuevo">+ nuevo canal</a>`, "channel")}
@@ -43,7 +66,7 @@ async function newVideo() {
           ${field(`Título de trabajo <span class="opt">opcional</span>`, `<input id="title">`, "Los títulos de YouTube se escriben solos", "title")}
         </div>
       </div>
-      <div class="fset hide" id="titlemode"><div class="legend">Desde un título</div>
+      <div class="fset ${fromTitle ? "" : "hide"}" id="titlemode"><div class="legend">Desde un título</div>
         ${field("Información del vídeo", `<textarea id="info" class="mid" placeholder="De qué va, el enfoque, los hechos que tiene que contar, a quién va dirigido…"></textarea>`,
           "Con el título de arriba: lo que sepas. Lo que no esté aquí ni en los enlaces de referencia lo marca [COMPROBAR]", "info")}
         <div class="actions"><button class="main" id="writebtn" onclick="writeFromTitle()">Escribir el guion</button>
@@ -139,9 +162,13 @@ async function newVideo() {
   showMaterial();
   $("#channel").addEventListener("change", () => showMaterial());
   if (pre && pre.script) $("#script").value = pre.script;
-  let mode = "own";
-  try { mode = localStorage.getItem("newMode") || "own"; } catch (e) {}
-  if (!(pre && pre.script) && mode === "title") { document.querySelector('input[name=mode][value=title]').checked = true; setMode(); }
+  if (fromTitle) {
+    const label = document.querySelector("label[for=title]");
+    if (label) label.textContent = "Título del vídeo";
+    $("#title").placeholder = "«Simone Biles: la gimnasta que dijo basta»";
+    if (idea) $("#info").value = [idea.angle, idea.hook && "Gancho: " + idea.hook, ...(idea.outline || []).map((x) => "- " + x),
+      idea.research && "Comprobar: " + idea.research].filter(Boolean).join("\n");
+  }
   if (idea && idea.escenas) $("#scenelist").value = idea.escenas;      // a board idea comes with its scene list
   // a simulation channel: the languages it can be dubbed to, each only if it has a GenAIPro voice
   window.dubOptions = {};
@@ -341,11 +368,6 @@ function useOpening() {
 
 // «Desde un título e información»: the draft (organizar.draft_script, with the reference links), then what cannot be
 // shown rewritten (imagen_guion.fix), then — if ticked — the same «Crear y poner en cola»
-function setMode() {
-  const title = document.querySelector("input[name=mode]:checked").value === "title";
-  $("#titlemode").classList.toggle("hide", !title);
-  try { localStorage.setItem("newMode", title ? "title" : "own"); } catch (e) {}
-}
 async function writeFromTitle() {
   const title = $("#title").value.trim(), msg = $("#writemsg");
   if (!title) { msg.textContent = "Pon arriba el título del vídeo"; $("#title").focus(); return; }
