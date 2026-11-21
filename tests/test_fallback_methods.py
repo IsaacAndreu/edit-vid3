@@ -78,3 +78,23 @@ def test_an_ambient_shot_runs_on_with_its_neighbours_clip_after_a_jump():
     assert [(o.candidateId, o.start, o.end) for o in options] == [("yt:A", 43.0 + JUMP, 43.0 + JUMP + 2.5)] and "yt:A" in found
     assert neighbour_option(story, story[2], used, 2.5, {"yt:A": video}.get) == ([], {})       # another idea
     assert neighbour_option(story, story[1], used, 2.5, {}.get) == ([], {})                     # unknown source
+
+
+def test_an_item_kept_from_an_earlier_run_counts_as_on_screen():
+    """newgym3-ideas2: 5 pairs showed the same seconds of one source (s062/s128 both at 157.21 s of u2pccsI08v4) — one
+    item kept from the earlier run, the other searched again beside it, because the kept one was never in `used`."""
+
+    from pipeline.fallback import reused_selection, same_stretch
+
+    kept = FallbackItem(shotId="s062", reason="r", method="protagonist", kind="video", path="work/x/s062.mp4",
+                        source="youtube", candidateId="yt:u2pccsI08v4", start=157.21, end=160.177, durationSeconds=2.967,
+                        credit="Fuente: Faith Productions", specHash="h")
+    used = [reused_selection(kept)]
+    assert used[0].status == "selected" and used[0].shotId == "s062"
+    assert same_stretch("yt:u2pccsI08v4", 157.21, 160.343, used)       # s128: now refused
+    assert not same_stretch("yt:u2pccsI08v4", 170.0, 173.0, used)
+
+    source = inspect.getsource(fallback)
+    reuse = source.index("items.append(old)")
+    assert "used.append(reused_selection(old))" in source[reuse:reuse + 400]
+    assert "same_stretch(old.candidateId" in source[reuse - 600:reuse]   # a kept item over a judge's pick goes too

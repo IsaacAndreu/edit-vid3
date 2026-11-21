@@ -283,8 +283,12 @@ def run(ctx: RunContext) -> None:
         # Reuse the cached result unless a shot earlier in this run has already taken that media.
         if (old and old.specHash in (digest, usual) and (ctx.root / old.path).is_file() and old.candidateId not in pexels_used
                 and shot_id not in marked_wrong and not feedback.is_wrong(elsewhere, old.candidateId, old.start, old.end)
+                and not same_stretch(old.candidateId, old.start, old.end, used, MAX_THIRD_PARTY_SECONDS)
                 and not looks_used(ctx.root / old.path, old.kind)):
             items.append(old)
+            # on screen like any other pick: newgym3-ideas2 had 5 pairs with the same seconds of one source, a kept
+            # item and a shot searched again beside it (the middle-frame hash misses 0.1 s apart in a routine)
+            used.append(reused_selection(old))
             pexels_used.add(old.candidateId)
             if h := _frame_hash(ctx.root / old.path, old.kind):
                 on_screen.append(h)
@@ -944,6 +948,15 @@ def neighbour_option(story_shots: list[Shot], shot: Shot, used: list[Any], neede
                                         "scores": {"clip": 0.0}, "total": 0.0})
         return [option], {candidate.id: candidate}
     return [], {}
+
+
+def reused_selection(item: FallbackItem) -> Selection:
+    """A fallback item kept from an earlier run, as the selection the repeat checks of this run compare against. Not
+    validated: a generated image has no page or credit, and it only ever meets same_stretch / is_repeat / overused."""
+
+    return Selection.model_construct(shotId=item.shotId, status="selected", decidedBy="fallback", candidateId=item.candidateId,
+                     source=item.source, kind=item.kind, start=item.start, end=item.end, url=item.url,
+                     credit=item.credit)
 
 
 def same_stretch(candidate_id: str, start: float | None, end: float | None, used: list[Any], needed: float = 3.0,
