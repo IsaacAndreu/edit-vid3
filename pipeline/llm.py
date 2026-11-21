@@ -101,7 +101,11 @@ def complete_json(
 
     if claude.is_claude(model):                  # guion.model / planner.model: claude-… (pipeline/claude.py)
         text, _ = claude.ask(ctx, stage=stage, system=system + "\n\nDevuelve SOLO el objeto JSON, sin nada más.",
-                             content=user, cfg=cfg, max_tokens=max(max_tokens, 16000))
+                             content=user, max_tokens=max(max_tokens, 16000),
+                             # the section's usd_per_mtok are the old provider's (DeepSeek: 7× cheaper): Claude's own
+                             # prices, or `claude_usd_per_mtok` when you set them
+                             cfg={**{k: v for k, v in cfg.items() if k != "usd_per_mtok"},
+                                  "usd_per_mtok": cfg.get("claude_usd_per_mtok")})
         try:
             parsed = parse_json_reply(text)
         except json.JSONDecodeError as error:

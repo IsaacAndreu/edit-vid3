@@ -119,3 +119,18 @@ def test_the_revisor_sends_the_sheet_to_claude(monkeypatch, tmp_path):
     kw = asked[0]
     assert kw["schema"] is revisor.SCHEMA and kw["cfg"]["effort"] == "medium"
     assert kw["content"][0]["type"] == "image" and "frase" in kw["content"][1]["text"]
+
+
+def test_a_section_moved_to_claude_is_charged_at_claudes_prices(monkeypatch, tmp_path):
+    """planner.model: claude-… keeps DeepSeek's usd_per_mtok in config.yaml (0.30 / 1.20): they must not apply."""
+
+    from pipeline import llm
+
+    seen = []
+    monkeypatch.setattr(claude, "ask", lambda ctx, **kw: (seen.append(kw["cfg"]), ('{"shots": []}', 0.0))[1])
+    section = {"model": "claude-sonnet-5-5", "usd_per_mtok": {"input": 0.30, "output": 1.20}}
+    fake_ctx = SimpleNamespace(section=lambda name: section, cache_dir=tmp_path)
+    llm.complete_json(fake_ctx, stage="planner", system="S", user="U", section="planner", use_cache=False)
+    assert seen[0]["usd_per_mtok"] is None and seen[0]["model"] == "claude-sonnet-5-5"
+    usage = SimpleNamespace(input_tokens=1_000_000, output_tokens=0)
+    assert claude.cost("claude-sonnet-5-5", usage, seen[0]["usd_per_mtok"]) == 2.0

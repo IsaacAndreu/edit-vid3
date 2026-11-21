@@ -36,6 +36,8 @@ planner:
   max_attempts: 3            # reintentos si la salida no valida el esquema
   # Precio en horario punta (el valle es la mitad): https://api-docs.deepseek.com/quick_start/pricing
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
+  # model: claude-sonnet-5-5  # con un modelo claude-… las escenas las planifica Claude (ANTHROPIC_API_KEY); entonces
+  # effort: medium              # low | medium | high, y el gasto va a sus precios (claude_usd_per_mtok para cambiarlos)
   # ideas: true            # agrupa los planos en ideas (literal / ambiente / rótulo): una búsqueda por idea, los
   #                          cortes de una idea del mismo vídeo, los rótulos («SECRETO 4…», «suscríbete») como texto.
   #                          Por canal (canales/<canal>.yaml → planner: {ideas: true}); solo cambia los vídeos que se
