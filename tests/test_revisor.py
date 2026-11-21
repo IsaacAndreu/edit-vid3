@@ -167,10 +167,12 @@ def test_the_baseline_puts_every_video_in_one_table():
     results = [{"slug": "newgym3", "shots": 200, "asText": 7, "model": "m", "usd": 0.01, "unreadable": ["s9"],
                 "flagged": [{"problem": "hueco_tapado"}] * 20 + [{"problem": "repetido"}] * 10 + [{"problem": "roto"}]}]
     text = revisor.baseline(results)
-    assert "| newgym3 | 200 | 7 | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
+    assert "| newgym3 | 200 | 7 | — | — | 16 | 20 | 10 | 0 | — | 0 | 0 | 0 | 1 | 1 | m | 0.010 |" in text
+    measured = revisor.baseline([{**results[0], "textShare": 48.5, "firstImage": 40.0}])
+    assert "| newgym3 | 200 | 7 | 48.5 | 40.0 | 16 |" in measured
     labelled = [{"slug": "v", "shots": 100, "model": "m", "usd": 0.0, "flagged": [
         {"problem": "no_tiene_que_ver", "kind": "literal"}, {"problem": "no_tiene_que_ver", "kind": "ambiente"}]}]
-    assert "| v | 100 | — | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
+    assert "| v | 100 | — | — | — | 2 | 0 | 0 | 2 | 1 |" in revisor.baseline(labelled)       # one of the two was a literal idea
 
 
 def test_a_video_not_edited_yet_does_not_stop_the_baseline(tmp_path, monkeypatch, capsys):
@@ -237,19 +239,24 @@ def test_your_labels_and_the_reviewers_are_both_read_yours_win(tmp_path):
                                                                "noBorrow": ["s009"]}))
     (tmp_path / feedback.REVISION).write_text(json.dumps({"wrong": {"s002": {"reason": "persona_equivocada"}}}))
     assert feedback.wrong_shots(tmp_path) == {"s001": "Repetido", "s002": "Sale otra persona"}
-    assert feedback.no_borrow(tmp_path) == {"s001", "s002", "s009"}   # sent back too: text if nothing replaces them
-    assert feedback.no_borrow(tmp_path, sent_back=False) == {"s009"}
+    assert feedback.no_borrow(tmp_path) == set()                       # 23-11: the reviewer never turns a shot into text
+    assert feedback.no_borrow(tmp_path, holes=True) == {"s009"}
+    assert feedback.no_borrow(tmp_path, sent_back=True, holes=True) == {"s001", "s002", "s009"}
+    # s001 (repeated) keeps its clip when nothing better comes; s002 (broken) and what you marked do not
+    assert feedback.keep_if_unreplaced(tmp_path) == {"s001"}
 
 
-def test_a_shot_sent_back_never_comes_back_as_a_copy_of_its_neighbour():
-    """newgym3-ideas2: s050, s044 and s046 went back to the fill-in, nothing replaced them and the edit covered them
-    with the next shot's clip — flagged again. The timeline reads the switch (revisor.no_borrow_sent_back, on)."""
+def test_the_reviewer_never_turns_a_shot_into_text():
+    """ideas-pantallas-de-texto.md, 23-11: newideas had half its length in text, part of it from the reviewer's
+    «sent back → text». Off by default; a shot sent back with nothing better keeps its own clip (timeline)."""
 
     import inspect
 
     from pipeline import timeline
 
-    assert 'get("no_borrow_sent_back", True)' in inspect.getsource(timeline)
+    source = inspect.getsource(timeline)
+    assert 'get("no_borrow_sent_back", False)' in source and 'get("huecos_a_texto", False)' in source
+    assert "keep_if_unreplaced(ctx.work_dir)" in source
 
 
 def test_the_score_of_every_video_and_the_panel(tmp_path):
@@ -331,3 +338,14 @@ def test_channels_the_revisor_keeps_finding_cartoons_in_are_learned_only_when_as
         assert common.LEARNED_BLOCKED_CHANNELS == {"toons"}
     finally:
         common.LEARNED_BLOCKED_CHANNELS = set()
+
+
+def test_text_share_and_first_image_come_from_the_edit():
+    """ideas-pantallas-de-texto.md: newideas, ~half in text and the first image at 0:40, invisible to «per 100»."""
+
+    shots = [{"id": "s001", "type": "broll", "from": 0, "durationInFrames": 300},                     # 10 s of board
+             {"id": "s002", "type": "chapter", "from": 300, "durationInFrames": 60},
+             {"id": "s003", "type": "broll", "from": 360, "durationInFrames": 240, "media": {"kind": "video"}},
+             {"id": "s004", "type": "broll", "from": 600, "durationInFrames": 300, "groupId": "panel-1"}]
+    got = revisor.screen_measures({"fps": 30, "durationInFrames": 900, "shots": shots})
+    assert got == {"textShare": 33.3, "firstImage": 12.0}

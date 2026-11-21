@@ -197,6 +197,23 @@ def repeats(items: list[dict[str, Any]], max_hamming: int = 6, already: set[str]
     return out
 
 
+def screen_measures(timeline: dict[str, Any]) -> dict[str, float]:
+    """Without a model, from the edit: `textShare`, the % of the video whose footage shots show no clip or photo (a
+    board, key words or nothing), and `firstImage`, the second of the first clip or photo. ideas-pantallas-de-texto.md:
+    newideas had ~half of it as text and its first image at 0:40, which «flagged per 100» never shows (a board is not a
+    flagged shot)."""
+
+    fps = float(timeline.get("fps") or 30)
+    total = int(timeline.get("durationInFrames") or 0) or max(
+        (int(s.get("from") or 0) + int(s.get("durationInFrames") or 0) for s in timeline.get("shots") or []), default=0)
+    text = sum(int(s.get("durationInFrames") or 0) for s in timeline.get("shots") or []
+               if s.get("type") == "broll" and not s.get("media") and not s.get("groupId"))
+    first = next((int(s.get("from") or 0) for s in sorted(timeline.get("shots") or [], key=lambda s: int(s.get("from") or 0))
+                  if (s.get("media") or {}).get("kind") in ("video", "image")), None)
+    return {"textShare": round(100 * text / total, 1) if total else 0.0,
+            "firstImage": round(first / fps, 1) if first is not None else None}
+
+
 def file_owner(src: str) -> str | None:
     """The shot a media file was made for, from its name (work/<slug>/media/s031.mp4 → s031); None for any other file
     (a library clip, your own material)."""
@@ -419,7 +436,8 @@ def review(root: Path, slug: str, model: str | None = None, max_usd: float | Non
                         | {"label": (item.get("label") or {}).get("reason") if item.get("label") else None})
     result = {"slug": slug, "model": str(cfg.get("model") or ctx.section("judge").get("model", "gpt-5-mini")),
               "shots": len(items), "asText": as_text, "reviewedByModel": reviewed, "usd": round(spent, 4),
-              "stoppedAtBudget": stopped, "budget": budget, "unreadable": unreadable, "flagged": rows}
+              "stoppedAtBudget": stopped, "budget": budget, "unreadable": unreadable, "flagged": rows,
+              **screen_measures(timeline)}
     out = ctx.out_dir / OUT_DIR
     out.mkdir(parents=True, exist_ok=True)
     (out / "revisor.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -638,7 +656,7 @@ def baseline(results: list[dict[str, Any]]) -> str:
 
     import time
 
-    head = ["Vídeo", "Planos", "En texto", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
+    head = ["Vídeo", "Planos", "En texto", "Texto o vacío %", "1.ª imagen (s)", "Marcados por 100", "Huecos tapados", "Repetidos (parejas)", "No tiene que ver",
             "…en literales", "Otra persona", "Dibujos", "Marca de agua", "Roto", "No revisados", "Modelo", "$"]
     lines = [f"# Línea base del revisor · {time.strftime('%Y-%m-%d %H:%M')}", "",
              "Marcados por cada 100 planos con imagen; cada pareja de repetidos cuenta una vez, en su lado más débil "
@@ -657,10 +675,15 @@ def baseline(results: list[dict[str, Any]]) -> str:
         labelled = any(row.get("kind") for row in r["flagged"])
         cells = [str(counts[k]) for k in BASE_COLUMNS]
         cells.insert(3, str(literal) if labelled else "—")
-        lines.append(f"| {r['slug']} | {r['shots']} | {r.get('asText', '—')} | {per100:.0f} | "
+        first = r.get("firstImage")
+        lines.append(f"| {r['slug']} | {r['shots']} | {r.get('asText', '—')} | {r.get('textShare', '—')} | "
+                     f"{'—' if first is None else first} | {per100:.0f} | "
                      + " | ".join(cells)
                      + f" | {len(r.get('unreadable') or [])} | {r['model']} | {r['usd']:.3f} |")
-    lines += ["", "«…en literales»: los «no tiene que ver» en ideas que tenían que verse tal cual (planner.ideas); «—» en "
+    lines += ["", "«Texto o vacío %»: parte del vídeo cuyos planos de metraje no tienen clip ni foto (pizarra, palabras o "
+              "nada); «1.ª imagen»: segundo del primer clip o foto. Un vídeo por encima de timeline.max_text_share no "
+              "cuenta como mejora aunque baje «marcados por 100».", "",
+              "«…en literales»: los «no tiene que ver» en ideas que tenían que verse tal cual (planner.ideas); «—» en "
               "vídeos planificados sin ideas.", ""]
     return "\n".join(lines)
 

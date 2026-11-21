@@ -714,8 +714,27 @@ def run(ctx: RunContext) -> None:
         # rather than a text card. The identity check still applies; the judge does not (it would want the
         # exact scene again).
         literal = shot.idea is not None and shot.idea.kind == "literal"
-        # planner.ideas: a literal idea is that very thing or nothing — never another moment of the person (bloque 1.5)
-        if item is None and who and shot.broll and cfg.get("protagonist_filler", True) and not literal:
+
+        def photo_of(person: str) -> FallbackItem | None:
+            found = None
+            for kind in ("library", "web"):
+                if found is not None:
+                    break
+                candidates = library_photos(ctx, person) if kind == "library" else \
+                    web_photos(ctx, shot.broll.model_copy(update={"entities": [person]}), tried)
+                options = [photo_option(c) for c in candidates.values()
+                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
+                           and c.id not in elsewhere][: limit * 2]
+                found = vet_and_materialise(options, candidates, "protagonist-photo", vet=False)
+            return found
+
+        # planner.ideas: a literal idea without its clip — a photo of the person first, then a clip of them that the
+        # judge accepts; never a clip of something else, and a board only at the end (ideas-pantallas-de-texto.md:
+        # «that very thing or nothing» made newideas half text). fallback.literal_ambient: false brings back the old rule
+        literal_ambient = literal and bool(cfg.get("literal_ambient", True))
+        if item is None and literal_ambient and who and shot.broll and cfg.get("photo_for_moments", True):
+            item = photo_of(who)
+        if item is None and who and shot.broll and cfg.get("protagonist_filler", True) and (not literal or literal_ambient):
             pool, pool_candidates = protagonist_pool(ctx, story, who)
             options = sorted((o for o in pool if o.kind == "video"
                               and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
@@ -726,22 +745,14 @@ def run(ctx: RunContext) -> None:
             # a narrated moment (a fall, tears on the podium) is never filled with any other moment of the person
             # fallback.judge_filler (off: one judge call more per such shot): the judge vets any filler, not only moments
             item = vet_and_materialise(options, pool_candidates, "protagonist-filler",
-                                       vet=bool(shot.broll.moment) or bool(cfg.get("judge_filler", False)))
+                                       vet=literal or bool(shot.broll.moment) or bool(cfg.get("judge_filler", False)))
 
         # 2c. A narrated moment nobody filmed (Yulo dejected after fourth place, the Manila parade, a press conference):
         # a photo of the protagonist instead of an empty shot, as sports channels do. Without the judge (it would
         # want the exact scene again: gymyulo, 54 % empty), with the identity check — a photo of the person is never
         # a lie about the moment, another moment's footage could be. `fallback.photo_for_moments` (on).
-        if item is None and who and shot.broll and cfg.get("photo_for_moments", True):
-            for kind in ("library", "web"):
-                if item is not None:
-                    break
-                candidates = library_photos(ctx, who) if kind == "library" else \
-                    web_photos(ctx, shot.broll.model_copy(update={"entities": [who]}), tried)
-                options = [photo_option(c) for c in candidates.values()
-                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
-                           and c.id not in elsewhere][: limit * 2]
-                item = vet_and_materialise(options, candidates, "protagonist-photo", vet=False)
+        if item is None and who and shot.broll and cfg.get("photo_for_moments", True) and not literal_ambient:
+            item = photo_of(who)
 
         # 3. Generated image — the last resort, never for a video about a real person.
         if item is None and cfg.get("generate", True) and not real_people:

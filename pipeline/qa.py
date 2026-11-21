@@ -86,6 +86,27 @@ def inputs(ctx: RunContext) -> list:
             ctx.work_dir / "media" / "_ingest.json"]
 
 
+def empty_spans(timeline: Timeline) -> list[tuple[str, float]]:
+    """(shot id, seconds) of every footage shot that shows nothing: no media of its own and the longest stretch of it
+    no graphic (board, card, chart) covers."""
+
+    groups = [(g.from_, g.from_ + g.durationInFrames) for g in timeline.groups]
+    out = []
+    for shot in timeline.shots:
+        if shot.type != "broll" or shot.media is not None or shot.groupId:
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        cuts = sorted((max(a, start), min(b, end)) for a, b in groups if a < end and start < b)
+        gap, at = 0, start
+        for a, b in cuts:
+            gap = max(gap, a - at)
+            at = max(at, b)
+        gap = max(gap, end - at)
+        if gap > 0:
+            out.append((shot.id, round(gap / timeline.fps, 2)))
+    return out
+
+
 def run(ctx: RunContext) -> None:
     cfg = ctx.section("qa")
     qa_dir = ctx.out_dir / "qa"
@@ -187,6 +208,12 @@ def run(ctx: RunContext) -> None:
         entry["_frame"] = frame
         entry["phash"] = det.phash(frame) if frame is not None else None
         rows.append(entry)
+
+    # nothing on screen: a shot of footage with no clip, photo or graphic over it (newideas: blank screens at 0:36,
+    # 1:36, 2:16… with only the small subtitle). Over `qa.max_empty_seconds` (1) the render does not start.
+    for shot_id, seconds in empty_spans(timeline):
+        if seconds > float(cfg.get("max_empty_seconds", 1.0)):
+            blockers.append(f"{shot_id}: {seconds:.1f} s sin clip, foto ni gráfico (pantalla vacía)")
 
     narration = round(float(ctx.read_json("words.json")["durationSeconds"]) * fps)
     if timeline.durationInFrames != (narration + timeline.audio.voiceFrom + sum(b for _, b in timeline.audio.voiceGaps)

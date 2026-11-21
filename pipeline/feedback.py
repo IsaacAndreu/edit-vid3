@@ -231,14 +231,26 @@ def wrong_shots(work: Path) -> dict[str, str]:
     return {sid: REASONS.get(v.get("reason"), v.get("reason") or "") for sid, v in wrong_details(work).items()}
 
 
-def no_borrow(work: Path, sent_back: bool = True) -> set[str]:
-    """Shots the automatic reviewer found covered with another shot's clip: shown as text from now on. With
-    `sent_back` (revisor.no_borrow_sent_back, on), also the shots it sent back to the fill-in: when nothing replaces
-    them they are text, not a copy of the next shot's clip (newgym3-ideas2: s050, s044, s046 and two more, sent back
-    as repeated, came back covered with a neighbour's clip — the same fault again)."""
+def no_borrow(work: Path, sent_back: bool = False, holes: bool = False) -> set[str]:
+    """Shots the automatic reviewer wants shown as text: off by default since 23-11 (prompts/ideas-pantallas-de-
+    texto.md: the reviewer must never turn a shot into text; newideas had half its length in text). `holes`
+    (revisor.huecos_a_texto): the ones it found covered with another shot's clip; `sent_back`
+    (revisor.no_borrow_sent_back): the ones it sent back to the fill-in."""
 
     auto = _read(work / REVISION_AUTO) or {}
-    return set(auto.get("noBorrow") or []) | (set(auto.get("wrong") or {}) if sent_back else set())
+    return (set(auto.get("noBorrow") or []) if holes else set()) | (set(auto.get("wrong") or {}) if sent_back else set())
+
+
+HARD_FAULTS = {"roto", "persona_equivocada", "texto_marca_agua"}   # never kept, whatever replaces them
+
+
+def keep_if_unreplaced(work: Path) -> set[str]:
+    """Shots the automatic reviewer sent back for a soft reason (repeated, not quite the sentence): when the fill-in
+    finds nothing better they keep their own clip, never a board. Broken clips, another person and watermarks go."""
+
+    auto = (_read(work / REVISION_AUTO) or {}).get("wrong") or {}
+    mine = (_read(work / REVISION) or {}).get("wrong") or {}          # what YOU marked wrong always goes
+    return {sid for sid, v in auto.items() if sid not in mine and str(v.get("reason") or "") not in HARD_FAULTS}
 
 
 # --- what the program learns from the labels ---------------------------------------------------------------

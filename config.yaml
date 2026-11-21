@@ -248,6 +248,8 @@ quotes:                            # declaraciones originales con subtítulos (p
   whisper_minutes: 12              # …solo los primeros minutos
 
 fallback:
+  # literal_ambient: true          # idea literal sin su clip: foto de la persona y luego un clip suyo que el juez acepte,
+  #                                  antes que la pizarra (false: «eso o nada», lo que dejó newideas medio en texto)
   photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   repeat_frames: false             # dos fotogramas por clip (30 % y 70 %), como el revisor, para ver si ya salió: pilla los
@@ -374,6 +376,12 @@ people:
   model: u2net_human_seg           # modelo de rembg para recortar personas
 
 timeline:
+  # Texto en pantalla (ideas-pantallas-de-texto.md, 23-11): el orden es clip correcto > clip de ambiente juzgado > foto >
+  # texto. max_text_share: tope de la parte del vídeo en pizarra (0.10 en vídeos planificados por ideas; sin poner, sin
+  # tope en los demás). Nunca pizarra en el gancho (judge.hook_seconds: va el mejor clip juzgado), nunca dos seguidas,
+  # ninguna de más de board_max_seconds (3); lo que pasa del tope toma un clip de su idea o el más cercano.
+  # max_text_share: 0.10
+  # board_max_seconds: 3
   assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
   music_volume: 0.2                # música de fondo en las pausas: ~-34 LUFS (antes 0.32; súbelo si la quieres más presente)
   music_by_chapter: true           # tono de la música por capítulo (assets/music/<tono>-*.mp3)
@@ -439,8 +447,9 @@ queue:                             # cola nocturna (python main.py --all)
 #   aprender: false          # los canales en que el revisor ve dibujos o marcas de agua (3+ veces, 2+ vídeos) dejan de usarse
 #   aviso: true              # al acabar, lo que sigue marcado y sus hojas al Telegram del canal
 #   nota: false              # solo la nota de cada vídeo (panel «Puntería»), sin cambiar nada: 1-2 céntimos por vídeo
-#   no_borrow_sent_back: true  # con enabled: un plano devuelto al relleno que no encuentra otro sale como texto, no con
-#                            el clip del plano de al lado (eso volvía a ser «hueco tapado» o «repetido»)
+#   no_borrow_sent_back: false # true: un plano devuelto al relleno que no encuentra otro sale como texto. Apagado desde el
+#                            23-11: el revisor nunca convierte en texto; si no hay nada mejor, el plano conserva su clip
+#                            (salvo roto, otra persona o marca de agua). huecos_a_texto: false, lo mismo con los huecos tapados
 #   enabled: false           # en la cola, entre el montaje y la QA (bloque 3.3): lo que marque vuelve UNA vez al
 #                            relleno (work/<vídeo>/revision.auto.json) y se rehacen relleno, apertura y montaje.
 #                            Repetidos y rotos siempre; en ideas literales lo que marque con min_confidence (0.85);
@@ -469,6 +478,7 @@ queue:                             # cola nocturna (python main.py --all)
 #   library_sources: 12    # como mucho, fuentes nuevas de la biblioteca por vídeo
 
 qa:
+  # max_empty_seconds: 1        # un plano sin clip, foto ni gráfico más de esto bloquea el render (pantalla vacía)
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar
