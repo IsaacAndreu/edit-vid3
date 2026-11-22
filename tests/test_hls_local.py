@@ -119,7 +119,9 @@ def test_segments_come_in_process_through_the_session_and_ffmpeg_cuts_locally(tm
     ffmpeg, kwargs = commands[-1]
     assert ffmpeg[0] == "ffmpeg" and "-http_proxy" not in ffmpeg and "http" not in " ".join(ffmpeg)   # local files only
     assert ffmpeg[ffmpeg.index("-ss") + 1] == "1.995" and ffmpeg[ffmpeg.index("-t") + 1] == "4.000"   # 7.0 s is 1.995 s into segment 1
-    assert ffmpeg[ffmpeg.index("-i") + 1].endswith(".m3u8") and "libx264" in ffmpeg and "-an" in ffmpeg
+    # the segments joined into one local file (init + fragments), the seek on the output side (exact in MPEG-TS too)
+    assert ffmpeg[ffmpeg.index("-i") + 1].endswith("joined_232.mp4") and ffmpeg.index("-ss") > ffmpeg.index("-i")
+    assert "libx264" in ffmpeg and "-an" in ffmpeg
     assert "HTTPS_PROXY" not in kwargs["env"] and "http_proxy" not in kwargs["env"]
     assert not (tmp_path / "videos" / VIDEO / "hls_hd_7.00_11.00").exists()          # temporary segments gone
     assert yt._range_sidecar(result) == {"height": 720, "cap": 720}
@@ -366,9 +368,10 @@ def test_split_video_and_audio_tracks_are_fetched_separately_and_joined_locally(
     assert audio_segments == ["1", "2"]                     # 4-8 and 8-12 s of the audio track only
     ffmpeg = commands[-1]
     inputs = [i for i, word in enumerate(ffmpeg) if word == "-i"]
-    assert len(inputs) == 2 and ffmpeg[inputs[0] + 1].endswith("local_232.m3u8") and ffmpeg[inputs[1] + 1].endswith("local_234.m3u8")
+    assert len(inputs) == 2 and ffmpeg[inputs[0] + 1].endswith("joined_232.mp4") and ffmpeg[inputs[1] + 1].endswith("joined_234.mp4")
     seeks = [ffmpeg[i + 1] for i, word in enumerate(ffmpeg) if word == "-ss"]
-    assert seeks == ["1.995", "3.000"]                      # 7.0 s inside each track's own first segment
+    assert seeks == ["1.995"]                               # 7.0 s inside the video track's first segment (5.005 s)…
+    assert ffmpeg[inputs[1] - 1] == "-1.005" and ffmpeg[inputs[1] - 2] == "-itsoffset"   # …the sound's starts at 4.0
     assert ffmpeg[ffmpeg.index("-map") + 1] == "0:v:0" and "1:a:0" in ffmpeg and "-an" not in ffmpeg
     assert yt._range_sidecar(result)["height"] == 720
     yt.close()

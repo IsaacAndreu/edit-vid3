@@ -351,3 +351,12 @@ Sin verificar en el servidor: nada de esta tanda se ha probado con un vídeo rea
 | Pantalla vacía del final | la cubre el montaje (pizarra en cada tramo vacío) y, si quedara, QA la para; la pantalla final con recuadros es la de YouTube |
 | Verificación del guion sin búsqueda web: lo dice arriba del informe, en el registro y en el resumen | hecho |
 | Ahorro de metadatos | ya existía: `player_skip: [configs]` tras `python -m pipeline.sonda_ytcfg` (la portada, ~2,2 GB/día); la página del vídeo no se puede quitar (sin ella, 95 % «bot») |
+
+## Cortes HLS vacíos o cortados (22-11)
+
+`tramo-vacío` 492 en un día (escapadapolicial 242, newgym3-ideas4 133): por la vía hls-local el clip salía sin
+imagen o con 1,3 s de 3,7. Los trozos llegaban bien (diagnóstico en el servidor); el fallo era el salto de ffmpeg: un
+`-ss` de entrada en MPEG-TS (sin índice) cae a mitad de un GOP y, con un fotograma clave por trozo de ~6 s, no se
+descodifica nada hasta el siguiente. Ahora los trozos se unen en un archivo y el salto es de salida (exacto).
+Test: `tests/test_hls_local_cut.py` (los dos tramos que fallaban en el servidor). Medir: «tramo-vacío» en
+`--youtube-stats 1` debería caer casi a 0.
