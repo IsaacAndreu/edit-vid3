@@ -276,3 +276,27 @@ def telegram_lines(found: list[dict[str, Any]], top: int = 3) -> list[str]:
                      + (f" · inglés x{e['englishGap']}" if e.get("englishGap", 0) >= 2 else "")
                      + (f"\n   → {e['ideas'][0]}" if e.get("ideas") else ""))
     return lines
+
+
+def evaluate_languages(root: Path, topic: str, api: Any = None, translate_fn: Any = None,
+                       origin: str = "") -> dict[str, Any]:
+    """«Medir en todos los idiomas»: one topic (a stored one by its name or search, or a new one) in every language
+    of `radar.idiomas` that fits today's quota (pipeline/idiomas.py), kept next to it in Huecos."""
+
+    from . import idiomas
+    from .ytapi import YouTubeAPI
+
+    topic = " ".join(topic.split())[:120]
+    if len(topic) < 3:
+        raise ValueError("Escribe un tema")
+    ctx = RunContext.create("_radar", root=root)
+    cfg = ctx.section("radar")
+    api = api or YouTubeAPI(ctx)
+    stored = _read(root)["items"]
+    found = next((k for k, i in stored.items() if key(topic) in (k, key(str(i.get("name") or "")))), None)
+    item = stored.get(found) if found else None
+    query = (item or {}).get("query_en") or (item or {}).get("query_es") or topic
+    languages = idiomas.configured(cfg)
+    result = idiomas.table(api, idiomas.Budget(root, api, cfg), query, languages, cfg,
+                           translate_fn or (lambda q, langs: idiomas.translate(ctx, q, langs)), origin=origin)
+    return idiomas.save(root, found or key(topic), result)

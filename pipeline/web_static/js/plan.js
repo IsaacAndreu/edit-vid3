@@ -518,3 +518,86 @@ async function punteriaPage() {
           <td>${top.map(([k, n]) => `${name(k)} ${n}`).join(" · ") || "—"}${v.sentBack ? ` <span class="muted">(${v.sentBack} corregidos antes del render)</span>` : ""}</td></tr>`; }).join("")}
       </table></div></section>`).join("")}`);
 }
+
+// «Qué hacer ahora» (pipeline/recomendar.py): empezar, doblar, dejar o cambiar — each entry with its numbers, what it
+// does not know and a button. Only what was measured is a recommendation.
+async function queHacerPage() {
+  const r = await api("/api/recomendaciones");
+  const k = (n) => n == null ? "—" : n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : n >= 1e3 ? `${Math.round(n / 1e3)} mil` : String(n);
+  const unknown = (list) => list && list.length ? `<div class="small muted">No se sabe: ${list.map(esc).join(" · ")}</div>` : "";
+  const job = (name) => { const j = (r.jobs || {})[name] || {}; return j.running ? `<span class="small">midiendo…</span>`
+    : j.failed ? `<span class="small t-bad">falló (mira out/_tareas/${name}.log)</span>` : ""; };
+  const q = r.quota;
+  const start = (r.start || []).map((e) => `<div class="card mt-2"><div class="hb"><b>${esc(e.topic || "")}</b>
+      <span class="small">en ${esc(e.langName)} · <b>${e.score}</b>/10 · ${esc(e.verdict || "")}</span></div>
+      <div class="small">Mediana de visitas de lo más visto del año: <b>${k(e.demand)}</b> · ${e.recent ?? "—"} vídeos el último mes
+        · ${e.smallWins ?? 0} canales pequeños que ganan${e.gap ? ` · hueco x${e.gap} frente al idioma de origen` : ""}
+        ${e.suggestions != null ? ` · ${e.suggestions} sugerencias del autocompletado` : ""}</div>
+      <div class="small">${esc(e.fit || "")} · esfuerzo: ~${e.videosPerWeek} vídeos/semana${e.costPerVideo != null ? ` a ${e.costPerVideo} $ de API cada uno` : ""}
+        ${e.income != null ? ` · ~${e.income} $ por vídeo típico (con tu RPM)` : ""}${e.formula ? ` · fórmula: ${esc(e.formula)}` : ""}</div>
+      ${e.why ? `<div class="small muted">${esc(e.why)}</div>` : ""}${unknown(e.unknown)}
+      <div class="small muted">medido el ${esc(e.measured || "?")}</div></div>`).join("") || `<div class="muted small mt-2">Aún no hay
+      temas medidos con hueco. Mide uno abajo o espera al radar de mañana.</div>`;
+  const dub = (r.dub || []).map((d) => `<tr><td><b>${esc(d.channel)}</b> → ${esc(d.lang)}</td><td class="r"><b>${d.score}</b></td>
+      <td>${esc(d.verdict || "")}${d.gap ? ` · x${d.gap}` : ""}</td><td class="r">${k(d.demand)}</td><td class="r">${d.readyCount}</td>
+      <td class="r">${d.cost} $</td><td title="${esc(d.dependencyWhy || "")}">${esc(d.dependency)}</td></tr>`).join("");
+  const checks = (r.dubChecks || []).map((c) => `<li>${esc(c.channel)} → ${esc(c.lang)} (${esc(c.dubbedChannel || "")}):
+      ${esc(c.check || "")}${c.dubbedRatio != null ? ` · saca ${Math.round(c.dubbedRatio * 100)} % de las visitas del original` : ""}</li>`).join("");
+  const leave = (r.leave || []).map((l) => `<div class="card mt-2"><b>${esc(l.channel)}</b>
+      <div class="small">${l.reasons.map(esc).join(" · ")}</div>${unknown(l.unknown)}
+      <a class="small" href="#/canal">Ver Mi canal →</a></div>`).join("") || `<div class="muted small mt-2">Ningún canal propio lo pide.</div>`;
+  const learned = (r.learned || []).map((x) => `<tr><td>${esc(x.kind)} · ${esc(x.topic || x.channel || "")} → ${esc(x.lang || "")}</td>
+      <td>${esc(x.date)}</td><td class="r">${k(x.predicted)}</td><td class="r">${k(x.real && x.real.median)}</td><td>${esc(x.verdict)}</td></tr>`).join("");
+  show(`<h1>Qué hacer ahora</h1>
+    <div class="small muted">${esc(r.signsNote || "")}${r.rpmSet ? "" : " Sin tu tabla de RPM (radar.rpm) no se calcula lo que se gana."}</div>
+    ${q ? `<div class="small mt-2">Cuota de hoy para medir idiomas: ${q.unitsLeft} unidades (tope ${q.cap}, siempre quedan ${q.reserve} para la cola)
+      → caben <b>${q.topicsToday}</b> tema(s) más en ${(r.languages || []).length} idiomas.</div>` : `<div class="small muted mt-2">Sin claves de la API: no se puede medir.</div>`}
+    <section class="mt-3"><div class="hb"><h2>Empezar</h2>${job("huecos-idiomas")}</div>${start}
+      <div class="row mt-2"><input id="qhTopic" placeholder="Un tema, p. ej. «isla de las serpientes»" style="flex:1">
+        <button onclick="post('/api/recomendaciones/idiomas',{topic:document.getElementById('qhTopic').value}).then(()=>queHacerPage())">Medir en todos los idiomas</button></div></section>
+    <section class="mt-3"><div class="hb"><h2>Doblar</h2><span>${job("doblar")}
+      <button onclick="post('/api/recomendaciones/doblar').then(()=>queHacerPage())">Medir otra vez</button></span></div>
+      ${dub ? `<div class="tablewrap"><table class="small"><tr><th>Canal → idioma</th><th class="r">Nota</th><th>Hueco</th>
+        <th class="r">Mediana allí</th><th class="r">Vídeos listos</th><th class="r">Coste</th><th>Material</th></tr>${dub}</table></div>`
+        : `<div class="muted small mt-2">Sin medir todavía: dale a «Medir otra vez».</div>`}
+      ${checks ? `<div class="small mt-2"><b>Comprobación con los canales ya doblados</b><ul>${checks}</ul></div>` : ""}
+      ${(r.dubWaiting || []).length ? `<div class="small muted">Sin medir: ${r.dubWaiting.map(esc).join(" · ")}</div>` : ""}</section>
+    <section class="mt-3"><h2>Dejar o cambiar</h2>${leave}</section>
+    <section class="mt-3"><div class="hb"><h2>Canal desde 5-8 vídeos de referencia</h2>${job("formula")} ${job("formula-montaje")}</div>
+      <div class="small muted">Se replica la fórmula (estructura, ritmo, tipo de imagen por frase), nunca el guion, los títulos ni los clips de un vídeo.</div>
+      <textarea id="fxLinks" rows="4" style="width:100%" placeholder="Pega de 5 a 8 enlaces de YouTube del mismo nicho"></textarea>
+      <div class="row"><input id="fxNiche" placeholder="Nombre del nicho" style="flex:1">
+        <button onclick="post('/api/formula/analizar',{links:document.getElementById('fxLinks').value,niche:document.getElementById('fxNiche').value}).then(()=>queHacerPage())">Sacar la fórmula</button></div>
+      ${(r.formulas || []).map(formulaCard).join("")}</section>
+    ${learned ? `<section class="mt-3"><h2>¿Acertó la nota?</h2><div class="small muted">A los 30 días y 10 vídeos del canal empezado o doblado.</div>
+      <div class="tablewrap"><table class="small"><tr><th>Recomendación</th><th>Fecha</th><th class="r">Previsto</th><th class="r">Real</th><th></th></tr>${learned}</table></div></section>` : ""}`);
+}
+
+function formulaCard(f) {
+  const m = f.measured || {}, mo = m.montage, it = f.interpreted || {};
+  const vids = (f.videos || []).map((v) => `<tr><td>${esc(v.name || "")}</td><td class="r">${v.ratio != null ? v.ratio + "x" : "—"}</td>
+    <td class="r">${v.wpm ?? "—"}</td><td class="r">${Math.round((v.duration || 0) / 60)} min</td>
+    <td class="r">${v.montage ? v.montage.cutSeconds + " s" : "—"}</td><td class="r">${v.montage ? v.montage.cardShare + " %" : "—"}</td></tr>`).join("");
+  const pilot = f.pilot ? `<div class="small mt-2"><b>Piloto ${esc(f.pilot.slug)}</b>${f.pilot.seen ? " · visto" : ""}<table class="small">
+    ${(f.pilot.table || []).map((p) => `<tr><td>${esc(p.name)}</td><td class="r">${p.cutSeconds ?? "—"} s/corte</td><td class="r">${p.firstImage ?? "—"} s</td>
+    <td class="r">${p.textShare ?? "—"} % texto</td><td class="r">${p.cardShare ?? "—"} % tarjeta</td></tr>`).join("")}</table>
+    ${f.pilot.seen ? "" : `<button onclick="post('/api/formula/visto',{key:'${esc(f.key)}'}).then(()=>queHacerPage())">Lo he visto: puede entrar en el piloto automático</button>`}</div>` : "";
+  return `<div class="card mt-2"><div class="hb"><b>${esc(f.niche || f.key)}</b><span class="small">${esc(f.date || "")}${f.channel ? ` · canal ${esc(f.channel)}` : ""}</span></div>
+    <div class="small"><b>Medido</b>: ${esc(f.summary || "")} · títulos: ${(m.titleTraits || []).map(esc).join(", ") || "sin rasgo común"}
+      · visitas ${m.ratio ?? "—"}x lo normal de su canal${mo ? ` · ${mo.firstImage} s hasta la 1.ª imagen · ${mo.textShare} % texto · ${mo.cardShare} % tarjeta` : ""}</div>
+    <div class="small"><b>Interpretado por el modelo</b>: ${it.blocks ?? "—"} bloques · una promesa cada ${it.promisesEverySeconds ?? "—"} s
+      · frases: ${Object.entries(it.sentenceKinds || {}).map(([k, v]) => `${esc(k)} ${v} %`).join(", ") || "—"}</div>
+    ${(f.lonely || []).length ? `<div class="small muted">Solo en un vídeo (no es fórmula): ${f.lonely.map(esc).join(" · ")}</div>` : ""}
+    ${(f.sources || []).length ? `<div class="small">Acreditan: ${f.sources.map(esc).join(", ")}</div>` : ""}
+    <div class="tablewrap"><table class="small"><tr><th>Referencia</th><th class="r">Visitas/normal</th><th class="r">Pal./min</th><th class="r">Dura</th><th class="r">Corte</th><th class="r">Tarjeta</th></tr>${vids}</table></div>
+    <div class="row mt-2">${mo ? "" : `<button onclick="formulaMontage('${esc(f.key)}')">Medir el montaje (~${f.montageMB} MB por el proxy)</button>`}
+      ${f.channel ? `<input id="fxPilot-${esc(f.key)}" placeholder="vídeo piloto ya montado"><button onclick="post('/api/formula/piloto',{key:'${esc(f.key)}',slug:document.getElementById('fxPilot-${esc(f.key)}').value}).then(()=>queHacerPage())">Medir el piloto</button>`
+        : `<input id="fxName-${esc(f.key)}" placeholder="nombre del canal nuevo"><button onclick="post('/api/formula/crear',{key:'${esc(f.key)}',name:document.getElementById('fxName-${esc(f.key)}').value}).then(()=>queHacerPage())">Crear canal</button>`}</div>${pilot}</div>`;
+}
+
+async function formulaMontage(key) {
+  const asked = await post("/api/formula/montaje", {key});
+  if (asked.needsConfirmation && !confirm(asked.message)) return;
+  await post("/api/formula/montaje", {key, confirm: true});
+  queHacerPage();
+}

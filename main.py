@@ -135,6 +135,16 @@ def _parser() -> argparse.ArgumentParser:
                         help="Piloto frente a su referencia con lo que pasó de verdad → out/<vídeo>/piloto.md.")
     target.add_argument("--quitar-piloto", metavar="VIDEO", help="Vuelve ese vídeo a la búsqueda por plano.")
     parser.add_argument("--referencia", metavar="VIDEO", help="Con --piloto-escenas / --informe-piloto: el vídeo hecho de referencia.")
+    target.add_argument("--doblar", action="store_true",
+                        help="Qué doblar: cada canal propio frente a cada idioma al que aún no se dobla (hueco, vídeos "
+                             "listos, coste) → out/_radar/doblar.json.")
+    target.add_argument("--formula", metavar="ENLACES",
+                        help="Informe de fórmula de 5-8 vídeos de referencia de un nicho (con --nicho) → out/_formulas/.")
+    parser.add_argument("--nicho", default="", help="Con --formula: el nombre del nicho.")
+    target.add_argument("--formula-montaje", metavar="CLAVE",
+                        help="Mide el montaje de las referencias de una fórmula (baja cada una a 360p por el proxy).")
+    target.add_argument("--huecos-idiomas", metavar="TEMA",
+                        help="Mide un tema en todos los idiomas de radar.idiomas que quepan en la cuota de hoy.")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
     target.add_argument("--compilar", metavar="CANAL",
@@ -1857,6 +1867,40 @@ def main() -> None:
         from pipeline import scenebench
 
         print(scenebench.report(scenebench.run(PROJECT_ROOT)))
+        return
+    if args.doblar:
+        from pipeline import doblar
+
+        result = doblar.compute(PROJECT_ROOT)
+        for row in result["rows"][:15]:
+            print(f"{row['score']:>4} · {row['channel']} → {row['lang']} · {row['verdict']} · {row['readyCount']} vídeos "
+                  f"listos · {row['cost']} $ · material: {row['dependency']}")
+        for line in result["waiting"]:
+            print(f"   esperando: {line}")
+        return
+    if args.formula:
+        from pipeline import formula
+
+        words, llm = formula.production(PROJECT_ROOT)
+        report = formula.analyse(PROJECT_ROOT, args.formula, words_fn=words, llm_fn=llm, niche=args.nicho)
+        print(f"Fórmula {report['key']}: {report['summary']} · rasgos de título: {', '.join(report['measured']['titleTraits'])}")
+        print(f"Medir el montaje bajaría unos {report['montageMB']} MB por el proxy: --formula-montaje {report['key']}")
+        return
+    if args.formula_montaje:
+        from pipeline import formula
+
+        report = formula.montage(PROJECT_ROOT, formula.load(PROJECT_ROOT, args.formula_montaje), confirm=True)
+        print(f"Montaje de {args.formula_montaje}: {report['measured'].get('montage')}")
+        return
+    if args.huecos_idiomas:
+        from pipeline import huecos
+
+        item = huecos.evaluate_languages(PROJECT_ROOT, args.huecos_idiomas)
+        for row in item["idiomas"]["readings"]["rows"]:
+            print(f"{row['lang']}: {row['score']} ({row['verdict']}) · mediana {row['demand']} · {row['recent']} vídeos "
+                  f"al mes · hueco x{row['gap']}")
+        for lang, why in item["idiomas"]["skipped"].items():
+            print(f"{lang}: sin medir — {why}")
         return
     if args.radar:
         from pipeline import radar

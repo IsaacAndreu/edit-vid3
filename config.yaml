@@ -580,6 +580,12 @@ radar:                             # radar de competencia diario (estudio → Co
   gaps: true                       # «Huecos»: demanda frente a competencia en español y el hueco frente al inglés
   gaps_new: 5                      # temas nuevos medidos al día (~400 unidades de API cada uno)
   gaps_again: 1                    # y los mejores de días anteriores, otra vez (para ver si se llenan)
+  # idiomas: [es, en, pt, de, fr, it]  # «Huecos» en cada idioma (pipeline/idiomas.py): búsqueda traducida y comprobada
+  # idiomas_min_demand: 20000      # el resto de idiomas solo si el tema pasa esta mediana de visitas en su idioma de origen
+  # gaps_units_per_day: 3000       # tope diario de unidades de API para los huecos por idioma (aparte del resto)
+  # keep_for_queue: 3000           # unidades que siempre quedan para las búsquedas de los vídeos en cola
+  # rpm: {}                        # lo que ganas por cada mil visitas, por idioma y categoría, de tus canales:
+  #                                  {es: {deporte: 1.2}, pt: {deporte: 0.6}}. Vacía: las notas no inventan ingresos
 
 mychannel:                         # análisis de tu canal (estudio → Mi canal; tu canal en Ajustes)
   timezone: Europe/Madrid
