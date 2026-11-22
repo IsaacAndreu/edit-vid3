@@ -78,10 +78,29 @@ Lo que cambia respecto a lo escrito arriba:
   (voz, música, idioma, subtítulos). Los nuevos son el tipo, el enlace por puesto, el número de puestos y el
   doblaje de testimonios.
 
-## Cómo funciona el modo
+## Cómo se entra: tres caminos en «Nuevo vídeo»
 
-Se elige al crear el vídeo: «material primero», con el tipo (top, noticia, documental), el tono, los minutos, y
-opcionalmente un enlace por puesto.
+Decisión del dueño (22-11): el modo nuevo no sustituye a nada. «Nuevo vídeo» ya abre con dos tarjetas para elegir
+camino (commit `e1865b8`); pasa a tener **tres**, y las dos de ahora se quedan como están:
+
+1. **Ya tengo el guion** (y opcionalmente la voz). El camino de siempre: el programa ilustra ese guion.
+2. **Desde un título**. El programa escribe el guion a partir del título y la información que se le dé, y luego lo
+   ilustra. Lo que ya existe.
+3. **Material primero** (nuevo). El programa busca y lee los vídeos reales del tema, y con eso escribe el guion.
+   Tops, noticias y documentales con testimonios.
+
+La tercera tarjeta lleva una línea que diga para qué sirve y cuánto tarda y cuesta de más (más búsquedas y más
+descarga por el proxy que los otros dos). Sus campos son los del formulario de arriba; todo lo que comparten los
+tres caminos (canal, voz, música, idioma, subtítulos) es el mismo trozo de formulario, no una copia.
+
+Un vídeo recuerda por qué camino se hizo (`modo` en su `config.yaml`), se ve en su ficha y en «Experimentos», para
+poder comparar cómo les va a los de cada camino.
+
+Desde el camino 2 tiene que poder saltarse al 3 sin volver a empezar: si al escribir desde un título el aviso de
+«qué se puede enseñar» dice que medio guion no tiene imagen, un botón «hacerlo con material primero» lleva el
+título y los enlaces ya pegados a la tercera tarjeta.
+
+## Cómo funciona el modo
 
 ### 1. Investigación
 
