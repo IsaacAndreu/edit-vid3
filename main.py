@@ -147,6 +147,9 @@ def _parser() -> argparse.ArgumentParser:
                         help="Modo «material primero»: busca y lee el material real del tema → work/VIDEO/expediente.json.")
     target.add_argument("--bloques", metavar="VIDEO",
                         help="Modo «material primero»: el guion por bloques desde su expediente → work/VIDEO/bloques.json.")
+    target.add_argument("--montar", metavar="VIDEO",
+                        help="Modo «material primero»: baja los tramos, comprueba las declaraciones, voz del narrador, "
+                             "gancho, montaje y render desde sus bloques.")
     target.add_argument("--huecos-idiomas", metavar="TEMA",
                         help="Mide un tema en todos los idiomas de radar.idiomas que quepan en la cuota de hoy.")
     target.add_argument("--radar", action="store_true",
@@ -1917,6 +1920,13 @@ def main() -> None:
               f"{est['clips']} tramos a bajar (~{est['downloadMB']} MB por el proxy)")
         for note in result["notes"]:
             print(f"   {note}")
+        return
+    if args.montar:
+        from pipeline import montaje_mf
+
+        summary = montaje_mf.run(PROJECT_ROOT, args.montar)
+        print(f"Montado: {summary['seconds']} s · {summary['clips']} tramos · gancho de {summary['hookCuts']} cortes · "
+              f"{summary['dubbed']} declaraciones dobladas → out/{args.montar}/")
         return
     if args.huecos_idiomas:
         from pipeline import huecos
