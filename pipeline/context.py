@@ -180,8 +180,12 @@ class RunContext:
 
         ctx.config = layered({})
         adjustments = ctx.format.get("ajustes")      # an unknown format fails here, not halfway through the night
-        if isinstance(adjustments, dict) and adjustments:
-            ctx.config = layered(adjustments)
+        from .recetas import preset
+
+        recipe = preset(ctx.config)                  # montaje.receta: below the channel, the series and the video
+        extra = deep_merge(recipe, adjustments) if isinstance(adjustments, dict) and adjustments else recipe
+        if extra:
+            ctx.config = layered(extra)
         return ctx
 
     @property

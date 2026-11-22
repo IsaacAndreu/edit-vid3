@@ -119,3 +119,20 @@ def test_a_channel_built_on_another_takes_its_profile_and_voice(tmp_path):
         assert tts.voice_for(tmp_path, "negocios") is None
     finally:
         tts.voices = real
+
+
+def test_a_recipe_sits_below_the_channel_and_the_video(tmp_path):
+    """objetivo-videos-referencia.md: montaje.receta sets what the references do; the channel's own keys still win."""
+
+    root = _root(tmp_path)
+    (root / "materiales" / "v").mkdir(parents=True)
+    (root / "materiales" / "v" / "config.yaml").write_text("montaje: {receta: persona}\n")
+    ctx = RunContext.create("v", root=root)
+    assert ctx.section("timeline")["card_share"] == 0.0 and ctx.section("fallback")["ambient_photo_first"] is True
+    (root / "materiales" / "v" / "config.yaml").write_text("montaje: {receta: suceso}\ntimeline: {card_share: 0.1}\n")
+    ctx = RunContext.create("v", root=root)
+    assert ctx.section("timeline")["card_share"] == 0.1 and ctx.section("planner")["cobertura"] is True
+    (root / "materiales" / "v" / "config.yaml").write_text("montaje: {receta: novela}\n")
+    with pytest.raises(ConfigError, match="persona, suceso, teoria"):
+        RunContext.create("v", root=root)
+    assert "card_share" not in RunContext.create("_t", root=root, channel="b").config.get("timeline", {})

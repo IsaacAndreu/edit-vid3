@@ -482,6 +482,18 @@ async function punteriaPage() {
       <text x="0" y="${H + 14}" class="ptick">${esc(videos[0].at.slice(0, 10))}</text>
       ${videos.length >= 4 ? `<text x="${videos.length * (bw + gap) - gap}" y="${H + 14}" class="ptick" text-anchor="end">${esc(videos[videos.length - 1].at.slice(0, 10))}</text>` : ""}</svg>`;
   };
+  // objetivo-videos-referencia.md: our last video beside the channel's reference (referencias/canales/<canal>/)
+  const reference = (c) => {
+    if (!c.reference) return "";
+    const o = c.ours || {}, r = c.reference;
+    const row = (label, key, unit) => `<tr><td>${label}</td><td class="r">${o[key] ?? "—"}${o[key] != null ? unit : ""}</td>
+      <td class="r">${r[key] ?? "—"}${r[key] != null ? unit : ""}</td></tr>`;
+    return `<div class="tablewrap mt-2"><table class="small"><tr><th>Frente a la referencia</th>
+      <th class="r">${esc(o.slug || "nuestro último")}</th><th class="r">${esc(r.file)}</th></tr>
+      ${row("Segundos por corte", "cutSeconds", " s")}${row("1.ª imagen", "firstImage", " s")}
+      ${row("Texto o vacío", "textShare", " %")}${row("En tarjeta sobre fondo", "cardShare", " %")}
+      ${row("Rótulos por minuto", "labelsPerMinute", "")}</table></div>`;
+  };
   show(`<h1>Puntería</h1>
     <div class="small muted">Lo que el revisor automático marca en cada vídeo: planos que no tienen que ver con la frase, otra persona,
       repetidos, huecos tapados… por cada 100 planos con imagen. <b>Cuanto más bajo, mejor.</b> «En texto»: planos que acabaron sin imagen
@@ -491,6 +503,7 @@ async function punteriaPage() {
     ${(p.channels || []).map((c) => `<section class="card mt-3"><div class="hb"><h2>${esc(c.channel)}</h2>
         <span class="small">últimos 5: <b>${c.recent}</b> por 100${c.videos.length > 1 ? ` · el primero: ${c.first}` : ""}</span></div>
       ${bars(c.videos)}
+      ${reference(c)}
       <div class="tablewrap"><table class="small"><tr><th>Vídeo</th><th>Fecha</th><th class="r">Planos</th><th class="r">Por 100</th>
         <th class="r">En texto</th><th class="r" title="Parte del vídeo sin clip ni foto (pizarra, palabras o nada)">Texto o vacío</th>
         <th class="r" title="Segundo del primer clip o foto">1.ª imagen</th>

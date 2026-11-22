@@ -291,6 +291,15 @@ def test_the_score_of_every_video_and_the_panel(tmp_path):
     assert by_channel["—"]["videos"][0]["per100"] == 25.0 and gym["videos"][0]["asText"] == 7
     assert web.punteria(tmp_path, mine=["otro"])["videos"] == 0                    # a partner sees only theirs
     assert web._video_score(tmp_path / "out" / "a") == {"flagged": 30, "shots": 200, "per100": 15.0, "asText": 7}
+    ref = tmp_path / "referencias" / "canales" / "gimnasia"                      # objetivo-videos-referencia.md
+    ref.mkdir(parents=True)
+    (ref / "andrade.mp4").write_bytes(b"x")
+    (ref / "andrade.mp4.medidas.json").write_text('{"stamp": "1:1", "measures": {"cutSeconds": 3.1, "textShare": 0.0}}')
+    (tmp_path / "work" / "a").mkdir(parents=True)
+    (tmp_path / "work" / "a" / "timeline.json").write_text(json.dumps({"fps": 30, "durationInFrames": 90, "shots": [
+        {"id": "s1", "type": "broll", "from": 0, "durationInFrames": 90, "media": {"src": "x.mp4", "kind": "video"}}]}))
+    gym = {c["channel"]: c for c in web.punteria(tmp_path)["channels"]}["gimnasia"]
+    assert gym["reference"]["cutSeconds"] == 3.1 and gym["ours"]["slug"] == "a" and gym["ours"]["textShare"] == 0.0
 
 
 def test_what_is_still_wrong_goes_to_the_phone_with_its_sheets(tmp_path, monkeypatch):

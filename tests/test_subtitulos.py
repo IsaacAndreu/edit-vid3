@@ -21,3 +21,15 @@ def test_no_subtitles_over_a_question_panel_and_the_key_word_is_marked():
     assert [c["text"] for c in cues] == ["Cuatro cinco seis."]
     text = subtitulos.ass([{"from": 0, "durationInFrames": 30, "text": "murieron 2.000 personas"}], 30, 1920, 1080)
     assert "{\\c&H00D4FF&}2.000{\\c&HFFFFFF&}" in text and "Style: Sub," in text
+
+
+def test_a_subtitle_that_repeats_the_board_or_the_chapter_title_is_dropped():
+    """newideas 8:40: voice, board «SECRETO 11: TIENE TDAH Y NO LO ESCONDE» and the subtitle saying it at once."""
+
+    w = words("Secreto once. Tiene TDAH y no lo esconde. Y entrena cada día.", step=0.4)
+    shown = [(0, 120, "SECRETO 11"), (0, 200, "TIENE TDAH Y NO LO ESCONDE")]
+    cues = subtitulos.cues(w, lambda t: round(t * 30), 30, shown=shown)
+    texts = [c["text"] for c in cues]
+    assert "Tiene TDAH y no lo esconde." not in texts and "Y entrena cada día." in texts
+    assert "Secreto once." in texts           # «once» is not «11»: the title words only half match, it stays
+    assert subtitulos.repeats("Secreto 11", "SECRETO 11") and not subtitulos.repeats("Y entrena cada día", "TDAH")

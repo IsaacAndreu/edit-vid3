@@ -100,7 +100,46 @@ class ContentCheck:
                 return None
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=0), encoding="utf-8")
+        if not self.cache[key] and self.cfg.get("text_check", True):
+            return self.burned_text(path, kind, stat)
         return self.cache[key] or None
+
+    def burned_text(self, path: Path, kind: str, stat: Any) -> str | None:
+        """Another channel's words burned into the picture (subtitles, a news ticker, a shop's advert): the filter the
+        analysis applies to every YouTube window (analysis.max_text_area) was never applied to the fallback's clips —
+        the protagonist's other moments, stock, the library — nor to photos in a card (newideas 1:08, 4:52, 8:04).
+        Readable words over `max_text_area` (8 %; photos `max_text_area_image`, 12 %) in most of 3 frames."""
+
+        key = f"t{VERSION}|{path.name}|{stat.st_size}|{int(stat.st_mtime)}"
+        if key not in self.cache:
+            try:
+                frames = self.frames(path, kind, per_second=1.0)
+                picked = [frames[int(len(frames) * q)] for q in (0.2, 0.5, 0.8)] if len(frames) >= 3 else frames
+                self.cache[key] = text_verdict([self.detectors().text_area(f) for f in picked], kind,
+                                               self.ctx.section("analysis"))
+            except Exception as error:      # never costs a clip on its own
+                print(f"   comprobación de texto quemado no disponible: {str(error)[:100]}")
+                return None
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=0), encoding="utf-8")
+        return self.cache[key] or None
+
+    def detectors(self) -> Any:
+        if getattr(self, "_detectors", None) is None:
+            from .analysis import detectors as det
+
+            self._detectors = det.Detectors(cache_dir=self.ctx.cache_dir)
+        return self._detectors
+
+
+def text_verdict(areas: list[float], kind: str, cfg: dict[str, Any]) -> str:
+    """«texto ajeno en pantalla (N %)» when most frames carry more readable words than the analysis allows, else ""."""
+
+    limit = float(cfg.get("max_text_area_image", 0.12) if kind == "image" else cfg.get("max_text_area", 0.08))
+    over = [a for a in areas if a > limit]
+    if areas and len(over) * 2 > len(areas):
+        return f"texto ajeno en pantalla ({max(over):.0%})"
+    return ""
 
 
 def frames_where(path: Path, keep: Any) -> list[np.ndarray]:

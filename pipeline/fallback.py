@@ -722,11 +722,14 @@ def run(ctx: RunContext) -> None:
 
         def photo_of(person: str) -> FallbackItem | None:
             found = None
-            for kind in ("library", "web"):
+            era = (shot.idea.era if shot.idea is not None else None) or None
+            # with the idea's time (her adolescence, Río 2016) the web search asks for THAT time first, before the
+            # library's photos of the person, which may be of any age (newideas 2:24, 3:08: adult photos for a girl)
+            for kind in (("web", "library") if era else ("library", "web")):
                 if found is not None:
                     break
                 candidates = library_photos(ctx, person) if kind == "library" else \
-                    web_photos(ctx, shot.broll.model_copy(update={"entities": [person]}), tried)
+                    web_photos(ctx, photo_broll(shot.broll, person, era), tried)
                 options = [photo_option(c) for c in candidates.values()
                            if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
                            and c.id not in elsewhere][: limit * 2]
@@ -736,8 +739,9 @@ def run(ctx: RunContext) -> None:
         # planner.ideas: a literal idea without its clip — a photo of the person first, then a clip of them that the
         # judge accepts; never a clip of something else, and a board only at the end (ideas-pantallas-de-texto.md:
         # «that very thing or nothing» made newideas half text). fallback.literal_ambient: false brings back the old rule
-        literal_ambient = literal and bool(cfg.get("literal_ambient", True))
-        if item is None and literal_ambient and who and shot.broll and cfg.get("photo_for_moments", True):
+        literal_ambient = literal and photo_first(shot.idea, cfg)
+        ambient_photo = not literal and photo_first(shot.idea, cfg)
+        if item is None and (literal_ambient or ambient_photo) and who and shot.broll and cfg.get("photo_for_moments", True):
             item = photo_of(who)
         if item is None and who and shot.broll and cfg.get("protagonist_filler", True) and (not literal or literal_ambient):
             pool, pool_candidates = protagonist_pool(ctx, story, who)
@@ -756,7 +760,7 @@ def run(ctx: RunContext) -> None:
         # a photo of the protagonist instead of an empty shot, as sports channels do. Without the judge (it would
         # want the exact scene again: gymyulo, 54 % empty), with the identity check — a photo of the person is never
         # a lie about the moment, another moment's footage could be. `fallback.photo_for_moments` (on).
-        if item is None and who and shot.broll and cfg.get("photo_for_moments", True) and not literal_ambient:
+        if item is None and who and shot.broll and cfg.get("photo_for_moments", True) and not (literal_ambient or ambient_photo):
             item = photo_of(who)
 
         # 3. Generated image — the last resort, never for a video about a real person.
@@ -827,6 +831,29 @@ def run(ctx: RunContext) -> None:
             f"{len(unresolved)} de {len(shots)} planos sin ninguna imagen ({len(unresolved) / len(shots):.0%}): no se "
             f"monta, saldría un vídeo de pizarras de texto. Revisa «Decisiones del relleno» (el juez rechazó casi todo) "
             f"o {hint}.")
+
+
+def photo_broll(broll: Any, person: str, era: str | None = None) -> Any:
+    """The shot's search, for photos of `person`: with the idea's time, «person + time» goes first (the web search
+    tries the event before the bare name, and every result must still name the person)."""
+
+    update: dict[str, Any] = {"entities": [person]}
+    if era:
+        update["event"] = f"{person} {era}"[:160]
+    return broll.model_copy(update=update)
+
+
+def photo_first(idea: Any, cfg: dict[str, Any]) -> bool:
+    """Whether a shot without its clip tries a photo of the person BEFORE another clip of them: a literal idea, yes
+    (fallback.literal_ambient, on); an ambient idea only with fallback.ambient_photo_first (off; revision-22-11.md
+    point 2, measured by the «huecos tapados» of revisor --base); a shot planned without ideas, no."""
+
+    kind = getattr(idea, "kind", None)
+    if kind == "literal":
+        return bool(cfg.get("literal_ambient", True))
+    if kind == "ambiente":
+        return bool(cfg.get("ambient_photo_first", False))
+    return False
 
 
 def web_photos(ctx: RunContext, broll: Any, notes: list[str]) -> dict[str, Candidate]:

@@ -874,6 +874,10 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         print(f"   Líneas de pantalla de las ideas: {len(lines)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»"
                                                                        for g in lines[:8]))
         boards += lines
+    blanks = cover_blanks(shots, [*groups, *added, *boards], fps, ideas)   # nothing left showing nothing
+    if blanks:
+        print(f"   Tramos sin nada cubiertos con su pizarra: {len(blanks)}")
+        boards += blanks
     if added:
         print("   Gráficos: " + ", ".join(f"{g.graphic['type']} {g.from_ / fps:.0f}s" for g in added))
     if boards:
@@ -900,6 +904,22 @@ def earth_textures(ctx: RunContext) -> dict[str, Any] | None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
         out[key_] = {"src": f"graphics/earth/{name}", "kind": "image", "source": "nasa"}
+    return out
+
+
+def on_screen_text(timeline: Timeline) -> list[tuple[int, int, str]]:
+    """(from, to, text) of what is written big on screen: boards and kinetic lines, quote cards, chapter titles."""
+
+    out = []
+    for g in timeline.groups:
+        graphic = g.graphic or {}
+        text = " ".join(str(l if isinstance(l, str) else (l or {}).get("text", "")) for l in graphic.get("lines") or [])
+        text = " ".join([text, str(graphic.get("text") or ""), str(graphic.get("title") or "")]).strip()
+        if text:
+            out.append((g.from_, g.from_ + g.durationInFrames, text))
+    for shot in timeline.shots:
+        if shot.type == "chapter" and shot.chapterTitle:
+            out.append((shot.from_, shot.from_ + shot.durationInFrames, shot.chapterTitle))
     return out
 
 
@@ -1255,8 +1275,15 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
     - never two boards in a row, none longer than `board_seconds`;
     - at most `share` of the video in text; a chapter title read aloud (idea «rotulo») stays text, with its title.
 
-    A shot that may not stay text borrows a clip: of its own idea first, else the nearest, at any distance (the 40 s
-    window made boards). Changes `shots` in place; returns the counts for the log."""
+    A shot that may not stay text borrows a clip (revision-22-11.md), never anybody's:
+
+    - of its own idea first; else of an AMBIENT idea about the same person (mustShow) or of the same chapter, never a
+      literal idea of something else (a named event: the wedding at minute 1 of newgym3), never someone the idea must
+      not show, never the clip of the shot right before or after;
+    - in the hook, the judge's best clip of those, each clip ONCE (newideas: s015 six times in a row).
+
+    Nothing that may be borrowed: the shot stays text (a board is better than the wrong person). Changes `shots` in
+    place; returns the counts for the log."""
 
     covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
     donors = [s for s in shots if s.media is not None and s.media.kind == "video" and not s.coldOpen
@@ -1266,9 +1293,16 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
     hook = hook_seconds * fps
     longest = board_seconds * fps
     uses: dict[str, int] = {}
+    in_hook_used: set[str] = set()
     counts = {"texto": 0, "prestados": 0, "gancho": 0, "sin_donante": 0}
     used = 0
     previous_text = False
+    chapter_of: dict[str, int] = {}
+    chapter = 0
+    for s in shots:
+        if s.type == "chapter":
+            chapter += 1
+        chapter_of[s.id] = chapter
 
     def is_text(shot: TimelineShot) -> bool:
         if shot.media is not None or shot.type != "broll" or shot.groupId:
@@ -1278,6 +1312,32 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
 
     def idea_of(shot: TimelineShot) -> Any:
         return ideas.get(shot.id.split("-")[0])
+
+    def names(values: Any) -> set[str]:
+        return {" ".join(str(v).casefold().split()) for v in values or [] if str(v).strip()}
+
+    def may_lend(donor: TimelineShot, shot: TimelineShot, idea: Any) -> bool:
+        if not ideas:                          # planned without ideas: as before
+            return True
+        theirs = idea_of(donor)
+        if theirs is None:
+            return False
+        if idea is not None and theirs.id == idea.id:
+            return True
+        if theirs.kind != "ambiente":          # a literal idea shows ITS thing; a title has no clip
+            return False
+        if idea is None:
+            return chapter_of.get(donor.id) == chapter_of.get(shot.id)
+        if names(theirs.mustShow) & names(idea.mustNotShow):
+            return False
+        if idea.era and theirs.era and " ".join(idea.era.casefold().split()) != " ".join(theirs.era.casefold().split()):
+            return False
+        same_person = bool(names(theirs.mustShow) & names(idea.mustShow))
+        return same_person or (not idea.mustShow and chapter_of.get(donor.id) == chapter_of.get(shot.id))
+
+    def neighbours(index: int) -> set[str]:
+        return {shots[j].media.src for j in (index - 1, index + 1)
+                if 0 <= j < len(shots) and shots[j].media is not None and shots[j].media.src}
 
     for index, shot in enumerate(shots):
         if not is_text(shot):
@@ -1292,16 +1352,20 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
             previous_text = True
             counts["texto"] += 1
             continue
-        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses and footage(d) >= MIN_RATE * shot.durationInFrames]
+        beside = neighbours(index)
+        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses and footage(d) >= MIN_RATE * shot.durationInFrames
+                   and d.media.src not in beside and may_lend(d, shot, idea)
+                   and not (in_hook and d.id in in_hook_used)]
         if not fitting:
             used += shot.durationInFrames
             previous_text = True
             counts["sin_donante"] += 1
             continue
         same = {d.id for d in fitting if idea is not None and idea_of(d) is not None and idea_of(d).id == idea.id}
-        if in_hook:      # the judge's best clip of the whole video (its score), then the nearest
-            donor = max(fitting, key=lambda d: (scores.get(d.id.split("-")[0], 0.0), -uses.get(d.id, 0),
-                                                -abs(d.from_ - shot.from_)))
+        if in_hook:      # the judge's best clip of those that may lend, each once in the hook
+            donor = max(fitting, key=lambda d: (d.id in same, scores.get(d.id.split("-")[0], 0.0),
+                                                -uses.get(d.id, 0), -abs(d.from_ - shot.from_)))
+            in_hook_used.add(donor.id)
         else:
             donor = min(fitting, key=lambda d: (d.id not in same, uses.get(d.id, 0), abs(d.from_ - shot.from_)))
         uses[donor.id] = uses.get(donor.id, 0) + 1
@@ -1514,6 +1578,34 @@ def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int
         out.append(TimelineGroup.model_validate({"id": f"board-{run[0].id}", "kind": "graphic", "from": start,
                                                  "durationInFrames": run[-1].from_ + run[-1].durationInFrames - start,
                                                  "graphic": {"type": "kinetic", "lines": [l for l in lines if l], "board": True}}))
+    return out
+
+
+def cover_blanks(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                 ideas: dict[str, Any] | None = None) -> list[TimelineGroup]:
+    """The last pass (revision-22-11.md, point 3): every stretch of a footage shot that still shows nothing — a shot
+    partly under a graphic, past the chalkboards — gets the board with the shot's key words, so the montage resolves
+    the blank itself and QA's «pantalla vacía» only stops a video when something is really broken."""
+
+    spans = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    out: list[TimelineGroup] = []
+    for shot in shots:
+        if shot.media is not None or shot.type != "broll" or shot.groupId:
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        at, holes = start, []
+        for a, b in sorted((max(a, start), min(b, end)) for a, b in spans if a < end and start < b):
+            if a > at:
+                holes.append((at, a))
+            at = max(at, b)
+        if end > at:
+            holes.append((at, end))
+        phrase = board_words(shot.text, (ideas or {}).get(shot.id.split("-")[0])) or shot.text.strip().upper()[:40]
+        for n, (a, b) in enumerate(h for h in holes if h[1] - h[0] >= 1):
+            out.append(TimelineGroup.model_validate({"id": f"blank-{shot.id}-{n}", "kind": "graphic", "from": a,
+                                                     "durationInFrames": b - a,
+                                                     "graphic": {"type": "kinetic", "lines": [phrase or "·"],
+                                                                 "board": True}}))
     return out
 
 
@@ -2083,7 +2175,9 @@ def run(ctx: RunContext) -> None:
         from . import subtitulos
 
         blocked = [(g.from_, g.from_ + g.durationInFrames) for g in timeline.groups if g.kind == "question"]
-        cues = subtitulos.cues([w.model_dump() for w in words.words], lambda seconds: voice_frame(timeline, seconds), fps, blocked)
+        shown = on_screen_text(timeline)          # a board or a chapter title already says it: no subtitle under it
+        cues = subtitulos.cues([w.model_dump() for w in words.words], lambda seconds: voice_frame(timeline, seconds), fps,
+                               blocked, shown)
         timeline = timeline.model_copy(update={"subtitles": [TimelineSubtitle.model_validate(c) for c in cues]})
     if (short := short_texts(ctx, timeline)):
         timeline = timeline.model_copy(update={"short": short})

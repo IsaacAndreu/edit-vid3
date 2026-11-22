@@ -263,6 +263,11 @@ quotes:                            # declaraciones originales con subtítulos (p
 fallback:
   # literal_ambient: true          # idea literal sin su clip: foto de la persona y luego un clip suyo que el juez acepte,
   #                                  antes que la pizarra (false: «eso o nada», lo que dejó newideas medio en texto)
+  # text_check: true              # texto ajeno quemado (subtítulos de otro canal, un rótulo de informativo, un anuncio)
+  #                                  también en los clips y fotos del relleno: el mismo límite que el análisis
+  #                                  (analysis.max_text_area, 8 %; fotos 12 %) en 2 de 3 fotogramas
+  # ambient_photo_first: false    # idea de ambiente sin su clip: también la foto de la persona antes que otro clip
+  #                                  suyo (y antes que un préstamo del montaje). Mide: «Huecos tapados» de revisor --base
   photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   repeat_frames: false             # dos fotogramas por clip (30 % y 70 %), como el revisor, para ver si ya salió: pilla los
@@ -503,6 +508,15 @@ queue:                             # cola nocturna (python main.py --all)
 #                          # una petición por fuente, guardada) cuenta al buscar la escena; doble si el plano es una
 #                          # prueba (función «prueba» de la cobertura o una frase entre comillas). Clips propios: sin
 #                          # transcripción todavía. Mide: ventanas «por su descripción» en el registro y Puntería
+
+# Receta de montaje por canal (pipeline/recetas.py; objetivo-videos-referencia.md). Se pone en canales/<canal>.yaml
+# DESPUÉS de ver entero un vídeo de prueba; lo que el canal o el vídeo fijen a mano sigue mandando.
+# montaje:
+#   receta: persona   # persona: clips a pantalla completa (tarjeta solo para fotos y verticales), texto ≤ 5 %, foto antes
+#                     #   que otro clip · suceso: persona + cobertura por funciones y pasajes con sonido original ·
+#                     #   teoria: tarjetas de argumento (≤ 40 %), metraje como prueba con círculo, índice con lo dicho
+#                     # Propuesta: gimnasia/atletismo/patinaje → persona; crímenes y sucesos → suceso; GTA → teoria
+#                     # Mide: python -m pipeline.medir_video <vídeo> --referencia <mp4 de referencia>
 
 qa:
   # max_empty_seconds: 1        # un plano sin clip, foto ni gráfico más de esto bloquea el render (pantalla vacía)
