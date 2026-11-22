@@ -43,6 +43,41 @@ Los números que definen el formato:
 Lo que no hay que copiar: subtítulos en inglés y rótulos de cadena quemados en los clips, y un orden del top que
 no se sostiene (no se ve por qué un caso va delante de otro).
 
+## Lo que enseña su vídeo de presentación (formulario y opciones)
+
+El dueño pasó también el anuncio de la herramienta (2 min 51 s), que es una grabación de su pantalla. Sirve para
+saber qué deja elegir y para resolver dos dudas de arriba.
+
+El formulario de «Nuevo vídeo» de ese modo pide, en este orden:
+
+1. **Tipo**: «Top (puestos)» o «Noticias y documental».
+2. **De qué trata, con una frase**, y un botón para que la IA mejore la idea o «lo escribo yo».
+3. **Tono**: automático, documental de alto impacto, sensacionalista, ácido, fatalista, serio, humorístico,
+   entretenimiento con datos, finanzas.
+4. **Vídeos**: «elegir automáticamente» o «los elijo yo», con una casilla de enlace por puesto.
+5. **Puestos** y **duración en minutos** (10 y 10 en el ejemplo).
+6. **Doblaje de los testimonios**: «estilo documental (una voz grave)» o «una voz por persona».
+7. **Voz del narrador** y **música** por estado de ánimo.
+8. Avanzado: idioma del vídeo (español, inglés, portugués, francés), estilo de gráficos, con o sin gráficos, con
+   o sin subtítulos, y cuántas llamadas a suscribirse lleva el guion (de ninguna a cinco).
+
+Al lanzar avisa de que tarda entre una y tres horas y de que se puede cerrar la página; una lista «Mis pedidos»
+enseña en qué paso va cada uno («Escribiendo el guion»).
+
+Lo que cambia respecto a lo escrito arriba:
+
+- **Sí doblan los testimonios**, y lo dan a elegir entre una sola voz para todos o una por persona. Mantén el
+  subtítulo con voz original como opción por defecto nuestra y añade las dos de doblaje; «una por persona» quiere
+  decir una voz distinta del catálogo para cada uno (hombre o mujer según quien hable), no una imitación.
+- **El gancho lo decide un paso propio** («un director con IA elige cada corte del gancho»). Hazlo así: una
+  llamada aparte que recibe los momentos candidatos del expediente, con su fotograma y su frase, y devuelve el
+  orden y la duración de cada corte; no lo dejes como un bloque más del guion.
+- **El tono** entra en el guion por bloques como una instrucción más, igual que hoy el formato y la estructura del
+  canal. Reutiliza las estructuras y formatos que ya hay antes de crear una lista nueva de tonos.
+- **El formulario del estudio** puede seguir ese mismo orden; casi todos los campos existen ya en «Nuevo vídeo»
+  (voz, música, idioma, subtítulos). Los nuevos son el tipo, el enlace por puesto, el número de puestos y el
+  doblaje de testimonios.
+
 ## Cómo funciona el modo
 
 Se elige al crear el vídeo: «material primero», con el tipo (top, noticia, documental), el tono, los minutos, y
@@ -142,6 +177,5 @@ Tras el paso 3, un vídeo de prueba que el dueño ve entero, medido al lado de l
 
 ## Lo que no he podido comprobar
 
-No he oído ni la referencia ni el anuncio: cuánto habla el narrador, si las declaraciones van dobladas o solo
-subtituladas y cómo suena la mezcla lo tiene que decir el dueño, o salir de la transcripción si el vídeo está en
-YouTube. Y no sé cómo decide esa herramienta qué fuentes usar: el diseño de arriba es el mío, no el suyo.
+No he oído ni la referencia ni el anuncio: cuánto habla el narrador y cómo suena la mezcla del doblaje lo tiene
+que decir el dueño, o salir de la transcripción si el vídeo está en YouTube. Y no sé cómo decide esa herramienta qué fuentes usar: el diseño de arriba es el mío, no el suyo.
