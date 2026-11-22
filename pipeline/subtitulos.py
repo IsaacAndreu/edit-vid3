@@ -23,10 +23,21 @@ HOLD = 0.35              # s que sigue en pantalla tras la última palabra
 CLEAN = "video-limpio.mp4"
 
 
+def repeats(text: str, shown: str) -> bool:
+    """The subtitle says what is already written on screen: most of its words (3+ letters) are in `shown`."""
+
+    words = [w for w in re.findall(r"[^\W\d_]{3,}|\d+", text.casefold())]
+    there = set(re.findall(r"[^\W\d_]{3,}|\d+", shown.casefold()))
+    return bool(words) and sum(w in there for w in words) >= max(1, -(-3 * len(words) // 5))
+
+
 def cues(words: list[dict[str, Any]], frame_of: Callable[[float], int], fps: int,
-         blocked: list[tuple[int, int]] | None = None) -> list[dict[str, Any]]:
+         blocked: list[tuple[int, int]] | None = None,
+         shown: list[tuple[int, int, str]] | None = None) -> list[dict[str, Any]]:
     """Trozos de hasta MAX_WORDS palabras / MAX_CHARS letras (un signo de puntuación o una pausa los cierra), puestos
-    donde la voz los dice. `blocked`: tramos (fotogramas) con el texto ya en pantalla (paneles de pregunta)."""
+    donde la voz los dice. `blocked`: tramos (fotogramas) con el texto ya en pantalla (paneles de pregunta). `shown`:
+    (desde, hasta, texto) de lo escrito en pantalla —pizarras, rótulos de capítulo—: el subtítulo que lo repite sobra
+    (newideas 8:40: la voz, la pizarra y el subtítulo diciendo «TIENE TDAH Y NO LO ESCONDE» a la vez)."""
 
     phrases: list[list[dict[str, Any]]] = []             # first by punctuation and pauses…
     for word in words:
@@ -49,10 +60,12 @@ def cues(words: list[dict[str, Any]], frame_of: Callable[[float], int], fps: int
         end = frame_of(float(chunk[-1]["end"])) + round(HOLD * fps)
         if i + 1 < len(chunks):
             end = min(end, frame_of(float(chunks[i + 1][0]["start"])))
+        text = " ".join(str(w["text"]).strip() for w in chunk)
         if end <= start or any(a < end and start < b for a, b in blocked or []):
             continue
-        out.append({"from": start, "durationInFrames": end - start,
-                    "text": " ".join(str(w["text"]).strip() for w in chunk)})
+        if any(a < end and start < b and repeats(text, said) for a, b, said in shown or []):
+            continue
+        out.append({"from": start, "durationInFrames": end - start, "text": text})
     return out
 
 

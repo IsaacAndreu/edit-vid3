@@ -213,7 +213,9 @@ def run(ctx: RunContext) -> None:
     # 1:36, 2:16… with only the small subtitle). Over `qa.max_empty_seconds` (1) the render does not start.
     for shot_id, seconds in empty_spans(timeline):
         if seconds > float(cfg.get("max_empty_seconds", 1.0)):
-            blockers.append(f"{shot_id}: {seconds:.1f} s sin clip, foto ni gráfico (pantalla vacía)")
+            blockers.append(f"{shot_id}: {seconds:.1f} s sin clip, foto ni gráfico (pantalla vacía). El montaje ya "
+                            "pone una pizarra en cada hueco: si queda uno, algo se rompió. Para que salga igualmente: "
+                            "`qa: {max_empty_seconds: 999}` en materiales/<vídeo>/config.yaml y reintentar")
 
     narration = round(float(ctx.read_json("words.json")["durationSeconds"]) * fps)
     if timeline.durationInFrames != (narration + timeline.audio.voiceFrom + sum(b for _, b in timeline.audio.voiceGaps)
