@@ -374,3 +374,15 @@ Test: `tests/test_hls_local_cut.py` (los dos tramos que fallaban en el servidor)
 Sin comprobar sin el servidor: ninguna medida real (todo con la API y el modelo simulados); que los subtítulos de las
 referencias lleguen; cuántos temas caben de verdad con la cuota que hay; y el coste real de doblar (voz estimada por
 caracteres del guion, sin el render).
+
+## Modo «material primero» (22-11): etapas 1 y 2
+
+| Etapa | Qué | Estado |
+|---|---|---|
+| 1 | Investigación y expediente (`pipeline/expediente.py`): puestos con búsquedas en el idioma del material, 3-6 fuentes por puesto (quien grabó antes que quien resume), subtítulos con tiempos, tramos útiles (declaración, secuencia, dato) con la frase literal releída de los subtítulos y quién habla con nota de seguridad; un nombre solo si está escrito o dicho en la fuente. Página «Material primero» (`#/material`) | hecho · `python main.py --expediente <vídeo>` |
+| 2 | Guion por bloques (`pipeline/bloques.py`): narrador con referencias (frase con dato sin fuente: fuera), declaración (frase y quién habla siempre del expediente), secuencia (dentro del tramo y del tope del canal), tarjeta; orden del top justificado con un dato; quitar y cambiar declaraciones; MB de las descargas antes de gastar | hecho · `python main.py --bloques <vídeo>` |
+| — | Tres caminos en «Nuevo vídeo» (con mi guion, desde un título, material primero, que avisa de que tarda y gasta más); cada vídeo guarda su `modo` (ficha y «Experimentos» lo comparan); desde «Desde un título», si medio guion no tiene imagen, un botón lleva título y enlaces a «Material primero» | hecho · el trozo común del formulario (voz, música, idioma) se comparte cuando llegue el montaje (etapa 3) |
+| 3-6 | Montaje del top de tres, gancho (paso propio: «director» que elige cortes), noticia/documental, doblaje de declaraciones (subtítulo por defecto; una voz para todos o una por persona) | pendiente; tras la 3, vídeo de prueba que el dueño ve entero antes de la 4 |
+
+Sin comprobar sin el servidor: búsquedas, subtítulos y respuestas del modelo reales; el OCR del rótulo (para quién
+habla) va con el clip bajado, en la etapa 3.

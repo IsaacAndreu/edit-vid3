@@ -601,3 +601,89 @@ async function formulaMontage(key) {
   await post("/api/formula/montaje", {key, confirm: true});
   queHacerPage();
 }
+
+// «Material primero» (pipeline/expediente.py): first the real material of the topic is found and read, then the
+// script is written from it. The list, a new one, and each video's case file.
+async function materialPage() {
+  const r = await api("/api/material-primero");
+  const rows = (r.videos || []).map((v) => `<tr><td><a href="#/material/${encodeURIComponent(v.slug)}">${esc(v.title)}</a></td>
+    <td>${esc(v.kind)}</td><td class="r">${v.count}</td><td>${v.expediente ? "expediente listo" : "investigando…"}${v.bloques ? " · guion por bloques" : ""}</td></tr>`).join("");
+  show(`<h1>Material primero</h1>
+    <div class="small muted">Primero se busca y se lee el material real del tema (fuentes, lo que dicen, quién habla); después se escribe
+      el guion con lo encontrado. No baja vídeos: solo subtítulos.</div>
+    <div class="card mt-3"><b>Nuevo</b>
+      <input id="mfTitle" placeholder="Título, p. ej. «Top 5 persecuciones policiales más largas»" style="width:100%">
+      <div class="row mt-2"><select id="mfKind"><option value="top">Top</option><option value="noticia">Noticia</option><option value="documental">Documental</option></select>
+        <input id="mfCount" type="number" value="5" min="1" max="10" style="width:5em" title="puestos o partes">
+        <input id="mfMinutes" type="number" value="6" min="2" max="30" style="width:5em" title="minutos">
+        <select id="mfChannel"><option value="">sin canal</option>${(r.channels || []).map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+      <textarea id="mfLinks" rows="3" style="width:100%" placeholder="Opcional: un enlace de YouTube por puesto, en orden"></textarea>
+      <button onclick="materialNew()">Investigar</button></div>
+    ${rows ? `<div class="tablewrap mt-3"><table class="small"><tr><th>Vídeo</th><th>Tipo</th><th class="r">Puestos</th><th>Estado</th></tr>${rows}</table></div>` : ""}`);
+  let pre = null;                            // coming from «Desde un título»: its title and links
+  try { pre = JSON.parse(sessionStorage.getItem("materialPrefill") || "null"); sessionStorage.removeItem("materialPrefill"); } catch (e) {}
+  if (pre) {
+    document.getElementById("mfTitle").value = pre.title || "";
+    document.getElementById("mfLinks").value = (pre.links || []).join("\n");
+    if (pre.channel) document.getElementById("mfChannel").value = pre.channel;
+  }
+}
+
+async function materialNew() {
+  const v = (id) => document.getElementById(id).value;
+  const res = await post("/api/material-primero/nuevo", {title: v("mfTitle"), kind: v("mfKind"), count: +v("mfCount"),
+    minutes: +v("mfMinutes"), channel: v("mfChannel"), links: v("mfLinks").split(/\s+/).filter(Boolean)});
+  location.hash = `#/material/${encodeURIComponent(res.slug)}`;
+}
+
+async function materialVideoPage(slug) {
+  const r = await api(`/api/material-primero/${encodeURIComponent(slug)}`);
+  const e = r.expediente, jobs = r.jobs || {};
+  const running = (jobs.expediente || {}).running;
+  const t = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const who = (sp) => !sp ? "" : `<b>${esc(sp.name || "")}</b>${sp.name ? " · " : ""}${esc(sp.role)} <span class="muted">(${esc(sp.evidence || "")},
+    seguridad ${Math.round((sp.confidence || 0) * 100)} %)</span>${sp.droppedName ? ` <span class="t-bad" title="El modelo dio este nombre pero no está escrito ni dicho en la fuente: no saldrá">· nombre descartado: ${esc(sp.droppedName)}</span>` : ""}`;
+  let segN = 0;                                    // the same ids as the blocks (t1, t2… in this order)
+  const seg = (src, s) => `<tr><td class="nw muted">t${++segN}</td><td class="nw"><a href="${esc(src.url)}&t=${Math.floor(s.start)}" target="_blank">${t(s.start)}-${t(s.end)}</a></td>
+    <td>${esc(s.type)}</td><td>${esc(s.seen || "")}${s.fact ? `<div><b>dato:</b> ${esc(s.fact)}</div>` : ""}</td>
+    <td>${s.said ? `«${esc(s.said.slice(0, 220))}${s.said.length > 220 ? "…" : ""}»` : ""}<div class="small">${who(s.speaker)}</div></td></tr>`;
+  const items = !e ? "" : e.items.map((it) => `<section class="card mt-3"><div class="hb"><h2>${it.n}. ${esc(it.name)}</h2>
+      <span class="small muted">${esc(it.whereWhen || "")}</span></div>
+      ${it.sources.map((src) => `<div class="mt-2"><b><a href="${esc(src.url)}" target="_blank">${esc(src.title || src.id)}</a></b>
+        <span class="small"> · ${esc(src.channel || "")} · ${esc(src.kind || "")} · ${Math.round((src.duration || 0) / 60)} min
+        · subtítulos: ${esc(src.subtitles || "no")}${src.eventMatch != null ? ` · de este suceso: ${Math.round(src.eventMatch * 100)} %` : ""}</span>
+        ${src.note ? `<div class="small muted">${esc(src.note)}</div>` : ""}
+        ${src.segments.length ? `<div class="tablewrap"><table class="small">${src.segments.map((s) => seg(src, s)).join("")}</table></div>` : ""}</div>`).join("")
+      || `<div class="small muted">Ninguna fuente encontrada.</div>`}</section>`).join("");
+  const sum = e ? e.summary.items.map((s) => `<tr><td>${s.n}. ${esc(s.name)}</td><td class="r">${s.sources}</td><td class="r">${s.statements}</td>
+    <td class="r">${s.named}</td><td class="r">${s.footageSeconds} s</td><td class="r">${s.facts}</td></tr>`).join("") : "";
+  show(`<h1>${esc(e ? e.title : slug)}</h1>
+    <div class="row"><a href="#/material">← Material primero</a>
+      <button onclick="post('/api/material-primero/${encodeURIComponent(slug)}/investigar').then(()=>materialVideoPage('${esc(slug)}'))">Investigar otra vez</button>
+      ${e ? `<button onclick="post('/api/material-primero/${encodeURIComponent(slug)}/bloques').then(()=>materialVideoPage('${esc(slug)}'))">Escribir el guion por bloques</button>` : ""}</div>
+    ${running ? `<div class="notice mt-2">Investigando… (recarga en un rato)</div>` : ""}
+    ${e ? `<div class="tablewrap mt-3"><table class="small"><tr><th>Puesto</th><th class="r">Fuentes</th><th class="r">Declaraciones</th>
+      <th class="r">…con nombre de la fuente</th><th class="r">Metraje</th><th class="r">Datos</th></tr>${sum}</table></div>
+      ${e.summary.weak.length ? `<div class="small t-bad">Poco material: ${e.summary.weak.map(esc).join(", ")}</div>` : ""}
+      ${(e.notes || []).length ? `<div class="small muted">${e.notes.map(esc).join(" · ")}</div>` : ""}
+      <div class="small muted">Unidades de API: ${e.apiUnits}</div>` : (running ? "" : `<div class="muted mt-2">Aún no hay expediente.</div>`)}
+    ${typeof bloquesView === "function" && r.bloques ? bloquesView(slug, r.bloques) : ""}
+    ${items}`);
+}
+
+// The script by blocks (pipeline/bloques.py), seen and edited before any money goes to voice and downloads.
+function bloquesView(slug, b) {
+  const e = b.estimate || {};
+  const label = {narrador: "Narrador", declaracion: "Declaración", secuencia: "Secuencia", tarjeta: "Tarjeta"};
+  const act = (i, action) => `post('/api/material-primero/${encodeURIComponent(slug)}/bloque',{position:${i},action:'${action}'${action === "cambiar" ? `,ref:prompt('Id del tramo de la otra declaración (t1, t2…)')` : ""}}).then(()=>materialVideoPage('${esc(slug)}'))`;
+  const body = (x) => x.type === "narrador" ? `${esc(x.text)} ${x.refs.length ? `<span class="muted">[${x.refs.map(esc).join(", ")}]</span>` : `<span class="muted">(conecta)</span>`}`
+    : x.type === "tarjeta" ? `<b>${x.number != null ? `#${x.number} ` : ""}${esc(x.title || "")}</b>`
+    : `<a href="${esc(x.url || "")}&t=${Math.floor(x.start)}" target="_blank">${esc(x.channel || x.source)} ${Math.floor(x.start)}-${Math.floor(x.end)} s</a>`
+      + (x.type === "declaracion" ? ` · <b>${esc(x.speaker || "")}</b>${x.speaker ? " · " : ""}${esc(x.role)}: «${esc(x.said)}»${x.translation ? `<div class="muted">${esc(x.translation)}</div>` : ""}` : "");
+  return `<section class="card mt-3"><div class="hb"><h2>Guion por bloques</h2><span class="small">${e.minutes} min · voz ajena ${Math.round((e.otherVoiceShare || 0) * 100)} %
+      · ${e.clips} tramos a bajar: <b>~${e.downloadMB} MB por el proxy</b></span></div>
+    ${b.criterion ? `<div class="small">Orden: ${esc(b.criterion)}</div>` : ""}
+    ${(b.notes || []).length ? `<div class="small t-bad">${b.notes.map(esc).join(" · ")}</div>` : ""}
+    <div class="tablewrap"><table class="small">${(b.blocks || []).map((x, i) => `<tr><td class="nw">${label[x.type] || x.type}</td><td>${body(x)}</td>
+      <td class="nw"><button class="small" onclick="${act(i, "quitar")}">Quitar</button>${x.type === "declaracion" ? ` <button class="small" onclick="${act(i, "cambiar")}">Cambiar</button>` : ""}</td></tr>`).join("")}</table></div></section>`;
+}

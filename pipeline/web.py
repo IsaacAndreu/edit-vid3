@@ -697,6 +697,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "costs": _costs_by_stage(root, slug),
         "material": video_material(root, slug) if folder.is_dir() else None,
         "punteria": _video_score(out),
+        "modo": str(_json_yaml(folder / "config.yaml").get("modo") or "") if folder.is_dir() else "",   # the way in
     }
 
 
@@ -953,6 +954,8 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
 
         (folder / "idea.md").write_text(brief(body["idea"]), encoding="utf-8")
     extra = {k: str(body[k]).strip() for k in ("serie", "format") if str(body.get(k) or "").strip()}
+    if str(body.get("modo") or "") in ("guion", "titulo"):  # the way in, kept: «Experimentos» compares the ways
+        extra["modo"] = str(body["modo"])
     lang = str(body.get("language") or "es").strip()
     if lang not in ("es", "en", "pt", "fr", "it", "de"):
         raise ValueError(f"Idioma desconocido: {lang}")
@@ -2217,6 +2220,19 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     found = _json(root / ytbench.OUTPUT)
                     return self._ok({"result": found, "job": job_state(root, "velocidad-youtube")})
+                if path == "/api/material-primero":         # the «material primero» videos
+                    from . import expediente
+
+                    return self._ok({"videos": expediente.videos(root), "channels": channels(root)})
+                if match := re.fullmatch(r"/api/material-primero/([^/]+)", path):
+                    from . import expediente
+                    from .context import RunContext as MaterialContext  # an alias: never shadow the handler's name
+
+                    slug = urllib.parse.unquote(match.group(1))
+                    work = MaterialContext.create(slug, root=root).work_dir
+                    return self._ok({"slug": slug, "expediente": _json(work / expediente.OUTPUT),
+                                     "bloques": _json(work / "bloques.json"),
+                                     "jobs": {n: job_state(root, f"{n}-{slug}") for n in ("expediente", "bloques")}})
                 if path == "/api/recomendaciones":          # «Qué hacer ahora»: empezar, doblar, dejar o cambiar
                     from . import recomendar
 
@@ -2693,6 +2709,27 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if len(topic) < 3:
                         raise ValueError("Escribe un tema")
                     return self._ok(background(root, "huecos-idiomas", ["--huecos-idiomas", topic]))
+                if path == "/api/material-primero/nuevo":           # «material primero»: a video from its title, then its research
+                    from . import expediente
+
+                    slug = expediente.create(root, str(body.get("title") or ""), str(body.get("channel") or ""),
+                                             str(body.get("kind") or "top"), int(body.get("count") or 5),
+                                             float(body.get("minutes") or 6), str(body.get("tone") or ""),
+                                             [str(l) for l in (body.get("links") or [])])
+                    return self._ok({"slug": slug, **background(root, f"expediente-{slug}", ["--expediente", slug])})
+                if match := re.fullmatch(r"/api/material-primero/([^/]+)/investigar", path):    # the research again
+                    slug = urllib.parse.unquote(match.group(1))
+                    return self._ok(background(root, f"expediente-{slug}", ["--expediente", slug]))
+                if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloques", path):   # the script by blocks
+                    slug = urllib.parse.unquote(match.group(1))
+                    return self._ok(background(root, f"bloques-{slug}", ["--bloques", slug]))
+                if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloque", path):    # {position, action, ref}
+                    from . import bloques
+                    from .context import RunContext as BlocksContext    # an alias: never shadow the handler's name
+
+                    ctx = BlocksContext.create(urllib.parse.unquote(match.group(1)), root=root)
+                    return self._ok(bloques.edit(ctx, int(body.get("position", -1)), str(body.get("action") or ""),
+                                                 str(body.get("ref") or "") or None))
                 if path == "/api/formula/analizar":         # {links, niche}: the formula report of 5-8 references
                     links = str(body.get("links") or "")
                     return self._ok(background(root, "formula", ["--formula", links, "--nicho",

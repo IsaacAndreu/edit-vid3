@@ -72,6 +72,9 @@ def _pace(cuts: float) -> str | None:
     return "pausado (<14 cortes/min)" if cuts < 14 else "medio (14-20)" if cuts <= 20 else "rápido (>20)"
 
 
+MODES = {"guion": "con mi guion", "titulo": "desde un título", "material": "material primero"}
+
+
 def tried(root: Path, slug: str, production: dict[str, Any]) -> dict[str, str]:
     """What this video tried, read from how it was made."""
 
@@ -83,6 +86,9 @@ def tried(root: Path, slug: str, production: dict[str, Any]) -> dict[str, str]:
         out["Formato"] = str(ctx.config.get("format") or "el del canal")
         scenes = (ctx.section("sourcing").get("youtube") or {}).get("scene_search")
         out["Búsqueda"] = "por escenas" if scenes else "por plano"
+        way = MODES.get(str(ctx.config.get("modo") or ""))       # the way in (Nuevo vídeo): made after 22-11 only
+        if way:
+            out["Camino"] = way
     except Exception:
         pass
     if (length := _length(production.get("duration", 0) / 60)):
