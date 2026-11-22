@@ -2217,6 +2217,14 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     found = _json(root / ytbench.OUTPUT)
                     return self._ok({"result": found, "job": job_state(root, "velocidad-youtube")})
+                if path == "/api/recomendaciones":          # «Qué hacer ahora»: empezar, doblar, dejar o cambiar
+                    from . import recomendar
+
+                    from . import formula
+
+                    return self._ok({**recomendar.build(root), "formulas": formula.listing(root),
+                                     "jobs": {n: job_state(root, n) for n in ("huecos-idiomas", "doblar", "formula",
+                                                                               "formula-montaje")}})
                 if path == "/api/punteria":                 # the automatic reviewer's score per video and channel
                     return self._ok(punteria(root))
                 if path == "/api/errors":
@@ -2680,6 +2688,40 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":
                     return self._ok(background(root, "radar", ["--radar"]))
+                if path == "/api/recomendaciones/idiomas":  # {topic}: that topic in every language that fits today
+                    topic = " ".join(str(body.get("topic") or "").split())[:120]
+                    if len(topic) < 3:
+                        raise ValueError("Escribe un tema")
+                    return self._ok(background(root, "huecos-idiomas", ["--huecos-idiomas", topic]))
+                if path == "/api/formula/analizar":         # {links, niche}: the formula report of 5-8 references
+                    links = str(body.get("links") or "")
+                    return self._ok(background(root, "formula", ["--formula", links, "--nicho",
+                                                                 str(body.get("niche") or "")[:80]]))
+                if path == "/api/formula/montaje":          # {key, confirm}: only after seeing the MB through the proxy
+                    from . import formula
+
+                    report = formula.load(root, str(body.get("key") or ""))
+                    if not body.get("confirm"):
+                        return self._ok(formula.montage(root, report, confirm=False))
+                    return self._ok(background(root, "formula-montaje", ["--formula-montaje", report["key"]]))
+                if path == "/api/formula/crear":            # {key, name}: the channel from the formula
+                    from . import formula
+
+                    words, llm = formula.production(root)
+                    return self._ok(formula.create_channel(root, formula.load(root, str(body.get("key") or "")),
+                                                           str(body.get("name") or ""), llm_fn=llm))
+                if path == "/api/formula/piloto":           # {key, slug}: the pilot measured next to the references
+                    from . import formula
+
+                    return self._ok({"table": formula.pilot_table(root, formula.load(root, str(body.get("key") or "")),
+                                                                  str(body.get("slug") or ""))})
+                if path == "/api/formula/visto":            # {key}: the owner saw the pilot: the autopilot may take it
+                    from . import formula
+
+                    formula.pilot_seen(root, str(body.get("key") or ""))
+                    return self._ok({"ok": True})
+                if path == "/api/recomendaciones/doblar":   # what to dub, measured again where the quota allows
+                    return self._ok(background(root, "doblar", ["--doblar"]))
                 if path == "/api/radar/gap":               # {topic}: measure a topic you have in mind (~400 units)
                     from . import huecos
 

@@ -45,6 +45,7 @@ async function route() {
     else if (hash.startsWith("#/decisiones/")) await decisionsPage(decodeURIComponent(hash.slice(13)));
     else if (hash === "#/errores") await errorsPage();
     else if (hash === "#/punteria") await punteriaPage();
+    else if (hash === "#/que-hacer") await queHacerPage();
     else if (hash === "#/competencia") await radarPage();
     else if (hash === "#/canal") await channelPage();
     else if (hash === "#/canal-nuevo") await newChannelPage();

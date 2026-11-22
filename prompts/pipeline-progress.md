@@ -360,3 +360,17 @@ imagen o con 1,3 s de 3,7. Los trozos llegaban bien (diagnóstico en el servidor
 descodifica nada hasta el siguiente. Ahora los trozos se unen en un archivo y el salto es de salida (exacto).
 Test: `tests/test_hls_local_cut.py` (los dos tramos que fallaban en el servidor). Medir: «tramo-vacío» en
 `--youtube-stats 1` debería caer casi a 0.
+
+## Qué canales empezar, cuáles doblar, y canal desde referencias (22-11)
+
+| Parte | Qué | Estado |
+|---|---|---|
+| 1 | Huecos en cualquier idioma (`pipeline/idiomas.py`): búsqueda traducida por el modelo, cada resultado comprobado por su idioma (audio/idioma del vídeo, si no las palabras del título), tabla tema × idioma, lecturas «empezar» y «doblar»; origen y español primero, el resto si pasa `radar.idiomas_min_demand`; tope `radar.gaps_units_per_day` y siempre `radar.keep_for_queue` para la cola | hecho · `python main.py --huecos-idiomas "tema"` |
+| 2 | Qué doblar (`pipeline/doblar.py`): canal propio × idioma no doblado, con su búsqueda (`lab.queries`) traducida, vídeos listos, coste de voz + API, dependencia del idioma del material, y comprobación con los canales ya doblados | hecho · `python main.py --doblar` |
+| 3 | De 5-8 referencias a canal (`pipeline/formula.py`): visitas frente a lo normal, títulos, guion por subtítulos + modelo, montaje con `medir_video` solo tras confirmar los MB, fuentes acreditadas; «Crear canal» con receta, estructura, material de partida y 5 ideas; el piloto automático no lo coge hasta ver el piloto | hecho · las miniaturas no las mira ningún modelo todavía (se listan) |
+| 4 | Página «Qué hacer ahora» (`#/que-hacer`, `pipeline/recomendar.py`): Empezar / Doblar / Dejar o cambiar, con números, lo que no se sabe, cuota de hoy, `radar.rpm` (vacía: no se inventan ingresos), esfuerzo | hecho |
+| 5 | Que aprendan (`pipeline/aprender.py`): cada recomendación guardada con su fecha; a los 30 días y 10 vídeos, previsto frente a real | hecho |
+
+Sin comprobar sin el servidor: ninguna medida real (todo con la API y el modelo simulados); que los subtítulos de las
+referencias lleguen; cuántos temas caben de verdad con la cuota que hay; y el coste real de doblar (voz estimada por
+caracteres del guion, sin el render).
