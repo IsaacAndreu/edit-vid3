@@ -122,3 +122,15 @@ def test_the_montage_covers_every_blank_so_qa_only_stops_a_broken_video():
     assert [(b.from_, b.durationInFrames) for b in blanks] == [(8 * FPS, 2 * FPS)]
     assert blanks[0].graphic["board"] and blanks[0].graphic["lines"][0]
     assert empty_spans(NS(fps=FPS, shots=shots, groups=[*groups, *blanks])) == []
+
+
+def test_archive_footage_is_not_blown_up_further_when_borrowed():
+    from pipeline.timeline import push_in
+
+    assert push_in(TimelineMedia(src="a.mp4", kind="video", source="youtube", layout="archive"), 90) is None
+    assert push_in(TimelineMedia(src="a.mp4", kind="video", source="youtube", layout="full"), 90) == [0, 90, 1.18]
+    old = _shot(4, 100, 3)
+    old = old.model_copy(update={"media": old.media.model_copy(update={"layout": "archive"})})
+    shots = [_shot(1, 0, 3), _shot(2, 3, 3, media=False), _shot(3, 6, 3), old]   # s001/s003 are beside it
+    limit_text(shots, [], FPS, {}, {}, share=0.0, hook_seconds=0)
+    assert shots[1].media.src == "media/s004.mp4" and shots[1].media.zoom is None
