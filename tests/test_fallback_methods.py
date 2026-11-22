@@ -132,3 +132,12 @@ def test_a_photo_of_the_person_is_searched_for_the_ideas_time_first():
     queries = [q for q, _ in web_queries(photo_broll(broll, "Simone Biles", "adolescencia, 2011"))]
     assert queries == ["Simone Biles adolescencia, 2011", "Simone Biles"]
     assert [q for q, _ in web_queries(photo_broll(broll, "Simone Biles"))] == ["Simone Biles"]
+
+
+def test_a_muted_talking_head_keeps_a_fallback_clip_out():
+    from pipeline.content_check import head_verdict
+
+    assert head_verdict([(0.09, 0.5), (0.08, 0.45), (0.0, 0.0)], {}).startswith("busto parlante")
+    assert head_verdict([(0.09, 0.5), (0.01, 0.5), (0.0, 0.0)], {}) == ""     # a face passing by
+    assert head_verdict([(0.09, 0.1), (0.09, 0.9), (0.09, 0.95)], {}) == ""   # big, but at the side: not to camera
+    assert head_verdict([], {}) == ""
