@@ -67,6 +67,12 @@ def channel_state(root: Path, channel: str) -> dict[str, Any]:
 def configure(root: Path, channel: str, on: bool | None = None, per_day: int | None = None) -> dict[str, Any]:
     state = _read(root)
     entry = {**channel_state(root, channel)}
+    if on:
+        from .formula import autopilot_allowed
+
+        allowed, why = autopilot_allowed(root, channel)      # a channel made from references: its pilot seen first
+        if not allowed:
+            raise ValueError(f"{channel} aún no entra en el piloto automático: {why}")
     if on is not None:
         entry["on"] = bool(on)
     if per_day is not None:
