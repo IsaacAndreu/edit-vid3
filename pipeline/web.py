@@ -1096,10 +1096,20 @@ def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
     for r in rows:
         entry = channels_out.setdefault(r["channel"], {"channel": r["channel"], "videos": []})
         entry["videos"].append(r)
+    from .medir_video import channel_reference, measure
+
     for entry in channels_out.values():
         last = entry["videos"][-5:]
         entry["recent"] = round(sum(v["per100"] for v in last) / len(last), 1)
         entry["first"] = entry["videos"][0]["per100"]
+        # objetivo-videos-referencia.md: the channel's reference (referencias/canales/<canal>/, measured beforehand
+        # with python -m pipeline.medir_video --referencias) beside our last video, measured from its edit
+        entry["reference"] = channel_reference(root, entry["channel"])
+        if entry["reference"]:
+            try:
+                entry["ours"] = {"slug": last[-1]["slug"], **measure(root, last[-1]["slug"])}
+            except (OSError, ValueError):
+                entry["ours"] = None
     return {"channels": sorted(channels_out.values(), key=lambda e: e["channel"]), "problems": PROBLEMS,
             "videos": len(rows)}
 

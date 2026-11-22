@@ -331,3 +331,18 @@ Todo apagado por canal salvo las medidas.
 
 Sin verificar en el servidor: nada de esta tanda se ha probado con un vídeo real; las cifras para comparar son las de
 `revisor --base` con las columnas nuevas.
+
+## Revisión 22-11 y objetivo de las referencias (revision-22-11.md, objetivo-videos-referencia.md)
+
+| Qué | Estado |
+|---|---|
+| Gancho: cada clip una vez, nunca el mismo dos planos seguidos (era s015 ×6) | hecho, con la prueba del caso |
+| Préstamo solo de quien toca: su idea, o idea de ambiente de la misma persona (o del capítulo si no nombra a nadie); nunca de una literal ajena, de quien no debe salir, ni de otra época | hecho |
+| El montaje tapa cada tramo vacío con su pizarra; QA solo bloquea si aun así queda, y dice cómo desbloquear | hecho |
+| Foto antes que otro clip también en ideas de ambiente | `fallback.ambient_photo_first` (apagado; lo enciende la receta) |
+| Subtítulo que repite la pizarra o el título de capítulo: fuera | hecho (siempre) |
+| Texto ajeno quemado en clips y fotos del relleno: mismo filtro que el análisis | `fallback.text_check` (encendido: es el filtro que ya existía) |
+| Fotos de la época de la idea: «persona + época» primero, la biblioteca después | hecho |
+| Recetas por canal `montaje.receta: persona / suceso / teoria` (clips a pantalla completa, tarjeta solo para fotos, …) | hecho; **ningún canal la tiene puesta** hasta ver un vídeo de prueba |
+| `python -m pipeline.medir_video` (cualquier mp4 o vídeo nuestro) y la referencia del canal en Puntería | hecho; sin probar con una referencia real (`referencias/canales/<canal>/`) |
+| Bustos parlantes mudos, material muy ampliado, final vacío (segunda pasada 6-8) | pendiente |
