@@ -322,6 +322,10 @@ class YouTubeAPI:
                     "thumbnail": (thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}).get("url", ""),
                     "url": f"https://www.youtube.com/watch?v={item['id']}",
                     "description": str(snippet.get("description") or "")[:700],
+                    # what language the uploader says it is in (same call, same unit): relevanceLanguage in a search
+                    # is a preference, not a filter — the gaps per language check every result with these
+                    "language": str(snippet.get("defaultLanguage") or "")[:8],
+                    "audioLanguage": str(snippet.get("defaultAudioLanguage") or "")[:8],
                     # what tells, before asking yt-dlp anything, that the player will refuse it (same call, same unit)
                     "regionBlocked": list((item.get("contentDetails", {}).get("regionRestriction") or {}).get("blocked") or []),
                     "regionAllowed": (item.get("contentDetails", {}).get("regionRestriction") or {}).get("allowed"),
