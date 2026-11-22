@@ -396,6 +396,40 @@ def cut_codec(prefix: str) -> list[str]:
     return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "16"]
 
 
+def join_segments(paths: list[Path], init: Path | None, target: Path) -> Path:
+    """The downloaded segments of one track as ONE local file: the init segment (fragmented mp4), then each segment's
+    bytes in order. MPEG-TS and fMP4 fragments are made to be joined like this; their timestamps run on."""
+
+    with target.open("wb") as out:
+        for piece in ([init] if init is not None else []) + list(paths):
+            with piece.open("rb") as handle:
+                shutil.copyfileobj(handle, out, 1024 * 1024)
+    return target
+
+
+def local_cut_command(inputs: list[tuple[float, Path]], start: float, end: float, prefix: str, audio: bool,
+                      audio_only: bool, part: Path) -> list[str]:
+    """ffmpeg cutting [start, end] out of the joined segments: `inputs` = [(source second where the file begins,
+    file)], one per track (each input's timeline starts at 0 at its first timestamp).
+
+    The seek is on the OUTPUT side: every frame is decoded from the file's start (a few segments of 720p) and the
+    cut is exact. An input seek on MPEG-TS (no index) lands on an estimated byte inside a GOP, and with one keyframe
+    per ~6 s segment nothing decodes until the next one: 1.3 s of 3.7, or no picture at all (22-11, escapadapolicial).
+    A second track (the sound) is shifted by its own start so both line up with the first."""
+
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+    base = inputs[0][0] if inputs else start
+    for first_start, path in inputs:              # each track from its own first segment (their edges differ)
+        shift = first_start - base
+        command += [*(["-itsoffset", f"{shift:.3f}"] if abs(shift) > 1e-3 else []), "-i", str(path)]
+    command += ["-ss", f"{max(0.0, start - base):.3f}", "-t", f"{end - start:.3f}"]
+    if audio_only:
+        return command + ["-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
+    # split tracks: the video from the first input, the sound from the second
+    sound = (["-map", "1:a:0", "-c:a", "aac"] if len(inputs) > 1 else ["-map", "0:a:0?", "-c:a", "aac"]) if audio else ["-an"]
+    return command + ["-map", "0:v:0", *sound, *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
+
+
 def parse_media_playlist(text: str, base_url: str = "") -> tuple[list[tuple[str, float, float]], str | None]:
     """An HLS media playlist → ([(segment url, start s, end s)…], init segment url or None). Only what YouTube's
     VOD playlists use: #EXTINF durations, #EXT-X-MAP and plain URL lines (relative ones resolved against base_url)."""
@@ -2474,16 +2508,11 @@ class YouTubeSource:
                     paths = list(pool.map(segment, [urljoin(playlist_url, url) for url, _, _ in wanted], names))
             finally:
                 self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + moved[0]
-            lines = ["#EXTM3U", "#EXT-X-VERSION:3", f"#EXT-X-TARGETDURATION:{int(max(b - a for _, a, b in wanted)) + 1}",
-                     "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-PLAYLIST-TYPE:VOD"]
-            if init_path is not None:
-                lines.append(f'#EXT-X-MAP:URI="{init_path.name}"')
-            for path, (_, a, b) in zip(paths, wanted):
-                lines += [f"#EXTINF:{b - a:.3f},", path.name]
-            lines.append("#EXT-X-ENDLIST")
-            local = work / f"local_{tag}.m3u8"
-            local.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            return wanted[0][1], local
+            # one file, the segments one after the other (MPEG-TS and fragmented mp4 both join byte by byte), cut
+            # with an exact seek: through a local m3u8 the HLS demuxer seeked wrong in segments that keep the
+            # source's timestamps (832 s…) with one keyframe each — clips came out empty or 1.3 s of 3.7 (22-11)
+            joined = join_segments(paths, init_path, work / f"joined_{tag}{'.mp4' if init_path is not None else '.ts'}")
+            return wanted[0][1], joined
 
         def attempt(pieces: list[dict[str, Any]]) -> tuple[Any, list[dict[str, Any]]]:
             for _ in range(3):
@@ -2505,18 +2534,7 @@ class YouTubeSource:
                 inputs, pieces = attempt(choose(self._fresh_full_info(video_id)))
             target = target_dir / f"{prefix}_{start:.3f}_{end:.3f}{suffix}"
             part = part_for(target)                    # the final name only once it is complete and checked
-            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
-            for first_start, playlist in inputs:       # each track from its own first segment (their edges differ)
-                command += ["-protocol_whitelist", "file,crypto,data", "-allowed_extensions", "ALL",
-                            "-ss", f"{max(0.0, start - first_start):.3f}", "-i", str(playlist)]
-            command += ["-t", f"{end - start:.3f}"]
-            if audio_only:
-                command += ["-vn", "-c:a", "aac", "-b:a", "160k", str(part)]
-            else:
-                # split tracks: the video from the first input, the sound from the second
-                sound = (["-map", "1:a:0", "-c:a", "aac"] if len(inputs) > 1
-                         else ["-map", "0:a:0?", "-c:a", "aac"]) if audio else ["-an"]
-                command += ["-map", "0:v:0", *sound, *cut_codec(prefix), "-pix_fmt", "yuv420p", str(part)]
+            command = local_cut_command(inputs, start, end, prefix, audio, audio_only, part)
             try:
                 done = subprocess.run(command, capture_output=True, text=True, timeout=600, env=local_env())
             except subprocess.TimeoutExpired:
