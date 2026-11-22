@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -160,14 +161,41 @@ def shot_words(shot: Any) -> set[str]:
     return _shot_words(shot)
 
 
-def best_scene(scenes: list[dict[str, Any]], words: set[str], minimum: int = 2) -> dict[str, Any] | None:
-    """The scene whose description, keywords and tags share most words with the shot (at least `minimum`)."""
+def with_speech(scenes: list[dict[str, Any]], cues: list[tuple[float, float, str]]) -> list[dict[str, Any]]:
+    """Segunda tanda, point 5 (indice.transcripcion): what is SAID in each scene, from the source's captions (cues
+    [start, end, text]), as `said`. New dicts; the index on disk is not changed (captions are cached on their own)."""
+
+    out = []
+    for scene in scenes:
+        a, b = float(scene["start"]), float(scene["end"])
+        said = " ".join(" ".join(str(t).split()) for start, end, t in cues if float(end) > a and float(start) < b)
+        out.append({**scene, "said": said[:2000]})
+    return out
+
+
+def proves(shot: Any) -> bool:
+    """A shot that must PROVE what the voice says: its function is the proof (planner.cobertura), or it quotes words
+    between quotation marks (the line a character says, the text a screen shows)."""
+
+    cover = getattr(shot, "coverage", None)
+    if cover is not None and getattr(cover, "role", None) == "prueba":
+        return True
+    text = str(getattr(shot, "text", "") or "")
+    return bool(re.search(r"[«“\"][^»”\"]{8,}[»”\"]", text))
+
+
+def best_scene(scenes: list[dict[str, Any]], words: set[str], minimum: int = 2,
+               said_weight: int = 0) -> dict[str, Any] | None:
+    """The scene whose description, keywords and tags share most words with the shot (at least `minimum`); with
+    `said_weight`, each word shared with what is said in the scene counts that many times (2 for a proof)."""
 
     from .sourcing.common import tokens
 
     best, score = None, minimum - 1
     for scene in scenes:
         shared = len(words & tokens(" ".join([scene.get("en", ""), scene.get("es", ""), scene.get("tags", "")])))
+        if said_weight and scene.get("said"):
+            shared += said_weight * len(words & tokens(scene["said"]))
         if shared > score:
             best, score = scene, shared
     return best

@@ -499,6 +499,10 @@ queue:                             # cola nocturna (python main.py --all)
 #   library: false         # también las fuentes de la biblioteca (personas y temas que ya funcionaron): una
 #                          # llamada barata por fuente nueva, que queda para siempre
 #   library_sources: 12    # como mucho, fuentes nuevas de la biblioteca por vídeo
+#   transcripcion: false   # metraje como prueba: lo que se DICE en cada escena (subtítulos de la fuente de YouTube,
+#                          # una petición por fuente, guardada) cuenta al buscar la escena; doble si el plano es una
+#                          # prueba (función «prueba» de la cobertura o una frase entre comillas). Clips propios: sin
+#                          # transcripción todavía. Mide: ventanas «por su descripción» en el registro y Puntería
 
 qa:
   # max_empty_seconds: 1        # un plano sin clip, foto ni gráfico más de esto bloquea el render (pantalla vacía)
