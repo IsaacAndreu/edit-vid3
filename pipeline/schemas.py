@@ -192,8 +192,23 @@ class ShotIdea(_Strict):
     concept: str | None = Field(default=None, max_length=120)              # ambient: faceless stock search (EN)
 
 
+Role = Literal["accion", "angulo", "reaccion", "comentario", "testimonio", "despues", "prueba"]
+
+
+class Coverage(_Strict):
+    """planner.cobertura (pipeline/cobertura.py): the function a shot fills in the telling of a key event — the action,
+    another angle, the reaction, the original commentary, a testimony, the aftermath, or (theory channels) the proof —
+    with the search that finds that function's footage, in the language the footage exists in."""
+
+    event: str = Field(pattern=r"^k\d{1,2}$")
+    name: str = Field(default="", max_length=160)          # the event: «gol de Messi al Betis, Villamarín 2023»
+    role: Role
+    query: str | None = Field(default=None, max_length=120)
+    sound: bool = False                                   # the original sound may speak here (planner.sonido_original)
+
+
 class Shot(_Strict):
-    _late = frozenset({'idea'})
+    _late = frozenset({'idea', 'coverage'})
     id: str = Field(pattern=r"^s\d{3,4}$")
     type: ShotType
     startWord: int = Field(ge=0)
@@ -211,6 +226,7 @@ class Shot(_Strict):
     pace: Literal["slow", "fast"] | None = None             # emotional (long shot, slow zoom) / action (quick cuts)
     mood: Literal["low"] | None = None                      # the story's lowest moments (pacing.low_moments): black and white
     idea: ShotIdea | None = None                            # planner.ideas: the idea it belongs to (agrupar.py)
+    coverage: Coverage | None = None                        # planner.cobertura: its function in a key event
 
     @property
     def duration(self) -> float:

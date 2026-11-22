@@ -492,10 +492,16 @@ async function punteriaPage() {
         <span class="small">últimos 5: <b>${c.recent}</b> por 100${c.videos.length > 1 ? ` · el primero: ${c.first}` : ""}</span></div>
       ${bars(c.videos)}
       <div class="tablewrap"><table class="small"><tr><th>Vídeo</th><th>Fecha</th><th class="r">Planos</th><th class="r">Por 100</th>
-        <th class="r">En texto</th><th>Lo más marcado</th></tr>
+        <th class="r">En texto</th><th class="r" title="Parte del vídeo sin clip ni foto (pizarra, palabras o nada)">Texto o vacío</th>
+        <th class="r" title="Segundo del primer clip o foto">1.ª imagen</th>
+        <th class="r" title="Fuentes distintas en pantalla por minuto">Fuentes/min</th>
+        <th class="r" title="Sucesos clave (planner.cobertura): funciones encontradas / pedidas">Funciones</th><th>Lo más marcado</th></tr>
         ${[...c.videos].reverse().map((v) => { const top = Object.entries(v.counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
           return `<tr><td><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></td><td class="nw">${esc(v.at)}</td>
           <td class="r">${v.shots}</td><td class="r"><b>${v.per100}</b></td><td class="r">${v.asText ?? "—"}</td>
+          <td class="r ${v.textShare > 10 ? "t-bad" : ""}">${v.textShare != null ? v.textShare + " %" : "—"}</td>
+          <td class="r ${v.firstImage > 5 ? "t-bad" : ""}">${v.firstImage != null ? v.firstImage + " s" : "—"}</td>
+          <td class="r">${v.sourcesPerMinute ?? "—"}</td><td class="r">${v.functions ?? "—"}</td>
           <td>${top.map(([k, n]) => `${name(k)} ${n}`).join(" · ") || "—"}${v.sentBack ? ` <span class="muted">(${v.sentBack} corregidos antes del render)</span>` : ""}</td></tr>`; }).join("")}
       </table></div></section>`).join("")}`);
 }

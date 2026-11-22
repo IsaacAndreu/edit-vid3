@@ -542,7 +542,49 @@ export interface GpsGraphic {
   distance?: string | null; // as said («2 km»)
 }
 
+/** Argument cards (theory, explainer and game channels): what holds a line of reasoning on screen. Every word comes
+ * from the script (pipeline/graphics.py, argument_graphic); colours and type from the channel's brand. */
+export interface FichaGraphic {
+  type: 'ficha';
+  name: string; // who or what, as said
+  origin?: string | null; // where it comes from («DE GTA 5», «Mundial 2018»)
+  line?: string | null; // one line about it
+  media?: Media | null; // its portrait or picture
+}
+
+export interface PruebaGraphic {
+  type: 'prueba';
+  title?: string | null; // what is being checked
+  rows: { source: string; fact: string; match: string; ok: boolean }[]; // where, what it says, what it matches, ✓/✗
+}
+
+export interface AfirmacionGraphic {
+  type: 'afirmacion';
+  label: string; // «MENTIRA 1», «TEORÍA 3»
+  claim: string; // the claim, as said
+  verdict: string; // «FALSO», «CONFIRMADO»
+  ok: boolean; // the stamp's colour: true = confirmed
+}
+
+export interface ListaGraphic {
+  type: 'lista';
+  title: string;
+  items: string[]; // revealed one by one
+}
+
+/** A circle drawn around the proof in the footage (a name in the credits, a menu option): over the shot's own clip,
+ * transparent. box: [x0, y0, x1, y1] in % of the frame, found by OCR (pipeline/timeline.py, proof_circles). */
+export interface CirculoGraphic {
+  type: 'circulo';
+  box: [number, number, number, number];
+}
+
 export type Graphic =
+  | CirculoGraphic
+  | FichaGraphic
+  | PruebaGraphic
+  | AfirmacionGraphic
+  | ListaGraphic
   | WantedGraphic
   | PhoneGraphic
   | GpsGraphic

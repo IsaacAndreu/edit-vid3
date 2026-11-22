@@ -75,3 +75,24 @@ def test_subtitle_files_do_not_replace_the_caption_cues_the_analysis_reads():
 
     assert "language" not in inspect.signature(YouTubeSource.captions).parameters      # analysis: list of cues
     assert "language" in inspect.signature(YouTubeSource.subtitle_file).parameters     # quotes: a .vtt file
+
+
+def test_sound_passages_take_the_marked_shot_once_per_event_and_only_from_youtube():
+    from types import SimpleNamespace as NS
+
+    from pipeline.quotes import passage_plan
+
+    def shot(i, event, sound, end=10.0):
+        cover = NS(event=event, sound=sound, role="comentario", name="gol") if event else None
+        return NS(id=i, coverage=cover, end=end)
+
+    def sel(source="youtube", cid="yt:abc", start=30.0, end=33.0):
+        return NS(status="selected", source=source, kind="video", start=start, end=end, candidateId=cid)
+
+    shots = [shot("s1", "k1", False), shot("s2", "k1", True), shot("s3", "k1", True),
+             shot("s4", "k2", True), shot("s5", "k3", True), shot("s6", None, True)]
+    sels = {"s2": sel(), "s3": sel(), "s4": sel(source="pexels", cid="px:1"), "s5": sel(end=60.0), "s6": sel()}
+    plan = passage_plan(shots, sels, replaced=set(), limit=3, longest=7.0)
+    assert [p[0].id for p in plan] == ["s2", "s5"]          # k1 once, k2 not from YouTube, unmarked never
+    assert plan[0][2] == 5.0 and plan[1][2] == 7.0           # the clip plus 2 s, capped at passage_seconds
+    assert passage_plan(shots, sels, replaced={"s2"}, limit=1, longest=7.0)[0][0].id == "s3"

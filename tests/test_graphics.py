@@ -74,4 +74,49 @@ def test_only_a_channel_about_a_video_game_gets_the_game_graphics(tmp_path, monk
     assert "Tipos permitidos en este canal: map, chart." in asked["system"]
     (tmp_path / "config.yaml").write_text("graphics:\n  types: [map, chart]\n  extra_types: []\nideas:\n  about: GTA 6\n")
     graphics.plan(RunContext.create("v", root=tmp_path), sents, 200.0)
-    assert "Tipos permitidos en este canal: map, chart, wanted, phone, gps." in asked["system"]
+    assert "Tipos permitidos en este canal: map, chart, wanted, phone, gps, ficha, prueba, afirmacion, lista." in asked["system"]
+
+
+def test_argument_cards_take_only_what_the_script_says():
+    """Segunda tanda, point 4: a character card, evidence rows with ✓/✗, a numbered claim with its verdict, a list."""
+
+    from pipeline.graphics import argument_graphic
+
+    text = ("Jimmy, el hijo de Michael en GTA 5, vuelve. Mentira 1: que Trevor habla en la radio de GTA 6. Falso. "
+            "En los créditos de GTA 6 aparece Josephine Phoenix como Valentina. Dentro de la taquilla hay una pistola, "
+            "la foto de Lucia y billetes de Vice City.")
+    assert argument_graphic("ficha", {"name": "Jimmy", "origin": "GTA 5", "line": "el hijo de Michael"}, text) == \
+        {"type": "ficha", "name": "Jimmy", "origin": "GTA 5", "line": "el hijo de Michael"}
+    assert argument_graphic("ficha", {"name": "Franklin"}, text) is None                       # never said
+    claim = argument_graphic("afirmacion", {"label": "Mentira 1", "claim": "Trevor habla en la radio de GTA 6",
+                                            "verdict": "Falso", "ok": False}, text)
+    assert claim and claim["ok"] is False
+    rows = argument_graphic("prueba", {"title": "créditos de GTA 6", "rows": [
+        {"source": "los créditos de GTA 6", "fact": "Josephine Phoenix", "match": "Valentina", "ok": True},
+        {"source": "el tráiler 3", "fact": "Niko Bellic", "match": "Niko", "ok": True}]}, text)
+    assert rows and len(rows["rows"]) == 1                                                     # the invented row goes
+    items = argument_graphic("lista", {"title": "dentro de la taquilla",
+                                       "items": ["una pistola", "la foto de Lucia", "billetes de Vice City"]}, text)
+    assert items and len(items["items"]) == 3
+    assert argument_graphic("lista", {"title": "dentro de la taquilla", "items": ["una pistola"]}, text) is None
+
+
+def test_argument_cards_only_where_asked_and_never_past_their_share():
+    import inspect
+
+    from pipeline import graphics
+
+    source = inspect.getsource(graphics.plan)
+    assert 'cfg.get("argument", False)' in source and 'cfg.get("max_card_share", 0.35)' in source
+
+
+def test_the_circle_goes_around_the_line_the_narration_names():
+    """Segunda tanda, point 4: the easy case of a circle over the proof — text found by OCR."""
+
+    from pipeline.timeline import circle_box
+
+    words = [([[100, 100], [500, 100], [500, 140], [100, 140]], "PRODUCED BY ROCKSTAR NORTH"),
+             ([[700, 600], [1200, 600], [1200, 650], [700, 650]], "Josephine Phoenix ... Valentina")]
+    box = circle_box(words, "en los créditos aparece Josephine Phoenix como Valentina", 1920, 1080)
+    assert box is not None and 30 < box[0] < 37 and 52 < box[1] < 56 and 63 < box[2] < 67
+    assert circle_box(words, "nada que ver aquí", 1920, 1080) is None

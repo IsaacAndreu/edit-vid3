@@ -855,9 +855,10 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
     # description best fits the shot (pipeline/indice.py: described once per source, kept for every video)
     by_index = 0
     if cfg.get("index_windows", True):
-        from ..indice import best_scene, scenes_for, shot_words
+        from ..indice import best_scene, proves, scenes_for, shot_words, with_speech
 
         indexed = index_sources(ctx)
+        speech = bool((ctx.section("indice") or {}).get("transcripcion", False))   # point 5: the scene where it is said
         library_indexed = indexed.library
 
         for shot in todo:
@@ -872,7 +873,12 @@ def analyse(ctx: RunContext, only: set[str] | None = None, *, shots: list[Shot] 
                     continue
                 seen_sources.add(c.id)
                 try:
-                    scene = best_scene(scenes_for(ctx, c, clip, cfg), words)
+                    scenes = scenes_for(ctx, c, clip, cfg)
+                    weight = 0
+                    if speech and c.id.startswith("yt:"):
+                        scenes = with_speech(scenes, youtube.captions(c.id.removeprefix("yt:")))
+                        weight = 2 if proves(shot) else 1
+                    scene = best_scene(scenes, words, said_weight=weight)
                 except Exception as error:
                     print(f"   {c.id}: sin índice de escenas ({type(error).__name__}: {str(error)[:100]})")
                     continue

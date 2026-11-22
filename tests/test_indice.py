@@ -76,3 +76,21 @@ def test_library_sources_are_indexed_only_when_asked_and_up_to_a_limit(tmp_path)
     on = index_sources(RunContext.create("v", root=tmp_path, config={"indice": {"library": True, "library_sources": 1}}))
     assert [on(x) for x in (lib1, lib1, lib2, other, mine)] == [True, True, False, False, True]
     assert on.library == {"yt:1"}
+
+
+def test_a_proof_finds_the_scene_where_the_line_is_said():
+    from types import SimpleNamespace as NS
+
+    from pipeline.indice import best_scene, proves, with_speech
+
+    scenes = [{"start": 0, "end": 10, "en": "man talking in a car", "es": "coche, hombre", "tags": ""},
+              {"start": 10, "end": 20, "en": "man talking in a kitchen", "es": "cocina, hombre", "tags": ""}]
+    cues = [(2.0, 4.0, "nice weather today"), (12.0, 15.0, "I am the one who knocks")]
+    spoken = with_speech(scenes, cues)
+    assert spoken[1]["said"] == "I am the one who knocks" and "said" not in scenes[1]
+    words = {"man", "talking", "car", "knocks"}
+    assert best_scene(scenes, words)["start"] == 0                  # off: by picture words only, as before
+    assert best_scene(spoken, words, said_weight=2)["start"] == 10  # on: where it is said wins
+    assert proves(NS(coverage=NS(role="prueba"), text=""))
+    assert proves(NS(coverage=None, text='Dice «yo soy el que llama a la puerta» en la cocina'))
+    assert not proves(NS(coverage=NS(role="accion"), text="un hombre en la cocina"))

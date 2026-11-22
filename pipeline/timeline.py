@@ -799,6 +799,8 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
             graphic["media"] = face or footage()
             if graphic["type"] == "specs":
                 graphic["kicker"] = "EN CIFRAS" if face else "FICHA TÉCNICA"
+        if graphic["type"] == "ficha":                      # its portrait or picture, like the compare card's
+            graphic["media"] = graphics.portrait(ctx, graphic["name"], people)
         if graphic["type"] == "compare":
             from .logos import logo
 
@@ -828,13 +830,25 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     rotulos = rotulo_shots(ctx, ("rotulo", "literal"), hook_seconds=float(ctx.section("judge").get("hook_seconds", 30)))
     from . import feedback
 
-    rotulos |= feedback.no_borrow(ctx.work_dir,    # the reviewer found another shot's clip there: text instead
-                                  bool(ctx.section("revisor").get("no_borrow_sent_back", True)))
+    rotulos |= feedback.no_borrow(ctx.work_dir,    # off: the reviewer never turns a shot into text (23-11)
+                                  bool(ctx.section("revisor").get("no_borrow_sent_back", False)),
+                                  bool(ctx.section("revisor").get("huecos_a_texto", False)))
     punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
                          skip=rotulos)
-    boards = chalkboards(shots, [*groups, *added, *punches], fps)       # only if no footage could be borrowed
+    ideas = shot_ideas(ctx)
+    cfg_t = ctx.section("timeline")
+    # timeline.max_text_share: the cap of text in the video (10 % when planned by ideas, where newideas had half of it)
+    share = cfg_t.get("max_text_share", 0.10 if ideas else None)
+    if share is not None and not (stickman.active(ctx) or simulacion.active(ctx) or atlas.active(ctx)
+                                  or cine.active(ctx) or mapas.active(ctx)):
+        counts = limit_text(shots, [*groups, *added, *punches], fps, ideas, judged_scores(ctx), float(share),
+                            float(ctx.section("judge").get("hook_seconds", 30)),
+                            float(cfg_t.get("board_max_seconds", 3.0)))
+        print(f"   Texto con tope ({float(share):.0%}): {counts['texto']} pizarras · {counts['prestados']} prestados · "
+              f"{counts['gancho']} en el gancho con el mejor clip juzgado · {counts['sin_donante']} sin nada que prestar")
+    boards = chalkboards(shots, [*groups, *added, *punches], fps, ideas)   # only if no footage could be borrowed
     if borrow:   # a shot only partly under a graphic: footage for the rest of it, never the bare canvas
         fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True,
                          window_seconds=window, skip=rotulos)
@@ -851,6 +865,10 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
         print(f"   Citas de las ideas: {len(quotes)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['text'][:40]}»"
                                                                  for g in quotes[:6]))
         boards += quotes
+    circles = proof_circles(ctx, shots, [*groups, *added, *boards], fps)  # a circle around the proof on screen
+    if circles:
+        print(f"   Círculos sobre la prueba: {len(circles)}")
+        boards += circles
     lines = idea_lines(ctx, shots, [*groups, *added, *boards], fps)       # planner.ideas: one line of text per idea
     if lines:
         print(f"   Líneas de pantalla de las ideas: {len(lines)} · " + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»"
@@ -1205,6 +1223,158 @@ def idea_quotes(ctx: RunContext, shots: list[TimelineShot], busy: list[TimelineG
     return out
 
 
+def shot_ideas(ctx: RunContext) -> dict[str, Any]:
+    """shot id → its idea (planner.ideas), {} for a video planned without ideas."""
+
+    try:
+        return {s.id: s.idea for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots if s.idea is not None}
+    except Exception:
+        return {}
+
+
+def judged_scores(ctx: RunContext) -> dict[str, float]:
+    """shot id → the score of the clip the judge chose for it (selection.json), for picking the best clip on hand."""
+
+    try:
+        from .schemas import SelectionFile
+
+        return {s.shotId: float(s.score or 0) for s in SelectionFile.model_validate(ctx.read_json("selection.json")).selections
+                if s.status == "selected"}
+    except Exception:
+        return {}
+
+
+def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, ideas: dict[str, Any],
+               scores: dict[str, float], share: float, hook_seconds: float, board_seconds: float = 3.0,
+               max_uses: int = 6) -> dict[str, int]:
+    """What may stay as text, before the chalkboards (prompts/ideas-pantallas-de-texto.md: newideas, half of an 11-min
+    video in text, the first 36 s without a picture). The order is: the right clip > a judged clip of who it is about >
+    a photo > text, and text is the last resort with a cap:
+
+    - nothing in text in the first `hook_seconds`: the best clip the judge chose anywhere in the video goes there;
+    - never two boards in a row, none longer than `board_seconds`;
+    - at most `share` of the video in text; a chapter title read aloud (idea «rotulo») stays text, with its title.
+
+    A shot that may not stay text borrows a clip: of its own idea first, else the nearest, at any distance (the 40 s
+    window made boards). Changes `shots` in place; returns the counts for the log."""
+
+    covered = [(g.from_, g.from_ + g.durationInFrames) for g in groups]
+    donors = [s for s in shots if s.media is not None and s.media.kind == "video" and not s.coldOpen
+              and (s.media.layout or "full") in ("full", "archive") and s.media.credit]
+    total = max((s.from_ + s.durationInFrames for s in shots), default=0)
+    allowed = share * total
+    hook = hook_seconds * fps
+    longest = board_seconds * fps
+    uses: dict[str, int] = {}
+    counts = {"texto": 0, "prestados": 0, "gancho": 0, "sin_donante": 0}
+    used = 0
+    previous_text = False
+
+    def is_text(shot: TimelineShot) -> bool:
+        if shot.media is not None or shot.type != "broll" or shot.groupId:
+            return False
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        return not any(a < end and start < b for a, b in covered)
+
+    def idea_of(shot: TimelineShot) -> Any:
+        return ideas.get(shot.id.split("-")[0])
+
+    for index, shot in enumerate(shots):
+        if not is_text(shot):
+            previous_text = False
+            continue
+        idea = idea_of(shot)
+        in_hook = shot.from_ < hook
+        title = idea is not None and idea.kind == "rotulo"
+        if not in_hook and (title or (not previous_text and shot.durationInFrames <= longest
+                                      and used + shot.durationInFrames <= allowed)):
+            used += shot.durationInFrames
+            previous_text = True
+            counts["texto"] += 1
+            continue
+        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses and footage(d) >= MIN_RATE * shot.durationInFrames]
+        if not fitting:
+            used += shot.durationInFrames
+            previous_text = True
+            counts["sin_donante"] += 1
+            continue
+        same = {d.id for d in fitting if idea is not None and idea_of(d) is not None and idea_of(d).id == idea.id}
+        if in_hook:      # the judge's best clip of the whole video (its score), then the nearest
+            donor = max(fitting, key=lambda d: (scores.get(d.id.split("-")[0], 0.0), -uses.get(d.id, 0),
+                                                -abs(d.from_ - shot.from_)))
+        else:
+            donor = min(fitting, key=lambda d: (d.id not in same, uses.get(d.id, 0), abs(d.from_ - shot.from_)))
+        uses[donor.id] = uses.get(donor.id, 0) + 1
+        rate = min(1.0, footage(donor) / shot.durationInFrames)
+        shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
+            "zoom": [0, shot.durationInFrames, 1.18], "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
+        counts["gancho" if in_hook else "prestados"] += 1
+        previous_text = False
+    return counts
+
+
+def circle_box(words: list[tuple[Any, str]], said: str, width: int, height: int) -> list[float] | None:
+    """The on-screen line the narration names (most shared long words, at least one), as [x0, y0, x1, y1] in % of the
+    frame, padded a little; None when nothing on screen is named."""
+
+    wanted = {w for w in re.findall(r"[^\W_]{4,}", said.lower())}
+    best, score = None, 0
+    for box, text in words:
+        shared = len(wanted & set(re.findall(r"[^\W_]{4,}", text.lower())))
+        if shared > score:
+            best, score = box, shared
+    if best is None:
+        return None
+    points = [(float(x), float(y)) for x, y in __import__("numpy").array(best).reshape(-1, 2)]
+    x0, x1 = min(p[0] for p in points), max(p[0] for p in points)
+    y0, y1 = min(p[1] for p in points), max(p[1] for p in points)
+    pad_x, pad_y = (x1 - x0) * 0.12 + 12, (y1 - y0) * 0.35 + 10
+    return [round(max(0.0, (x0 - pad_x) / width * 100), 2), round(max(0.0, (y0 - pad_y) / height * 100), 2),
+            round(min(100.0, (x1 + pad_x) / width * 100), 2), round(min(100.0, (y1 + pad_y) / height * 100), 2)]
+
+
+def proof_circles(ctx: RunContext, shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                  reader: Any = None) -> list[TimelineGroup]:
+    """timeline.proof_circles (off; segunda tanda, point 4): on a proof shot (planner.cobertura «prueba») whose footage
+    shows the line the narration names — a name in the credits, an option of a menu — a circle drawn around it, over
+    the footage. The easy case first: text found by OCR on the shot's middle frame."""
+
+    if not ctx.section("timeline").get("proof_circles", False):
+        return []
+    try:
+        plan = {s.id: s for s in ShotsFile.model_validate(ctx.read_json("shots.json")).shots}
+    except Exception:
+        return []
+    import cv2
+
+    if reader is None:
+        from .analysis import detectors as det
+
+        reader = det.Detectors(cache_dir=ctx.cache_dir).text_words
+    out = []
+    for shot in shots:
+        spec = plan.get(shot.id.split("-")[0])
+        cover = getattr(spec, "coverage", None)
+        if cover is None or cover.role != "prueba" or shot.media is None or shot.media.kind != "video" \
+                or (shot.media.layout or "full") != "full":
+            continue
+        start, end = shot.from_, shot.from_ + shot.durationInFrames
+        if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
+            continue
+        capture = cv2.VideoCapture(str(ctx.work_dir / shot.media.src))
+        capture.set(cv2.CAP_PROP_POS_FRAMES, (capture.get(cv2.CAP_PROP_FRAME_COUNT) or 1) // 2)
+        ok, frame = capture.read()
+        capture.release()
+        if not ok or frame is None:
+            continue
+        box = circle_box(reader(frame), shot.text, frame.shape[1], frame.shape[0])
+        if box:
+            out.append(TimelineGroup.model_validate({"id": f"circulo-{shot.id}", "kind": "graphic", "from": start,
+                                                     "durationInFrames": shot.durationInFrames,
+                                                     "graphic": {"type": "circulo", "box": box}}))
+    return out
+
+
 def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",), hook_seconds: float = 0.0) -> set[str]:
     """The shots whose idea is of these kinds (planner.ideas): a title read aloud, a literal idea with nothing of its
     own — and, with `hook_seconds`, any shot of an idea in the first seconds (bloque 2.7: nothing unjudged in the
@@ -1298,7 +1468,22 @@ def covered_frames(spans: list[tuple[int, int]]) -> int:
     return total
 
 
-def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int) -> list[TimelineGroup]:
+def board_words(shot_text: str, idea: Any = None, many: bool = False) -> str:
+    """What a board says: what the voice does not (the idea's screen line or first fact), else the key words; a title
+    read aloud («SECRETO 2:») is its own text — never an empty board (newideas: blank screens at «SECRETO 2:»)."""
+
+    if idea is not None:
+        if idea.kind == "rotulo":
+            return " ".join(shot_text.split()).strip(" :.,").upper()[:60]
+        if idea.screenLine:
+            return idea.screenLine.replace("*", "").strip()[:60]
+        if idea.facts:
+            return str(idea.facts[0]).strip()[:60]
+    return key_phrase(shot_text, most=10 if many else 8) or " ".join(shot_text.split()).strip(" :.,").upper()[:60]
+
+
+def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
+                ideas: dict[str, Any] | None = None) -> list[TimelineGroup]:
     """Shots left without footage (timeline.pizarra) show their key words on the chalkboard canvas. Shots in a
     row without footage share ONE card with the key words of the whole stretch (one sentence, not a word per
     3-second shot: «ESTUVO» … «BAJO SU TUTELA»)."""
@@ -1320,7 +1505,7 @@ def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int
     out: list[TimelineGroup] = []
     for run in runs:
         text = " ".join(s.text for s in run)
-        phrase = key_phrase(text, most=10 if len(run) > 1 else 8)
+        phrase = board_words(text, (ideas or {}).get(run[0].id.split("-")[0]), many=len(run) > 1)
         if not phrase:
             continue
         words = phrase.split()
@@ -1706,7 +1891,12 @@ def run(ctx: RunContext) -> None:
 
     if stickman.drawn(ctx):                   # drawn in code: no shot has (or needs) footage
         boards |= {s.id for s in shots_file.shots}
+    from . import feedback as _feedback
+
+    keep = _feedback.keep_if_unreplaced(ctx.work_dir)     # sent back by the reviewer, nothing better: its own clip
     for shot_id in boards:
+        if shot_id in keep and shot_id in media and not stickman.drawn(ctx):
+            continue
         media.pop(shot_id, None)
     for index, shot in enumerate(shots_file.shots):
         m = media.get(shot.id) if needs_footage(shot) else None

@@ -294,3 +294,40 @@ newgym3-ideas2, 18 eran «Repetido».
 `content.max_third_party_seconds` (5 por defecto): esquemas con techo de 180 s, etapas con el tope del vídeo, sin rehacer
 etapas (SPEED_KEYS). Falta: salto entre cortes, relleno de huecos, Shorts, valores por canal, segundos por fuente en la
 página del vídeo, prueba de extremo a extremo y documentación.
+
+## Tope de clip, 2.ª parte (22-11)
+
+| Qué | Estado |
+|---|---|
+| Salto entre cortes, relleno de huecos, continuación del juez, QA, Shorts con `tope.seconds(ctx)` | hecho |
+| Valores propuestos: 12 s en general (`config.yaml`), 60 s en `leonida-echt` | hecho: **el dueño los confirma o cambia** |
+| Pestaña «Fuentes» en la página del vídeo (tramo seguido más largo de cada fuente) | hecho |
+| `docs/VPS.md` y `README.md` | hecho |
+
+## Pantallas de texto (ideas-pantallas-de-texto.md, 22-11)
+
+| Qué | Estado |
+|---|---|
+| `timeline.max_text_share` (0,10 con `planner.ideas`): por encima, la pizarra toma un clip prestado (misma idea primero) | hecho |
+| Sin pizarra en el gancho (va el mejor clip juzgado), nunca dos seguidas, ninguna de más de 3 s | hecho |
+| Idea literal sin su clip: foto de la persona → clip suyo que el juez acepte → pizarra (`fallback.literal_ambient`) | hecho |
+| El revisor no convierte planos en texto; el plano marcado conserva su clip si no hay recambio | hecho |
+| QA: hueco vacío de más de `qa.max_empty_seconds` (1 s) bloquea el render | hecho |
+| % texto o vacío y segundos hasta la 1.ª imagen en `revisor --base` y Puntería | hecho; **falta la línea base nueva** en el servidor |
+
+## Segunda tanda de puntería (motor-punteria-2-prompt.md, 22-11)
+
+Todo apagado por canal salvo las medidas.
+
+| Punto | Clave | Estado |
+|---|---|---|
+| 0. Medir: % pizarra, fuentes/min, fuentes y funciones por suceso | — (siempre) | hecho |
+| 1. Cobertura de un suceso por funciones (acción, ángulo, reacción, comentario, testimonio, después, prueba) | `planner.cobertura` | hecho, sin probar con vídeo real |
+| 2. Pasajes con sonido original (la voz se aparta, subtítulos de la fuente) | `quotes.sound_passages` (requiere 1) | hecho, sin probar con vídeo real |
+| 3. Duración según la función (reacción/testimonio/prueba de una idea = un plano) | `planner.cobertura_hold_seconds` | hecho |
+| 4. Tarjetas de argumento: ficha, prueba ✓/✗, afirmación con sello, lista; círculo sobre texto OCR | `graphics.argument`, `graphics.max_card_share`, `timeline.proof_circles` | hecho; fotogramas en `out/stills/argumento/tarjetas.png`. Comparación de dos fichas y cifra grande: ya existían (`split`, `stat`) |
+| 5. Metraje como prueba: lo que se dice en cada escena del índice cuenta al buscarla (doble si el plano es prueba) | `indice.transcripcion` | hecho para fuentes de YouTube (subtítulos); **clips propios sin transcripción** (haría falta Whisper por clip) |
+| Tope por canal | `content.max_third_party_seconds` | hecho (ver arriba) |
+
+Sin verificar en el servidor: nada de esta tanda se ha probado con un vídeo real; las cifras para comparar son las de
+`revisor --base` con las columnas nuevas.

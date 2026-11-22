@@ -393,6 +393,7 @@ def run(ctx: RunContext) -> None:
     from . import apertura
 
     if (not moments and bite_count <= 0 and int(ctx.section("quotes").get("count", 0) or 0) <= 0 and not apertura.chosen(ctx)
+            and not ctx.section("quotes").get("sound_passages", False)
             and not ctx.section("apertura").get("auto", False)):
         ctx.write_json(OUTPUT, ColdOpenFile(slug=ctx.slug).model_dump())
         print("   Sin momentos con sonido original")
@@ -418,9 +419,10 @@ def run(ctx: RunContext) -> None:
                     break
                 target.unlink(missing_ok=True)
         bites = pick_bites(ctx, youtube)
-        from .quotes import pick_quotes
+        from .quotes import pick_passages, pick_quotes
 
         quotes = pick_quotes(ctx, youtube, out_dir)
+        quotes += pick_passages(ctx, youtube, out_dir)    # quotes.sound_passages (off): the voice steps aside
         apertura.auto(ctx, youtube)                      # apertura.auto: one found and chosen here, if none by hand
         opening = apertura.pick(ctx, youtube, out_dir)
     finally:

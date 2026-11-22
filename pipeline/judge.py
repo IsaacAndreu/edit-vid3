@@ -463,6 +463,18 @@ def surrounding(shots: list[Any], shot_id: str, n: int = 2) -> str:
     return " ".join(s.text for s in shots[max(0, i - n): i + n + 1])[:500]
 
 
+ROLE_BRIEF = {
+    "accion": "the ACTION itself (the broadcast of the moment).",
+    "angulo": "ANOTHER ANGLE or the replay of the same moment (from the stands, behind the goal, slow motion).",
+    "reaccion": "the REACTION (the crowd, the bench, a fan, the rival) — not the play itself.",
+    "comentario": "the ORIGINAL COMMENTARY (a radio or TV narration of that moment, ideally with its own on-screen "
+                  "caption or a studio/booth view).",
+    "testimonio": "a TESTIMONY: a press conference or an interview of someone about it.",
+    "despues": "what came AFTER (the celebration, leaving the pitch, the next day's front pages).",
+    "prueba": "the PROOF: the screen, the scene or the document that shows what is claimed.",
+}
+
+
 def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "", around: str = "") -> str:
     broll = shot.broll
     assert broll is not None
@@ -490,6 +502,11 @@ def shot_brief(shot: Shot, topic: str = "", hook: bool = False, subject: str = "
     elif idea is not None and idea.kind == "ambiente":
         lines.append("AMBIENT: this line has no image of its own. Footage of who or what it is about, in that period "
                      "or event, is right; the exact scene is not required. Still reject other people and other eras.")
+    cover = getattr(shot, "coverage", None)
+    if cover is not None:          # planner.cobertura: the function this shot fills in the telling of a key event
+        lines.append(f"FUNCTION in the event «{cover.name}»: {ROLE_BRIEF.get(cover.role, cover.role)} Rank first the "
+                     "candidate that fills THIS function; one that only shows the same event in another way (the play "
+                     "when the reaction is asked for) comes after it.")
     if idea is not None and idea.mustShow:
         lines.append(f"Must be on screen: {', '.join(idea.mustShow)}")
     if idea is not None and idea.mustNotShow:

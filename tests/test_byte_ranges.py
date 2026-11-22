@@ -235,3 +235,56 @@ def test_the_probe_says_what_comes_back(tmp_path, monkeypatch, odd_server):
     assert RangeHandler.seen == ["bytes=0-65535"]                 # only the first 64 KB
     assert "sidx" in sonda_rango.verdict(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 24)
     yt.close()
+
+
+def test_the_extractions_own_pick_is_not_reused(tmp_path, monkeypatch, odd_server, fragmented):
+    """sonda_rango 22-11: «mp4 avc1» came back as AV1 4K (701) + opus webm (251), the pick saved with the details;
+    the range now chooses from the formats as asked, and refuses a non-mp4 track before asking for any byte."""
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, odd_server)
+    info = yt._full_info_path(VIDEO)
+    data = json.loads(info.read_text())
+    webm_audio = {"format_id": "251", "protocol": "https", "ext": "webm", "vcodec": "none", "acodec": "opus",
+                  "url": f"{odd_server}/v.mp4?expire=9999999999"}
+    data["formats"].append(webm_audio)
+    data["requested_formats"] = [data["formats"][0], webm_audio]          # the extraction's own bestvideo+bestaudio
+    data["format_id"] = "136+251"
+    info.write_text(json.dumps(data))
+    pieces = yt._range_formats(info, "bv*[height<=720][vcodec^=avc1]", True, False)
+    assert [p["format_id"] for p in pieces] == ["136", "140"]
+    yt.close()
+
+
+def test_every_track_is_checked_before_any_data_and_a_coarse_index_is_refused(tmp_path, monkeypatch, server):
+    from pipeline.sourcing.byteranges import NoIndex
+
+    monkeypatch.delenv("YOUTUBE_PROXY", raising=False)
+    yt = _source(tmp_path, server, range_max_mb=0.01)                   # any real tramo is «too big» here
+    info = yt._full_info_path(VIDEO)
+    with pytest.raises(NoIndex, match="range_max_mb"):
+        yt._fetch_byte_range(VIDEO, 10.0, 13.0, "bv*[height<=720][vcodec^=avc1]+ba", "hd", True, False, info)
+    assert all(r == "bytes=0-65535" for r in RangeHandler.seen)          # only the heads: no fragment was paid for
+    yt.close()
+
+
+def test_hls_and_the_whole_size_choose_from_the_formats_not_the_saved_pick():
+    """The same stale pick made HLS look unavailable (4 HLS downloads in a day) and the whole file look too big."""
+
+    import yt_dlp
+
+    from pipeline.sourcing.youtube import selectable
+
+    formats = [{"format_id": "230", "protocol": "m3u8_native", "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "none",
+                "height": 360, "url": "http://a/230.m3u8"},
+               {"format_id": "701", "protocol": "https", "ext": "mp4", "vcodec": "av01", "acodec": "none", "height": 2160,
+                "url": "http://a/701", "filesize": 900_000_000},
+               {"format_id": "251", "protocol": "https", "ext": "webm", "vcodec": "none", "acodec": "opus",
+                "url": "http://a/251"}]
+    saved = {"id": "x", "title": "t", "extractor": "youtube", "extractor_key": "Youtube", "duration": 30,
+             "webpage_url": "https://www.youtube.com/watch?v=x", "formats": formats,
+             "requested_formats": [formats[1], formats[2]], "format_id": "701+251", "ext": "mp4", "url": "http://a/701"}
+    with yt_dlp.YoutubeDL({"format": "bv*[height<=360][protocol^=m3u8]", "simulate": True, "quiet": True}) as ydl:
+        chosen = ydl.process_ie_result(selectable(saved), download=False)
+    assert [f["format_id"] for f in (chosen.get("requested_formats") or [chosen])] == ["230"]
+    assert selectable(saved)["formats"] == formats and "requested_formats" not in selectable(saved)

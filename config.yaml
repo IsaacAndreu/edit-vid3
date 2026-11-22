@@ -28,6 +28,13 @@ align:
   # cpu_threads: 4         # hilos de Whisper local; por defecto la mitad de los núcleos (corre junto a un render)
 
 planner:
+  # cobertura: false            # con ideas: los sucesos clave (3-6) se cuentan por funciones — acción, otro ángulo,
+  #                               reacción, comentario original, testimonio, después (y prueba en canales de teoría) —
+  #                               una búsqueda por función y suceso en el idioma de ese material, el juez sabe qué función
+  #                               juzga, nunca dos tomas seguidas de la misma función, y una reacción o un testimonio
+  #                               ocupan su idea entera (cobertura_hold_seconds: 6, sin pasar del tope del canal). Una
+  #                               llamada más al modelo por vídeo; más búsquedas por suceso clave y menos por plano.
+  #                               Se mide en revisor --base: «Fuentes/min» y «Funciones» (encontradas/pedidas).
   model: deepseek-flash
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
@@ -246,8 +253,16 @@ quotes:                            # declaraciones originales con subtítulos (p
   max_video_minutes: 40            # no se leen vídeos más largos
   whisper: true                    # sin subtítulos de YouTube: transcribir el audio (más lento)
   whisper_minutes: 12              # …solo los primeros minutos
+  # sound_passages: false          # pasajes con sonido original: en el plano que la cobertura marca «sound» (narración
+  #                                  del gol, la grada, la frase del entrenador) la voz se aparta y suena el clip con su
+  #                                  audio y subtítulos. Requiere planner.cobertura. Mide: descargas con audio en --youtube-stats
+  # passages: 2                    # …como mucho por vídeo (uno por suceso)
+  # passage_seconds: 7             # …duración máxima de cada pasaje
+  # passage_language: es           # …idioma de los subtítulos de la fuente que se leen (sin subtítulos: suena sin ellos)
 
 fallback:
+  # literal_ambient: true          # idea literal sin su clip: foto de la persona y luego un clip suyo que el juez acepte,
+  #                                  antes que la pizarra (false: «eso o nada», lo que dejó newideas medio en texto)
   photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez
   next_options: 3                  # tras una descarga fallida, siguientes opciones de la etapa 4 que se prueban
   repeat_frames: false             # dos fotogramas por clip (30 % y 70 %), como el revisor, para ver si ya salió: pilla los
@@ -275,6 +290,11 @@ fallback:
   image_usd_per_mtok: {text_input: 5.0, image_output: 40.0}
 
 content:
+  # Tope de un clip de terceros en pantalla (s). Decisión del dueño (21-11): como la competencia, asumiendo el riesgo
+  # de reclamaciones; 5 s era la regla de antes. Por canal en su perfil (si un canal recibe reclamaciones, bájalo solo
+  # ahí); no rehace vídeos a medias. Los clips propios no tienen tope; los pasajes con sonido, quotes.max_seconds.
+  # La pestaña «Fuentes» de cada vídeo dice cuánto se ve seguido de cada fuente.
+  max_third_party_seconds: 12
   # Fuentes cuyo título o canal contiene estos términos no se usan nunca (videojuegos, gameplay…)
   title_blocklist: [gta, gameplay, walkthrough, "let's play", lets play, playthrough, minecraft, roblox,
                     fortnite, red dead, videojuego, video game, sims 4, simulator, speedrun,
@@ -333,6 +353,9 @@ report:                            # resumen de la mañana (out/<slug>/resumen.m
   max_weak: 15                     # más de 15 planos flojos → revisar
 
 graphics:                          # gráficos animados elegidos del guion (mapas, A vs B, gráficas, línea de tiempo…)
+  # argument: false             # tarjetas de argumento (ficha, prueba ✓/✗, afirmación con sello, lista) en canales de
+  #                               teoría o explicativos (los de juegos las tienen siempre). max_card_share: 0.35, la parte
+  #                               del vídeo que pueden ocupar: el resto tiene que ser metraje de verdad
   enabled: true
   seconds_per_graphic: 100         # ~1 gráfico cada 100 s de vídeo
   max: 8
@@ -374,6 +397,14 @@ people:
   model: u2net_human_seg           # modelo de rembg para recortar personas
 
 timeline:
+  # proof_circles: false        # con planner.cobertura: en un plano de «prueba» cuyo metraje enseña la línea que nombra la
+  #                               voz (un nombre en los créditos, una opción de un menú), un círculo alrededor (OCR)
+  # Texto en pantalla (ideas-pantallas-de-texto.md, 23-11): el orden es clip correcto > clip de ambiente juzgado > foto >
+  # texto. max_text_share: tope de la parte del vídeo en pizarra (0.10 en vídeos planificados por ideas; sin poner, sin
+  # tope en los demás). Nunca pizarra en el gancho (judge.hook_seconds: va el mejor clip juzgado), nunca dos seguidas,
+  # ninguna de más de board_max_seconds (3); lo que pasa del tope toma un clip de su idea o el más cercano.
+  # max_text_share: 0.10
+  # board_max_seconds: 3
   assets: assets                   # assets/music/*.mp3 (música de fondo) y assets/sfx/whoosh*.mp3, pop*.mp3
   music_volume: 0.2                # música de fondo en las pausas: ~-34 LUFS (antes 0.32; súbelo si la quieres más presente)
   music_by_chapter: true           # tono de la música por capítulo (assets/music/<tono>-*.mp3)
@@ -439,8 +470,9 @@ queue:                             # cola nocturna (python main.py --all)
 #   aprender: false          # los canales en que el revisor ve dibujos o marcas de agua (3+ veces, 2+ vídeos) dejan de usarse
 #   aviso: true              # al acabar, lo que sigue marcado y sus hojas al Telegram del canal
 #   nota: false              # solo la nota de cada vídeo (panel «Puntería»), sin cambiar nada: 1-2 céntimos por vídeo
-#   no_borrow_sent_back: true  # con enabled: un plano devuelto al relleno que no encuentra otro sale como texto, no con
-#                            el clip del plano de al lado (eso volvía a ser «hueco tapado» o «repetido»)
+#   no_borrow_sent_back: false # true: un plano devuelto al relleno que no encuentra otro sale como texto. Apagado desde el
+#                            23-11: el revisor nunca convierte en texto; si no hay nada mejor, el plano conserva su clip
+#                            (salvo roto, otra persona o marca de agua). huecos_a_texto: false, lo mismo con los huecos tapados
 #   enabled: false           # en la cola, entre el montaje y la QA (bloque 3.3): lo que marque vuelve UNA vez al
 #                            relleno (work/<vídeo>/revision.auto.json) y se rehacen relleno, apertura y montaje.
 #                            Repetidos y rotos siempre; en ideas literales lo que marque con min_confidence (0.85);
@@ -467,8 +499,13 @@ queue:                             # cola nocturna (python main.py --all)
 #   library: false         # también las fuentes de la biblioteca (personas y temas que ya funcionaron): una
 #                          # llamada barata por fuente nueva, que queda para siempre
 #   library_sources: 12    # como mucho, fuentes nuevas de la biblioteca por vídeo
+#   transcripcion: false   # metraje como prueba: lo que se DICE en cada escena (subtítulos de la fuente de YouTube,
+#                          # una petición por fuente, guardada) cuenta al buscar la escena; doble si el plano es una
+#                          # prueba (función «prueba» de la cobertura o una frase entre comillas). Clips propios: sin
+#                          # transcripción todavía. Mide: ventanas «por su descripción» en el registro y Puntería
 
 qa:
+  # max_empty_seconds: 1        # un plano sin clip, foto ni gráfico más de esto bloquea el render (pantalla vacía)
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)
   low_score: 0.30                  # planos elegidos sin juez por debajo de esta nota → a revisar
   low_confidence: 0.6              # veredictos del juez con menos confianza → a revisar

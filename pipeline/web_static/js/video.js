@@ -542,7 +542,7 @@ async function videoPage(slug) {
   window.dubManual = async (lang, manual) => { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, manual}); route(); };
   const shorts = v.shorts.length ? `<h2>Shorts</h2><div class="row">${v.shorts.map((t) => `<a class="btn" href="${base + t}?download">${icon("download")} ${esc(t.split("/").pop())}</a>`).join("")}</div>` : "";
   const docs = {diagnosis: ["Diagnóstico", v.diagnosis], factcheck: ["Verificación del guion", v.factcheck], hook: ["Gancho", v.hook], graphics: ["Gráficos", v.graphics], rhythm: ["Ritmo", v.rhythm],
-                retention: ["Retención", null], audit: ["Auditoría", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null],
+                retention: ["Retención", null], audit: ["Auditoría", null], sources: ["Fuentes", null], log: ["Registro", null], script: ["Guion", null], stages: ["Etapas", null],
                 ...(v.material ? {material: ["Material de partida", null]} : {})};
   // «Material de partida» of a video already made: links, channels and your clips; the search uses them the next time
   // the video is made from «Buscar material»
@@ -622,6 +622,12 @@ async function videoPage(slug) {
         : "Todavía no hay montaje (sale después de la etapa «timeline»).")
     : tab === "script" ? `<div class="row mb-2"><audio controls preload="none" src="/api/video/${encodeURIComponent(v.slug)}/voz.mp3"></audio>
         <a class="btn" href="/api/video/${encodeURIComponent(v.slug)}/voz.mp3?download">${icon("download")} Descargar voz</a></div><pre>${esc(v.script)}</pre>`
+    : tab === "sources" ? ((v.sources || []).length ? `<div class="small muted">Cada fuente de terceros que sale, con el tramo
+        seguido más largo que se ve de ella y en qué segundo del vídeo empieza. Si llega una reclamación, aquí ves qué la causó;
+        el tope de cada canal es <code>content.max_third_party_seconds</code>.</div>
+        <div class="tablewrap"><table class="small"><tr><th>Fuente</th><th class="r">Seguido más largo</th><th class="r">Desde</th></tr>
+        ${v.sources.map((r) => `<tr><td>${esc(r.source)}</td><td class="r"><b>${r.seconds} s</b></td><td class="r">${r.at} s</td></tr>`).join("")}
+        </table></div>` : `<div class="small muted">Aún sin montaje.</div>`)
     : tab === "material" ? materialView()
     : tab === "stages" ? `<table><tr><th>Etapa</th><th class="r">Tiempo</th><th class="r">RAM máx.</th><th class="r">CPU máx.</th></tr>${v.stages.map((s) =>
         `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td class="r nw">${mins(s.seconds)}</td><td class="r nw">${s.ram ?? "—"} GB</td><td class="r nw">${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
