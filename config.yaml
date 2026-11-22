@@ -266,6 +266,8 @@ fallback:
   # text_check: true              # texto ajeno quemado (subtítulos de otro canal, un rótulo de informativo, un anuncio)
   #                                  también en los clips y fotos del relleno: el mismo límite que el análisis
   #                                  (analysis.max_text_area, 8 %; fotos 12 %) en 2 de 3 fotogramas
+  # talking_head_check: true      # alguien hablando a cámara, mudo bajo la voz: fuera también en el relleno (la regla
+  #                                  del análisis, analysis.talking_head_face_area); o suena (una cita) o no es el plano
   # ambient_photo_first: false    # idea de ambiente sin su clip: también la foto de la persona antes que otro clip
   #                                  suyo (y antes que un préstamo del montaje). Mide: «Huecos tapados» de revisor --base
   photo_for_moments: true          # un momento que nadie grabó (abatido tras el 4.º puesto, un desfile): foto del protagonista, sin juez

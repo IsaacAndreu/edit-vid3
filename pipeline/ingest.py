@@ -87,26 +87,35 @@ def lut_filter(lut: Path | None) -> str:
 
 
 def detect_bars(source: Path, offset: float = 0.0) -> tuple[int, int, int, int] | None:
-    """Black borders baked into the source (a vertical phone video inside a 16:9 frame, letterboxing):
-    the content box (w, h, x, y) if the borders take more than ~6 % of the picture, else None."""
+    """Borders baked into the source (a vertical phone video inside a 16:9 frame, letterboxing): the content box
+    (w, h, x, y) if the borders take more than ~6 % of the picture, else None. Black borders, and also WHITE or light
+    ones (a clip framed on a white page: newideas 1:16 kept a white strip on the left after the cover-crop) — the
+    picture is negated for a second look."""
 
     try:
         info = probe(source)
-        run = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-ss", f"{max(0.0, offset):.3f}", "-i", str(source), "-t", "1.5",
-             "-vf", "cropdetect=limit=24:round=2:reset=0", "-an", "-f", "null", "-"],
-            capture_output=True, text=True, timeout=60,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, KeyError):
+    except (subprocess.CalledProcessError, ValueError, KeyError):
         return None
-    found = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", run.stderr)
-    if not found or not info["width"] or not info["height"]:
+    if not info["width"] or not info["height"]:
         return None
-    w, h, x, y = map(int, found[-1])
-    area = (w * h) / (info["width"] * info["height"])
-    if area > 0.94 or w < info["width"] * 0.25 or h < info["height"] * 0.4:
-        return None
-    return w, h, x, y
+    for chain in ("cropdetect=limit=24:round=2:reset=0", "negate,cropdetect=limit=24:round=2:reset=0"):
+        try:
+            run = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-ss", f"{max(0.0, offset):.3f}", "-i", str(source), "-t", "1.5",
+                 "-vf", chain, "-an", "-f", "null", "-"],
+                capture_output=True, text=True, timeout=60,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return None
+        found = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", run.stderr)
+        if not found:
+            continue
+        w, h, x, y = map(int, found[-1])
+        area = (w * h) / (info["width"] * info["height"])
+        if area > 0.94 or w < info["width"] * 0.25 or h < info["height"] * 0.4:
+            continue
+        return w, h, x, y
+    return None
 
 
 _DETECTORS: Any = None

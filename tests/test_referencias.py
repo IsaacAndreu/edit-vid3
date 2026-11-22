@@ -87,3 +87,14 @@ def test_the_video_keeps_its_reference_links(tmp_path):
                                    "references": "https://example.com/x"})
     folder = root / "materiales" / "negocios" / "refs1"
     assert (folder / "referencias.txt").read_text("utf-8").strip() == "https://example.com/x" and made
+
+
+def test_the_athlete_structure_asks_for_what_the_reference_does():
+    """objetivo-videos-referencia.md, point 6: open with the latest thing, events with date, venue and result,
+    literal quotes as a thread, what has no picture in short sentences."""
+
+    from pipeline.organizar import script_structure
+
+    text = script_structure({"guion": {"estructura": "atleta"}})
+    for wanted in ("lo último", "sede y su resultado", "citas literales", "frases cortas"):
+        assert wanted in text, wanted

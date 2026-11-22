@@ -289,12 +289,16 @@ STRUCTURES = {
         "3. La comparación: lo real que imita, o lo que hacía el juego anterior.\n"
         "4. Qué esperar: la consecuencia para quien lo juegue."),
     "atleta": (
-        "1. Gancho con el momento cumbre: la competición, la fecha, el lugar y la nota o el resultado.\n"
+        "1. Gancho con lo último que le pasó (o el momento cumbre): la competición, la fecha, el lugar y la nota o el "
+        "resultado; si existe, una frase suya literal de ese día.\n"
         "2. El origen, con fechas y lugares que se puedan rotular.\n"
-        "3. El ascenso, contado con competiciones concretas (cada una con su año y su sede).\n"
+        "3. El ascenso, contado con competiciones concretas (cada una con su año, su sede y su resultado).\n"
         "4. La caída o el obstáculo, con el momento grabado en que pasó.\n"
         "5. El momento cumbre narrado paso a paso, como se vio en directo.\n"
-        "6. Qué fue después, con un dato o una cita literal."),
+        "6. Qué fue después, con un dato.\n"
+        "A lo largo del vídeo, sus propias palabras: citas literales entre comillas, con dónde y cuándo las dijo "
+        "(una entrevista, una rueda de prensa), que vuelven como hilo. Lo que no tiene imagen (lo que sintió, una "
+        "cifra suelta) va en frases cortas."),
 }
 
 

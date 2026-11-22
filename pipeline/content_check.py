@@ -101,7 +101,29 @@ class ContentCheck:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=0), encoding="utf-8")
         if not self.cache[key] and self.cfg.get("text_check", True):
-            return self.burned_text(path, kind, stat)
+            if why := self.burned_text(path, kind, stat):
+                return why
+        if not self.cache[key] and kind == "video" and self.cfg.get("talking_head_check", True):
+            return self.talking_head(path, stat)
+        return self.cache[key] or None
+
+    def talking_head(self, path: Path, stat: Any) -> str | None:
+        """Someone talking to the camera, muted under the narration (newideas 8:00): the analysis drops those from
+        every YouTube window («presentador hablando a cámara»), the fallback's clips never were. Either she is heard
+        (a quote, quotes.count) or it is not the shot. Videos only: a photo of the person is a portrait on purpose."""
+
+        key = f"h{VERSION}|{path.name}|{stat.st_size}|{int(stat.st_mtime)}"
+        if key not in self.cache:
+            try:
+                frames = self.frames(path, "video", per_second=1.0)
+                picked = [frames[int(len(frames) * q)] for q in (0.2, 0.5, 0.8)] if len(frames) >= 3 else frames
+                self.cache[key] = head_verdict([self.detectors().face_area(f) for f in picked],
+                                               self.ctx.section("analysis"))
+            except Exception as error:      # never costs a clip on its own
+                print(f"   comprobación de busto parlante no disponible: {str(error)[:100]}")
+                return None
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=0), encoding="utf-8")
         return self.cache[key] or None
 
     def burned_text(self, path: Path, kind: str, stat: Any) -> str | None:
@@ -130,6 +152,15 @@ class ContentCheck:
 
             self._detectors = det.Detectors(cache_dir=self.ctx.cache_dir)
         return self._detectors
+
+
+def head_verdict(faces: list[tuple[float, float]], cfg: dict[str, Any]) -> str:
+    """«busto parlante sin su voz» when a big face sits in the middle of at least 2 frames (the analysis' rule:
+    analysis.talking_head_face_area, 5 % of the frame, centre between 20 % and 80 % of the width), else ""."""
+
+    big = float(cfg.get("talking_head_face_area", 0.05))
+    centred = [a for a, cx in faces if a >= big and 0.2 <= cx <= 0.8]
+    return "busto parlante sin su voz (habla a cámara)" if len(centred) >= min(2, max(1, len(faces))) and faces else ""
 
 
 def text_verdict(areas: list[float], kind: str, cfg: dict[str, Any]) -> str:

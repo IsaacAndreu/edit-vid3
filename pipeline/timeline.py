@@ -1264,6 +1264,13 @@ def judged_scores(ctx: RunContext) -> dict[str, float]:
         return {}
 
 
+def push_in(media: TimelineMedia, frames: int) -> list[float] | None:
+    """The slow push-in of a borrowed clip (1.18), except on low-res or old footage shown as archive: enlarging it
+    more only shows the blur (newideas 1:08, 1:40: 2013 clips blown up full screen)."""
+
+    return None if (media.layout or "full") == "archive" else [0, frames, 1.18]
+
+
 def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, ideas: dict[str, Any],
                scores: dict[str, float], share: float, hook_seconds: float, board_seconds: float = 3.0,
                max_uses: int = 6) -> dict[str, int]:
@@ -1371,7 +1378,7 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
         uses[donor.id] = uses.get(donor.id, 0) + 1
         rate = min(1.0, footage(donor) / shot.durationInFrames)
         shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
-            "zoom": [0, shot.durationInFrames, 1.18], "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
+            "zoom": push_in(donor.media, shot.durationInFrames), "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
         counts["gancho" if in_hook else "prestados"] += 1
         previous_text = False
     return counts
@@ -1508,7 +1515,7 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
         uses[donor.id] = uses.get(donor.id, 0) + 1
         rate = min(1.0, footage(donor) / shot.durationInFrames)
         shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
-            "zoom": [0, shot.durationInFrames, 1.18], "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
+            "zoom": push_in(donor.media, shot.durationInFrames), "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
         if start != previous_end:
             flush()
             run_start, run_text = start, []

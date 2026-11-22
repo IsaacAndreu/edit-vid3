@@ -345,4 +345,9 @@ Sin verificar en el servidor: nada de esta tanda se ha probado con un vídeo rea
 | Fotos de la época de la idea: «persona + época» primero, la biblioteca después | hecho |
 | Recetas por canal `montaje.receta: persona / suceso / teoria` (clips a pantalla completa, tarjeta solo para fotos, …) | hecho; **ningún canal la tiene puesta** hasta ver un vídeo de prueba |
 | `python -m pipeline.medir_video` (cualquier mp4 o vídeo nuestro) y la referencia del canal en Puntería | hecho; sin probar con una referencia real (`referencias/canales/<canal>/`) |
-| Bustos parlantes mudos, material muy ampliado, final vacío (segunda pasada 6-8) | pendiente |
+| Bustos parlantes mudos: fuera también del relleno | `fallback.talking_head_check` (encendido: la regla que ya tenía el análisis) |
+| Franja blanca de un mal recorte: también se detectan los bordes claros, no solo los negros | hecho |
+| Material antiguo o de baja resolución prestado: sin el zoom de 1,18 que agranda el desenfoque | hecho; si un clip de 720p reescalado sigue viéndose mal, falta medir su nitidez (no hay datos de newideas aquí) |
+| Pantalla vacía del final | la cubre el montaje (pizarra en cada tramo vacío) y, si quedara, QA la para; la pantalla final con recuadros es la de YouTube |
+| Verificación del guion sin búsqueda web: lo dice arriba del informe, en el registro y en el resumen | hecho |
+| Ahorro de metadatos | ya existía: `player_skip: [configs]` tras `python -m pipeline.sonda_ytcfg` (la portada, ~2,2 GB/día); la página del vídeo no se puede quitar (sin ella, 95 % «bot») |
