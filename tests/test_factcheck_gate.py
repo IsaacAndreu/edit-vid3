@@ -42,3 +42,15 @@ def test_tts_raises_before_paying(monkeypatch, tmp_path: Path):
     with pytest.raises(tts.WrongFacts):
         tts.ensure(ctx)
     assert not made and not factcheck.blocks_voice(_ctx(tmp_path / "b", style="stickman"))
+
+
+def test_a_check_without_web_search_says_so_instead_of_zero_to_fix():
+    from pipeline.factcheck import coverage_note, report
+
+    blind = {"claims": [{"n": 1, "quote": "", "claim": "seis títulos", "verdict": "ok"}],
+             "articles": ["https://es.wikipedia.org/wiki/Simone_Biles"], "web": {"searched": 12, "answered": 0}}
+    assert coverage_note(blind).startswith("SIN BÚSQUEDA WEB") and "1 artículos de Wikipedia" in coverage_note(blind)
+    assert "SIN BÚSQUEDA WEB" in report(blind).split("❌")[0]                   # above the counts, not below
+    assert coverage_note({**blind, "web": {"searched": 12, "answered": 4}}).startswith("Búsqueda web a medias")
+    assert coverage_note({**blind, "web": {"searched": 12, "answered": 11}}) is None
+    assert coverage_note({"claims": []}) is None                              # an old file: nothing to say

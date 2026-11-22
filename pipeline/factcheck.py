@@ -155,7 +155,26 @@ def check(ctx: RunContext) -> dict[str, Any]:
                         "verdict": verdict.get("verdict") if verdict.get("verdict") in ("ok", "wrong", "unverified") else "unverified",
                         "correction": verdict.get("correction"), "evidence": verdict.get("evidence"),
                         "source": verdict.get("source")})
-    return {"people": (listed.get("people") or []), "articles": [a["url"] for a in articles], "claims": results}
+    searched_ok = sum(1 for found in searched if found)
+    return {"people": (listed.get("people") or []), "articles": [a["url"] for a in articles], "claims": results,
+            "web": {"searched": len(claims), "answered": searched_ok}}
+
+
+def coverage_note(result: dict[str, Any]) -> str | None:
+    """What the check could NOT look at, said plainly: «0 a corregir» after a search engine that answered nothing
+    (DuckDuckGo refuses servers' IPs) is not a verified script. None when the web searches answered."""
+
+    web = result.get("web")
+    if not web or not web.get("searched"):
+        return None
+    if web.get("answered", 0) == 0:
+        where = f"{len(result.get('articles') or [])} artículos de Wikipedia" if result.get("articles") else "nada"
+        return (f"SIN BÚSQUEDA WEB: el buscador no respondió a ninguna de las {web['searched']} búsquedas; solo se "
+                f"comparó con {where}. Que no haya nada «a corregir» NO quiere decir que esté verificado. Con "
+                "SERPER_API_KEY en .env se busca en Google (serper.dev).")
+    if web["answered"] * 2 < web["searched"]:
+        return f"Búsqueda web a medias: respondió a {web['answered']} de {web['searched']} búsquedas."
+    return None
 
 
 def report(result: dict[str, Any]) -> str:
@@ -164,6 +183,8 @@ def report(result: dict[str, Any]) -> str:
     lines = ["# Verificación del guion", ""]
     if result.get("error"):
         lines += [f"No se pudo verificar ({result['error']}). Repite con `python main.py --check <vídeo>`.", ""]
+    if note := coverage_note(result):
+        lines += [f"> ⚠️ {note}", ""]
     lines += [
              f"❌ {count['wrong']} a corregir · ⚠️ {count['unverified']} sin confirmar · ✅ {count['ok']} confirmadas", "",
              "Revisado solo contra Wikipedia y resultados de búsqueda: «sin confirmar» no significa que esté mal, "
@@ -198,6 +219,8 @@ def run(ctx: RunContext) -> None:
     (ctx.out_dir / REPORT).write_text(report(result), encoding="utf-8")
     wrong = [c for c in result["claims"] if c["verdict"] == "wrong"]
     print(f"   {len(wrong)} datos a corregir · informe en {ctx.out_dir / REPORT}")
+    if note := coverage_note(result):
+        print(f"   ⚠️ {note}")
 
 
 def validate(ctx: RunContext) -> bool:
@@ -210,10 +233,12 @@ def summary(ctx: RunContext) -> str:
     path = ctx.work_dir / OUTPUT
     if not path.is_file():
         return ""
-    claims = json.loads(path.read_text("utf-8")).get("claims", [])
+    data = json.loads(path.read_text("utf-8"))
+    claims = data.get("claims", [])
     wrong = sum(1 for c in claims if c["verdict"] == "wrong")
     unverified = sum(1 for c in claims if c["verdict"] == "unverified")
-    return f"Verificación del guion: ❌ {wrong} a corregir · ⚠️ {unverified} sin confirmar (verificacion.md)"
+    blind = " · SIN BÚSQUEDA WEB (solo Wikipedia)" if (coverage_note(data) or "").startswith("SIN") else ""
+    return f"Verificación del guion: ❌ {wrong} a corregir · ⚠️ {unverified} sin confirmar{blind} (verificacion.md)"
 
 
 # --- the gate before the voice -------------------------------------------------------------------------------------
