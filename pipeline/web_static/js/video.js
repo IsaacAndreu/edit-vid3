@@ -26,6 +26,16 @@ function chooseStart() {
           <li>${icon("check")}Si quieres, lo pone en cola solo</li></ul>
         <span class="choice-go">Empezar desde un título →</span>
       </a>
+      <a class="choice" href="#/nuevo/material">
+        <span class="choice-badge">Nuevo</span>
+        <span class="choice-icon">${icon("search")}</span>
+        <span class="choice-title">Material primero</span>
+        <span class="choice-text">Busca y lee los vídeos reales del tema (quién habla, qué se ve), y con eso escribe el guion.</span>
+        <ul><li>${icon("check")}Tops, noticias y documentales con testimonios</li><li>${icon("check")}Ves el material antes de decidir</li>
+          <li>${icon("check")}Cada dato del guion sale de una fuente</li></ul>
+        <span class="choice-text small">Tarda más y gasta más búsquedas de la API y más proxy que los otros dos.</span>
+        <span class="choice-go">Empezar con el material →</span>
+      </a>
     </div>
   </div>`);
 }
@@ -38,6 +48,8 @@ async function newVideo(sub = "") {
   const idea = pre && pre.idea;
   if (!sub) sub = pre && pre.script ? "guion" : idea ? "titulo" : "";
   if (!sub) return chooseStart();
+  if (sub === "material") return materialPage();
+  window.newMode = sub;                     // the way in, saved with the video (modo: guion | titulo)
   window.newMode = sub === "titulo" ? "title" : "own";
   const fromTitle = window.newMode === "title";
   show(`<div class="row between"><h1>${fromTitle ? "Nuevo vídeo desde un título" : "Nuevo vídeo con tu guion"}</h1>
@@ -337,7 +349,9 @@ async function checkImages() {
       <div class="small mt-1"><span class="t-ok">■</span> con imagen propia ${sh.imagen} % · <span style="color:var(--work-fg)">■</span> de ambiente ${sh.ambiente} %
         · <span class="t-bad">■</span> sin imagen ${sh.sin_imagen} %${sh.sin_revisar ? ` · sin revisar ${sh.sin_revisar} %` : ""}</div>
       ${r.sinImagen.length ? `<div class="small mt-2"><b>Frases sin imagen posible</b></div><ul class="small">${r.sinImagen.map((x) =>
-        `<li>«${esc(x.text)}»${x.idea ? `<br><span class="muted">Idea:</span> ${esc(x.idea)}` : ""}</li>`).join("")}</ul>` : ""}</div>`;
+        `<li>«${esc(x.text)}»${x.idea ? `<br><span class="muted">Idea:</span> ${esc(x.idea)}` : ""}</li>`).join("")}</ul>` : ""}
+      ${window.newMode === "titulo" && sh.sin_imagen >= 35 ? `<div class="mt-2"><button onclick="toMaterialFirst()">Hacerlo con material primero</button>
+        <span class="small muted">Lleva el título y los enlaces ya pegados: el guion se escribe desde los vídeos reales del tema.</span></div>` : ""}</div>`;
   } catch (e) { msg.textContent = e.message; }
   $("#imgbtn").disabled = false;
 }
@@ -429,7 +443,7 @@ async function createVideo() {
   try {
     const made = await post("/api/videos", {channel: $("#channel").value, name: $("#name").value.trim(), format: $("#format").value,
       serie: $("#serie").value, language: $("#language").value, title: $("#title").value, script: $("#script").value, scenes: $("#scenelist").value,
-      references: $("#refs").value,
+      references: $("#refs").value, modo: window.newMode || "",
       material: {videos: $("#matvideos").value, channels: $("#matchannels").value, saveChannels: $("#matsave").checked},
       hold: clips.length > 0,            // your clips first: the queue waits for them
       ...((window.dubOptions || {})[$("#channel").value] ? {dub: [...document.querySelectorAll(".dublang:checked")].map((x) => x.value)} : {}), idea: window.prefill ? window.prefill.idea : null, opening: window.opening || null});
@@ -652,7 +666,7 @@ async function videoPage(slug) {
     <div class="vhead"><div class="mw0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
         <div class="meta">${esc(v.channel)}${v.format ? ` · formato <b>${esc(v.format.name)}</b>${v.format.auto ? ` <span title="${esc(v.format.why)}">(elegido por el guion)</span>` : ""}` : ""}
           ${v.minutes ? ` · ${v.minutes} min de trabajo` : ""} · ${v.costUsd} $ de API
-          ${v.punteria ? ` · <a href="#/punteria" title="${v.punteria.flagged} de ${v.punteria.shots} planos marcados por el revisor automático${v.punteria.asText != null ? ` · ${v.punteria.asText} en texto` : ""}">puntería: ${v.punteria.per100} marcados por 100</a>` : ""}</div></div>
+          ${v.punteria ? ` · <a href="#/punteria" title="${v.punteria.flagged} de ${v.punteria.shots} planos marcados por el revisor automático${v.punteria.asText != null ? ` · ${v.punteria.asText} en texto` : ""}">puntería: ${v.punteria.per100} marcados por 100</a>` : ""}${v.modo ? ` · camino: ${esc({guion: "con mi guion", titulo: "desde un título", material: "material primero"}[v.modo] || v.modo)}` : ""}</div></div>
       <div class="primary">${primary}${done.timeline && v.status !== "haciendo" ? `<a class="btn" href="#/editor/${encodeURIComponent(v.slug)}" title="Cambiar planos, cortes, transiciones, efectos, textos y música antes del render">${icon("scissors")} Editar</a>` : ""}
         <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ${icon("down")}</button><div>${secondary.join("")}</div></span></div></div>
     ${whyView}
@@ -989,4 +1003,11 @@ async function decisionsPage(slug) {
   };
   pageKeys = keys;
   if (r.job.running) schedule(route, 8000);
+}
+
+// From «Desde un título» to «Material primero» without starting again: the title and the links already pasted go along
+function toMaterialFirst() {
+  const links = ($("#refs") ? $("#refs").value : "").split(/\s+/).filter((l) => /youtu/.test(l));
+  try { sessionStorage.setItem("materialPrefill", JSON.stringify({title: $("#title").value, links, channel: $("#channel").value})); } catch (e) {}
+  location.hash = "#/nuevo/material";
 }

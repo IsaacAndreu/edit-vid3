@@ -143,6 +143,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--nicho", default="", help="Con --formula: el nombre del nicho.")
     target.add_argument("--formula-montaje", metavar="CLAVE",
                         help="Mide el montaje de las referencias de una fórmula (baja cada una a 360p por el proxy).")
+    target.add_argument("--expediente", metavar="VIDEO",
+                        help="Modo «material primero»: busca y lee el material real del tema → work/VIDEO/expediente.json.")
+    target.add_argument("--bloques", metavar="VIDEO",
+                        help="Modo «material primero»: el guion por bloques desde su expediente → work/VIDEO/bloques.json.")
     target.add_argument("--huecos-idiomas", metavar="TEMA",
                         help="Mide un tema en todos los idiomas de radar.idiomas que quepan en la cuota de hoy.")
     target.add_argument("--radar", action="store_true",
@@ -1891,6 +1895,28 @@ def main() -> None:
 
         report = formula.montage(PROJECT_ROOT, formula.load(PROJECT_ROOT, args.formula_montaje), confirm=True)
         print(f"Montaje de {args.formula_montaje}: {report['measured'].get('montage')}")
+        return
+    if args.expediente:
+        from pipeline import expediente
+
+        result = expediente.run(PROJECT_ROOT, args.expediente)
+        for row in result["summary"]["items"]:
+            print(f"{row['n']}. {row['name']}: {row['sources']} fuentes · {row['statements']} declaraciones "
+                  f"({row['named']} con nombre de la fuente) · {row['footageSeconds']} s de metraje · {row['facts']} datos")
+        for name in result["summary"]["weak"]:
+            print(f"   poco material: {name}")
+        print(f"Unidades de API: {result['apiUnits']}")
+        return
+    if args.bloques:
+        from pipeline import bloques
+        from pipeline.context import RunContext as BlocksContext      # an alias: «RunContext» stays main()'s global
+
+        result = bloques.write(BlocksContext.create(args.bloques, root=PROJECT_ROOT))
+        est = result["estimate"]
+        print(f"{len(result['blocks'])} bloques · {est['minutes']} min · voz ajena {round(est['otherVoiceShare'] * 100)} % · "
+              f"{est['clips']} tramos a bajar (~{est['downloadMB']} MB por el proxy)")
+        for note in result["notes"]:
+            print(f"   {note}")
         return
     if args.huecos_idiomas:
         from pipeline import huecos
