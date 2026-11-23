@@ -295,6 +295,8 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
     status = ("haciendo" if current else "en cola" if redo else "hecho" if done else "en pausa" if held
               else "en cola" if queued_again or (waiting_quota and ready)
               else "error" if failed or diag.get("error") else "en cola" if ready else "incompleto")
+    if status == "incompleto" and _json_yaml(folder / "config.yaml").get("material_first"):
+        status = "material primero"            # no script or voice yet by design: it goes on in its own page
     channel = _channel_of(root, folder)
     return {
         "slug": slug, "channel": channel, "status": status, "quotaWait": quota_wait, "short": is_short(root, folder, channel),

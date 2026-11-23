@@ -124,3 +124,12 @@ def test_each_video_remembers_its_way_in_and_experiments_compare_the_ways(tmp_pa
     ways = {s: experimentos.tried(tmp_path, s, {}).get("Camino") for s in ("conguion", "contitulo", "sinmodo", slug)}
     assert ways == {"conguion": "con mi guion", "contitulo": "desde un título", "sinmodo": None, slug: "material primero"}
     assert yaml.safe_load((tmp_path / "materiales" / slug / "config.yaml").read_text())["modo"] == "material"
+
+
+def test_a_material_first_video_is_not_shown_as_missing_its_script_or_voice(tmp_path):
+    from pipeline import web
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    slug = expediente.create(tmp_path, "Top 5 momentos más épicos de la gimnasia", kind="top", count=5)
+    status = web.video_summary(tmp_path, tmp_path / "materiales" / slug, {})["status"]
+    assert status == "material primero"                       # not «incompleto: falta guion o voz»
