@@ -395,3 +395,12 @@ plan antes del gancho no se ha visto**: el dueño pidió hacerlo todo seguido.
 
 Sin comprobar sin el servidor: búsquedas, subtítulos y respuestas del modelo reales; el OCR del rótulo (para quién
 habla) va con el clip bajado, en la etapa 3.
+
+## El guion sin imagen se arregla solo (23-11)
+
+Antes, el aviso «X % del guion no tiene imagen posible» dejaba el vídeo parado hasta que el dueño reescribiera
+(newgym9: 38 %). Ahora (`guion.arreglar_solo`, encendido): con la voz sintética del canal reescribe solo esas frases
+sobre algo grabado (`imagen_guion.fix`, con sus enlaces de referencia), guarda el original en guion.original.txt,
+rehace la voz (lo que no cambia no se paga) y el vídeo vuelve a empezar; una vez por vídeo. Con la voz grabada del
+dueño, o si ya se intentó, o si nada se puede reescribir sin inventar: sigue igualmente y avisa por Telegram.
+Test: `tests/test_arreglo_guion.py`.
