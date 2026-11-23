@@ -145,3 +145,15 @@ def test_news_and_documentary_get_their_own_structure(ctx):
     ctx.write_json("expediente.json", {**EXPEDIENTE, "kind": "noticia"})
     bloques.write(ctx, ask=ask)
     assert "Estructura de NOTICIA" in seen["system"] and "ORDEN del top" not in seen["system"]
+
+
+def test_a_dub_voice_named_by_its_channel_takes_that_channels_whole_voice(tmp_path):
+    from pipeline import tts
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    tts.set_voice(tmp_path, "buscandolaverdad", {"voice_id": "Spanish_PowerfulSoldier", "provider": "ai84"})
+    voice = montaje_mf.catalogue_voice(tmp_path, {"canal": "buscandolaverdad"})
+    assert voice["voice_id"] == "Spanish_PowerfulSoldier" and voice["provider"] == "ai84"
+    assert montaje_mf.catalogue_voice(tmp_path, {"voice_id": "abc"})["voice_id"] == "abc"
+    with pytest.raises(ValueError, match="no tiene voz"):
+        montaje_mf.catalogue_voice(tmp_path, {"canal": "nadie"})

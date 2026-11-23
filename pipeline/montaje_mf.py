@@ -451,6 +451,20 @@ def dub_voices(mode: str, blocks: list[dict[str, Any]], catalogue: dict[str, Any
     return out
 
 
+def catalogue_voice(root: Path, voice: dict[str, Any]) -> dict[str, Any]:
+    """A dub voice as the config names it: {canal: buscandolaverdad} takes that channel's whole voice (provider,
+    model, settings: a MiniMax voice is not a GenAIPro one); {voice_id: …} gets its provider's defaults."""
+
+    from . import tts
+
+    if voice.get("canal"):
+        found = tts.voice_for(root, str(voice["canal"]))
+        if not found:
+            raise ValueError(f"El canal {voice['canal']} no tiene voz en Voces: no se puede usar para doblar")
+        return found
+    return tts.with_defaults(dict(voice))
+
+
 def dub(ctx: Any, blocks: list[dict[str, Any]], clips: dict[int, dict[str, Any]], voices: dict[int, dict[str, Any]],
         speak_with: Callable[[str, dict[str, Any], Path], Path]) -> dict[int, dict[str, Any]]:
     """Each statement's Spanish line read by its catalogue voice; the original stays under it."""
@@ -531,8 +545,7 @@ def run(root: Path, slug: str, *, youtube: Any = None, fetch_fn: Callable | None
             from . import tts
 
             def speak_with(text: str, voice: dict[str, Any], target: Path) -> Path:
-                # only {voice_id} in the config: the model and provider defaults, as every voice of the catalogue
-                tts.generate(tts.keys(root), text, tts.with_defaults(dict(voice)), target)
+                tts.generate(tts.keys(root), text, catalogue_voice(root, voice), target)
                 return target
         dubbed = dub(ctx, blocks, clips, voices, speak_with)
     timeline = assemble(ctx, blocks, clips, seconds, voice, items, hook, str(data.get("title") or ""), dubbed,
