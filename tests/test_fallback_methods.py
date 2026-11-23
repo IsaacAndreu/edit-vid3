@@ -141,3 +141,28 @@ def test_a_muted_talking_head_keeps_a_fallback_clip_out():
     assert head_verdict([(0.09, 0.5), (0.01, 0.5), (0.0, 0.0)], {}) == ""     # a face passing by
     assert head_verdict([(0.09, 0.1), (0.09, 0.9), (0.09, 0.95)], {}) == ""   # big, but at the side: not to camera
     assert head_verdict([], {}) == ""
+
+
+def test_pexels_results_shown_to_the_judge_are_valid_candidates(tmp_path, monkeypatch):
+    """newgym5: «1 validation error for Candidate» in 9 shots — the stock shown to the judge had no local image."""
+
+    from types import SimpleNamespace as NS
+
+    from pipeline import fallback
+    from pipeline.context import RunContext
+
+    (tmp_path / "config.yaml").write_text("{}\n")
+    ctx = RunContext.create("v", root=tmp_path)
+    seen = {}
+
+    def sheet(options, candidates, root, **kw):
+        seen["candidates"] = candidates
+        raise RuntimeError("sin juez en el test")
+
+    monkeypatch.setattr(fallback, "contact_sheet", sheet)
+    good = [(0.9, {"id": 7, "url": "https://pexels.com/7", "alt": "gimnasta", "_thumb": "cache/pexels/thumbs/a.jpg"}),
+            (0.8, {"id": 8, "url": "https://pexels.com/8"})]                     # no poster frame: left out
+    tried = []
+    assert fallback._judged_stock(ctx, NS(id="s1"), good, "photo", NS(context="", title="", subject=""), tried) == []
+    assert list(seen["candidates"]) == ["pxp:7"] and seen["candidates"]["pxp:7"].imagePath.endswith("a.jpg")
+    assert "el juez no respondió" in tried[0]

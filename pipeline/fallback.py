@@ -97,10 +97,14 @@ def _judged_stock(ctx: RunContext, shot: Any, good: list[tuple[float, dict[str, 
     options, candidates = [], {}
     for _, result in good:
         rid = f"px{kind[0]}:{result['id']}"
+        if not result.get("_thumb"):
+            continue
+        # the judge sees its poster frame: that is the candidate's local image (without it the schema refused every
+        # one — «1 validation error for Candidate» in 9 shots of newgym5, their stock never judged)
         candidates[rid] = Candidate(id=rid, source="pexels", kind="image", url=str(result.get("url") or "u"),
                                     title=str(result.get("alt") or result.get("url") or "Pexels"), channel="Pexels",
                                     license="pexels", credit="Fuente: Pexels", attribution="Pexels", query="pexels",
-                                    rankScore=0.0)
+                                    rankScore=0.0, imagePath=str(result["_thumb"]))
         options.append(Option.model_validate({"candidateId": rid, "source": "pexels", "kind": "image", "pass": "coarse",
                                               "analysisPath": result.get("_thumb"), "scores": {"clip": 0.0}, "total": 0.0}))
     judge_cfg = ctx.section("judge")
