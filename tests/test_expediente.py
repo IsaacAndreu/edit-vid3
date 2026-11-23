@@ -152,3 +152,58 @@ def test_without_api_searches_left_the_case_file_searches_with_yt_dlp(tmp_path):
     result = expediente.build(ctx, "Top persecuciones", count=1, api=NoSearches(), youtube=YtDlp(tmp_path), ask=ask)
     assert [s["id"] for s in result["items"][0]["sources"]] == ["orig1", "news1"]
     assert any("yt-dlp" in n for n in result["notes"])
+
+
+def test_the_analysis_captions_come_first_and_without_any_the_audio_is_transcribed(tmp_path):
+    (tmp_path / "config.yaml").write_text("material_first: {sources_per_item: 3, keep_for_queue: 0, audio_mb: 15}\n")
+    ctx = RunContext.create("top1", root=tmp_path)
+
+    class Captions(YouTube):
+        def captions(self, video_id):
+            return [(10.0, 14.0, "get out of the car now")] if video_id == "orig1" else []
+
+        def subtitle_file(self, video_id, lang):
+            return None
+
+    heard = []
+
+    def transcribe(vid, seconds, lang):
+        heard.append(vid)
+        return [("we", 1.0, 1.5), ("chased", 1.5, 2.0), ("him", 2.0, 2.4)]
+
+    result = expediente.build(ctx, "Top persecuciones", count=1, api=API(), youtube=Captions(tmp_path), ask=ask,
+                              transcribe_fn=transcribe)
+    sources = {s["id"]: s for s in result["items"][0]["sources"]}
+    assert sources["orig1"]["subtitles"] == "subtítulos" and sources["orig1"]["segments"][0]["said"] == "get out of the car now"
+    assert heard == ["news1"]                                   # 10 MB of audio fit in 15; the third (10 more) does not
+    assert sources["news1"]["subtitles"].startswith("transcrito") and result["audioMB"] == 10
+    assert "sin subtítulos" in sources["doc1"]["note"]
+
+
+def test_each_owner_link_is_its_entry_and_results_about_something_else_are_dropped(tmp_path):
+    (tmp_path / "config.yaml").write_text("material_first: {sources_per_item: 4, keep_for_queue: 0}\n")
+    ctx = RunContext.create("top1", root=tmp_path)
+    VIDEOS["anime1"] = {"title": "Chainsaw Man – The Movie: Opening", "channel": "Kenshi", "views": 9,
+                        "description": "Theme song IRIS OUT"}
+    VIDEOS["ownlink0001"] = {"title": "Long police chase ends in crash", "channel": "KHOU", "views": 5}
+    seen = {}
+
+    def plan(system, user):
+        if "«material primero»" in system:
+            seen["plan"] = user
+            return {"items": [{"n": 1, "name": "Persecución de Dallas", "language": "en", "queries": ["dallas chase"]}]}
+        return ask(system, user)
+
+    class WithAnime(API):
+        def search(self, q, **kw):
+            return ["anime1", *super().search(q, **kw)]
+
+    try:
+        result = expediente.build(ctx, "Top persecuciones", count=1, api=WithAnime(), youtube=None, ask=plan,
+                                  links=["https://www.youtube.com/watch?v=ownlink0001"])
+    finally:
+        VIDEOS.pop("anime1")
+        VIDEOS.pop("ownlink0001")
+    assert "cada enlace ES un puesto" in seen["plan"] and "Long police chase ends in crash" in seen["plan"]
+    ids = [s["id"] for s in result["items"][0]["sources"]]
+    assert ids[0] == "ownlink0001" and "anime1" not in ids and any("de otra cosa" in n for n in result["notes"])
