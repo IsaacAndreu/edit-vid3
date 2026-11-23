@@ -667,6 +667,11 @@ async function materialVideoPage(slug) {
       ${e.summary.weak.length ? `<div class="small t-bad">Poco material: ${e.summary.weak.map(esc).join(", ")}</div>` : ""}
       ${(e.notes || []).length ? `<div class="small muted">${e.notes.map(esc).join(" · ")}</div>` : ""}
       <div class="small muted">Unidades de API: ${e.apiUnits}</div>` : (running ? "" : `<div class="muted mt-2">Aún no hay expediente.</div>`)}
+    ${(jobs.montar || {}).running ? `<div class="notice mt-2">Montando… (bajar, comprobar, voz, render: puede tardar una hora)</div>` : ""}
+    ${(jobs.montar || {}).failed ? `<div class="notice mt-2 t-bad">El montaje falló: ${esc(((jobs.montar || {}).log || "").slice(-300))}</div>` : ""}
+    ${r.montaje ? `<div class="card mt-3"><b>Montado</b>: ${r.montaje.seconds} s · ${r.montaje.clips} tramos · gancho de ${r.montaje.hookCuts} cortes
+      · declaraciones comprobadas: ${Object.values(r.montaje.statementsChecked || {}).filter((v) => v >= 0.55).length} de ${Object.keys(r.montaje.statementsChecked || {}).length}
+      ${r.hasVideo ? ` · <a href="#/video/${encodeURIComponent(slug)}">ver el vídeo</a>` : ""}</div>` : ""}
     ${typeof bloquesView === "function" && r.bloques ? bloquesView(slug, r.bloques) : ""}
     ${items}`);
 }
@@ -684,6 +689,8 @@ function bloquesView(slug, b) {
       · ${e.clips} tramos a bajar: <b>~${e.downloadMB} MB por el proxy</b></span></div>
     ${b.criterion ? `<div class="small">Orden: ${esc(b.criterion)}</div>` : ""}
     ${(b.notes || []).length ? `<div class="small t-bad">${b.notes.map(esc).join(" · ")}</div>` : ""}
+    <div class="row mt-2"><button class="main" onclick="if(confirm('Va a bajar unos ${e.downloadMB} MB por el proxy y a gastar en la voz del narrador. ¿Seguimos?'))post('/api/material-primero/${encodeURIComponent(slug)}/montar',{confirm:true}).then(()=>materialVideoPage('${esc(slug)}'))">Montar el vídeo</button>
+      <span class="small muted">Baja los tramos, comprueba cada declaración, pone la voz al narrador, monta el gancho y renderiza.</span></div>
     <div class="tablewrap"><table class="small">${(b.blocks || []).map((x, i) => `<tr><td class="nw">${label[x.type] || x.type}</td><td>${body(x)}</td>
       <td class="nw"><button class="small" onclick="${act(i, "quitar")}">Quitar</button>${x.type === "declaracion" ? ` <button class="small" onclick="${act(i, "cambiar")}">Cambiar</button>` : ""}</td></tr>`).join("")}</table></div></section>`;
 }

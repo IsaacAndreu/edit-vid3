@@ -44,9 +44,20 @@ Escribe el vídeo como una lista de BLOQUES:
 - {{"type": "secuencia", "ref": "id", "start": s, "end": s}}: el suceso grabado, con su sonido bajo la voz (segundos dentro
   del tramo; de 6 a {cap} segundos).
 {order_rule}
+{structure}
 Devuelve SOLO JSON: {{"criterion": "el criterio del orden, dicho con un dato", "criterion_refs": ["id"],
 "blocks": [ ... en el orden en que se ven ... ]}}
 """.strip()
+
+STRUCTURES = {
+    "top": "Estructura: cada puesto abre con su tarjeta; dentro, el suceso grabado con la voz encima, una o dos personas "
+           "que estuvieron allí, y más metraje; de 50 a 75 segundos por puesto. El número 1 al final.",
+    "noticia": "Estructura de NOTICIA: qué ha pasado (lo grabado, en los primeros segundos), quién y dónde, el contexto que "
+               "hace falta para entenderlo, las reacciones (los testimonios), y qué pasa ahora. Tarjetas solo para separar "
+               "partes (sin número), una ficha de persona si alguien es clave.",
+    "documental": "Estructura de DOCUMENTAL: capítulos con su tarjeta (título, sin número de puesto); dentro de cada uno, los "
+                  "hechos en orden, con quienes los vivieron contándolos; el narrador da el contexto y las fechas.",
+}
 
 ORDER_RULE = ("El ORDEN del top tiene que poder justificarse con un dato del expediente (duración, velocidad, daños, "
               "kilómetros): elige el criterio, ordena por él (del puesto más bajo al número 1) y dilo en la narración.")
@@ -116,7 +127,8 @@ def check(raw: dict[str, Any], index: dict[str, dict[str, Any]], cap: float, kin
                            "channel": seg.get("channel"), "start": seg["start"], "end": min(seg["end"], seg["start"] + cap),
                            "said": seg["said"], "lang": seg.get("lang"),
                            "translation": " ".join(str(raw_block.get("translation") or "").split())[:600] or None,
-                           "speaker": who.get("name") or None, "role": who.get("role") or "otro"})
+                           "speaker": who.get("name") or None, "role": who.get("role") or "otro",
+                           "gender": who.get("gender"), "seen": seg.get("seen") or ""})
         elif kind_ == "secuencia":
             seg = index.get(str(raw_block.get("ref") or ""))
             if seg is None:
@@ -131,7 +143,8 @@ def check(raw: dict[str, Any], index: dict[str, dict[str, Any]], cap: float, kin
             if end - start < 2:
                 continue
             blocks.append({"type": "secuencia", "ref": seg["id"], "source": seg["source"], "url": seg.get("url"),
-                           "channel": seg.get("channel"), "start": round(start, 2), "end": round(end, 2)})
+                           "channel": seg.get("channel"), "start": round(start, 2), "end": round(end, 2),
+                           "seen": seg.get("seen") or ""})
     criterion = " ".join(str(raw.get("criterion") or "").split())[:200]
     criterion_refs = [r for r in raw.get("criterion_refs") or [] if r in index]
     if kind == "top" and not (criterion and criterion_refs):
@@ -172,8 +185,15 @@ def write(ctx: Any, ask: Callable[[str, str], dict[str, Any]] | None = None) -> 
                                  max_tokens=8000, system=system, user=user)
     unit, unit_one = {"top": ("puesto", "cada puesto"), "noticia": ("parte", "cada parte"),
                       "documental": ("capítulo", "cada capítulo")}.get(kind, ("puesto", "cada puesto"))
+    structure = STRUCTURES.get(kind, "")
+    own = str((ctx.config.get("guion") or {}).get("estructura") or "").strip()
+    if own:                                   # the channel's own structure (guion.estructura) on top, like the normal mode
+        from .organizar import STRUCTURES as CHANNEL_STRUCTURES
+
+        structure += "\nEstructura del canal: " + CHANNEL_STRUCTURES.get(own, own)
     system = SYSTEM.format(kind=kind, tone=str(cfg.get("tone") or "serio y directo"), minutes=expediente.get("minutes", 6),
-                           unit=unit, unit_one=unit_one, cap=int(cap), order_rule=ORDER_RULE if kind == "top" else "")
+                           unit=unit, unit_one=unit_one, cap=int(cap), order_rule=ORDER_RULE if kind == "top" else "",
+                           structure=structure)
     raw = ask(system, f"TÍTULO: {expediente.get('title')}\n\nEXPEDIENTE:{listing(expediente, index)}")
     result = check(raw, index, cap, kind)
     result.update({"title": expediente.get("title"), "kind": kind, "estimate": estimate(result["blocks"])})

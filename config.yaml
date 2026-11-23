@@ -520,6 +520,18 @@ queue:                             # cola nocturna (python main.py --all)
 #                     # Propuesta: gimnasia/atletismo/patinaje → persona; crímenes y sucesos → suceso; GTA → teoria
 #                     # Mide: python -m pipeline.medir_video <vídeo> --referencia <mp4 de referencia>
 
+# Modo «material primero» (Nuevo vídeo → Material primero; pipeline/expediente.py, bloques.py, montaje_mf.py)
+# material_first:
+#   sources_per_item: 4        # fuentes por puesto (3-6)
+#   max_sources: 24            # tope de fuentes del vídeo
+#   api_units: 2500            # tope de unidades de API por vídeo (búsquedas de la investigación)
+#   max_mb: 1500               # tope de MB de descargas por el proxy; más, el vídeo no se monta
+#   hook: true                 # el gancho (un «director» elige los cortes), hasta hook_seconds
+#   hook_seconds: 60
+#   dub_testimonies: subtitulo # subtitulo (voz original y subtítulo) · una_voz · por_persona (siempre «voz doblada»)
+#   dub_voices: {documental: {voice_id: …}, hombres: [{voice_id: …}], mujeres: [{voice_id: …}]}   # del catálogo de Voces
+# Tope de clip propio del modo, por canal: content.max_third_party_seconds en el perfil (propuesta 45)
+
 qa:
   # max_empty_seconds: 1        # un plano sin clip, foto ni gráfico más de esto bloquea el render (pantalla vacía)
   max_empty_share: 0.6             # más planos sin imagen que esto → no se monta (era 0,5; con las fotos del protagonista quedan menos)

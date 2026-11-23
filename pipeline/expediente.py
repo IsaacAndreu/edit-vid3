@@ -56,6 +56,7 @@ las escenas que se ven). Señala los TRAMOS ÚTILES para un vídeo sobre ese suc
 - "dato": la fuente dice un dato concreto (velocidad, duración, kilómetros, daños, condena).
 Para cada tramo: start y end en segundos (de la transcripción), qué se ve, el tipo, y quién habla:
 {{"name": nombre SOLO si está escrito o dicho en la fuente (si no, null), "role": uno de {roles},
+"gender": "hombre", "mujer" o null (por la voz y lo que se ve; solo para elegir la voz de un doblaje),
 "evidence": de dónde lo sacas ("dicho en el vídeo", "título", "descripción", "deducido"), "confidence": 0-1}}.
 No inventes nombres. No copies frases: los tiempos bastan (la frase literal se lee de la transcripción).
 Devuelve SOLO JSON: {{"segments": [{{"start": 12.0, "end": 24.5, "type": "declaracion", "seen": "...",
@@ -161,6 +162,7 @@ def clean_segments(raw: dict[str, Any], words: list[tuple[str, float, float]], v
                     "speaker": {"name": kept, "role": role if role in ROLES else "otro",
                                 "evidence": str(speaker.get("evidence") or "")[:60],
                                 "confidence": round(confidence if kept or not name else confidence * 0.5, 2),
+                                "gender": speaker.get("gender") if speaker.get("gender") in ("hombre", "mujer") else None,
                                 "droppedName": name if name and not kept else None}
                     if kind == "declaracion" else None})
     return out

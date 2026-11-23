@@ -382,7 +382,16 @@ caracteres del guion, sin el render).
 | 1 | Investigación y expediente (`pipeline/expediente.py`): puestos con búsquedas en el idioma del material, 3-6 fuentes por puesto (quien grabó antes que quien resume), subtítulos con tiempos, tramos útiles (declaración, secuencia, dato) con la frase literal releída de los subtítulos y quién habla con nota de seguridad; un nombre solo si está escrito o dicho en la fuente. Página «Material primero» (`#/material`) | hecho · `python main.py --expediente <vídeo>` |
 | 2 | Guion por bloques (`pipeline/bloques.py`): narrador con referencias (frase con dato sin fuente: fuera), declaración (frase y quién habla siempre del expediente), secuencia (dentro del tramo y del tope del canal), tarjeta; orden del top justificado con un dato; quitar y cambiar declaraciones; MB de las descargas antes de gastar | hecho · `python main.py --bloques <vídeo>` |
 | — | Tres caminos en «Nuevo vídeo» (con mi guion, desde un título, material primero, que avisa de que tarda y gasta más); cada vídeo guarda su `modo` (ficha y «Experimentos» lo comparan); desde «Desde un título», si medio guion no tiene imagen, un botón lleva título y enlaces a «Material primero» | hecho · el trozo común del formulario (voz, música, idioma) se comparte cuando llegue el montaje (etapa 3) |
-| 3-6 | Montaje del top de tres, gancho (paso propio: «director» que elige cortes), noticia/documental, doblaje de declaraciones (subtítulo por defecto; una voz para todos o una por persona) | pendiente; tras la 3, vídeo de prueba que el dueño ve entero antes de la 4 |
+| 3 | Montaje (`pipeline/montaje_mf.py`, `--montar`): tope de MB antes de bajar; tramos exactos con sonido; texto ajeno que cubre la imagen → otra toma; cada declaración transcrita y comparada con la frase (`quotes.min_match`); voz solo del narrador; planos largos (la voz sobre el metraje de su puesto, la declaración tal cual con subtítulo y quién habla); fuente siempre arriba a la derecha (también bajo el subtítulo de una declaración); tarjeta «PUESTO 03» | hecho · prueba de extremo a extremo de un top de 3 y fotogramas renderizados con Remotion |
+| 4 | Gancho: paso propio, un «director» elige y ordena cortes de los momentos (nunca del número 1), ≤ 60 s, sonido original subtitulado y alguna palabra grande; luego la tarjeta del título | hecho |
+| 5 | Noticia y documental: su propia estructura de bloques (sin orden de top) y la estructura del canal encima | hecho |
+| 6 | Doblaje de declaraciones (`material_first.dub_testimonies`): subtítulo (por defecto), una voz para todos, o una por persona (hombre/mujer por quien habla), el original debajo y «voz doblada» en el rótulo; voces del catálogo, nunca una imitación | hecho |
+| — | Medidas del formato en `medir_video`: segundos de gancho, plano medio fuera del gancho, % de voz ajena, fuentes | hecho |
+
+Pendiente o sin comprobar: el revisor adaptado (quien habla = rótulo; secuencia del suceso del puesto); el recorte del
+texto ajeno cuando ocupa solo la franja de abajo (hoy se descarta si cubre la imagen, y una franja pequeña pasa sin
+recortar); la mezcla real (volúmenes) y la voz real; ningún vídeo real todavía. **El vídeo de prueba que pedía el
+plan antes del gancho no se ha visto**: el dueño pidió hacerlo todo seguido.
 
 Sin comprobar sin el servidor: búsquedas, subtítulos y respuestas del modelo reales; el OCR del rótulo (para quién
 habla) va con el clip bajado, en la etapa 3.

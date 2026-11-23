@@ -54,7 +54,17 @@ def from_timeline(timeline: dict[str, Any]) -> dict[str, Any]:
     labels = sum(1 for g in timeline.get("groups") or []
                  if g.get("kind") in ("datacard", "stat") or str((g.get("graphic") or {}).get("type")) in LABEL_TYPES)
     screen = screen_measures(timeline)
-    return {"seconds": round(seconds, 1), "cutSeconds": round(seconds / (cuts + 1), 2) if seconds else None,
+    # «material primero» (prompts/modo-material-primero-prompt.md): the hook, long shots, the other people's voices
+    first = next((i for i, s in enumerate(shots) if not s.get("coldOpen")), len(shots))   # the hook: the opening cuts
+    hook = sum(int(s.get("durationInFrames") or 0) for s in shots[:first])
+    rest = [s for s in shots[first:] if s.get("type") == "broll"]
+    voices = sum(int(s.get("durationInFrames") or 0) for s in rest if s.get("coldOpen"))
+    material = {"hookSeconds": round(hook / fps, 1) if fps else 0.0,
+                "meanShotSeconds": round(sum(int(s.get("durationInFrames") or 0) for s in rest) / len(rest) / fps, 1)
+                if rest and fps else None,
+                "otherVoiceShare": round(100 * voices / total, 1) if total else 0.0,
+                "sources": len({(s.get("media") or {}).get("credit") for s in shots if (s.get("media") or {}).get("credit")})}
+    return {**material, "seconds": round(seconds, 1), "cutSeconds": round(seconds / (cuts + 1), 2) if seconds else None,
             "firstImage": screen["firstImage"], "textShare": screen["textShare"],
             "cardShare": round(100 * card / total, 1) if total else 0.0,
             "labelsPerMinute": round(labels / (seconds / 60), 2) if seconds else None, "how": "montaje"}

@@ -2232,7 +2232,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     work = MaterialContext.create(slug, root=root).work_dir
                     return self._ok({"slug": slug, "expediente": _json(work / expediente.OUTPUT),
                                      "bloques": _json(work / "bloques.json"),
-                                     "jobs": {n: job_state(root, f"{n}-{slug}") for n in ("expediente", "bloques")}})
+                                     "montaje": _json(work / "montaje_mf.json"),
+                                     "hasVideo": (root / "out" / slug / "video-final.mp4").is_file(),
+                                     "jobs": {n: job_state(root, f"{n}-{slug}") for n in ("expediente", "bloques", "montar")}})
                 if path == "/api/recomendaciones":          # «Qué hacer ahora»: empezar, doblar, dejar o cambiar
                     from . import recomendar
 
@@ -2723,6 +2725,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloques", path):   # the script by blocks
                     slug = urllib.parse.unquote(match.group(1))
                     return self._ok(background(root, f"bloques-{slug}", ["--bloques", slug]))
+                if match := re.fullmatch(r"/api/material-primero/([^/]+)/montar", path):   # {confirm}: after the MB
+                    slug = urllib.parse.unquote(match.group(1))
+                    if not body.get("confirm"):
+                        raise ValueError("Confirma antes los MB que va a bajar por el proxy")
+                    return self._ok(background(root, f"montar-{slug}", ["--montar", slug]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloque", path):    # {position, action, ref}
                     from . import bloques
                     from .context import RunContext as BlocksContext    # an alias: never shadow the handler's name
