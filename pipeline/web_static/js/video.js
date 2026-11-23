@@ -647,6 +647,7 @@ async function videoPage(slug) {
         `<tr><td>${esc(STAGES[s.name] || s.name)}</td><td class="r nw">${mins(s.seconds)}</td><td class="r nw">${s.ram ?? "—"} GB</td><td class="r nw">${s.cpu ?? "—"} %</td></tr>`).join("")}</table>`
     : `<div class="md">${md(docs[tab][1], base)}</div>`;
   const primary = v.status === "error" ? '<button class="main" onclick="act(\'retry\')">Reintentar</button>'
+    : v.status === "material primero" ? `<a class="btn main" href="#/material/${encodeURIComponent(v.slug)}">Seguir en Material primero</a>`
     : v.status === "en cola" || v.status === "incompleto" && v.stagesDone ? '<button class="main" onclick="act(\'retry\')">Hacer ahora</button>'
     : v.status === "haciendo" ? '<button onclick="ask(\'¿Parar este vídeo y sacarlo de la cola? Lo ya hecho se guarda.\', {ok: \'Parar\', danger: true}).then((yes) => yes && act(\'stop\'))">Parar</button>'
     : v.status === "en pausa" ? '<button class="main" onclick="act(\'unhold\')">Volver a la cola</button>'

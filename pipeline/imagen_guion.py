@@ -166,10 +166,47 @@ podrán enseñar en pantalla (nadie grabó lo que cuentan), cada una con una ide
 esas frases para que cuenten lo mismo apoyándose en algo que sí se grabó o se fotografió: el momento concreto, con
 su fecha y su lugar; una cita real; un dato que se pueda rotular. Mismo idioma, mismo tono, misma longitud más o
 menos, y que encaje con la frase de antes y la de después. No inventes hechos: si hay MATERIAL DE REFERENCIA, sácalos
-de ahí; si una frase no tiene arreglo sin inventar, déjala igual.
+de ahí; si una frase no tiene arreglo sin inventar, déjala igual. Que suene natural, dicho en voz alta: no repitas la
+misma fecha o el mismo dato en frases seguidas, y no metas una cifra donde no aporta nada. Nunca toques los títulos de
+capítulo.
 
 Devuelve SOLO JSON: {"cambios": [{"n": 3, "nueva": "la frase reescrita"}]}
 """
+
+
+def headings(script: str) -> list[str]:
+    """The chapter titles of a script: «## …» lines and lines written all in capitals (2+ words, no final period)."""
+
+    out = []
+    for line in script.splitlines():
+        text = line.strip()
+        letters = re.sub(r"[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", "", text)
+        if text.startswith("#") or (len(text.split()) >= 2 and letters and text == text.upper()
+                                     and not text.endswith(".")):
+            out.append(text)
+    return out
+
+
+def without_heading(sentence: str, titles: list[str]) -> tuple[str, str]:
+    """(title, rest): the sentence splitter glues a chapter title to the sentence after it; the title is never
+    rewritten."""
+
+    flat = " ".join(sentence.split())
+    for title in titles:
+        head = " ".join(title.split())
+        if flat.startswith(head + " "):
+            return title, flat[len(head):].strip()
+    return "", flat
+
+
+def restore_headings(original: str, fixed: str) -> str:
+    """Every chapter title of `original` on its own line again in `fixed` (a rewrite that glued «## TITLE» to the
+    next sentence made the whole paragraph a chapter title: newgym9)."""
+
+    for title in headings(original):
+        pattern = r"(^|\n)[ \t]*" + r"\s+".join(re.escape(w) for w in title.split()) + r"[ \t]+(?=\S)"
+        fixed = re.sub(pattern, lambda m: f"{m.group(1)}{title}\n\n", fixed, count=1)
+    return fixed
 
 
 def replace_sentence(script: str, old: str, new: str) -> str:
@@ -188,7 +225,12 @@ def fix(ctx: Any, script: str, title: str = "", references: str = "", review_fn:
 
     look = review_fn or review
     before = look(ctx, script, title)
-    todo = [r for r in before["sinImagen"]]
+    titles = headings(script)
+    todo = []
+    for r in before["sinImagen"]:
+        _, rest = without_heading(r["text"], titles)       # the chapter title stays as it is
+        if len(rest.split()) >= 3:
+            todo.append({**r, "text": rest})
     if not todo:
         return {"script": script, "changed": 0, "before": before, "after": before}
     listing = "\n".join(f"[{r['n']}] {r['text']}" + (f"  (idea: {r['idea']})" if r.get("idea") else "") for r in todo)
@@ -216,6 +258,7 @@ def fix(ctx: Any, script: str, title: str = "", references: str = "", review_fn:
             again = replace_sentence(fixed, by_n[n], new)
             if again != fixed:
                 fixed, changed = again, changed + 1
+    fixed = restore_headings(script, fixed)
     after = look(ctx, fixed, title) if changed else before
     return {"script": fixed, "changed": changed, "before": before, "after": after}
 
@@ -313,3 +356,31 @@ def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None,
            else "ya se intentó reescribir")
     tell(f"{stopped} — sigo igualmente ({why}): el relleno, las fotos y las pizarras taparán lo que no tenga imagen")
     return ""
+
+
+def repair(root: Any, slug: str) -> int:
+    """`python -m pipeline.imagen_guion <vídeo>`: a script rewritten before this fix gets its chapter titles back on
+    their own lines (from guion.original.txt). Returns how many were repaired; the voice must be made again."""
+
+    from .context import RunContext
+
+    folder = RunContext.create(slug, root=root).materials_dir
+    original = (folder / "guion.original.txt").read_text("utf-8")
+    current = (folder / "guion.txt").read_text("utf-8")
+    fixed = restore_headings(original, current)
+    count = sum(1 for a, b in zip(current.splitlines(), fixed.splitlines()) if a != b) if fixed != current else 0
+    if fixed != current:
+        (folder / "guion.txt").write_text(fixed, encoding="utf-8")
+    return count
+
+
+if __name__ == "__main__":
+    import sys
+
+    from .config import PROJECT_ROOT
+
+    if len(sys.argv) != 2:
+        print("Uso: python -m pipeline.imagen_guion <vídeo>   (vuelve a poner en su línea los títulos de capítulo)")
+        raise SystemExit(2)
+    fixed_titles = repair(PROJECT_ROOT, sys.argv[1])
+    print(f"{fixed_titles} título(s) de capítulo vueltos a su línea" if fixed_titles else "Los títulos ya estaban bien")

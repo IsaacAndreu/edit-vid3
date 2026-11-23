@@ -531,7 +531,8 @@ def run(root: Path, slug: str, *, youtube: Any = None, fetch_fn: Callable | None
             from . import tts
 
             def speak_with(text: str, voice: dict[str, Any], target: Path) -> Path:
-                tts.generate(tts.keys(root), text, voice, target)
+                # only {voice_id} in the config: the model and provider defaults, as every voice of the catalogue
+                tts.generate(tts.keys(root), text, tts.with_defaults(dict(voice)), target)
                 return target
         dubbed = dub(ctx, blocks, clips, voices, speak_with)
     timeline = assemble(ctx, blocks, clips, seconds, voice, items, hook, str(data.get("title") or ""), dubbed,
