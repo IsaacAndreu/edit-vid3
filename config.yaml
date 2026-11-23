@@ -636,6 +636,9 @@ compilations:                      # compilaciones largas (python main.py --comp
   keep_days: 30                    # …hasta 30 días, hasta que entra en una o hasta que falta disco (cleanup.min_free_gb)
 
 watch:
+  # retry_now: 2                   # un vídeo que falla se reintenta casi enseguida (retry_minutes) sus primeras 2 veces seguidas;
+  # retry_minutes: 1               # solo si sigue fallando igual espera retry_hours (para no gastar la noche en uno imposible)
+  # retry_hours: 6
   continue_without_youtube: false  # con YouTube en pausa, los vídeos que aún lo necesitan siguen sin él (pipeline/sin_youtube.py):
                                    # ninguna petición a YouTube, se reutiliza lo ya hecho y solo se termina si la cobertura no es
                                    # peor que la habitual del canal; si no, espera a YouTube. Mejor por canal (canales/<canal>.yaml)

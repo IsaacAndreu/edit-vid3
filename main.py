@@ -422,9 +422,11 @@ def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
     except ValueError:
         state = {}
     try:
-        retry = float(RunContext.create("_vigilar", root=root).section("watch").get("retry_hours", 6)) * 3600
+        watch_cfg = RunContext.create("_vigilar", root=root).section("watch")
     except Exception:
-        retry = 6 * 3600
+        watch_cfg = {}
+    from pipeline import reintentos
+
     order = {slug: i for i, slug in enumerate(pending_slugs(root))}
     # this round so far (out/_cola.md): a video already tried waits for the round to end, then retry_hours
     tried: dict[str, str] = {}
@@ -457,8 +459,8 @@ def queue_reasons(root: Path = PROJECT_ROOT) -> list[str]:
             why = "espera la cuota de la API"
         elif d.name not in order:
             why = "no entra (otro vídeo con el mismo nombre)"
-        elif info.get("sig") == _materials_signature(root, d.name) and time.time() - info.get("at", 0) < retry:
-            again = datetime.fromtimestamp(info.get("at", 0) + retry)
+        elif reintentos.held(watch_cfg, info, _materials_signature(root, d.name)):
+            again = datetime.fromtimestamp(reintentos.retry_at(watch_cfg, info))
             why = f"falló ({info.get('status', 'error')}): se reintenta a las {again:%H:%M} o con «Reintentar»"
         elif running(_json(root / "work" / d.name / "current.json")):
             why = "HACIÉNDOSE AHORA"
@@ -880,8 +882,9 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
             state = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
         except ValueError:
             state = {}
-        skip = {slug for slug, info in state.items()
-                if info.get("sig") == _materials_signature(root, slug) and time.time() - info.get("at", 0) < retry}
+        from pipeline import reintentos
+
+        skip = {slug for slug, info in state.items() if reintentos.held(cfg, info, _materials_signature(root, slug))}
         from pipeline import dub
 
         waiting = [slug for slug in pending_slugs(root) if slug not in skip] + [
@@ -896,8 +899,7 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 now = json.loads(state_path.read_text("utf-8")) if state_path.is_file() else {}
             except ValueError:
                 now = {}
-            held = {slug for slug, info in now.items()
-                    if info.get("sig") == _materials_signature(root, slug) and time.time() - info.get("at", 0) < retry}
+            held = {slug for slug, info in now.items() if reintentos.held(cfg, info, _materials_signature(root, slug))}
             fresh = [slug for slug in pending_slugs(root) if slug not in held]
             from pipeline import dub as _dub
 
@@ -917,8 +919,10 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 if status == "OK":
                     now.pop(slug, None)
                 else:
-                    now[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
-                                 "code": running_code or git_head(root)}
+                    signature = _materials_signature(root, slug)
+                    now[slug] = {"sig": signature, "at": time.time(), "status": status,
+                                 "code": running_code or git_head(root),
+                                 "tries": reintentos.failed_again(now.get(slug), signature)}   # in a row: the wait
                 return now
 
             update_json(state_path, change, {})
