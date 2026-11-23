@@ -53,3 +53,19 @@ def test_the_longest_run_of_each_source():
     runs = tope.longest_runs(timeline)
     assert runs[0] == {"source": "Fuente: A", "seconds": 9.0, "at": 0.0, "src": "a.mp4"}
     assert runs[1]["source"] == "Fuente: B" and runs[1]["seconds"] == 3.0
+
+
+def test_the_opening_may_run_as_long_as_it_was_chosen_with(tmp_path: Path):
+    """newgym5: a 17 s opening (apertura.max_seconds, 20) blocked by QA's 15 s for clips with their own sound."""
+
+    from types import SimpleNamespace as NS
+
+    from pipeline.qa import clip_limit
+
+    (tmp_path / "config.yaml").write_text("content: {max_third_party_seconds: 12}\n")
+    ctx = RunContext.create("v", root=tmp_path)
+    assert clip_limit(ctx, NS(id="apertura", coldOpen=True), 12.0) == 20.0
+    assert clip_limit(ctx, NS(id="quote-1", coldOpen=True), 12.0) == 15.0          # a quote keeps its 15 s
+    assert clip_limit(ctx, NS(id="s001", coldOpen=False), 12.0) == 12.0
+    (tmp_path / "config.yaml").write_text("apertura: {max_seconds: 25}\n")
+    assert clip_limit(RunContext.create("v", root=tmp_path), NS(id="apertura", coldOpen=True), 5.0) == 25.0

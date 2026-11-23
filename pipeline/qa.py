@@ -86,6 +86,18 @@ def inputs(ctx: RunContext) -> list:
             ctx.work_dir / "media" / "_ingest.json"]
 
 
+def clip_limit(ctx: Any, shot: Any, cap: float) -> float:
+    """How long one third-party clip may run on screen: the channel's cap; a clip with its own sound (cold open,
+    quote) up to 15 s; the opening up to what it was chosen with, apertura.max_seconds (20) — newgym5: a 17 s
+    opening, valid where it was picked, blocked the render against a stricter 15 s here."""
+
+    if not shot.coldOpen:
+        return cap
+    from .apertura import longest as opening_seconds
+
+    return max(15.0, cap, opening_seconds(ctx) if shot.id == "apertura" else 0.0)
+
+
 def empty_spans(timeline: Timeline) -> list[tuple[str, float]]:
     """(shot id, seconds) of every footage shot that shows nothing: no media of its own and the longest stretch of it
     no graphic (board, card, chart) covers."""
@@ -163,7 +175,7 @@ def run(ctx: RunContext) -> None:
             # own length can run a little over (audio track or container padding: avion9 s202 «5.27 s» showed 5 s)
             shown = shot.durationInFrames / fps * float(shot.media.rate or 1.0)
             cap = tope.seconds(ctx)                # content.max_third_party_seconds of this video
-            limit = max(15.0, cap) if shot.coldOpen else cap
+            limit = clip_limit(ctx, shot, cap)
             if shot.media.source in THIRD_PARTY and shown > limit + 1 / fps:
                 blockers.append(f"{shot.id}: clip de terceros de {shown:.2f} s (máximo {limit:.0f} s)")
             elif shot.media.source in THIRD_PARTY and seconds > limit + 1:
