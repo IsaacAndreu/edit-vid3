@@ -68,3 +68,49 @@ def test_the_run_starts_over_once_after_a_rewrite(ctx, monkeypatch):
 
     monkeypatch.setattr(runner, "_run_stages", fake)
     assert runner.run_stages(ctx) == ["sourcing"] and len(calls) == 2
+
+
+ORIGINAL = """Nunca fue a unos Juegos Olímpicos. Llegó a cobrar mucho dinero.
+
+## EL CAMBIO DE REGLAS DE 2021
+
+Hasta 2021, en Estados Unidos, un deportista universitario no podía ganar dinero con su imagen. Ni anuncios.
+
+LA VIDA DESPUÉS DE LA GIMNASIA
+
+Si alguien pensaba que su fama se apagaría al dejar la gimnasia, se equivocaba.
+"""
+
+GLUED = ORIGINAL.replace("## EL CAMBIO DE REGLAS DE 2021\n\nHasta 2021", "## EL CAMBIO DE REGLAS DE 2021 Hasta julio de 2021") \
+    .replace("LA VIDA DESPUÉS DE LA GIMNASIA\n\nSi alguien", "LA VIDA DESPUÉS DE LA GIMNASIA Tras el anuncio, si alguien")
+
+
+def test_chapter_titles_go_back_on_their_own_line_newgym9():
+    fixed = imagen_guion.restore_headings(ORIGINAL, GLUED)
+    assert "## EL CAMBIO DE REGLAS DE 2021\n\nHasta julio de 2021" in fixed
+    assert "LA VIDA DESPUÉS DE LA GIMNASIA\n\nTras el anuncio" in fixed
+    assert imagen_guion.restore_headings(ORIGINAL, ORIGINAL) == ORIGINAL                 # nothing to repair: unchanged
+
+
+def test_a_title_glued_to_a_sentence_is_never_sent_to_be_rewritten(ctx):
+    sent = {}
+
+    def review(c, script, title):
+        return {"sinImagen": [{"n": 3, "text": "## EL CAMBIO DE REGLAS DE 2021 Hasta 2021, en Estados Unidos, un "
+                                              "deportista universitario no podía ganar dinero con su imagen.", "idea": ""}],
+                "shares": {"sin_imagen": 40}}
+
+    def ask(user):
+        sent["user"] = user
+        return {"cambios": [{"n": 3, "nueva": "Hasta julio de 2021, la NCAA prohibía cobrar por la imagen."}]}
+
+    out = imagen_guion.fix(ctx, ORIGINAL, review_fn=review, ask=ask)
+    assert "[3] Hasta 2021" in sent["user"] and "[3] ## EL CAMBIO" not in sent["user"]
+    assert "## EL CAMBIO DE REGLAS DE 2021\n\nHasta julio de 2021, la NCAA" in out["script"] and out["changed"] == 1
+
+
+def test_the_repair_command_fixes_a_script_already_rewritten(ctx):
+    (ctx.materials_dir / "guion.original.txt").write_text(ORIGINAL)
+    (ctx.materials_dir / "guion.txt").write_text(GLUED)
+    assert imagen_guion.repair(ctx.root, "newgym9") == 2
+    assert imagen_guion.repair(ctx.root, "newgym9") == 0
