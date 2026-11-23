@@ -300,7 +300,7 @@ class ShotsFile(_Strict):
 
 # --- Stage 3: candidates/<shot_id>.json ---------------------------------------------
 
-Source = Literal["youtube", "wikimedia", "openverse", "pixabay", "web", "archive", "propio"]   # propio: your own clips
+Source = Literal["youtube", "wikimedia", "openverse", "pixabay", "web", "archive", "propio", "pexels"]   # propio: your own clips; pexels: the fallback's stock shown to the judge
 
 
 class AnalysisRange(_Strict):
