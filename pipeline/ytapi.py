@@ -235,6 +235,21 @@ class YouTubeAPI:
                           f"con {ledger['searches'].get(kid, 0)} búsquedas y {ledger['used'].get(kid, 0)} unidades contadas "
                           "aquí en esa clave: paso a la siguiente")
                     continue
+            if response.status_code == 429 and "quota" in str(_error(response).get("message") or response.text).lower():
+                # «Quota exceeded for quota metric 'Search Queries' … per day»: Google answers 429, not 403, for the
+                # searches of a project. That key's searches are over for today (its other calls still work): the
+                # next key, as with a 403 — it used to stop the whole search with ~1 600 searches left in the rest
+                with _LOCK:
+                    ledger = self._ledger()
+                    if endpoint == "search":
+                        ledger["searches"][kid] = self.searches_per_day
+                    else:
+                        ledger["exhausted"].append(kid)
+                    self._save_ledger(ledger)
+                self._journal({"endpoint": endpoint, "quotaExceeded": ["429"], "mismatch": True})
+                print(f"   API de YouTube: Google dice que esa clave no tiene más {'búsquedas' if endpoint == 'search' else 'cuota'}"
+                      " hoy (429): paso a la siguiente")
+                continue
             if response.status_code != 200:
                 message = _error(response).get("message") or response.text[:200]
                 raise RuntimeError(f"YouTube API {endpoint}: {response.status_code} {message}")

@@ -179,3 +179,25 @@ def test_every_call_is_written_down_and_a_lower_real_quota_is_reported(tmp_path,
     assert rows[0]["endpoint"] == "search" and rows[0]["searches"] == 1 and rows[1]["mismatch"] is True
     assert "k1" not in json.dumps(rows)                                # the key is never written
     assert "paso a la siguiente" in capsys.readouterr().out
+
+
+class Fake429(FakeYouTube):
+    """Google answers 429 «Quota exceeded … Search Queries per day» for k1's searches (not a 403)."""
+
+    def get(self, url: str, params: dict, timeout: int = 0) -> Response:
+        if url.endswith("/search") and params["key"] == "k1":
+            self.calls.append(("search", "k1"))
+            return Response(429, {"error": {"errors": [{"reason": "rateLimitExceeded"}],
+                                            "message": "Quota exceeded for quota metric 'Search Queries' and limit "
+                                                       "'Search Queries per day'"}})
+        return super().get(url, params, timeout)
+
+
+def test_a_429_on_searches_moves_to_the_next_key_instead_of_stopping(tmp_path):
+    fake = Fake429()
+    api = _api(tmp_path, fake)
+    assert api.search("x") == ["v1", "v2", "s1"]                    # k2 answered
+    assert [c for c in fake.calls if c[0] == "search"] == [("search", "k1"), ("search", "k2")]
+    api.search("y")
+    assert ("search", "k1") not in [c for c in fake.calls[2:] if c[0] == "search"]   # k1's searches over for today
+    assert api.videos(["v1"])[0]["id"] == "v1" and ("videos", "k1") in fake.calls    # its other calls still work

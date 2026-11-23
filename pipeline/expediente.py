@@ -225,8 +225,14 @@ def build(ctx: Any, title: str, kind: str = "top", count: int = 5, minutes: floa
             if len(taken) >= total_cap or not budget.allows(SEARCH_UNITS + 2):
                 notes.append(f"{item['name']}: búsqueda «{q}» sin hacer (tope de cuota del vídeo)")
                 continue
-            found += api.search(q, order="relevance", language=str(item.get("language") or "")[:2], max_results=15)
-            budget.spend(SEARCH_UNITS + 2)
+            try:
+                found += api.search(q, order="relevance", language=str(item.get("language") or "")[:2], max_results=15)
+                budget.spend(SEARCH_UNITS + 2)
+            except Exception as error:            # no API searches left today: yt-dlp's, as the normal mode does
+                if youtube is None:
+                    raise
+                found += [str(e["id"]) for e in (youtube.search(q) or [])[:15] if e.get("id")]
+                notes.append(f"{item['name']}: «{q}» buscado con yt-dlp ({str(error)[:80]})")
         videos = api.videos(list(dict.fromkeys(found))) if found else []
         chosen = pick_sources(videos, per_item, taken)
         if n - 1 < len(given):                         # the owner's own link always comes in, first
