@@ -133,3 +133,22 @@ def test_a_material_first_video_is_not_shown_as_missing_its_script_or_voice(tmp_
     slug = expediente.create(tmp_path, "Top 5 momentos más épicos de la gimnasia", kind="top", count=5)
     status = web.video_summary(tmp_path, tmp_path / "materiales" / slug, {})["status"]
     assert status == "material primero"                       # not «incompleto: falta guion o voz»
+
+
+def test_without_api_searches_left_the_case_file_searches_with_yt_dlp(tmp_path):
+    from pipeline.ytapi import NoKeysLeft
+
+    (tmp_path / "config.yaml").write_text("material_first: {keep_for_queue: 0}\n")
+    ctx = RunContext.create("top1", root=tmp_path)
+
+    class NoSearches(API):
+        def search(self, q, **kw):
+            raise NoKeysLeft("Cuota diaria de la API agotada")
+
+    class YtDlp(YouTube):
+        def search(self, q):
+            return [{"id": "orig1"}, {"id": "news1"}]
+
+    result = expediente.build(ctx, "Top persecuciones", count=1, api=NoSearches(), youtube=YtDlp(tmp_path), ask=ask)
+    assert [s["id"] for s in result["items"][0]["sources"]] == ["orig1", "news1"]
+    assert any("yt-dlp" in n for n in result["notes"])
