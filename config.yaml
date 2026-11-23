@@ -663,3 +663,7 @@ tts:
 #                              reescribirlo): aviso = te lo manda al Telegram y sigue; parar = además se para si
 #                              max_sin_imagen % o más no se puede enseñar. Una llamada por guion (lee otra vez si lo cambias)
 #   max_sin_imagen: 35
+#   arreglar_solo: true        # si lo anterior para un vídeo: reescribe solo las frases sin imagen, rehace la voz
+#                              # sintética (lo que no cambia no se paga) y vuelve a empezar; con tu voz grabada, o si
+#                              # ya se intentó, sigue igualmente avisando. false: se queda parado como antes
+#   arreglar_intentos: 1       # reescrituras automáticas por vídeo

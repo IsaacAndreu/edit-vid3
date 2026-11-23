@@ -303,8 +303,25 @@ def run_stages(
     until: str | None = None,
     review: bool = False,
 ) -> list[str]:
-    """Run stages in order. Returns the names of the stages actually executed."""
+    """Run stages in order. Returns the names of the stages actually executed. A script the image check rewrote by
+    itself (imagen_guion.rescue) starts the run over once, with the new script and voice."""
 
+    from .imagen_guion import ScriptRewritten
+
+    try:
+        return _run_stages(ctx, force=force, until=until, review=review)
+    except ScriptRewritten as rewritten:
+        print(f"   {rewritten}")
+        return _run_stages(ctx, force=force, until=until, review=review)
+
+
+def _run_stages(
+    ctx: RunContext,
+    *,
+    force: set[str] | None = None,
+    until: str | None = None,
+    review: bool = False,
+) -> list[str]:
     force = set(force or ())
     unknown = force - set(STAGE_NAMES) - {"all"}
     if unknown:
@@ -351,6 +368,10 @@ def run_stages(
                 from .imagen_guion import gate
 
                 stopped = gate(ctx)                 # guion.revisar_antes (off): a script nobody can show, said now
+                if stopped:
+                    from .imagen_guion import rescue
+
+                    stopped = rescue(ctx, stopped)  # guion.arreglar_solo: rewrite it (and start over) or go on
                 if stopped:
                     raise RuntimeError("No empiezo a buscar: " + stopped)
                 checked[0] = True

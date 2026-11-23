@@ -219,3 +219,97 @@ def fix(ctx: Any, script: str, title: str = "", references: str = "", review_fn:
     after = look(ctx, fixed, title) if changed else before
     return {"script": fixed, "changed": changed, "before": before, "after": after}
 
+
+
+class ScriptRewritten(RuntimeError):
+    """The script was rewritten (and its synthetic voice made again): the video starts over with it."""
+
+
+def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None, send: Any = None) -> str:
+    """When the check stops a video (too much of its script cannot be shown), it fixes itself instead of waiting for
+    the owner (`guion.arreglar_solo`, on):
+
+    - with the channel's synthetic voice, the sentences without an image are rewritten over something filmed
+      (`fix`, with the video's reference links), the original kept as guion.original.txt, the voice made again (its
+      unchanged pieces are reused, not paid twice) and ScriptRewritten is raised: the video starts over with it.
+      At most `guion.arreglar_intentos` (1) times per video;
+    - with the owner's own recorded voice (it cannot be remade), or once the rewrite was tried, or when nothing could
+      be rewritten without inventing: the video goes on anyway and says so — the fill-in, photos and boards cover it.
+    Returns "" to go on, or the stop message when `guion.arreglar_solo` is off."""
+
+    import json
+
+    cfg = ctx.section("guion")
+    if not cfg.get("arreglar_solo", True):
+        return stopped
+    folder = ctx.materials_dir
+    path = ctx.work_dir / GATE_FILE
+    try:
+        state = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    tries = int(state.get("autoTries", 0))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    synthetic = bool(state.get("synthetic")) or (folder / "voz.genaipro.json").is_file() \
+        or not (folder / "voz.mp3").is_file()
+    state["synthetic"] = synthetic              # remembered: the remade voice is the program's too
+    note = None
+
+    def tell(text: str) -> None:
+        print(f"   {text}")
+        try:
+            if send is not None:
+                send(text)
+            else:
+                from . import notify
+
+                notify.telegram(ctx, f"{ctx.slug}: {text}")
+        except Exception:
+            pass
+
+    if synthetic and tries < int(cfg.get("arreglar_intentos", 1)):
+        script_path = folder / "guion.txt"
+        script = script_path.read_text("utf-8")
+        title_path = folder / "titulo.txt"
+        title = title_path.read_text("utf-8").strip().splitlines()[0] if title_path.is_file() else ""
+        refs = ""
+        if (folder / "referencias.txt").is_file():
+            try:
+                from . import referencias
+
+                refs = referencias.read(ctx, (folder / "referencias.txt").read_text("utf-8"))
+            except Exception:
+                refs = ""
+        try:
+            result = (fix_fn or fix)(ctx, script, title, refs)
+        except Exception as error:
+            result = {"changed": 0}
+            note = f"no se pudo reescribir ({str(error)[:100]})"
+        state["autoTries"] = tries + 1
+        if result.get("changed"):
+            if not (folder / "guion.original.txt").is_file():
+                (folder / "guion.original.txt").write_text(script, encoding="utf-8")
+            script_path.write_text(result["script"], encoding="utf-8")
+            before = (result.get("before") or {}).get("shares", {}).get("sin_imagen")
+            after = (result.get("after") or {}).get("shares", {}).get("sin_imagen")
+            state["autoFix"] = {"changed": result["changed"], "before": before, "after": after}
+            path.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+            for name in ("voz.mp3", "voz.genaipro.json"):         # the voice again, over the new script
+                (folder / name).unlink(missing_ok=True)
+            if ensure_voice is not None:
+                ensure_voice(ctx)
+            else:
+                from . import tts
+
+                tts.ensure(ctx, wait=True)
+            tell(f"guion arreglado solo: {result['changed']} frases sin imagen reescritas sobre algo grabado"
+                 + (f" (sin imagen: {before} % → {after} %)" if before is not None and after is not None else "")
+                 + "; voz rehecha; el vídeo vuelve a empezar. El original queda en guion.original.txt")
+            raise ScriptRewritten(f"guion reescrito ({result['changed']} frases): vuelvo a empezar con él")
+        note = note or "ninguna frase se pudo reescribir sin inventar"
+    state["continued"] = True
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    why = (note if note else "la voz es la tuya grabada: no se puede rehacer" if not synthetic
+           else "ya se intentó reescribir")
+    tell(f"{stopped} — sigo igualmente ({why}): el relleno, las fotos y las pizarras taparán lo que no tenga imagen")
+    return ""
