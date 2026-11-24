@@ -10,7 +10,10 @@ neighbours. Lines starting with ``## `` are chapter headings.
 from __future__ import annotations
 
 import difflib
+import os
 import re
+import shutil
+import subprocess
 import unicodedata
 from dataclasses import dataclass
 
@@ -32,6 +35,57 @@ def speech_end(words: list[Word]) -> float:
     """When the voice stops: the end of the last word, never more than WORD_SECONDS after it starts."""
 
     return max((min(w.end, w.start + WORD_SECONDS) for w in words), default=0.0)
+
+
+MAX_PAUSE_SECONDS = 4.0         # a longer pause between two words of the script is cut out of the voice
+PAUSE_KEEP_SECONDS = 1.0        # what is left of it
+
+
+def long_pauses(words: list[Word], max_pause: float = MAX_PAUSE_SECONDS,
+                keep: float = PAUSE_KEEP_SECONDS) -> list[tuple[float, float]]:
+    """The stretches (start, end) of the voice to cut: pauses between two words longer than `max_pause`, each one
+    left at `keep` seconds. Only two shots can share a pause (the one before and the one after, ≤ 5 s each), so a
+    longer one can never be cut into shots (newgym11: 27 s of nothing after «nada.» made a 13.67 s shot and the
+    planner fail on every retry)."""
+
+    cuts: list[tuple[float, float]] = []
+    for a, b in zip(words, words[1:]):
+        end = min(a.end, a.start + WORD_SECONDS)
+        if max_pause > 0 and b.start - end > max_pause:
+            cuts.append((round(end + keep / 2, 3), round(b.start - keep / 2, 3)))
+    return cuts
+
+
+def shifted(t: float, cuts: list[tuple[float, float]]) -> float:
+    """A time of the old voice in the voice without the cuts."""
+
+    return round(t - sum(min(t, end) - start for start, end in cuts if t > start), 3)
+
+
+def without_pauses(words_file: WordsFile, cuts: list[tuple[float, float]]) -> WordsFile:
+    words = [w.model_copy(update={"start": shifted(w.start, cuts), "end": shifted(w.end, cuts)}) for w in words_file.words]
+    chapters = [c.model_copy(update={"start": words[c.wordIndex].start}) for c in words_file.chapters]
+    return words_file.model_copy(update={"words": words, "chapters": chapters,
+                                         "durationSeconds": shifted(words_file.durationSeconds, cuts)})
+
+
+def cut_voice(source, target, cuts: list[tuple[float, float]]) -> None:
+    """`source` without the stretches in `cuts`, to `target` (mp3)."""
+
+    keep = " + ".join(f"between(t,{a:.3f},{b:.3f})" for a, b in _kept(cuts))
+    done = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", str(source),
+                           "-af", f"aselect='{keep}',asetpts=N/SR/TB", "-c:a", "libmp3lame", "-q:a", "2", str(target)],
+                          capture_output=True, timeout=900)
+    if done.returncode != 0:
+        raise RuntimeError(f"ffmpeg no pudo quitar las pausas de la voz: {done.stderr.decode(errors='replace')[-300:]}")
+
+
+def _kept(cuts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    kept, at = [], 0.0
+    for start, end in cuts:
+        kept.append((at, start))
+        at = end
+    return kept + [(at, 1e9)]
 
 
 def trimmed_duration(words: list[Word], duration: float) -> float:
@@ -321,6 +375,19 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
             f"Solo el {stats.matchRatio:.0%} de las palabras del guion se oyen en la voz "
             f"(mínimo {min_ratio:.0%}). ¿Corresponden guion.txt y voz.mp3?"
         )
+    cuts = long_pauses(words_file.words, float(ctx.section("align").get("max_pause_seconds", MAX_PAUSE_SECONDS)))
+    if cuts:
+        # the voice itself loses them (the original stays as voz.original.mp3), so picture and sound stay together
+        audio = ctx.materials_dir / "voz.mp3"
+        backup = ctx.materials_dir / "voz.original.mp3"
+        if not backup.exists():
+            shutil.copy2(audio, backup)
+        temporary = audio.with_name("voz.sin-pausas.mp3")
+        cut_voice(audio, temporary, cuts)
+        os.replace(temporary, audio)
+        words_file = without_pauses(words_file, cuts)
+        print("   Pausas largas quitadas de la voz: " + ", ".join(f"{b - a:.1f} s en {a:.0f} s" for a, b in cuts)
+              + " (la voz de antes: voz.original.mp3)")
     ctx.write_json(OUTPUT, words_file.model_dump())
     print(
         f"   {stats.scriptWords} palabras del guion, {stats.matchRatio:.1%} alineadas con el audio; "
@@ -333,4 +400,6 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
 def validate(ctx: RunContext) -> bool:
     words_file = WordsFile.model_validate(ctx.read_json(OUTPUT))
     # made before the tail was trimmed: again (Whisper's transcription is cached, so it costs nothing)
+    if long_pauses(words_file.words, float(ctx.section("align").get("max_pause_seconds", MAX_PAUSE_SECONDS))):
+        return False                        # a pause no shot can be cut in: the voice loses it
     return trimmed_duration(words_file.words, words_file.durationSeconds) >= words_file.durationSeconds - 1e-3

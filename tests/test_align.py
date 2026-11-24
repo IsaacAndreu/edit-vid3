@@ -119,3 +119,56 @@ class TailTests(unittest.TestCase):
     def test_a_short_tail_is_kept(self) -> None:
         words_file = _build("Hola mundo.", _raw([("hola", 0.0, 0.5), ("mundo", 0.6, 1.0)], 1.5))
         self.assertEqual(words_file.durationSeconds, 1.5)
+
+
+class PauseTests(unittest.TestCase):
+    """newgym11: 27 s with no word of the script after «nada.» — two shots can share a pause, never 27 s."""
+
+    def _words(self):
+        script = " ".join(f"palabra{i}." for i in range(20))
+        spoken = [(f"palabra{i}", i * 0.5, i * 0.5 + 0.4) for i in range(10)] \
+            + [(f"palabra{i}", 4.5 + 27 + (i - 9) * 0.5, 4.5 + 27 + (i - 9) * 0.5 + 0.4) for i in range(10, 20)]
+        return _build(script, _raw(spoken, 37.0))
+
+    def test_a_long_pause_is_cut_and_every_shot_fits(self) -> None:
+        from pipeline.align import long_pauses, without_pauses
+        from pipeline.planner import cut_shots
+
+        words_file = self._words()
+        cuts = long_pauses(words_file.words)
+        self.assertEqual(len(cuts), 1)
+        start, end = cuts[0]
+        self.assertAlmostEqual(start, 5.4, places=3)          # «palabra9» ends at 4.9, half the second kept after it
+        self.assertAlmostEqual(end, 31.5, places=3)           # «palabra10» starts at 32.0
+        cut = without_pauses(words_file, cuts)
+        self.assertAlmostEqual(cut.words[10].start - cut.words[9].end, 1.0, places=3)
+        self.assertAlmostEqual(cut.durationSeconds, words_file.durationSeconds - (end - start), places=3)
+        WordsFile.model_validate(cut.model_dump())
+        _, starts = cut_shots(cut.words, cut.durationSeconds, target=2.6, forced_starts=set(), with_times=True)
+        bounds = starts + [cut.durationSeconds]
+        self.assertTrue(all(1.5 - 1e-3 <= b - a <= 5.0 + 1e-3 for a, b in zip(bounds, bounds[1:])))
+
+    def test_ordinary_pauses_stay(self) -> None:
+        from pipeline.align import long_pauses
+
+        words = _build("Hola. Adiós.", _raw([("hola", 0.0, 0.5), ("adios", 3.0, 3.5)], 4.0)).words
+        self.assertEqual(long_pauses(words), [])
+        self.assertEqual(long_pauses(self._words().words, 0), [])   # 0: never
+
+    def test_the_voice_loses_the_pause(self) -> None:
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        from pipeline.align import cut_voice
+
+        if not shutil.which("ffmpeg"):
+            self.skipTest("sin ffmpeg")
+        with tempfile.TemporaryDirectory() as folder:
+            source, target = Path(folder) / "voz.mp3", Path(folder) / "corta.mp3"
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=30", str(source)], check=True)
+            cut_voice(source, target, [(5.0, 25.0)])
+            seconds = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                            str(target)], capture_output=True, text=True).stdout)
+            self.assertAlmostEqual(seconds, 10.0, delta=0.2)

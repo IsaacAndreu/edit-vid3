@@ -412,3 +412,13 @@ Test: `tests/test_arreglo_guion.py`.
   (13,67 s) y el planificador fallaba en cada reintento.
 - `align.validate` rehace un words.json antiguo con la cola larga (la transcripción está en caché: gratis).
 - Prueba: `tests/test_align.py::TailTests`.
+
+## Pausas largas en mitad de la voz (newgym11, de verdad)
+
+- La causa real de newgym11 no era el final: entre «nada.» (429 s) y «Y» (456 s) la voz pasa 27 s sin decir nada del
+  guion. Solo dos planos pueden repartirse una pausa (≤ 5 s cada uno), así que el corte era imposible en cada reintento.
+- `align.long_pauses` / `cut_voice` / `without_pauses`: una pausa de más de `align.max_pause_seconds` (4 s) entre dos
+  palabras se quita de la voz y queda en 1 s; la voz de antes se guarda como `voz.original.mp3`; las palabras y los
+  capítulos se mueven con ella. `align.validate` rehace un words.json que aún tenga una pausa así. 0 = no quitar nunca.
+- Prueba: `tests/test_align.py::PauseTests` (la pausa de 27 s, los planos caben; pausas normales se quedan; ffmpeg
+  corta de verdad el audio).
