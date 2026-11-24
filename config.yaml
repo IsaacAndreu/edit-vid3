@@ -247,6 +247,9 @@ apertura:                          # clip de apertura con su sonido, antes de la
   auto: false                      # true: si no eliges uno a mano, se busca y se elige solo (crímenes reales: la sentencia, una declaración)
   auto_ask: ""                     # qué momento buscar, p. ej. «la lectura de la sentencia o una declaración del acusado en el juicio»
   max_seconds: 20                  # duración máxima del clip
+  # subtitle_clip: true            # una apertura guardada sin subtítulos (no llegó la transcripción del vídeo): el
+  #                                  propio clip recortado se transcribe con Whisper y se traduce. Si los quitaste en la
+  #                                  página («Poner subtítulos traducidos» apagado), se quedan sin ellos.
 
 quotes:                            # declaraciones originales con subtítulos (pipeline/quotes.py)
   count: 2                         # cuántas citas del guion buscar dichas por su autor, con su voz y subtítulos (0 = ninguna)

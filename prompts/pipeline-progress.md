@@ -422,3 +422,12 @@ Test: `tests/test_arreglo_guion.py`.
   capítulos se mueven con ella. `align.validate` rehace un words.json que aún tenga una pausa así. 0 = no quitar nunca.
 - Prueba: `tests/test_align.py::PauseTests` (la pausa de 27 s, los planos caben; pausas normales se quedan; ffmpeg
   corta de verdad el audio).
+
+## Apertura sin subtítulos (newgym5)
+
+- La apertura de newgym5 (Simone Biles hablando en inglés) salió sin subtítulos: al elegirla no llegó la transcripción
+  del vídeo y se guardó sin líneas, y un clip sin líneas se pinta limpio (sin subtítulos ni nombre).
+- `apertura.pick`: si la apertura no tiene subtítulos y no se apagaron a propósito, el propio clip recortado pasa por
+  Whisper y se traduce (`subtitles_of_clip`); se guardan en apertura.json para no repetirlo. `apertura.choice` marca
+  `subtitlesOff` cuando apagas los subtítulos en la página. `apertura.subtitle_clip: false` lo desactiva.
+- Prueba: `tests/test_apertura.py::test_an_opening_saved_without_lines_gets_them_from_its_own_clip`.
