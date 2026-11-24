@@ -99,3 +99,23 @@ class WordsSchemaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TailTests(unittest.TestCase):
+    """newgym11: 13.7 s of silence after the voice made the last shot 13.67 s and the planner fail every retry."""
+
+    def test_silence_after_the_voice_is_trimmed_and_the_plan_cuts(self) -> None:
+        from pipeline.planner import cut_shots
+
+        script = " ".join(f"palabra{i}." for i in range(20))
+        spoken = [(f"palabra{i}", i * 0.5, i * 0.5 + 0.4) for i in range(19)] + [("palabra19", 9.5, 23.67)]  # stretched
+        words_file = _build(script, _raw(spoken, 23.67))
+        self.assertAlmostEqual(words_file.durationSeconds, 9.5 + 1.2 + 1.0, places=3)
+        self.assertLessEqual(words_file.words[-1].end, words_file.durationSeconds)
+        shots = cut_shots(words_file.words, words_file.durationSeconds, target=2.6, forced_starts=set(), with_times=True)
+        starts = shots[1] + [words_file.durationSeconds]
+        self.assertTrue(all(1.5 - 1e-3 <= b - a <= 5.0 + 1e-3 for a, b in zip(starts, starts[1:])))
+
+    def test_a_short_tail_is_kept(self) -> None:
+        words_file = _build("Hola mundo.", _raw([("hola", 0.0, 0.5), ("mundo", 0.6, 1.0)], 1.5))
+        self.assertEqual(words_file.durationSeconds, 1.5)
