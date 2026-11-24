@@ -24,6 +24,22 @@ STAGE = "align"
 OUTPUT = "words.json"
 _SENTENCE_END = re.compile(r"[.!?…:;][\"'»”)]*$")
 OPENAI_WHISPER_USD_PER_MINUTE = 0.006
+WORD_SECONDS = 1.2              # no spoken word lasts longer: Whisper stretches the last one over the silence after it
+TAIL_KEEP_SECONDS = 1.0         # silence kept after the last word
+
+
+def speech_end(words: list[Word]) -> float:
+    """When the voice stops: the end of the last word, never more than WORD_SECONDS after it starts."""
+
+    return max((min(w.end, w.start + WORD_SECONDS) for w in words), default=0.0)
+
+
+def trimmed_duration(words: list[Word], duration: float) -> float:
+    """The length the video keeps: silence or music after the last word is cut to TAIL_KEEP_SECONDS, because no
+    shot can be cut where nothing is said (newgym11: 13.7 s of tail made the last shot 13.67 s and the planner
+    fail on every retry)."""
+
+    return min(duration, round(speech_end(words) + TAIL_KEEP_SECONDS, 3)) if words else duration
 
 
 @dataclass
@@ -185,6 +201,11 @@ def build_words_file(
             )
         )
 
+    end = trimmed_duration(words, duration)
+    if end < duration:
+        words = [w.model_copy(update={"end": round(min(w.end, end), 3), "start": round(min(w.start, end), 3)}) for w in words]
+        duration = end
+
     chapters = [
         Chapter(
             title=headings[h],
@@ -310,5 +331,6 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
 
 
 def validate(ctx: RunContext) -> bool:
-    WordsFile.model_validate(ctx.read_json(OUTPUT))
-    return True
+    words_file = WordsFile.model_validate(ctx.read_json(OUTPUT))
+    # made before the tail was trimmed: again (Whisper's transcription is cached, so it costs nothing)
+    return trimmed_duration(words_file.words, words_file.durationSeconds) >= words_file.durationSeconds - 1e-3

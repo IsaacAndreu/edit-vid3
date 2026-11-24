@@ -404,3 +404,11 @@ sobre algo grabado (`imagen_guion.fix`, con sus enlaces de referencia), guarda e
 rehace la voz (lo que no cambia no se paga) y el vídeo vuelve a empezar; una vez por vídeo. Con la voz grabada del
 dueño, o si ya se intentó, o si nada se puede reescribir sin inventar: sigue igualmente y avisa por Telegram.
 Test: `tests/test_arreglo_guion.py`.
+
+## Silencio al final de la voz (newgym11)
+
+- `align.trimmed_duration`: el silencio o la música después de la última palabra se recorta a 1 s (la última palabra
+  cuenta como mucho 1,2 s, porque Whisper la estira sobre el silencio). Antes el último plano duraba lo que el silencio
+  (13,67 s) y el planificador fallaba en cada reintento.
+- `align.validate` rehace un words.json antiguo con la cola larga (la transcripción está en caché: gratis).
+- Prueba: `tests/test_align.py::TailTests`.

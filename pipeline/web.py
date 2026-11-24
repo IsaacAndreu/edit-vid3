@@ -283,7 +283,9 @@ def video_summary(root: Path, folder: Path, watch_state: dict[str, Any]) -> dict
             and watcher_alive(root)):                          # done: an old error is history
         queued_again = True
         if failed and failed.get("at"):
-            retry_at = float(failed["at"]) + _retry_hours(root) * 3600
+            from . import reintentos
+
+            retry_at = reintentos.retry_at(_watch_cfg(root), failed)
             if retry_at <= time.time():
                 retry_at = None
     voice = None                               # GenAIPro in the background (tts.prepare_all)
@@ -1160,7 +1162,21 @@ def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
     return {"ok": True, "bytes": (folder / "voz.mp3").stat().st_size}
 
 
-_RETRY: dict[str, tuple[float, float]] = {}
+_RETRY: dict[str, tuple[float, Any]] = {}
+
+
+def _watch_cfg(root: Path) -> dict[str, Any]:
+    """watch: (retry_now, retry_minutes, retry_hours), read at most once a minute."""
+
+    cached = _RETRY.get(f"cfg:{root}")
+    if cached and time.time() - cached[0] < 60:
+        return cached[1]
+    try:
+        cfg = dict(RunContext.create("_web", root=root).section("watch") or {})
+    except Exception:
+        cfg = {}
+    _RETRY[f"cfg:{root}"] = (time.time(), cfg)
+    return cfg
 
 
 def _retry_hours(root: Path) -> float:

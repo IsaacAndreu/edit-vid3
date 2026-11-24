@@ -85,6 +85,16 @@ def source_kind(video: dict[str, Any]) -> str:
 RANK = {"original": 0, "informativo": 1, "documental": 2, "otro": 3, "recopilación": 9}
 
 
+def about_entry(video: dict[str, Any], about: str) -> bool:
+    """The result is about this entry: its title or description shares a meaningful word with the entry's name,
+    place, date and searches (a name, «Montreal», «Produnova»…)."""
+
+    from .huecos import _words
+
+    wanted = _words(about)
+    return not wanted or bool(wanted & _words(f"{video.get('title', '')} {str(video.get('description') or '')[:300]}"))
+
+
 def pick_sources(videos: list[dict[str, Any]], per_item: int, taken: set[str]) -> list[dict[str, Any]]:
     """The best `per_item` sources of one entry: long enough, not a summary unless nothing else, not used by another
     entry, whoever filmed it first, then by views."""
@@ -169,10 +179,19 @@ def clean_segments(raw: dict[str, Any], words: list[tuple[str, float, float]], v
 
 
 def subtitles(youtube: Any, video_id: str, languages: list[str]) -> tuple[list[tuple[str, float, float]], str]:
-    """Timed words of a source and the language they came in ([] when it has none)."""
+    """Timed words of a source and the language they came in ([] when it has none): the captions the analysis reads
+    (youtube.captions, through the video's session: these do come on the server), then the subtitle file."""
 
     from .quotes import parse_vtt, timed_words
 
+    try:
+        cues = youtube.captions(video_id) if hasattr(youtube, "captions") else []
+    except Exception:
+        cues = []
+    if cues:
+        words = timed_words([(float(a), float(b), str(t)) for a, b, t in cues])
+        if words:
+            return words, "subtítulos"
     for lang in dict.fromkeys(languages):
         try:
             path = youtube.subtitle_file(video_id, lang)
@@ -185,11 +204,26 @@ def subtitles(youtube: Any, video_id: str, languages: list[str]) -> tuple[list[t
     return [], ""
 
 
+AUDIO_MB_PER_MINUTE = 1.0          # the audio alone (m4a ~128 kb/s), what a transcription needs
+
+
+def transcribe_audio(ctx: Any, youtube: Any, video_id: str, seconds: float, lang: str) -> list[tuple[str, float, float]]:
+    """A source with no subtitles at all: its audio only (about 1 MB a minute through the proxy), and Whisper."""
+
+    from faster_whisper import WhisperModel
+
+    audio = youtube.download_range(video_id, 0, seconds, fmt="ba[ext=m4a]/ba", prefix="mfa", audio_only=True)
+    model = WhisperModel(str(ctx.section("quotes").get("whisper_model", "small")), device="cpu", compute_type="int8")
+    segments, _ = model.transcribe(str(audio), language=lang or None, word_timestamps=True, vad_filter=True)
+    return [(w.word.strip(), w.start, w.end) for s in segments for w in (s.words or []) if w.word.strip()]
+
+
 # --- the whole case file ---------------------------------------------------------------------------------------------
 
 def build(ctx: Any, title: str, kind: str = "top", count: int = 5, minutes: float = 6.0, links: list[str] | None = None,
           api: Any = None, youtube: Any = None, ask: Callable[[str, str], dict[str, Any]] | None = None,
-          scenes_fn: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+          scenes_fn: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None,
+          transcribe_fn: Callable[[str, float, str], list] | None = None) -> dict[str, Any]:
     """Research + case file, saved in work/<vídeo>/expediente.json."""
 
     from .idiomas import Budget, SEARCH_UNITS
@@ -212,11 +246,24 @@ def build(ctx: Any, title: str, kind: str = "top", count: int = 5, minutes: floa
     budget.spent = 0                                   # a cap per video, not per day
     unit = {"top": "puestos", "noticia": "partes", "documental": "capítulos"}.get(kind, "puestos")
     given = video_ids(links or [])
+    owned: dict[str, dict[str, Any]] = {}
+    if given:                                          # 1 unit: what each of the owner's links is about
+        try:
+            owned = {v["id"]: v for v in api.videos(given)}
+        except Exception:
+            owned = {}
+        count = max(count, len(given))
+    listing = "\n".join(f"{n}. {owned.get(vid, {}).get('title') or vid} ({owned.get(vid, {}).get('channel') or '?'})"
+                        for n, vid in enumerate(given, 1))
     plan = ask(PLAN_SYSTEM.format(kind=kind, count=count, unit=unit),
-               f"TÍTULO: {title}\nMINUTOS: {minutes}\nENLACES DEL DUEÑO: {', '.join(given) or 'ninguno'}")
+               f"TÍTULO: {title}\nMINUTOS: {minutes}\n"
+               + (f"ENLACES DEL DUEÑO: cada enlace ES un {unit[:-1] if unit.endswith('s') else unit}, en este orden "
+                  f"(el {unit[:-1] if unit.endswith('s') else unit} n es el enlace n); nombra cada caso por lo que dice su "
+                  f"título y busca más material de ESE caso:\n{listing}" if given else "ENLACES DEL DUEÑO: ninguno"))
     items = [i for i in (plan.get("items") or []) if isinstance(i, dict) and str(i.get("name") or "").strip()][:count]
     taken: set[str] = set()
     notes: list[str] = []
+    audio_spent = 0.0                                  # MB of audio downloaded to transcribe sources without subtitles
     out_items = []
     for n, item in enumerate(items, 1):
         queries = [str(q) for q in (item.get("queries") or []) if str(q).strip()][:4]
@@ -234,18 +281,37 @@ def build(ctx: Any, title: str, kind: str = "top", count: int = 5, minutes: floa
                 found += [str(e["id"]) for e in (youtube.search(q) or [])[:15] if e.get("id")]
                 notes.append(f"{item['name']}: «{q}» buscado con yt-dlp ({str(error)[:80]})")
         videos = api.videos(list(dict.fromkeys(found))) if found else []
+        own_id = given[n - 1] if n - 1 < len(given) else None
+        about = " ".join([str(item.get("name") or ""), str(item.get("where_when") or ""), *queries,
+                          str(owned.get(own_id, {}).get("title") or "")])
+        off = [v for v in videos if v["id"] != own_id and not about_entry(v, about)]
+        if off:                                        # another story that the search brought (an anime trailer…)
+            notes.append(f"{item['name']}: {len(off)} resultado(s) de otra cosa descartados")
+        videos = [v for v in videos if v not in off]
         chosen = pick_sources(videos, per_item, taken)
         if n - 1 < len(given):                         # the owner's own link always comes in, first
             own = next((v for v in videos if v["id"] == given[n - 1]), None)
-            if own is not None and own not in chosen:
-                own["kind"] = source_kind(own)
-                chosen = [own, *chosen][:per_item]
+            if own is not None:
+                own["kind"] = own.get("kind") or source_kind(own)
+                chosen = [own, *[v for v in chosen if v is not own]][:per_item]
         chosen = chosen[: max(0, total_cap - len(taken))]
         taken |= {v["id"] for v in chosen}
         sources = []
         for video in chosen:
             languages = [str(item.get("language") or "en")[:2], "es", "en"]
             words, lang = subtitles(youtube, video["id"], languages) if youtube is not None else ([], "")
+            seconds = float(video.get("duration") or 0)
+            audio_mb = seconds / 60 * AUDIO_MB_PER_MINUTE
+            if (not words and youtube is not None and cfg.get("transcribe_audio", True)
+                    and seconds <= 60 * float(cfg.get("transcribe_max_minutes", 20))
+                    and audio_spent + audio_mb <= float(cfg.get("audio_mb", 300))):
+                try:                                   # no subtitles: its audio, transcribed (the MB are counted)
+                    words = (transcribe_fn or (lambda vid, secs, lg: transcribe_audio(ctx, youtube, vid, secs, lg)))(
+                        video["id"], seconds, languages[0])
+                    lang = f"transcrito ({round(audio_mb)} MB de audio)" if words else ""
+                    audio_spent += audio_mb
+                except Exception as error:
+                    notes.append(f"{video['id']}: no se pudo transcribir su audio ({str(error)[:80]})")
             scenes = scenes_fn(video) if scenes_fn else []
             entry = {"id": video["id"], "url": f"https://www.youtube.com/watch?v={video['id']}", "title": video.get("title"),
                      "channel": video.get("channel"), "kind": video.get("kind"), "duration": video.get("duration"),
@@ -274,7 +340,7 @@ def build(ctx: Any, title: str, kind: str = "top", count: int = 5, minutes: floa
         out_items.append({"n": n, "name": str(item["name"])[:120], "whereWhen": str(item.get("where_when") or "")[:120],
                           "language": str(item.get("language") or "")[:2], "queries": queries, "sources": sources})
     result = {"title": title, "kind": kind, "minutes": minutes, "items": out_items, "notes": notes,
-              "apiUnits": budget.spent, "summary": summary(out_items)}
+              "apiUnits": budget.spent, "audioMB": round(audio_spent), "summary": summary(out_items)}
     ctx.write_json(OUTPUT, result)
     return result
 
