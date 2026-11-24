@@ -431,3 +431,11 @@ Test: `tests/test_arreglo_guion.py`.
   Whisper y se traduce (`subtitles_of_clip`); se guardan en apertura.json para no repetirlo. `apertura.choice` marca
   `subtitlesOff` cuando apagas los subtítulos en la página. `apertura.subtitle_clip: false` lo desactiva.
 - Prueba: `tests/test_apertura.py::test_an_opening_saved_without_lines_gets_them_from_its_own_clip`.
+
+## Sin rótulos de capítulo (planner.chapter_titles: false)
+
+- Pedido del dueño: los capítulos «dan muchos problemas y cortan el rollo». `planner.chapter_titles: false` (puesto en
+  config.yaml): ningún capítulo se enseña en pantalla (sin tarjeta de título ni su pausa), un vídeo largo ya no falla si
+  el modelo no da capítulos válidos (sigue con la intro sola), y `capitulos.ensure` no escribe «## » en guiones nuevos.
+  Los «## » que ya tenga un guion siguen siendo partes del vídeo, solo que sin rótulo. `true` en un canal los devuelve.
+- Prueba: `tests/test_planner.py::test_without_chapter_titles_nothing_on_screen_and_no_failure`.

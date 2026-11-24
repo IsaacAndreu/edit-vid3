@@ -38,6 +38,9 @@ planner:
   #                               ocupan su idea entera (cobertura_hold_seconds: 6, sin pasar del tope del canal). Una
   #                               llamada más al modelo por vídeo; más búsquedas por suceso clave y menos por plano.
   #                               Se mide en revisor --base: «Fuentes/min» y «Funciones» (encontradas/pedidas).
+  chapter_titles: false      # false: ningún rótulo de capítulo en pantalla (cortaban el ritmo: un título y una pausa
+                             # cada pocos minutos) y nunca falla un vídeo porque el modelo no dé capítulos válidos; tampoco
+                             # se escriben «## » en los guiones nuevos. true en un canal para volver a tenerlos.
   model: deepseek-flash
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema

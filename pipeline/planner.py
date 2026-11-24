@@ -304,9 +304,11 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
             # protagonist and events are still used (hora1-short1: 53 s cannot hold two chapters 45 s apart)
             from .stickman import film
 
-            if not (simulacion.active(ctx) or film(ctx) or words_file.durationSeconds < 150):
+            titled = bool(ctx.section("planner").get("chapter_titles", True))
+            if titled and not (simulacion.active(ctx) or film(ctx) or words_file.durationSeconds < 150):
                 raise RuntimeError(f"El planner no produjo capítulos válidos: {error}")
-            print(f"   Sin capítulos ({'simulación' if simulacion.active(ctx) else 'vídeo corto'}): {str(error)[:80]}")
+            why = "sin rótulos de capítulo" if not titled else "simulación" if simulacion.active(ctx) else "vídeo corto"
+            print(f"   Sin capítulos ({why}): {str(error)[:80]}")
             chapters = []
         context = str(result.get("context") or "").strip()[:400]
     if not chapters or chapters[0].startWord != 0:
@@ -315,7 +317,9 @@ def plan_chapters(ctx: RunContext, words_file: WordsFile) -> tuple[list[PlanChap
 
     # no chapter cards in a drawn video (simulations, stick figures, maps, atlas): the world stays on screen, never a
     # title card with its silent pause — anticlimactic
-    if simulacion.active(ctx) or film(ctx):
+    # planner.chapter_titles: false — no chapter cards at all (they cut the flow: a title and a pause every few minutes);
+    # the chapters stay as the video's parts (the description's timestamps, the structure), never on screen
+    if simulacion.active(ctx) or film(ctx) or not ctx.section("planner").get("chapter_titles", True):
         chapters = [c.model_copy(update={"showTitle": False}) for c in chapters]
     return chapters, context, result
 
