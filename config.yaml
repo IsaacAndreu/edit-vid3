@@ -26,6 +26,9 @@ align:
   # probablemente el guion y la voz no corresponden.
   min_match_ratio: 0.80
   # cpu_threads: 4         # hilos de Whisper local; por defecto la mitad de los núcleos (corre junto a un render)
+  # max_pause_seconds: 4.0 # una pausa más larga entre dos palabras se quita de la voz (queda 1 s; la voz de antes se
+  #                          guarda como voz.original.mp3): ningún plano puede cubrirla. 0 = no quitar nunca.
+  #                          El silencio después de la última palabra se deja en 1 s.
 
 planner:
   # cobertura: false            # con ideas: los sucesos clave (3-6) se cuentan por funciones — acción, otro ángulo,
