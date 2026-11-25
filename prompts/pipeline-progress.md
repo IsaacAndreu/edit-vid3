@@ -453,3 +453,6 @@ Test: `tests/test_arreglo_guion.py`.
   estudio; nunca hacen fallar el vídeo.
 - Prueba: `tests/test_miniatura_ia.py` (orden de imágenes, prompt, coste, una rechazada no pierde las otras, apagado).
 - Sin probar contra la API real desde aquí (no hay clave en esta máquina).
+- En el estudio: ficha del vídeo → «Miniaturas» → «Miniatura con IA» (enlaces de referencia, texto, cuántas,
+  «Generar»). Lanza `--miniatura-ia` en segundo plano (`web.ai_thumbnail`, `POST/GET /api/video/<vídeo>/miniatura-ia`)
+  y enseña lo que va haciendo; al acabar recarga la ficha con las nuevas. Prueba: `test_the_studio_button_…`.

@@ -105,3 +105,24 @@ def test_youtube_ids_from_links():
     assert miniatura_ia.video_id("https://youtu.be/abcdefghijk?t=3") == "abcdefghijk"
     assert miniatura_ia.video_id("abcdefghijk") == "abcdefghijk"
     assert miniatura_ia.video_id("ref.jpg") is None
+
+
+def test_the_studio_button_runs_the_command_in_the_background(tmp_path, monkeypatch):
+    from pipeline import web
+
+    folder = tmp_path / "materiales" / "newgym5"
+    folder.mkdir(parents=True)
+    (folder / "guion.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError, match="aún no está hecho"):
+        web.ai_thumbnail(tmp_path, "newgym5", {})
+    (tmp_path / "out" / "newgym5").mkdir(parents=True)
+    (tmp_path / "out" / "newgym5" / "video-final.mp4").write_bytes(b"x")
+    started = []
+    monkeypatch.setattr(web, "background", lambda root, name, args: started.append((name, args)) or {"running": True})
+    web.ai_thumbnail(tmp_path, "newgym5", {"refs": "https://youtu.be/aaaaaaaaaaa\nbbbbbbbbbbb, x y z", "text": " SU CAÍDA ",
+                                           "count": 9})
+    name, args = started[0]
+    assert name == "miniatura-ia-newgym5"
+    assert args == ["--miniatura-ia", "newgym5", "--ref", "https://youtu.be/aaaaaaaaaaa", "--ref", "bbbbbbbbbbb",
+                    "--ref", "x", "--cuantas", "4", "--texto", "SU CAÍDA"]
+    assert web.partner_may(tmp_path, ["gimnasia"], "POST", "/api/video/newgym5/miniatura-ia") is False   # not their channel
