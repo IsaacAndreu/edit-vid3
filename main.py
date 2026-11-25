@@ -162,6 +162,12 @@ def _parser() -> argparse.ArgumentParser:
                         help="Mide un tema en todos los idiomas de radar.idiomas que quepan en la cuota de hoy.")
     target.add_argument("--radar", action="store_true",
                         help="Radar de competencia de hoy: lo mejor de tus nichos y nichos nuevos medidos → out/_radar/.")
+    target.add_argument("--radar-semanal", action="store_true",
+                        help="Radar semanal: canales nuevos en inglés que funcionan, agrupados en nichos-fórmula "
+                             "(la parte de la semana que quepa en la cuota) → out/_radar/semanal/.")
+    target.add_argument("--importar-canales", metavar="ARCHIVO",
+                        help="Añade a la lista de vigilancia del radar semanal los canales de un CSV o texto "
+                             "(enlaces, @handles o ids UC…).")
     target.add_argument("--compilar", metavar="CANAL",
                         help="Compilación larga (2-3 h) con los mejores vídeos terminados del canal → out/compilacion-…/.")
     target.add_argument("--limpiar", action="store_true",
@@ -827,6 +833,12 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                     radar.run_if_due(root)
                 except Exception as error:
                     print(f"Radar: {type(error).__name__}: {error}")
+                try:
+                    from pipeline import radar_semanal
+
+                    radar_semanal.run_if_due(root)               # radar.semanal: the weekly English radar
+                except Exception as error:
+                    print(f"Radar semanal: {type(error).__name__}: {error}")
                 try:
                     from pipeline import accidente_rapido
 
@@ -1955,6 +1967,21 @@ def main() -> None:
                   f"al mes · hueco x{row['gap']}")
         for lang, why in item["idiomas"]["skipped"].items():
             print(f"{lang}: sin medir — {why}")
+        return
+    if args.radar_semanal:
+        from pipeline import radar_semanal
+
+        state = radar_semanal.run(PROJECT_ROOT)
+        for n in (state.get("niches") or [])[:15]:
+            f = n["figures"]
+            print(f"{'★' if f['strong'] else '·'} {n['name']} · {f['channelCount']} canales · mediana {f['median']:,} · "
+                  f"{n['trend']['label']} · {n.get('pattern') or ''}")
+        return
+    if args.importar_canales:
+        from pipeline import radar_semanal
+
+        got = radar_semanal.import_text(PROJECT_ROOT, Path(args.importar_canales).read_text("utf-8", errors="replace"))
+        print(f"{got['found']} canales en el archivo · {got['added']} nuevos · {got['watched']} en vigilancia")
         return
     if args.radar:
         from pipeline import radar

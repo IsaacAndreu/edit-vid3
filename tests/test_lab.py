@@ -201,3 +201,20 @@ def test_a_429_on_searches_moves_to_the_next_key_instead_of_stopping(tmp_path):
     api.search("y")
     assert ("search", "k1") not in [c for c in fake.calls[2:] if c[0] == "search"]   # k1's searches over for today
     assert api.videos(["v1"])[0]["id"] == "v1" and ("videos", "k1") in fake.calls    # its other calls still work
+
+
+def test_the_country_chart_costs_one_unit(tmp_path):
+    """radar_semanal: «most popular» of a country (videos.list chart=mostPopular), read like any video."""
+
+    class Chart(FakeYouTube):
+        def get(self, url, params, timeout=0):
+            if url.endswith("/videos") and params.get("chart") == "mostPopular":
+                self.calls.append(("chart", params["regionCode"]))
+                return Response(200, {"items": [self.videos["v1"], self.videos["s1"]]})
+            return super().get(url, params, timeout)
+
+    fake = Chart()
+    api = _api(tmp_path, fake, "k1")
+    rows = api.popular("us")
+    assert [r["id"] for r in rows] == ["v1", "s1"] and rows[0]["channelId"] == "A" and rows[1]["duration"] == 30
+    assert fake.calls == [("chart", "US")] and api.quota()["used"] == 1
