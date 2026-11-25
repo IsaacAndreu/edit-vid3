@@ -845,6 +845,31 @@ function overview(st, who) {
 }
 const pub = (v) => { const {dubOf, ...rest} = v; return rest; };
 
-module.exports = {ORDER, NOW, TODAY, day, isoAt, rng, hashOf, CHANNELS, KINDS, FORMATS, PARTNERS, DUBBED, SUBJECTS, TEMPLATES, fill, SLUGS, SPECIAL, WEEKDAYS, IDLE, thumb, watch,
+
+// «Radar semanal»: one finished week with the ocean niche (three new channels), a rising one and a single hit.
+function radarSemanal() {
+  const ch = (id, title, created, subs, long, median, perWeek, titles) => ({id, title, created, subscribers: subs, long, median, max: median * 2,
+    perWeek, minutes: 15.2, top: titles.map((t, i) => ({id: id.slice(2, 13) + i, title: t, views: median * (2 - i * 0.3), minutes: 15}))});
+  const channels = {
+    UCfossil: ch("UCfossil", "Fossil", "2025-10-04", 120000, 16, 690000, 1.5, ["Why You'd Never Want To Meet a Megalodon", "How Long You'd Last in Every Prehistoric Ocean", "Would You Survive the Cambrian Sea?"]),
+    UCblackwater: ch("UCblackwater", "BlackWater", "2026-01-12", 88000, 10, 762000, 1.2, ["Why You'd Never Want To Meet a Liopleurodon", "The Deepest Creature Ever Filmed", "What Lives Under the Mariana Trench"]),
+    UCdepth: ch("UCdepth", "Depth Theory", "2026-04-02", 64000, 11, 743000, 2.5, ["Would a Shark Survive Every Prehistoric Ocean?", "Why You'd Never Want To Meet a Dunkleosteus", "How Deep Can a Human Go?"]),
+    UCancient: ch("UCancient", "Ancient Routine", "2026-02-20", 41000, 7, 210000, 1, ["What Did Ancient Humans Actually Do All Day?", "A Day in the Life of a Roman Soldier", "What Ancient People Ate for Breakfast"]),
+  };
+  return {current: {week: "2026-W49", done: true, left: 0, units: 2380, watched: 612, updated: "2026-12-01T03:12:00"},
+    week: {week: "2026-W49", done: true, channels,
+      niches: [
+        {name: "Océano profundo y fauna prehistórica", topic: "fauna marina prehistórica y criaturas del fondo del mar", pattern: "Why You'd Never Want To Meet a X", faceless: "sí",
+         channels: ["UCfossil", "UCblackwater", "UCdepth"], figures: {channelCount: 3, videos: 37, median: 743000, best: 762000, minutes: 15.2, perWeek: 1.5, strong: true},
+         trend: {label: "sube", newChannels: 1, medianChange: 0.18}},
+        {name: "Historia antigua explicada", topic: "la vida diaria en la antigüedad", pattern: "What Did Ancient X Actually Do", faceless: "sí",
+         channels: ["UCancient"], figures: {channelCount: 1, videos: 7, median: 210000, best: 210000, minutes: 15.2, perWeek: 1, strong: false},
+         trend: {label: "nuevo", newChannels: 1, medianChange: null}}],
+      singles: [{id: "UConehit", title: "Strange Deep", long: 1, max: 7900000, top: [{title: "The Thing They Found at 11,000 Meters"}]}]},
+    weeks: ["2026-W48", "2026-W49"], watch: {cuenta: 4, exito_suelto: 9, "pequeño": 203, viejo: 251, grande: 97, otro_idioma: 48}, pending: 3,
+    job: {running: false, failed: false, log: ""},
+    settings: {on: true, day: 0, hour: 2, units: 20000, minMedian: 50000, months: 18, minLong: 5, minMinutes: 7, maxSubs: 300000}};
+}
+module.exports = {radarSemanal, ORDER, NOW, TODAY, day, isoAt, rng, hashOf, CHANNELS, KINDS, FORMATS, PARTNERS, DUBBED, SUBJECTS, TEMPLATES, fill, SLUGS, SPECIAL, WEEKDAYS, IDLE, thumb, watch,
   buildState, overview, agendaVideos, plan, reserve, uploadDates, board, videoDetail, porque, repeticion, review, decisions, myChannel, stats, gasto, proxyReport, servidor, doctor,
   voicesAnswer, piloto, experimentos, tiempos, ytbench, scenebench, scriptsNeeded, toUpload, compilations, libraryEntity, errorsSummary, search};

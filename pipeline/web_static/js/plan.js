@@ -694,3 +694,54 @@ function bloquesView(slug, b) {
     <div class="tablewrap"><table class="small">${(b.blocks || []).map((x, i) => `<tr><td class="nw">${label[x.type] || x.type}</td><td>${body(x)}</td>
       <td class="nw"><button class="small" onclick="${act(i, "quitar")}">Quitar</button>${x.type === "declaracion" ? ` <button class="small" onclick="${act(i, "cambiar")}">Cambiar</button>` : ""}</td></tr>`).join("")}</table></div></section>`;
 }
+
+// «Radar semanal» (pipeline/radar_semanal.py): new English channels that work, grouped into niche-formulas.
+// What the model says (names, topic, title pattern, «sin cara») is marked apart from what the API measured.
+async function radarSemanalPage() {
+  const r = await api("/api/radar-semanal");
+  const k = (n) => n == null ? "—" : n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : n >= 1e3 ? `${Math.round(n / 1e3)} mil` : String(n);
+  const s = r.settings || {}, c = r.current || {}, w = r.week || {}, watch = r.watch || {};
+  const job = r.job || {};
+  const DAY = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+  const STATUS = {cuenta: "cuentan", exito_suelto: "un solo éxito", "pequeño": "aún pequeños", viejo: "viejos",
+                  grande: "grandes", otro_idioma: "en otro idioma", nuevo: "sin medir", desaparecido: "ya no existen"};
+  const trend = (t) => !t ? "" : t.label === "sube" ? `<span class="pill ok">sube${t.newChannels ? ` · +${t.newChannels} canal${t.newChannels > 1 ? "es" : ""}` : ""}${t.medianChange != null ? ` · mediana ${t.medianChange > 0 ? "+" : ""}${Math.round(t.medianChange * 100)} %` : ""}</span>`
+    : t.label === "baja" ? `<span class="pill error">baja${t.medianChange != null ? ` · mediana ${Math.round(t.medianChange * 100)} %` : ""}</span>`
+    : t.label === "nuevo" ? `<span class="pill">nuevo esta semana</span>` : `<span class="pill">estable</span>`;
+  const chan = (id) => (w.channels || {})[id] || {id};
+  const channelRow = (ch) => `<li><a href="https://www.youtube.com/channel/${esc(ch.id)}" target="_blank" rel="noopener"><b>${esc(ch.title || ch.id)}</b></a>
+      <span class="small"> · desde ${esc((ch.created || "").slice(0, 10) || "?")} · ${ch.subscribers == null ? "subs ocultos" : k(ch.subscribers) + " subs"}
+      · ${ch.long ?? "—"} vídeos largos · mediana <b>${k(ch.median)}</b>${ch.perWeek ? ` · ${ch.perWeek}/semana` : ""}${ch.minutes ? ` · ${ch.minutes} min` : ""}</span>
+      <ul class="small m-0">${(ch.top || []).slice(0, 3).map((t) => `<li><a href="https://www.youtube.com/watch?v=${esc(t.id)}" target="_blank" rel="noopener">${esc(t.title)}</a> · ${k(t.views)}</li>`).join("")}</ul></li>`;
+  const niches = (w.niches || []).map((n) => { const f = n.figures || {};
+    return `<details class="card mt-2"><summary><b>${f.strong ? "★ " : ""}${esc(n.name)}</b> ${trend(n.trend)}
+        <div class="small">${f.channelCount} canal${f.channelCount === 1 ? "" : "es"} · ${f.videos} vídeos largos · mediana <b>${k(f.median)}</b>
+          (el mejor canal ${k(f.best)})${f.minutes ? ` · ${f.minutes} min` : ""}${f.perWeek ? ` · ${f.perWeek} vídeos/semana` : ""}</div>
+        ${n.pattern || n.topic ? `<div class="small muted">Según el modelo: ${n.topic ? esc(n.topic) : ""}${n.pattern ? ` · fórmula «${esc(n.pattern)}»` : ""}${n.faceless ? ` · sin cara: ${esc(n.faceless)}` : ""}</div>` : ""}</summary>
+      <ul class="mt-2">${n.channels.map((id) => channelRow(chan(id))).join("")}</ul></details>`; }).join("");
+  const singles = (w.singles || []).map((x) => `<li><a href="https://www.youtube.com/channel/${esc(x.id)}" target="_blank" rel="noopener">${esc(x.title || x.id)}</a>
+      <span class="small"> · ${x.long ?? 0} vídeo${x.long === 1 ? "" : "s"} largo${x.long === 1 ? "" : "s"} · el mejor ${k(x.max)}${(x.top || [])[0] ? ` · «${esc(x.top[0].title)}»` : ""}</span></li>`).join("");
+  const counts = Object.entries(watch).map(([key, n]) => `${n} ${STATUS[key] || key}`).join(" · ");
+  show(`<h1>Radar semanal</h1>
+    <div class="small muted">Canales nuevos en inglés que funcionan (nacidos hace menos de ${esc(String(s.months))} meses, ${esc(String(s.minLong))}+ vídeos de ${esc(String(s.minMinutes))}+ min,
+      mediana de ${k(s.minMedian)}+ visitas, menos de ${k(s.maxSubs)} suscriptores), agrupados en nichos-fórmula. Los números salen de la API de YouTube;
+      los nombres, el tema, la fórmula y «sin cara» los pone un modelo. ★ = tres canales nuevos o más, o uno muy fuerte.</div>
+    <div class="card mt-2 small">
+      ${s.on ? `Corre solo cada ${DAY[+s.day] || esc(String(s.day))} desde las ${esc(String(s.hour))}:00, y sigue las noches siguientes si la cuota no llega.`
+        : `Apagado: actívalo con <code>radar.semanal: true</code> en config.yaml, o haz una pasada a mano.`}
+      ${c.week ? `<div>Semana ${esc(c.week)}: ${c.done ? "terminada" : `a medias, quedan <b>${c.left}</b> canales por medir`} · ${c.units ?? 0} de ${s.units} unidades de la semana
+        · ${c.watched ?? 0} canales vigilados</div>` : "<div>Aún no ha corrido ninguna semana.</div>"}
+      ${counts ? `<div class="muted">Lista de vigilancia: ${counts}${r.pending ? ` · ${r.pending} @canales por buscar` : ""}</div>` : ""}
+      <div class="row mt-2"><button id="rsGo" onclick="post('/api/radar-semanal/ahora').then(()=>radarSemanalPage())" ${job.running ? "disabled" : ""}>${icon("refresh")} Pasada ahora</button>
+        ${job.running ? `<span class="small">midiendo…</span>` : job.failed ? `<span class="small t-bad">la última pasada falló (out/_tareas/radar-semanal.log)</span>` : ""}</div></div>
+    <section class="mt-3"><h2>Nichos-fórmula${w.week ? ` · ${esc(w.week)}` : ""}</h2>
+      ${niches || `<div class="muted small">Aún no hay canales que cuenten. La lista crece cada semana; también puedes importar canales abajo.</div>`}</section>
+    ${singles ? `<section class="mt-3"><h2>Un vídeo que explotó</h2><div class="small muted">Canales nuevos con un solo vídeo grande: se vigilan, aún no son un nicho.</div>
+      <ul class="small">${singles}</ul></section>` : ""}
+    <section class="mt-3"><h2>Añadir canales a la vigilancia</h2>
+      <label class="small" for="rsImport">Pega canales (enlaces, @nombre o UC…) o el contenido de un CSV de tu herramienta de nichos: se miden en la próxima pasada.</label>
+      <textarea id="rsImport" rows="4" placeholder="https://www.youtube.com/@DepthTheory"></textarea>
+      <div class="row mt-2"><button onclick="post('/api/radar-semanal/importar',{text:document.getElementById('rsImport').value}).then((x)=>{toast(x.added+' canales nuevos de '+x.found);radarSemanalPage();}).catch(oops)">${icon("plus")} Añadir</button>
+        <input type="file" id="rsFile" accept=".csv,.txt" aria-label="Importar un CSV" onchange="this.files[0]&&this.files[0].text().then((t)=>{document.getElementById('rsImport').value=t;})"></div></section>`);
+  if (job.running) setTimeout(() => { if (location.hash === "#/radar-semanal") radarSemanalPage(); }, 8000);
+}

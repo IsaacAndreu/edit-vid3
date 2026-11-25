@@ -456,3 +456,33 @@ Test: `tests/test_arreglo_guion.py`.
 - En el estudio: ficha del vídeo → «Miniaturas» → «Miniatura con IA» (enlaces de referencia, texto, cuántas,
   «Generar»). Lanza `--miniatura-ia` en segundo plano (`web.ai_thumbnail`, `POST/GET /api/video/<vídeo>/miniatura-ia`)
   y enseña lo que va haciendo; al acabar recarga la ficha con las nuevas. Prueba: `test_the_studio_button_…`.
+
+## Radar semanal · paso 1: canales vigilados en inglés y nichos-fórmula (pipeline/radar_semanal.py)
+
+- Prompt «radar semanal de nichos virales en inglés y huecos por idioma». Solo el paso 1 y su página: el dueño tiene
+  que ver una semana real de la lista antes de medir idiomas (pasos 0 y 2-5 sin empezar).
+- Lista de vigilancia `out/_radar/vigilados.json`. Crece con: búsquedas sembradas en inglés (`semanal_busquedas`, 6 a
+  la semana, rotando `semanal_semillas`, por visitas, 90 días), «más populares» de `semanal_paises` (`ytapi.popular`,
+  1 unidad), los canales del radar diario, y lo que pegues o importes (`--importar-canales`, cualquier CSV: ids UC…,
+  @handles, enlaces).
+- Cada semana, por canal: `channels` (1/50) y sus 50 últimas subidas (2). Cuenta si es nuevo (≤ 18 meses de canal o de
+  primer vídeo), ≥ 5 vídeos largos (≥ 7 min), mediana ≥ 50 000 y < 300 000 subs. «exito_suelto»: un vídeo que explotó
+  (se vigila, no es nicho). Viejos, grandes y de otro idioma: cada 4 semanas.
+- El modelo agrupa y nombra (tema, patrón de título, «sin cara»); los números salen de la API: canales, vídeos, mediana
+  de medianas, minutos, vídeos por semana. Fuerte: 3+ canales, o uno con 8+ largos y el doble de la mediana mínima.
+  Tendencia frente a la semana anterior (canales que entran, mediana ±15 %). Orden: fuertes, suben, mediana.
+- Cuota: libro de ytapi, `semanal_units` (20 000) a la semana y nunca por debajo de `keep_for_queue`; reanudable (lo
+  que no cabe sigue la noche siguiente; la lista se agrupa en cada pasada con lo medido). Vigilante: `radar.semanal`
+  (apagado), `semanal_dia`, `semanal_hora`. A mano: `python main.py --radar-semanal`.
+- Pruebas: `tests/test_radar_semanal.py` (embudo entero con API y modelo de mentira: el nicho del océano con 3 canales,
+  el éxito suelto, la cuota que corta y la noche siguiente sigue, la tendencia de la semana siguiente, cuándo corre,
+  leer canales de cualquier lista) y `tests/test_lab.py::test_the_country_chart_costs_one_unit`.
+- Sin comprobar sin el servidor: cuántos canales caben de verdad con la cuota del dueño; si las semillas por defecto
+  dan canales del tipo que él ve en YouTube; «sin cara» solo lo dice el modelo por los títulos.
+- Página «Radar semanal» (Crecer → Radar semanal, `#/radar-semanal`, solo el dueño): estado de la semana (terminada o
+  cuántos canales faltan, unidades gastadas de las de la semana), la lista de vigilancia por estado, «Pasada ahora»,
+  los nichos-fórmula (★ fuerte, tendencia, cifras de la API; tema, fórmula y «sin cara» marcados «según el modelo»),
+  al abrir uno sus canales con sus tres vídeos más vistos, los «un vídeo que explotó», y pegar o importar canales.
+  API: `GET /api/radar-semanal`, `POST …/ahora`, `POST …/importar`. Capturas con el mock (escritorio y móvil, claro y
+  oscuro): sin errores de consola ni desbordes.
+- Siguiente, cuando el dueño haya visto una semana real: paso 0 (techos por idioma).

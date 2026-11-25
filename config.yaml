@@ -607,6 +607,21 @@ radar:                             # radar de competencia diario (estudio → Co
   # keep_for_queue: 3000           # unidades que siempre quedan para las búsquedas de los vídeos en cola
   # rpm: {}                        # lo que ganas por cada mil visitas, por idioma y categoría, de tus canales:
   #                                  {es: {deporte: 1.2}, pt: {deporte: 0.6}}. Vacía: las notas no inventan ingresos
+  semanal: false                   # radar SEMANAL (pipeline/radar_semanal.py): canales nuevos en inglés que funcionan,
+                                   # vigilados cada semana y agrupados en nichos-fórmula (tema + patrón de título).
+                                   # Estudio → Radar semanal; a mano: python main.py --radar-semanal
+  # semanal_dia: 0                 # 0 = lunes … 6 = domingo (o «lunes»…); empieza ese día a partir de…
+  # semanal_hora: 2                # …esta hora (tu zona); si la cuota no llega, sigue las noches siguientes
+  # semanal_units: 20000           # unidades de API a la semana como mucho (nunca por debajo de keep_for_queue)
+  # semanal_busquedas: 6           # búsquedas sembradas por semana para encontrar canales (100 unidades cada una)
+  # semanal_semillas: [...]        # esas búsquedas, en inglés (por defecto, documental sin cara: «what would happen if»…)
+  # semanal_paises: [US, GB]       # listas de «más populares» por país que se miran (1 unidad cada una)
+  # semanal_meses: 18              # un canal cuenta si nació (o subió su primer vídeo) hace menos de esto…
+  # semanal_min_largos: 5          # …tiene al menos estos vídeos largos…
+  # semanal_min_minutos: 7         # …(de al menos estos minutos)…
+  # semanal_min_mediana: 50000     # …con esta MEDIANA de visitas…
+  # semanal_max_subs: 300000       # …y menos de estos suscriptores
+  # semanal_max_vigilados: 1500    # canales medidos por semana como mucho (≈ 2 unidades cada uno)
 
 mychannel:                         # análisis de tu canal (estudio → Mi canal; tu canal en Ajustes)
   timezone: Europe/Madrid

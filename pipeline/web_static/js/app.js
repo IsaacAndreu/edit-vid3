@@ -46,6 +46,7 @@ async function route() {
     else if (hash === "#/errores") await errorsPage();
     else if (hash === "#/punteria") await punteriaPage();
     else if (hash === "#/que-hacer") await queHacerPage();
+    else if (hash === "#/radar-semanal") await radarSemanalPage();
     else if (hash === "#/material") await materialPage();
     else if (hash.startsWith("#/material/")) await materialVideoPage(decodeURIComponent(hash.slice(11)));
     else if (hash === "#/competencia") await radarPage();

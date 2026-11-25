@@ -1473,6 +1473,24 @@ def ai_thumbnail(root: Path, slug: str, body: dict[str, Any]) -> dict[str, Any]:
     return background(root, f"miniatura-ia-{slug}", args)
 
 
+def weekly_radar(root: Path) -> dict[str, Any]:
+    """«Radar semanal»: the week's niche-formulas, the watch list, the quota and how far this week's pass got."""
+
+    from . import radar_semanal
+
+    out = {**radar_semanal.report(root), "job": job_state(root, "radar-semanal")}
+    try:
+        cfg = RunContext.create("_radar", root=root).config.get("radar") or {}
+    except Exception:
+        cfg = {}
+    out["settings"] = {"on": bool(cfg.get("semanal", False)), "day": cfg.get("semanal_dia", 0),
+                       "hour": cfg.get("semanal_hora", 2), "units": int(cfg.get("semanal_units", 20_000)),
+                       "minMedian": int(cfg.get("semanal_min_mediana", 50_000)), "months": cfg.get("semanal_meses", 18),
+                       "minLong": cfg.get("semanal_min_largos", 5), "minMinutes": cfg.get("semanal_min_minutos", 7),
+                       "maxSubs": int(cfg.get("semanal_max_subs", 300_000))}
+    return out
+
+
 def start_queue(root: Path) -> dict[str, Any]:
     """Runs the queue now in the background (when there is no watcher, e.g. on the home PC)."""
 
@@ -2270,6 +2288,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                      "montaje": _json(work / "montaje_mf.json"),
                                      "hasVideo": (root / "out" / slug / "video-final.mp4").is_file(),
                                      "jobs": {n: job_state(root, f"{n}-{slug}") for n in ("expediente", "bloques", "montar")}})
+                if path == "/api/radar-semanal":            # nichos-fórmula en inglés de la semana (radar_semanal.py)
+                    return self._ok(weekly_radar(root))
                 if path == "/api/recomendaciones":          # «Qué hacer ahora»: empezar, doblar, dejar o cambiar
                     from . import recomendar
 
@@ -2743,6 +2763,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(fix_video(root, urllib.parse.unquote(match.group(1))))
                 if path == "/api/radar":
                     return self._ok(background(root, "radar", ["--radar"]))
+                if path == "/api/radar-semanal/ahora":      # this week's pass now (what fits in the quota)
+                    return self._ok(background(root, "radar-semanal", ["--radar-semanal"]))
+                if path == "/api/radar-semanal/importar":   # {text}: channels from a pasted list or a CSV
+                    from . import radar_semanal
+
+                    return self._ok(radar_semanal.import_text(root, str(body.get("text") or "")[:2_000_000]))
                 if path == "/api/recomendaciones/idiomas":  # {topic}: that topic in every language that fits today
                     topic = " ".join(str(body.get("topic") or "").split())[:120]
                     if len(topic) < 3:

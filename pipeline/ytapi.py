@@ -319,36 +319,50 @@ class YouTubeAPI:
             params = {**params, "pageToken": data["nextPageToken"]}
         return list(dict.fromkeys(ids))
 
+    @staticmethod
+    def video_row(item: dict[str, Any]) -> dict[str, Any]:
+        """One item of `videos` (by id or a chart) as the rows the rest of the code reads."""
+
+        snippet, stats = item.get("snippet", {}), item.get("statistics", {})
+        thumbs = snippet.get("thumbnails", {})
+        return {
+            "id": item["id"], "title": snippet.get("title", ""), "channelId": snippet.get("channelId", ""),
+            "channel": snippet.get("channelTitle", ""), "published": snippet.get("publishedAt", ""),
+            "duration": parse_duration(item.get("contentDetails", {}).get("duration")),
+            "definition": item.get("contentDetails", {}).get("definition", ""),   # "hd" = 720p or more
+            "live": snippet.get("liveBroadcastContent", "none"),
+            "views": int(stats.get("viewCount", 0)), "likes": int(stats.get("likeCount", 0)),
+            "comments": int(stats.get("commentCount", 0)),
+            "thumbnail": (thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}).get("url", ""),
+            "url": f"https://www.youtube.com/watch?v={item['id']}",
+            "description": str(snippet.get("description") or "")[:700],
+            # what language the uploader says it is in (same call, same unit): relevanceLanguage in a search
+            # is a preference, not a filter — the gaps per language check every result with these
+            "language": str(snippet.get("defaultLanguage") or "")[:8],
+            "audioLanguage": str(snippet.get("defaultAudioLanguage") or "")[:8],
+            # what tells, before asking yt-dlp anything, that the player will refuse it (same call, same unit)
+            "regionBlocked": list((item.get("contentDetails", {}).get("regionRestriction") or {}).get("blocked") or []),
+            "regionAllowed": (item.get("contentDetails", {}).get("regionRestriction") or {}).get("allowed"),
+            "ageRestricted": (item.get("contentDetails", {}).get("contentRating") or {}).get("ytRating") == "ytAgeRestricted",
+            "privacy": item.get("status", {}).get("privacyStatus", ""),
+            "uploadStatus": item.get("status", {}).get("uploadStatus", ""),
+        }
+
     def videos(self, ids: list[str]) -> list[dict[str, Any]]:
         out = []
         for start in range(0, len(ids), 50):
             data = self.get("videos", {"part": "snippet,statistics,contentDetails,status", "id": ",".join(ids[start:start + 50])})
-            for item in (data.get("items") or []):
-                snippet, stats = item.get("snippet", {}), item.get("statistics", {})
-                thumbs = snippet.get("thumbnails", {})
-                out.append({
-                    "id": item["id"], "title": snippet.get("title", ""), "channelId": snippet.get("channelId", ""),
-                    "channel": snippet.get("channelTitle", ""), "published": snippet.get("publishedAt", ""),
-                    "duration": parse_duration(item.get("contentDetails", {}).get("duration")),
-                    "definition": item.get("contentDetails", {}).get("definition", ""),   # "hd" = 720p or more
-                    "live": snippet.get("liveBroadcastContent", "none"),
-                    "views": int(stats.get("viewCount", 0)), "likes": int(stats.get("likeCount", 0)),
-                    "comments": int(stats.get("commentCount", 0)),
-                    "thumbnail": (thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}).get("url", ""),
-                    "url": f"https://www.youtube.com/watch?v={item['id']}",
-                    "description": str(snippet.get("description") or "")[:700],
-                    # what language the uploader says it is in (same call, same unit): relevanceLanguage in a search
-                    # is a preference, not a filter — the gaps per language check every result with these
-                    "language": str(snippet.get("defaultLanguage") or "")[:8],
-                    "audioLanguage": str(snippet.get("defaultAudioLanguage") or "")[:8],
-                    # what tells, before asking yt-dlp anything, that the player will refuse it (same call, same unit)
-                    "regionBlocked": list((item.get("contentDetails", {}).get("regionRestriction") or {}).get("blocked") or []),
-                    "regionAllowed": (item.get("contentDetails", {}).get("regionRestriction") or {}).get("allowed"),
-                    "ageRestricted": (item.get("contentDetails", {}).get("contentRating") or {}).get("ytRating") == "ytAgeRestricted",
-                    "privacy": item.get("status", {}).get("privacyStatus", ""),
-                    "uploadStatus": item.get("status", {}).get("uploadStatus", ""),
-                })
+            out += [self.video_row(item) for item in (data.get("items") or [])]
         return out
+
+    def popular(self, region: str, count: int = 50, category: str = "") -> list[dict[str, Any]]:
+        """The country's «most popular» chart right now (videos.list chart=mostPopular): 1 unit per 50."""
+
+        params: dict[str, Any] = {"part": "snippet,statistics,contentDetails,status", "chart": "mostPopular",
+                                  "regionCode": region.upper(), "maxResults": max(1, min(50, count))}
+        if category:
+            params["videoCategoryId"] = category
+        return [self.video_row(item) for item in (self.get("videos", params).get("items") or [])]
 
     def channels(self, ids: list[str] | None = None, *, lookup: dict[str, str] | None = None) -> list[dict[str, Any]]:
         batches = [{"id": ",".join(ids[s:s + 50])} for s in range(0, len(ids or []), 50)] if ids else [lookup or {}]
