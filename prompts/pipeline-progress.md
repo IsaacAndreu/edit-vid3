@@ -439,3 +439,17 @@ Test: `tests/test_arreglo_guion.py`.
   el modelo no da capítulos válidos (sigue con la intro sola), y `capitulos.ensure` no escribe «## » en guiones nuevos.
   Los «## » que ya tenga un guion siguen siendo partes del vídeo, solo que sin rótulo. `true` en un canal los devuelve.
 - Prueba: `tests/test_planner.py::test_without_chapter_titles_nothing_on_screen_and_no_failure`.
+
+## Miniaturas con la IA de imágenes desde referencias (pipeline/miniatura_ia.py)
+
+- Pedido del dueño: «pasarle referencias y que genere una miniatura parecida pero adaptada a nuestro vídeo», en calidad
+  media de OpenAI. Una edición de imagen por miniatura: primero las referencias (hasta 3: `--ref` enlaces o imágenes,
+  `materiales/<vídeo>/referencias-miniatura/`, `miniatura-ref.txt`, `referencias/miniaturas/<canal>/`), luego lo
+  nuestro (los 2 mejores fotogramas de `out/<vídeo>/fotogramas/` y el recorte del protagonista). El texto, uno de los
+  de la miniatura de youtube.txt (o `--texto`). Copia la fórmula (composición, letra, color), nunca sus personas ni
+  sus palabras.
+- A mano: `python main.py --miniatura-ia <vídeo> --ref <enlace> [--texto «…»] [--cuantas N]`. Solo:
+  `miniaturas.ia: true` (apagado; ≈ 0,05-0,10 $ cada una, en Gasto de API). Salen en out/<vídeo>/miniaturas-ia/ y en el
+  estudio; nunca hacen fallar el vídeo.
+- Prueba: `tests/test_miniatura_ia.py` (orden de imágenes, prompt, coste, una rechazada no pierde las otras, apagado).
+- Sin probar contra la API real desde aquí (no hay clave en esta máquina).

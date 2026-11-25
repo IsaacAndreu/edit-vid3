@@ -268,7 +268,7 @@ def run(ctx: RunContext) -> None:
         posters = poster_drafts(ctx, texts, cutout)
         print(f"   Miniaturas: las haces tú · {stills} fotogramas en out/{ctx.slug}/{STILLS_DIR}/ y 3 textos en youtube.txt"
               + (f" · {posters} borradores estilo póster" if posters else ""))
-        _finish(ctx, timeline, titles, [], preview=_preview_frame(ctx))
+        _finish(ctx, timeline, titles, ai_thumbnails(ctx), preview=_preview_frame(ctx))
         return
     backgrounds = background_frames(ctx, timeline)
     brand = ctx.section("brand")
@@ -314,7 +314,22 @@ def run(ctx: RunContext) -> None:
         print(f"   Puntuación de miniaturas no disponible: {str(error)[:120]}")
     write_titles(ctx.out_dir / "youtube.txt", titles)
     print(f"   {len(thumbs)} miniaturas · títulos: " + " | ".join(titles))
-    _finish(ctx, timeline, titles, thumbs)
+    _finish(ctx, timeline, titles, ai_thumbnails(ctx) + thumbs)
+
+
+def ai_thumbnails(ctx: RunContext) -> list[Path]:
+    """miniaturas.ia (off): thumbnails by OpenAI's image model from the reference thumbnails (pipeline/miniatura_ia.py);
+    never a reason to fail the video."""
+
+    if not ctx.section("miniaturas").get("ia", False):
+        return []
+    from . import miniatura_ia
+
+    try:
+        return miniatura_ia.run(ctx)
+    except Exception as error:
+        print(f"   Miniaturas IA no disponibles: {str(error)[:200]}")
+        return []
 
 
 STILLS_DIR = "fotogramas"
