@@ -56,6 +56,10 @@ def _parser() -> argparse.ArgumentParser:
                         help="(La usa la web) Busca el clip de apertura de un vídeo nuevo → PETICION.resultado.json.")
     target.add_argument("--exportar", metavar="SLUG",
                         help="El vídeo terminado como proyecto de Premiere Pro / DaVinci Resolve → out/SLUG/premiere/ y .zip.")
+    target.add_argument("--miniatura-ia", metavar="SLUG",
+                        help="Miniaturas con la IA de imágenes de OpenAI copiando la fórmula de miniaturas de referencia "
+                             "(--ref, o referencias-miniatura/ del vídeo, o referencias/miniaturas/<canal>/) con los "
+                             "fotogramas del vídeo → out/SLUG/miniaturas-ia/.")
     target.add_argument("--shorts", metavar="SLUG",
                         help="Hace 3 Shorts verticales de un vídeo ya terminado → out/SLUG/shorts/.")
     target.add_argument("--dub", metavar="SLUG:IDIOMA",
@@ -78,6 +82,10 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Vuelve a ejecutar una etapa aunque esté al día (repetible, o 'all'). Etapas: {', '.join(STAGE_NAMES)}.",
     )
     parser.add_argument("--until", choices=STAGE_NAMES, help="Detiene el pipeline después de esta etapa.")
+    parser.add_argument("--ref", action="append", default=[], metavar="ENLACE_O_IMAGEN",
+                        help="Con --miniatura-ia: una miniatura de referencia (enlace o id de YouTube, o imagen); repetible.")
+    parser.add_argument("--texto", help="Con --miniatura-ia: el texto de la miniatura (si no, los de youtube.txt).")
+    parser.add_argument("--cuantas", type=int, help="Con --miniatura-ia: cuántas miniaturas (por defecto miniaturas.ia_count, 2).")
     parser.add_argument("--review", action="store_true", help="Se detiene tras la QA para revisar antes del render.")
     target.add_argument("--probar-youtube", action="store_true",
                         help="Comprueba en 1 minuto por qué YouTube descarga lento en esta máquina y qué hacer.")
@@ -1747,6 +1755,12 @@ def main() -> None:
             except Exception as error:
                 print(f"Escenas no revisadas: {str(error)[:160]}")
         return
+    if args.miniatura_ia:
+        from pipeline import miniatura_ia
+
+        ctx = RunContext.create(args.miniatura_ia)
+        made = miniatura_ia.run(ctx, refs=args.ref, text=args.texto or "", count=args.cuantas)
+        raise SystemExit(0 if made else 1)
     if args.shorts:
         from pipeline import shorts
 

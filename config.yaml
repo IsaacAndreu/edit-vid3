@@ -38,6 +38,9 @@ planner:
   #                               ocupan su idea entera (cobertura_hold_seconds: 6, sin pasar del tope del canal). Una
   #                               llamada más al modelo por vídeo; más búsquedas por suceso clave y menos por plano.
   #                               Se mide en revisor --base: «Fuentes/min» y «Funciones» (encontradas/pedidas).
+  chapter_titles: false      # false: ningún rótulo de capítulo en pantalla (cortaban el ritmo: un título y una pausa
+                             # cada pocos minutos) y nunca falla un vídeo porque el modelo no dé capítulos válidos; tampoco
+                             # se escriben «## » en los guiones nuevos. true en un canal para volver a tenerlos.
   model: deepseek-flash
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
@@ -247,6 +250,9 @@ apertura:                          # clip de apertura con su sonido, antes de la
   auto: false                      # true: si no eliges uno a mano, se busca y se elige solo (crímenes reales: la sentencia, una declaración)
   auto_ask: ""                     # qué momento buscar, p. ej. «la lectura de la sentencia o una declaración del acusado en el juicio»
   max_seconds: 20                  # duración máxima del clip
+  # subtitle_clip: true            # una apertura guardada sin subtítulos (no llegó la transcripción del vídeo): el
+  #                                  propio clip recortado se transcribe con Whisper y se traduce. Si los quitaste en la
+  #                                  página («Poner subtítulos traducidos» apagado), se quedan sin ellos.
 
 quotes:                            # declaraciones originales con subtítulos (pipeline/quotes.py)
   count: 2                         # cuántas citas del guion buscar dichas por su autor, con su voz y subtítulos (0 = ninguna)
@@ -619,6 +625,17 @@ ritmo:                             # tras el render: tramos sin nada nuevo en pa
 
 miniaturas:
   enabled: false                   # las miniaturas las haces tú; true = 3 miniaturas automáticas en out/<vídeo>/miniaturas/
+  ia: false                        # true: al acabar cada vídeo, miniaturas con la IA de imágenes de OpenAI que copian la
+                                   # fórmula de tus miniaturas de referencia (composición, letra, color) con los fotogramas
+                                   # y el protagonista del vídeo → out/<vídeo>/miniaturas-ia/. A mano, para un vídeo hecho:
+                                   # python main.py --miniatura-ia <vídeo> --ref <enlace de YouTube o imagen> [--texto «…»]
+                                   # Referencias: --ref, materiales/<vídeo>/referencias-miniatura/ y miniatura-ref.txt
+                                   # (enlaces), o referencias/miniaturas/<canal>/. Cada una se paga (≈ 0,05-0,10 $).
+  ia_count: 2                      # cuántas por vídeo (una por texto de miniatura)
+  ia_quality: medium               # low | medium | high
+  ia_refs: 3                       # máximo de miniaturas de referencia que se le pasan
+  # ia_model: gpt-image-2          # por defecto fallback.image_model
+  # ia_prompt: ""                  # indicaciones extra del canal, p. ej. «fondo siempre oscuro, texto amarillo»
 
 bot:                               # bot de Telegram (python main.py --bot; en la VPS, servicio edit-vid3-bot)
   hourly: true                     # parte cada hora: qué está haciendo, terminados, errores, gasto, disco

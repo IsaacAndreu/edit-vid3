@@ -363,3 +363,27 @@ def test_search_instructions_serve_any_topic():
     assert "2-6 palabras" not in text and "BÚSQUEDAS" in text
     for kind in ("crimen", "negocios", "megaproyectos", "historia", "videojuegos"):
         assert kind in text
+
+
+def test_without_chapter_titles_nothing_on_screen_and_no_failure(tmp_path, monkeypatch):
+    """planner.chapter_titles: false — the chapter cards cut the flow and a bad chapter answer failed whole videos."""
+    from pipeline import capitulos
+    from pipeline.schemas import AlignmentStats, Chapter, WordsFile
+
+    def words_file(seconds, chapters=()):
+        return WordsFile(slug="t", title="Atascos", language="es", durationSeconds=seconds, words=_words(28),
+                         chapters=list(chapters), alignment=AlignmentStats(provider="x", model="x", scriptWords=28,
+                                                                            whisperWords=28, matchedWords=28, matchRatio=1.0))
+
+    monkeypatch.setattr(planner, "complete_json", lambda ctx, **k: {"context": "tráfico", "chapters": [{"title": "UNO", "sentence": 0}]})
+    ctx = RunContext.create("t", root=tmp_path, config={"planner": {"max_attempts": 1, "chapter_titles": False}})
+    chapters, context, _ = planner.plan_chapters(ctx, words_file(600.0))          # a long video, invalid chapters: goes on
+    assert context == "tráfico" and not any(c.showTitle for c in chapters)
+    scripted = words_file(12.0, [Chapter(title="DE RIAZÁN A MOSCÚ", wordIndex=7, start=2.8, spoken=False)])
+    chapters, _, _ = planner.plan_chapters(ctx, scripted)                          # the script's «## »: parts, no cards
+    assert [c.title for c in chapters if c.fromScript] == ["DE RIAZÁN A MOSCÚ"] and not any(c.showTitle for c in chapters)
+    ctx.materials_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.materials_dir / "guion.txt").write_text("Uno.\n\nDos.\n\nTres.\n\nCuatro.\n", encoding="utf-8")
+    monkeypatch.setattr(capitulos, "complete_json", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no call")),
+                        raising=False)
+    assert capitulos.ensure(ctx) is False and "## " not in (ctx.materials_dir / "guion.txt").read_text("utf-8")

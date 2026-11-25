@@ -194,3 +194,35 @@ def test_no_subtitles_no_quote_box(tmp_path):
                            height=1080, speaker="S", role=None, subtitles=[])
     out = with_opening(timeline, clip, ctx, 30)
     assert out.groups == [] and out.shots[0].id == "apertura" and out.audio.voiceFrom == 120
+
+
+def test_an_opening_saved_without_lines_gets_them_from_its_own_clip(tmp_path, monkeypatch):
+    """newgym5: Simone Biles speaking in English in the opening, no Spanish subtitles — the video's transcript had not
+    come when it was chosen, so it was saved with none. The cut clip is transcribed and translated; turned off stays off."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg")
+    ctx = _ctx(tmp_path, monkeypatch, {"Traduce": {"lines": ["Hay que tener un tipo de cuerpo", "No, para nada."]}})
+    heard = []
+    monkeypatch.setattr(apertura, "whisper", lambda ctx, path, lang: heard.append(path.name) or [
+        ("you", 0.5, 0.7), ("have", 0.7, 0.9), ("to", 0.9, 1.0), ("have", 1.0, 1.2), ("a", 1.2, 1.3), ("body", 1.3, 1.6),
+        ("type.", 1.6, 2.0), ("no,", 3.0, 3.3), ("absolutely", 3.3, 3.9), ("not.", 3.9, 4.2)])
+    ctx.materials_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=8",
+                    "-f", "lavfi", "-i", "sine=f=330:duration=8", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                    "-shortest", str(ctx.materials_dir / "apertura.mp4")], check=True)
+    saved = {"id": None, "url": "", "file": "apertura.mp4", "channel": "Vogue", "start": 1.0, "end": 6.0,
+             "speaker": "Simone Biles", "subtitles": []}
+    (ctx.materials_dir / apertura.FILE).write_text(json.dumps(saved))
+    out = ctx.work_dir / "coldopen"
+    out.mkdir(parents=True)
+    clip = apertura.pick(ctx, None, out)
+    assert [s["text"] for s in clip["subtitles"]] == ["Hay que tener un tipo de cuerpo", "No, para nada."]
+    assert clip["subtitles"][0]["from"] == 0.5
+    assert json.loads((ctx.materials_dir / apertura.FILE).read_text())["subtitles"] == clip["subtitles"]   # kept
+    apertura.pick(ctx, None, out)
+    assert len(heard) == 1                                                       # not transcribed twice
+    (ctx.materials_dir / apertura.FILE).write_text(json.dumps({**saved, "subtitlesOff": True}))
+    assert apertura.pick(ctx, None, out)["subtitles"] == [] and len(heard) == 1   # turned off on the page: stays off

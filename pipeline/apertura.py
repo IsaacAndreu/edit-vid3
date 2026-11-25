@@ -267,7 +267,16 @@ def choice(candidate: dict[str, Any], start: float | None = None, end: float | N
     return {"id": vid, "url": f"https://www.youtube.com/watch?v={vid}" if vid else "", "file": own or None,
             "title": candidate.get("title"), "channel": source, "start": round(a, 2), "end": round(b, 2),
             "speaker": str(candidate.get("speaker") or ""), "role": candidate.get("role"),
-            "subtitles": (subtitles_of(lines, a, b) if lines else list(candidate.get("subtitles") or [])) if subtitles else []}
+            "subtitles": (subtitles_of(lines, a, b) if lines else list(candidate.get("subtitles") or [])) if subtitles else [],
+            **({} if subtitles else {"subtitlesOff": True})}
+
+
+def subtitles_of_clip(ctx: RunContext, clip: Path, seconds: float, language: str = "") -> list[dict[str, Any]]:
+    """The cut clip itself through Whisper and translated: for an opening saved with no lines because its video's
+    transcript did not come (newgym5: Simone Biles speaking in English, no Spanish subtitles)."""
+
+    lines = translate(ctx, lines_of(whisper(ctx, clip, language)))
+    return subtitles_of(lines, 0.0, seconds)
 
 
 def chosen(ctx: RunContext) -> dict[str, Any] | None:
@@ -351,6 +360,12 @@ def pick(ctx: RunContext, youtube: Any, out_dir: Path) -> dict[str, Any] | None:
         return None
     seconds = min(info["duration"], length)
     channel = str(data.get("channel") or "")
+    if not data.get("subtitles") and not data.get("subtitlesOff") and ctx.section("apertura").get("subtitle_clip", True):
+        made = subtitles_of_clip(ctx, target, seconds, str(data.get("language") or ""))
+        if made:                                  # kept in apertura.json: seen in the studio, not done again
+            data = {**data, "subtitles": made}
+            (ctx.materials_dir / FILE).write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+            print(f"   Apertura: sin subtítulos guardados; {len(made)} sacados del propio clip y traducidos")
     print(f"   Apertura: {vid and 'yt:' + vid or own.name} {start:.1f}-{start + seconds:.1f} s · "
           f"{len(data.get('subtitles') or [])} subtítulos")
     return {"path": str(target.relative_to(ctx.root)), "candidateId": f"yt:{vid}" if vid else f"file:{own.name}",

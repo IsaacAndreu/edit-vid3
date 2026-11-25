@@ -235,7 +235,7 @@ def _thumb(out: Path) -> str | None:
 
     if not out.is_dir():
         return None
-    for pattern in ("miniatura*", "miniaturas/*"):
+    for pattern in ("miniatura*", "miniaturas/*", "miniaturas-ia/*"):
         found = sorted(p for p in out.glob(pattern) if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"))
         if found:
             return found[0].relative_to(out).as_posix()

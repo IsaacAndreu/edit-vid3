@@ -74,8 +74,8 @@ def ensure(ctx: RunContext) -> bool:
     from .stickman import film
 
     # a drawn video has no chapter cards: it never stops the world
-    if simulacion.active(ctx) or film(ctx):
-        return False
+    if simulacion.active(ctx) or film(ctx) or not ctx.section("planner").get("chapter_titles", True):
+        return False                       # planner.chapter_titles: false — no cards, so no «## » lines to write either
     if not script_path.is_file() or not ctx.section("chapters").get("auto", True) or started(ctx):
         return False
     script = script_path.read_text("utf-8")
