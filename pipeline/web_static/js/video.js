@@ -522,8 +522,38 @@ async function videoPage(slug) {
       <button onclick="navigator.clipboard.writeText(document.getElementById('yt').innerText)">${icon("copy")} Copiar</button></div>` : "";
   const scenesPreview = v.scenesPreview ? `<h2>Vista previa de las escenas</h2><div class="card"><a href="${base + v.scenesPreview}" target="_blank">
       <img class="sheet" src="${base + v.scenesPreview}" alt="Vista previa de las escenas" loading="lazy" decoding="async"></a><div class="small muted mt-2">Una imagen de cada escena, sacada antes del render.</div></div>` : "";
-  const thumbs = v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
-      `<a href="${base + t}?download" title="Descargar">${thumb(base + t, "shot", "Miniatura")}</a>`).join("")}</div>` : "";
+  const aiThumbs = v.hasVideo ? `<details class="card mt-2" id="aiThumbBox"><summary><b>Miniatura con IA</b>
+      <span class="small muted">· copia el estilo de otras miniaturas con los fotogramas de este vídeo</span></summary>
+      <label class="small" for="aiRefs">Miniaturas de referencia: enlaces de YouTube, uno por línea (hasta 3).
+        Sin enlaces se usan las de referencias/miniaturas/${esc(v.channel || "<canal>")}/</label>
+      <textarea id="aiRefs" rows="3" placeholder="https://www.youtube.com/watch?v=…"></textarea>
+      <label class="small" for="aiText">Texto de la miniatura (vacío: los que propone youtube.txt)</label>
+      <input id="aiText" maxlength="80" placeholder="SU PEOR CAÍDA">
+      <div class="row mt-2"><label class="small" for="aiCount">Cuántas</label>
+        <select id="aiCount"><option>1</option><option selected>2</option><option>3</option></select>
+        <button id="aiGo" onclick="aiThumb(this)">${icon("spark")} Generar</button>
+        <span class="small muted">≈ 0,05-0,10 $ cada una · tarda 1-2 min</span></div>
+      <pre id="aiLog" class="small" hidden></pre></details>` : "";
+  const thumbs = (v.thumbnails.length ? `<h2>Miniaturas</h2><div class="thumbs">${v.thumbnails.map((t) =>
+      `<a href="${base + t}?download" title="Descargar">${thumb(base + t, "shot", "Miniatura")}</a>`).join("")}</div>`
+      : v.hasVideo ? "<h2>Miniaturas</h2>" : "") + aiThumbs;
+  window.aiThumb = async (button) => {
+    button.disabled = true;
+    const log = $("#aiLog"); log.hidden = false; log.textContent = "Empezando…";
+    const url = `/api/video/${encodeURIComponent(slug)}/miniatura-ia`;
+    try {
+      await post(url, {refs: $("#aiRefs").value, text: $("#aiText").value, count: +$("#aiCount").value});
+      const poll = async () => {
+        const j = await api(url);
+        log.textContent = (j.log || "").split("\n").filter((l) => /Miniatura|miniatura|Error|referencia/.test(l)).join("\n") || "Generando…";
+        if (j.running) return setTimeout(poll, 4000);
+        button.disabled = false;
+        if (j.failed) { toast("No salió ninguna miniatura: mira el mensaje", "bad"); return; }
+        toast("Miniaturas listas"); route();
+      };
+      setTimeout(poll, 3000);
+    } catch (e) { oops(e); button.disabled = false; }
+  };
   const dubState = (d) => d.skipped && !d.done && !d.manual ? icon("pause") + " no se dobla a este idioma (pulsa «Doblar a " + esc(d.name) + "»)"
     : d.old && !d.done && !d.manual && !d.voice && !d.script ? icon("pause") + " vídeo anterior al doblaje (en Ajustes: «solo los nuevos»): pulsa «Doblar a " + esc(d.name) + "»"
     : d.manual ? vMark("t-ok", "check") + " doblado por ti (la cola no lo hace)" : d.done ? `${vMark("t-ok", "check")} hecho · <a href="#/video/${encodeURIComponent(d.slug)}">ver ${esc(d.slug)}</a>`

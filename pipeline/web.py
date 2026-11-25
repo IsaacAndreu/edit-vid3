@@ -1458,6 +1458,21 @@ def job_state(root: Path, name: str) -> dict[str, Any]:
             "failed": job is not None and job.poll() not in (None, 0), "log": tail}
 
 
+def ai_thumbnail(root: Path, slug: str, body: dict[str, Any]) -> dict[str, Any]:
+    """«Miniatura con IA» in a video's page: `main.py --miniatura-ia` in the background (pipeline/miniatura_ia.py), with
+    the reference links or ids pasted (one per line), the text and how many. Its log: job_state(«miniatura-ia-<slug>»)."""
+
+    find_video(root, slug)
+    if not (root / "out" / slug / "video-final.mp4").is_file() and not (root / "out" / slug / "fotogramas").is_dir():
+        raise ValueError("El vídeo aún no está hecho: las miniaturas salen de sus fotogramas")
+    refs = [r.strip() for r in re.split(r"[\s,]+", str(body.get("refs") or "")) if r.strip()][:3]
+    args = ["--miniatura-ia", slug, *[x for r in refs for x in ("--ref", r)],
+            "--cuantas", str(max(1, min(4, int(body.get("count") or 1))))]
+    if str(body.get("text") or "").strip():
+        args += ["--texto", str(body["text"]).strip()[:80]]
+    return background(root, f"miniatura-ia-{slug}", args)
+
+
 def start_queue(root: Path) -> dict[str, Any]:
     """Runs the queue now in the background (when there is no watcher, e.g. on the home PC)."""
 
@@ -1539,11 +1554,11 @@ PARTNER_POST = ("/api/videos", "/api/search", "/api/apertura", "/api/apertura/su
 PARTNER_WITH_CHANNEL = ("/api/videos", "/api/apertura", "/api/hook", "/api/scenes", "/api/imagen", "/api/scripts/fix", "/api/voices",
                         "/api/voices/test",
                         "/api/scripts/draft", "/api/board/temas")
-PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3)",
+PARTNER_VIDEO_GET = (r"/api/video/([^/]+)", r"/api/video/([^/]+)/(?:repeticion|porque|capcut|exportar|voz\.mp3|miniatura-ia)",
                      r"/api/review/([^/]+)", r"/api/review/([^/]+)/frame/[A-Za-z0-9_-]+\.jpg",
                      r"/api/decisions/([^/]+)", r"/api/decisions/([^/]+)/frame", r"/files/([^/]+)/.+")
 PARTNER_VIDEO_POST = (r"/api/video/([^/]+)/(?:voz|retencion|doblaje|retry|archive|hold|unhold|stop|redo|for-claude|porque"
-                      r"|capcut|exportar|published|fix|channel|material|material/clip)",
+                      r"|capcut|exportar|published|fix|channel|material|material/clip|miniatura-ia)",
                       r"/api/review/([^/]+)/[A-Za-z0-9_-]+", r"/api/decisions/([^/]+)/[A-Za-z0-9_-]+")
 
 
@@ -2201,6 +2216,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     for c in data["channels"]:
                         c["job"] = job_state(root, f"piloto-{c['channel']}")
                     return self._ok(data)
+                if match := re.fullmatch(r"/api/video/([^/]+)/miniatura-ia", path):   # how the AI thumbnails go
+                    return self._ok(job_state(root, f"miniatura-ia-{urllib.parse.unquote(match.group(1))}"))
                 if match := re.fullmatch(r"/api/apertura/([0-9a-f]{12})", path):   # the opening clip search
                     token = match.group(1)
                     found = root / "out" / "_tareas" / f"apertura-{token}.resultado.json"
@@ -2481,6 +2498,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     if not find_video(root, slug).is_dir():
                         raise ValueError("Vídeo desconocido")
                     return self._ok(experimentos.set_notes(root, slug, body))
+                if match := re.fullmatch(r"/api/video/([^/]+)/miniatura-ia", path):   # {refs, text, count}
+                    return self._ok(ai_thumbnail(root, urllib.parse.unquote(match.group(1)), body))
                 if match := re.fullmatch(r"/api/video/([^/]+)/(retry|archive|hold|unhold|stop|redo)", path):
                     slug, verb = urllib.parse.unquote(match.group(1)), match.group(2)
                     if verb in ("hold", "unhold"):
