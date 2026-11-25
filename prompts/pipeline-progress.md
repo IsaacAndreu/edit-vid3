@@ -479,3 +479,10 @@ Test: `tests/test_arreglo_guion.py`.
   leer canales de cualquier lista) y `tests/test_lab.py::test_the_country_chart_costs_one_unit`.
 - Sin comprobar sin el servidor: cuántos canales caben de verdad con la cuota del dueño; si las semillas por defecto
   dan canales del tipo que él ve en YouTube; «sin cara» solo lo dice el modelo por los títulos.
+- Página «Radar semanal» (Crecer → Radar semanal, `#/radar-semanal`, solo el dueño): estado de la semana (terminada o
+  cuántos canales faltan, unidades gastadas de las de la semana), la lista de vigilancia por estado, «Pasada ahora»,
+  los nichos-fórmula (★ fuerte, tendencia, cifras de la API; tema, fórmula y «sin cara» marcados «según el modelo»),
+  al abrir uno sus canales con sus tres vídeos más vistos, los «un vídeo que explotó», y pegar o importar canales.
+  API: `GET /api/radar-semanal`, `POST …/ahora`, `POST …/importar`. Capturas con el mock (escritorio y móvil, claro y
+  oscuro): sin errores de consola ni desbordes.
+- Siguiente, cuando el dueño haya visto una semana real: paso 0 (techos por idioma).

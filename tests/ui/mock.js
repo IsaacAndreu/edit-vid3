@@ -117,6 +117,7 @@ function get(st, path, query, who) {
   if (path === "/api/board") { const columns = D.board(st); return mine ? {columns: Object.fromEntries(Object.entries(columns).map(([k, items]) => [k, items.filter((x) => mine.includes(x.channel))])), channels: mine, kinds: Object.fromEntries(mine.map((c) => [c, KINDS[c]]))}
     : {columns, channels: CHANNELS, kinds: KINDS}; }
   if (path === "/api/radar") return radarAnswer(st, mine);
+  if (path === "/api/radar-semanal") return D.radarSemanal();
   if (path === "/api/stats") return D.stats(st, mine);
   if (path === "/api/spending") { const r = D.rng("spending" + (who || "")); return Array.from({length: 14}, (_, i) => ({day: D.day(i - 13), usd: +(r.float(1.5, 14) * (who ? 0.18 : 1)).toFixed(2)})); }
   if (path === "/api/gasto") return D.gasto(st, mine, who);

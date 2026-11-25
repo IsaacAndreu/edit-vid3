@@ -167,3 +167,17 @@ def test_when_it_runs(root):
 def test_channels_found_in_any_list():
     text = "Fossil,https://www.youtube.com/channel/UCfossil0000000000000000,12\n@BlackWater · youtube.com/@DepthTheory\nfile.csv"
     assert rs.parse_channels(text) == ["UCfossil0000000000000000", "@BlackWater", "@DepthTheory"]
+
+
+def test_the_studio_page_reads_the_week_and_imports_channels(root):
+    from pipeline import web
+
+    empty = web.weekly_radar(root)
+    assert empty["week"] is None and empty["settings"]["on"] is True and empty["job"]["running"] is False
+    rs.run(root, api=FakeAPI(), ask=lambda **kw: GROUPS, now=NOW)
+    page = web.weekly_radar(root)
+    assert page["current"]["done"] and page["week"]["niches"][0]["figures"]["channelCount"] == 3
+    assert page["watch"]["cuenta"] == 3 and "UCfossil0000000000000000" in page["week"]["channels"]
+    got = rs.import_text(root, "https://www.youtube.com/@NuevoCanal y UCfossil0000000000000000")
+    assert got == {"found": 2, "added": 1, "watched": got["watched"]}            # the one already watched is not added twice
+    assert web.partner_may(root, ["gimnasia"], "GET", "/api/radar-semanal") is False   # the owner's only
