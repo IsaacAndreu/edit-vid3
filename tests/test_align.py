@@ -172,3 +172,72 @@ class PauseTests(unittest.TestCase):
             seconds = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                             str(target)], capture_output=True, text=True).stdout)
             self.assertAlmostEqual(seconds, 10.0, delta=0.2)
+
+
+class PauseVoiceTests(unittest.TestCase):
+    """The words move only if the voice really lost the pause (CI's ffmpeg kept 30 s with `aselect`)."""
+
+    def _ctx(self, folder):
+        import subprocess
+        from pathlib import Path
+
+        from pipeline.context import RunContext
+
+        ctx = RunContext.create("t", root=Path(folder), config={"align": {"min_match_ratio": 0.5}})
+        ctx.materials_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=37",
+                        str(ctx.materials_dir / "voz.mp3")], check=True)
+        return ctx
+
+    def test_the_voice_and_the_words_lose_the_pause_together(self) -> None:
+        import shutil
+        import tempfile
+
+        from pipeline import align
+
+        if not shutil.which("ffmpeg"):
+            self.skipTest("sin ffmpeg")
+        with tempfile.TemporaryDirectory() as folder:
+            ctx = self._ctx(folder)
+            align._finish(ctx, PauseTests()._words())
+            saved = WordsFile.model_validate(ctx.read_json(align.OUTPUT))
+            seconds = align._seconds(ctx.materials_dir / "voz.mp3")
+            self.assertAlmostEqual(seconds, 37.0 - 26.1, delta=0.2)          # the 26.1 s cut out of the mp3 itself
+            self.assertAlmostEqual(saved.words[10].start, 32.0 - 26.1, places=2)
+            self.assertTrue((ctx.materials_dir / "voz.original.mp3").is_file())
+
+    def test_a_cut_that_did_not_happen_moves_nothing(self) -> None:
+        import shutil
+        import tempfile
+
+        from pipeline import align
+
+        if not shutil.which("ffmpeg"):
+            self.skipTest("sin ffmpeg")
+        with tempfile.TemporaryDirectory() as folder:
+            ctx = self._ctx(folder)
+            before = (ctx.materials_dir / "voz.mp3").read_bytes()
+            original = align.cut_voice
+            align.cut_voice = lambda source, target, cuts: (shutil.copy2(source, target), 37.0)[1]   # ffmpeg ignored it
+            try:
+                with self.assertRaises(RuntimeError):
+                    align._finish(ctx, PauseTests()._words())
+            finally:
+                align.cut_voice = original
+            self.assertEqual((ctx.materials_dir / "voz.mp3").read_bytes(), before)
+            self.assertFalse((ctx.work_dir / align.OUTPUT).is_file())
+
+    def test_a_voice_the_old_cut_left_whole_is_aligned_again(self) -> None:
+        import shutil
+        import tempfile
+
+        from pipeline import align
+
+        if not shutil.which("ffmpeg"):
+            self.skipTest("sin ffmpeg")
+        with tempfile.TemporaryDirectory() as folder:
+            ctx = self._ctx(folder)
+            align._finish(ctx, PauseTests()._words())
+            self.assertTrue(align.validate(ctx))                               # cut for real: up to date
+            shutil.copy2(ctx.materials_dir / "voz.original.mp3", ctx.materials_dir / "voz.mp3")   # what aselect left
+            self.assertFalse(align.validate(ctx))

@@ -495,3 +495,11 @@ Test: `tests/test_arreglo_guion.py`.
 - `preflight.video_problems` pide ANTHROPIC_API_KEY cuando el planner es Claude (no LLM_API_KEY);
   `main.out_of_credit` reconoce «credit balance is too low» de Anthropic: la cola espera, no falla.
 - Prueba: `tests/test_claude_por_defecto.py`.
+
+## El recorte de pausas no recortaba con algunos ffmpeg (CI, 26-11)
+
+- `aselect='between(t,…)+…'` dejó la voz de 30 s entera en el ffmpeg de GitHub, mientras las palabras se movían: voz e
+  imagen desfasadas. `align.cut_voice` usa ahora atrim por trozo + concat y devuelve la duración; `_finish` solo
+  mueve las palabras si la voz salió con la duración esperada (±0,5 s); si no, la etapa falla y no toca nada.
+- `align.validate`: si `voz.mp3` dura lo mismo que `voz.original.mp3` (el recorte viejo no se hizo), se rehace.
+- Pruebas: `tests/test_align.py::PauseVoiceTests`.
