@@ -69,15 +69,32 @@ def without_pauses(words_file: WordsFile, cuts: list[tuple[float, float]]) -> Wo
                                          "durationSeconds": shifted(words_file.durationSeconds, cuts)})
 
 
-def cut_voice(source, target, cuts: list[tuple[float, float]]) -> None:
-    """`source` without the stretches in `cuts`, to `target` (mp3)."""
+def cut_voice(source, target, cuts: list[tuple[float, float]]) -> float:
+    """`source` without the stretches in `cuts`, to `target` (mp3); returns the new length. Each part kept is cut with
+    atrim and joined with concat: `aselect` with an expression did nothing on some ffmpeg builds (GitHub's CI kept
+    the 30 s) while the words were moved anyway: voice and picture out of step."""
 
-    keep = " + ".join(f"between(t,{a:.3f},{b:.3f})" for a, b in _kept(cuts))
+    kept = _kept(cuts)
+    parts = []
+    for i, (a, b) in enumerate(kept):
+        end = "" if b >= 1e8 else f":end={b:.3f}"
+        parts.append(f"[0:a]atrim=start={a:.3f}{end},asetpts=PTS-STARTPTS[k{i}]")
+    graph = ";".join(parts) + ";" + "".join(f"[k{i}]" for i in range(len(kept))) + f"concat=n={len(kept)}:v=0:a=1[out]"
     done = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", str(source),
-                           "-af", f"aselect='{keep}',asetpts=N/SR/TB", "-c:a", "libmp3lame", "-q:a", "2", str(target)],
+                           "-filter_complex", graph, "-map", "[out]", "-c:a", "libmp3lame", "-q:a", "2", str(target)],
                           capture_output=True, timeout=900)
     if done.returncode != 0:
         raise RuntimeError(f"ffmpeg no pudo quitar las pausas de la voz: {done.stderr.decode(errors='replace')[-300:]}")
+    return _seconds(target)
+
+
+def _seconds(path) -> float:
+    done = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                          capture_output=True, text=True, timeout=120)
+    try:
+        return float(done.stdout.strip())
+    except ValueError:
+        return 0.0
 
 
 def _kept(cuts: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -383,11 +400,18 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
         if not backup.exists():
             shutil.copy2(audio, backup)
         temporary = audio.with_name("voz.sin-pausas.mp3")
-        cut_voice(audio, temporary, cuts)
-        os.replace(temporary, audio)
-        words_file = without_pauses(words_file, cuts)
-        print("   Pausas largas quitadas de la voz: " + ", ".join(f"{b - a:.1f} s en {a:.0f} s" for a, b in cuts)
-              + " (la voz de antes: voz.original.mp3)")
+        before = _seconds(audio)
+        expected = before - sum(b - a for a, b in cuts)
+        got = cut_voice(audio, temporary, cuts)
+        if before and abs(got - expected) <= 0.5:
+            os.replace(temporary, audio)
+            words_file = without_pauses(words_file, cuts)
+            print("   Pausas largas quitadas de la voz: " + ", ".join(f"{b - a:.1f} s en {a:.0f} s" for a, b in cuts)
+                  + " (la voz de antes: voz.original.mp3)")
+        else:                   # the cut did not come out as asked: the voice and the words stay as they were, together
+            temporary.unlink(missing_ok=True)
+            raise RuntimeError(f"No se pudieron quitar las pausas largas de la voz (salió de {got:.1f} s y debía "
+                               f"quedar en {expected:.1f} s): pon align.max_pause_seconds: 0 para dejarlas")
     ctx.write_json(OUTPUT, words_file.model_dump())
     print(
         f"   {stats.scriptWords} palabras del guion, {stats.matchRatio:.1%} alineadas con el audio; "
@@ -402,4 +426,7 @@ def validate(ctx: RunContext) -> bool:
     # made before the tail was trimmed: again (Whisper's transcription is cached, so it costs nothing)
     if long_pauses(words_file.words, float(ctx.section("align").get("max_pause_seconds", MAX_PAUSE_SECONDS))):
         return False                        # a pause no shot can be cut in: the voice loses it
+    voice, backup = ctx.materials_dir / "voz.mp3", ctx.materials_dir / "voz.original.mp3"
+    if backup.is_file() and voice.is_file() and abs(_seconds(voice) - _seconds(backup)) < 0.5:
+        return False                        # the old cut (aselect) moved the words but not the voice: again, properly
     return trimmed_duration(words_file.words, words_file.durationSeconds) >= words_file.durationSeconds - 1e-3

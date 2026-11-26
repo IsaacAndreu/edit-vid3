@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from . import (align, analysis, coldopen, factcheck, fallback, ingest, judge, package, people, planner, qa, render, revisor,
                shorts, sourcing, timeline)
@@ -120,6 +120,30 @@ SPEED_KEYS = frozenset({
 })
 
 
+# Which model writes the text (DeepSeek or Claude) is not what a stage's result depends on: switching provider
+# (26-11, DeepSeek without balance → Claude) made every planner «out of date» and finished videos started again from
+# step 3. These keys of the text sections never enter a fingerprint; markers written with DeepSeek's still match.
+TEXT_SECTIONS = ("planner", "factcheck", "guion")
+PROVIDER_KEYS = frozenset({"model", "effort", "thinking", "usd_per_mtok", "claude_usd_per_mtok", "base_url",
+                           "deadline_retries"})
+DEEPSEEK_BEFORE = {"model": "deepseek-flash", "thinking": False,
+                   "usd_per_mtok": {"input": 0.30, "input_cache_hit": 0.006, "output": 1.20}}
+
+
+def _section_text(ctx: Any, name: str, legacy: bool, provider: str) -> str:
+    """One config section as it enters a fingerprint. provider: "none" (now: the text provider left out) or
+    "deepseek" (as markers were written before 26-11, with the DeepSeek keys in)."""
+
+    value = ctx.section(name)
+    if name in TEXT_SECTIONS:
+        value = {k: v for k, v in value.items() if k not in PROVIDER_KEYS}
+        if provider.startswith("deepseek"):
+            value = {**value, **DEEPSEEK_BEFORE}
+        if provider == "deepseek-sin-rotulos":            # before planner.chapter_titles (25-11): the same plan
+            value.pop("chapter_titles", None)
+    return json.dumps(value if legacy else _without_speed(value), sort_keys=True)
+
+
 def _without_speed(value):
     if isinstance(value, dict):
         return {k: _without_speed(v) for k, v in value.items() if k not in SPEED_KEYS}
@@ -148,7 +172,7 @@ _FINGERPRINTS: dict[tuple[str, str], tuple[str, str]] = {}     # (work dir + sta
 _FINGERPRINTS_LOCK = threading.Lock()
 
 
-def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
+def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False, provider: str = "none") -> str:
     """What a stage's result depends on: its input files and its config sections, minus the speed knobs
     (`legacy`: with them, as markers written before SPEED_KEYS existed were hashed).
 
@@ -157,10 +181,9 @@ def fingerprint(ctx: RunContext, stage: Stage, legacy: bool = False) -> str:
     folders (remotion/, assets/) re-read on every check. The value is the same as before: markers stay valid."""
 
     paths = list(stage.inputs(ctx))
-    sections = [json.dumps(ctx.section(name) if legacy else _without_speed(ctx.section(name)), sort_keys=True)
-                for name in stage.config_sections]
+    sections = [_section_text(ctx, name, legacy, provider) for name in stage.config_sections]
     work_dir, name = getattr(ctx, "work_dir", None), getattr(stage, "name", None)
-    key = f"{name}{'@legacy' if legacy else ''}"
+    key = f"{name}{'@legacy' if legacy else ''}{'' if provider == 'none' else '@' + provider}"
     store = Path(work_dir or ".") / ".stages" / "huellas.cache"     # not .json: readers take every .json as a marker
     try:
         signature = _stat_signature(paths, sections) if work_dir and name else ""   # no work folder: plain hash
@@ -240,7 +263,10 @@ def is_up_to_date(ctx: RunContext, stage: Stage) -> bool:
         # done during YouTube's pause: again now, and inside the stage only what missed YouTube is redone
         print(f"   {stage.name}: se hizo sin YouTube; se rehace con YouTube (solo lo que faltaba)")
         return False
-    if recorded != fingerprint(ctx, stage) and recorded != fingerprint(ctx, stage, legacy=True):
+    if recorded != fingerprint(ctx, stage) and recorded != fingerprint(ctx, stage, legacy=True) and not (
+            any(name in TEXT_SECTIONS for name in stage.config_sections)
+            and recorded in {fingerprint(ctx, stage, legacy=legacy, provider=provider)
+                             for legacy in (False, True) for provider in ("deepseek", "deepseek-sin-rotulos")}):
         return False
     if stage.validate is not None:
         try:
