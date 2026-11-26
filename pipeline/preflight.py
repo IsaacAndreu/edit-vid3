@@ -85,7 +85,10 @@ def video_problems(ctx: Any) -> list[str]:
     problems = []
     if not ctx.env("OPENAI_API_KEY", required=False):
         problems.append("falta OPENAI_API_KEY (el juez de los clips): se buscaría material que nadie podría elegir")
-    if not ctx.env("LLM_API_KEY", required=False):
+    if str(ctx.section("planner").get("model", "")).startswith("claude-"):   # Claude plans: its key, not DeepSeek's
+        if not ctx.env("ANTHROPIC_API_KEY", required=False):
+            problems.append("falta ANTHROPIC_API_KEY (planner.model es Claude)")
+    elif not ctx.env("LLM_API_KEY", required=False):
         problems.append("falta LLM_API_KEY")
     for tool in ("ffmpeg", "ffprobe"):
         if not shutil.which(tool):

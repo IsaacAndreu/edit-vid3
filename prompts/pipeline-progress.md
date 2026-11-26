@@ -486,3 +486,12 @@ Test: `tests/test_arreglo_guion.py`.
   API: `GET /api/radar-semanal`, `POST …/ahora`, `POST …/importar`. Capturas con el mock (escritorio y móvil, claro y
   oscuro): sin errores de consola ni desbordes.
 - Siguiente, cuando el dueño haya visto una semana real: paso 0 (techos por idioma).
+
+## Claude en vez de DeepSeek («que use claude», 26-11)
+
+- DeepSeek se quedó sin saldo (402 «Insufficient Balance») y todos los vídeos se paraban en el planner. config.yaml:
+  `planner.model`, `factcheck.model` y `guion.model` → `claude-sonnet-5-5` con `effort: medium` (ya estaba soportado
+  por pipeline/claude.py; casi todos los textos van por la sección planner). Se vuelve con `model: deepseek-flash`.
+- `preflight.video_problems` pide ANTHROPIC_API_KEY cuando el planner es Claude (no LLM_API_KEY);
+  `main.out_of_credit` reconoce «credit balance is too low» de Anthropic: la cola espera, no falla.
+- Prueba: `tests/test_claude_por_defecto.py`.
