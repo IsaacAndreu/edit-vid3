@@ -41,7 +41,9 @@ planner:
   chapter_titles: false      # false: ningún rótulo de capítulo en pantalla (cortaban el ritmo: un título y una pausa
                              # cada pocos minutos) y nunca falla un vídeo porque el modelo no dé capítulos válidos; tampoco
                              # se escriben «## » en los guiones nuevos. true en un canal para volver a tenerlos.
-  model: deepseek-flash
+  model: claude-sonnet-5-5   # quien planifica los planos (y casi todos los textos: títulos, ideas, gráficos…).
+                             # claude-… usa ANTHROPIC_API_KEY; deepseek-flash, LLM_API_KEY (DeepSeek, ~7× más barato)
+  effort: medium             # Claude: low | medium | high (más lento y caro)
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
   batch_size: 24             # planos por llamada al LLM
@@ -62,6 +64,10 @@ planner:
   #                          fallback.concept_stock: true (apagado) → stock de concepto sin caras para ideas de
   #                          ambiente, siempre pasado por el juez (una llamada más por plano así).
 
+guion:                             # borradores y arreglos de guion (sin esto, el modelo por defecto: DeepSeek)
+  model: claude-sonnet-5-5
+  effort: medium
+
 pacing:                            # ritmo que respira (planner): planos más largos en lo emotivo, rápidos en la acción
   enabled: true                    # cambiarlo no rehace los vídeos ya planificados (python main.py --slug X --force planner)
   base_seconds: 3.0                # plano normal (~19 cortes/min; antes 2,6 ≈ 23)
@@ -71,7 +77,8 @@ pacing:                            # ritmo que respira (planner): planos más la
                                    # luego habla la voz (menos de 1,5 = solo una pausa, el rótulo sigue sobre la voz; 0 = nada)
 
 factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
-  model: deepseek-flash
+  model: claude-sonnet-5-5
+  effort: medium
   thinking: false
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 

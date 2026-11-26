@@ -1226,6 +1226,8 @@ def out_of_credit(error: BaseException) -> str | None:
                 "ponla en .env y reinicia; los vídeos siguen donde se quedaron.")
     if "Insufficient Balance" in text:
         who, where = "DeepSeek", "platform.deepseek.com → Top up"
+    elif "credit balance is too low" in text:
+        who, where = "Anthropic (Claude)", "console.anthropic.com → Billing"
     elif "insufficient_quota" in text or "exceeded your current quota" in text:
         who, where = "OpenAI", "platform.openai.com → Billing"
     elif "Error code: 402" in text:

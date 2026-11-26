@@ -825,7 +825,12 @@ def build_project(tmp: Path, s: Scenario) -> None:
 
     import yaml
 
-    shutil.copy2(ROOT / "config.yaml", tmp / "config.yaml")
+    # the fake answers the OpenAI-compatible client (DeepSeek's): the text sections stay on it here, whatever model the
+    # real config names (Claude since 26-11); this test walks the stages, not the provider
+    base = yaml.safe_load((ROOT / "config.yaml").read_text("utf-8"))
+    for section in ("planner", "factcheck", "guion"):
+        base.setdefault(section, {})["model"] = "deepseek-flash"
+    (tmp / "config.yaml").write_text(yaml.safe_dump(base, allow_unicode=True), encoding="utf-8")
     for name in ("canales", "formatos"):
         shutil.copytree(ROOT / name, tmp / name)
     for name in ("assets", "remotion", "package.json"):
