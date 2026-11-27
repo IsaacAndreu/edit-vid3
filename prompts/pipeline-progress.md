@@ -529,3 +529,13 @@ Test: `tests/test_arreglo_guion.py`.
   `set_channel` solo en la carpeta de un vídeo (nunca la de materiales ni la de un canal); `_channel_of` no hereda
   de la carpeta raíz de materiales.
 - Prueba: `tests/test_seguridad_rutas.py` (peticiones reales con un socio).
+
+## Revisión 27-11 · seguridad 2
+
+- `web.create_video` escribe el config.yaml del vídeo con `yaml.safe_dump` de un diccionario: `format` tiene que
+  existir en formatos/, `serie` en el catálogo del canal, sin caracteres de control; idioma y modo de una lista.
+  Un vídeo hecho por un socio lleva `creado_por`.
+- `context.without_protected`: de un config.yaml con `creado_por` nunca se aplican `budget.*`, ni claves de
+  destino, ejecutables, proxies, cookies o credenciales (`PROTECTED_KEY`); avisa de lo que ignora. Tus vídeos no
+  cambian.
+- Prueba: `tests/test_seguridad_config.py`.

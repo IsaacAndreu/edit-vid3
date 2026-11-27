@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -115,6 +116,29 @@ def safe_name(name: str, what: str = "vídeo") -> str:
     return text
 
 
+# Settings a video's config.yaml made by a partner (`creado_por`) can never set: where requests and keys go, what
+# program runs, and the spending caps. They come only from config.yaml, config.local.yaml and canales/*.yaml.
+PROTECTED_TOP = frozenset({"budget"})
+PROTECTED_KEY = re.compile(r"base_url|executable|proxy|proxies|cookies|po_token|pot_provider|api_key|apikey|token|"
+                           r"secret|password|keys?$|binary|command|_path$|^path$|_dir$|webhook|host$|port$", re.I)
+
+
+def without_protected(data: Any, top: bool = True) -> tuple[Any, list[str]]:
+    """`data` without the protected settings, and their names (to say what was left out)."""
+
+    if not isinstance(data, dict):
+        return data, []
+    kept, dropped = {}, []
+    for key, value in data.items():
+        if (top and str(key) in PROTECTED_TOP) or PROTECTED_KEY.search(str(key)):
+            dropped.append(str(key))
+            continue
+        inner, gone = without_protected(value, False)
+        kept[key] = inner
+        dropped += [f"{key}.{g}" for g in gone]
+    return kept, dropped
+
+
 def find_video(root: Path, slug: str, materials: str = "materiales") -> Path:
     """materiales/<slug>/, or materiales/<canal>/<slug>/ when the video sits in a channel folder."""
 
@@ -162,6 +186,10 @@ class RunContext:
         # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {moments: 0}).
         path = ctx.materials_dir / "config.yaml"
         override = load_config(path) if path.is_file() else {}
+        if override.get("creado_por"):              # made by a partner from the studio: never the protected settings
+            override, dropped = without_protected(override)
+            if dropped:
+                print(f"Aviso: {path.parent.name}/config.yaml no puede cambiar {', '.join(sorted(dropped))} (se ignora)")
         group = ctx.materials_dir.parent / "config.yaml"           # materiales/<canal>/config.yaml, for all its videos
         if ctx.materials_dir.parent != ctx._dir("materials", "materiales") and group.is_file():
             override = deep_merge(load_config(group), override)

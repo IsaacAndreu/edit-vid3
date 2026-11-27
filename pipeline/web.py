@@ -915,15 +915,49 @@ def create_channel(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     return {"channel": name}
 
 
-def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
+def _plain(value: Any, what: str) -> str:
+    """A short form value with no control characters (it ends up in a config file)."""
+
+    text = str(value or "").strip()
+    if any(ord(c) < 32 or ord(c) == 127 for c in text) or len(text) > 80:
+        raise ValueError(f"{what} no válido")
+    return text
+
+
+def create_video(root: Path, body: dict[str, Any], who: str = "") -> dict[str, Any]:
+    """A new video from the studio. Its config.yaml is written as data (never pasted text): only a known format,
+    a series of its channel, the way in, the language and the languages not to dub. `who`: the partner who made it
+    (kept as `creado_por`; the protected settings never apply from such a video's config, context.PROTECTED)."""
+
+    import yaml
+
+    from .context import channel_profile
+
     name = str(body.get("name") or "").strip()
     channel = str(body.get("channel") or "").strip()
     if not NAME.match(name):
         raise ValueError("El nombre solo puede llevar letras, números, puntos, guiones y _ (sin espacios)")
     if channel and channel not in channels(root):
         raise ValueError(f"No existe el canal {channel}")
+    settings: dict[str, Any] = {}
+    fmt = _plain(body.get("format"), "Formato")
+    if fmt:
+        if fmt not in formats(root):
+            raise ValueError(f"No existe el formato {fmt}")
+        settings["format"] = fmt
+    serie = _plain(body.get("serie"), "Serie")
+    if serie:
+        owner = channel or str(load_config(root / "config.yaml").get("canal") or "")
+        catalog = (channel_profile(root, owner).get("series") if owner else None) \
+            or load_config(root / "config.yaml").get("series") or {}
+        if serie not in catalog:
+            raise ValueError(f"El canal {owner or '(ninguno)'} no tiene la serie {serie}")
+        settings["serie"] = serie
     if any(f.name == name for f in video_folders(root)):
         raise ValueError(f"Ya hay un vídeo llamado {name}")
+    lang = str(body.get("language") or "es").strip()
+    if lang not in ("es", "en", "pt", "fr", "it", "de"):
+        raise ValueError(f"Idioma desconocido: {lang}")
     from .tts import clean_script
 
     script = clean_script(str(body.get("script") or "")).strip()     # «[CAPÍTULO 1 — …]» → «## …», notes out
@@ -964,17 +998,10 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         from .niche_ideas import brief
 
         (folder / "idea.md").write_text(brief(body["idea"]), encoding="utf-8")
-    extra = {k: str(body[k]).strip() for k in ("serie", "format") if str(body.get(k) or "").strip()}
     if str(body.get("modo") or "") in ("guion", "titulo"):  # the way in, kept: «Experimentos» compares the ways
-        extra["modo"] = str(body["modo"])
-    lang = str(body.get("language") or "es").strip()
-    if lang not in ("es", "en", "pt", "fr", "it", "de"):
-        raise ValueError(f"Idioma desconocido: {lang}")
-    lines = "".join(f"{k}: {v}\n" for k, v in extra.items())
+        settings["modo"] = str(body["modo"])
     if lang != "es":                       # a video made directly in another language: its voice, texts and titles
-        lines += f"align:\n  language: {lang}\n"
-    if lines:
-        (folder / "config.yaml").write_text(lines, encoding="utf-8")
+        settings["align"] = {"language": lang}
     if isinstance(body.get("dub"), list):                  # a simulation channel: the languages you UNticked
         from . import doblaje
 
@@ -982,8 +1009,12 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         offered = [o["lang"] for o in doblaje.options(root, str(body.get("channel") or "")) if o.get("voice")]
         skip = [l for l in offered if l not in ticked]         # one without a voice yet is dubbed once it has one
         if skip:
-            with (folder / "config.yaml").open("a", encoding="utf-8") as f:
-                f.write(f"dub_skip: [{', '.join(skip)}]\n")
+            settings["dub_skip"] = skip
+    if who:
+        settings["creado_por"] = who
+    if settings:
+        (folder / "config.yaml").write_text(yaml.safe_dump(settings, allow_unicode=True, sort_keys=False),
+                                            encoding="utf-8")
     if isinstance(body.get("material"), dict):             # material de partida (pipeline/material.py)
         from . import material
 
@@ -2507,7 +2538,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         found = search_videos(root, str(body.get("q") or "")[:200000])
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
                 if path == "/api/videos":
-                    return self._ok(create_video(root, body))
+                    return self._ok(create_video(root, body, who or ""))
                 if path == "/api/copia":                   # «Hacer copia ahora»
                     from . import copia
 

@@ -42,6 +42,8 @@ def test_the_best_candidate_becomes_a_new_video_once_a_day(tmp_path, monkeypatch
 
     monkeypatch.setattr(organizar, "draft_script", lambda root, channel, idea: {
         "title": idea["title"], "script": "Frase del guion. " * 80, "words": 240, "format": "explicativo"})
+    (tmp_path / "formatos").mkdir(exist_ok=True)                    # the draft's format exists (an unknown one is dropped)
+    (tmp_path / "formatos" / "explicativo.yaml").write_text("nombre: explicativo\n")
     autopilot.configure(tmp_path, "lugares", on=True)
     assert autopilot.due_channels(tmp_path) == ["lugares"]
     autopilot.run_if_due(tmp_path)

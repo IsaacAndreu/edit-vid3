@@ -197,8 +197,12 @@ def make(root: Path, channel: str, video_id: str | None = None) -> dict[str, Any
     idea = idea_from(root, channel, pick)
     draft = draft_script(root, channel, idea)
     name = _name(root, channel)
+    from .web import formats
+
+    # the draft's format only if it exists (an unknown one is refused by create_video since 27-11)
+    known = draft.get("format") if draft.get("format") in formats(root) else None
     create_video(root, {"name": name, "channel": channel, "script": draft["script"], "title": draft["title"],
-                        "idea": {**idea, "title": draft["title"]}, **({"format": draft["format"]} if draft.get("format") else {})})
+                        "idea": {**idea, "title": draft["title"]}, **({"format": known} if known else {})})
     state = _read(root)
     entry = {**channel_state(root, channel)}
     entry["made"] = [*entry["made"], {"date": datetime.now().date().isoformat(), "slug": name, "title": draft["title"],
