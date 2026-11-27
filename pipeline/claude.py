@@ -88,7 +88,9 @@ def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[st
         import anthropic
 
         client = anthropic.Anthropic(api_key=ctx.env("ANTHROPIC_API_KEY"), max_retries=2)
-    output: dict[str, Any] = {"effort": str(cfg.get("effort", "high"))}
+    effort = cfg.get("effort", "high")
+    # effort «none»: not sent at all (Haiku, 27-11: a model that does not take it would fail every request)
+    output: dict[str, Any] = {} if str(effort).lower() in ("none", "", "false") or effort is None else {"effort": str(effort)}
     if schema is not None:
         output["format"] = {"type": "json_schema", "schema": plain_schema(schema)}
     attempts = max(1, int(cfg.get("network_retries", 3)) + 1)
@@ -97,7 +99,7 @@ def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[st
             with client.beta.messages.stream(
                 model=model, max_tokens=max_tokens, betas=[FALLBACK_BETA], fallbacks="default",
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],   # the same rules
-                messages=[{"role": "user", "content": content}], output_config=output,
+                messages=[{"role": "user", "content": content}], **({"output_config": output} if output else {}),
             ) as stream:
                 reply = stream.get_final_message()
             break

@@ -512,3 +512,11 @@ Test: `tests/test_arreglo_guion.py`.
   el fallo es de conexión o de Claude saturado (`claude.transient`); un error de la petición no se reintenta.
 - `cortacircuitos.Breaker.failed`: los fallos de red nunca cuentan para pausar la cola.
 - Prueba: `tests/test_claude_red.py`.
+
+## Haiku para el planner y la verificación (27-11)
+
+- `planner.model` y `factcheck.model` → `claude-haiku-5-5` (~20× más barato que Sonnet, más que DeepSeek);
+  `guion.model` sigue en Sonnet (borradores de guion, pocos). `effort: none` → `claude.ask` no manda output_config
+  (por si Haiku no lo acepta). Cambiar de modelo no rehace nada (huella sin proveedor, runner.TEXT_SECTIONS).
+- La caché de prompts ya estaba: el system va con cache_control; la caché de llm.py evita pagar dos veces lo mismo.
+- Pruebas: `tests/test_claude_red.py::test_haiku_gets_no_effort`, `::test_the_planner_is_on_haiku_and_switching_redoes_nothing`.

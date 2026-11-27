@@ -41,9 +41,9 @@ planner:
   chapter_titles: false      # false: ningún rótulo de capítulo en pantalla (cortaban el ritmo: un título y una pausa
                              # cada pocos minutos) y nunca falla un vídeo porque el modelo no dé capítulos válidos; tampoco
                              # se escriben «## » en los guiones nuevos. true en un canal para volver a tenerlos.
-  model: claude-sonnet-5-5   # quien planifica los planos (y casi todos los textos: títulos, ideas, gráficos…).
-                             # claude-… usa ANTHROPIC_API_KEY; deepseek-flash, LLM_API_KEY (DeepSeek, ~7× más barato)
-  effort: medium             # Claude: low | medium | high (más lento y caro)
+  model: claude-haiku-5-5    # quien planifica los planos (y casi todos los textos: títulos, ideas, gráficos…).
+                             # claude-haiku-5-5 (barato), claude-sonnet-5-5 (~20× más caro), deepseek-flash (LLM_API_KEY)
+  effort: none               # Claude: low | medium | high; none = no se manda (Haiku)
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
   batch_size: 24             # planos por llamada al LLM
@@ -77,8 +77,8 @@ pacing:                            # ritmo que respira (planner): planos más la
                                    # luego habla la voz (menos de 1,5 = solo una pausa, el rótulo sigue sobre la voz; 0 = nada)
 
 factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
-  model: claude-sonnet-5-5
-  effort: medium
+  model: claude-haiku-5-5
+  effort: none
   thinking: false
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 
