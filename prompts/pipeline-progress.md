@@ -549,3 +549,12 @@ Test: `tests/test_arreglo_guion.py`.
 - `main._materials_signature` ignora lo que escribe el programa (voz sintética, tiempos, arreglo del guion, voz
   recortada, archivos ocultos): un intento fallido ya no cuenta como material nuevo.
 - Prueba: `tests/test_reintentos_tope.py`.
+
+## Revisión 27-11 · A2 el guion que se arregla solo
+
+- La revisión del guion corre antes de pagar el planner (`runner.script_check`), y otra vez antes de las etapas de
+  proxy (sin coste si el guion no cambió).
+- Como mucho una reescritura por vídeo, contada en `materiales/<vídeo>/imagen_guion.intentos.json` (no se pierde
+  con work/); tras ella la revisión es solo `aviso` y el vídeo sigue. `gate` ya no borra los datos del arreglo al
+  reescribir su archivo.
+- Prueba: `tests/test_arreglo_guion.py::test_a_rewrite_that_still_fails_never_loops`.

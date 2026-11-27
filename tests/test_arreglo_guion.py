@@ -114,3 +114,28 @@ def test_the_repair_command_fixes_a_script_already_rewritten(ctx):
     (ctx.materials_dir / "guion.txt").write_text(GLUED)
     assert imagen_guion.repair(ctx.root, "newgym9") == 2
     assert imagen_guion.repair(ctx.root, "newgym9") == 0
+
+
+def test_a_rewrite_that_still_fails_never_loops(ctx):
+    """27-11 [A2]: with `parar`, the check after the rewrite read the new script, wrote its file from scratch and
+    forgot the rewrite: 8 rewrites, 8 voices, 8 plans. Now: one rewrite, then it goes on whatever the new share."""
+
+    (ctx.root / "config.yaml").write_text("guion: {revisar_antes: parar, max_sin_imagen: 35}\n")
+    ctx = RunContext.create("newgym9", root=ctx.root)
+    bad = {"shares": {"sin_imagen": 60, "imagen": 20}, "verdict": "mal", "sinImagen": []}
+    voices = []
+    stopped = imagen_guion.gate(ctx, review_fn=lambda *a: bad, send=lambda t: None)
+    assert stopped
+    with pytest.raises(imagen_guion.ScriptRewritten):
+        imagen_guion.rescue(ctx, stopped, fix_fn=fix, ensure_voice=voices.append, send=lambda t: None)
+    # the run starts over: the rewritten script is checked again, still bad
+    again = imagen_guion.gate(ctx, review_fn=lambda *a: bad, send=lambda t: None)
+    assert again is None                                              # goes on: never a second rewrite
+    assert len(voices) == 1
+    assert json.loads((ctx.materials_dir / imagen_guion.TRIES_FILE).read_text())["tries"] == 1
+    import shutil
+
+    shutil.rmtree(ctx.work_dir)                                       # work/ wiped: the count is in materiales/
+    assert imagen_guion.gate(ctx, review_fn=lambda *a: bad, send=lambda t: None) is None
+    assert imagen_guion.rescue(ctx, "60 %", fix_fn=fix, ensure_voice=voices.append, send=lambda t: None) == ""
+    assert len(voices) == 1
