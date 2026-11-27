@@ -8,6 +8,8 @@ its blind spots. The key is ANTHROPIC_API_KEY (.env); its spending goes to the s
 from __future__ import annotations
 
 import base64
+import re
+import time
 from typing import Any
 
 from .context import RunContext
@@ -23,6 +25,19 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 class ClaudeError(RuntimeError):
     pass
+
+
+TRANSIENT_TYPES = {"RemoteProtocolError", "ReadError", "ReadTimeout", "WriteError", "ConnectError", "ConnectTimeout",
+                   "PoolTimeout", "APIConnectionError", "APITimeoutError", "InternalServerError", "OverloadedError",
+                   "ServiceUnavailableError", "RateLimitError"}
+TRANSIENT_TEXT = re.compile(r"peer closed connection|incomplete chunked read|connection reset|overloaded|"
+                            r"Error code: (?:429|500|502|503|504|529)\b", re.I)
+
+
+def transient(error: BaseException) -> bool:
+    """A failure of the connection or a busy Claude, not of the request: asking again usually works."""
+
+    return type(error).__name__ in TRANSIENT_TYPES or bool(TRANSIENT_TEXT.search(f"{type(error).__name__}: {error}"))
 
 
 def is_claude(model: str | None) -> bool:
@@ -76,12 +91,24 @@ def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[st
     output: dict[str, Any] = {"effort": str(cfg.get("effort", "high"))}
     if schema is not None:
         output["format"] = {"type": "json_schema", "schema": plain_schema(schema)}
-    with client.beta.messages.stream(
-        model=model, max_tokens=max_tokens, betas=[FALLBACK_BETA], fallbacks="default",
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],   # the same rules every time
-        messages=[{"role": "user", "content": content}], output_config=output,
-    ) as stream:
-        reply = stream.get_final_message()
+    attempts = max(1, int(cfg.get("network_retries", 3)) + 1)
+    for attempt in range(attempts):
+        try:
+            with client.beta.messages.stream(
+                model=model, max_tokens=max_tokens, betas=[FALLBACK_BETA], fallbacks="default",
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],   # the same rules
+                messages=[{"role": "user", "content": content}], output_config=output,
+            ) as stream:
+                reply = stream.get_final_message()
+            break
+        except Exception as error:
+            # 27-11: «peer closed connection without sending complete message body» in the middle of a streamed
+            # reply failed three videos in a row and paused the queue: a cut connection is asked again
+            if attempt + 1 >= attempts or not transient(error):
+                raise
+            wait = float(cfg.get("network_wait_seconds", 10)) * (attempt + 1)
+            print(f"   Claude: conexión cortada ({type(error).__name__}); otra vez en {wait:.0f} s")
+            time.sleep(wait)
     usd = cost(str(getattr(reply, "model", model) or model), reply.usage, cfg.get("usd_per_mtok"))
     record_cost(ctx, stage=stage, provider="anthropic", operation=model, usd=usd,
                 details={"inputTokens": getattr(reply.usage, "input_tokens", 0),

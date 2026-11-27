@@ -503,3 +503,12 @@ Test: `tests/test_arreglo_guion.py`.
   mueve las palabras si la voz salió con la duración esperada (±0,5 s); si no, la etapa falla y no toca nada.
 - `align.validate`: si `voz.mp3` dura lo mismo que `voz.original.mp3` (el recorte viejo no se hizo), se rehace.
 - Pruebas: `tests/test_align.py::PauseVoiceTests`.
+
+## Cortes de conexión con Claude (27-11)
+
+- «peer closed connection without sending complete message body» en la respuesta de Claude hizo fallar 3 vídeos
+  seguidos en el planner y el cortacircuitos pausó la cola toda la noche (out/_pausa).
+- `claude.ask` reintenta hasta `network_retries` (3) veces, esperando `network_wait_seconds` (10) × intento, cuando
+  el fallo es de conexión o de Claude saturado (`claude.transient`); un error de la petición no se reintenta.
+- `cortacircuitos.Breaker.failed`: los fallos de red nunca cuentan para pausar la cola.
+- Prueba: `tests/test_claude_red.py`.
