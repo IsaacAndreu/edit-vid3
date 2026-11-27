@@ -693,11 +693,27 @@ WATCH_STATE = "out/_vigilar.json"
 WAKE = "out/_despertar"          # the studio's «Reintentar todos ahora»: the watcher looks again without waiting
 
 
+# What the program itself writes into a video's folder: a failed attempt touching them is not new material (27-11:
+# every attempt changed the «signature» and the wait never applied)
+GENERATED = frozenset({"voz.genaipro.json", "voz.palabras.json", "voz.error.json", "imagen_guion.json",
+                       "imagen_guion.intentos.json", "voz.original.mp3", "voz.sin-pausas.mp3",
+                       "guion.sin-capitulos.txt", "apertura.auto.json"})
+
+
 def _materials_signature(root: Path, slug: str) -> float:
+    """The newest change of what you put in the video's folder (the program's own files and hidden ones aside)."""
+
     from pipeline.context import find_video
 
     folder = find_video(root, slug)
     files = [p for p in folder.rglob("*") if p.is_file()] if folder.is_dir() else []
+    files = [p for p in files if p.name not in GENERATED
+             and not any(part.startswith(".") for part in p.relative_to(folder).parts)]
+    voice = folder / "voz.mp3"
+    if voice in files and ((folder / "voz.genaipro.json").is_file() or (folder / "voz.original.mp3").is_file()):
+        files.remove(voice)                 # made here (synthetic) or cut here (long pauses): not yours
+        if (folder / "voz.original.mp3").is_file():
+            files.append(folder / "voz.original.mp3")
     parent = folder.parent / "config.yaml"
     return max([p.stat().st_mtime for p in files + ([parent] if parent.is_file() else [])] or [0.0])
 
@@ -934,18 +950,24 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 return
             from pipeline.fileio import update_json
 
+            capped: list[int] = []
+
             def change(now: object) -> dict:
                 now = dict(now) if isinstance(now, dict) else {}
                 if status == "OK":
                     now.pop(slug, None)
                 else:
-                    signature = _materials_signature(root, slug)
-                    now[slug] = {"sig": signature, "at": time.time(), "status": status,
-                                 "code": running_code or git_head(root),
-                                 "tries": reintentos.failed_again(now.get(slug), signature)}   # in a row: the wait
+                    entry = reintentos.record(now.get(slug), _materials_signature(root, slug), status,
+                                              running_code or git_head(root))
+                    now[slug] = entry
+                    if entry["dayFails"] == reintentos.day_cap(cfg):
+                        capped.append(entry["dayFails"])
                 return now
 
             update_json(state_path, change, {})
+            if capped:                                       # once, the time it reaches the cap
+                notify(root, f"⏸ {slug} ha fallado {capped[0]} veces hoy: no se vuelve a intentar hasta mañana "
+                             "(o «Reintentar» en el estudio)")
 
         if waiting:
             idle_since = None
@@ -960,17 +982,23 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 print(stop)
                 time.sleep(30 * 60)
             waited = any(status == "en espera" for _, status, _, _ in LAST_RESULTS)
-            for slug, status, _, _ in LAST_RESULTS:
-                if status in WAITING:                                # budget / API quota / YouTube: not a failure
-                    continue
-                if status == "OK":
-                    state.pop(slug, None)
-                else:
-                    state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
-                                   "code": running_code or git_head(root)}
-            from pipeline.fileio import atomic_write_text
+            # each result is already in out/_vigilar.json (on_result, both queue modes): rewriting it here from the
+            # copy read before the round lost `tries` and the daily count (27-11). Only a failure missing there is
+            # written, never over one that is
+            from pipeline.fileio import update_json
 
-            atomic_write_text(state_path, json.dumps(state, indent=1))
+            for slug, status, _, _ in LAST_RESULTS:
+                if status in WAITING or status == "OK":
+                    continue
+
+                def missing(now: object, slug: str = slug, status: str = status) -> dict:
+                    now = dict(now) if isinstance(now, dict) else {}
+                    signature = _materials_signature(root, slug)
+                    if (now.get(slug) or {}).get("sig") != signature:    # not recorded for these materials yet
+                        now[slug] = reintentos.record(now.get(slug), signature, status, running_code or git_head(root))
+                    return now
+
+                update_json(state_path, missing, {})
             if waited:
                 time.sleep(30 * 60)                                  # over the daily budget: look again later
         elif idle_since is None:

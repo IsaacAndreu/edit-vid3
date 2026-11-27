@@ -681,6 +681,7 @@ watch:
   # retry_now: 2                   # un vídeo que falla se reintenta casi enseguida (retry_minutes) sus primeras 2 veces seguidas;
   # retry_minutes: 1               # solo si sigue fallando igual espera retry_hours (para no gastar la noche en uno imposible)
   # retry_hours: 6
+  # max_failures_per_day: 5       # tras 5 fallos en el día, el vídeo espera a mañana (un aviso; «Reintentar» lo suelta)
   continue_without_youtube: false  # con YouTube en pausa, los vídeos que aún lo necesitan siguen sin él (pipeline/sin_youtube.py):
                                    # ninguna petición a YouTube, se reutiliza lo ya hecho y solo se termina si la cobertura no es
                                    # peor que la habitual del canal; si no, espera a YouTube. Mejor por canal (canales/<canal>.yaml)

@@ -539,3 +539,13 @@ Test: `tests/test_arreglo_guion.py`.
   destino, ejecutables, proxies, cookies o credenciales (`PROTECTED_KEY`); avisa de lo que ignora. Tus vídeos no
   cambian.
 - Prueba: `tests/test_seguridad_config.py`.
+
+## Revisión 27-11 · A1 reintentos
+
+- El final de la ronda ya no reescribe `out/_vigilar.json` desde la copia leída antes (perdía `tries` y el vídeo se
+  reintentaba cada ronda): solo apunta un fallo que `on_result` no haya apuntado para esos materiales.
+- `reintentos.record`: fallos seguidos con los mismos materiales (`tries`, la espera) y fallos del día (`dayFails`);
+  con `watch.max_failures_per_day` (5) el vídeo espera a mañana, con un solo aviso. «Reintentar» lo suelta.
+- `main._materials_signature` ignora lo que escribe el programa (voz sintética, tiempos, arreglo del guion, voz
+  recortada, archivos ocultos): un intento fallido ya no cuenta como material nuevo.
+- Prueba: `tests/test_reintentos_tope.py`.
