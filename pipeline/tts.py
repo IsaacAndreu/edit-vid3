@@ -915,6 +915,9 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
         voice = {**voice, "language_boost": LANGUAGE_BOOST[lang]}
     print(f"Voz con {provider_name(voice)} ({voice.get('name') or voice['voice_id']}, {voice['model_id']}): {len(text)} caracteres")
     started = time.monotonic()
+    from .budget import before_paid_call
+
+    before_paid_call(ctx)
     result = generate(keys(ctx.root), text, voice, voice_file)
     (ctx.materials_dir / "voz.genaipro.json").write_text(json.dumps(
         {"voice": voice, **result, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}, ensure_ascii=False, indent=1), encoding="utf-8")

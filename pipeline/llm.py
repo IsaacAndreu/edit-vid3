@@ -97,8 +97,9 @@ def complete_json(
         except (OSError, json.JSONDecodeError, KeyError):
             pass
 
-    from . import claude
+    from . import budget, claude
 
+    budget.before_paid_call(ctx)                 # the video's caps before each paid request (27-11: 6 $ in one stage)
     if claude.is_claude(model):                  # guion.model / planner.model: claude-… (pipeline/claude.py)
         text, _ = claude.ask(ctx, stage=stage, system=system + "\n\nDevuelve SOLO el objeto JSON, sin nada más.",
                              content=user, max_tokens=max(max_tokens, 16000),

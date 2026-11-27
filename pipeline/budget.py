@@ -184,19 +184,42 @@ def video_spent(work_dir: Path) -> float:
         return 0.0
 
 
+def video_spent_today(work_dir: Path) -> float:
+    """What this video spent today (UTC), whatever the attempts: 27-11, five attempts of 1.40 $ added up to 7 $ with
+    the cap at 1.50 $, because the cap was per attempt."""
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    try:
+        entries = json.loads((work_dir / "costs.json").read_text("utf-8")).get("entries") or []
+    except (OSError, ValueError):
+        return 0.0
+    return sum(float(e.get("usd") or 0) for e in entries if str(e.get("at") or "").startswith(today))
+
+
 def check_video(root: Path, config: dict, work_dir: Path, folder: Path, started_at: float) -> None:
-    """Between stages: this attempt (what was spent since it began) over budget.per_video_usd → out of the queue."""
+    """Between stages and before each paid call: what this video spent today (all its attempts) — or this attempt,
+    if more — over budget.per_video_usd → out of the queue."""
 
     cap = per_video(root, config)
-    spent = video_spent(work_dir) - started_at
+    spent = max(video_spent_today(work_dir), video_spent(work_dir) - started_at)
     if cap > 0 and spent > cap:
         (folder / ".en-espera").write_text(datetime.now().isoformat(timespec="seconds"), encoding="utf-8")
         raise VideoOverBudget(
-            f"Este intento ya ha gastado {spent:.2f} $ (límite por vídeo {cap:.2f} $): se para y sale de la cola para "
-            "que lo mires. Si está bien, súbelo en Ajustes → «Límite por vídeo» y pulsa «Volver a la cola».")
+            f"Este vídeo ya ha gastado hoy {spent:.2f} $ (límite por vídeo {cap:.2f} $): se para y sale de la cola "
+            "para que lo mires. Si está bien, súbelo en Ajustes → «Límite por vídeo» y pulsa «Volver a la cola».")
 
 
 ATTEMPT_START: dict[str, float] = {}      # work dir → what the video had spent when this attempt began (run_stages)
+
+
+def before_paid_call(ctx: Any) -> None:
+    """Before ANY paid call (model, voice, images) of a video: the same caps as `guard`. Not for the studio's or the
+    watcher's own work (slugs starting with «_»: radar, ideas, drafts), which has no video to put on hold."""
+
+    slug = str(getattr(ctx, "slug", "") or "")
+    if not slug or slug.startswith("_") or not hasattr(ctx, "work_dir"):
+        return
+    guard(ctx)
 
 
 def guard(ctx: Any) -> None:

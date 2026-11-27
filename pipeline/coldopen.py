@@ -187,6 +187,9 @@ def is_competition(ctx: RunContext, clip: Path, person: str) -> bool:
     def produce() -> dict[str, Any]:
         from openai import OpenAI
 
+        from .budget import before_paid_call
+
+        before_paid_call(ctx)
         response = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=180, max_retries=2).responses.create(
             model=model, reasoning={"effort": "low"},
             input=[{"role": "user", "content": [

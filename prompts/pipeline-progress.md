@@ -558,3 +558,13 @@ Test: `tests/test_arreglo_guion.py`.
   con work/); tras ella la revisión es solo `aviso` y el vídeo sigue. `gate` ya no borra los datos del arreglo al
   reescribir su archivo.
 - Prueba: `tests/test_arreglo_guion.py::test_a_rewrite_that_still_fails_never_loops`.
+
+## Revisión 27-11 · A3 tope por vídeo y día
+
+- `budget.check_video`: lo gastado HOY por el vídeo (todos sus intentos), o el intento si es más, contra
+  `budget.per_video_usd`.
+- `budget.before_paid_call` antes de cada llamada de pago de un vídeo: `llm.complete_json` (DeepSeek y Claude),
+  `claude.ask`, la voz (`tts._make`), las imágenes (`package.concept_image`, `miniatura_ia.generate`), el revisor,
+  el índice de escenas, la revisión y los momentos de la apertura. El trabajo del estudio y del vigilante (slugs
+  «_…») no se para aquí (A12).
+- Prueba: `tests/test_tope_dia.py`.

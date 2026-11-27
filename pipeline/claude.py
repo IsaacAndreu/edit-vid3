@@ -84,6 +84,9 @@ def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[st
     request on another model by itself (server-side fallbacks); a reply cut short or declined in the end raises."""
 
     model = str(cfg.get("model") or DEFAULT_MODEL)
+    from .budget import before_paid_call
+
+    before_paid_call(ctx)
     if client is None:
         import anthropic
 
