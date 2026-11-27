@@ -40,7 +40,7 @@ from typing import Any
 
 from .config import PROJECT_ROOT
 from . import usuarios
-from .context import RunContext, find_video, load_config, video_folders
+from .context import RunContext, find_video, load_config, safe_name, video_folders
 
 STATIC = Path(__file__).with_name("web_static")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$")
@@ -155,7 +155,12 @@ def set_channel(root: Path, slug: str, channel: str) -> dict[str, Any]:
     if channel not in channels(root):
         raise ValueError(f"No existe el canal {channel!r} (canales/{channel}.yaml)")
     folder = find_video(root, slug)
-    if not folder.is_dir():
+    base = (root / "materiales").resolve()
+    # only a video's own folder: never the materials folder itself nor a channel group (their config.yaml decides
+    # the channel of every video under them)
+    from .context import _groups_videos
+
+    if not folder.is_dir() or base not in folder.resolve().parents or _groups_videos(root, folder):
         raise FileNotFoundError(slug)
     path = folder / "config.yaml"
     current = (yaml.safe_load(path.read_text("utf-8")) if path.is_file() else None) or {}
@@ -169,7 +174,9 @@ def formats(root: Path) -> list[str]:
 
 
 def _channel_of(root: Path, folder: Path) -> str:
-    for path in (folder / "config.yaml", folder.parent / "config.yaml"):
+    # the channel group above (materiales/<canal>/), never the materials folder itself
+    above = [] if folder.parent.resolve() == (root / "materiales").resolve() else [folder.parent / "config.yaml"]
+    for path in (folder / "config.yaml", *above):
         cfg = _json_yaml(path)
         if cfg.get("canal"):
             return str(cfg["canal"])
@@ -1776,6 +1783,20 @@ def _secret(password: str) -> bytes:
     return hashlib.sha256(("edit-vid3 web " + password).encode()).digest()
 
 
+def unsafe_path(path: str) -> bool:
+    """A request path with a part that, once decoded, would leave its folder: a slash or backslash inside one part,
+    a hidden or parent part, a control character. Checked before any route reads a name from the URL."""
+
+    for part in path.split("/"):
+        if not part:
+            continue
+        name = urllib.parse.unquote(part)
+        if (name.startswith(".") or "/" in name or "\\" in name
+                or any(ord(c) < 32 or ord(c) == 127 for c in name)):
+            return True
+    return False
+
+
 def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
     secret = _secret(password)
     failures: list[float] = []                       # wrong passwords lately (any client): 10 in 10 min → wait
@@ -1942,6 +1963,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             self._started = time.monotonic()
             url = urllib.parse.urlparse(self.path)
             path = url.path
+            if path.startswith(("/api/", "/files/", "/editor/")) and unsafe_path(path):
+                return self._fail(400, "Ruta no válida")
             if path.startswith("/editor/"):
                 who = self._who()
                 if who is None:
@@ -2310,9 +2333,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(mychannel_state(root, urllib.parse.unquote(match.group(1))))
                 if match := re.fullmatch(r"/files/([^/]+)/(.+)", path):
                     slug, rel = urllib.parse.unquote(match.group(1)), urllib.parse.unquote(match.group(2))
-                    base = (root / "out" / slug).resolve()
+                    out = (root / "out").resolve()
+                    base = (out / safe_name(slug)).resolve()
                     target = (base / rel).resolve()
-                    if base not in target.parents or not target.is_file():          # never outside out/<vídeo>/
+                    if base.parent != out or base not in target.parents or not target.is_file():   # only out/<vídeo>/
                         return self._fail(404, "No existe")
                     return self._file(target)
             except FileNotFoundError:
@@ -2324,6 +2348,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             url = urllib.parse.urlparse(self.path)
             path = url.path
+            if unsafe_path(path):
+                return self._fail(400, "Ruta no válida")
             length = int(self.headers.get("Content-Length") or 0)
             clip_upload = re.fullmatch(r"/api/video/[^/]+/material/clip", path) is not None   # checked in save_clip
             if length > MAX_UPLOAD and not clip_upload:

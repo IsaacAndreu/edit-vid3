@@ -520,3 +520,12 @@ Test: `tests/test_arreglo_guion.py`.
   (por si Haiku no lo acepta). Cambiar de modelo no rehace nada (huella sin proveedor, runner.TEXT_SECTIONS).
 - La caché de prompts ya estaba: el system va con cache_control; la caché de llm.py evita pagar dos veces lo mismo.
 - Pruebas: `tests/test_claude_red.py::test_haiku_gets_no_effort`, `::test_the_planner_is_on_haiku_and_switching_redoes_nothing`.
+
+## Revisión 27-11 (prompts/revision-27-11-plan.md, rama claude/quirky-johnson-6m1428) · seguridad 1
+
+- Nombres que llegan por URL o formulario: `context.safe_name` (una sola parte de ruta, sin partes ocultas ni de
+  carpeta superior, sin caracteres de control) dentro de `find_video`; `web.unsafe_path` en todas las rutas
+  /api, /files y /editor antes de leer ningún nombre; `/files` solo sirve lo que queda bajo `out/<nombre>/`;
+  `set_channel` solo en la carpeta de un vídeo (nunca la de materiales ni la de un canal); `_channel_of` no hereda
+  de la carpeta raíz de materiales.
+- Prueba: `tests/test_seguridad_rutas.py` (peticiones reales con un socio).

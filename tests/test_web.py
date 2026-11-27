@@ -229,7 +229,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual((code, len(json.loads(body)["shots"])), (200, 2))
         code, body, _ = self.call("/files/V1/video-final.mp4", headers={"Range": "bytes=2-4"})
         self.assertEqual((code, body), (206, b"234"))
-        self.assertEqual(self.call("/files/V1/..%2F..%2Fsecreto.txt")[0], 404)       # never outside out/<vídeo>/
+        self.assertIn(self.call("/files/V1/..%2F..%2Fsecreto.txt")[0], (400, 404))  # never outside out/<vídeo>/
         self.assertEqual(self.call("/api/review/V1/s001", {"verdict": "dudosa"}, {"Origin": "http://otro.com"})[0], 403)
         self.assertEqual(self.call("/api/review/V1/s001", {"verdict": "dudosa"})[0], 200)
         self.assertEqual(feedback.labels(self.root)["V1/s001"]["verdict"], "dudosa")

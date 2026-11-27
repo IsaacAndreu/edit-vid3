@@ -104,8 +104,21 @@ def _groups_videos(root: Path, folder: Path, subs: list[Path] | None = None) -> 
     return bool(subs) or (root / CHANNELS_DIR / f"{folder.name}.yaml").is_file()
 
 
+def safe_name(name: str, what: str = "vídeo") -> str:
+    """A video, channel or file name that stays inside its folder: one path part, no hidden or parent part, no
+    control characters. Raises ValueError otherwise (every name that comes from a URL or a form goes through it)."""
+
+    text = str(name or "")
+    if (not text or len(text) > 200 or text.startswith(".") or any(c in text for c in "/\\")
+            or any(ord(c) < 32 or ord(c) == 127 for c in text)):
+        raise ValueError(f"Nombre de {what} no válido")
+    return text
+
+
 def find_video(root: Path, slug: str, materials: str = "materiales") -> Path:
     """materiales/<slug>/, or materiales/<canal>/<slug>/ when the video sits in a channel folder."""
+
+    safe_name(slug)
 
     flat = root / materials / slug
     if flat.is_dir() and not _groups_videos(root, flat):
