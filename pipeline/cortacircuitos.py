@@ -22,6 +22,11 @@ BUG_TYPES = ("NameError", "AttributeError", "TypeError", "ImportError", "ModuleN
              "RecursionError")
 BUG = re.compile(r"\b(" + "|".join(BUG_TYPES) + r")\b")
 FRAME = re.compile(r'File "(?P<path>[^"]+)", line (?P<line>\d+)')
+# a cut connection or a busy API is not the videos' fault nor the same failure three times: it never trips the
+# breaker (27-11: three «peer closed connection» from Claude in the planner paused the whole queue for the night)
+NETWORK = re.compile(r"RemoteProtocolError|peer closed connection|incomplete chunked read|ReadTimeout|ConnectTimeout|"
+                     r"ConnectError|APIConnectionError|APITimeoutError|Connection reset|overloaded|"
+                     r"Error code: (?:429|500|502|503|504|529)\b", re.I)
 
 
 def _ours(path: str) -> str | None:
@@ -79,6 +84,8 @@ class Breaker:
                error: BaseException | None = None) -> tuple[str, list[str]] | None:
         """(why, videos) when the queue should pause; None otherwise."""
 
+        if NETWORK.search(detail or "") or (error is not None and NETWORK.search(f"{type(error).__name__}: {error}")):
+            return None
         key = bug_key(detail, lines, error)
         if key:
             hit = self.bugs.setdefault(key, [])
