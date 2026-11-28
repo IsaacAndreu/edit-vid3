@@ -455,7 +455,8 @@ timeline:
   question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas
   question_hold: 1.2               # s que el texto sigue tras la última palabra
   question_max_words: 30
-  card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
+  card_share: 0                    # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre).
+                                   # 0 de serie (27-11: 0.25 metía 1 de cada 4 clips en tarjeta, con 72 saltos tarjeta↔pantalla)
   photo_layout: mixed              # fotos: mixed (tarjeta enmarcada o paralaje, a partes) · full (a pantalla completa, con un Ken Burns lento)
   photo_hold_seconds: 0            # >0: una foto real sigue en pantalla sobre los planos de relleno que vienen detrás, hasta estos segundos (crímenes reales: 9)
   labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas

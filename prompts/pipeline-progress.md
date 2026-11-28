@@ -934,3 +934,11 @@ Test: `tests/test_arreglo_guion.py`.
   una idea de ambiente, nunca de una literal ni de quien no debe salir) antes de quedarse en texto. Lo que aún pase
   del tope se cuenta y se dice en el log («N por encima del tope»). Los rótulos leídos se quedan en texto, como antes.
 - Prueba: `tests/test_tope_texto_real.py`.
+
+## Revisión 27-11 · D5 ningún clip normal en tarjeta pequeña de serie
+
+- `timeline.card_share` pasa de 0.25 a 0 de serie (en config.yaml y en el código): metía 1 de cada 4 clips en tarjeta
+  enmarcada, con 72 saltos entre tarjeta y pantalla completa en un vídeo. En el servidor ya estaba a 0 (lo pusiste
+  tú): allí no cambia nada. Los canales que fijan el suyo (aviación, instrumentos y megaproyectos a 0.1) lo conservan;
+  las fotos y los clips verticales siguen enmarcados.
+- Prueba: `tests/test_tarjetas_de_serie.py`.

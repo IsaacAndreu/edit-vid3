@@ -2124,7 +2124,7 @@ def run(ctx: RunContext) -> None:
     shots: list[TimelineShot] = []
     missing = []
     chapter_number = 0
-    card_share = float(cfg.get("card_share", 0.25))
+    card_share = float(cfg.get("card_share", 0))
     narrow = str(cfg.get("narrow_layout", "card"))
     # timeline.pizarra (on unless set to false): a shot nothing could fill (no stock, no generated
     # images for a real person) becomes a card with its key words instead of stopping the video
