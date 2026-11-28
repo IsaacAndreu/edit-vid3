@@ -1,5 +1,5 @@
 import type { CSSProperties, FC } from 'react';
-import { AbsoluteFill, Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { Media } from '../types';
 
 const cover: CSSProperties = { width: '100%', height: '100%', objectFit: 'cover' };
@@ -43,6 +43,7 @@ export const BRoll: FC<{ media: Media; durationInFrames: number; seed: string; d
   dim = 0,
 }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const scale = zoomAt(frame, media.zoom);
   return (
     <AbsoluteFill style={{ backgroundColor: '#000', filter: media.mono ? 'grayscale(1) contrast(1.08)' : undefined }}>
@@ -51,6 +52,7 @@ export const BRoll: FC<{ media: Media; durationInFrames: number; seed: string; d
           src={staticFile(media.src)}
           muted
           playbackRate={media.rate || 1}
+          startFrom={media.start ? Math.round(media.start * fps) : undefined}
           style={{ ...cover, transform: scale !== 1 ? `scale(${scale})` : undefined }}
         />
       ) : (

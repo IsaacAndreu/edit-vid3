@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { AbsoluteFill, OffthreadVideo, random, staticFile, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, OffthreadVideo, random, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { Media } from '../types';
 import { zoomAt } from './BRoll';
 
@@ -16,6 +16,7 @@ const GRAIN =
  */
 export const ArchiveFootage: FC<{ media: Media; seed: string }> = ({ media, seed }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const aspect = media.width && media.height ? media.width / media.height : 4 / 3;
   const width = Math.min(1920, Math.round(1080 * aspect));
   const weaveX = (random(`${seed}-x-${Math.floor(frame / 2)}`) - 0.5) * 2.2;
@@ -30,6 +31,7 @@ export const ArchiveFootage: FC<{ media: Media; seed: string }> = ({ media, seed
           src={staticFile(media.src)}
           muted
           playbackRate={media.rate || 1}
+          startFrom={media.start ? Math.round(media.start * fps) : undefined}
           style={{
             width: '100%',
             height: '100%',

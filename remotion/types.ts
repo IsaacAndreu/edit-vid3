@@ -20,6 +20,7 @@ export interface Media {
   seconds?: number | null; // clips inside graphics: their length, to slow them down or loop them
   zoom?: [number, number, number] | null; // [start frame in the shot, frames, final scale]: ease-out push-in, then hold
   rate?: number | null; // playback speed < 1 when the shot outlasts its clip
+  start?: number | null; // seconds into the file where the shot starts (a lent clip shows its other seconds)
   mono?: boolean | null; // black and white: a low moment of the story
   cutout?: string | null; // parallax photos with depth: the subject alone, same size as the photo
 }

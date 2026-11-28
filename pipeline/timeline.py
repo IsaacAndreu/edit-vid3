@@ -1469,11 +1469,23 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
     It used to take the clip FARTHEST away, so it would not look repeated — newgym3 showed Simone Biles' wedding
     (9:57) over «tiene seis títulos mundiales» at 0:58 and three more lines of the first two minutes."""
 
-    donors = [s for s in shots if s.media is not None and s.media.kind == "video" and not s.coldOpen
-              and (s.media.layout or "full") in ("full", "archive") and s.media.credit]
+    # each file once, as its own shot shows it (never a copy lent before, with its own speed or start)
+    donors_by_src: dict[str, TimelineShot] = {}
+    for s in shots:
+        if s.media is not None and s.media.kind == "video" and not s.coldOpen and s.media.start is None \
+                and (s.media.layout or "full") in ("full", "archive") and s.media.credit:
+            best = donors_by_src.get(s.media.src)
+            if best is None or footage(s) > footage(best):
+                donors_by_src[s.media.src] = s
+    donors = list(donors_by_src.values())
     if not donors:
         return []
-    uses: dict[str, int] = {}
+    # how many times each file is on screen in the whole edit — the passes (2, then 5, then 6 uses) used to count from
+    # zero each, and one clip filled ten gaps in a row (27-11)
+    shown: dict[str, int] = {}
+    for s in shots:
+        if s.media is not None:
+            shown[s.media.src] = shown.get(s.media.src, 0) + 1
     overlays: list[TimelineGroup] = []
     previous_end = -1
     run_text: list[str] = []
@@ -1506,16 +1518,22 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
         # only a donor with footage for the whole shot at ≥0.6× speed: a slower floor would play past the end of
         # its file and show more than 5 s of someone else's clip (avion9 s202: 5.27 s blocked the render)
         reach = window_seconds * fps
-        fitting = [d for d in donors if uses.get(d.id, 0) < max_uses
+        # never the file of the shot right before or after on screen: the same picture again, from its second 0
+        neighbours = {s.media.src for s in shots if s.media is not None and s is not shot
+                      and (abs(s.from_ + s.durationInFrames - start) <= 1 or abs(s.from_ - end) <= 1)}
+        fitting = [d for d in donors if shown.get(d.media.src, 1) - 1 < max_uses
                    and footage(d) >= MIN_RATE * shot.durationInFrames
-                   and abs(d.from_ - start) <= reach]
+                   and abs(d.from_ - start) <= reach and d.media.src not in neighbours]
         if not fitting:
             continue
-        donor = min(fitting, key=lambda d: (uses.get(d.id, 0), abs(d.from_ - start)))
-        uses[donor.id] = uses.get(donor.id, 0) + 1
+        donor = min(fitting, key=lambda d: (shown.get(d.media.src, 1), abs(d.from_ - start)))
+        shown[donor.media.src] = shown.get(donor.media.src, 1) + 1
         rate = min(1.0, footage(donor) / shot.durationInFrames)
+        # a donor longer than the gap lends its LAST seconds: other seconds than the ones its own shot shows
+        spare = (footage(donor) - shot.durationInFrames) / fps
         shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
-            "zoom": push_in(donor.media, shot.durationInFrames), "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
+            "zoom": push_in(donor.media, shot.durationInFrames), "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None,
+            "start": round(spare, 3) if spare >= 0.5 else None})})
         if start != previous_end:
             flush()
             run_start, run_text = start, []

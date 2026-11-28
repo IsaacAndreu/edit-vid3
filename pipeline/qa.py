@@ -98,6 +98,23 @@ def clip_limit(ctx: Any, shot: Any, cap: float) -> float:
     return max(15.0, cap, opening_seconds(ctx) if shot.id == "apertura" else 0.0)
 
 
+def same_file_runs(shots: list, fps: int) -> list[tuple[str, str, str, float]]:
+    """Runs of two or more shots in a row showing the same file: (src, first shot, last shot, seconds on screen)."""
+
+    runs: list[tuple[str, str, str, float]] = []
+    current: list = []
+    for shot in [*shots, None]:
+        src = shot.media.src if shot is not None and shot.media is not None else None
+        if current and src == current[0].media.src:
+            current.append(shot)
+            continue
+        if len(current) >= 2:
+            seconds = sum(s.durationInFrames * float(s.media.rate or 1.0) for s in current) / fps
+            runs.append((current[0].media.src, current[0].id, current[-1].id, round(seconds, 2)))
+        current = [shot] if src else []
+    return runs
+
+
 def empty_spans(timeline: Timeline) -> list[tuple[str, float]]:
     """(shot id, seconds) of every footage shot that shows nothing: no media of its own and the longest stretch of it
     no graphic (board, card, chart) covers."""
@@ -174,6 +191,8 @@ def run(ctx: RunContext) -> None:
             # The render plays the file from its start for exactly this long, so this is what counts; the file's
             # own length can run a little over (audio track or container padding: avion9 s202 «5.27 s» showed 5 s)
             shown = shot.durationInFrames / fps * float(shot.media.rate or 1.0)
+            if shot.media.start and shot.media.start + shown > seconds + 0.5:     # a lent clip from its later seconds
+                blockers.append(f"{shot.id}: pide {shot.media.start + shown:.2f} s de un clip de {seconds:.2f} s")
             cap = tope.seconds(ctx)                # content.max_third_party_seconds of this video
             limit = clip_limit(ctx, shot, cap)
             if shot.media.source in THIRD_PARTY and shown > limit + 1 / fps:
@@ -249,6 +268,13 @@ def run(ctx: RunContext) -> None:
         if reasons:
             entry["flag"] = "low"
             low.append(f"{entry['shotId']} ({mmss(entry['start'])}) — {', '.join(reasons)} — «{entry['text'][:60]}»")
+
+    # the same file on screen in a row (a clip lent to the shot next to it): one long clip, whatever the shots say
+    # (27-11: a 12 s clip and its 9 s neighbour, 21 s of one source with the cap at 12 — QA looked shot by shot)
+    for src, first, last, seconds in same_file_runs(timeline.shots, fps):
+        source = next((s.media.source for s in timeline.shots if s.media and s.media.src == src), "")
+        if source in THIRD_PARTY and seconds > tope.seconds(ctx) + 1 / fps:
+            blockers.append(f"{first}…{last}: el mismo clip {seconds:.1f} s seguidos (máximo {tope.seconds(ctx):.0f} s)")
 
     # --- repeats: same source with overlapping timestamps, or near-identical pictures --------
     repeats: list[str] = []

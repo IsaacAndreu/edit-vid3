@@ -888,3 +888,17 @@ Test: `tests/test_arreglo_guion.py`.
 - Pruebas: `tests/test_entero_y_final.py`, `tests/test_causas_propias.py`.
 - No comprobado: los 80 mensajes reales del servidor; he clasificado los que escribe el programa. Para ver los que
   sigan en «other»: `out/<vídeo>/…/youtube_downloads.jsonl`, campo «cause».
+
+## Revisión 27-11 · D1 un plano sin imagen ya no repite el clip de al lado desde el segundo 0
+
+- El préstamo de metraje (`fill_empty_shots`, el camino por defecto) cuenta los usos de cada archivo en todo el
+  montaje, no por pasada (las tres pasadas, de 2, 5 y 6 usos, empezaban de cero: un clip llenó diez huecos seguidos),
+  y nunca presta el archivo del plano que tiene pegado delante o detrás.
+- Un donante más largo que el hueco presta sus últimos segundos (`media.start`, nuevo en el esquema y en Remotion:
+  BRoll, ArchiveFootage, FramedCard), no los mismos del principio.
+- QA suma los planos seguidos del mismo archivo: si pasan del tope de un clip de terceros, bloquea («el mismo clip
+  N s seguidos»); y bloquea un préstamo que pediría más segundos de los que tiene su clip.
+- Cambia lo que sale en pantalla, pero es arreglar un fallo del camino por defecto (el plan lo marca así): un hueco
+  que solo tenía al lado el clip del vecino ahora se queda para la pizarra o el siguiente relleno.
+- Prueba: `tests/test_prestamos_vecinos.py`; `tests/test_qash_style.py` y `tests/test_agrupar.py` dan a cada plano
+  su propio archivo (en un vídeo real cada plano tiene el suyo).
