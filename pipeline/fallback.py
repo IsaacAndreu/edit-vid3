@@ -870,7 +870,12 @@ def web_photos(ctx: RunContext, broll: Any, notes: list[str]) -> dict[str, Candi
                 "pixabay": {"enabled": False}}
     source = ImageSources(root=ctx.root, cache_dir=ctx.cache_dir, config=only_web,
                           serper_key=ctx.env("SERPER_API_KEY", required=False))
-    _, found = source.search(broll, notes)
+    try:
+        _, found = source.search(broll, notes)
+    finally:
+        from .costs import record_searches
+
+        record_searches(ctx, "fallback", "serper", getattr(source, "serper_calls", 0))
     return {c.id: c for c in found}
 
 

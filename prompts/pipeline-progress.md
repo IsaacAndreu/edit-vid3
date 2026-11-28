@@ -718,3 +718,16 @@ Test: `tests/test_arreglo_guion.py`.
 - El mismo fallo del mismo vídeo (tipo, etapa y texto sin números) en 12 h se manda una vez
   (`out/_avisos_fallo.json`).
 - Prueba: `tests/test_aviso_fallo.py`.
+
+## Revisión 27-11 · A12 gasto que no se contaba
+
+- Voz de AI84 sin precio (`tts.ai84_usd_per_1k_credits` sin poner): se apunta con sus créditos y «unpriced», con
+  aviso en el log, en vez de como gratis.
+- Búsquedas de Serper (fotos en la búsqueda y en el relleno, verificación): se cuentan y se apuntan a
+  `budget.serper_usd_per_search`; sin precio, con su número y «unpriced».
+- El trabajo propio del estudio y del vigilante (radar, ideas, borradores: vídeos «_…») ahora respeta el tope del
+  día antes de cada llamada de pago.
+- Los cortes de Claude se apuntan desde A5.
+- Prueba: `tests/test_gasto_sin_contar.py`.
+- **Falta un dato tuyo**: el precio de AI84 (por 1000 créditos) y el de una búsqueda de Serper según tu plan. No los
+  he puesto porque no los sé; hasta entonces el gasto sale con su cantidad y sin dólares.

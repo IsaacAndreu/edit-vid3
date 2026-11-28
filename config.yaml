@@ -597,6 +597,8 @@ budget:
   daily_usd: 0                     # límite de gasto de API al día (0 = sin límite; también en el estudio → Ajustes)
   proxy_gb_per_day: 0              # tope de GB por el proxy residencial al día (0 = sin tope; también en Ajustes): al llegar,
                                    # los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen
+  # serper_usd_per_search: 0      # precio de una búsqueda de Serper (fotos, verificación); sin él se apuntan
+                                   # como «sin precio» con su número, nunca como gratis
   # per_video_usd: 1.5             # lo que UN vídeo puede gastar en el día, sumando todos sus intentos (antes era por
                                    # intento); se mira antes de cada llamada de pago (modelo, voz, imágenes), no solo
                                    # entre etapas. También en Ajustes → «Límite por vídeo».
