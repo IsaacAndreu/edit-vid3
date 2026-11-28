@@ -41,9 +41,19 @@ def _row(level: str, area: str, text: str) -> dict[str, str]:
 def keys(root: Path) -> list[dict[str, str]]:
     from .context import RunContext
 
+    from .context import load_config
+    from .llm import keys_needed
+
     ctx = RunContext.create("_doctor", root=root, config={})
     rows = []
-    for name, use in REQUIRED.items():
+    try:
+        needed = keys_needed(load_config(root / "config.yaml"))
+    except Exception:
+        needed = {"LLM_API_KEY"}
+    required = {"OPENAI_API_KEY": REQUIRED["OPENAI_API_KEY"],
+                **({"LLM_API_KEY": REQUIRED["LLM_API_KEY"]} if "LLM_API_KEY" in needed else {}),
+                **({"ANTHROPIC_API_KEY": "Claude: planificador, gráficos y textos"} if "ANTHROPIC_API_KEY" in needed else {})}
+    for name, use in required.items():
         rows.append(_row(OK if ctx.env(name, required=False) else FAIL, "claves", f"{name} ({use})"
                          + ("" if ctx.env(name, required=False) else ": falta en .env")))
     missing = []

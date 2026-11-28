@@ -568,3 +568,10 @@ Test: `tests/test_arreglo_guion.py`.
   el índice de escenas, la revisión y los momentos de la apertura. El trabajo del estudio y del vigilante (slugs
   «_…») no se para aquí (A12).
 - Prueba: `tests/test_tope_dia.py`.
+
+## Revisión 27-11 · A4 Atlas y claves
+
+- `llm.text_section`: una sección de texto sin modelo propio (`atlas_guion`) usa el del planner (modelo, esfuerzo…)
+  en vez de DeepSeek. `llm.keys_needed`: el doctor y la comprobación de antes de la cola piden ANTHROPIC_API_KEY si
+  algo usa Claude y LLM_API_KEY solo si algo usa DeepSeek.
+- Prueba: `tests/test_modelo_por_defecto.py`.

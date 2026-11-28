@@ -75,6 +75,31 @@ def parse_json_reply(text: str) -> Any:
     raise error
 
 
+TEXT_SECTIONS = ("planner", "factcheck", "guion", "atlas_guion")
+PROVIDER = ("model", "effort", "thinking", "claude_usd_per_mtok", "network_retries", "network_wait_seconds")
+
+
+def text_section(config: dict[str, Any], section: str) -> dict[str, Any]:
+    """A text section as complete_json reads it: one without a model of its own takes the planner's (model, effort…)
+    instead of DeepSeek (27-11: atlas_guion had none and every Atlas video stayed on DeepSeek without balance)."""
+
+    cfg = dict(config.get(section) or {}) if isinstance(config.get(section), dict) else {}
+    if not cfg.get("model") and section != "planner":
+        planner = config.get("planner") if isinstance(config.get("planner"), dict) else {}
+        cfg = {**{k: v for k, v in planner.items() if k in PROVIDER}, **{k: v for k, v in cfg.items() if v is not None}}
+    return cfg
+
+
+def keys_needed(config: dict[str, Any]) -> set[str]:
+    """Which model keys the text sections really use: ANTHROPIC_API_KEY for Claude, LLM_API_KEY for DeepSeek."""
+
+    needed = set()
+    for section in TEXT_SECTIONS:
+        model = str(text_section(config, section).get("model") or "deepseek-flash")
+        needed.add("ANTHROPIC_API_KEY" if model.startswith("claude-") else "LLM_API_KEY")
+    return needed
+
+
 def complete_json(
     ctx: RunContext,
     *,
@@ -85,8 +110,11 @@ def complete_json(
     max_tokens: int = 8000,
     use_cache: bool = True,
 ) -> dict[str, Any]:
-    cfg = ctx.section(section)
-    model = str(cfg.get("model", "deepseek-flash"))
+    config = getattr(ctx, "config", None)
+    if not isinstance(config, dict):                 # a context that only answers section() (tests, light callers)
+        config = {name: ctx.section(name) for name in (section, "planner")}
+    cfg = text_section(config, section)
+    model = str(cfg.get("model") or "deepseek-flash")
     thinking = bool(cfg.get("thinking", False))
     request = {"model": model, "thinking": thinking, "system": system, "user": user, "max_tokens": max_tokens}
     key = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False).encode()).hexdigest()

@@ -649,7 +649,7 @@ def on_hold(root: Path, slug: str) -> bool:
     return (find_video(root, slug) / HOLD).is_file()
 
 
-REQUIRED_KEYS = ("LLM_API_KEY", "OPENAI_API_KEY")
+REQUIRED_KEYS = ("OPENAI_API_KEY",)        # plus the model keys the config uses (llm.keys_needed)
 MIN_FREE_GB = 20
 
 
@@ -660,7 +660,16 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
 
     problems: list[str] = []
     ctx = RunContext.create("_preflight", root=root, config={})   # only for .env access
-    for name in REQUIRED_KEYS:
+    from pipeline.context import load_config
+    from pipeline.llm import keys_needed
+
+    try:
+        config = load_config(root / "config.yaml")
+    except Exception:
+        config = {}
+    # the model keys the config really uses (27-11: LLM_API_KEY was required with everything on Claude)
+    wanted = ["OPENAI_API_KEY", *sorted(keys_needed(config))]
+    for name in wanted:
         if not ctx.env(name, required=False):
             problems.append(f"falta la clave {name} en .env")
     free_gb = shutil.disk_usage(root).free / 1e9
