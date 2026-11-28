@@ -660,3 +660,14 @@ Test: `tests/test_arreglo_guion.py`.
   con el siguiente. En el mismo proceso no hay salida que oír, así que solo cuenta el tiempo de la etapa. No
   funciona en Windows (sin SIGUSR2): allí sigue como antes.
 - Prueba: `tests/test_guardian_serie.py`.
+
+## Revisión 27-11 · A7 cortacircuitos
+
+- Guarda lo que pasa en `out/_cortacircuitos.json` (últimas 3 h), así que una ronda nueva del vigilante se acuerda.
+- Salta con: el mismo fallo del programa en 2 vídeos o 3 veces en uno; cualquier otra excepción con el mismo tipo y
+  línea 3 veces en 2+ vídeos, en la etapa que sea (antes solo errores de código); 3 seguidos en la misma etapa (como
+  antes); o el 80 % de al menos 6 intentos fallados aunque alguno salga bien. Al saltar empieza de cero.
+- Los cortes de red no cuentan, como antes. Ajustes nuevos en `config.yaml` → `queue.breaker_*` (0 apaga).
+- Prueba: `tests/test_cortacircuitos_tasa.py`.
+- Sin comprobar en el servidor: si el 80 % pausa la cola en noches que hoy salen bien a medias. Para medirlo:
+  `out/_cortacircuitos.json` dice cuántos intentos y fallos lleva; si molesta, `queue.breaker_rate: 0`.

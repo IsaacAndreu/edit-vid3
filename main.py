@@ -1198,7 +1198,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                     if cut := guardian.done_here(slug):
                         notify(root, f"✂ {slug}: {cut}. Se reintenta solo.")
                 results.append((slug, "OK", time.monotonic() - started, ""))
-                breaker.succeeded()
+                breaker.succeeded(slug)
             except KeyboardInterrupt:
                 results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
                 raise
@@ -1436,7 +1436,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 print(f"⏸ {detail}")
                 notify(root, f"⏸ {detail}")
             if status == "OK":
-                breaker.succeeded()
+                breaker.succeeded(slug)
             elif status == "ERROR" and not stopped[0]:
                 tripped = breaker.failed(slug, detail, list(tail))
                 if tripped:

@@ -479,6 +479,12 @@ queue:                             # cola nocturna (python main.py --all)
   # release_red_turn: false       # true: el turno de red se presta a otro vídeo mientras la búsqueda solo calcula CLIP
   #                                  en local. Compara una noche con y otra sin: python main.py --youtube-stats 1
   #                                  (bot y 429 por hora, % de peticiones fallidas)
+  # Cortacircuitos (pausa la cola, out/_pausa; se cuenta en las últimas 3 h, también entre rondas):
+  # breaker_same_stage: 3          # 3 fallos seguidos en la misma etapa (0: apagado)
+  # breaker_same_failure: 3        # el mismo fallo (tipo de error y línea del programa) 3 veces en 2+ vídeos
+  # breaker_rate: 0.8              # el 80 % de al menos breaker_min_attempts intentos fallaron (0: apagado)
+  # breaker_min_attempts: 6
+  # breaker_window_minutes: 180
 
 # Revisor automático, modo informe (no cambia nada): python -m pipeline.revisor <vídeo> [--telegram] [--modelo M]
 # Marca solo fallos objetivos (no tiene que ver con la frase, otra persona, dibujos/videojuego, marca de agua,
