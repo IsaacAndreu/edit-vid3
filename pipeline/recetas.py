@@ -24,11 +24,12 @@ RECIPES: dict[str, dict[str, Any]] = {
     "persona": {
         "timeline": {**_FULL_SCREEN["timeline"], "max_text_share": 0.05},
         "fallback": {"literal_ambient": True, "ambient_photo_first": True},
+        "planner": {"ideas": True},      # what the three above work on (27-11: without it they did nothing)
     },
     "suceso": {
         "timeline": {**_FULL_SCREEN["timeline"], "max_text_share": 0.05},
         "fallback": {"literal_ambient": True, "ambient_photo_first": True},
-        "planner": {"cobertura": True, "cobertura_hold_seconds": 6.0},
+        "planner": {"ideas": True, "cobertura": True, "cobertura_hold_seconds": 6.0},
         "quotes": {"sound_passages": True, "passages": 3},
     },
     "teoria": {
@@ -44,6 +45,21 @@ TARGETS: dict[str, dict[str, float]] = {
     "suceso": {"cut_seconds": 4.0, "first_image": 0.0, "text_share": 0.0, "card_share": 0.0},
     "teoria": {"cut_seconds": 4.0, "first_image": 0.0, "text_share": 0.05, "card_share": 0.38},
 }
+
+
+NEEDS_IDEAS = ("persona", "suceso")
+
+
+def check(config: dict[str, Any]) -> None:
+    """The merged settings of a video with a recipe: what the recipe needs is on, or it fails saying what (a channel
+    that switched planner.ideas off under «persona» or «suceso» got half a recipe in silence)."""
+
+    from .config import ConfigError
+
+    name = str(((config.get("montaje") or {}).get("receta")) or "").strip().lower()
+    if name in NEEDS_IDEAS and not (config.get("planner") or {}).get("ideas", False):
+        raise ConfigError(f"montaje.receta «{name}» necesita planner.ideas: true (lo apaga el canal, la serie o el "
+                          "vídeo); quita ese planner.ideas: false o la receta")
 
 
 def preset(config: dict[str, Any]) -> dict[str, Any]:

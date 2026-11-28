@@ -227,6 +227,10 @@ class RunContext:
         extra = deep_merge(recipe, adjustments) if isinstance(adjustments, dict) and adjustments else recipe
         if extra:
             ctx.config = layered(extra)
+        if recipe:
+            from .recetas import check
+
+            check(ctx.config)
         return ctx
 
     @property

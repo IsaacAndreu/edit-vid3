@@ -942,3 +942,14 @@ Test: `tests/test_arreglo_guion.py`.
   tú): allí no cambia nada. Los canales que fijan el suyo (aviación, instrumentos y megaproyectos a 0.1) lo conservan;
   las fotos y los clips verticales siguen enmarcados.
 - Prueba: `tests/test_tarjetas_de_serie.py`.
+
+## Revisión 27-11 · D6 las recetas encienden lo que necesitan
+
+- `persona` y `suceso` encienden `planner.ideas`: `literal_ambient`, `ambient_photo_first`, el tope de texto por
+  persona y `cobertura` solo funcionan con ideas, y sin ellas no hacían nada.
+- Si el canal, la serie o el vídeo apagan `planner.ideas` bajo una de esas recetas, falla diciéndolo
+  (`recetas.check`), en vez de aplicar media receta en silencio.
+- `agrupar.SYSTEM` ya no le dice al modelo que una idea literal sin su clip «se queda en texto».
+- Ningún canal tiene receta todavía (eso lo decides tú tras ver un vídeo de prueba), así que esto no cambia nada
+  hasta que pongas una.
+- Prueba: `tests/test_recetas_completas.py`.
