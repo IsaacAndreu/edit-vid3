@@ -499,7 +499,13 @@ async function videoPage(slug) {
     <details><summary class="small muted">Ver las etapas una a una</summary><div class="stagelist">${ORDER.map((n) => {
       const d = done[n]; const now = st && st.stage === n;
       return `<div class="${now ? "now" : d ? "" : "pend"}"><span>${now ? icon("play", "En curso") : d ? vMark("t-ok", "check", "Hecha") : icon("minus", "Pendiente")} ${esc(STAGES[n] || n)}</span><span class="n">${now ? ago(st.started) : d ? mins(d.seconds) + (costs[n] ? ` · ${costs[n].toFixed(2)} $` : "") : ""}</span></div>`; }).join("")}</div></details></div>`;
-  const doing = stagesView;
+  // every attempt of this video: what it cost in money and time, failures included (pipeline/intentos.py)
+  const tries = (v.attempts && v.attempts.attempts) || [];
+  const lost = (v.attempts && v.attempts.lost) || {};
+  const triesView = tries.length ? `<details class="card"><summary><b>Intentos: ${tries.length}</b>
+      <span class="small muted">${lost.attempts ? ` · ${lost.attempts} sin terminar bien: ${mins(lost.seconds)} y ${(lost.usd || 0).toFixed(2)} $ perdidos${lost.proxyGb ? `, ${lost.proxyGb.toFixed(2)} GB de proxy` : ""}` : ""}</span></summary>
+    <div class="stagelist" style="grid-template-columns:1fr">${tries.slice().sort((x, y) => String(y.start || "").localeCompare(String(x.start || ""))).map((a) => `<div><span>${a.status === "OK" ? vMark("t-ok", "check", "Bien") : a.status === "ERROR" ? vMark("t-bad", "x", "Falló") : icon("minus", esc(a.status))} ${esc((a.start || "").replace("T", " ").slice(0, 16))} · ${esc(a.status)}${a.stage ? ` en ${esc(STAGES[a.stage] || a.stage)}` : ""}${a.error ? `<br><span class="small muted">${esc(a.error)}</span>` : ""}</span><span class="n">${mins(a.seconds)} · ${(a.usd || 0).toFixed(2)} $${a.proxyGb ? ` · ${a.proxyGb.toFixed(2)} GB` : ""}</span></div>`).join("")}</div></details>` : "";
+  const doing = stagesView + triesView;
   // what happened, in plain words, with the whole text one click away
   const rawError = v.error || v.lastError || "";
   const ex = rawError ? explain(rawError, v) : null;

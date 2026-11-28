@@ -755,3 +755,15 @@ Test: `tests/test_arreglo_guion.py`.
 - Pruebas: `tests/test_puerta_ci.py`, `tests/test_claude_sdk.py`.
 - Sin comprobar en el servidor: que el servidor llegue a api.github.com (si no, la CI sale «desconocido» y con
   `require_ci` encendido no se desplegaría nada: no lo enciendas sin mirar antes `out/_puerta.json`).
+
+## Revisión 27-11 · A15 ficha de intentos por vídeo
+
+- `pipeline/intentos.py`: cada intento de un vídeo se apunta al terminar (bien, con error, en espera o
+  interrumpido) en `work/<vídeo>/intentos.json` (los 50 últimos): hora, estado, etapa, error, segundos, dólares (lo
+  apuntado en el libro de costes desde que empezó) y GB de proxy (lo que el registro de descargas dice que pasó por
+  el proxy desde entonces).
+- En la página del vídeo, debajo de las etapas: «Intentos: N · M sin terminar bien: X min y Y $ perdidos», y cada
+  intento desplegable, el más nuevo arriba. Revisado en escritorio y móvil, sin errores de la página.
+- Prueba: `tests/test_ficha_intentos.py`.
+- Sin comprobar en el servidor: con vídeos reales (los intentos de antes de este cambio no salen: la ficha empieza
+  vacía).

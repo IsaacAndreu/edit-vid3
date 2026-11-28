@@ -692,6 +692,8 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
     log = out / "log.txt"
     files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()) if out.is_dir() else []
     read = lambda name: (out / name).read_text("utf-8", errors="replace") if (out / name).is_file() else None  # noqa: E731
+    from . import intentos
+
     return {
         **summary,
         "stages": stages,
@@ -708,6 +710,7 @@ def video_detail(root: Path, slug: str) -> dict[str, Any]:
         "dubs": _dubs(root, slug),
         "youtube": _video_youtube(work),
         "costs": _costs_by_stage(root, slug),
+        "attempts": intentos.load(work),           # every attempt: stage, error, time, dollars, proxy GB
         "material": video_material(root, slug) if folder.is_dir() else None,
         "punteria": _video_score(out),
         "modo": str(_json_yaml(folder / "config.yaml").get("modo") or "") if folder.is_dir() else "",   # the way in

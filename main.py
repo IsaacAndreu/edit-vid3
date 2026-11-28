@@ -325,6 +325,10 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
                     housekeeping.after_video(ctx)          # cleanup.after_video (a server's small disk)
         except BaseException as error:
             diag.write(ctx, error)
+            from pipeline import intentos
+
+            intentos.record(ctx, started, "ERROR" if is_failure(error) else
+                            "interrumpido" if isinstance(error, (KeyboardInterrupt, Stopped)) else "en espera", error)
             from pipeline import ytpause
             from pipeline.sin_youtube import WaitingForYouTube
 
@@ -340,6 +344,9 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
                     pass
             raise
         diag.write(ctx)
+        from pipeline import intentos
+
+        intentos.record(ctx, started, "OK")
 
 
 def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
