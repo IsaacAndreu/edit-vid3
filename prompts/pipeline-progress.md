@@ -591,3 +591,14 @@ Test: `tests/test_arreglo_guion.py`.
 - Servidor: el id de una idea guardada y la URL de «publicado» se validan al guardar.
 - Prueba: `tests/test_seguridad_pagina.py` (las funciones de la página ejecutadas en Node); `tests/ui` behave,
   dialogs y shoot sin errores.
+
+## Revisión 27-11 · seguridad 5
+
+- Estudio: el cuerpo de cada petición tiene tope (4 KB el inicio de sesión, 8 MB el resto; las subidas, su propio
+  tope); una longitud inválida o negativa es un 400, no una espera.
+- Los fallos de contraseña cuentan por dirección (la del proxy local si la hay), así que nadie bloquea al dueño
+  desde fuera; la contraseña buena nunca queda bloqueada para quien no ha fallado.
+- Una conexión que no manda nada se corta a los 120 s.
+- Prueba: `tests/test_seguridad_peticiones.py`.
+- Sin comprobar en el servidor: que el proxy del servidor ponga X-Forwarded-For (si no, todos comparten dirección y
+  el bloqueo vuelve a ser global, como antes).

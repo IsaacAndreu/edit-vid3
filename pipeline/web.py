@@ -45,6 +45,8 @@ from .context import RunContext, find_video, load_config, safe_name, video_folde
 STATIC = Path(__file__).with_name("web_static")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$")
 MAX_UPLOAD = 400 * 1024 * 1024                # a 15-min voice in mp3 is ~15-30 MB; leave room for wav
+MAX_BODY = 8 * 1024 * 1024                     # any other request (JSON): a pasted CSV of channels fits
+LOGIN_BODY = 4096                              # a password
 STATIC_KINDS = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                 ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
 
@@ -1830,7 +1832,7 @@ def unsafe_path(path: str) -> bool:
 
 def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
     secret = _secret(password)
-    failures: list[float] = []                       # wrong passwords lately (any client): 10 in 10 min → wait
+    failures: dict[str, list[float]] = {}            # wrong passwords lately, per client address: 10 in 10 min → wait
 
     def token() -> str:
         stamp = str(int(time.time()))
@@ -1844,11 +1846,21 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "edit-vid3"
+        timeout = 120                                  # a client that sends nothing never holds a thread for ever
 
         def log_message(self, *args: Any) -> None:  # quiet
             return
 
         # who may come in: this machine directly, or anyone with the session cookie
+        def _client(self) -> str:
+            """Who is asking: behind Caddy (a local connection with X-Forwarded-For), the address Caddy added (the
+            last one); otherwise the connection's own."""
+
+            forwarded = self.headers.get("X-Forwarded-For")
+            if forwarded and self.client_address[0] in ("127.0.0.1", "::1"):
+                return forwarded.split(",")[-1].strip()[:64]
+            return str(self.client_address[0])
+
         def _local(self) -> bool:
             return self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("X-Forwarded-For")
 
@@ -2381,15 +2393,31 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             path = url.path
             if unsafe_path(path):
                 return self._fail(400, "Ruta no válida")
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._fail(400, "Longitud no válida")
+            if length < 0:
+                return self._fail(400, "Longitud no válida")
             clip_upload = re.fullmatch(r"/api/video/[^/]+/material/clip", path) is not None   # checked in save_clip
-            if length > MAX_UPLOAD and not clip_upload:
-                return self._fail(413, "Archivo demasiado grande")
+            upload = (path == "/api/apertura/subir" or re.fullmatch(r"/api/video/[^/]+/voz", path) is not None
+                      or path.startswith("/editor/"))
+            cap = LOGIN_BODY if path == "/api/login" else MAX_UPLOAD if upload else MAX_BODY
+            if length > cap and not clip_upload:
+                return self._fail(413, "Archivo demasiado grande" if upload else "Petición demasiado grande")
             if path == "/api/login":
-                body = json.loads(self.rfile.read(length) or b"{}")
-                failures[:] = [t for t in failures if time.time() - t < 600]
-                if len(failures) >= 10:
+                client = self._client()
+                recent = [t for t in failures.get(client, []) if time.time() - t < 600]
+                failures[client] = recent
+                if len(failures) > 10000:                   # never a memory sink: the oldest addresses go
+                    for gone in sorted(failures, key=lambda k: max(failures[k] or [0]))[:5000]:
+                        failures.pop(gone, None)
+                if len(recent) >= 10:
                     return self._fail(429, "Demasiados intentos: espera 10 minutos")
+                try:
+                    body = json.loads(self.rfile.read(length) or b"{}")
+                except ValueError:
+                    return self._fail(400, "JSON no válido")
                 given = str(body.get("password") or "")
                 partner = usuarios.find(root, given) if password and given else None
                 if (password and hmac.compare_digest(given.encode(), password.encode())) or partner:
@@ -2397,7 +2425,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     value = usuarios.token(root, secret, partner) if partner else token()
                     return self._send(200, b'{"ok": true}', headers={
                         "Set-Cookie": f"studio={value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000{secure}"})
-                failures.append(time.time())
+                failures.setdefault(client, []).append(time.time())
                 time.sleep(1.5)                                  # slows down guessing
                 return self._fail(403, "Contraseña incorrecta")
             if path == "/api/logout":                      # anyone, even with an old cookie: it goes
