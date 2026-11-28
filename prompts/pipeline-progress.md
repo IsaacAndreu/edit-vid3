@@ -977,3 +977,14 @@ Test: `tests/test_arreglo_guion.py`.
 - Puntería lista todos los vídeos montados (`work/<vídeo>/timeline.json`) con sus medidas; la nota del revisor solo
   sale donde la hay («—» si no). Antes estaba vacía de serie. Revisado en escritorio y móvil, sin errores.
 - Prueba: `tests/test_medidas_reales.py`.
+
+## Revisión 27-11 · D9 antes del juez (en parte; opción, apagada)
+
+- Confirmado: fuera del gancho `judge.rounds_rest: 1` deja que el juez vea tres opciones una sola vez, también en
+  las ideas literales.
+- `judge.rounds_literal` (apagado: lo mismo que rounds_rest): una segunda hoja de opciones para una idea literal antes
+  del relleno. Apagado porque son más llamadas al juez. Medirlo: Puntería del mismo vídeo con 1 y con 2.
+- Prueba: `tests/test_rondas_literales.py`.
+- No hecho: más vídeos o ventanas por plano (más peticiones a YouTube: es el bloque de descargas y su presupuesto) y
+  volver a puntuar con CLIP el `protagonist_pool` para cada plano (hoy ordena con las notas de otros planos: hace falta
+  guardar los vectores de cada fragmento, que hoy no se guardan). Lo dejo dicho para decidirlo contigo.
