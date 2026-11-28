@@ -912,3 +912,13 @@ Test: `tests/test_arreglo_guion.py`.
 - Los nombres se comparan por palabras y sin acentos (`same_people`): «Simone» es «Simone Biles». Admite otros
   nombres de cada persona (`aliases`) para cuando estén en people.json.
 - Prueba: `tests/test_prestamo_de_quien.py`.
+
+## Revisión 27-11 · D3 el gancho no se queda en texto mientras haya algo de su protagonista
+
+- En el gancho, cuando no queda ningún clip que se pueda prestar: primero uno ya usado en el gancho (nunca pegado a
+  sí mismo); luego cualquier clip juzgado donde salga su protagonista, aunque sea de una idea literal o de otra época;
+  luego una foto suya. Solo si no hay nada de eso se queda en texto.
+- Los nombres se comparan por palabras (D2): «Simone» y «Simone Biles» son la misma persona. people.json no guarda
+  hoy otros nombres; `same_people` los acepta cuando los tenga.
+- Prueba: `tests/test_gancho_sin_texto.py`; `tests/test_text_limit.py` actualizado (antes el resto del gancho se
+  quedaba en texto a propósito).

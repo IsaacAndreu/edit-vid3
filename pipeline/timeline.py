@@ -1412,6 +1412,26 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
         fitting = [d for d in donors if uses.get(d.id, 0) < max_uses and footage(d) >= MIN_RATE * shot.durationInFrames
                    and d.media.src not in beside and may_lend(d, shot, idea)
                    and not (in_hook and d.id in in_hook_used)]
+        if not fitting and in_hook:
+            # the hook never stays text while something of its subject exists (27-11): a clip already used in the
+            # hook (not next to it); then any judged clip where its subject is seen, even of a literal idea or
+            # another time; then a photo of the subject
+            subject = list(idea.mustShow) if idea is not None else []
+            usable = [d for d in donors if uses.get(d.id, 0) < max_uses and d.media.src not in beside
+                      and footage(d) >= MIN_RATE * shot.durationInFrames]
+            fitting = [d for d in usable if may_lend(d, shot, idea)]
+            if not fitting and subject:
+                fitting = [d for d in usable if scores.get(d.id.split("-")[0], 0.0) > 0 and idea_of(d) is not None
+                           and same_people(idea_of(d).mustShow, subject, aliases)]
+            if not fitting and subject:
+                photo = next((p for p in shots if p.media is not None and p.media.kind == "image"
+                              and p.media.src not in beside and idea_of(p) is not None
+                              and same_people(idea_of(p).mustShow, subject, aliases)), None)
+                if photo is not None:
+                    shots[index] = shot.model_copy(update={"media": photo.media.model_copy(update={"zoom": None})})
+                    counts["gancho"] += 1
+                    previous_text = False
+                    continue
         if not fitting:
             used += shot.durationInFrames
             previous_text = True
