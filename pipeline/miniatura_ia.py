@@ -170,6 +170,9 @@ def generate(ctx: RunContext, images: list[Path], text_prompt: str, target: Path
         if not key:
             raise RuntimeError("falta OPENAI_API_KEY en .env")
         client = OpenAI(api_key=key, timeout=300, max_retries=1)
+    from .budget import before_paid_call
+
+    before_paid_call(ctx)
     files = [open(p, "rb") for p in images]
     try:
         response = client.images.edit(model=model, image=files, prompt=text_prompt, size="1536x1024",

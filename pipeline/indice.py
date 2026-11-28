@@ -93,6 +93,9 @@ def describe(ctx: Any, tiles: list[np.ndarray]) -> list[dict[str, str]]:
     def produce() -> dict[str, Any]:
         from openai import OpenAI
 
+        from .budget import before_paid_call
+
+        before_paid_call(ctx)
         client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=180, max_retries=2)
         response = client.responses.create(
             model=model, instructions=INSTRUCTIONS, reasoning={"effort": "low"},

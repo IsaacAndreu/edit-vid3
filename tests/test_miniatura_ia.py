@@ -123,6 +123,6 @@ def test_the_studio_button_runs_the_command_in_the_background(tmp_path, monkeypa
                                            "count": 9})
     name, args = started[0]
     assert name == "miniatura-ia-newgym5"
-    assert args == ["--miniatura-ia", "newgym5", "--ref", "https://youtu.be/aaaaaaaaaaa", "--ref", "bbbbbbbbbbb",
-                    "--ref", "x", "--cuantas", "4", "--texto", "SU CAÍDA"]
+    assert args == ["--miniatura-ia=newgym5", "--ref=aaaaaaaaaaa", "--ref=bbbbbbbbbbb",   # «x»: not a YouTube link
+                    "--cuantas=4", "--texto=SU CAÍDA"]
     assert web.partner_may(tmp_path, ["gimnasia"], "POST", "/api/video/newgym5/miniatura-ia") is False   # not their channel

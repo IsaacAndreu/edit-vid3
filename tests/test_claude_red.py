@@ -87,3 +87,31 @@ def test_network_failures_never_pause_the_queue(tmp_path):
         assert breaker.failed(slug, detail) is None
     assert breaker.failed("x", "NameError: name 'foo' is not defined") is None
     assert breaker.failed("y", "NameError: name 'foo' is not defined") is not None    # a real bug still does
+
+
+def test_haiku_gets_no_effort(tmp_path):
+    """27-11: the planner on Haiku (cheaper); `effort: none` sends no output_config at all."""
+
+    client, calls = _client([_reply(), _reply()])
+    claude.ask(_ctx(tmp_path), stage="planner", system="s", content="c",
+               cfg={"model": "claude-haiku-5-5", "effort": "none"}, client=client)
+    assert "output_config" not in calls[0] and calls[0]["model"] == "claude-haiku-5-5"
+    claude.ask(_ctx(tmp_path), stage="planner", system="s", content="c",
+               cfg={"model": "claude-sonnet-5-5", "effort": "medium"}, client=client)
+    assert calls[1]["output_config"] == {"effort": "medium"}
+
+
+def test_the_planner_is_on_haiku_and_switching_redoes_nothing():
+    from pathlib import Path
+
+    from pipeline import runner
+    from pipeline.context import RunContext
+
+    root = Path(__file__).resolve().parents[1]
+    ctx = RunContext.create("_t", root=root)
+    assert ctx.section("planner")["model"] == "claude-haiku-5-5" == ctx.section("factcheck")["model"]
+    stage = next(s for s in runner.STAGES if s.name == "planner")
+    sonnet = RunContext.create("_t", root=root, config={**ctx.config, "planner": {**ctx.section("planner"),
+                                                                                   "model": "claude-sonnet-5-5",
+                                                                                   "effort": "medium"}})
+    assert runner.fingerprint(ctx, stage) == runner.fingerprint(sonnet, stage)

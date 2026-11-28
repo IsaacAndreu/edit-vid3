@@ -97,7 +97,7 @@ function invoiceBlock(g, usd) {
   const m = months.find((x) => x.month === invoiceMonth) || months[0];
   const name = (w) => w ? esc(w) : "Tú";
   return `<h2>${window.partner ? "Tu factura del mes" : "Factura por persona"}</h2>
-    <div class="tools">${months.map((x) => `<button class="chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth='${x.month}';spendPage()">${x.month}</button>`).join("")}</div>
+    <div class="tools">${months.map((x) => `<button class="chip ${x.month === m.month ? "on" : ""}" onclick="invoiceMonth=${jsq(x.month)};spendPage()">${x.month}</button>`).join("")}</div>
     <div class="card flush"><table class="ytt">
       <thead><tr><th>Persona</th><th>API</th><th>Voz</th><th>Proxy</th><th>Servidor</th><th>Total</th><th></th></tr></thead>
       <tbody>${m.people.map((p) => `<tr class="v"><td><b>${name(p.who)}</b><div class="sub">${p.videos.length} vídeo${p.videos.length === 1 ? "" : "s"}</div></td>
@@ -184,7 +184,7 @@ async function spendPage() {
     <h2>Media por canal</h2>
     <div class="card flush"><table class="ytt">
       <thead><tr><th>Canal</th><th>Media por vídeo</th><th>Mediana</th><th>Por minuto</th><th>Cuota YT / vídeo</th><th>Proxy / vídeo</th><th>Terminados</th><th>Total</th><th>En curso</th><th>Más caro</th></tr></thead>
-      <tbody>${g.channels.map((c) => `<tr class="v click" tabindex="0" aria-label="Ver los vídeos de ${esc(c.channel)}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+      <tbody>${g.channels.map((c) => `<tr class="v click" tabindex="0" aria-label="Ver los vídeos de ${esc(c.channel)}" onclick="spendChannel=${jsq(c.channel)};spendPage()">
         <td><span class="row nowrap">${dot(c.channel)}<b>${esc(c.channel)}</b></span></td>
         <td data-k="Media"><b>${usd(c.average)}</b><div class="vbar" style="--v:${Math.max(3, 100 * (c.average || 0) / top)}%"></div></td>
         <td data-k="Mediana">${usd(c.median)}</td><td data-k="Por minuto">${usd(c.perMinute, 3)}</td>
@@ -210,7 +210,7 @@ async function spendPage() {
     <h2>Por vídeo</h2>
     <div class="tools">
       <button class="chip ${spendChannel ? "" : "on"}" onclick="spendChannel='';spendPage()">Todos</button>
-      ${g.channels.map((c) => `<button class="chip ${c.channel === spendChannel ? "on" : ""}" onclick="spendChannel='${esc(c.channel)}';spendPage()">
+      ${g.channels.map((c) => `<button class="chip ${c.channel === spendChannel ? "on" : ""}" onclick="spendChannel=${jsq(c.channel)};spendPage()">
         ${dot(c.channel, "sm")}${esc(c.channel)}</button>`).join("")}
       <label class="row nowrap small gap-1 n4 push">Ordenar:<select class="sm w-auto" onchange="spendSort=this.value;spendPage()">
         ${[["last", "Más reciente"], ["usd", "Más caro"], ["minutes", "Más largo"], ["work", "Más lento"]].map(([k, l]) => `<option value="${k}" ${spendSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
@@ -285,14 +285,14 @@ async function peopleBlock(all) {
     <div class="in"><p class="help">Cada persona entra con su contraseña y solo ve sus canales: sus vídeos, su gasto y su factura.
       Nada de lo tuyo (ni Ajustes, ni el servidor, ni los demás canales). Un canal es de una sola persona; los que no son de nadie, tuyos.</p>
     ${u.map((x) => `<div class="card mt"><div class="row between"><b>${esc(x.name)}</b>
-        <button class="sm" onclick="removePerson('${esc(x.name)}')">Quitar</button></div>
+        <button class="sm" onclick="removePerson(${jsq(x.name)})">Quitar</button></div>
       <div class="row gap-4 mt-2">${boxes(x.name, x.channels)}</div>
       <div class="setting mt-3"><div><div class="small b">Sus topes al día</div>
           <p class="help">0 = sin tope · Telegram: ${x.telegram ? `<span class="t-ok">${icon("check")}</span> conectado` : "sin conectar (sus avisos te llegan a ti)"}</p></div>
         <div class="row gap-4"><div class="unit"><input id="plim-usd-${esc(x.name)}" aria-label="Tope de API al día de ${esc(x.name)} ($)" type="number" min="0" step="0.5" value="${x.limits.daily_usd || 0}"><span class="nw">$ de API</span></div>
           <div class="unit"><input id="plim-gb-${esc(x.name)}" aria-label="Tope de proxy al día de ${esc(x.name)} (GB)" type="number" min="0" step="0.5" value="${x.limits.proxy_gb_per_day || 0}"><span class="nw">GB de proxy</span></div></div></div>
       <div class="actions"><input id="ppass-${esc(x.name)}" aria-label="Nueva contraseña de ${esc(x.name)}" class="grow" type="password" autocomplete="new-password" placeholder="Nueva contraseña (vacío = la misma)">
-        <button onclick="savePerson('${esc(x.name)}')">Guardar</button><span id="pmsg-${esc(x.name)}" class="small t-bad"></span></div></div>`).join("")}
+        <button onclick="savePerson(${jsq(x.name)})">Guardar</button><span id="pmsg-${esc(x.name)}" class="small t-bad"></span></div></div>`).join("")}
     <div class="card mt"><b>Añadir persona</b>
       <div class="row mt-2"><input id="pname" aria-label="Nombre" class="w-md" placeholder="nombre (p. ej. marc)">
         <input id="ppass-_new" aria-label="Contraseña" class="w-md" type="password" autocomplete="new-password" placeholder="Contraseña (8 o más)"></div>
@@ -399,13 +399,13 @@ async function voicesPage() {
   const row = (c) => { const x = v.voices[c] || {}, p = provOf(x);
     return `<div class="card" id="vcard-${esc(c)}"><div class="row"><b>${esc(c)}</b> ${x.voice_id ? `<span class="pill hecho">${esc(x.name || x.voice_id)}</span> <span class="small muted">${PROV[p] || p}</span>` : '<span class="pill">sin voz: elige una arriba en «Escoger voz»</span>'}</div>
       <div class="three">
-        ${both ? vfield("Proveedor", `<select id="vprov-${esc(c)}" onchange="switchProvider('${esc(c)}', this.value)">${Object.entries(PROV).map(([k, n]) => `<option value="${k}" ${k === p ? "selected" : ""}>${n}</option>`).join("")}</select>`, "", "vprov-" + esc(c)) : `<input type="hidden" id="vprov-${esc(c)}" value="${p}">`}
+        ${both ? vfield("Proveedor", `<select id="vprov-${esc(c)}" onchange="switchProvider(${jsq(c)}, this.value)">${Object.entries(PROV).map(([k, n]) => `<option value="${k}" ${k === p ? "selected" : ""}>${n}</option>`).join("")}</select>`, "", "vprov-" + esc(c)) : `<input type="hidden" id="vprov-${esc(c)}" value="${p}">`}
         ${vfield("ID de la voz", `<input id="vid-${esc(c)}" value="${esc(x.voice_id || "")}" placeholder="se rellena al pulsar «Usar en…»">`, "", "vid-" + esc(c))}
         ${vfield("Nombre", `<input id="vname-${esc(c)}" value="${esc(x.name || "")}">`, "Para reconocerla", "vname-" + esc(c))}
         <span id="vfields-${esc(c)}" style="display:contents">${fields(c, x, p)}</span>
       </div>
-      <div class="actions"><button class="main" onclick="saveVoice('${esc(c)}')">Guardar</button>
-        <button onclick="testVoice('${esc(c)}')">${icon("play")} Probar con un texto</button>${x.voice_id ? `<button onclick="clearVoice('${esc(c)}')">Quitar voz</button>` : ""}
+      <div class="actions"><button class="main" onclick="saveVoice(${jsq(c)})">Guardar</button>
+        <button onclick="testVoice(${jsq(c)})">${icon("play")} Probar con un texto</button>${x.voice_id ? `<button onclick="clearVoice(${jsq(c)})">Quitar voz</button>` : ""}
         <span id="vmsg-${esc(c)}" class="small muted"></span></div>
       <textarea id="vtext-${esc(c)}" rows="2" class="mt-2" style="min-height:0" aria-label="Texto de la prueba para ${esc(c)}" placeholder="Texto de la prueba (vacío = una frase de ejemplo). Mejor una frase de tu guion: así oyes cómo sonará."></textarea>
       <div id="vplay-${esc(c)}"></div>
@@ -423,7 +423,7 @@ async function voicesPage() {
       <label class="check mt-3"><input type="checkbox" id="dubex-${esc(c)}" ${d.existing === false ? "" : "checked"}>
         Doblar también los vídeos ya hechos</label>
       <p class="help">Si no, solo los que se terminen a partir de ahora</p>
-      <div class="actions"><button class="main" onclick="saveDub('${esc(c)}')">Guardar doblaje</button><span id="dubmsg-${esc(c)}" class="small muted"></span></div></details>`; };
+      <div class="actions"><button class="main" onclick="saveDub(${jsq(c)})">Guardar doblaje</button><span id="dubmsg-${esc(c)}" class="small muted"></span></div></details>`; };
   window.saveDub = async (c) => {
     const languages = [...document.querySelectorAll(".dub-" + CSS.escape(c))].filter((x) => x.checked).map((x) => x.value);
     const voices = {}; languages.forEach((l) => { const box = $("#dubv-" + CSS.escape(c) + "-" + l), id = box.value.trim(); if (id) voices[l] = {voice_id: id, provider: box.dataset.provider}; });
@@ -551,7 +551,7 @@ async function accountPage() {
   if ($("#tglink")) $("#tglink").onclick = async () => {
     try {
       const r = await post("/api/telegram/link");
-      $("#tgmsg").innerHTML = r.url ? `Abre <a href="${esc(r.url)}" target="_blank" rel="noopener">este enlace</a> y pulsa «Iniciar» en el bot; luego vuelve aquí.`
+      $("#tgmsg").innerHTML = r.url ? `Abre <a href="${safeUrl(r.url)}" target="_blank" rel="noopener">este enlace</a> y pulsa «Iniciar» en el bot; luego vuelve aquí.`
         : `Escribe al bot del estudio: <code>/start ${esc(r.code)}</code> (vale 30 min)`;
       if (r.url) window.open(r.url, "_blank");
       const until = Date.now() + 10 * 60000;

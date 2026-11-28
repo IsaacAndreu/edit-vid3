@@ -372,6 +372,17 @@ def _run_stages(
     checked = [False]                     # the per-video check before the first paid stage, once
     executed_lock = threading.Lock()
 
+    def script_check() -> None:
+        from .imagen_guion import gate
+
+        stopped = gate(ctx)                 # guion.revisar_antes (off): a script nobody can show, said now
+        if stopped:
+            from .imagen_guion import rescue
+
+            stopped = rescue(ctx, stopped)  # guion.arreglar_solo: rewrite it once (and start over) or go on
+        if stopped:
+            raise RuntimeError("No empiezo a buscar: " + stopped)
+
     def execute(number: int, stage: Stage, track: bool = True) -> None:
         label = f"[{number}/{len(STAGES)}] {stage.name}"
         forced = "all" in force or stage.name in force
@@ -381,6 +392,8 @@ def _run_stages(
         if stage.run is None:
             raise StageNotImplemented(f"La etapa '{stage.name}' todavía no está implementada.")
         budget.check_video(ctx.root, ctx.config, ctx.work_dir, ctx.materials_dir, spent_before)
+        if stage.name == "planner" and not checked[0]:
+            script_check()                      # before paying a plan (27-11: each rewrite threw one away)
         from . import stickman
 
         if stage.name in PROXY_STAGES and not offline:
@@ -391,15 +404,7 @@ def _run_stages(
                 problems = video_problems(ctx)
                 if problems:
                     raise RuntimeError("No empiezo a gastar proxy: " + "; ".join(problems))
-                from .imagen_guion import gate
-
-                stopped = gate(ctx)                 # guion.revisar_antes (off): a script nobody can show, said now
-                if stopped:
-                    from .imagen_guion import rescue
-
-                    stopped = rescue(ctx, stopped)  # guion.arreglar_solo: rewrite it (and start over) or go on
-                if stopped:
-                    raise RuntimeError("No empiezo a buscar: " + stopped)
+                script_check()
                 checked[0] = True
             if stage.name == "ingest":
                 from .judge import too_rejected

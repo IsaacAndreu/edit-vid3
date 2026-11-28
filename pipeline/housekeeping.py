@@ -281,7 +281,10 @@ def mark_published(root: Path, slug: str, url: str = "", value: bool = True) -> 
     if not value:
         path.unlink(missing_ok=True)
         return {}
-    data = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "url": url.strip()}
+    url = url.strip()
+    if url and not url.lower().startswith(("https://", "http://")):    # a link shown on the pages: web links only
+        raise ValueError("El enlace de YouTube tiene que empezar por https://")
+    data = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "url": url}
     path.write_text(json.dumps(data, indent=1), encoding="utf-8")
     return data
 

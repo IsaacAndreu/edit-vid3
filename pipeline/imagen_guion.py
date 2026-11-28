@@ -103,6 +103,22 @@ def verdict(shares: dict[str, int]) -> str:
 
 
 GATE_FILE = "imagen_guion.json"        # work/<slug>/: the last check, with the hash of the script it read
+TRIES_FILE = "imagen_guion.intentos.json"   # materiales/<vídeo>/: rewrites already made (never lost with work/)
+
+
+def _tries(ctx: Any) -> dict[str, Any]:
+    import json
+
+    try:
+        return json.loads((ctx.materials_dir / TRIES_FILE).read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_tries(ctx: Any, data: dict[str, Any]) -> None:
+    import json
+
+    (ctx.materials_dir / TRIES_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def gate(ctx: Any, review_fn: Any = None, send: Any = None) -> str | None:
@@ -118,6 +134,8 @@ def gate(ctx: Any, review_fn: Any = None, send: Any = None) -> str | None:
     mode = str(ctx.section("guion").get("revisar_antes") or "").strip().lower()
     if mode in ("", "false", "no", "0", "off"):
         return None
+    if mode == "parar" and int(_tries(ctx).get("tries", 0)) >= 1:
+        mode = "aviso"                 # rewritten once already: it goes on, never a second rewrite (27-11: 8 loops)
     script_path = ctx.materials_dir / "guion.txt"
     if not script_path.is_file():
         return None
@@ -138,7 +156,8 @@ def gate(ctx: Any, review_fn: Any = None, send: Any = None) -> str | None:
         print(f"   revisión del guion antes de empezar: {str(error)[:160]}")
         return None
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps({"hash": digest, **result}, ensure_ascii=False, indent=1), encoding="utf-8")
+    kept = {k: v for k, v in old.items() if k in ("autoTries", "synthetic", "continued", "autoFix")}
+    target.write_text(json.dumps({**kept, "hash": digest, **result}, ensure_ascii=False, indent=1), encoding="utf-8")
     share = int(result["shares"].get("sin_imagen", 0))
     limit = int(ctx.section("guion").get("max_sin_imagen", 35))
     stop = mode == "parar" and share >= limit
@@ -154,7 +173,7 @@ def gate(ctx: Any, review_fn: Any = None, send: Any = None) -> str | None:
 
             notify.telegram(ctx, text)
     if stop:
-        target.write_text(json.dumps({"hash": "", **result}, ensure_ascii=False, indent=1), encoding="utf-8")
+        target.write_text(json.dumps({**kept, "hash": "", **result}, ensure_ascii=False, indent=1), encoding="utf-8")
         return (f"{share} % del guion no tiene imagen posible (límite {limit} %): reescribe las frases que dice "
                 f"work/{ctx.slug}/{GATE_FILE} y vuelve a darle")
     return None
@@ -291,7 +310,8 @@ def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None,
         state = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
         state = {}
-    tries = int(state.get("autoTries", 0))
+    attempts = _tries(ctx)
+    tries = max(int(state.get("autoTries", 0)), int(attempts.get("tries", 0)))   # the materials' count wins
     path.parent.mkdir(parents=True, exist_ok=True)
     synthetic = bool(state.get("synthetic")) or (folder / "voz.genaipro.json").is_file() \
         or not (folder / "voz.mp3").is_file()
@@ -310,7 +330,8 @@ def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None,
         except Exception:
             pass
 
-    if synthetic and tries < int(cfg.get("arreglar_intentos", 1)):
+    # at most once per video, whatever arreglar_intentos says: each rewrite pays a voice and a new plan
+    if synthetic and tries < min(1, int(cfg.get("arreglar_intentos", 1))):
         script_path = folder / "guion.txt"
         script = script_path.read_text("utf-8")
         title_path = folder / "titulo.txt"
@@ -329,6 +350,7 @@ def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None,
             result = {"changed": 0}
             note = f"no se pudo reescribir ({str(error)[:100]})"
         state["autoTries"] = tries + 1
+        _save_tries(ctx, {**attempts, "tries": tries + 1, "synthetic": synthetic})
         if result.get("changed"):
             if not (folder / "guion.original.txt").is_file():
                 (folder / "guion.original.txt").write_text(script, encoding="utf-8")

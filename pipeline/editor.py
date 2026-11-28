@@ -571,6 +571,9 @@ def _file(handler: BaseHTTPRequestHandler, path: Path) -> None:
             pass
 
 
+MEDIA_SUFFIXES = frozenset({".mp4", ".webm", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp", ".gif"})
+
+
 def _inside(base: Path, relative: str) -> Path | None:
     path = (base / unquote(relative)).resolve()
     return path if path.is_file() and base.resolve() in path.parents else None
@@ -614,8 +617,10 @@ def respond(ctx: RunContext, method: str, path: str, query: str = "", body: Any 
             found = _inside(APP_DIR / "dist", path[len("/app/"):])
         elif path.startswith("/work/"):              # the edit's media: staticFile() in the components
             found = _inside(ctx.work_dir, path[len("/work/"):])
-        elif path.startswith("/root/cache/"):        # analysis clips of the alternatives
+        elif path.startswith("/root/cache/"):        # analysis clips of the alternatives: pictures and video only
             found = _inside(ctx.root / "cache", path[len("/root/cache/"):])
+            if found is not None and found.suffix.lower() not in MEDIA_SUFFIXES:
+                found = None
         elif path.startswith("/api/thumb/"):
             parts = path.split("/")[3:]
             try:

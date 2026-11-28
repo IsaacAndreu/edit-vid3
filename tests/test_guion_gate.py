@@ -61,5 +61,7 @@ def test_a_good_script_goes_on_quietly_and_a_failing_check_never_stops(tmp_path)
 
 def test_the_runner_asks_before_the_first_paid_stage_and_claude_reads_it():
     source = inspect.getsource(runner)
-    assert source.index("stopped = gate(ctx)") > source.index("problems = video_problems(ctx)")
+    # before the planner (27-11: each rewrite threw away a paid plan), and again before the proxy stages
+    assert 'if stage.name == "planner" and not checked[0]:' in source
+    assert source.index("script_check()\n                checked[0] = True") > source.index("problems = video_problems(ctx)")
     assert 'section = "guion" if ctx.section("guion").get("model") else "planner"' in inspect.getsource(imagen_guion)

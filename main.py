@@ -256,24 +256,22 @@ class _one_process:
 
     def __enter__(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        from pipeline.locks import owner_alive, stamp
+
         try:
-            other = int(self.path.read_text().split()[0]) if self.path.is_file() else 0
+            owner = self.path.read_text().split()[0] if self.path.is_file() else ""
+            other = int(owner.partition(":")[0]) if owner else 0
         except (OSError, ValueError, IndexError):
-            other = 0
-        if other and other != os.getpid():
-            try:
-                os.kill(other, 0)
-                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}). "
-                                 f"Si no es así, borra {self.path}")
-            except ProcessLookupError:
-                pass                                       # a run that died: take over
-            except PermissionError:
-                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}).") from None
-        self.path.write_text(f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n")
+            owner, other = "", 0
+        # a run that died, or a PID that now belongs to another process (a reboot): take over
+        if other and other != os.getpid() and owner_alive(owner):
+            raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}). "
+                             f"Si no es así, borra {self.path}")
+        self.path.write_text(f"{stamp()} {datetime.now().isoformat(timespec='seconds')}\n")
 
     def __exit__(self, *exc) -> None:
         try:
-            if int(self.path.read_text().split()[0]) == os.getpid():
+            if int(self.path.read_text().split()[0].partition(":")[0]) == os.getpid():
                 self.path.unlink(missing_ok=True)
         except (OSError, ValueError, IndexError):
             pass
@@ -649,7 +647,7 @@ def on_hold(root: Path, slug: str) -> bool:
     return (find_video(root, slug) / HOLD).is_file()
 
 
-REQUIRED_KEYS = ("LLM_API_KEY", "OPENAI_API_KEY")
+REQUIRED_KEYS = ("OPENAI_API_KEY",)        # plus the model keys the config uses (llm.keys_needed)
 MIN_FREE_GB = 20
 
 
@@ -660,7 +658,16 @@ def preflight(root: Path = PROJECT_ROOT) -> list[str]:
 
     problems: list[str] = []
     ctx = RunContext.create("_preflight", root=root, config={})   # only for .env access
-    for name in REQUIRED_KEYS:
+    from pipeline.context import load_config
+    from pipeline.llm import keys_needed
+
+    try:
+        config = load_config(root / "config.yaml")
+    except Exception:
+        config = {}
+    # the model keys the config really uses (27-11: LLM_API_KEY was required with everything on Claude)
+    wanted = ["OPENAI_API_KEY", *sorted(keys_needed(config))]
+    for name in wanted:
         if not ctx.env(name, required=False):
             problems.append(f"falta la clave {name} en .env")
     free_gb = shutil.disk_usage(root).free / 1e9
@@ -693,11 +700,27 @@ WATCH_STATE = "out/_vigilar.json"
 WAKE = "out/_despertar"          # the studio's «Reintentar todos ahora»: the watcher looks again without waiting
 
 
+# What the program itself writes into a video's folder: a failed attempt touching them is not new material (27-11:
+# every attempt changed the «signature» and the wait never applied)
+GENERATED = frozenset({"voz.genaipro.json", "voz.palabras.json", "voz.error.json", "imagen_guion.json",
+                       "imagen_guion.intentos.json", "voz.original.mp3", "voz.sin-pausas.mp3",
+                       "guion.sin-capitulos.txt", "apertura.auto.json"})
+
+
 def _materials_signature(root: Path, slug: str) -> float:
+    """The newest change of what you put in the video's folder (the program's own files and hidden ones aside)."""
+
     from pipeline.context import find_video
 
     folder = find_video(root, slug)
     files = [p for p in folder.rglob("*") if p.is_file()] if folder.is_dir() else []
+    files = [p for p in files if p.name not in GENERATED
+             and not any(part.startswith(".") for part in p.relative_to(folder).parts)]
+    voice = folder / "voz.mp3"
+    if voice in files and ((folder / "voz.genaipro.json").is_file() or (folder / "voz.original.mp3").is_file()):
+        files.remove(voice)                 # made here (synthetic) or cut here (long pauses): not yours
+        if (folder / "voz.original.mp3").is_file():
+            files.append(folder / "voz.original.mp3")
     parent = folder.parent / "config.yaml"
     return max([p.stat().st_mtime for p in files + ([parent] if parent.is_file() else [])] or [0.0])
 
@@ -934,18 +957,24 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 return
             from pipeline.fileio import update_json
 
+            capped: list[int] = []
+
             def change(now: object) -> dict:
                 now = dict(now) if isinstance(now, dict) else {}
                 if status == "OK":
                     now.pop(slug, None)
                 else:
-                    signature = _materials_signature(root, slug)
-                    now[slug] = {"sig": signature, "at": time.time(), "status": status,
-                                 "code": running_code or git_head(root),
-                                 "tries": reintentos.failed_again(now.get(slug), signature)}   # in a row: the wait
+                    entry = reintentos.record(now.get(slug), _materials_signature(root, slug), status,
+                                              running_code or git_head(root))
+                    now[slug] = entry
+                    if entry["dayFails"] == reintentos.day_cap(cfg):
+                        capped.append(entry["dayFails"])
                 return now
 
             update_json(state_path, change, {})
+            if capped:                                       # once, the time it reaches the cap
+                notify(root, f"⏸ {slug} ha fallado {capped[0]} veces hoy: no se vuelve a intentar hasta mañana "
+                             "(o «Reintentar» en el estudio)")
 
         if waiting:
             idle_since = None
@@ -960,17 +989,23 @@ def watch(every_minutes: float = 5.0, root: Path = PROJECT_ROOT) -> None:
                 print(stop)
                 time.sleep(30 * 60)
             waited = any(status == "en espera" for _, status, _, _ in LAST_RESULTS)
-            for slug, status, _, _ in LAST_RESULTS:
-                if status in WAITING:                                # budget / API quota / YouTube: not a failure
-                    continue
-                if status == "OK":
-                    state.pop(slug, None)
-                else:
-                    state[slug] = {"sig": _materials_signature(root, slug), "at": time.time(), "status": status,
-                                   "code": running_code or git_head(root)}
-            from pipeline.fileio import atomic_write_text
+            # each result is already in out/_vigilar.json (on_result, both queue modes): rewriting it here from the
+            # copy read before the round lost `tries` and the daily count (27-11). Only a failure missing there is
+            # written, never over one that is
+            from pipeline.fileio import update_json
 
-            atomic_write_text(state_path, json.dumps(state, indent=1))
+            for slug, status, _, _ in LAST_RESULTS:
+                if status in WAITING or status == "OK":
+                    continue
+
+                def missing(now: object, slug: str = slug, status: str = status) -> dict:
+                    now = dict(now) if isinstance(now, dict) else {}
+                    signature = _materials_signature(root, slug)
+                    if (now.get(slug) or {}).get("sig") != signature:    # not recorded for these materials yet
+                        now[slug] = reintentos.record(now.get(slug), signature, status, running_code or git_head(root))
+                    return now
+
+                update_json(state_path, missing, {})
             if waited:
                 time.sleep(30 * 60)                                  # over the daily budget: look again later
         elif idle_since is None:
@@ -1057,10 +1092,11 @@ def _clear_stale_lock(lock: Path) -> None:
     """A queue lock left by a process that no longer exists (killed by a restart, power cut) is removed: otherwise
     the watcher would think a queue is running and wait for ever."""
 
-    from pipeline.locks import _alive
+    from pipeline.locks import owner_alive
 
     try:
-        pid = int(lock.read_text().split()[0])
+        owner = lock.read_text().split()[0]
+        pid = int(owner.partition(":")[0])
     except (OSError, ValueError, IndexError):
         # vacío o ilegible: el proceso murió entre crearlo y escribir su pid (un reinicio en ese instante). Pasado un
         # minuto ya no es una cola arrancando: fuera, o la cola esperaría para siempre
@@ -1071,7 +1107,7 @@ def _clear_stale_lock(lock: Path) -> None:
         except OSError:
             pass
         return
-    if pid != os.getpid() and not _alive(pid):
+    if pid != os.getpid() and not owner_alive(owner):
         print(f"(Quito {QUEUE_LOCK}: era de un proceso que ya no existe, pid {pid})")
         lock.unlink(missing_ok=True)
 
@@ -1090,12 +1126,15 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
     _clear_stale_lock(lock)
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
+        from pipeline.locks import stamp
+
+        os.write(fd, f"{stamp()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
         os.close(fd)
     except FileExistsError:
         raise SystemExit(f"Ya hay una cola en marcha ({lock.read_text().strip()}). "
                          f"Si no es así (p. ej. se apagó el PC), borra {QUEUE_LOCK} y vuelve a lanzarla.")
     results: list[tuple[str, str, float, str]] = []
+    guardian = None
     try:
         if not check:
             problems = []
@@ -1132,6 +1171,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         from pipeline import cortacircuitos, ytpause
 
         breaker = cortacircuitos.from_config(root)
+        from pipeline.guardian import Guardian
+
+        guardian = Guardian(root, _queue_cfg(root))  # the serial video hangs → cut too, not only in the parallel queue
         for number, slug in enumerate(slugs, start=1):
             if waits_for_youtube(root, slug):
                 print(f"{slug}: necesita YouTube, que está bloqueado: espera (sigo con los que ya no lo necesitan)")
@@ -1150,9 +1192,14 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
             started = time.monotonic()
             try:
-                run_one(slug, force=force, until=until, review=review, root=root)
+                guardian.watch_here(slug)
+                try:
+                    run_one(slug, force=force, until=until, review=review, root=root)
+                finally:
+                    if cut := guardian.done_here(slug):
+                        notify(root, f"✂ {slug}: {cut}. Se reintenta solo.")
                 results.append((slug, "OK", time.monotonic() - started, ""))
-                breaker.succeeded()
+                breaker.succeeded(slug)
             except KeyboardInterrupt:
                 results.append((slug, "interrumpido", time.monotonic() - started, "Ctrl+C"))
                 raise
@@ -1198,6 +1245,8 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 on_result(slug, results[-1][1])          # out/_vigilar.json now, not at the end of the round
             _write_report(root, results)
     finally:
+        if guardian is not None:
+            guardian.close()                     # its thread ends with the round
         lock.unlink(missing_ok=True)
         _write_report(root, results)
     LAST_RESULTS[:] = results
@@ -1388,7 +1437,7 @@ def run_parallel(slugs: list[str], workers: int, *, force: set[str], until: str 
                 print(f"⏸ {detail}")
                 notify(root, f"⏸ {detail}")
             if status == "OK":
-                breaker.succeeded()
+                breaker.succeeded(slug)
             elif status == "ERROR" and not stopped[0]:
                 tripped = breaker.failed(slug, detail, list(tail))
                 if tripped:

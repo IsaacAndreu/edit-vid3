@@ -40,11 +40,13 @@ from typing import Any
 
 from .config import PROJECT_ROOT
 from . import usuarios
-from .context import RunContext, find_video, load_config, video_folders
+from .context import RunContext, find_video, load_config, safe_name, video_folders
 
 STATIC = Path(__file__).with_name("web_static")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$")
 MAX_UPLOAD = 400 * 1024 * 1024                # a 15-min voice in mp3 is ~15-30 MB; leave room for wav
+MAX_BODY = 8 * 1024 * 1024                     # any other request (JSON): a pasted CSV of channels fits
+LOGIN_BODY = 4096                              # a password
 STATIC_KINDS = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                 ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
 
@@ -155,7 +157,12 @@ def set_channel(root: Path, slug: str, channel: str) -> dict[str, Any]:
     if channel not in channels(root):
         raise ValueError(f"No existe el canal {channel!r} (canales/{channel}.yaml)")
     folder = find_video(root, slug)
-    if not folder.is_dir():
+    base = (root / "materiales").resolve()
+    # only a video's own folder: never the materials folder itself nor a channel group (their config.yaml decides
+    # the channel of every video under them)
+    from .context import _groups_videos
+
+    if not folder.is_dir() or base not in folder.resolve().parents or _groups_videos(root, folder):
         raise FileNotFoundError(slug)
     path = folder / "config.yaml"
     current = (yaml.safe_load(path.read_text("utf-8")) if path.is_file() else None) or {}
@@ -169,7 +176,9 @@ def formats(root: Path) -> list[str]:
 
 
 def _channel_of(root: Path, folder: Path) -> str:
-    for path in (folder / "config.yaml", folder.parent / "config.yaml"):
+    # the channel group above (materiales/<canal>/), never the materials folder itself
+    above = [] if folder.parent.resolve() == (root / "materiales").resolve() else [folder.parent / "config.yaml"]
+    for path in (folder / "config.yaml", *above):
         cfg = _json_yaml(path)
         if cfg.get("canal"):
             return str(cfg["canal"])
@@ -498,11 +507,11 @@ def _youtube_blocked(root: Path) -> str | None:
 def _lock_alive(lock: Path) -> bool:
     """The queue lock exists AND its process is alive (a restart can leave it behind)."""
 
-    from .locks import _alive
+    from .locks import owner_alive
 
     try:
-        return _alive(int(lock.read_text().split()[0]))
-    except (OSError, ValueError, IndexError):
+        return owner_alive(lock.read_text().split()[0])
+    except (OSError, IndexError):
         return False
 
 
@@ -908,15 +917,49 @@ def create_channel(root: Path, body: dict[str, Any]) -> dict[str, Any]:
     return {"channel": name}
 
 
-def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
+def _plain(value: Any, what: str) -> str:
+    """A short form value with no control characters (it ends up in a config file)."""
+
+    text = str(value or "").strip()
+    if any(ord(c) < 32 or ord(c) == 127 for c in text) or len(text) > 80:
+        raise ValueError(f"{what} no válido")
+    return text
+
+
+def create_video(root: Path, body: dict[str, Any], who: str = "") -> dict[str, Any]:
+    """A new video from the studio. Its config.yaml is written as data (never pasted text): only a known format,
+    a series of its channel, the way in, the language and the languages not to dub. `who`: the partner who made it
+    (kept as `creado_por`; the protected settings never apply from such a video's config, context.PROTECTED)."""
+
+    import yaml
+
+    from .context import channel_profile
+
     name = str(body.get("name") or "").strip()
     channel = str(body.get("channel") or "").strip()
     if not NAME.match(name):
         raise ValueError("El nombre solo puede llevar letras, números, puntos, guiones y _ (sin espacios)")
     if channel and channel not in channels(root):
         raise ValueError(f"No existe el canal {channel}")
+    settings: dict[str, Any] = {}
+    fmt = _plain(body.get("format"), "Formato")
+    if fmt:
+        if fmt not in formats(root):
+            raise ValueError(f"No existe el formato {fmt}")
+        settings["format"] = fmt
+    serie = _plain(body.get("serie"), "Serie")
+    if serie:
+        owner = channel or str(load_config(root / "config.yaml").get("canal") or "")
+        catalog = (channel_profile(root, owner).get("series") if owner else None) \
+            or load_config(root / "config.yaml").get("series") or {}
+        if serie not in catalog:
+            raise ValueError(f"El canal {owner or '(ninguno)'} no tiene la serie {serie}")
+        settings["serie"] = serie
     if any(f.name == name for f in video_folders(root)):
         raise ValueError(f"Ya hay un vídeo llamado {name}")
+    lang = str(body.get("language") or "es").strip()
+    if lang not in ("es", "en", "pt", "fr", "it", "de"):
+        raise ValueError(f"Idioma desconocido: {lang}")
     from .tts import clean_script
 
     script = clean_script(str(body.get("script") or "")).strip()     # «[CAPÍTULO 1 — …]» → «## …», notes out
@@ -957,17 +1000,10 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         from .niche_ideas import brief
 
         (folder / "idea.md").write_text(brief(body["idea"]), encoding="utf-8")
-    extra = {k: str(body[k]).strip() for k in ("serie", "format") if str(body.get(k) or "").strip()}
     if str(body.get("modo") or "") in ("guion", "titulo"):  # the way in, kept: «Experimentos» compares the ways
-        extra["modo"] = str(body["modo"])
-    lang = str(body.get("language") or "es").strip()
-    if lang not in ("es", "en", "pt", "fr", "it", "de"):
-        raise ValueError(f"Idioma desconocido: {lang}")
-    lines = "".join(f"{k}: {v}\n" for k, v in extra.items())
+        settings["modo"] = str(body["modo"])
     if lang != "es":                       # a video made directly in another language: its voice, texts and titles
-        lines += f"align:\n  language: {lang}\n"
-    if lines:
-        (folder / "config.yaml").write_text(lines, encoding="utf-8")
+        settings["align"] = {"language": lang}
     if isinstance(body.get("dub"), list):                  # a simulation channel: the languages you UNticked
         from . import doblaje
 
@@ -975,8 +1011,12 @@ def create_video(root: Path, body: dict[str, Any]) -> dict[str, Any]:
         offered = [o["lang"] for o in doblaje.options(root, str(body.get("channel") or "")) if o.get("voice")]
         skip = [l for l in offered if l not in ticked]         # one without a voice yet is dubbed once it has one
         if skip:
-            with (folder / "config.yaml").open("a", encoding="utf-8") as f:
-                f.write(f"dub_skip: [{', '.join(skip)}]\n")
+            settings["dub_skip"] = skip
+    if who:
+        settings["creado_por"] = who
+    if settings:
+        (folder / "config.yaml").write_text(yaml.safe_dump(settings, allow_unicode=True, sort_keys=False),
+                                            encoding="utf-8")
     if isinstance(body.get("material"), dict):             # material de partida (pipeline/material.py)
         from . import material
 
@@ -1222,7 +1262,7 @@ def retry(root: Path, slug: str) -> dict[str, Any]:
     if watcher_alive(root):
         ask_retry(root, slug)
         return {"ok": True, "message": "El vigilante lo vuelve a intentar en su próxima vuelta (unos minutos)."}
-    background(root, f"video-{slug}", ["--slug", slug])
+    background(root, f"video-{slug}", [f"--slug={slug}"])
     return {"ok": True, "started": True, "message": "En marcha desde el estudio: sigue avanzando aunque cierres todo."}
 
 
@@ -1434,19 +1474,30 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 _JOBS: dict[str, subprocess.Popen] = {}
+_OWNERS: dict[str, str] = {}            # job name → the partner who started it ("" you)
+_PERSON = threading.local()             # who sent the request this thread is answering (set in do_POST)
 
 
 def background(root: Path, name: str, args: list[str]) -> dict[str, Any]:
-    """`python main.py <args>` in the background, one per name; its output in out/_tareas/<name>.log."""
+    """`python main.py <args>` in the background, one per name; its output in out/_tareas/<name>.log. Every value goes
+    glued to its option (`--opción=valor`). A partner: one job of each kind at a time and `socios.trabajos_dia`."""
 
+    from . import limites
+
+    limites.check_args(args)
     job = _JOBS.get(name)
     if job is not None and job.poll() is None:
         return {"ok": True, "running": True, "already": True}
+    who = str(getattr(_PERSON, "who", "") or "")
+    if who:
+        theirs = [limites.kind(n) for n, j in list(_JOBS.items()) if _OWNERS.get(n) == who and j.poll() is None]
+        limites.charge(root, who, theirs, limites.kind(name))
     folder = root / "out" / "_tareas"
     folder.mkdir(parents=True, exist_ok=True)
     log = (folder / f"{name}.log").open("w", encoding="utf-8")
     _JOBS[name] = subprocess.Popen([sys.executable, str(root / "main.py"), *args], cwd=root, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
+    _OWNERS[name] = who
     return {"ok": True, "running": True}
 
 
@@ -1465,11 +1516,14 @@ def ai_thumbnail(root: Path, slug: str, body: dict[str, Any]) -> dict[str, Any]:
     find_video(root, slug)
     if not (root / "out" / slug / "video-final.mp4").is_file() and not (root / "out" / slug / "fotogramas").is_dir():
         raise ValueError("El vídeo aún no está hecho: las miniaturas salen de sus fotogramas")
-    refs = [r.strip() for r in re.split(r"[\s,]+", str(body.get("refs") or "")) if r.strip()][:3]
-    args = ["--miniatura-ia", slug, *[x for r in refs for x in ("--ref", r)],
-            "--cuantas", str(max(1, min(4, int(body.get("count") or 1))))]
+    from .miniatura_ia import video_id
+
+    # only YouTube links or ids, as their id: never a file of the server nor an option
+    refs = [v for r in re.split(r"[\s,]+", str(body.get("refs") or "")) if (v := video_id(r))][:3]
+    args = [f"--miniatura-ia={slug}", *[f"--ref={r}" for r in refs],
+            f"--cuantas={max(1, min(4, int(body.get('count') or 1)))}"]
     if str(body.get("text") or "").strip():
-        args += ["--texto", str(body["text"]).strip()[:80]]
+        args.append(f"--texto={str(body['text']).strip()[:80]}")
     return background(root, f"miniatura-ia-{slug}", args)
 
 
@@ -1507,7 +1561,7 @@ def fix_video(root: Path, slug: str) -> dict[str, Any]:
         raise ValueError("No hay clips marcados como incorrectos en este vídeo")
     if running(_json(root / "work" / slug / "current.json")):
         raise ValueError("Este vídeo ya se está haciendo")
-    return background(root, f"corregir-{slug}", ["--slug", slug, "--force", "fallback"])
+    return background(root, f"corregir-{slug}", [f"--slug={slug}", "--force=fallback"])
 
 
 def radar_state(root: Path) -> dict[str, Any]:
@@ -1776,9 +1830,23 @@ def _secret(password: str) -> bytes:
     return hashlib.sha256(("edit-vid3 web " + password).encode()).digest()
 
 
+def unsafe_path(path: str) -> bool:
+    """A request path with a part that, once decoded, would leave its folder: a slash or backslash inside one part,
+    a hidden or parent part, a control character. Checked before any route reads a name from the URL."""
+
+    for part in path.split("/"):
+        if not part:
+            continue
+        name = urllib.parse.unquote(part)
+        if (name.startswith(".") or "/" in name or "\\" in name
+                or any(ord(c) < 32 or ord(c) == 127 for c in name)):
+            return True
+    return False
+
+
 def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
     secret = _secret(password)
-    failures: list[float] = []                       # wrong passwords lately (any client): 10 in 10 min → wait
+    failures: dict[str, list[float]] = {}            # wrong passwords lately, per client address: 10 in 10 min → wait
 
     def token() -> str:
         stamp = str(int(time.time()))
@@ -1792,11 +1860,21 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "edit-vid3"
+        timeout = 120                                  # a client that sends nothing never holds a thread for ever
 
         def log_message(self, *args: Any) -> None:  # quiet
             return
 
         # who may come in: this machine directly, or anyone with the session cookie
+        def _client(self) -> str:
+            """Who is asking: behind Caddy (a local connection with X-Forwarded-For), the address Caddy added (the
+            last one); otherwise the connection's own."""
+
+            forwarded = self.headers.get("X-Forwarded-For")
+            if forwarded and self.client_address[0] in ("127.0.0.1", "::1"):
+                return forwarded.split(",")[-1].strip()[:64]
+            return str(self.client_address[0])
+
         def _local(self) -> bool:
             return self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("X-Forwarded-For")
 
@@ -1942,6 +2020,8 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
             self._started = time.monotonic()
             url = urllib.parse.urlparse(self.path)
             path = url.path
+            if path.startswith(("/api/", "/files/", "/editor/")) and unsafe_path(path):
+                return self._fail(400, "Ruta no válida")
             if path.startswith("/editor/"):
                 who = self._who()
                 if who is None:
@@ -2310,9 +2390,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     return self._ok(mychannel_state(root, urllib.parse.unquote(match.group(1))))
                 if match := re.fullmatch(r"/files/([^/]+)/(.+)", path):
                     slug, rel = urllib.parse.unquote(match.group(1)), urllib.parse.unquote(match.group(2))
-                    base = (root / "out" / slug).resolve()
+                    out = (root / "out").resolve()
+                    base = (out / safe_name(slug)).resolve()
                     target = (base / rel).resolve()
-                    if base not in target.parents or not target.is_file():          # never outside out/<vídeo>/
+                    if base.parent != out or base not in target.parents or not target.is_file():   # only out/<vídeo>/
                         return self._fail(404, "No existe")
                     return self._file(target)
             except FileNotFoundError:
@@ -2324,15 +2405,33 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             url = urllib.parse.urlparse(self.path)
             path = url.path
-            length = int(self.headers.get("Content-Length") or 0)
+            if unsafe_path(path):
+                return self._fail(400, "Ruta no válida")
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._fail(400, "Longitud no válida")
+            if length < 0:
+                return self._fail(400, "Longitud no válida")
             clip_upload = re.fullmatch(r"/api/video/[^/]+/material/clip", path) is not None   # checked in save_clip
-            if length > MAX_UPLOAD and not clip_upload:
-                return self._fail(413, "Archivo demasiado grande")
+            upload = (path == "/api/apertura/subir" or re.fullmatch(r"/api/video/[^/]+/voz", path) is not None
+                      or path.startswith("/editor/"))
+            cap = LOGIN_BODY if path == "/api/login" else MAX_UPLOAD if upload else MAX_BODY
+            if length > cap and not clip_upload:
+                return self._fail(413, "Archivo demasiado grande" if upload else "Petición demasiado grande")
             if path == "/api/login":
-                body = json.loads(self.rfile.read(length) or b"{}")
-                failures[:] = [t for t in failures if time.time() - t < 600]
-                if len(failures) >= 10:
+                client = self._client()
+                recent = [t for t in failures.get(client, []) if time.time() - t < 600]
+                failures[client] = recent
+                if len(failures) > 10000:                   # never a memory sink: the oldest addresses go
+                    for gone in sorted(failures, key=lambda k: max(failures[k] or [0]))[:5000]:
+                        failures.pop(gone, None)
+                if len(recent) >= 10:
                     return self._fail(429, "Demasiados intentos: espera 10 minutos")
+                try:
+                    body = json.loads(self.rfile.read(length) or b"{}")
+                except ValueError:
+                    return self._fail(400, "JSON no válido")
                 given = str(body.get("password") or "")
                 partner = usuarios.find(root, given) if password and given else None
                 if (password and hmac.compare_digest(given.encode(), password.encode())) or partner:
@@ -2340,7 +2439,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     value = usuarios.token(root, secret, partner) if partner else token()
                     return self._send(200, b'{"ok": true}', headers={
                         "Set-Cookie": f"studio={value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000{secure}"})
-                failures.append(time.time())
+                failures.setdefault(client, []).append(time.time())
                 time.sleep(1.5)                                  # slows down guessing
                 return self._fail(403, "Contraseña incorrecta")
             if path == "/api/logout":                      # anyone, even with an old cookie: it goes
@@ -2351,7 +2450,20 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 return self._fail(401, "Inicia sesión")
             if self.headers.get("Origin") and urllib.parse.urlparse(self.headers["Origin"]).netloc != self.headers.get("Host"):
                 return self._fail(403, "Origen no permitido")
+            # a change only from the studio's own pages: the browser says so (Sec-Fetch-Site), or the studio's own
+            # header, which another site cannot send without the browser asking first
+            if (self.headers.get("Sec-Fetch-Site") not in ("same-origin", "none")
+                    and self.headers.get("X-Estudio") != "1"):
+                return self._fail(403, "Origen no permitido")
             mine = usuarios.channels_of(root, who) if who else []
+            _PERSON.who = who or ""
+            if who and (upload or clip_upload) and length > 0:     # a partner's own uploads have a quota
+                from . import limites
+
+                try:
+                    limites.check_disk(root, who, mine, length)
+                except limites.Limit as error:
+                    return self._fail(413, str(error))
             if path.startswith("/editor/"):                # the editor's changes, uploads, apply and render
                 data = self.rfile.read(length)
                 if self.headers.get("Content-Type") == "application/octet-stream":
@@ -2411,6 +2523,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                 break
                             f.write(chunk)
                             left -= len(chunk)
+                    from . import limites
+
+                    limites.own_upload(root, who or "", ticket)
                     return self._ok({"file": ticket})
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz", path):
                     return self._ok(save_voice(root, urllib.parse.unquote(match.group(1)), self.rfile.read(length)))
@@ -2481,7 +2596,10 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         found = search_videos(root, str(body.get("q") or "")[:200000])
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
                 if path == "/api/videos":
-                    return self._ok(create_video(root, body))
+                    from . import limites
+
+                    limites.charge(root, who or "")       # a new video is paid work: it counts in the partner's day
+                    return self._ok(create_video(root, body, who or ""))
                 if path == "/api/copia":                   # «Hacer copia ahora»
                     from . import copia
 
@@ -2560,19 +2678,19 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         raise ValueError("Canal o vídeo no válido")
                     if match.group(2) == "saltar":
                         return self._ok(autopilot.skip(root, channel, video_id))
-                    return self._ok(background(root, f"piloto-{channel}", ["--autopiloto", f"{channel}:{video_id}"]))
+                    return self._ok(background(root, f"piloto-{channel}", [f"--autopiloto={channel}:{video_id}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/capcut", path):
                     slug = urllib.parse.unquote(match.group(1))
                     if not (root / "out" / slug / "video-final.mp4").is_file():
                         raise ValueError("Primero tiene que estar el vídeo terminado")
                     (root / "out" / slug / f"{slug}-capcut.zip").unlink(missing_ok=True)
-                    return self._ok(background(root, f"capcut-{slug}", ["--capcut", slug]))
+                    return self._ok(background(root, f"capcut-{slug}", [f"--capcut={slug}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):
                     slug = urllib.parse.unquote(match.group(1))
                     if not (root / "out" / slug / "video-final.mp4").is_file():
                         raise ValueError("Primero tiene que estar el vídeo terminado")
                     (root / "out" / slug / f"{slug}-premiere.zip").unlink(missing_ok=True)
-                    return self._ok(background(root, f"exportar-{slug}", ["--exportar", slug]))
+                    return self._ok(background(root, f"exportar-{slug}", [f"--exportar={slug}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):     # {on, reference}: the scene pilot
                     from . import piloto
 
@@ -2657,7 +2775,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     channel = str(body.get("channel") or "")
                     if not CHANNEL.match(channel):
                         raise ValueError("Canal no válido")
-                    return self._ok(background(root, "compilacion", ["--compilar", channel]))
+                    return self._ok(background(root, "compilacion", [f"--compilar={channel}"]))
                 if path == "/api/scripts/draft":           # {channel, idea: {title, note…}} → a first draft
                     from . import organizar
 
@@ -2691,7 +2809,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         request["file"] = str(folder / f"apertura-{ticket}.mp4")
                     (folder / f"apertura-{ticket}.json").write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
                     (folder / f"apertura-{ticket}.resultado.json").unlink(missing_ok=True)
-                    background(root, f"apertura-{ticket}", ["--apertura", str(folder / f"apertura-{ticket}.json")])
+                    background(root, f"apertura-{ticket}", [f"--apertura={folder / f'apertura-{ticket}.json'}"])
                     return self._ok({"token": ticket})
                 if path == "/api/hook":                    # {title, script, channel}: before recording
                     from . import hook
@@ -2752,7 +2870,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     if not count and not wrong_shots(root / "work" / slug):
                         raise ValueError("No has elegido ninguna opción todavía")
-                    return self._ok({**background(root, f"corregir-{slug}", ["--slug", slug, "--force", "fallback"]),
+                    return self._ok({**background(root, f"corregir-{slug}", [f"--slug={slug}", "--force=fallback"]),
                                      "applied": count})
                 if match := re.fullmatch(r"/api/decisions/([^/]+)/([A-Za-z0-9_-]+)", path):
                     from . import decisions
@@ -2773,7 +2891,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     topic = " ".join(str(body.get("topic") or "").split())[:120]
                     if len(topic) < 3:
                         raise ValueError("Escribe un tema")
-                    return self._ok(background(root, "huecos-idiomas", ["--huecos-idiomas", topic]))
+                    return self._ok(background(root, "huecos-idiomas", [f"--huecos-idiomas={topic}"]))
                 if path == "/api/material-primero/nuevo":           # «material primero»: a video from its title, then its research
                     from . import expediente
 
@@ -2781,18 +2899,18 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                              str(body.get("kind") or "top"), int(body.get("count") or 5),
                                              float(body.get("minutes") or 6), str(body.get("tone") or ""),
                                              [str(l) for l in (body.get("links") or [])])
-                    return self._ok({"slug": slug, **background(root, f"expediente-{slug}", ["--expediente", slug])})
+                    return self._ok({"slug": slug, **background(root, f"expediente-{slug}", [f"--expediente={slug}"])})
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/investigar", path):    # the research again
                     slug = urllib.parse.unquote(match.group(1))
-                    return self._ok(background(root, f"expediente-{slug}", ["--expediente", slug]))
+                    return self._ok(background(root, f"expediente-{slug}", [f"--expediente={slug}"]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloques", path):   # the script by blocks
                     slug = urllib.parse.unquote(match.group(1))
-                    return self._ok(background(root, f"bloques-{slug}", ["--bloques", slug]))
+                    return self._ok(background(root, f"bloques-{slug}", [f"--bloques={slug}"]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/montar", path):   # {confirm}: after the MB
                     slug = urllib.parse.unquote(match.group(1))
                     if not body.get("confirm"):
                         raise ValueError("Confirma antes los MB que va a bajar por el proxy")
-                    return self._ok(background(root, f"montar-{slug}", ["--montar", slug]))
+                    return self._ok(background(root, f"montar-{slug}", [f"--montar={slug}"]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloque", path):    # {position, action, ref}
                     from . import bloques
                     from .context import RunContext as BlocksContext    # an alias: never shadow the handler's name
@@ -2802,15 +2920,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                                  str(body.get("ref") or "") or None))
                 if path == "/api/formula/analizar":         # {links, niche}: the formula report of 5-8 references
                     links = str(body.get("links") or "")
-                    return self._ok(background(root, "formula", ["--formula", links, "--nicho",
-                                                                 str(body.get("niche") or "")[:80]]))
+                    return self._ok(background(root, "formula", [f"--formula={links}",
+                                                                 f"--nicho={str(body.get('niche') or '')[:80]}"]))
                 if path == "/api/formula/montaje":          # {key, confirm}: only after seeing the MB through the proxy
                     from . import formula
 
                     report = formula.load(root, str(body.get("key") or ""))
                     if not body.get("confirm"):
                         return self._ok(formula.montage(root, report, confirm=False))
-                    return self._ok(background(root, "formula-montaje", ["--formula-montaje", report["key"]]))
+                    return self._ok(background(root, "formula-montaje", [f"--formula-montaje={report['key']}"]))
                 if path == "/api/formula/crear":            # {key, name}: the channel from the formula
                     from . import formula
 
@@ -2862,8 +2980,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     channel = urllib.parse.unquote(match.group(1))
                     if channel not in channels(root):
                         return self._fail(404, "No existe")
-                    return self._ok(background(root, f"canal-{channel}", ["--mi-canal", channel]))
-            except (ValueError, FileExistsError) as error:
+                    return self._ok(background(root, f"canal-{channel}", [f"--mi-canal={channel}"]))
+            except ValueError as error:
+                from .limites import Limit
+
+                return self._fail(429 if isinstance(error, Limit) else 400, str(error))
+            except FileExistsError as error:
                 return self._fail(400, str(error))
             except FileNotFoundError:
                 return self._fail(404, "No existe")

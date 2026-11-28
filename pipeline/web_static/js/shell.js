@@ -51,7 +51,7 @@ function drawChannelPicker() {
       <span class="mw0 grow"><b>${studioChannel ? esc(studioChannel) : "Todos los canales"}</b><small>${studioChannel ? "Cambiar de canal" : `${all} canales · elegir uno`}</small></span>
       ${icon("updown")}</button>
     ${recent.length || studioChannel ? `<div class="chrecent">${studioChannel ? `<button type="button" class="chip sm" onclick="setStudioChannel('')">Ver todos</button>` : ""}
-      ${recent.map((c) => `<button type="button" class="avbtn" title="${esc(c)}" aria-label="Canal ${esc(c)}" onclick="setStudioChannel('${esc(c)}')">${avatar(c)}</button>`).join("")}</div>` : ""}`);
+      ${recent.map((c) => `<button type="button" class="avbtn" title="${esc(c)}" aria-label="Canal ${esc(c)}" onclick="setStudioChannel(${jsq(c)})">${avatar(c)}</button>`).join("")}</div>` : ""}`);
 }
 
 window.openChannelPicker = () => {
@@ -64,7 +64,7 @@ window.openChannelPicker = () => {
   const draw = () => {
     const items = [{name: "", videos: studioChannels.reduce((n, c) => n + c.videos, 0)}, ...list()];
     paint($("#chlist"), items.map((c, i) => `<button type="button" role="option" aria-selected="${c.name === studioChannel}" class="${c.name === studioChannel ? "on" : ""}"
-      onclick="document.getElementById('modal').close();setStudioChannel('${esc(c.name)}')">${c.name ? avatar(c.name) : `<span class="av all" aria-hidden="true">${studioChannels.length}</span>`}
+      onclick="document.getElementById('modal').close();setStudioChannel(${jsq(c.name)})">${c.name ? avatar(c.name) : `<span class="av all" aria-hidden="true">${studioChannels.length}</span>`}
       <span class="grow">${c.name ? esc(c.name) : "Todos los canales"}</span><span class="muted small">${c.videos} vídeos</span></button>`).join(""));
   };
   draw();

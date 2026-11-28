@@ -10,10 +10,12 @@ from __future__ import annotations
 import base64
 import re
 import time
+from types import SimpleNamespace
 from typing import Any
 
 from .context import RunContext
 from .costs import record_cost
+from .llm import LLMError, _within
 
 DEFAULT_MODEL = "claude-opus-5-5"
 # $/million tokens of the models we name; `usd_per_mtok` in the section overrides them
@@ -23,8 +25,8 @@ PRICES = {"claude-opus-5-5": {"input": 4.0, "output": 20.0, "input_cache_hit": 0
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
-class ClaudeError(RuntimeError):
-    pass
+class ClaudeError(LLMError):
+    """A decline, a reply cut short or no reply in time: a text-model failure like any other (the planner retries)."""
 
 
 TRANSIENT_TYPES = {"RemoteProtocolError", "ReadError", "ReadTimeout", "WriteError", "ConnectError", "ConnectTimeout",
@@ -76,6 +78,28 @@ def image_block(jpeg: bytes) -> dict[str, Any]:
                                         "data": base64.standard_b64encode(jpeg).decode()}}
 
 
+def _charge_cut(ctx: RunContext, stage: str, model: str, stream: Any, cfg: dict[str, Any]) -> None:
+    """A reply that died halfway is billed up to where it got: its input and the text that arrived (about 4
+    characters a token), written down as an estimate. Nothing when it died before Claude started answering."""
+
+    try:
+        snapshot = getattr(stream, "current_message_snapshot", None)
+        usage = getattr(snapshot, "usage", None)
+        if usage is None:
+            return
+        got = sum(len(str(getattr(b, "text", "") or getattr(b, "thinking", "") or ""))
+                  for b in getattr(snapshot, "content", None) or [])
+        out = max(int(getattr(usage, "output_tokens", 0) or 0), got // 4)
+        estimate = SimpleNamespace(input_tokens=int(getattr(usage, "input_tokens", 0) or 0), output_tokens=out,
+                                   cache_read_input_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+                                   cache_creation_input_tokens=int(getattr(usage, "cache_creation_input_tokens", 0) or 0))
+        usd = cost(str(getattr(snapshot, "model", model) or model), estimate, cfg.get("usd_per_mtok"))
+        record_cost(ctx, stage=stage, provider="anthropic", operation=f"{model} (cortada)", usd=usd,
+                    details={"inputTokens": estimate.input_tokens, "outputTokens": out, "estimated": True})
+    except Exception as error:                           # the note of what was spent never hides the real failure
+        print(f"   Claude: no pude apuntar el gasto de la respuesta cortada ({type(error).__name__})")
+
+
 def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[str, Any]], cfg: dict[str, Any],
         max_tokens: int = 16000, schema: dict[str, Any] | None = None,
         client: Any = None) -> tuple[str, float]:
@@ -84,23 +108,43 @@ def ask(ctx: RunContext, *, stage: str, system: str, content: str | list[dict[st
     request on another model by itself (server-side fallbacks); a reply cut short or declined in the end raises."""
 
     model = str(cfg.get("model") or DEFAULT_MODEL)
+    from .budget import before_paid_call
+
+    before_paid_call(ctx)
     if client is None:
         import anthropic
 
         client = anthropic.Anthropic(api_key=ctx.env("ANTHROPIC_API_KEY"), max_retries=2)
-    output: dict[str, Any] = {"effort": str(cfg.get("effort", "high"))}
+    effort = cfg.get("effort", "high")
+    # effort «none»: not sent at all (Haiku, 27-11: a model that does not take it would fail every request)
+    output: dict[str, Any] = {} if str(effort).lower() in ("none", "", "false") or effort is None else {"effort": str(effort)}
     if schema is not None:
         output["format"] = {"type": "json_schema", "schema": plain_schema(schema)}
     attempts = max(1, int(cfg.get("network_retries", 3)) + 1)
+    # all the attempts together: a streamed reply kept alive never trips the HTTP timeout (27-11: two hours)
+    deadline = time.monotonic() + float(cfg.get("deadline_seconds", 1800))
+
+    def one() -> Any:
+        with client.beta.messages.stream(
+            model=model, max_tokens=max_tokens, betas=[FALLBACK_BETA], fallbacks="default",
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],   # the same rules
+            messages=[{"role": "user", "content": content}], **({"output_config": output} if output else {}),
+        ) as stream:
+            try:
+                return stream.get_final_message()
+            except Exception:
+                _charge_cut(ctx, stage, model, stream, cfg)
+                raise
+
     for attempt in range(attempts):
+        left = deadline - time.monotonic()
         try:
-            with client.beta.messages.stream(
-                model=model, max_tokens=max_tokens, betas=[FALLBACK_BETA], fallbacks="default",
-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],   # the same rules
-                messages=[{"role": "user", "content": content}], output_config=output,
-            ) as stream:
-                reply = stream.get_final_message()
+            if left <= 0:
+                raise TimeoutError
+            reply = _within(left, one)
             break
+        except TimeoutError:
+            raise ClaudeError(f"{model} no respondió a tiempo ({cfg.get('deadline_seconds', 1800)} s)") from None
         except Exception as error:
             # 27-11: «peer closed connection without sending complete message body» in the middle of a streamed
             # reply failed three videos in a row and paused the queue: a cut connection is asked again

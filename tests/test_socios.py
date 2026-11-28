@@ -34,7 +34,7 @@ def studio(tmp_path):
 
     def call(path, body=None):
         request = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,
-                                         headers={"Content-Type": "application/json",
+                                         headers={"Content-Type": "application/json", "X-Estudio": "1",
                                                   **({"Cookie": jar["cookie"]} if jar["cookie"] else {})})
         try:
             with urllib.request.urlopen(request) as response:

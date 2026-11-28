@@ -512,3 +512,172 @@ Test: `tests/test_arreglo_guion.py`.
   el fallo es de conexión o de Claude saturado (`claude.transient`); un error de la petición no se reintenta.
 - `cortacircuitos.Breaker.failed`: los fallos de red nunca cuentan para pausar la cola.
 - Prueba: `tests/test_claude_red.py`.
+
+## Haiku para el planner y la verificación (27-11)
+
+- `planner.model` y `factcheck.model` → `claude-haiku-5-5` (~20× más barato que Sonnet, más que DeepSeek);
+  `guion.model` sigue en Sonnet (borradores de guion, pocos). `effort: none` → `claude.ask` no manda output_config
+  (por si Haiku no lo acepta). Cambiar de modelo no rehace nada (huella sin proveedor, runner.TEXT_SECTIONS).
+- La caché de prompts ya estaba: el system va con cache_control; la caché de llm.py evita pagar dos veces lo mismo.
+- Pruebas: `tests/test_claude_red.py::test_haiku_gets_no_effort`, `::test_the_planner_is_on_haiku_and_switching_redoes_nothing`.
+
+## Revisión 27-11 (prompts/revision-27-11-plan.md, rama claude/quirky-johnson-6m1428) · seguridad 1
+
+- Nombres que llegan por URL o formulario: `context.safe_name` (una sola parte de ruta, sin partes ocultas ni de
+  carpeta superior, sin caracteres de control) dentro de `find_video`; `web.unsafe_path` en todas las rutas
+  /api, /files y /editor antes de leer ningún nombre; `/files` solo sirve lo que queda bajo `out/<nombre>/`;
+  `set_channel` solo en la carpeta de un vídeo (nunca la de materiales ni la de un canal); `_channel_of` no hereda
+  de la carpeta raíz de materiales.
+- Prueba: `tests/test_seguridad_rutas.py` (peticiones reales con un socio).
+
+## Revisión 27-11 · seguridad 2
+
+- `web.create_video` escribe el config.yaml del vídeo con `yaml.safe_dump` de un diccionario: `format` tiene que
+  existir en formatos/, `serie` en el catálogo del canal, sin caracteres de control; idioma y modo de una lista.
+  Un vídeo hecho por un socio lleva `creado_por`.
+- `context.without_protected`: de un config.yaml con `creado_por` nunca se aplican `budget.*`, ni claves de
+  destino, ejecutables, proxies, cookies o credenciales (`PROTECTED_KEY`); avisa de lo que ignora. Tus vídeos no
+  cambian.
+- Prueba: `tests/test_seguridad_config.py`.
+
+## Revisión 27-11 · A1 reintentos
+
+- El final de la ronda ya no reescribe `out/_vigilar.json` desde la copia leída antes (perdía `tries` y el vídeo se
+  reintentaba cada ronda): solo apunta un fallo que `on_result` no haya apuntado para esos materiales.
+- `reintentos.record`: fallos seguidos con los mismos materiales (`tries`, la espera) y fallos del día (`dayFails`);
+  con `watch.max_failures_per_day` (5) el vídeo espera a mañana, con un solo aviso. «Reintentar» lo suelta.
+- `main._materials_signature` ignora lo que escribe el programa (voz sintética, tiempos, arreglo del guion, voz
+  recortada, archivos ocultos): un intento fallido ya no cuenta como material nuevo.
+- Prueba: `tests/test_reintentos_tope.py`.
+
+## Revisión 27-11 · A2 el guion que se arregla solo
+
+- La revisión del guion corre antes de pagar el planner (`runner.script_check`), y otra vez antes de las etapas de
+  proxy (sin coste si el guion no cambió).
+- Como mucho una reescritura por vídeo, contada en `materiales/<vídeo>/imagen_guion.intentos.json` (no se pierde
+  con work/); tras ella la revisión es solo `aviso` y el vídeo sigue. `gate` ya no borra los datos del arreglo al
+  reescribir su archivo.
+- Prueba: `tests/test_arreglo_guion.py::test_a_rewrite_that_still_fails_never_loops`.
+
+## Revisión 27-11 · A3 tope por vídeo y día
+
+- `budget.check_video`: lo gastado HOY por el vídeo (todos sus intentos), o el intento si es más, contra
+  `budget.per_video_usd`.
+- `budget.before_paid_call` antes de cada llamada de pago de un vídeo: `llm.complete_json` (DeepSeek y Claude),
+  `claude.ask`, la voz (`tts._make`), las imágenes (`package.concept_image`, `miniatura_ia.generate`), el revisor,
+  el índice de escenas, la revisión y los momentos de la apertura. El trabajo del estudio y del vigilante (slugs
+  «_…») no se para aquí (A12).
+- Prueba: `tests/test_tope_dia.py`.
+
+## Revisión 27-11 · A4 Atlas y claves
+
+- `llm.text_section`: una sección de texto sin modelo propio (`atlas_guion`) usa el del planner (modelo, esfuerzo…)
+  en vez de DeepSeek. `llm.keys_needed`: el doctor y la comprobación de antes de la cola piden ANTHROPIC_API_KEY si
+  algo usa Claude y LLM_API_KEY solo si algo usa DeepSeek.
+- Prueba: `tests/test_modelo_por_defecto.py`.
+
+## Revisión 27-11 · seguridad 3
+
+- `referencias.public_url` / `fetch_text`: los enlaces pegados solo se leen si son http(s) a puertos web normales y
+  todas las direcciones del nombre son públicas; cada redirección se comprueba igual; como mucho 2 MB por página.
+- El editor solo sirve imágenes y vídeo de `cache/`.
+- Prueba: `tests/test_seguridad_enlaces.py`.
+
+## Revisión 27-11 · seguridad 4
+
+- Páginas del estudio: todo valor que va como argumento de un `on…=""` pasa por `jsq()` (JSON escapado para el
+  atributo; `esc()` solo no basta ahí); todo enlace que viene de datos por `safeUrl()` (solo http/https); `md()` solo
+  genera enlaces http(s) o del propio estudio.
+- Servidor: el id de una idea guardada y la URL de «publicado» se validan al guardar.
+- Prueba: `tests/test_seguridad_pagina.py` (las funciones de la página ejecutadas en Node); `tests/ui` behave,
+  dialogs y shoot sin errores.
+
+## Revisión 27-11 · seguridad 5
+
+- Estudio: el cuerpo de cada petición tiene tope (4 KB el inicio de sesión, 8 MB el resto; las subidas, su propio
+  tope); una longitud inválida o negativa es un 400, no una espera.
+- Los fallos de contraseña cuentan por dirección (la del proxy local si la hay), así que nadie bloquea al dueño
+  desde fuera; la contraseña buena nunca queda bloqueada para quien no ha fallado.
+- Una conexión que no manda nada se corta a los 120 s.
+- Prueba: `tests/test_seguridad_peticiones.py`.
+- Sin comprobar en el servidor: que el proxy del servidor ponga X-Forwarded-For (si no, todos comparten dirección y
+  el bloqueo vuelve a ser global, como antes).
+
+## Revisión 27-11 · seguridad 7
+
+- `notify.set_env`: solo nombres en MAYÚSCULAS_CON_GUIONES y valores sin saltos de línea; lo demás se rechaza antes
+  de tocar `.env`.
+- Prueba: `tests/test_seguridad_env.py`.
+
+## Revisión 27-11 · seguridad 8
+
+- Estudio: un cambio (POST) solo se acepta si el navegador dice que viene del propio estudio (Sec-Fetch-Site
+  same-origin) o lleva la cabecera `X-Estudio: 1`, que las páginas del estudio mandan siempre (también en las
+  subidas). Otra web no puede mandarla sin que el navegador pregunte antes.
+- Prueba: `tests/test_seguridad_origen.py`; las pruebas de la web y de socios mandan la cabecera.
+- Sin comprobar en el servidor: que el proxy delante del estudio no quite esas cabeceras (si un cambio da
+  «Origen no permitido», es eso).
+
+## Revisión 27-11 · seguridad 6
+
+- `pipeline/limites.py`: cada socio, una tarea de cada tipo a la vez (apertura, miniatura IA, reintento, CapCut…) y
+  como mucho `socios.trabajos_dia` (30) tareas y vídeos nuevos al día; lo que pasa de ahí es un 429 con el motivo.
+  Tú no tienes estos límites. La cuenta del día vive en `out/_tareas/socios.json` (si se rompe, se empieza de cero).
+- Todo valor que va a la línea de órdenes de `main.py` va pegado a su opción (`--opción=valor`): `background`
+  rechaza cualquier valor suelto, así nada que escriba alguien se lee como opción. Las referencias de la miniatura con
+  IA solo pueden ser enlaces o ids de YouTube (antes también rutas de archivo). Ningún nombre de vídeo puede empezar
+  por «-».
+- Cuota de disco por socio (`socios.disco_gb`, 30): sus vídeos en `materiales/` más sus subidas de apertura; una
+  subida que la pasaría es un 413 antes de leerla.
+- Prueba: `tests/test_seguridad_trabajos.py` (seis aperturas seguidas → una; tope del día con la cuenta rota;
+  opciones coladas en las referencias y el texto; cuota).
+- Queda fuera: las llamadas de pago que no son tareas (probar voz, gancho, escenas) siguen sin tope propio por socio;
+  las frena el tope de gasto del día.
+- Sin comprobar en el servidor: cuánto tarda medir el disco de un socio con muchos vídeos (se mide solo al subir).
+
+## Revisión 27-11 · seguridad 9 (solo nota)
+
+- El estudio baja `main` y se reinicia solo: quien pueda subir a `main` ejecuta código en el servidor. La única
+  barrera es la protección de la rama en GitHub (revisión obligatoria, sin push directo). No hay cambio de código.
+
+## Revisión 27-11 · A5 cortes y negativas de Claude
+
+- `ClaudeError` es ahora un `LLMError`: una negativa o una respuesta cortada entra en el reintento propio del
+  planner (antes lo mataba).
+- Una respuesta que muere a medias se apunta como gasto estimado (su entrada + el texto que llegó, ~4 caracteres por
+  token), operación «… (cortada)»; nada si murió antes de empezar a responder.
+- Plazo total por llamada, contando todos sus reintentos: `deadline_seconds` de la sección (1800 s). Al pasarlo,
+  «no respondió a tiempo» (el planner ya no reintenta ese caso).
+- Prueba: `tests/test_claude_cortes.py`.
+- Sin comprobar en el servidor: que el SDK instalado allí deje leer `current_message_snapshot` al cortarse (si no,
+  no se apunta nada, como antes).
+
+## Revisión 27-11 · A6 perro guardián en la cola en serie
+
+- La cola en serie hace el vídeo en su propio proceso: ahora el guardián también lo vigila (`Guardian.watch_here`).
+  Una etapa que pasa su límite (`queue.stage_minutes` + por minuto de vídeo) se corta con una señal al hilo
+  principal: el vídeo falla con «cortado por el perro guardián: la etapa … llevaba … h», aviso ✂, y la cola sigue
+  con el siguiente. En el mismo proceso no hay salida que oír, así que solo cuenta el tiempo de la etapa. No
+  funciona en Windows (sin SIGUSR2): allí sigue como antes.
+- Prueba: `tests/test_guardian_serie.py`.
+
+## Revisión 27-11 · A7 cortacircuitos
+
+- Guarda lo que pasa en `out/_cortacircuitos.json` (últimas 3 h), así que una ronda nueva del vigilante se acuerda.
+- Salta con: el mismo fallo del programa en 2 vídeos o 3 veces en uno; cualquier otra excepción con el mismo tipo y
+  línea 3 veces en 2+ vídeos, en la etapa que sea (antes solo errores de código); 3 seguidos en la misma etapa (como
+  antes); o el 80 % de al menos 6 intentos fallados aunque alguno salga bien. Al saltar empieza de cero.
+- Los cortes de red no cuentan, como antes. Ajustes nuevos en `config.yaml` → `queue.breaker_*` (0 apaga).
+- Prueba: `tests/test_cortacircuitos_tasa.py`.
+- Sin comprobar en el servidor: si el 80 % pausa la cola en noches que hoy salen bien a medias. Para medirlo:
+  `out/_cortacircuitos.json` dice cuántos intentos y fallos lleva; si molesta, `queue.breaker_rate: 0`.
+
+## Revisión 27-11 · A8 cerrojos con PID reutilizado
+
+- `.turno-*`, `work/.cola.lock` y `work/<vídeo>/.proceso` guardan «pid:arranque» (la hora de arranque del proceso,
+  de /proc). Si el PID vive pero ya es otro proceso (un reinicio reutiliza PIDs), el cerrojo se da por muerto. Los
+  cerrojos viejos (solo PID) siguen valiendo.
+- Un turno de más de 24 h caduca, diga lo que diga (ninguna etapa dura eso con el guardián). La cola no caduca por
+  edad: el vigilante la tiene días seguidos con razón.
+- Una espera de turno de más de `queue.turn_wait_warn_minutes` (120) se avisa una vez, con quién tiene el turno.
+- Prueba: `tests/test_cerrojos_pid.py`.

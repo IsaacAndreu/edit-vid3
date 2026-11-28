@@ -333,6 +333,9 @@ def ask(ctx: RunContext, cfg: dict[str, Any], entries: list[dict[str, Any]], sub
             content += [{"type": "input_text", "text": f"Reference photo of {portrait[0]}"},
                         {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(portrait[1]).decode(),
                          "detail": "low"}]
+        from .budget import before_paid_call
+
+        before_paid_call(ctx)
         client = OpenAI(api_key=ctx.env("OPENAI_API_KEY"), timeout=240, max_retries=2)
         response = client.responses.create(
             model=model, instructions=INSTRUCTIONS, prompt_cache_key="revisor",

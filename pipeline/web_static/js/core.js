@@ -4,13 +4,18 @@ const STAGES = {factcheck: "Verificar datos", align: "Alinear la voz", planner: 
   dub: "Doblaje (montaje, render y Shorts)"};
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+// A value as a JavaScript string argument inside an on…="" attribute: JSON-quoted, then escaped for the attribute.
+// esc() alone is not enough there: the browser decodes &#39; back to ' before the handler runs.
+const jsq = (t) => esc(JSON.stringify(String(t ?? "")));
+// A link that comes from data: only http(s), never javascript: or data:
+const safeUrl = (u) => /^https?:\/\//i.test(String(u ?? "").trim()) ? esc(String(u).trim()) : "#";
 let timer = null, data = null;
 let navStop = null, navId = 0;                 // the page being opened: its requests are dropped when another one is
 
 // the channel <select> of every row of a long table carries only its own option until it is used: the other channels
 // are added when it gets the focus or a touch (one per row × 30 channels was most of «Todos los vídeos» and «Gasto»)
 const lazyLists = {};
-const lazySelect = (list, current, attrs) => `<select ${attrs} onfocus="lazyFill(this, '${list}')" onpointerdown="lazyFill(this, '${list}')"><option selected>${esc(current)}</option></select>`;
+const lazySelect = (list, current, attrs) => `<select ${attrs} onfocus="lazyFill(this, ${jsq(list)})" onpointerdown="lazyFill(this, ${jsq(list)})"><option selected>${esc(current)}</option></select>`;
 window.lazyFill = (select, list) => {
   if (select.options.length > 1) return;
   const current = select.value, all = lazyLists[list] || [];
@@ -94,7 +99,8 @@ async function api(path, options = {}) {
   // stays pending), so a slow answer cannot paint the old page over the new one
   const stop = isGet ? navStop : null;
   let res;
-  try { res = await fetch(path, {credentials: "same-origin", ...(stop ? {signal: stop.signal} : {}), ...options}); }
+  const sent = isGet ? options : {...options, headers: {"X-Estudio": "1", ...(options.headers || {})}};   // the server's check
+  try { res = await fetch(path, {credentials: "same-origin", ...(stop ? {signal: stop.signal} : {}), ...sent}); }
   catch (e) { if (stop && stop.signal.aborted) return new Promise(() => {}); throw e; }
   if (stop && stop.signal.aborted) return new Promise(() => {});
   if (res.status === 401) { showLogin(); throw new Error("login"); }
@@ -124,7 +130,8 @@ function md(text, base) {
   if (!text) return '<p class="muted">Todavía no hay.</p>';
   const lines = esc(text).split("\n"); let html = "", inList = false, table = [], code = false;
   const inline = (t) => t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, a, src) => `<img alt="${a}" loading="lazy" decoding="async" src="${/^https?:/.test(src) ? src : base + src.replace(/^\.?\//, "")}">`)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => /^(https?:\/\/|#\/)/i.test(url)
+      ? `<a href="${url}" target="_blank" rel="noopener">${label}</a>` : label)
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|\s)_([^_]+)_/g, "$1<i>$2</i>").replace(/`([^`]+)`/g, "<code>$1</code>");
   const flush = () => { if (inList) { html += "</ul>"; inList = false; }
     if (table.length) { html += "<table>" + table.filter((r) => !/^\|?\s*-{2,}/.test(r)).map((r, i) => "<tr>" + r.replace(/^\||\|$/g, "").split("|")
@@ -228,7 +235,7 @@ function wireDrop(id, {multiple = false, render = null, onChange = null} = {}) {
 function sendFile(url, file, bar) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
+    xhr.open("POST", url); xhr.setRequestHeader("X-Estudio", "1");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (e.lengthComputable && bar) bar.querySelector("i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
     xhr.onload = () => xhr.status < 300 ? resolve(JSON.parse(xhr.responseText || "{}")) : reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));

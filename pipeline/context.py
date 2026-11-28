@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -104,8 +105,44 @@ def _groups_videos(root: Path, folder: Path, subs: list[Path] | None = None) -> 
     return bool(subs) or (root / CHANNELS_DIR / f"{folder.name}.yaml").is_file()
 
 
+def safe_name(name: str, what: str = "vídeo") -> str:
+    """A video, channel or file name that stays inside its folder: one path part, no hidden or parent part, no
+    control characters. Raises ValueError otherwise (every name that comes from a URL or a form goes through it)."""
+
+    text = str(name or "")
+    if (not text or len(text) > 200 or text.startswith((".", "-")) or any(c in text for c in "/\\")
+            or any(ord(c) < 32 or ord(c) == 127 for c in text)):
+        raise ValueError(f"Nombre de {what} no válido")
+    return text
+
+
+# Settings a video's config.yaml made by a partner (`creado_por`) can never set: where requests and keys go, what
+# program runs, and the spending caps. They come only from config.yaml, config.local.yaml and canales/*.yaml.
+PROTECTED_TOP = frozenset({"budget"})
+PROTECTED_KEY = re.compile(r"base_url|executable|proxy|proxies|cookies|po_token|pot_provider|api_key|apikey|token|"
+                           r"secret|password|keys?$|binary|command|_path$|^path$|_dir$|webhook|host$|port$", re.I)
+
+
+def without_protected(data: Any, top: bool = True) -> tuple[Any, list[str]]:
+    """`data` without the protected settings, and their names (to say what was left out)."""
+
+    if not isinstance(data, dict):
+        return data, []
+    kept, dropped = {}, []
+    for key, value in data.items():
+        if (top and str(key) in PROTECTED_TOP) or PROTECTED_KEY.search(str(key)):
+            dropped.append(str(key))
+            continue
+        inner, gone = without_protected(value, False)
+        kept[key] = inner
+        dropped += [f"{key}.{g}" for g in gone]
+    return kept, dropped
+
+
 def find_video(root: Path, slug: str, materials: str = "materiales") -> Path:
     """materiales/<slug>/, or materiales/<canal>/<slug>/ when the video sits in a channel folder."""
+
+    safe_name(slug)
 
     flat = root / materials / slug
     if flat.is_dir() and not _groups_videos(root, flat):
@@ -149,6 +186,10 @@ class RunContext:
         # Per-video overrides: materiales/<slug>/config.yaml (e.g. timeline: {moments: 0}).
         path = ctx.materials_dir / "config.yaml"
         override = load_config(path) if path.is_file() else {}
+        if override.get("creado_por"):              # made by a partner from the studio: never the protected settings
+            override, dropped = without_protected(override)
+            if dropped:
+                print(f"Aviso: {path.parent.name}/config.yaml no puede cambiar {', '.join(sorted(dropped))} (se ignora)")
         group = ctx.materials_dir.parent / "config.yaml"           # materiales/<canal>/config.yaml, for all its videos
         if ctx.materials_dir.parent != ctx._dir("materials", "materiales") and group.is_file():
             override = deep_merge(load_config(group), override)

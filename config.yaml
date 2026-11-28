@@ -41,9 +41,9 @@ planner:
   chapter_titles: false      # false: ningún rótulo de capítulo en pantalla (cortaban el ritmo: un título y una pausa
                              # cada pocos minutos) y nunca falla un vídeo porque el modelo no dé capítulos válidos; tampoco
                              # se escriben «## » en los guiones nuevos. true en un canal para volver a tenerlos.
-  model: claude-sonnet-5-5   # quien planifica los planos (y casi todos los textos: títulos, ideas, gráficos…).
-                             # claude-… usa ANTHROPIC_API_KEY; deepseek-flash, LLM_API_KEY (DeepSeek, ~7× más barato)
-  effort: medium             # Claude: low | medium | high (más lento y caro)
+  model: claude-haiku-5-5    # quien planifica los planos (y casi todos los textos: títulos, ideas, gráficos…).
+                             # claude-haiku-5-5 (barato), claude-sonnet-5-5 (~20× más caro), deepseek-flash (LLM_API_KEY)
+  effort: none               # Claude: low | medium | high; none = no se manda (Haiku)
   thinking: false
   target_shot_seconds: 2.6   # ~23 cortes/min; los límites duros 1,5-4 s están en el esquema
   batch_size: 24             # planos por llamada al LLM
@@ -77,8 +77,8 @@ pacing:                            # ritmo que respira (planner): planos más la
                                    # luego habla la voz (menos de 1,5 = solo una pausa, el rótulo sigue sobre la voz; 0 = nada)
 
 factcheck:                   # verificación de datos del guion → out/<slug>/verificacion.md
-  model: claude-sonnet-5-5
-  effort: medium
+  model: claude-haiku-5-5
+  effort: none
   thinking: false
   usd_per_mtok: {input: 0.30, input_cache_hit: 0.006, output: 1.20}
 
@@ -479,6 +479,12 @@ queue:                             # cola nocturna (python main.py --all)
   # release_red_turn: false       # true: el turno de red se presta a otro vídeo mientras la búsqueda solo calcula CLIP
   #                                  en local. Compara una noche con y otra sin: python main.py --youtube-stats 1
   #                                  (bot y 429 por hora, % de peticiones fallidas)
+  # Cortacircuitos (pausa la cola, out/_pausa; se cuenta en las últimas 3 h, también entre rondas):
+  # breaker_same_stage: 3          # 3 fallos seguidos en la misma etapa (0: apagado)
+  # breaker_same_failure: 3        # el mismo fallo (tipo de error y línea del programa) 3 veces en 2+ vídeos
+  # breaker_rate: 0.8              # el 80 % de al menos breaker_min_attempts intentos fallaron (0: apagado)
+  # breaker_min_attempts: 6
+  # breaker_window_minutes: 180
 
 # Revisor automático, modo informe (no cambia nada): python -m pipeline.revisor <vídeo> [--telegram] [--modelo M]
 # Marca solo fallos objetivos (no tiene que ver con la frase, otra persona, dibujos/videojuego, marca de agua,
@@ -587,6 +593,9 @@ budget:
   daily_usd: 0                     # límite de gasto de API al día (0 = sin límite; también en el estudio → Ajustes)
   proxy_gb_per_day: 0              # tope de GB por el proxy residencial al día (0 = sin tope; también en Ajustes): al llegar,
                                    # los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen
+  # per_video_usd: 1.5             # lo que UN vídeo puede gastar en el día, sumando todos sus intentos (antes era por
+                                   # intento); se mira antes de cada llamada de pago (modelo, voz, imágenes), no solo
+                                   # entre etapas. También en Ajustes → «Límite por vídeo».
 
 radar:                             # radar de competencia diario (estudio → Competencia; con --vigilar, cada día)
   enabled: true
@@ -681,9 +690,13 @@ watch:
   # retry_now: 2                   # un vídeo que falla se reintenta casi enseguida (retry_minutes) sus primeras 2 veces seguidas;
   # retry_minutes: 1               # solo si sigue fallando igual espera retry_hours (para no gastar la noche en uno imposible)
   # retry_hours: 6
+  # max_failures_per_day: 5       # tras 5 fallos en el día, el vídeo espera a mañana (un aviso; «Reintentar» lo suelta)
   continue_without_youtube: false  # con YouTube en pausa, los vídeos que aún lo necesitan siguen sin él (pipeline/sin_youtube.py):
                                    # ninguna petición a YouTube, se reutiliza lo ya hecho y solo se termina si la cobertura no es
                                    # peor que la habitual del canal; si no, espera a YouTube. Mejor por canal (canales/<canal>.yaml)
+socios:                            # lo que puede lanzar cada socio del estudio (tú no tienes estos límites)
+  # trabajos_dia: 30               # tareas (apertura, miniatura IA, reintentos, CapCut…) y vídeos nuevos al día; una de cada tipo a la vez
+  # disco_gb: 30                   # lo que ocupan sus vídeos en materiales/ y sus subidas de apertura
 without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue al montaje (se compara con los vídeos del canal hechos con él)
   fallback_margin: 0.05            # planos al relleno: como mucho lo habitual del canal + 5 puntos
   reference_videos: 10             # últimos vídeos terminados del canal con los que se compara

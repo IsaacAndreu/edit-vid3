@@ -18,7 +18,7 @@ async function canalesPage() {
     const trend = c.trend == null ? "" : `<span class="${c.trend >= 0 ? "t-ok" : "t-bad"} small" title="Las 4 últimas semanas frente a las 4 anteriores">${c.trend >= 0 ? "▲" : "▼"} ${c.trend > 2 ? "×" + fmt(1 + c.trend) : Math.abs(Math.round(100 * c.trend)) + " %"}</span>`;
     return `<article class="card chcard">
       <div class="row nowrap">${avatar(c.channel)}
-        <div class="grow mw0"><button class="linkbtn b" onclick="setStudioChannel('${esc(c.channel)}');location.hash='#/'">${esc(c.channel)}</button>
+        <div class="grow mw0"><button class="linkbtn b" onclick="setStudioChannel(${jsq(c.channel)});location.hash='#/'">${esc(c.channel)}</button>
           <div class="small muted">${esc({metraje: "Metraje", simulacion: "Simulación", stickman: "Monigotes", mapas: "Mapas"}[c.kind] || c.kind)} · ${c.publishes ? `publica ${esc(days(c))}${c.time ? " · " + esc(c.time) : ""}` : "sin días de publicación"}</div></div>
         <span class="pill ${tone}">${state}</span></div>
       <div class="cols3 chstats">
@@ -29,13 +29,13 @@ async function canalesPage() {
         <div class="strip14">${c.next.map((d) => `<span class="${d.kind || "none"}" title="${esc(DAY(d.date))}${d.kind ? ": " + SLOT[d.kind] : ""}${d.video ? " · " + esc(d.video) : ""}"></span>`).join("")}</div></div>
       <div><div class="small muted mb-1">Visitas de lo subido cada semana · 8 semanas</div>
         <div class="weeks" style="--c:${chColor(c.channel)}" role="img" aria-label="Visitas por semana: ${c.weeks.map(kfmt).join(", ")}">${c.weeks.map((w, i) => `<i class="${i === 7 ? "now" : ""}" style="--v:${Math.max(w ? 6 : 2, Math.round(100 * w / top))}%" title="${kfmt(w)}"></i>`).join("")}</div></div>
-      <div class="actions mt-0"><a class="btn sm" href="#/calendario" onclick="setStudioChannel('${esc(c.channel)}')">${icon("calendar")} Calendario</a>
-        ${c.gaps ? `<a class="btn sm" href="#/guiones" onclick="setStudioChannel('${esc(c.channel)}')">${icon("pen")} Guiones</a>` : ""}
-        <a class="btn sm" href="#/canal" onclick="setStudioChannel('${esc(c.channel)}')">${icon("trend")} Mi canal</a></div>
+      <div class="actions mt-0"><a class="btn sm" href="#/calendario" onclick="setStudioChannel(${jsq(c.channel)})">${icon("calendar")} Calendario</a>
+        ${c.gaps ? `<a class="btn sm" href="#/guiones" onclick="setStudioChannel(${jsq(c.channel)})">${icon("pen")} Guiones</a>` : ""}
+        <a class="btn sm" href="#/canal" onclick="setStudioChannel(${jsq(c.channel)})">${icon("trend")} Mi canal</a></div>
     </article>`;
   };
   show(`<div class="hb"><div><h1>Canales</h1><div class="small muted">La salud de cada canal de un vistazo: reserva, próximas publicaciones, lo que está en marcha y cómo van sus vídeos.</div></div>
-      <div class="tools"><span class="seg">${CHAN_FILTERS.map(([k, n]) => `<button class="${chanFilter === k ? "on" : ""}" aria-pressed="${chanFilter === k}" onclick="chanFilter='${k}';canalesPage()">${n} <span class="muted">${counts[k]}</span></button>`).join("")}</span>
+      <div class="tools"><span class="seg">${CHAN_FILTERS.map(([k, n]) => `<button class="${chanFilter === k ? "on" : ""}" aria-pressed="${chanFilter === k}" onclick="chanFilter=${jsq(k)};canalesPage()">${n} <span class="muted">${counts[k]}</span></button>`).join("")}</span>
         <select class="w-auto" aria-label="Ordenar" onchange="chanSort=this.value;canalesPage()">${[["urgente", "Lo urgente primero"], ["nombre", "Por nombre"], ["visitas", "Más visitas"]].map(([k, n]) => `<option value="${k}" ${chanSort === k ? "selected" : ""}>${n}</option>`).join("")}</select></div></div>
     ${studioChannel ? `<div class="notice small">Solo <b>${esc(studioChannel)}</b>, el canal elegido en el menú. <button class="sm" onclick="setStudioChannel('')">Ver todos</button></div>` : ""}
     ${list.length ? `<div class="cards chgrid">${list.map(card).join("")}</div>` : empty("check", "Ningún canal con esto", "Prueba con otro filtro.")}
