@@ -1511,9 +1511,10 @@ class YouTubeSource:
 
     def _blocking_refusals(self) -> tuple[str, ...]:
         """What keeps a video from being downloaded at all: with byte ranges on, «sin-hls» no longer does (its
-        ranges come from the DASH mp4) — the videos refused that way before can be used again at once."""
+        ranges come from the DASH mp4) — the videos refused that way before can be used again at once. «bot» does,
+        for its refusal's hours (refused_hours_residential): every shot that picked the video paid it again (27-11)."""
 
-        return ("vpn", "geo") if self.cfg.get("byte_ranges", False) else ("sin-hls", "vpn", "geo")
+        return ("bot", "vpn", "geo") if self.cfg.get("byte_ranges", False) else ("bot", "sin-hls", "vpn", "geo")
 
     def refused(self, video: str) -> bool:
         return self.refused_why(video) is not None

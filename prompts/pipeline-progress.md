@@ -854,3 +854,10 @@ Test: `tests/test_arreglo_guion.py`.
   avc1 y 30 fps primero. Apagado porque sube los GB de proxy (720p60 es el doble que 480p30) y cambia lo que sale en
   pantalla. Medirlo: una noche con y otra sin, `python main.py --youtube-stats 1` (GB y alturas de los tramos).
 - Prueba: `tests/test_formato_60fps.py` (elección real de yt-dlp).
+
+## Revisión 27-11 · C8 un vídeo rechazado por «bot» no se paga en cada plano
+
+- «bot» entra en `_blocking_refusals`: por el proxy residencial, durante las horas de su rechazo
+  (`refused_hours_residential`, 3), los planos que lo eligieron pasan a su siguiente candidato sin pedir nada a
+  YouTube. Antes cada plano pagaba otra extracción y otra descarga.
+- Prueba: `tests/test_rechazo_bot.py`.
