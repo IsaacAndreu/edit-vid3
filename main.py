@@ -158,6 +158,9 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--montar", metavar="VIDEO",
                         help="Modo «material primero»: baja los tramos, comprueba las declaraciones, voz del narrador, "
                              "gancho, montaje y render desde sus bloques.")
+    target.add_argument("--catalogo-juego", metavar="JUEGO",
+                        help="Baja de su wiki el catálogo de misiones de un juego (gta6) → datos/juegos/: el planner "
+                             "reconoce de qué misión habla cada frase y busca su gameplay (canal con juego.catalogo).")
     target.add_argument("--huecos-idiomas", metavar="TEMA",
                         help="Mide un tema en todos los idiomas de radar.idiomas que quepan en la cuota de hoy.")
     target.add_argument("--radar", action="store_true",
@@ -2029,6 +2032,11 @@ def main() -> None:
         summary = montaje_mf.run(PROJECT_ROOT, args.montar)
         print(f"Montado: {summary['seconds']} s · {summary['clips']} tramos · gancho de {summary['hookCuts']} cortes · "
               f"{summary['dubbed']} declaraciones dobladas → out/{args.montar}/")
+        return
+    if args.catalogo_juego:
+        from pipeline import catalogo_juego
+
+        catalogo_juego.fetch(PROJECT_ROOT, args.catalogo_juego)
         return
     if args.huecos_idiomas:
         from pipeline import huecos

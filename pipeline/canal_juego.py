@@ -9,7 +9,8 @@ names a video game and the channel has not set its own lists, this adjusts the m
 - content.title_blocklist without the video-game terms (gameplay, walkthrough, «video game»…) and without any term
   its own topic names (a Minecraft channel keeps Minecraft);
 - content.official_channels with Rockstar Games for GTA / Red Dead;
-- judge.note telling the judge that footage of the game is what this channel shows.
+- judge.note telling the judge that footage of the game is what this channel shows;
+- juego.catalogo: gta6 when it is about GTA 6 (its missions from the wiki: pipeline/catalogo_juego.py).
 
 A channel that writes its own content.title_blocklist or judge.note keeps exactly what it wrote (leonida-echt).
 """
@@ -27,6 +28,7 @@ GAME_WORDS = ("videojuego", "videojuegos", "video game", "video games", "videoga
 GAME_TERMS = {"gta", "gameplay", "walkthrough", "let's play", "lets play", "playthrough", "red dead", "videojuego",
               "video game", "speedrun", "simulator"}
 ROCKSTAR = ("gta", "grand theft auto", "red dead", "rockstar")
+GTA6 = ("gta 6", "gta vi", "gta6", "grand theft auto vi", "grand theft auto 6", "leonida")
 
 
 def _has(term: str, text: str) -> bool:
@@ -69,4 +71,7 @@ def adjust(config: dict[str, Any], own: dict[str, Any]) -> dict[str, Any]:
                          "its characters, map, vehicles or release. For lines about a real place or a real case, prefer "
                          "real footage of that place. Reject only what is off-topic, a presenter or streamer's face "
                          "talking to camera, or burned-in subtitles.")
-    return {**config, "content": content, "judge": judge}
+    out = {**config, "content": content, "judge": judge}
+    if "juego" not in own and any(_has(w, text) for w in GTA6):
+        out["juego"] = {**(config.get("juego") or {}), "catalogo": "gta6"}
+    return out

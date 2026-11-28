@@ -1,6 +1,6 @@
 # «Leonida echt» (alemán): el mundo real detrás de GTA 6. Leonida es Florida: los lugares de verdad (Miami, los Keys,
-# los Everglades), los casos y titulares reales que Rockstar parodia, y la comparación juego ↔ realidad. Sin gameplay
-# de otros canales: tráilers y capturas oficiales de Rockstar + metraje real de Florida + noticias + mapas de Atlas.
+# los Everglades), los casos y titulares reales que Rockstar parodia, y la comparación juego ↔ realidad: gameplay del
+# juego (de cualquier canal), tráilers + metraje real de Florida + noticias + mapas de Atlas.
 # Estilo de la referencia (un canal inglés de 9-10 min sobre los sistemas de GTA 6): interfaz verde tipo menú del
 # juego sobre paneles oscuros, cifra grande, mapa con zona marcada, y la fuente siempre a la vista.
 # Úsalo con `canal: leonida-echt` y `serie: orte | verbrechen | vergleich` en materiales/<vídeo>/config.yaml.
@@ -69,6 +69,10 @@ content:
   # patinaje. Solo quedan los filtros de todos los canales (reacciones, pódcasts, películas…: common.py).
   official_channels: [Rockstar Games]   # sus subidas pasan incluso con «official trailer» en el título
   title_blocklist: [minecraft, roblox, fortnite, sims 4]
+
+juego:
+  catalogo: gta6                   # las misiones de la GTA Wiki: cada frase se busca como la misión que cuenta
+                                   # (python main.py --catalogo-juego gta6 lo vuelve a bajar; pipeline/catalogo_juego.py)
 
 planner:
   shots_note: |

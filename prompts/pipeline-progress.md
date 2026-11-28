@@ -767,3 +767,24 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_ficha_intentos.py`.
 - Sin comprobar en el servidor: con vídeos reales (los intentos de antes de este cambio no salen: la ficha empieza
   vacía).
+
+## GTA 6: catálogo de misiones (28-11)
+
+- `pipeline/catalogo_juego.py` + `python main.py --catalogo-juego gta6`: baja de la GTA Wiki (gta.wiki, página
+  «Missions in GTA VI») cada misión con su capítulo, quién la da y qué pasa en ella → `datos/juegos/gta6.json`.
+  Hoy: 92 misiones de historia (todas con descripción) y 71 secundarias (la wiki no las describe: solo nombre y
+  quién las da).
+- Licencia de la wiki: CC BY-NC-SA 3.0 (no comercial). Por eso el catálogo vive solo en el servidor (`datos/` está
+  en .gitignore: nunca en este repositorio público) y solo lo lee el planner para reconocer la misión; nunca sale en
+  pantalla, en títulos ni en descripciones. Decisión del dueño (28-11): guardarlo todo, descripciones incluidas.
+- Con `juego.catalogo: gta6` en el canal, el planner recibe todas las misiones: si una frase cuenta lo que pasa en
+  una misión (la nombre o no), su primera búsqueda es «GTA 6 <misión> mission walkthrough no commentary». Hay vídeos
+  de sobra: unos 20 por misión (p. ej. «Gone Fishing»: walkthroughs de 10-37 min) y walkthroughs del juego entero.
+- Encendido en `leonida-echt` (pedido por el dueño). Un canal creado desde el estudio cuyo tema nombra GTA 6 / GTA VI /
+  Leonida lo enciende solo (`pipeline/canal_juego.py`): así el canal del compañero lo tiene sin tocar nada.
+- Si falta el catálogo, se baja la primera vez que hace falta; si no se puede, el vídeo sigue sin él (aviso en el log).
+- Medirlo: el mismo guion con y sin (`juego: {catalogo: ""}` en el config.yaml del vídeo lo apaga) y comparar en
+  Puntería los planos con gameplay de la misión correcta.
+- Coste: unos 11 000 tokens más por tanda del planner de planos; con Haiku y la caché del prompt, céntimos por vídeo.
+- Prueba: `tests/test_catalogo_juego.py` (con una página inventada: el texto real no entra en el repositorio).
+- Sin comprobar en el servidor: que llegue a gta.wiki (aquí sí); con vídeos reales de leonida-echt.

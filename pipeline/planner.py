@@ -604,6 +604,29 @@ Reglas duras:
 """.strip()
 
 
+def label_system(ctx: RunContext) -> str:
+    """The shots' rules, plus the channel's own notes (planner.shots_note) and, for a channel about a video game with
+    `juego.catalogo`, every mission of the game, so a sentence is searched as the mission it tells
+    (pipeline/catalogo_juego.py). The same text for every batch of the video: it is cached by the provider."""
+
+    from .catalogo_juego import planner_note
+
+    parts = [LABEL_SYSTEM]
+    if note := str(ctx.section("planner").get("shots_note") or "").strip():
+        parts.append(f"EN ESTE CANAL:\n{note}")
+    key = str((ctx.section("juego") or {}).get("catalogo") or "")
+    if key:
+        cached = _CATALOGUE_NOTES.get((str(ctx.root), key))
+        if cached is None:
+            cached = _CATALOGUE_NOTES[(str(ctx.root), key)] = planner_note(ctx.root, ctx.section("juego"))
+        if cached:
+            parts.append(cached)
+    return "\n\n".join(parts)
+
+
+_CATALOGUE_NOTES: dict[tuple[str, str], str] = {}
+
+
 def _summary(shot: dict[str, Any]) -> str:
     if shot["type"] == "stat":
         return f"stat {shot['stat']['value']}"
@@ -646,7 +669,7 @@ def _label_batch(
                 ctx,
                 stage=STAGE,
                 section="planner",
-                system=LABEL_SYSTEM + (f"\n\nEN ESTE CANAL:\n{note}" if (note := str(ctx.section("planner").get("shots_note") or "").strip()) else ""),
+                system=label_system(ctx),
                 user=f"{header}\n\nPLANOS:\n{json.dumps(public, ensure_ascii=False, indent=1)}{feedback}",
                 max_tokens=16000,
             )
