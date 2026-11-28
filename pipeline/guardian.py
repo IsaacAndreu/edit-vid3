@@ -9,13 +9,17 @@ each video process of the parallel queue:
 - a process that wrote nothing for `queue.silent_minutes` (180) while a stage runs,
 
 is stopped (SIGTERM, then SIGKILL after `grace_seconds`, 60) and reported as a failure the watcher retries, with
-the stage and the time in the notice. While a video waits for its turn, for the API quota or for tomorrow's proxy
+the stage and the time in the notice. The serial queue runs its video in its own process: there (`watch_here`) a
+stage past its limit raises `Cut` in the queue's main thread (a signal, so even a blocking wait is interrupted), the
+video fails and the queue goes on with the next. In-process there is no output to hear, so only the stage's time
+counts; and only where the system has SIGUSR2 (not Windows). While a video waits for its turn, for the API quota or for tomorrow's proxy
 budget (no stage running) nothing is counted against it.
 """
 
 from __future__ import annotations
 
 import json
+import signal
 import subprocess
 import threading
 import time
@@ -65,6 +69,32 @@ def stop(process: subprocess.Popen, grace: float = 60.0) -> None:
         pass
 
 
+class Cut(Exception):
+    """The watchdog cut the video that ran in this very process (the serial queue)."""
+
+
+class _Here:
+    """The serial queue's video, as the watchdog sees a process: «stopping» it interrupts the main thread."""
+
+    in_process = True
+
+    def __init__(self, guardian: "Guardian", slug: str) -> None:
+        self.guardian, self.slug = guardian, slug
+        self.ended = False
+
+    def poll(self) -> int | None:
+        return 0 if self.ended else None
+
+    def terminate(self) -> None:
+        if not self.ended and self.guardian._here == self.slug:
+            signal.pthread_kill(threading.main_thread().ident or 0, signal.SIGUSR2)
+
+    kill = terminate
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+
 class Guardian:
     def __init__(self, root: Path, cfg: dict[str, Any] | None = None) -> None:
         cfg = cfg or {}
@@ -79,6 +109,8 @@ class Guardian:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self._here: str | None = None
+        self._old_handler: Any = None
 
     # --- what the queue calls ---------------------------------------------------------------------------------
     def watch(self, slug: str, process: subprocess.Popen) -> None:
@@ -102,6 +134,42 @@ class Guardian:
         with self._lock:
             self._watched.pop(slug, None)
             return self.cut.get(slug)
+
+    def watch_here(self, slug: str) -> bool:
+        """The serial queue is about to run `slug` in this process (the main thread). False where it cannot be cut."""
+
+        if not hasattr(signal, "SIGUSR2") or threading.current_thread() is not threading.main_thread():
+            return False
+
+        def cut(signum: int, frame: Any) -> None:
+            if self._here == slug:
+                raise Cut(self.cut.get(slug) or "cortado por el perro guardián")
+
+        self._old_handler = signal.signal(signal.SIGUSR2, cut)
+        self._here = slug
+        self.watch(slug, _Here(self, slug))           # type: ignore[arg-type]
+        return True
+
+    def done_here(self, slug: str) -> str | None:
+        """The serial video ended (or was cut): why it was cut, if it was."""
+
+        if self._here != slug:
+            return None
+        self._here = None
+        with self._lock:
+            here = self._watched.get(slug)
+        if here is not None:
+            here[0].ended = True                       # type: ignore[attr-defined]
+        why = self.done(slug)
+        if self._old_handler is not None:
+            signal.signal(signal.SIGUSR2, self._old_handler)
+            self._old_handler = None
+        return why
+
+    def close(self) -> None:
+        """The round ended: the check thread stops (nothing is stopped with it)."""
+
+        self._stop.set()
 
     def stop_all(self) -> None:
         """The queue is stopping (systemctl stop/restart): every video process is closed cleanly, none left behind
@@ -140,6 +208,8 @@ class Guardian:
         for slug, (process, last_heard) in watched.items():
             if process.poll() is not None or slug in self.cut:
                 continue
+            if getattr(process, "in_process", False):     # nothing to hear in-process: only the stage's time
+                last_heard = time.monotonic()
             why = self.why_cut(slug, last_heard)
             if why:
                 with self._lock:

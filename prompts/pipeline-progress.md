@@ -651,3 +651,12 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_claude_cortes.py`.
 - Sin comprobar en el servidor: que el SDK instalado allí deje leer `current_message_snapshot` al cortarse (si no,
   no se apunta nada, como antes).
+
+## Revisión 27-11 · A6 perro guardián en la cola en serie
+
+- La cola en serie hace el vídeo en su propio proceso: ahora el guardián también lo vigila (`Guardian.watch_here`).
+  Una etapa que pasa su límite (`queue.stage_minutes` + por minuto de vídeo) se corta con una señal al hilo
+  principal: el vídeo falla con «cortado por el perro guardián: la etapa … llevaba … h», aviso ✂, y la cola sigue
+  con el siguiente. En el mismo proceso no hay salida que oír, así que solo cuenta el tiempo de la etapa. No
+  funciona en Windows (sin SIGUSR2): allí sigue como antes.
+- Prueba: `tests/test_guardian_serie.py`.

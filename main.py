@@ -1133,6 +1133,7 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         raise SystemExit(f"Ya hay una cola en marcha ({lock.read_text().strip()}). "
                          f"Si no es así (p. ej. se apagó el PC), borra {QUEUE_LOCK} y vuelve a lanzarla.")
     results: list[tuple[str, str, float, str]] = []
+    guardian = None
     try:
         if not check:
             problems = []
@@ -1169,6 +1170,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
         from pipeline import cortacircuitos, ytpause
 
         breaker = cortacircuitos.from_config(root)
+        from pipeline.guardian import Guardian
+
+        guardian = Guardian(root, _queue_cfg(root))  # the serial video hangs → cut too, not only in the parallel queue
         for number, slug in enumerate(slugs, start=1):
             if waits_for_youtube(root, slug):
                 print(f"{slug}: necesita YouTube, que está bloqueado: espera (sigo con los que ya no lo necesitan)")
@@ -1187,7 +1191,12 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
             print(f"\n{'=' * 70}\n[{number}/{len(slugs)}] {slug} · {datetime.now():%H:%M}\n{'=' * 70}")
             started = time.monotonic()
             try:
-                run_one(slug, force=force, until=until, review=review, root=root)
+                guardian.watch_here(slug)
+                try:
+                    run_one(slug, force=force, until=until, review=review, root=root)
+                finally:
+                    if cut := guardian.done_here(slug):
+                        notify(root, f"✂ {slug}: {cut}. Se reintenta solo.")
                 results.append((slug, "OK", time.monotonic() - started, ""))
                 breaker.succeeded()
             except KeyboardInterrupt:
@@ -1235,6 +1244,8 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
                 on_result(slug, results[-1][1])          # out/_vigilar.json now, not at the end of the round
             _write_report(root, results)
     finally:
+        if guardian is not None:
+            guardian.close()                     # its thread ends with the round
         lock.unlink(missing_ok=True)
         _write_report(root, results)
     LAST_RESULTS[:] = results
