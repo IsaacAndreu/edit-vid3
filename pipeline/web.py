@@ -507,11 +507,11 @@ def _youtube_blocked(root: Path) -> str | None:
 def _lock_alive(lock: Path) -> bool:
     """The queue lock exists AND its process is alive (a restart can leave it behind)."""
 
-    from .locks import _alive
+    from .locks import owner_alive
 
     try:
-        return _alive(int(lock.read_text().split()[0]))
-    except (OSError, ValueError, IndexError):
+        return owner_alive(lock.read_text().split()[0])
+    except (OSError, IndexError):
         return False
 
 

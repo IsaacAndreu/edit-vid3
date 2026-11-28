@@ -671,3 +671,13 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_cortacircuitos_tasa.py`.
 - Sin comprobar en el servidor: si el 80 % pausa la cola en noches que hoy salen bien a medias. Para medirlo:
   `out/_cortacircuitos.json` dice cuántos intentos y fallos lleva; si molesta, `queue.breaker_rate: 0`.
+
+## Revisión 27-11 · A8 cerrojos con PID reutilizado
+
+- `.turno-*`, `work/.cola.lock` y `work/<vídeo>/.proceso` guardan «pid:arranque» (la hora de arranque del proceso,
+  de /proc). Si el PID vive pero ya es otro proceso (un reinicio reutiliza PIDs), el cerrojo se da por muerto. Los
+  cerrojos viejos (solo PID) siguen valiendo.
+- Un turno de más de 24 h caduca, diga lo que diga (ninguna etapa dura eso con el guardián). La cola no caduca por
+  edad: el vigilante la tiene días seguidos con razón.
+- Una espera de turno de más de `queue.turn_wait_warn_minutes` (120) se avisa una vez, con quién tiene el turno.
+- Prueba: `tests/test_cerrojos_pid.py`.

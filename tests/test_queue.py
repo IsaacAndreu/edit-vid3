@@ -137,7 +137,7 @@ def test_two_runs_of_one_video_never_overlap(tmp_path):
     ctx = RunContext.create("v", root=tmp_path, config={})
     lock = main._one_process(ctx)
     with lock:
-        assert (ctx.work_dir / ".proceso").read_text().split()[0] == str(os.getpid())
+        assert (ctx.work_dir / ".proceso").read_text().split()[0].partition(":")[0] == str(os.getpid())
         (ctx.work_dir / ".proceso").write_text(f"{os.getppid()} x")              # another live process holds it
         with pytest.raises(SystemExit):
             main._one_process(ctx).__enter__()

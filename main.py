@@ -256,24 +256,22 @@ class _one_process:
 
     def __enter__(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        from pipeline.locks import owner_alive, stamp
+
         try:
-            other = int(self.path.read_text().split()[0]) if self.path.is_file() else 0
+            owner = self.path.read_text().split()[0] if self.path.is_file() else ""
+            other = int(owner.partition(":")[0]) if owner else 0
         except (OSError, ValueError, IndexError):
-            other = 0
-        if other and other != os.getpid():
-            try:
-                os.kill(other, 0)
-                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}). "
-                                 f"Si no es así, borra {self.path}")
-            except ProcessLookupError:
-                pass                                       # a run that died: take over
-            except PermissionError:
-                raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}).") from None
-        self.path.write_text(f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n")
+            owner, other = "", 0
+        # a run that died, or a PID that now belongs to another process (a reboot): take over
+        if other and other != os.getpid() and owner_alive(owner):
+            raise SystemExit(f"Este vídeo ya se está haciendo en otro proceso (pid {other}). "
+                             f"Si no es así, borra {self.path}")
+        self.path.write_text(f"{stamp()} {datetime.now().isoformat(timespec='seconds')}\n")
 
     def __exit__(self, *exc) -> None:
         try:
-            if int(self.path.read_text().split()[0]) == os.getpid():
+            if int(self.path.read_text().split()[0].partition(":")[0]) == os.getpid():
                 self.path.unlink(missing_ok=True)
         except (OSError, ValueError, IndexError):
             pass
@@ -1094,10 +1092,11 @@ def _clear_stale_lock(lock: Path) -> None:
     """A queue lock left by a process that no longer exists (killed by a restart, power cut) is removed: otherwise
     the watcher would think a queue is running and wait for ever."""
 
-    from pipeline.locks import _alive
+    from pipeline.locks import owner_alive
 
     try:
-        pid = int(lock.read_text().split()[0])
+        owner = lock.read_text().split()[0]
+        pid = int(owner.partition(":")[0])
     except (OSError, ValueError, IndexError):
         # vacío o ilegible: el proceso murió entre crearlo y escribir su pid (un reinicio en ese instante). Pasado un
         # minuto ya no es una cola arrancando: fuera, o la cola esperaría para siempre
@@ -1108,7 +1107,7 @@ def _clear_stale_lock(lock: Path) -> None:
         except OSError:
             pass
         return
-    if pid != os.getpid() and not _alive(pid):
+    if pid != os.getpid() and not owner_alive(owner):
         print(f"(Quito {QUEUE_LOCK}: era de un proceso que ya no existe, pid {pid})")
         lock.unlink(missing_ok=True)
 
@@ -1127,7 +1126,9 @@ def run_queue(*, force: set[str], until: str | None, review: bool, limit: int = 
     _clear_stale_lock(lock)
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, f"{os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
+        from pipeline.locks import stamp
+
+        os.write(fd, f"{stamp()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
         os.close(fd)
     except FileExistsError:
         raise SystemExit(f"Ya hay una cola en marcha ({lock.read_text().strip()}). "
