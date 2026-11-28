@@ -2086,6 +2086,20 @@ class YouTubeSource:
             self._local.refresh_links = False
         return path
 
+    def _links_of_old_session(self, video_id: str) -> bool:
+        """Through the residential proxy: the links on disk were extracted by a session that is no longer this
+        video's (a rotation since), so any 403 on them is theirs, not the download's."""
+
+        import json
+
+        if not self.residential:
+            return False
+        try:
+            data = json.loads(self._full_info_path(video_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return not self.sessions.matches(video_id, data.get("_edit_vid3_session"))
+
     def _full_info_usable(self, video_id: str) -> bool:
         """The full info on disk has stream links this download can still use (see _fresh_full_info)."""
 
@@ -2224,6 +2238,10 @@ class YouTubeSource:
             # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
             try:
                 self._local.route = "rango-bytes"
+                # the links of the live session: a rotation during the HLS attempt left these ones stale (a paid 403
+                # for sure, 27-11); extracted again only then
+                if self._links_of_old_session(video_id):
+                    info_path = self._fresh_full_info(video_id)
                 return self._fetch_byte_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path)
             except NoIndex as error:
                 self._mark_no_range(video_id, prefix)   # that format will not change: its next shots do not ask (884 rows)
@@ -2234,12 +2252,16 @@ class YouTubeSource:
         whole_off = getattr(self, "_whole_403", 0) >= 2
         if not audio_only and self.cfg.get("whole_fallback", True) and not whole_off:
             try:
+                if self._links_of_old_session(video_id):
+                    info_path = self._fresh_full_info(video_id)     # the live session's links (see above)
                 whole = self._fetch_whole(video_id, fmt, prefix, info_path)
                 self._whole_403 = 0
             except SourceUnavailable:
                 raise
             except Exception as error:     # the old way still works, only slower
-                if "403" in str(error):
+                # a 403 of links that no longer belong to the session (a rotation meanwhile) says nothing about
+                # whole downloads: it never counts towards switching them off for the rest of the run
+                if "403" in str(error) and not self._links_of_old_session(video_id):
                     self._whole_403 = getattr(self, "_whole_403", 0) + 1
                     if self._whole_403 == 2:
                         print("   YouTube niega las descargas completas (403): el resto, solo el tramo que hace falta")

@@ -828,3 +828,11 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_clips_cortados.py` (clips de verdad hechos con ffmpeg).
 - Sin comprobar en el servidor: qué urllib3 tiene instalado (`pip show urllib3`; la puerta del despliegue instala
   requirements.txt cuando cambia, desde A14).
+
+## Revisión 27-11 · C5 tras rotar de sesión, los enlaces de la sesión nueva
+
+- Antes del rango de bytes y de la descarga entera se piden los enlaces de la sesión viva (solo se vuelve a extraer si
+  la sesión cambió, p. ej. por un «bot» durante el intento por HLS). Antes se usaban los viejos: un 403 pagado seguro.
+- Un 403 sobre enlaces de una sesión que ya no es la del vídeo no cuenta para apagar las descargas enteras
+  (`_whole_403 >= 2`) el resto del proceso. Solo con proxy residencial (sin él no hay sesiones).
+- Prueba: `tests/test_enlaces_tras_rotar.py`.
