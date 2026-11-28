@@ -707,3 +707,14 @@ Test: `tests/test_arreglo_guion.py`.
   original, si el recorte de pausas hizo copia); lo recordado de una vuelta anterior vale solo para esa misma voz.
 - Al reescribir el guion se borran también las copias de la voz anterior.
 - Prueba: `tests/test_voz_grabada.py`.
+
+## Revisión 27-11 · A11 el aviso de fallo dice lo que pasó
+
+- `pipeline/aviso_fallo.py`: el aviso «❌ Falló» lleva el tipo de error, la etapa de ESTE intento (la de
+  `current.json` solo si es de este proceso; si no, «antes de la primera etapa»), el número de intento (seguidos y de
+  hoy), lo que costó y duró el intento, y cuándo es el siguiente (en 1 min, en 6 h, mañana por el tope del día, o
+  «Reintentar» si no hay vigilante).
+- No sale para esperas (tope de gasto, cuota, una API sin saldo) ni para reinicios: `main.is_failure`.
+- El mismo fallo del mismo vídeo (tipo, etapa y texto sin números) en 12 h se manda una vez
+  (`out/_avisos_fallo.json`).
+- Prueba: `tests/test_aviso_fallo.py`.

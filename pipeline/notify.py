@@ -236,20 +236,21 @@ def telegram_photo(ctx: RunContext, photo: Path, caption: str) -> bool:
         return False
 
 
-def video_failed(ctx: RunContext, error: BaseException) -> None:
-    """A video stopped: in which stage, why, and a link to its log in the studio."""
+def video_failed(ctx: RunContext, error: BaseException, *, started: float | None = None, signature: Any = "") -> bool:
+    """A video stopped: this attempt's stage, the kind of error, its cost and time, when the next attempt is, and a link
+    to its log in the studio (pipeline/aviso_fallo.py). The same failure again within hours is not sent twice."""
 
-    stage = ""
-    try:
-        current = json.loads((ctx.work_dir / "current.json").read_text("utf-8"))
-        stage = f" en la etapa {current.get('number')}/{current.get('of')} ({current.get('stage')})"
-    except (OSError, ValueError):
-        pass
-    message = str(error).strip() or type(error).__name__
-    caption = f"❌ Falló {ctx.slug}{stage}\n{message[:600]}\n\nLo vuelve a intentar cuando cambies sus archivos o en unas horas."
+    from . import aviso_fallo
+
+    stage = aviso_fallo.stage_now(ctx)
+    if not aviso_fallo.first_time(ctx, error, stage):
+        print("   (el aviso de este fallo ya se mandó: no se repite)")
+        return False
+    caption = aviso_fallo.text(ctx, error, started=started, signature=signature)
     link = studio_link(ctx, f"video/{ctx.slug}")
     telegram_card(ctx, caption, None, [("📄 Ver registro y reintentar", link)])
     email(ctx, f"❌ Falló {ctx.slug}", caption + (f"\n\n{link}" if link else ""))
+    return True
 
 
 # --- setting it up from the studio --------------------------------------------------------------------------------
