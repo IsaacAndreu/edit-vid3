@@ -953,3 +953,15 @@ Test: `tests/test_arreglo_guion.py`.
 - Ningún canal tiene receta todavía (eso lo decides tú tras ver un vídeo de prueba), así que esto no cambia nada
   hasta que pongas una.
 - Prueba: `tests/test_recetas_completas.py`.
+
+## Revisión 27-11 · D7 el orden del relleno (opción, apagada)
+
+- Confirmado en el código: en canales que no son de persona, el stock de Pexels sin juez va antes que el clip y la
+  foto del protagonista; la foto del protagonista entra sin juez; el clip del protagonista que rellena solo pasa por
+  el juez si es un «momento» o con `judge_filler` (que en el servidor tienes encendido); y la época de las fotos se
+  busca pero no se comprueba.
+- `fallback.protagonist_first` (apagado): el orden del objetivo — el clip del protagonista y luego su foto, los dos
+  con el juez (que ve la idea y su época), antes que el stock. Apagado porque cambia lo que sale y añade llamadas al
+  juez. Medirlo: el mismo vídeo con y sin, en Puntería.
+- Prueba: `tests/test_orden_relleno.py` (comprueba el orden en el código; montar la etapa entera con dobles probaría
+  los dobles).

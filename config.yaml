@@ -288,6 +288,9 @@ quotes:                            # declaraciones originales con subtítulos (p
   # passage_language: es           # …idioma de los subtítulos de la fuente que se leen (sin subtítulos: suena sin ellos)
 
 fallback:
+  # protagonist_first: false       # true: el orden del objetivo — clip y luego foto del protagonista, los dos con el juez
+  #                                  (que ve la época de la idea), ANTES que el stock de Pexels. Más llamadas al juez y
+  #                                  cambia lo que sale: compara Puntería de un vídeo hecho con y sin
   # literal_ambient: true          # idea literal sin su clip: foto de la persona y luego un clip suyo que el juez acepte,
   #                                  antes que la pizarra (false: «eso o nada», lo que dejó newideas medio en texto)
   # text_check: true              # texto ajeno quemado (subtítulos de otro canal, un rótulo de informativo, un anuncio)

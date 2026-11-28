@@ -642,6 +642,66 @@ def run(ctx: RunContext) -> None:
                            and c.id not in elsewhere][:limit]
                 item = vet_and_materialise(options, candidates, "library-photo" if kind == "library" else "web-photo")
 
+        def protagonist_steps(item: FallbackItem | None, judged: bool) -> FallbackItem | None:
+            """2b-2c: the protagonist's own footage and photos. `judged` (fallback.protagonist_first): every one of
+            them vetted by the judge, which also sees the idea's time («Río 2016»): nobody checked a photo's era."""
+
+            # 2b. Still nothing for what this line describes exactly (an interview nobody filmed, a 2018 report…):
+            # another unused moment of the protagonist's own footage, as documentary channels do over narration,
+            # rather than a text card. The identity check still applies; the judge does not (it would want the
+            # exact scene again).
+            literal = shot.idea is not None and shot.idea.kind == "literal"
+
+            def photo_of(person: str) -> FallbackItem | None:
+                found = None
+                era = (shot.idea.era if shot.idea is not None else None) or None
+                # with the idea's time (her adolescence, Río 2016) the web search asks for THAT time first, before the
+                # library's photos of the person, which may be of any age (newideas 2:24, 3:08: adult photos for a girl)
+                for kind in (("web", "library") if era else ("library", "web")):
+                    if found is not None:
+                        break
+                    candidates = library_photos(ctx, person) if kind == "library" else \
+                        web_photos(ctx, photo_broll(shot.broll, person, era), tried)
+                    options = [photo_option(c) for c in candidates.values()
+                               if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
+                               and c.id not in elsewhere][: limit * 2]
+                    found = vet_and_materialise(options, candidates, "protagonist-photo", vet=judged)
+                return found
+
+            # planner.ideas: a literal idea without its clip — a photo of the person first, then a clip of them that the
+            # judge accepts; never a clip of something else, and a board only at the end (ideas-pantallas-de-texto.md:
+            # «that very thing or nothing» made newideas half text). fallback.literal_ambient: false brings back the old rule
+            literal_ambient = literal and photo_first(shot.idea, cfg)
+            ambient_photo = not literal and photo_first(shot.idea, cfg)
+            if item is None and (literal_ambient or ambient_photo) and who and shot.broll and cfg.get("photo_for_moments", True):
+                item = photo_of(who)
+            if item is None and who and shot.broll and cfg.get("protagonist_filler", True) and (not literal or literal_ambient):
+                pool, pool_candidates = protagonist_pool(ctx, story, who)
+                options = sorted((o for o in pool if o.kind == "video"
+                                  and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
+                                  and not seen_elsewhere(o, elsewhere)
+                                  and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
+                                              and abs(u.start - o.start) < 6 for u in used)),
+                                 key=lambda o: -o.total)[: limit * 2]
+                # a narrated moment (a fall, tears on the podium) is never filled with any other moment of the person
+                # fallback.judge_filler (off: one judge call more per such shot): the judge vets any filler, not only moments
+                item = vet_and_materialise(options, pool_candidates, "protagonist-filler",
+                                           vet=judged or literal or bool(shot.broll.moment) or bool(cfg.get("judge_filler", False)))
+
+            # 2c. A narrated moment nobody filmed (Yulo dejected after fourth place, the Manila parade, a press conference):
+            # a photo of the protagonist instead of an empty shot, as sports channels do. Without the judge (it would
+            # want the exact scene again: gymyulo, 54 % empty), with the identity check — a photo of the person is never
+            # a lie about the moment, another moment's footage could be. `fallback.photo_for_moments` (on).
+            if item is None and who and shot.broll and cfg.get("photo_for_moments", True) and not (literal_ambient or ambient_photo):
+                item = photo_of(who)
+            return item
+
+        # fallback.protagonist_first (off): the objective's order — the protagonist's clip, then their photo, both
+        # judged, BEFORE anonymous stock (27-11: in channels that are not about a person the unjudged Pexels stock
+        # came first, and the protagonist's photo and filler went in without the judge)
+        if item is None and cfg.get("protagonist_first", False):
+            item = protagonist_steps(item, judged=True)
+
         # 2. Pexels (video, then photo), picked by CLIP — for a video about a person only when nothing of
         # them is left at all: anonymous stock is exactly what that format avoids.
         if (item is None and cfg.get("pexels", True) and ctx.env("PEXELS_API_KEY", required=False)
@@ -718,54 +778,8 @@ def run(ctx: RunContext) -> None:
                 if item is not None:
                     break
 
-        # 2b. Still nothing for what this line describes exactly (an interview nobody filmed, a 2018 report…):
-        # another unused moment of the protagonist's own footage, as documentary channels do over narration,
-        # rather than a text card. The identity check still applies; the judge does not (it would want the
-        # exact scene again).
-        literal = shot.idea is not None and shot.idea.kind == "literal"
-
-        def photo_of(person: str) -> FallbackItem | None:
-            found = None
-            era = (shot.idea.era if shot.idea is not None else None) or None
-            # with the idea's time (her adolescence, Río 2016) the web search asks for THAT time first, before the
-            # library's photos of the person, which may be of any age (newideas 2:24, 3:08: adult photos for a girl)
-            for kind in (("web", "library") if era else ("library", "web")):
-                if found is not None:
-                    break
-                candidates = library_photos(ctx, person) if kind == "library" else \
-                    web_photos(ctx, photo_broll(shot.broll, person, era), tried)
-                options = [photo_option(c) for c in candidates.values()
-                           if c.id not in pexels_used and not any(u.candidateId == c.id for u in used)
-                           and c.id not in elsewhere][: limit * 2]
-                found = vet_and_materialise(options, candidates, "protagonist-photo", vet=False)
-            return found
-
-        # planner.ideas: a literal idea without its clip — a photo of the person first, then a clip of them that the
-        # judge accepts; never a clip of something else, and a board only at the end (ideas-pantallas-de-texto.md:
-        # «that very thing or nothing» made newideas half text). fallback.literal_ambient: false brings back the old rule
-        literal_ambient = literal and photo_first(shot.idea, cfg)
-        ambient_photo = not literal and photo_first(shot.idea, cfg)
-        if item is None and (literal_ambient or ambient_photo) and who and shot.broll and cfg.get("photo_for_moments", True):
-            item = photo_of(who)
-        if item is None and who and shot.broll and cfg.get("protagonist_filler", True) and (not literal or literal_ambient):
-            pool, pool_candidates = protagonist_pool(ctx, story, who)
-            options = sorted((o for o in pool if o.kind == "video"
-                              and not is_repeat(o, used, int(judge_cfg.get("max_phash_distance", 6)))
-                              and not seen_elsewhere(o, elsewhere)
-                              and not any(u.candidateId == o.candidateId and u.start is not None and o.start is not None
-                                          and abs(u.start - o.start) < 6 for u in used)),
-                             key=lambda o: -o.total)[: limit * 2]
-            # a narrated moment (a fall, tears on the podium) is never filled with any other moment of the person
-            # fallback.judge_filler (off: one judge call more per such shot): the judge vets any filler, not only moments
-            item = vet_and_materialise(options, pool_candidates, "protagonist-filler",
-                                       vet=literal or bool(shot.broll.moment) or bool(cfg.get("judge_filler", False)))
-
-        # 2c. A narrated moment nobody filmed (Yulo dejected after fourth place, the Manila parade, a press conference):
-        # a photo of the protagonist instead of an empty shot, as sports channels do. Without the judge (it would
-        # want the exact scene again: gymyulo, 54 % empty), with the identity check — a photo of the person is never
-        # a lie about the moment, another moment's footage could be. `fallback.photo_for_moments` (on).
-        if item is None and who and shot.broll and cfg.get("photo_for_moments", True) and not (literal_ambient or ambient_photo):
-            item = photo_of(who)
+        if item is None and not cfg.get("protagonist_first", False):
+            item = protagonist_steps(item, judged=False)          # as always: after the stock
 
         # 3. Generated image — the last resort, never for a video about a real person.
         if item is None and cfg.get("generate", True) and not real_people:
