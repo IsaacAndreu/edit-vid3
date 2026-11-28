@@ -404,22 +404,49 @@ def cap_height(fmt: str, max_height: Any) -> str:
     return re.sub(r"height<=(\d+)", lambda m: f"height<={min(int(m.group(1)), limit)}", fmt)
 
 
-def cap_fps(fmt: str, max_fps: Any) -> str:
-    """Each video alternative first at `max_fps` (30) or less, then as it was: a 720p60 stream is twice the bytes of
-    the 720p30 one and the clip is rendered at 30 fps. The resolution still wins over the frame rate (720p60 before
-    480p30). Audio-only alternatives are left alone."""
+TIERS = (1080, 720, 480, 360, 240, 144)
+
+
+def cap_fps(fmt: str, max_fps: Any, resolution_first: bool = False) -> str:
+    """Off (as always): each alternative first at `max_fps` (30) or less, then as it was — a 60 fps source comes at
+    480p30 and a 360p avc1 beats a 720p vp9 (27-11), but with fewer bytes through the proxy.
+
+    `resolution_first` (sourcing.youtube.resolution_first, off): the request ordered by resolution first: for each band of height (720, then 480, 360…) its alternatives as
+    written (avc1 first) at `max_fps` (30) or less, then at any frame rate; only then the next band down. A 720p60
+    stream is twice the bytes of the 720p30 one and the clip is rendered at 30 fps, but it is still better than 480p:
+    the fps cap used to go first over every resolution (a 60 fps source came at 480p30), and avc1 over every
+    resolution (a 360p avc1 before a 720p vp9) — 27-11. Audio-only alternatives and those that already say fps are
+    left alone; the request as written stays at the end (formats without a height)."""
 
     if not max_fps:
         return fmt
-    out: list[str] = []
-    for alt in (a.strip() for a in fmt.split("/") if a.strip()):
-        parts = alt.split("+")
-        video = parts[0]
-        if video.startswith("ba") or "acodec!=none" in video or "fps" in video or "[vcodec=none]" in video:
-            out.append(alt)
-            continue
-        capped = "+".join([f"{video}[fps<={int(max_fps)}]", *parts[1:]])
-        out.extend([capped, alt])
+    alts = [a.strip() for a in fmt.split("/") if a.strip()]
+    top = requested_height(fmt)
+
+    def plain(alt: str) -> bool:
+        video = alt.split("+")[0]
+        return video.startswith("ba") or "acodec!=none" in video or "fps" in video or "[vcodec=none]" in video
+
+    if top is None or not resolution_first:      # the frame rate first per alternative, as before
+        out: list[str] = []
+        for alt in alts:
+            if plain(alt):
+                out.append(alt)
+                continue
+            parts = alt.split("+")
+            out.extend(["+".join([f"{parts[0]}[fps<={int(max_fps)}]", *parts[1:]]), alt])
+        return "/".join(dict.fromkeys(out))
+    tiers = [top, *[h for h in TIERS if h < top]]
+    out = []
+    for n, tier in enumerate(tiers):
+        band = (f"[height<={tier}]" if tier < top else "") + (f"[height>{tiers[n + 1]}]" if n + 1 < len(tiers) else "")
+        for fps in (f"[fps<={int(max_fps)}]", ""):
+            for alt in alts:
+                if plain(alt):
+                    continue
+                parts = alt.split("+")
+                out.append("+".join([f"{parts[0]}{band}{fps}", *parts[1:]]))
+    out.extend(alts)
     return "/".join(dict.fromkeys(out))
 
 
@@ -2187,7 +2214,8 @@ class YouTubeSource:
         suffix = ".m4a" if audio_only else ".mp4"       # audio_only: just the sound of the range (sound bites)
         if not audio_only:
             # 720p/30fps at most (sourcing.youtube.max_height/max_fps): the final 1920x1080 at 30 fps shows no more
-            fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
+            fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30),
+                          bool(self.cfg.get("resolution_first", False)))
         wanted = requested_height(fmt)
         self._local.route, self._local.not_hls = "biblioteca", None
         existing = self._library_range(target_dir, prefix, suffix, start, end, wanted)

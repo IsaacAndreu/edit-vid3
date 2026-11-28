@@ -845,3 +845,12 @@ Test: `tests/test_arreglo_guion.py`.
 - Sin pista original marcada (la mayoría de vídeos, de un solo idioma) no cambia nada.
 - La descarga por ffmpeg (sin proxy residencial) pide «ba», que yt-dlp ya ordena por idioma: no tenía el fallo.
 - Prueba: `tests/test_pista_original.py` (con la elección real de yt-dlp).
+
+## Revisión 27-11 · C7 resolución antes que fps y códec (opción, apagada)
+
+- Confirmado: `cap_fps` pone `[fps<=30]` delante de todas las resoluciones (una fuente a 60 fps baja a 480p30) y el
+  avc1 delante de la resolución (`hd` se queda con el 360p si es el único avc1 aunque haya 720p en otro códec).
+- `sourcing.youtube.resolution_first` (apagado): ordena por franjas de altura (720, luego 480…) y dentro de cada una
+  avc1 y 30 fps primero. Apagado porque sube los GB de proxy (720p60 es el doble que 480p30) y cambia lo que sale en
+  pantalla. Medirlo: una noche con y otra sin, `python main.py --youtube-stats 1` (GB y alturas de los tramos).
+- Prueba: `tests/test_formato_60fps.py` (elección real de yt-dlp).
