@@ -110,7 +110,7 @@ def part_for(target: Path) -> Path:
 def probe(path: Path, timeout: float = 60) -> dict[str, Any] | None:
     try:
         done = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                               "stream=codec_type,height,start_time:format=duration", "-of", "json", str(path)],
+                               "stream=codec_type,height,start_time,duration:format=duration", "-of", "json", str(path)],
                               capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -123,9 +123,11 @@ def probe(path: Path, timeout: float = 60) -> dict[str, Any] | None:
 
 
 def media_problem(path: Path, *, video: bool = True, seconds: float | None = None, tolerance: float = 0.5,
-                  timeout: float = 60) -> str | None:
+                  timeout: float = 60, audio: bool = False) -> str | None:
     """Why `path` is not a usable clip (None when it is): missing, empty, ffprobe cannot open it, no picture (when
-    `video`), no duration, or shorter than `seconds` minus `tolerance` (a cut killed half way)."""
+    `video`), no sound (when `audio`), no duration, or shorter than `seconds` minus `tolerance` (a cut killed half
+    way) — the file and each stream that was asked for: the file lasts as long as its longest stream, so 2.55 s of
+    sound in a 4.5 s clip passed as good and was reused from the cache (27-11)."""
 
     try:
         if path.stat().st_size == 0:
@@ -140,6 +142,8 @@ def media_problem(path: Path, *, video: bool = True, seconds: float | None = Non
         return "sin pista de vídeo"
     if not video and not streams:
         return "sin pistas"
+    if audio and not any(s.get("codec_type") == "audio" for s in streams):
+        return "sin pista de audio"
     try:
         duration = float((info.get("format") or {}).get("duration") or 0)
     except (TypeError, ValueError):
@@ -148,14 +152,25 @@ def media_problem(path: Path, *, video: bool = True, seconds: float | None = Non
         return "sin duración"
     if seconds is not None and duration < seconds - tolerance:
         return f"dura {duration:.2f} s de {seconds:.2f} s"
+    if seconds is not None:
+        wanted = {"video"} if video else {"audio"}
+        wanted |= {"audio"} if audio else set()
+        for stream in streams:
+            kind = stream.get("codec_type")
+            try:
+                length = float(stream.get("duration") or 0)
+            except (TypeError, ValueError):
+                length = 0.0                  # some containers (mkv) give no per-stream length: the file's counts
+            if kind in wanted and 0 < length < seconds - tolerance:
+                return f"la pista de {'vídeo' if kind == 'video' else 'audio'} dura {length:.2f} s de {seconds:.2f} s"
     return None
 
 
 def publish(part: Path, target: Path, *, video: bool = True, seconds: float | None = None,
-            tolerance: float = 0.5) -> None:
+            tolerance: float = 0.5, audio: bool = False) -> None:
     """Check `part` and rename it to `target`; raise RuntimeError (and delete it) when it is not a usable clip."""
 
-    problem = media_problem(part, video=video, seconds=seconds, tolerance=tolerance)
+    problem = media_problem(part, video=video, seconds=seconds, tolerance=tolerance, audio=audio)
     if problem:
         part.unlink(missing_ok=True)
         raise RuntimeError(f"el archivo salió incompleto ({problem}): no se guarda en la caché")

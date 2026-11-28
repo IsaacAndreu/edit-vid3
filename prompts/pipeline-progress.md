@@ -816,3 +816,15 @@ Test: `tests/test_arreglo_guion.py`.
   sesión.
 - El registro de la descarga dice «HLS falló (…): pruebo por rango o entero».
 - Prueba: `tests/test_hls_caida.py`.
+
+## Revisión 27-11 · C4 un clip con el audio o el vídeo cortados ya no se publica como bueno
+
+- `fileio.media_problem` mira la duración de cada pista pedida, no solo la del archivo (que es la de la más larga):
+  2,55 s de audio en un clip de 4,5 s pasaban y se reutilizaban de la caché. Si se pidió sonido, exige pista de audio.
+  Los tramos con sonido (HLS, rango, corte) lo piden.
+- Un segmento HLS o un rango de bytes que llega más corto que lo que anunció el servidor (Content-Length /
+  Content-Range) se pide otra vez (en el rango, solo lo que falta).
+- `urllib3>=2` en requirements.txt (la 1.x no avisaba de una respuesta más corta que su Content-Length).
+- Prueba: `tests/test_clips_cortados.py` (clips de verdad hechos con ffmpeg).
+- Sin comprobar en el servidor: qué urllib3 tiene instalado (`pip show urllib3`; la puerta del despliegue instala
+  requirements.txt cuando cambia, desde A14).

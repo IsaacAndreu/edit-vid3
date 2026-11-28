@@ -124,6 +124,18 @@ TRANSIENT_STATUS = (500, 502, 503, 504)
 REFUSAL_KINDS = ("bot", "auth", "403", "429")
 
 
+def announced_bytes(headers: Any) -> int:
+    """What an answer says it carries: Content-Range «bytes a-b/total» → b-a+1, else Content-Length; 0 unknown."""
+
+    try:
+        span = re.match(r"bytes (\d+)-(\d+)/", str(headers.get("Content-Range") or ""))
+        if span:
+            return int(span.group(2)) - int(span.group(1)) + 1
+        return int(headers.get("Content-Length") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
 def selectable(data: dict[str, Any]) -> dict[str, Any]:
     """The saved details without the extraction's own pick: a format request chooses from `formats` again."""
 
@@ -2503,6 +2515,9 @@ class YouTubeSource:
                                     size += len(block)
                         if size == 0:
                             raise RuntimeError("yt-dlp download (HLS): segmento vacío")
+                        announced = announced_bytes(getattr(response, "headers", None) or {})
+                        if announced and size < announced:   # closed early without an error: asked again
+                            raise RuntimeError(f"yt-dlp download (HLS): segmento incompleto ({size} de {announced} bytes)")
                         partial.replace(path)
                         with moved_lock:
                             moved[0] += size
@@ -2579,7 +2594,7 @@ class YouTubeSource:
                 height = next((p.get("height") for p in pieces if p.get("vcodec") not in (None, "none")),
                               pieces[0].get("height"))
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
-            self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS")
+            self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS", audio=audio)
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -2680,7 +2695,7 @@ class YouTubeSource:
             if not audio_only:
                 height = pieces_[0].get("height")
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
-            self._publish(part, target, video=not audio_only, seconds=end - start, what="rango")
+            self._publish(part, target, video=not audio_only, seconds=end - start, what="rango", audio=audio)
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -2771,6 +2786,14 @@ class YouTubeSource:
                     if attempts >= retries:
                         raise RuntimeError(f"yt-dlp download (rango): cortado a {len(body)} de {wanted} bytes "
                                            f"({type(error).__name__})") from None
+                    attempts += 1
+                    time.sleep(0.5 * attempts)
+                    continue
+                announced = announced_bytes(getattr(response, "headers", None) or {})
+                if announced and got < announced and len(body) < wanted:
+                    # the server closed before what it announced, without an error: the rest is asked again
+                    if attempts >= retries:
+                        raise RuntimeError(f"yt-dlp download (rango): llegaron {got} de {announced} bytes")
                     attempts += 1
                     time.sleep(0.5 * attempts)
                     continue
@@ -2884,15 +2907,16 @@ class YouTubeSource:
             raise RuntimeError(f"yt-dlp download: ffmpeg no pudo cortar {start:.1f}-{end:.1f} s de {video_id} "
                                f"(código {error.returncode})") from None
         self._write_range_sidecar(target, height=self._probe_height(part), cap=self.cfg.get("max_height", 720))
-        self._publish(part, target, video=True, seconds=end - start, what="corte")
+        self._publish(part, target, video=True, seconds=end - start, what="corte", audio=audio)
         return target
 
-    def _publish(self, part: Path, target: Path, *, video: bool, seconds: float | None, what: str) -> None:
+    def _publish(self, part: Path, target: Path, *, video: bool, seconds: float | None, what: str,
+                 audio: bool = False) -> None:
         """`part` → `target` once ffprobe sees a whole clip (a picture, and at least ~80 % of the seconds asked: the
         source may end before `end`). Otherwise the RuntimeError names it and nothing reaches the cache."""
 
         try:
-            publish(part, target, video=video, seconds=seconds, tolerance=max(1.0, 0.2 * (seconds or 0)))
+            publish(part, target, video=video, seconds=seconds, tolerance=max(1.0, 0.2 * (seconds or 0)), audio=audio)
         except RuntimeError as error:
             target.with_suffix(target.suffix + ".json").unlink(missing_ok=True)
             raise RuntimeError(f"yt-dlp download ({what}): {error}") from None
