@@ -280,7 +280,10 @@ def set_env(root: Path, key: str, value: str) -> None:
     """Write KEY=value in .env (replacing the old line) and in this process: the studio sets up Telegram itself."""
 
     import os
+    import re
 
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", key) or any(c in value for c in "\r\n\x00"):
+        raise ValueError("Clave o valor no válido para .env")
     path = root / ".env"
     lines = path.read_text("utf-8").splitlines() if path.is_file() else []
     lines = [line for line in lines if not line.strip().startswith(f"{key}=")] + [f"{key}={value}"]

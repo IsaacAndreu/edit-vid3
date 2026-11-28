@@ -602,3 +602,9 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_seguridad_peticiones.py`.
 - Sin comprobar en el servidor: que el proxy del servidor ponga X-Forwarded-For (si no, todos comparten dirección y
   el bloqueo vuelve a ser global, como antes).
+
+## Revisión 27-11 · seguridad 7
+
+- `notify.set_env`: solo nombres en MAYÚSCULAS_CON_GUIONES y valores sin saltos de línea; lo demás se rechaza antes
+  de tocar `.env`.
+- Prueba: `tests/test_seguridad_env.py`.
