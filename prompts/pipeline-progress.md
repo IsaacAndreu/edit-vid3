@@ -869,3 +869,10 @@ Test: `tests/test_arreglo_guion.py`.
   la extracción ya hecha (solo bytes del servidor de vídeo). Apagado porque cambia el ritmo de peticiones a YouTube.
   Medirlo antes de bajarlo a 1: bots y 429 por hora con `python main.py --youtube-stats 1`.
 - Prueba: `tests/test_presupuesto_tramos.py`.
+
+## Revisión 27-11 · C10 un 502 del túnel: otra vez en la misma sesión, y sin gastar rotaciones si el proxy está caído
+
+- Un 502/503 al abrir el túnel del proxy residencial se reintenta una vez en la misma sesión antes de rotar (la mayoría
+  pasan). Si fallan así `tunnel_down_sessions` (3) sesiones distintas en 5 minutos, el proxy entero no responde: el
+  vídeo espera unos minutos (ProxyDown, como con el proxy de casa) y no se gastan más rotaciones.
+- Prueba: `tests/test_tunel_502.py`; `tests/test_residential_bot.py` actualizado a este orden.

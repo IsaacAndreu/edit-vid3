@@ -1207,6 +1207,7 @@ class YouTubeSource:
         through = bool(getattr(self._local, "via_metadata_proxy", False))     # metadata via the residential proxy
         with_account = self.cookies_mode == "rotate" and not through
         tried_ways: set[int] = set()
+        tunnel_again: str | None = None              # the session whose tunnel already got its second chance
         while True:
             if self._all_in_quarantine():
                 self._blocked_everywhere()
@@ -1274,8 +1275,19 @@ class YouTubeSource:
                         continue
                 tunnel = tunnel_failure(lowered) if is_residential((self.proxies or [""])[way]) else None
                 if tunnel is not None:
-                    # the exit node of this sticky session cannot reach YouTube (502/503 on the CONNECT): another
-                    # session, not a 15-minute pause of the whole proxy as with a home PC that is off
+                    # the exit node of this sticky session cannot reach YouTube (502/503 on the CONNECT). Once more
+                    # in the same session first (most 502s pass), then another session; and when several sessions
+                    # fail it in a row the proxy itself is down: this video waits, no rotation is spent on it (27-11)
+                    session = self.sessions.session_id(self._session_key())
+                    if tunnel_again != session:
+                        tunnel_again = session
+                        time.sleep(1.0)
+                        continue
+                    if self._tunnel_down(session):
+                        from ..budget import ProxyDown
+
+                        raise ProxyDown(f"el proxy residencial no abre el túnel ({tunnel}) en varias sesiones seguidas: "
+                                        "está caído o sin saldo; este vídeo espera unos minutos") from None
                     if self._rotate_after(f"túnel {tunnel}", action, tries):
                         continue
                     raise RuntimeError(f"yt-dlp {action}: el proxy residencial no pudo abrir el túnel ({tunnel}) en "
@@ -1410,6 +1422,16 @@ class YouTubeSource:
                     self._count("espera por error pasajero", pause)
                     continue
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
+
+    def _tunnel_down(self, session: str) -> bool:
+        """This session failed the tunnel twice: is it the proxy (`tunnel_down_sessions`, 3, different sessions in
+        the last 5 minutes, in this process) rather than one exit node?"""
+
+        now = time.time()
+        fails = [(t, s) for t, s in getattr(self, "_tunnel_fails", []) if now - t < 300]
+        fails.append((now, session))
+        self._tunnel_fails = fails
+        return len({s for _, s in fails}) >= max(1, int(self.cfg.get("tunnel_down_sessions", 3)))
 
     def _rotate_after(self, kind: str, action: str, tries: int) -> bool:
         """A new sticky session (exit IP) for the current video or the shared search session after «are you a bot»
