@@ -71,19 +71,29 @@ _GONE_MARKERS = ("video unavailable. this video has been removed", "this video h
 # What a failure was, finer than error_kind (which drives the retry logic and stays as it was): the request log keeps
 # it as «cause», so «otros» — 1/3 of every failure on 17-11, most rows without a word — can be told apart.
 _CAUSES = (
+    # the program's own summaries, in Spanish (27-11: 36 of 80 real failures still fell in «other», most of them these)
+    ("rechazo-bot", ("no eres un bot",)),
+    ("proxy-ip", ("a la ip de un proxy", "país del proxy")),
+    ("cuenta", ("necesita una cuenta",)),
+    ("descartado", ("descartado antes de analizarlo", "se pasa al siguiente candidato")),
+    ("sesión-rotada", ("cambió de ip",)),
+    ("api-youtube", ("api de youtube",)),
     # descargas-rango-fallo.md: 884 range failures and 1 376 whole-over-cap discards counted as «other»
     ("rango-sin-indice", ("faltan moov o sidx", "sin sidx", "sidx vacío", "sidx jerárquico", "cajas inesperadas",
                           "índice demasiado grande", "webm (matroska)", "sin formato mp4 por https",
-                          "no atiende peticiones range")),
+                          "no atiende peticiones range", "no es mp4/m4a", "índice demasiado grueso",
+                          "ningún formato de solo vídeo")),
     ("sin-hls-tope", ("entero supera el tope",)),
-    ("proxy-túnel", ("unable to connect to proxy", "tunnel connection failed")),
+    ("proxy-túnel", ("unable to connect to proxy", "tunnel connection failed", "no abre el túnel",
+                     "no pudo abrir el túnel")),
     ("proxy-407", ("407", "proxy authentication required")),
     ("proxy-sin-respuesta", ("no responde", "proxy connection refused", "connection refused", "proxyerror")),
     ("formato-no-disponible", ("requested format is not available", "no hls stream")),
-    ("tramo-vacío", ("tramo vacío", "empty media playlist", "no segment covers", "salió incompleto")),
+    ("tramo-vacío", ("tramo vacío", "empty media playlist", "no segment covers", "salió incompleto", "segmento vacío")),
     ("ffmpeg", ("ffmpeg", "corte local", "remux")),
     ("conexión-cortada", ("connection reset", "connection aborted", "remote end closed", "broken pipe",
-                          "incompleteread", "connection broken", "eof occurred")),
+                          "incompleteread", "connection broken", "eof occurred", "segmento incompleto",
+                          "cortado a", "llegaron")),
     ("http-5xx", ("http error 500", "http error 502", "http error 503", "http error 504", " 502 ", " 503 ")),
     ("http-404", ("http error 404", "http error 410")),
     ("plazo", ("se corta", "tardó más de")),
@@ -2265,13 +2275,17 @@ class YouTubeSource:
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
-        whole = next((p for p in sorted(target_dir.glob(f"full_{prefix}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
-        if whole is not None and not audio_only:          # already downloaded whole (prefetch_sections)
+        # already downloaded whole (prefetch_sections), also by a kind that serves this one: a silent «hd» is cut from
+        # the «hdav» file with sound instead of downloading the same video whole a second time (27-11)
+        whole = next((p for kind in RANGE_FAMILY.get(prefix, (prefix,))
+                      for p in sorted(target_dir.glob(f"full_{kind}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
+        if whole is not None and not audio_only:
             self._local.route = "corte-de-entero-en-caché"
             return self._cut(whole, video_id, start, end, prefix, audio)
         if self.offline:                                  # not on disk: without YouTube this clip cannot come
             raise SourceUnavailable(self.offline)
         info_path = self._fresh_full_info(video_id)
+        end = self._within_video(info_path, start, end)
         if prefix == "a360":
             self._check_hd_reachable(video_id, info_path)     # not worth analysing a clip that cannot come in HD
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
@@ -2814,6 +2828,21 @@ class YouTubeSource:
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    @staticmethod
+    def _within_video(info_path: Path, start: float, end: float) -> float:
+        """`end`, or the video's own end when the range runs past it: the seconds there are come (2.5 s of a 5 s
+        range at the end were refused as «incomplete», 27-11). Unchanged when the length is unknown."""
+
+        import json
+
+        try:
+            duration = float(json.loads(info_path.read_text(encoding="utf-8")).get("duration") or 0)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return end
+        if duration > start + 0.5 and end > duration:
+            return round(duration, 3)
+        return end
 
     def _no_range_for(self, video_id: str, prefix: str) -> bool:
         return (video_id, prefix) in self.__dict__.setdefault("_no_range", set())

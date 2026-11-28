@@ -876,3 +876,15 @@ Test: `tests/test_arreglo_guion.py`.
   pasan). Si fallan así `tunnel_down_sessions` (3) sesiones distintas en 5 minutos, el proxy entero no responde: el
   vídeo espera unos minutos (ProxyDown, como con el proxy de casa) y no se gastan más rotaciones.
 - Prueba: `tests/test_tunel_502.py`; `tests/test_residential_bot.py` actualizado a este orden.
+
+## Revisión 27-11 · C11 vídeo entero una sola vez, tramos al final del vídeo y causas de los fallos
+
+- Un tramo sin sonido («hd») se corta del vídeo entero ya bajado con sonido («hdav») en vez de bajar el mismo vídeo
+  entero otra vez. Al revés no se puede (al «hd» le falta el audio): si «hd» llega primero, «hdav» sigue bajándolo.
+- Un tramo que pasa del final del vídeo se pide hasta el final (los 2,5 s que hay), en vez de rechazarse por corto.
+- Los resúmenes del propio programa («no eres un bot», «descartado», el túnel del proxy, segmentos incompletos,
+  formatos sin índice…) tienen causa en el registro de descargas en vez de «other». Solo cambia la causa del
+  registro: lo que decide reintentos y rotaciones no cambia.
+- Pruebas: `tests/test_entero_y_final.py`, `tests/test_causas_propias.py`.
+- No comprobado: los 80 mensajes reales del servidor; he clasificado los que escribe el programa. Para ver los que
+  sigan en «other»: `out/<vídeo>/…/youtube_downloads.jsonl`, campo «cause».
