@@ -137,9 +137,38 @@ def announced_bytes(headers: Any) -> int:
 
 
 def selectable(data: dict[str, Any]) -> dict[str, Any]:
-    """The saved details without the extraction's own pick: a format request chooses from `formats` again."""
+    """The saved details without the extraction's own pick: a format request chooses from `formats` again — and,
+    when the video has an original sound track marked, without its dubbed and auto-dubbed tracks: «wa» (the worst
+    audio) is the worst in language too, and the statements of «material primero» came out dubbed (27-11)."""
 
-    return {k: v for k, v in data.items() if k not in STALE_PICK}
+    out = {k: v for k, v in data.items() if k not in STALE_PICK}
+    formats = out.get("formats")
+    if isinstance(formats, list):
+        out["formats"] = original_sound(formats)
+    return out
+
+
+def _is_original(f: dict[str, Any]) -> bool:
+    note = str(f.get("format_note") or "").casefold()
+    try:
+        preference = float(f.get("language_preference") or 0)
+    except (TypeError, ValueError):
+        preference = 0.0
+    return "original" in note or preference >= 10
+
+
+def original_sound(formats: list[Any]) -> list[Any]:
+    """The formats without the sound tracks in another language than the original one, when an original is marked
+    (yt-dlp: «original» in format_note, language_preference 10). Video-only formats and anything unreadable stay."""
+
+    with_sound = [f for f in formats if isinstance(f, dict) and f.get("acodec") not in (None, "none")]
+    originals = [f for f in with_sound if _is_original(f)]
+    if not originals:
+        return formats
+    languages = {str(f.get("language") or "") for f in originals}
+    return [f for f in formats if not (isinstance(f, dict) and f.get("acodec") not in (None, "none"))
+            or _is_original(f) or (str(f.get("language") or "") in languages
+                                   and "dubbed" not in str(f.get("format_note") or "").casefold())]
 
 
 def error_cause(message: str) -> str:

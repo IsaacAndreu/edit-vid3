@@ -836,3 +836,12 @@ Test: `tests/test_arreglo_guion.py`.
 - Un 403 sobre enlaces de una sesión que ya no es la del vídeo no cuenta para apagar las descargas enteras
   (`_whole_403 >= 2`) el resto del proceso. Solo con proxy residencial (sin él no hay sesiones).
 - Prueba: `tests/test_enlaces_tras_rotar.py`.
+
+## Revisión 27-11 · C6 el sonido de un tramo es la pista original, no la doblada
+
+- Cuando el vídeo marca una pista de audio original (yt-dlp: «original» en format_note, language_preference 10), las
+  dobladas y autodobladas no entran en la elección de formato (`selectable` → `original_sound`). «wa» (el peor audio)
+  elegía la autodoblada también por idioma: todas las declaraciones de `quotes.py` y `expediente.py`.
+- Sin pista original marcada (la mayoría de vídeos, de un solo idioma) no cambia nada.
+- La descarga por ffmpeg (sin proxy residencial) pide «ba», que yt-dlp ya ordena por idioma: no tenía el fallo.
+- Prueba: `tests/test_pista_original.py` (con la elección real de yt-dlp).
