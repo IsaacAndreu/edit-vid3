@@ -185,8 +185,10 @@ class PauseVoiceTests(unittest.TestCase):
 
         ctx = RunContext.create("t", root=Path(folder), config={"align": {"min_match_ratio": 0.5}})
         ctx.materials_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=37",
-                        str(ctx.materials_dir / "voz.mp3")], check=True)
+        # spoken, 27.1 s of real silence (the pause), spoken: only real silence is cut
+        from tests.test_pausas_reales import voice
+
+        voice(ctx.materials_dir / "voz.mp3", [("t", 4.9), ("s", 27.1), ("t", 5)])
         return ctx
 
     def test_the_voice_and_the_words_lose_the_pause_together(self) -> None:
@@ -203,7 +205,7 @@ class PauseVoiceTests(unittest.TestCase):
             saved = WordsFile.model_validate(ctx.read_json(align.OUTPUT))
             seconds = align._seconds(ctx.materials_dir / "voz.mp3")
             self.assertAlmostEqual(seconds, 37.0 - 26.1, delta=0.2)          # the 26.1 s cut out of the mp3 itself
-            self.assertAlmostEqual(saved.words[10].start, 32.0 - 26.1, places=2)
+            self.assertAlmostEqual(saved.words[10].start, 32.0 - 26.1, delta=0.1)
             self.assertTrue((ctx.materials_dir / "voz.original.mp3").is_file())
 
     def test_a_cut_that_did_not_happen_moves_nothing(self) -> None:

@@ -919,6 +919,8 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
 
     before_paid_call(ctx)
     result = generate(keys(ctx.root), text, voice, voice_file)
+    for stale in ("voz.original.mp3", "voz.sin-pausas.mp3"):    # copies of the voice this one replaces
+        (voice_file.parent / stale).unlink(missing_ok=True)
     (ctx.materials_dir / "voz.genaipro.json").write_text(json.dumps(
         {"voice": voice, **result, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}, ensure_ascii=False, indent=1), encoding="utf-8")
     try:

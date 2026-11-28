@@ -681,3 +681,21 @@ Test: `tests/test_arreglo_guion.py`.
   edad: el vigilante la tiene días seguidos con razón.
 - Una espera de turno de más de `queue.turn_wait_warn_minutes` (120) se avisa una vez, con quién tiene el turno.
 - Prueba: `tests/test_cerrojos_pid.py`.
+
+## Revisión 27-11 · A9 el recorte de pausas no corta voz
+
+- Solo se quita de una pausa larga lo que está en silencio de verdad (ffmpeg `silencedetect`, por debajo de
+  `align.silence_db`, -35 dB) y donde Whisper no oyó ninguna palabra, del guion o no. Una frase dicha que no está en
+  `guion.txt` se queda entera. Si no se puede saber dónde está el silencio, no se quita nada (aviso en el log).
+- Las pausas largas que se quedan se apuntan en `work/<vídeo>/pausas.json`, para que la alineación no se repita en
+  cada vuelta por ellas.
+- Lo que queda de una pausa larga es una opción: `align.pause_keep_seconds` (1 s, como hasta ahora; 4 para
+  respetar las pausas hechas a propósito). No lo he cambiado porque cambia lo que sale en pantalla.
+- Cada voz nueva deja su propia copia: al subirla desde el estudio, `voz.original.mp3` pasa a ser esa voz; la
+  anterior se guarda en `voces-anteriores/` (las 3 últimas) y se borra lo que salió de ella (`voz.sin-pausas.mp3`,
+  `voz.palabras.json`, `voz.error.json`, `voz.genaipro.json`). Una voz sintética nueva también borra las copias de
+  la anterior.
+- Prueba: `tests/test_pausas_reales.py`; las de `tests/test_align.py` usan ahora una voz con silencio de verdad.
+- Sin comprobar en el servidor: el umbral de -35 dB con las grabaciones reales (una con mucho ruido de fondo no
+  tendría «silencio» y no se le quitaría ninguna pausa: el log lo dice; `align.silence_db: -30`).
+

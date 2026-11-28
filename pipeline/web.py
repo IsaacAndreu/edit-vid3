@@ -1181,7 +1181,35 @@ def wake_watcher(root: Path) -> None:
         pass
 
 
+VOICE_DERIVED = ("voz.sin-pausas.mp3", "voz.palabras.json", "voz.error.json")   # made from the voice before
+OLD_VOICES = "voces-anteriores"
+KEEP_OLD_VOICES = 3
+
+
+def _put_old_voice_away(folder: Path) -> None:
+    """The voice being replaced (as you gave it: voz.original.mp3 if the pause cut made one) goes to
+    voces-anteriores/ (the last KEEP_OLD_VOICES), with its GenAIPro record; what was made from it goes."""
+
+    given = folder / "voz.original.mp3" if (folder / "voz.original.mp3").is_file() else folder / "voz.mp3"
+    if given.is_file():
+        store = folder / OLD_VOICES
+        store.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        shutil.copy2(given, store / f"voz-{stamp}.mp3")
+        if (folder / "voz.genaipro.json").is_file():
+            (folder / "voz.genaipro.json").replace(store / f"voz-{stamp}.genaipro.json")
+        for old in sorted(store.glob("voz-*.mp3"))[:-KEEP_OLD_VOICES]:
+            old.unlink(missing_ok=True)
+            old.with_suffix(".genaipro.json").unlink(missing_ok=True)
+    (folder / "voz.genaipro.json").unlink(missing_ok=True)      # this voice is not the program's synthetic one
+    for name in VOICE_DERIVED:
+        (folder / name).unlink(missing_ok=True)
+
+
 def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
+    """Your voice, uploaded from the studio: voz.mp3 and its untouched copy voz.original.mp3 (the pause cut works
+    from it); the voice it replaces is kept in voces-anteriores/."""
+
     folder = find_video(root, slug)
     if not folder.is_dir():
         raise FileNotFoundError(slug)
@@ -1189,6 +1217,7 @@ def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
         raise ValueError("El audio está vacío o incompleto")
     tmp = folder / "voz.subiendo"
     tmp.write_bytes(data)
+    _put_old_voice_away(folder)
     if data[:3] != b"ID3" and data[:2] not in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
         # not an mp3 (wav, m4a…): convert, the pipeline reads voz.mp3
         done = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(tmp), "-c:a", "libmp3lame", "-q:a", "2",
@@ -1198,6 +1227,7 @@ def save_voice(root: Path, slug: str, data: bytes) -> dict[str, Any]:
             raise ValueError(f"No entiendo ese audio: {done.stderr.strip()[-200:]}")
     else:
         tmp.replace(folder / "voz.mp3")
+    shutil.copy2(folder / "voz.mp3", folder / "voz.original.mp3")   # the copy of THIS voice, before any cut
     wake_watcher(root)                     # the voice was all it was waiting for
     return {"ok": True, "bytes": (folder / "voz.mp3").stat().st_size}
 

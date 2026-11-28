@@ -29,6 +29,10 @@ align:
   # max_pause_seconds: 4.0 # una pausa más larga entre dos palabras se quita de la voz (queda 1 s; la voz de antes se
   #                          guarda como voz.original.mp3): ningún plano puede cubrirla. 0 = no quitar nunca.
   #                          El silencio después de la última palabra se deja en 1 s.
+  #                          Solo se quita lo que está en silencio de verdad y Whisper no oye: una frase dicha que
+  #                          no está en guion.txt se queda.
+  # pause_keep_seconds: 1.0  # lo que queda de una pausa larga (4 para respetar las pausas hechas a propósito)
+  # silence_db: -35          # por debajo de esto es silencio (sube a -30 con una grabación con ruido de fondo)
 
 planner:
   # cobertura: false            # con ideas: los sucesos clave (3-6) se cuentan por funciones — acción, otro ángulo,
