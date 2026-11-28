@@ -965,3 +965,15 @@ Test: `tests/test_arreglo_guion.py`.
   juez. Medirlo: el mismo vídeo con y sin, en Puntería.
 - Prueba: `tests/test_orden_relleno.py` (comprueba el orden en el código; montar la etapa entera con dobles probaría
   los dobles).
+
+## Revisión 27-11 · D8 las medidas de pantalla dicen la verdad, y Puntería sale para todos los vídeos
+
+- `revisor.screen_measures`: la pantalla final ya no cuenta en el total; las tarjetas y paneles sobre un clip
+  (datacard, split, stat, pregunta, pizarras, tarjetas de argumento y de cita) cuentan como texto (56 s de tarjetas
+  daban 0 %); los gráficos a pantalla completa (mapas, gráficas) salen aparte («Gráficos»); las palabras clave sobre
+  metraje prestado siguen contando como imagen.
+- «1.ª imagen» es la del primer clip o foto que se ve tras la apertura (una apertura de 15 s ponía 0 s aunque luego
+  hubiera 30 s de pizarra), y «Texto 1.er min» es la parte del primer minuto tras ella sin clip ni foto.
+- Puntería lista todos los vídeos montados (`work/<vídeo>/timeline.json`) con sus medidas; la nota del revisor solo
+  sale donde la hay («—» si no). Antes estaba vacía de serie. Revisado en escritorio y móvil, sin errores.
+- Prueba: `tests/test_medidas_reales.py`.

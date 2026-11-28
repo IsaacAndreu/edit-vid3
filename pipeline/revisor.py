@@ -197,21 +197,77 @@ def repeats(items: list[dict[str, Any]], max_hamming: int = 6, already: set[str]
     return out
 
 
+# graphics drawn OVER the footage (the picture is still seen): everything else of kind «graphic» fills the screen
+OVERLAY_GRAPHICS = ("kinetic", "circulo", "spotlight", "quote", "marker", "lens", "highlighted", "insert")
+TEXT_PANELS = ("datacard", "split", "stat", "question")
+
+
+def _spans_union(spans: list[tuple[int, int]]) -> int:
+    total, reach = 0, None
+    for a, b in sorted(spans):
+        if reach is None or a >= reach:
+            total += max(0, b - a)
+            reach = b
+        elif b > reach:
+            total += b - reach
+            reach = b
+    return total
+
+
 def screen_measures(timeline: dict[str, Any]) -> dict[str, float]:
-    """Without a model, from the edit: `textShare`, the % of the video whose footage shots show no clip or photo (a
-    board, key words or nothing), and `firstImage`, the second of the first clip or photo. ideas-pantallas-de-texto.md:
-    newideas had ~half of it as text and its first image at 0:40, which «flagged per 100» never shows (a board is not a
-    flagged shot)."""
+    """Without a model, from the edit: `textShare`, the % of the video with no clip or photo to see (a board, a card or
+    panel, key words, or nothing); `graphicShare`, the % under a full-screen graphic (a map, a chart); `firstImage`, the
+    second of the first clip or photo after the cold open; `textFirstMinute`, the % of text in the first minute after
+    it. 27-11: the end screen counted in the total, 56 s of cards over clips gave 0 % of text, and a 15 s open made the
+    first image «0 s» with 30 s of boards right after it."""
+
+    def num(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
 
     fps = float(timeline.get("fps") or 30)
-    total = int(timeline.get("durationInFrames") or 0) or max(
-        (int(s.get("from") or 0) + int(s.get("durationInFrames") or 0) for s in timeline.get("shots") or []), default=0)
-    text = sum(int(s.get("durationInFrames") or 0) for s in timeline.get("shots") or []
-               if s.get("type") == "broll" and not s.get("media") and not s.get("groupId"))
-    first = next((int(s.get("from") or 0) for s in sorted(timeline.get("shots") or [], key=lambda s: int(s.get("from") or 0))
-                  if (s.get("media") or {}).get("kind") in ("video", "image")), None)
-    return {"textShare": round(100 * text / total, 1) if total else 0.0,
-            "firstImage": round(first / fps, 1) if first is not None else None}
+    shots = [s for s in timeline.get("shots") or [] if isinstance(s, dict)]
+    groups = [g for g in timeline.get("groups") or [] if isinstance(g, dict)]
+    total = num(timeline.get("durationInFrames")) or max((num(s.get("from")) + num(s.get("durationInFrames"))
+                                                          for s in shots), default=0)
+    total = max(0, total - num(timeline.get("endscreenFrames")))
+    text: list[tuple[int, int]] = []
+    graphic: list[tuple[int, int]] = []
+    for s in shots:
+        if s.get("type") == "broll" and not s.get("media") and not s.get("groupId"):
+            text.append((num(s.get("from")), num(s.get("from")) + num(s.get("durationInFrames"))))
+    for g in groups:
+        span = (num(g.get("from")), num(g.get("from")) + num(g.get("durationInFrames")))
+        drawn = g.get("graphic") if isinstance(g.get("graphic"), dict) else {}
+        if g.get("kind") in TEXT_PANELS or drawn.get("board"):
+            text.append(span)
+        elif g.get("kind") == "graphic" and str(g.get("id") or "").startswith("punch-"):
+            continue                                       # key words over borrowed footage: the picture is seen
+        elif g.get("kind") == "graphic" and str(drawn.get("type") or "") in ("argument", "cita"):
+            text.append(span)                              # argument and quote cards: text on the brand background
+        elif g.get("kind") == "graphic" and str(drawn.get("type") or "") not in OVERLAY_GRAPHICS:
+            graphic.append(span)
+    clip = lambda spans, a, b: [(max(x, a), min(y, b)) for x, y in spans if x < b and a < y]   # noqa: E731
+    text_frames = _spans_union(clip(text, 0, total))
+    covered = text + graphic
+    open_end = max((num(s.get("from")) + num(s.get("durationInFrames")) for s in shots if s.get("coldOpen")), default=0)
+    first = None
+    for s in sorted(shots, key=lambda s: num(s.get("from"))):
+        start, end = num(s.get("from")), num(s.get("from")) + num(s.get("durationInFrames"))
+        if s.get("coldOpen") or (s.get("media") or {}).get("kind") not in ("video", "image"):
+            continue
+        hidden = _spans_union(clip(covered, start, end))
+        if hidden < end - start:                           # some of it is really seen
+            first = start
+            break
+    minute = (open_end, min(total, open_end + int(60 * fps)))
+    minute_frames = max(0, minute[1] - minute[0])
+    return {"textShare": round(100 * text_frames / total, 1) if total else 0.0,
+            "graphicShare": round(100 * _spans_union(clip(graphic, 0, total)) / total, 1) if total else 0.0,
+            "firstImage": round(first / fps, 1) if first is not None else None,
+            "textFirstMinute": round(100 * _spans_union(clip(text, *minute)) / minute_frames, 1) if minute_frames else 0.0}
 
 
 def coverage_measures(plan: dict[str, Any], timeline: dict[str, Any]) -> dict[str, Any]:

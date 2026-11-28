@@ -1120,9 +1120,16 @@ def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
     queue's `revisor.nota` or `revisor.enabled`, or `python -m pipeline.revisor`), per channel, oldest first, with the
     average of the last five. Shots flagged per 100 with a picture, and the shots that ended as text."""
 
-    from .revisor import PROBLEMS
+    from .revisor import PROBLEMS, screen_measures
 
     rows: list[dict[str, Any]] = []
+
+    def measured(slug: str) -> dict[str, Any]:
+        """The screen measures from the video's own edit (every video, not only the reviewed ones: 27-11)."""
+
+        timeline = _json(root / "work" / slug / "timeline.json")
+        return screen_measures(timeline) if isinstance(timeline, dict) else {}
+
     for path in (root / "out").glob("*/revisor/revisor.json") if (root / "out").is_dir() else []:
         data = _json(path) or {}
         if data.get("skipped") or not data.get("shots"):
@@ -1140,7 +1147,23 @@ def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
                      "asText": data.get("asText"), "before": data.get("before"), "sentBack": data.get("sentBack"),
                      "textShare": data.get("textShare"), "firstImage": data.get("firstImage"),
                      "sourcesPerMinute": data.get("sourcesPerMinute"), "functions": data.get("functions"),
-                     "mode": data.get("mode") or "informe", "counts": counts, "usd": data.get("usd", 0)})
+                     "mode": data.get("mode") or "informe", "counts": counts, "usd": data.get("usd", 0),
+                     **measured(slug)})
+    reviewed = {r["slug"] for r in rows}
+    for path in (root / "work").glob("*/timeline.json") if (root / "work").is_dir() else []:
+        slug = path.parent.name
+        if slug in reviewed or slug.startswith("_"):
+            continue
+        channel = video_channel(root, slug)
+        if channel is None or (mine is not None and channel not in mine):
+            continue
+        timeline = _json(path)
+        if not isinstance(timeline, dict):
+            continue
+        rows.append({"slug": slug, "channel": channel or "—",
+                     "at": time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime)),
+                     "shots": len(timeline.get("shots") or []), "flagged": None, "per100": None, "asText": None,
+                     "counts": {}, "usd": 0, **screen_measures(timeline)})
     rows.sort(key=lambda r: r["at"])
     channels_out: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -1149,9 +1172,10 @@ def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
     from .medir_video import channel_reference, measure
 
     for entry in channels_out.values():
+        scored = [v for v in entry["videos"] if v.get("per100") is not None]
         last = entry["videos"][-5:]
-        entry["recent"] = round(sum(v["per100"] for v in last) / len(last), 1)
-        entry["first"] = entry["videos"][0]["per100"]
+        entry["recent"] = round(sum(v["per100"] for v in scored[-5:]) / len(scored[-5:]), 1) if scored else None
+        entry["first"] = scored[0]["per100"] if scored else None
         # objetivo-videos-referencia.md: the channel's reference (referencias/canales/<canal>/, measured beforehand
         # with python -m pipeline.medir_video --referencias) beside our last video, measured from its edit
         entry["reference"] = channel_reference(root, entry["channel"])
@@ -1161,7 +1185,7 @@ def punteria(root: Path, mine: list[str] | None = None) -> dict[str, Any]:
             except (OSError, ValueError):
                 entry["ours"] = None
     return {"channels": sorted(channels_out.values(), key=lambda e: e["channel"]), "problems": PROBLEMS,
-            "videos": len(rows)}
+            "videos": len(rows), "scored": len(reviewed)}
 
 
 def channel_material(root: Path, channel: str) -> dict[str, Any]:

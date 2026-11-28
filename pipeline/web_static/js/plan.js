@@ -470,7 +470,9 @@ async function punteriaPage() {
   const p = await api("/api/punteria");
   const P = p.problems || {};
   const name = (k) => esc(P[k] || k);
-  const bars = (videos) => {
+  const bars = (all) => {
+    const videos = all.filter((v) => v.per100 != null);       // only the reviewed ones have a score
+    if (!videos.length) return "";
     const max = Math.max(10, ...videos.map((v) => v.per100));
     const W = 640, H = 120, gap = 2, bw = Math.max(4, Math.min(28, (W - gap * videos.length) / Math.max(1, videos.length)));
     return `<svg class="pchart" viewBox="0 0 ${W} ${H + 18}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Marcados por cada 100 planos, vídeo a vídeo">
@@ -498,21 +500,25 @@ async function punteriaPage() {
     <div class="small muted">Lo que el revisor automático marca en cada vídeo: planos que no tienen que ver con la frase, otra persona,
       repetidos, huecos tapados… por cada 100 planos con imagen. <b>Cuanto más bajo, mejor.</b> «En texto»: planos que acabaron sin imagen
       (no cuentan como fallo, pero si suben, el vídeo enseña menos).</div>
-    ${p.videos ? "" : `<div class="notice mt-3">Aún no hay notas. Se calculan solas al montar cada vídeo con <code>revisor: {nota: true}</code>
+    ${p.scored ? "" : `<div class="notice mt-3">Aún no hay notas del revisor (las medidas de pantalla salen igual, del montaje). Se calculan solas al montar cada vídeo con <code>revisor: {nota: true}</code>
       en config.local.yaml (1-2 céntimos por vídeo), o a mano: <code>python -m pipeline.revisor &lt;vídeo&gt;</code>.</div>`}
     ${(p.channels || []).map((c) => `<section class="card mt-3"><div class="hb"><h2>${esc(c.channel)}</h2>
-        <span class="small">últimos 5: <b>${c.recent}</b> por 100${c.videos.length > 1 ? ` · el primero: ${c.first}` : ""}</span></div>
+        <span class="small">${c.recent != null ? `últimos 5: <b>${c.recent}</b> por 100${c.first != null && c.videos.length > 1 ? ` · el primero: ${c.first}` : ""}` : "sin notas del revisor"}</span></div>
       ${bars(c.videos)}
       ${reference(c)}
       <div class="tablewrap"><table class="small"><tr><th>Vídeo</th><th>Fecha</th><th class="r">Planos</th><th class="r">Por 100</th>
         <th class="r">En texto</th><th class="r" title="Parte del vídeo sin clip ni foto (pizarra, palabras o nada)">Texto o vacío</th>
-        <th class="r" title="Segundo del primer clip o foto">1.ª imagen</th>
+        <th class="r" title="Parte del primer minuto (tras la apertura) sin clip ni foto">Texto 1.er min</th>
+        <th class="r" title="Parte del vídeo bajo un gráfico a pantalla completa (mapa, gráfica)">Gráficos</th>
+        <th class="r" title="Segundo del primer clip o foto tras la apertura">1.ª imagen</th>
         <th class="r" title="Fuentes distintas en pantalla por minuto">Fuentes/min</th>
         <th class="r" title="Sucesos clave (planner.cobertura): funciones encontradas / pedidas">Funciones</th><th>Lo más marcado</th></tr>
         ${[...c.videos].reverse().map((v) => { const top = Object.entries(v.counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
           return `<tr><td><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.slug)}</a></td><td class="nw">${esc(v.at)}</td>
-          <td class="r">${v.shots}</td><td class="r"><b>${v.per100}</b></td><td class="r">${v.asText ?? "—"}</td>
+          <td class="r">${v.shots}</td><td class="r"><b>${v.per100 ?? "—"}</b></td><td class="r">${v.asText ?? "—"}</td>
           <td class="r ${v.textShare > 10 ? "t-bad" : ""}">${v.textShare != null ? v.textShare + " %" : "—"}</td>
+          <td class="r ${v.textFirstMinute > 20 ? "t-bad" : ""}">${v.textFirstMinute != null ? v.textFirstMinute + " %" : "—"}</td>
+          <td class="r">${v.graphicShare != null ? v.graphicShare + " %" : "—"}</td>
           <td class="r ${v.firstImage > 5 ? "t-bad" : ""}">${v.firstImage != null ? v.firstImage + " s" : "—"}</td>
           <td class="r">${v.sourcesPerMinute ?? "—"}</td><td class="r">${v.functions ?? "—"}</td>
           <td>${top.map(([k, n]) => `${name(k)} ${n}`).join(" · ") || "—"}${v.sentBack ? ` <span class="muted">(${v.sentBack} corregidos antes del render)</span>` : ""}</td></tr>`; }).join("")}
