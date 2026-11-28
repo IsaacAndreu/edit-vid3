@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import statistics
 import threading
@@ -34,13 +35,12 @@ class NoKeysLeft(RuntimeError):
     pass
 
 
-_LOCK = threading.Lock()      # the quota ledger is read and rewritten by parallel searches
 
 
 def _write(path: Path, text: str) -> None:
     """Whole or nothing: a parallel reader never sees a half-written file."""
 
-    tmp = path.with_name(f"{path.name}.{threading.get_ident()}.tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")   # one per process and thread
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
 
@@ -145,6 +145,14 @@ class YouTubeAPI:
         self.session = session or requests.Session()
 
     # ---- quota ---------------------------------------------------------------------------------
+    def _locked(self):
+        """The ledger is read and rewritten by parallel searches and by several processes (the queue's videos, the
+        studio): a file lock, not only a thread one (27-11: 1 600 units spent, 604-714 written down)."""
+
+        from .fileio import file_lock
+
+        return file_lock(self.dir / "quota.json.lock")
+
     def _ledger(self) -> dict[str, Any]:
         path = self.dir / "quota.json"
         try:
@@ -206,7 +214,7 @@ class YouTubeAPI:
         cost = COST.get(endpoint, 1)
         for key in self.keys:
             kid = self._key_id(key)
-            with _LOCK:
+            with self._locked():
                 ledger = self._ledger()
                 if kid in ledger["exhausted"] or ledger["used"].get(kid, 0) + cost > self.limits[key]:
                     continue
@@ -222,7 +230,7 @@ class YouTubeAPI:
             if response.status_code == 403:
                 reasons = {e.get("reason") for e in _error(response).get("errors", [])}
                 if reasons & QUOTA_ERRORS:
-                    with _LOCK:
+                    with self._locked():
                         ledger = self._ledger()
                         ledger["exhausted"].append(kid)
                         self._save_ledger(ledger)
@@ -239,7 +247,7 @@ class YouTubeAPI:
                 # «Quota exceeded for quota metric 'Search Queries' … per day»: Google answers 429, not 403, for the
                 # searches of a project. That key's searches are over for today (its other calls still work): the
                 # next key, as with a 403 — it used to stop the whole search with ~1 600 searches left in the rest
-                with _LOCK:
+                with self._locked():
                     ledger = self._ledger()
                     if endpoint == "search":
                         ledger["searches"][kid] = self.searches_per_day
@@ -261,7 +269,7 @@ class YouTubeAPI:
     def _refund(self, endpoint: str, kid: str, cost: int) -> None:
         """Give back what was counted before a request that never got an answer: the ledger counts quota spent."""
 
-        with _LOCK:
+        with self._locked():
             ledger = self._ledger()
             ledger["used"][kid] = max(0, ledger["used"].get(kid, 0) - cost)
             if endpoint == "search":
@@ -286,7 +294,7 @@ class YouTubeAPI:
                     return response
                 self._refund(endpoint, kid, cost)
             time.sleep(2.0 * (attempt + 1))
-            with _LOCK:                                   # counted again for the retry
+            with self._locked():                                   # counted again for the retry
                 ledger = self._ledger()
                 ledger["used"][kid] = ledger["used"].get(kid, 0) + cost
                 if endpoint == "search":

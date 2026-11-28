@@ -731,3 +731,12 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_gasto_sin_contar.py`.
 - **Falta un dato tuyo**: el precio de AI84 (por 1000 créditos) y el de una búsqueda de Serper según tu plan. No los
   he puesto porque no los sé; hasta entonces el gasto sale con su cantidad y sin dólares.
+
+## Revisión 27-11 · A13 libros de costes y de cuota con varios procesos
+
+- `costs.json` (gasto de cada vídeo) y `cache/ytapi/quota.json` (cuota de la API de YouTube) se leen y reescriben
+  bajo un cerrojo de archivo (entre procesos, no solo entre hilos), y se escriben con un temporal propio de cada
+  proceso. Antes, con varios vídeos y el estudio a la vez, se perdían apuntes (1 600 unidades gastadas, 604-714
+  apuntadas).
+- Prueba: `tests/test_libros_varios_procesos.py` (cuatro procesos escribiendo a la vez: no se pierde ninguno).
+- En Windows el cerrojo solo es entre hilos (no hay flock), como antes.
