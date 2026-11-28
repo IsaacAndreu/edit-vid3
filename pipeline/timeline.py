@@ -833,11 +833,12 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     rotulos |= feedback.no_borrow(ctx.work_dir,    # off: the reviewer never turns a shot into text (23-11)
                                   bool(ctx.section("revisor").get("no_borrow_sent_back", False)),
                                   bool(ctx.section("revisor").get("huecos_a_texto", False)))
-    punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos) if borrow else []
+    ideas = shot_ideas(ctx)                     # whose clip may stand for a gap (planner.ideas; {} without ideas)
+    punches = fill_empty_shots(shots, [*groups, *added], fps, window_seconds=window, skip=rotulos,
+                               ideas=ideas) if borrow else []
     if borrow:   # still empty: footage again (each clip a few more times) rather than a screen of text
         fill_empty_shots(shots, [*groups, *added, *punches], fps, max_uses=5, words=False, window_seconds=window,
-                         skip=rotulos)
-    ideas = shot_ideas(ctx)
+                         skip=rotulos, ideas=ideas)
     cfg_t = ctx.section("timeline")
     # timeline.max_text_share: the cap of text in the video (10 % when planned by ideas, where newideas had half of it)
     share = cfg_t.get("max_text_share", 0.10 if ideas else None)
@@ -851,7 +852,7 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
     boards = chalkboards(shots, [*groups, *added, *punches], fps, ideas)   # only if no footage could be borrowed
     if borrow:   # a shot only partly under a graphic: footage for the rest of it, never the bare canvas
         fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True,
-                         window_seconds=window, skip=rotulos)
+                         window_seconds=window, skip=rotulos, ideas=ideas)
     if punches:
         print(f"   Planos sin imagen rellenados con metraje del vídeo: palabras clave encima en {len(punches)} tramos · "
               + ", ".join(f"{g.from_ / fps:.0f}s «{g.graphic['lines'][0]}»" for g in punches[:12]))
@@ -1271,9 +1272,73 @@ def push_in(media: TimelineMedia, frames: int) -> list[float] | None:
     return None if (media.layout or "full") == "archive" else [0, frames, 1.18]
 
 
+def _person_words(name: Any) -> frozenset[str]:
+    import unicodedata
+
+    plain = "".join(c for c in unicodedata.normalize("NFKD", str(name or "")) if not unicodedata.combining(c))
+    return frozenset(w for w in re.findall(r"[a-z0-9]+", plain.casefold()) if len(w) > 1)
+
+
+def same_people(a: Any, b: Any, aliases: dict[str, list[str]] | None = None) -> bool:
+    """Do two lists of names share a person? By words, so «Simone» is «Simone Biles» and «SIMONE BILES» too (27-11:
+    the exact comparison made them two people), with each name's other names in `aliases` (people.json)."""
+
+    def forms(names: Any) -> list[frozenset[str]]:
+        out = []
+        for name in names or []:
+            words = _person_words(name)
+            if not words:
+                continue
+            out.append(words)
+            for canonical, others in (aliases or {}).items():
+                every = [_person_words(canonical), *(_person_words(o) for o in others or [])]
+                if any(f and (f <= words or words <= f) for f in every):
+                    out.extend(f for f in every if f)
+        return out
+
+    left, right = forms(a), forms(b)
+    return any(x <= y or y <= x for x in left for y in right)
+
+
+def lendable(donor: TimelineShot, shot: TimelineShot, ideas: dict[str, Any], chapter_of: dict[str, int],
+             aliases: dict[str, list[str]] | None = None) -> bool:
+    """May `donor`'s clip stand for `shot`? Planned without ideas: yes, as before. With ideas: a clip of its own idea;
+    else of an AMBIENT idea about the same person or (without a person) of the same chapter — never a literal idea's
+    clip of something else, never someone the shot must not show, never another time."""
+
+    if not ideas:
+        return True
+    theirs = ideas.get(donor.id.split("-")[0])
+    idea = ideas.get(shot.id.split("-")[0])
+    if theirs is None:
+        return False
+    if idea is not None and theirs.id == idea.id:
+        return True
+    if theirs.kind != "ambiente":          # a literal idea shows ITS thing; a title has no clip
+        return False
+    if idea is None:
+        return chapter_of.get(donor.id) == chapter_of.get(shot.id)
+    if same_people(theirs.mustShow, idea.mustNotShow, aliases):
+        return False
+    if idea.era and theirs.era and " ".join(idea.era.casefold().split()) != " ".join(theirs.era.casefold().split()):
+        return False
+    same_person = same_people(theirs.mustShow, idea.mustShow, aliases)
+    return same_person or (not idea.mustShow and chapter_of.get(donor.id) == chapter_of.get(shot.id))
+
+
+def chapters_of(shots: list[TimelineShot]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    chapter = 0
+    for s in shots:
+        if s.type == "chapter":
+            chapter += 1
+        out[s.id] = chapter
+    return out
+
+
 def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, ideas: dict[str, Any],
                scores: dict[str, float], share: float, hook_seconds: float, board_seconds: float = 3.0,
-               max_uses: int = 6) -> dict[str, int]:
+               max_uses: int = 6, aliases: dict[str, list[str]] | None = None) -> dict[str, int]:
     """What may stay as text, before the chalkboards (prompts/ideas-pantallas-de-texto.md: newideas, half of an 11-min
     video in text, the first 36 s without a picture). The order is: the right clip > a judged clip of who it is about >
     a photo > text, and text is the last resort with a cap:
@@ -1324,23 +1389,7 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
         return {" ".join(str(v).casefold().split()) for v in values or [] if str(v).strip()}
 
     def may_lend(donor: TimelineShot, shot: TimelineShot, idea: Any) -> bool:
-        if not ideas:                          # planned without ideas: as before
-            return True
-        theirs = idea_of(donor)
-        if theirs is None:
-            return False
-        if idea is not None and theirs.id == idea.id:
-            return True
-        if theirs.kind != "ambiente":          # a literal idea shows ITS thing; a title has no clip
-            return False
-        if idea is None:
-            return chapter_of.get(donor.id) == chapter_of.get(shot.id)
-        if names(theirs.mustShow) & names(idea.mustNotShow):
-            return False
-        if idea.era and theirs.era and " ".join(idea.era.casefold().split()) != " ".join(theirs.era.casefold().split()):
-            return False
-        same_person = bool(names(theirs.mustShow) & names(idea.mustShow))
-        return same_person or (not idea.mustShow and chapter_of.get(donor.id) == chapter_of.get(shot.id))
+        return lendable(donor, shot, ideas, chapter_of, aliases)
 
     def neighbours(index: int) -> set[str]:
         return {shots[j].media.src for j in (index - 1, index + 1)
@@ -1460,7 +1509,9 @@ def rotulo_shots(ctx: RunContext, kinds: tuple[str, ...] = ("rotulo",), hook_sec
 
 def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int, max_uses: int = 2,
                      words: bool = True, partial: bool = False,
-                     window_seconds: float = BORROW_WINDOW, skip: set[str] | None = None) -> list[TimelineGroup]:
+                     window_seconds: float = BORROW_WINDOW, skip: set[str] | None = None,
+                     ideas: dict[str, Any] | None = None,
+                     aliases: dict[str, list[str]] | None = None) -> list[TimelineGroup]:
     """Shots nothing could fill get footage of the video itself (timeline.empty_shots: video): the NEAREST clip
     within `window_seconds` (timeline.borrow_window_seconds, 40), the same passage of the story, pushed in, and at the
     start of each stretch the 1-3 key words of what is said flash over it for ~2 s. Nothing that close: the shot
@@ -1480,6 +1531,7 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
     donors = list(donors_by_src.values())
     if not donors:
         return []
+    chapter_of = chapters_of(shots)
     # how many times each file is on screen in the whole edit — the passes (2, then 5, then 6 uses) used to count from
     # zero each, and one clip filled ten gaps in a row (27-11)
     shown: dict[str, int] = {}
@@ -1523,7 +1575,9 @@ def fill_empty_shots(shots: list[TimelineShot], groups: list[TimelineGroup], fps
                       and (abs(s.from_ + s.durationInFrames - start) <= 1 or abs(s.from_ - end) <= 1)}
         fitting = [d for d in donors if shown.get(d.media.src, 1) - 1 < max_uses
                    and footage(d) >= MIN_RATE * shot.durationInFrames
-                   and abs(d.from_ - start) <= reach and d.media.src not in neighbours]
+                   and abs(d.from_ - start) <= reach and d.media.src not in neighbours
+                   # never anybody's clip: the same rule as the text cap (27-11: an ambient shot showed «boda 2023»)
+                   and lendable(d, shot, ideas or {}, chapter_of, aliases)]
         if not fitting:
             continue
         donor = min(fitting, key=lambda d: (shown.get(d.media.src, 1), abs(d.from_ - start)))

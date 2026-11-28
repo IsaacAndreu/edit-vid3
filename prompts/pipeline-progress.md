@@ -902,3 +902,13 @@ Test: `tests/test_arreglo_guion.py`.
   que solo tenía al lado el clip del vecino ahora se queda para la pizarra o el siguiente relleno.
 - Prueba: `tests/test_prestamos_vecinos.py`; `tests/test_qash_style.py` y `tests/test_agrupar.py` dan a cada plano
   su propio archivo (en un vídeo real cada plano tiene el suyo).
+
+## Revisión 27-11 · D2 el préstamo de metraje mira de quién es el clip
+
+- `fill_empty_shots` (el préstamo por defecto) aplica la misma regla que el tope de texto (`lendable`, antes
+  `may_lend` solo dentro de `limit_text`): con ideas, un hueco solo toma un clip de su idea o de una idea de ambiente
+  de la misma persona (o del mismo capítulo si no hay persona); nunca el clip de una idea literal de otra cosa («boda
+  2023» en un plano de ambiente), nunca a quien el plano no debe enseñar, nunca de otra época. Sin ideas, como antes.
+- Los nombres se comparan por palabras y sin acentos (`same_people`): «Simone» es «Simone Biles». Admite otros
+  nombres de cada persona (`aliases`) para cuando estén en people.json.
+- Prueba: `tests/test_prestamo_de_quien.py`.
