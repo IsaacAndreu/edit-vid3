@@ -469,6 +469,11 @@ timeline:
 speed:                             # solo cuánto trabajo va a la vez: cambiarlo no hace rehacer ninguna etapa
   fallback_parallel: 8             # planos que el relleno busca a la vez (descargas y juez en paralelo); con poca RAM, 4
 
+deploy:                            # el despliegue automático (el estudio y el vigilante bajan main solos: pipeline/puerta.py)
+  require_ci: false                # true: solo se despliega un commit con la CI de GitHub en verde (espera mientras corre).
+                                   # Apagado: la CI de cada commit se apunta en out/_puerta.json («ci») para ver cuántas
+                                   # veces habría esperado o parado. La barrera de verdad sigue siendo proteger main en GitHub.
+
 queue:                             # cola nocturna (python main.py --all)
   parallel_videos: 3               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
   footage_at_once: 2               # de esos, como mucho 2 con metraje de terceros: la otra línea es para los dibujados

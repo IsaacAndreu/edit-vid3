@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 
 STATE = "out/_puerta.json"
+INSTALL_FAILED = "no se pudo instalar requirements.txt"
+INSTALL_RETRY_MINUTES = 30        # a failed install (a network hiccup) is tried again, not marked bad for ever
 FATAL = ("undefined name", "referenced before assignment", "syntax error", "invalid syntax", "unexpected indent",
          "import * used; unable to detect undefined names", "unindent does not match", "expected an indented block")
 OWN = ("main", "pipeline", "scripts")             # our code: an import error there is always a bug
@@ -37,14 +39,51 @@ sys.path.insert(0, ".")
 names = ["main"]
 import pipeline
 names += [m.name for m in pkgutil.walk_packages(pipeline.__path__, "pipeline.")]
+loaded = {}
 for name in names:
     try:
-        importlib.import_module(name)
+        loaded[name] = importlib.import_module(name)
     except BaseException as error:
         missing = getattr(error, "name", None) if isinstance(error, ModuleNotFoundError) else None
         kind = "MISSING:" + str(missing) if missing else type(error).__name__
         line = str(error).replace("\n", " ")[:300]
         print("ERR", name, kind, line, flush=True)
+# a name imported from our own code inside a function is only looked up when that line runs: look it up now
+import ast
+for name, module in loaded.items():
+    path = getattr(module, "__file__", None)
+    if not path or not path.endswith(".py"):
+        continue
+    package = name if path.endswith("__init__.py") else name.rpartition(".")[0]
+    try:
+        tree = ast.parse(open(path, encoding="utf-8").read())
+    except (OSError, SyntaxError):
+        continue
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level:
+            base = package.split(".")
+            base = base[: len(base) - (node.level - 1)] if node.level > 1 else base
+            target = ".".join([*base, *([node.module] if node.module else [])])
+        else:
+            target = node.module or ""
+        if target.split(".")[0] not in ("main", "pipeline", "scripts"):
+            continue
+        try:
+            source = importlib.import_module(target)
+        except BaseException as error:
+            print("ERR", name, "ImportError", f"línea {node.lineno}: {target}: {error}".replace("\n", " ")[:300],
+                  flush=True)
+            continue
+        for alias in node.names:
+            if alias.name == "*" or hasattr(source, alias.name):
+                continue
+            try:
+                importlib.import_module(f"{target}.{alias.name}")
+            except BaseException:
+                print("ERR", name, "ImportError", f"línea {node.lineno}: no existe {alias.name} en {target}",
+                      flush=True)
 """
 
 
@@ -105,7 +144,8 @@ def check_folder(folder: Path, python: str = sys.executable) -> tuple[list[str],
     return errors + import_errors, missing + warnings
 
 
-def check_commit(root: Path, commit: str, python: str = sys.executable) -> tuple[list[str], list[str]]:
+def check_commit(root: Path, commit: str, python: str = sys.executable,
+                 needs_install: bool = False) -> tuple[list[str], list[str]]:
     with tempfile.TemporaryDirectory(prefix="puerta-") as tmp:
         archive = subprocess.run(["git", "archive", "--format=tar", commit], cwd=root, capture_output=True, timeout=300)
         if archive.returncode != 0:
@@ -113,7 +153,75 @@ def check_commit(root: Path, commit: str, python: str = sys.executable) -> tuple
         unpacked = subprocess.run(["tar", "-x", "-C", tmp], input=archive.stdout, capture_output=True, timeout=300)
         if unpacked.returncode != 0:
             return [f"no se pudo descomprimir {commit[:7]}: {unpacked.stderr.decode(errors='replace')[-300:]}"], []
-        return check_folder(Path(tmp), python)
+        errors, warnings = check_folder(Path(tmp), python)
+        if not errors and warnings and needs_install and (Path(tmp) / "requirements.txt").is_file():
+            # a new dependency: installed now, or the code that needs it would fail on its first run (27-11: the
+            # watcher pulls through here and never ran pip)
+            ok, why = install(Path(tmp), python)
+            if not ok:
+                errors = [f"{INSTALL_FAILED}: {why}"]
+            else:
+                print("Dependencias nuevas instaladas (requirements.txt)", flush=True)
+        return errors, warnings
+
+
+def settings(root: Path) -> dict:
+    """config.yaml → deploy: {require_ci: false}."""
+
+    try:
+        from .context import load_config
+
+        return dict(load_config(root / "config.yaml").get("deploy") or {})
+    except Exception:
+        return {}
+
+
+def _repo_name(root: Path) -> str | None:
+    import re
+
+    url = _git(root, "remote", "get-url", "origin").stdout.strip()
+    found = re.search(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$", url)
+    return found.group(1) if found else None
+
+
+def ci_state_from(data) -> str:
+    """«verde» (every check run ended well), «rojo» (one failed), «pendiente» (running or none yet), «desconocido»."""
+
+    if not isinstance(data, dict) or not isinstance(data.get("check_runs"), list):
+        return "desconocido"
+    runs = [r for r in data["check_runs"] if isinstance(r, dict)]
+    if not runs or any(r.get("status") != "completed" for r in runs):
+        return "pendiente"
+    if any(r.get("conclusion") not in ("success", "skipped", "neutral") for r in runs):
+        return "rojo"
+    return "verde"
+
+
+def ci_state(root: Path, sha: str) -> str:
+    """The GitHub CI of that commit (the public check-runs, no token)."""
+
+    name = _repo_name(root)
+    if not name:
+        return "desconocido"
+    try:
+        import requests
+
+        answer = requests.get(f"https://api.github.com/repos/{name}/commits/{sha}/check-runs",
+                              headers={"Accept": "application/vnd.github+json"}, timeout=15)
+        return ci_state_from(answer.json())
+    except Exception:
+        return "desconocido"
+
+
+def install(folder: Path, python: str = sys.executable) -> tuple[bool, str]:
+    """pip install -r requirements.txt of the new code, before it reaches the disk."""
+
+    try:
+        done = subprocess.run([python, "-m", "pip", "install", "-q", "-r", str(folder / "requirements.txt")],
+                              capture_output=True, text=True, timeout=1800)
+    except (OSError, subprocess.SubprocessError) as error:
+        return False, f"pip install no se pudo: {type(error).__name__}"
+    return done.returncode == 0, (done.stderr or done.stdout).strip()[-400:]
 
 
 def _state(root: Path) -> dict:
@@ -160,10 +268,34 @@ def pull(root: Path, *, who: str = "", python: str = sys.executable) -> tuple[bo
     if _git(root, "merge-base", "--is-ancestor", head, target).returncode != 0:
         return False, "git pull --ff-only no se puede (hay commits locales o la rama remota se reescribió)"
     state = _state(root)
+    failed_install = state.get("installFailed") or {}
+    if failed_install.get("commit") == target and time.time() - float(failed_install.get("at") or 0) < \
+            INSTALL_RETRY_MINUTES * 60:
+        return False, f"las dependencias de {target[:7]} no se pudieron instalar: lo intento otra vez en un rato"
     if state.get("bad") == target:
         return False, f"el commit {target[:7]} no pasó la comprobación: sigo con {head[:7]}"
     started = time.monotonic()
-    errors, warnings = check_commit(root, target, python)
+    ci = ci_state(root, target)
+    state["ci"] = ci
+    if settings(root).get("require_ci"):
+        if ci == "rojo":
+            state.update({"bad": target, "checkedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "errors": ["CI en rojo"]})
+            _save_state(root, state)
+            message = f"⛔ Código nuevo rechazado ({target[:7]}): la CI de GitHub está en rojo. Sigo con {head[:7]}."
+            _notify(root, message)
+            return False, message
+        if ci != "verde":
+            _save_state(root, state)
+            return False, f"esperando a la CI de {target[:7]} ({ci})"
+    changed = _git(root, "diff", "--quiet", head, target, "--", "requirements.txt").returncode != 0
+    errors, warnings = check_commit(root, target, python, needs_install=changed)
+    if errors and all(e.startswith(INSTALL_FAILED) for e in errors):
+        state["installFailed"] = {"commit": target, "at": time.time()}
+        _save_state(root, state)
+        message = f"⛔ No pude instalar las dependencias nuevas de {target[:7]}: sigo con {head[:7]}.\n{errors[0]}"
+        _notify(root, message)
+        return False, message
+    state.pop("installFailed", None)
     if errors:
         state.update({"bad": target, "checkedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "errors": errors[:30]})
         _save_state(root, state)

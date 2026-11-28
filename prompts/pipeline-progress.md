@@ -740,3 +740,18 @@ Test: `tests/test_arreglo_guion.py`.
   apuntadas).
 - Prueba: `tests/test_libros_varios_procesos.py` (cuatro procesos escribiendo a la vez: no se pierde ninguno).
 - En Windows el cerrojo solo es entre hilos (no hay flock), como antes.
+
+## Revisión 27-11 · A14 la puerta del despliegue
+
+- Un nombre mal importado de nuestro propio código dentro de una función (`from .x import nombre_que_no_existe`)
+  ya no pasa la puerta: se mira al importar todo, no cuando esa línea se ejecuta.
+- Si el commit nuevo cambia `requirements.txt` y le falta una dependencia, la puerta la instala antes de bajar el
+  código. Si no se puede, sigue con el código de antes, avisa y lo reintenta a los 30 min (no lo marca como malo).
+- `deploy.require_ci` (apagado): solo se despliega un commit con la CI de GitHub en verde. Si está en rojo, no
+  entra; si aún corre, espera. Apagado, la CI de cada commit se apunta en `out/_puerta.json` («ci»), así puedes ver
+  cuántas veces habría esperado antes de encenderlo.
+- La CI instala `anthropic` y ejecuta el camino de Claude con la librería de verdad (`tests/test_claude_sdk.py`).
+  La prueba de extremo a extremo sigue con deepseek-flash.
+- Pruebas: `tests/test_puerta_ci.py`, `tests/test_claude_sdk.py`.
+- Sin comprobar en el servidor: que el servidor llegue a api.github.com (si no, la CI sale «desconocido» y con
+  `require_ci` encendido no se desplegaría nada: no lo enciendas sin mirar antes `out/_puerta.json`).
