@@ -639,3 +639,15 @@ Test: `tests/test_arreglo_guion.py`.
 
 - El estudio baja `main` y se reinicia solo: quien pueda subir a `main` ejecuta código en el servidor. La única
   barrera es la protección de la rama en GitHub (revisión obligatoria, sin push directo). No hay cambio de código.
+
+## Revisión 27-11 · A5 cortes y negativas de Claude
+
+- `ClaudeError` es ahora un `LLMError`: una negativa o una respuesta cortada entra en el reintento propio del
+  planner (antes lo mataba).
+- Una respuesta que muere a medias se apunta como gasto estimado (su entrada + el texto que llegó, ~4 caracteres por
+  token), operación «… (cortada)»; nada si murió antes de empezar a responder.
+- Plazo total por llamada, contando todos sus reintentos: `deadline_seconds` de la sección (1800 s). Al pasarlo,
+  «no respondió a tiempo» (el planner ya no reintenta ese caso).
+- Prueba: `tests/test_claude_cortes.py`.
+- Sin comprobar en el servidor: que el SDK instalado allí deje leer `current_message_snapshot` al cortarse (si no,
+  no se apunta nada, como antes).
