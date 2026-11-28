@@ -848,8 +848,11 @@ def with_graphics(ctx: RunContext, words: WordsFile, shots: list[TimelineShot], 
                             float(ctx.section("judge").get("hook_seconds", 30)),
                             float(cfg_t.get("board_max_seconds", 3.0)))
         print(f"   Texto con tope ({float(share):.0%}): {counts['texto']} pizarras · {counts['prestados']} prestados · "
-              f"{counts['gancho']} en el gancho con el mejor clip juzgado · {counts['sin_donante']} sin nada que prestar")
-    boards = chalkboards(shots, [*groups, *added, *punches], fps, ideas)   # only if no footage could be borrowed
+              f"{counts['gancho']} en el gancho con el mejor clip juzgado · {counts['neutros']} con un clip neutro · "
+              f"{counts['sin_donante']} sin nada que prestar"
+              + (f" · {counts['fuera_de_tope']} por encima del tope" if counts["fuera_de_tope"] else ""))
+    boards = chalkboards(shots, [*groups, *added, *punches], fps, ideas,   # only if no footage could be borrowed
+                         longest_seconds=float(cfg_t.get("board_max_seconds", 3.0)))
     if borrow:   # a shot only partly under a graphic: footage for the rest of it, never the bare canvas
         fill_empty_shots(shots, [*groups, *added, *punches, *boards], fps, max_uses=6, words=False, partial=True,
                          window_seconds=window, skip=rotulos, ideas=ideas)
@@ -1366,7 +1369,7 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
     longest = board_seconds * fps
     uses: dict[str, int] = {}
     in_hook_used: set[str] = set()
-    counts = {"texto": 0, "prestados": 0, "gancho": 0, "sin_donante": 0}
+    counts = {"texto": 0, "prestados": 0, "gancho": 0, "sin_donante": 0, "neutros": 0, "fuera_de_tope": 0}
     used = 0
     previous_text = False
     chapter_of: dict[str, int] = {}
@@ -1432,7 +1435,19 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
                     counts["gancho"] += 1
                     previous_text = False
                     continue
+        neutral = False
+        if not fitting and not title and used + shot.durationInFrames > allowed:
+            # the cap is spent and nobody may lend by the usual rule: a neutral clip of the video — of no literal idea,
+            # never someone this shot must not show — before going over the cap (27-11: 35 % of text with a 10 % cap)
+            avoid = list(idea.mustNotShow) if idea is not None else []
+            fitting = [d for d in donors if uses.get(d.id, 0) < max_uses and d.media.src not in beside
+                       and footage(d) >= MIN_RATE * shot.durationInFrames
+                       and (idea_of(d) is None or idea_of(d).kind == "ambiente")
+                       and not (idea_of(d) is not None and same_people(idea_of(d).mustShow, avoid, aliases))]
+            neutral = bool(fitting)
         if not fitting:
+            if used + shot.durationInFrames > allowed and not title:
+                counts["fuera_de_tope"] += 1
             used += shot.durationInFrames
             previous_text = True
             counts["sin_donante"] += 1
@@ -1448,7 +1463,7 @@ def limit_text(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
         rate = min(1.0, footage(donor) / shot.durationInFrames)
         shots[index] = shot.model_copy(update={"media": donor.media.model_copy(update={
             "zoom": push_in(donor.media, shot.durationInFrames), "rate": math.floor(rate * 1000) / 1000 if rate < 0.999 else None})})
-        counts["gancho" if in_hook else "prestados"] += 1
+        counts["gancho" if in_hook else "neutros" if neutral else "prestados"] += 1
         previous_text = False
     return counts
 
@@ -1637,38 +1652,75 @@ def board_words(shot_text: str, idea: Any = None, many: bool = False) -> str:
 
     if idea is not None:
         if idea.kind == "rotulo":
-            return " ".join(shot_text.split()).strip(" :.,").upper()[:60]
+            return _fit(" ".join(shot_text.split()).strip(" :.,").upper())
         if idea.screenLine:
-            return idea.screenLine.replace("*", "").strip()[:60]
+            return _fit(idea.screenLine.replace("*", "").strip())
         if idea.facts:
-            return str(idea.facts[0]).strip()[:60]
-    return key_phrase(shot_text, most=10 if many else 8) or " ".join(shot_text.split()).strip(" :.,").upper()[:60]
+            return _fit(str(idea.facts[0]).strip())
+    return key_phrase(shot_text, most=10 if many else 8) or _fit(" ".join(shot_text.split()).strip(" :.,").upper())
+
+
+def _fit(text: str, most: int = 60) -> str:
+    """At most `most` characters, cut between words (27-11: a goodbye read aloud became boards cut mid-word)."""
+
+    text = " ".join(text.split())
+    if len(text) <= most:
+        return text
+    cut = text[:most + 1].rsplit(" ", 1)[0] if " " in text[:most + 1] else text[:most]
+    return whole_phrase(cut) or cut
+
+
+def _sentence_around(shots: list[TimelineShot], first: int, last: int) -> str:
+    """The whole sentence a stretch of shots belongs to: the shots before it until one ends a sentence, and after it
+    until it ends."""
+
+    ends = lambda t: t.rstrip().endswith((".", "!", "?", "…", "»"))   # noqa: E731
+    a, b = first, last
+    while a > 0 and not ends(shots[a - 1].text):
+        a -= 1
+    while b + 1 < len(shots) and not ends(shots[b].text):
+        b += 1
+    return " ".join(s.text for s in shots[a:b + 1])
+
+
+def _weak(phrase: str) -> bool:
+    """«Y», «EN SPRING»: a board that says nothing on its own (fewer than two words that carry meaning)."""
+
+    words = [w for w in re.findall(r"\w+", phrase.lower()) if w not in _STOP and len(w) > 2]
+    return len(words) < 2
 
 
 def chalkboards(shots: list[TimelineShot], groups: list[TimelineGroup], fps: int,
-                ideas: dict[str, Any] | None = None) -> list[TimelineGroup]:
+                ideas: dict[str, Any] | None = None, longest_seconds: float = 6.0) -> list[TimelineGroup]:
     """Shots left without footage (timeline.pizarra) show their key words on the chalkboard canvas. Shots in a
     row without footage share ONE card with the key words of the whole stretch (one sentence, not a word per
     3-second shot: «ESTUVO» … «BAJO SU TUTELA»)."""
 
     runs: list[list[TimelineShot]] = []
+    where = {id(s): n for n, s in enumerate(shots)}
     for shot in shots:
         if shot.media is not None or shot.type != "broll" or shot.groupId:
             continue
         start, end = shot.from_, shot.from_ + shot.durationInFrames
         if any(g.from_ < end and start < g.from_ + g.durationInFrames for g in groups):
             continue
-        # one board never stays more than ~6 s (negocio2: the same sentence for 75 s): a long stretch is split and
-        # each part shows the words of what is being said then
+        # one board never stays more than `longest_seconds` (timeline.board_max_seconds; negocio2: the same sentence
+        # for 75 s; 27-11: shots joined into 6 s boards whatever the setting said): a long stretch is split and each
+        # part shows the words of what is being said then
         if (runs and runs[-1][-1].from_ + runs[-1][-1].durationInFrames == start
-                and start - runs[-1][0].from_ < 6 * fps):
+                and end - runs[-1][0].from_ <= longest_seconds * fps + 1):
             runs[-1].append(shot)
         else:
             runs.append([shot])
     out: list[TimelineGroup] = []
     for run in runs:
         text = " ".join(s.text for s in run)
-        phrase = board_words(text, (ideas or {}).get(run[0].id.split("-")[0]), many=len(run) > 1)
+        idea = (ideas or {}).get(run[0].id.split("-")[0])
+        phrase = board_words(text, idea, many=len(run) > 1)
+        if _weak(phrase) and not (idea is not None and (idea.screenLine or idea.kind == "rotulo")):
+            # a piece of a sentence («Y», «en Spring»): the words of the sentence it belongs to (27-11)
+            whole = board_words(_sentence_around(shots, where[id(run[0])], where[id(run[-1])]), None, many=True)
+            phrase = whole if not _weak(whole) else phrase
         if not phrase:
             continue
         words = phrase.split()

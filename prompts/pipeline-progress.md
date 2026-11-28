@@ -922,3 +922,15 @@ Test: `tests/test_arreglo_guion.py`.
   hoy otros nombres; `same_people` los acepta cuando los tenga.
 - Prueba: `tests/test_gancho_sin_texto.py`; `tests/test_text_limit.py` actualizado (antes el resto del gancho se
   quedaba en texto a propósito).
+
+## Revisión 27-11 · D4 el tope de texto y las pizarras
+
+- Ninguna pizarra dura más de `timeline.board_max_seconds` (3 s): `chalkboards` juntaba planos en pizarras de hasta
+  6 s sin mirar el ajuste. Un tramo largo sale en varias pizarras, cada una con lo que se dice entonces.
+- El texto de una pizarra (línea de la idea, dato, rótulo) se corta entre palabras, nunca a media palabra.
+- Sin línea de la idea, un plano que es solo un trozo de frase («Y», «en Spring») enseña las palabras de la frase
+  entera a la que pertenece.
+- Con el tope gastado y nadie que pueda prestar por la regla de siempre, el hueco toma un clip neutro del vídeo (de
+  una idea de ambiente, nunca de una literal ni de quien no debe salir) antes de quedarse en texto. Lo que aún pase
+  del tope se cuenta y se dice en el log («N por encima del tope»). Los rótulos leídos se quedan en texto, como antes.
+- Prueba: `tests/test_tope_texto_real.py`.
