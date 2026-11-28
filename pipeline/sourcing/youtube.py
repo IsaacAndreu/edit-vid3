@@ -116,6 +116,12 @@ STALE_PICK = ("requested_formats", "requested_downloads", "format_id", "format",
               "fps", "tbr", "vbr", "abr", "resolution", "dynamic_range", "container")
 
 
+# a passing failure of the connection or of the proxy's tunnel: the same request again usually works
+TRANSIENT_ERRORS = (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
+                    requests.exceptions.Timeout)
+TRANSIENT_STATUS = (500, 502, 503, 504)
+
+
 def selectable(data: dict[str, Any]) -> dict[str, Any]:
     """The saved details without the extraction's own pick: a format request chooses from `formats` again."""
 
@@ -2445,12 +2451,27 @@ class YouTubeSource:
                 raise RuntimeError(f"yt-dlp download (HLS): HTTP Error {response.status_code}: {response.reason}")
 
             def get(url: str) -> bytes:
-                response = self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies)
-                if response.status_code >= 400:
-                    fail(response)
-                with moved_lock:
-                    moved[0] += len(response.content)
-                return response.content
+                """The media playlist or the init segment: a passing error (a 502 of the proxy's tunnel, a cut
+                connection) is asked again in the same session, like the segments (27-11: one 502 lost the clip)."""
+
+                for attempt in range(retries + 1):
+                    try:
+                        response = self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies)
+                        content = response.content
+                    except TRANSIENT_ERRORS as error:
+                        if attempt >= retries:
+                            raise RuntimeError(f"yt-dlp download (HLS): {type(error).__name__}: {error}") from None
+                        time.sleep(0.5 * (attempt + 1))
+                        continue
+                    if response.status_code in TRANSIENT_STATUS and attempt < retries:
+                        time.sleep(0.5 * (attempt + 1))
+                        continue
+                    if response.status_code >= 400:
+                        fail(response)
+                    with moved_lock:
+                        moved[0] += len(content)
+                    return content
+                raise AssertionError("inalcanzable")
 
             def segment(url: str, path: Path) -> Path:
                 """One segment to disk, streamed (never whole in memory), retried on a passing error; one already
@@ -2680,25 +2701,55 @@ class YouTubeSource:
 
     def _range_get(self, way: int, proxies: Any, url: str, headers: dict[str, str], first: int,
                    last: int) -> tuple[bytes, int, str]:
-        """bytes [first, last] of a format's URL through this video's session: (body, HTTP code, Content-Type)."""
+        """bytes [first, last] of a format's URL through this video's session: (body, HTTP code, Content-Type).
+
+        A passing error (a 502 of the proxy's tunnel, a connection cut halfway) is asked again in the same session,
+        `range_retries` (2) times, for the bytes still missing only (27-11: one cut lost the clip). A refusal
+        (403/404/410) is never asked again here: the caller refreshes the links."""
 
         wanted = last - first + 1
-        response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={first}-{last}"},
-                                           timeout=60, proxies=proxies, stream=True)
-        try:
-            status, kind = response.status_code, str(response.headers.get("Content-Type") or "")
-            if status >= 400:
-                raise RuntimeError(f"yt-dlp download (rango): HTTP Error {status}: {response.reason}")
-            if status != 206 and first > 0:
-                raise NoIndex(f"el servidor no atiende peticiones Range (HTTP {status} {kind})")
-            body = bytearray()
-            for block in response.iter_content(256 * 1024):
-                body += block
-                if len(body) >= wanted:
-                    break
-        finally:
-            response.close()
-        self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(body)
+        retries = max(0, int(self.cfg.get("range_retries", 2)))
+        body = bytearray()
+        status, kind, attempts = 0, "", 0
+        while len(body) < wanted:
+            low = first + len(body)
+            try:
+                response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={low}-{last}"},
+                                                   timeout=60, proxies=proxies, stream=True)
+            except TRANSIENT_ERRORS as error:
+                if attempts >= retries:
+                    raise RuntimeError(f"yt-dlp download (rango): {type(error).__name__}: {error}") from None
+                attempts += 1
+                time.sleep(0.5 * attempts)
+                continue
+            got = 0
+            try:
+                status, kind = response.status_code, str(response.headers.get("Content-Type") or "")
+                if status in TRANSIENT_STATUS and attempts < retries:
+                    attempts += 1
+                    time.sleep(0.5 * attempts)
+                    continue
+                if status >= 400:
+                    raise RuntimeError(f"yt-dlp download (rango): HTTP Error {status}: {response.reason}")
+                if status != 206 and low > 0:
+                    raise NoIndex(f"el servidor no atiende peticiones Range (HTTP {status} {kind})")
+                try:
+                    for block in response.iter_content(256 * 1024):
+                        body += block
+                        got += len(block)
+                        if len(body) >= wanted:
+                            break
+                except TRANSIENT_ERRORS as error:
+                    if attempts >= retries:
+                        raise RuntimeError(f"yt-dlp download (rango): cortado a {len(body)} de {wanted} bytes "
+                                           f"({type(error).__name__})") from None
+                    attempts += 1
+                    time.sleep(0.5 * attempts)
+                    continue
+            finally:
+                response.close()
+                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + got
+            break                     # complete, or the file ended before `last` (the caller decides)
         return bytes(body[:wanted]), status, kind
 
     def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:

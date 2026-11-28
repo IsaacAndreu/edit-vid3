@@ -788,3 +788,12 @@ Test: `tests/test_arreglo_guion.py`.
 - Coste: unos 11 000 tokens más por tanda del planner de planos; con Haiku y la caché del prompt, céntimos por vídeo.
 - Prueba: `tests/test_catalogo_juego.py` (con una página inventada: el texto real no entra en el repositorio).
 - Sin comprobar en el servidor: que llegue a gta.wiki (aquí sí); con vídeos reales de leonida-echt.
+
+## Revisión 27-11 · C1 un 502 o un corte no pierde el clip
+
+- La lista de HLS y su segmento de arranque se piden otra vez ante un fallo pasajero (502/503/504 del túnel, conexión
+  cortada, tiempo agotado), como ya se hacía con los segmentos: `hls_segment_retries` (2).
+- `_range_get` (rangos de bytes) reintenta en la misma sesión `sourcing.youtube.range_retries` (2) veces y pide solo
+  los bytes que faltan. Un rechazo (403/404/410) nunca se reintenta ahí: refresca los enlaces quien llama, como antes.
+- Prueba: `tests/test_descargas_reintentos.py`.
+- No cambiado: si el tramo HD falla de verdad tras sus reintentos, el plano sigue contando como fallido en ingest.
