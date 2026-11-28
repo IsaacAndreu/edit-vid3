@@ -699,3 +699,11 @@ Test: `tests/test_arreglo_guion.py`.
 - Sin comprobar en el servidor: el umbral de -35 dB con las grabaciones reales (una con mucho ruido de fondo no
   tendría «silencio» y no se le quitaría ninguna pausa: el log lo dice; `align.silence_db: -30`).
 
+
+## Revisión 27-11 · A10 una grabación tuya nunca se toma por voz sintética
+
+- Confirmado en el código: «sintética» se deducía de que existiera `voz.genaipro.json`, aunque la voz fuera una
+  grabación subida después. Ahora la voz es sintética solo si ese registro es al menos tan nuevo como la voz (la
+  original, si el recorte de pausas hizo copia); lo recordado de una vuelta anterior vale solo para esa misma voz.
+- Al reescribir el guion se borran también las copias de la voz anterior.
+- Prueba: `tests/test_voz_grabada.py`.
