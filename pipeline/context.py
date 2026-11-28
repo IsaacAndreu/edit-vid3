@@ -110,7 +110,7 @@ def safe_name(name: str, what: str = "vídeo") -> str:
     control characters. Raises ValueError otherwise (every name that comes from a URL or a form goes through it)."""
 
     text = str(name or "")
-    if (not text or len(text) > 200 or text.startswith(".") or any(c in text for c in "/\\")
+    if (not text or len(text) > 200 or text.startswith((".", "-")) or any(c in text for c in "/\\")
             or any(ord(c) < 32 or ord(c) == 127 for c in text)):
         raise ValueError(f"Nombre de {what} no válido")
     return text

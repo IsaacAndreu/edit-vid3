@@ -1262,7 +1262,7 @@ def retry(root: Path, slug: str) -> dict[str, Any]:
     if watcher_alive(root):
         ask_retry(root, slug)
         return {"ok": True, "message": "El vigilante lo vuelve a intentar en su próxima vuelta (unos minutos)."}
-    background(root, f"video-{slug}", ["--slug", slug])
+    background(root, f"video-{slug}", [f"--slug={slug}"])
     return {"ok": True, "started": True, "message": "En marcha desde el estudio: sigue avanzando aunque cierres todo."}
 
 
@@ -1474,19 +1474,30 @@ def settings(root: Path, body: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 _JOBS: dict[str, subprocess.Popen] = {}
+_OWNERS: dict[str, str] = {}            # job name → the partner who started it ("" you)
+_PERSON = threading.local()             # who sent the request this thread is answering (set in do_POST)
 
 
 def background(root: Path, name: str, args: list[str]) -> dict[str, Any]:
-    """`python main.py <args>` in the background, one per name; its output in out/_tareas/<name>.log."""
+    """`python main.py <args>` in the background, one per name; its output in out/_tareas/<name>.log. Every value goes
+    glued to its option (`--opción=valor`). A partner: one job of each kind at a time and `socios.trabajos_dia`."""
 
+    from . import limites
+
+    limites.check_args(args)
     job = _JOBS.get(name)
     if job is not None and job.poll() is None:
         return {"ok": True, "running": True, "already": True}
+    who = str(getattr(_PERSON, "who", "") or "")
+    if who:
+        theirs = [limites.kind(n) for n, j in list(_JOBS.items()) if _OWNERS.get(n) == who and j.poll() is None]
+        limites.charge(root, who, theirs, limites.kind(name))
     folder = root / "out" / "_tareas"
     folder.mkdir(parents=True, exist_ok=True)
     log = (folder / f"{name}.log").open("w", encoding="utf-8")
     _JOBS[name] = subprocess.Popen([sys.executable, str(root / "main.py"), *args], cwd=root, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
+    _OWNERS[name] = who
     return {"ok": True, "running": True}
 
 
@@ -1505,11 +1516,14 @@ def ai_thumbnail(root: Path, slug: str, body: dict[str, Any]) -> dict[str, Any]:
     find_video(root, slug)
     if not (root / "out" / slug / "video-final.mp4").is_file() and not (root / "out" / slug / "fotogramas").is_dir():
         raise ValueError("El vídeo aún no está hecho: las miniaturas salen de sus fotogramas")
-    refs = [r.strip() for r in re.split(r"[\s,]+", str(body.get("refs") or "")) if r.strip()][:3]
-    args = ["--miniatura-ia", slug, *[x for r in refs for x in ("--ref", r)],
-            "--cuantas", str(max(1, min(4, int(body.get("count") or 1))))]
+    from .miniatura_ia import video_id
+
+    # only YouTube links or ids, as their id: never a file of the server nor an option
+    refs = [v for r in re.split(r"[\s,]+", str(body.get("refs") or "")) if (v := video_id(r))][:3]
+    args = [f"--miniatura-ia={slug}", *[f"--ref={r}" for r in refs],
+            f"--cuantas={max(1, min(4, int(body.get('count') or 1)))}"]
     if str(body.get("text") or "").strip():
-        args += ["--texto", str(body["text"]).strip()[:80]]
+        args.append(f"--texto={str(body['text']).strip()[:80]}")
     return background(root, f"miniatura-ia-{slug}", args)
 
 
@@ -1547,7 +1561,7 @@ def fix_video(root: Path, slug: str) -> dict[str, Any]:
         raise ValueError("No hay clips marcados como incorrectos en este vídeo")
     if running(_json(root / "work" / slug / "current.json")):
         raise ValueError("Este vídeo ya se está haciendo")
-    return background(root, f"corregir-{slug}", ["--slug", slug, "--force", "fallback"])
+    return background(root, f"corregir-{slug}", [f"--slug={slug}", "--force=fallback"])
 
 
 def radar_state(root: Path) -> dict[str, Any]:
@@ -2442,6 +2456,14 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     and self.headers.get("X-Estudio") != "1"):
                 return self._fail(403, "Origen no permitido")
             mine = usuarios.channels_of(root, who) if who else []
+            _PERSON.who = who or ""
+            if who and (upload or clip_upload) and length > 0:     # a partner's own uploads have a quota
+                from . import limites
+
+                try:
+                    limites.check_disk(root, who, mine, length)
+                except limites.Limit as error:
+                    return self._fail(413, str(error))
             if path.startswith("/editor/"):                # the editor's changes, uploads, apply and render
                 data = self.rfile.read(length)
                 if self.headers.get("Content-Type") == "application/octet-stream":
@@ -2501,6 +2523,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                 break
                             f.write(chunk)
                             left -= len(chunk)
+                    from . import limites
+
+                    limites.own_upload(root, who or "", ticket)
                     return self._ok({"file": ticket})
                 if match := re.fullmatch(r"/api/video/([^/]+)/voz", path):
                     return self._ok(save_voice(root, urllib.parse.unquote(match.group(1)), self.rfile.read(length)))
@@ -2571,6 +2596,9 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         found = search_videos(root, str(body.get("q") or "")[:200000])
                         return self._ok({**found, "results": [r for r in found["results"] if r.get("channel") in mine], "ideas": []})
                 if path == "/api/videos":
+                    from . import limites
+
+                    limites.charge(root, who or "")       # a new video is paid work: it counts in the partner's day
                     return self._ok(create_video(root, body, who or ""))
                 if path == "/api/copia":                   # «Hacer copia ahora»
                     from . import copia
@@ -2650,19 +2678,19 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         raise ValueError("Canal o vídeo no válido")
                     if match.group(2) == "saltar":
                         return self._ok(autopilot.skip(root, channel, video_id))
-                    return self._ok(background(root, f"piloto-{channel}", ["--autopiloto", f"{channel}:{video_id}"]))
+                    return self._ok(background(root, f"piloto-{channel}", [f"--autopiloto={channel}:{video_id}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/capcut", path):
                     slug = urllib.parse.unquote(match.group(1))
                     if not (root / "out" / slug / "video-final.mp4").is_file():
                         raise ValueError("Primero tiene que estar el vídeo terminado")
                     (root / "out" / slug / f"{slug}-capcut.zip").unlink(missing_ok=True)
-                    return self._ok(background(root, f"capcut-{slug}", ["--capcut", slug]))
+                    return self._ok(background(root, f"capcut-{slug}", [f"--capcut={slug}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/exportar", path):
                     slug = urllib.parse.unquote(match.group(1))
                     if not (root / "out" / slug / "video-final.mp4").is_file():
                         raise ValueError("Primero tiene que estar el vídeo terminado")
                     (root / "out" / slug / f"{slug}-premiere.zip").unlink(missing_ok=True)
-                    return self._ok(background(root, f"exportar-{slug}", ["--exportar", slug]))
+                    return self._ok(background(root, f"exportar-{slug}", [f"--exportar={slug}"]))
                 if match := re.fullmatch(r"/api/video/([^/]+)/pilot", path):     # {on, reference}: the scene pilot
                     from . import piloto
 
@@ -2747,7 +2775,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     channel = str(body.get("channel") or "")
                     if not CHANNEL.match(channel):
                         raise ValueError("Canal no válido")
-                    return self._ok(background(root, "compilacion", ["--compilar", channel]))
+                    return self._ok(background(root, "compilacion", [f"--compilar={channel}"]))
                 if path == "/api/scripts/draft":           # {channel, idea: {title, note…}} → a first draft
                     from . import organizar
 
@@ -2781,7 +2809,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                         request["file"] = str(folder / f"apertura-{ticket}.mp4")
                     (folder / f"apertura-{ticket}.json").write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
                     (folder / f"apertura-{ticket}.resultado.json").unlink(missing_ok=True)
-                    background(root, f"apertura-{ticket}", ["--apertura", str(folder / f"apertura-{ticket}.json")])
+                    background(root, f"apertura-{ticket}", [f"--apertura={folder / f'apertura-{ticket}.json'}"])
                     return self._ok({"token": ticket})
                 if path == "/api/hook":                    # {title, script, channel}: before recording
                     from . import hook
@@ -2842,7 +2870,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
 
                     if not count and not wrong_shots(root / "work" / slug):
                         raise ValueError("No has elegido ninguna opción todavía")
-                    return self._ok({**background(root, f"corregir-{slug}", ["--slug", slug, "--force", "fallback"]),
+                    return self._ok({**background(root, f"corregir-{slug}", [f"--slug={slug}", "--force=fallback"]),
                                      "applied": count})
                 if match := re.fullmatch(r"/api/decisions/([^/]+)/([A-Za-z0-9_-]+)", path):
                     from . import decisions
@@ -2863,7 +2891,7 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     topic = " ".join(str(body.get("topic") or "").split())[:120]
                     if len(topic) < 3:
                         raise ValueError("Escribe un tema")
-                    return self._ok(background(root, "huecos-idiomas", ["--huecos-idiomas", topic]))
+                    return self._ok(background(root, "huecos-idiomas", [f"--huecos-idiomas={topic}"]))
                 if path == "/api/material-primero/nuevo":           # «material primero»: a video from its title, then its research
                     from . import expediente
 
@@ -2871,18 +2899,18 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                              str(body.get("kind") or "top"), int(body.get("count") or 5),
                                              float(body.get("minutes") or 6), str(body.get("tone") or ""),
                                              [str(l) for l in (body.get("links") or [])])
-                    return self._ok({"slug": slug, **background(root, f"expediente-{slug}", ["--expediente", slug])})
+                    return self._ok({"slug": slug, **background(root, f"expediente-{slug}", [f"--expediente={slug}"])})
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/investigar", path):    # the research again
                     slug = urllib.parse.unquote(match.group(1))
-                    return self._ok(background(root, f"expediente-{slug}", ["--expediente", slug]))
+                    return self._ok(background(root, f"expediente-{slug}", [f"--expediente={slug}"]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloques", path):   # the script by blocks
                     slug = urllib.parse.unquote(match.group(1))
-                    return self._ok(background(root, f"bloques-{slug}", ["--bloques", slug]))
+                    return self._ok(background(root, f"bloques-{slug}", [f"--bloques={slug}"]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/montar", path):   # {confirm}: after the MB
                     slug = urllib.parse.unquote(match.group(1))
                     if not body.get("confirm"):
                         raise ValueError("Confirma antes los MB que va a bajar por el proxy")
-                    return self._ok(background(root, f"montar-{slug}", ["--montar", slug]))
+                    return self._ok(background(root, f"montar-{slug}", [f"--montar={slug}"]))
                 if match := re.fullmatch(r"/api/material-primero/([^/]+)/bloque", path):    # {position, action, ref}
                     from . import bloques
                     from .context import RunContext as BlocksContext    # an alias: never shadow the handler's name
@@ -2892,15 +2920,15 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                                                  str(body.get("ref") or "") or None))
                 if path == "/api/formula/analizar":         # {links, niche}: the formula report of 5-8 references
                     links = str(body.get("links") or "")
-                    return self._ok(background(root, "formula", ["--formula", links, "--nicho",
-                                                                 str(body.get("niche") or "")[:80]]))
+                    return self._ok(background(root, "formula", [f"--formula={links}",
+                                                                 f"--nicho={str(body.get('niche') or '')[:80]}"]))
                 if path == "/api/formula/montaje":          # {key, confirm}: only after seeing the MB through the proxy
                     from . import formula
 
                     report = formula.load(root, str(body.get("key") or ""))
                     if not body.get("confirm"):
                         return self._ok(formula.montage(root, report, confirm=False))
-                    return self._ok(background(root, "formula-montaje", ["--formula-montaje", report["key"]]))
+                    return self._ok(background(root, "formula-montaje", [f"--formula-montaje={report['key']}"]))
                 if path == "/api/formula/crear":            # {key, name}: the channel from the formula
                     from . import formula
 
@@ -2952,8 +2980,12 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                     channel = urllib.parse.unquote(match.group(1))
                     if channel not in channels(root):
                         return self._fail(404, "No existe")
-                    return self._ok(background(root, f"canal-{channel}", ["--mi-canal", channel]))
-            except (ValueError, FileExistsError) as error:
+                    return self._ok(background(root, f"canal-{channel}", [f"--mi-canal={channel}"]))
+            except ValueError as error:
+                from .limites import Limit
+
+                return self._fail(429 if isinstance(error, Limit) else 400, str(error))
+            except FileExistsError as error:
                 return self._fail(400, str(error))
             except FileNotFoundError:
                 return self._fail(404, "No existe")

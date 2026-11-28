@@ -463,7 +463,7 @@ class RetryTests(unittest.TestCase):
             with patch("pipeline.web.background", side_effect=lambda r, name, args: started.append(args) or {"ok": True}):
                 out = web.retry(root, "V1")
                 self.assertTrue(out.get("started"))
-                self.assertEqual(started, [["--slug", "V1"]])
+                self.assertEqual(started, [["--slug=V1"]])
                 (root / "out").mkdir(exist_ok=True)
                 (root / "out" / "_vigilar.latido").write_text("x")              # a live watcher takes it instead
                 self.assertFalse(web.retry(root, "V1").get("started"))

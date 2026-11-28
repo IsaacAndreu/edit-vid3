@@ -688,6 +688,9 @@ watch:
   continue_without_youtube: false  # con YouTube en pausa, los vídeos que aún lo necesitan siguen sin él (pipeline/sin_youtube.py):
                                    # ninguna petición a YouTube, se reutiliza lo ya hecho y solo se termina si la cobertura no es
                                    # peor que la habitual del canal; si no, espera a YouTube. Mejor por canal (canales/<canal>.yaml)
+socios:                            # lo que puede lanzar cada socio del estudio (tú no tienes estos límites)
+  # trabajos_dia: 30               # tareas (apertura, miniatura IA, reintentos, CapCut…) y vídeos nuevos al día; una de cada tipo a la vez
+  # disco_gb: 30                   # lo que ocupan sus vídeos en materiales/ y sus subidas de apertura
 without_youtube:                   # cuándo un vídeo hecho sin YouTube sigue al montaje (se compara con los vídeos del canal hechos con él)
   fallback_margin: 0.05            # planos al relleno: como mucho lo habitual del canal + 5 puntos
   reference_videos: 10             # últimos vídeos terminados del canal con los que se compara

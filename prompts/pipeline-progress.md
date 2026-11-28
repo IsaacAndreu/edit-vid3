@@ -617,3 +617,25 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_seguridad_origen.py`; las pruebas de la web y de socios mandan la cabecera.
 - Sin comprobar en el servidor: que el proxy delante del estudio no quite esas cabeceras (si un cambio da
   «Origen no permitido», es eso).
+
+## Revisión 27-11 · seguridad 6
+
+- `pipeline/limites.py`: cada socio, una tarea de cada tipo a la vez (apertura, miniatura IA, reintento, CapCut…) y
+  como mucho `socios.trabajos_dia` (30) tareas y vídeos nuevos al día; lo que pasa de ahí es un 429 con el motivo.
+  Tú no tienes estos límites. La cuenta del día vive en `out/_tareas/socios.json` (si se rompe, se empieza de cero).
+- Todo valor que va a la línea de órdenes de `main.py` va pegado a su opción (`--opción=valor`): `background`
+  rechaza cualquier valor suelto, así nada que escriba alguien se lee como opción. Las referencias de la miniatura con
+  IA solo pueden ser enlaces o ids de YouTube (antes también rutas de archivo). Ningún nombre de vídeo puede empezar
+  por «-».
+- Cuota de disco por socio (`socios.disco_gb`, 30): sus vídeos en `materiales/` más sus subidas de apertura; una
+  subida que la pasaría es un 413 antes de leerla.
+- Prueba: `tests/test_seguridad_trabajos.py` (seis aperturas seguidas → una; tope del día con la cuenta rota;
+  opciones coladas en las referencias y el texto; cuota).
+- Queda fuera: las llamadas de pago que no son tareas (probar voz, gancho, escenas) siguen sin tope propio por socio;
+  las frena el tope de gasto del día.
+- Sin comprobar en el servidor: cuánto tarda medir el disco de un socio con muchos vídeos (se mide solo al subir).
+
+## Revisión 27-11 · seguridad 9 (solo nota)
+
+- El estudio baja `main` y se reinicia solo: quien pueda subir a `main` ejecuta código en el servidor. La única
+  barrera es la protección de la rama en GitHub (revisión obligatoria, sin push directo). No hay cambio de código.
