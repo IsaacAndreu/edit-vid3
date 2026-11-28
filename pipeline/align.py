@@ -41,19 +41,72 @@ MAX_PAUSE_SECONDS = 4.0         # a longer pause between two words of the script
 PAUSE_KEEP_SECONDS = 1.0        # what is left of it
 
 
-def long_pauses(words: list[Word], max_pause: float = MAX_PAUSE_SECONDS,
-                keep: float = PAUSE_KEEP_SECONDS) -> list[tuple[float, float]]:
+SILENCE_DB = -35.0              # quieter than this is silence (a voice speaking is around -20 dB)
+PAUSES_FILE = "pausas.json"     # the long pauses left on purpose (not silent, or silence unknown): not redone
+
+
+def _minus(spans: list[tuple[float, float]], holes: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    for h0, h1 in holes:
+        spans = [part for a, b in spans for part in ((a, min(b, h0)), (max(a, h1), b)) if part[1] - part[0] > 1e-3]
+    return spans
+
+
+def _within(spans: list[tuple[float, float]], allowed: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    return [(max(a, c), min(b, d)) for a, b in spans for c, d in allowed if min(b, d) - max(a, c) > 1e-3]
+
+
+def long_pauses(words: list[Word], max_pause: float = MAX_PAUSE_SECONDS, keep: float = PAUSE_KEEP_SECONDS,
+                heard: list[dict] | None = None,
+                silent: list[tuple[float, float]] | None = None) -> list[tuple[float, float]]:
     """The stretches (start, end) of the voice to cut: pauses between two words longer than `max_pause`, each one
     left at `keep` seconds. Only two shots can share a pause (the one before and the one after, ≤ 5 s each), so a
     longer one can never be cut into shots (newgym11: 27 s of nothing after «nada.» made a 13.67 s shot and the
-    planner fail on every retry)."""
+    planner fail on every retry).
+
+    `silent` (silencedetect's spans) and `heard` (every word Whisper heard, in the script or not): only what is both
+    silent and unheard is cut. A sentence said that is not in guion.txt is not a pause (27-11: 16 of 18 words said
+    were cut out)."""
 
     cuts: list[tuple[float, float]] = []
+    holes = [(float(h["start"]) - 0.1, min(float(h["end"]), float(h["start"]) + WORD_SECONDS) + 0.1)
+             for h in heard or [] if h.get("start") is not None and h.get("end") is not None]
     for a, b in zip(words, words[1:]):
         end = min(a.end, a.start + WORD_SECONDS)
-        if max_pause > 0 and b.start - end > max_pause:
-            cuts.append((round(end + keep / 2, 3), round(b.start - keep / 2, 3)))
+        if not (max_pause > 0 and b.start - end > max_pause):
+            continue
+        free = [(end, b.start)]
+        if silent is not None:
+            free = _within(free, silent)
+        free = _minus(free, holes)
+        for start, stop in free:
+            if stop - start > max_pause:
+                cuts.append((round(start + keep / 2, 3), round(stop - keep / 2, 3)))
     return cuts
+
+
+def silent_spans(audio, db: float = SILENCE_DB, seconds: float = MAX_PAUSE_SECONDS) -> list[tuple[float, float]] | None:
+    """Where the voice is really silent (ffmpeg silencedetect, at least `seconds` long), or None when it cannot tell."""
+
+    try:
+        done = subprocess.run(["ffmpeg", "-hide_banner", "-nostdin", "-i", str(audio), "-af",
+                               f"silencedetect=noise={db}dB:d={max(0.1, seconds)}", "-f", "null", "-"],
+                              capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    import re
+
+    spans, start = [], None
+    for line in done.stderr.splitlines():
+        if (found := re.search(r"silence_start: (-?[\d.]+)", line)):
+            start = max(0.0, float(found.group(1)))
+        elif (found := re.search(r"silence_end: ([\d.]+)", line)) and start is not None:
+            spans.append((start, float(found.group(1))))
+            start = None
+    if start is not None:                                   # silent to the end
+        spans.append((start, 1e9))
+    return spans
 
 
 def shifted(t: float, cuts: list[tuple[float, float]]) -> float:
@@ -339,7 +392,7 @@ def run(ctx: RunContext) -> None:
                                       raw=spoken, provider="genaipro", model="subtitles", language=language)
         if words_file.alignment.matchRatio >= max(float(cfg.get("min_match_ratio", 0.8)), 0.85):
             print(f"   Tiempos de las palabras de GenAIPro (sin Whisper): {len(spoken['words'])} palabras")
-            _finish(ctx, words_file)
+            _finish(ctx, words_file, heard=spoken["words"])
             return
         print(f"   Los tiempos de GenAIPro solo cuadran un {words_file.alignment.matchRatio:.0%}: uso Whisper")
 
@@ -381,10 +434,10 @@ def run(ctx: RunContext) -> None:
             f"Solo el {stats.matchRatio:.0%} de las palabras del guion se oyen en la voz "
             f"(mínimo {min_ratio:.0%}). ¿Corresponden guion.txt y voz.mp3?"
         )
-    _finish(ctx, words_file)
+    _finish(ctx, words_file, heard=raw["words"])
 
 
-def _finish(ctx: RunContext, words_file: WordsFile) -> None:
+def _finish(ctx: RunContext, words_file: WordsFile, heard: list[dict] | None = None) -> None:
     stats = words_file.alignment
     min_ratio = float(ctx.section("align").get("min_match_ratio", 0.8))
     if stats.matchRatio < min_ratio:
@@ -392,7 +445,16 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
             f"Solo el {stats.matchRatio:.0%} de las palabras del guion se oyen en la voz "
             f"(mínimo {min_ratio:.0%}). ¿Corresponden guion.txt y voz.mp3?"
         )
-    cuts = long_pauses(words_file.words, float(ctx.section("align").get("max_pause_seconds", MAX_PAUSE_SECONDS)))
+    cfg = ctx.section("align")
+    max_pause = float(cfg.get("max_pause_seconds", MAX_PAUSE_SECONDS))
+    keep = float(cfg.get("pause_keep_seconds", PAUSE_KEEP_SECONDS))
+    cuts: list[tuple[float, float]] = []
+    if long_pauses(words_file.words, max_pause, keep):
+        silent = silent_spans(ctx.materials_dir / "voz.mp3", float(cfg.get("silence_db", SILENCE_DB)), max_pause)
+        if silent is None:
+            print("   Aviso: no sé dónde está el silencio de la voz (ffmpeg silencedetect): no quito ninguna pausa")
+        else:
+            cuts = long_pauses(words_file.words, max_pause, keep, heard=heard, silent=silent)
     if cuts:
         # the voice itself loses them (the original stays as voz.original.mp3), so picture and sound stay together
         audio = ctx.materials_dir / "voz.mp3"
@@ -412,6 +474,11 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
             temporary.unlink(missing_ok=True)
             raise RuntimeError(f"No se pudieron quitar las pausas largas de la voz (salió de {got:.1f} s y debía "
                                f"quedar en {expected:.1f} s): pon align.max_pause_seconds: 0 para dejarlas")
+    kept = long_pauses(words_file.words, max_pause, keep)
+    if kept:
+        print("   Pausas largas que se quedan (con voz dentro o sin silencio de verdad): "
+              + ", ".join(f"{b - a:.1f} s en {a:.0f} s" for a, b in kept))
+    ctx.write_json(PAUSES_FILE, {"kept": [[a, b] for a, b in kept]})
     ctx.write_json(OUTPUT, words_file.model_dump())
     print(
         f"   {stats.scriptWords} palabras del guion, {stats.matchRatio:.1%} alineadas con el audio; "
@@ -424,8 +491,15 @@ def _finish(ctx: RunContext, words_file: WordsFile) -> None:
 def validate(ctx: RunContext) -> bool:
     words_file = WordsFile.model_validate(ctx.read_json(OUTPUT))
     # made before the tail was trimmed: again (Whisper's transcription is cached, so it costs nothing)
-    if long_pauses(words_file.words, float(ctx.section("align").get("max_pause_seconds", MAX_PAUSE_SECONDS))):
-        return False                        # a pause no shot can be cut in: the voice loses it
+    cfg = ctx.section("align")
+    pauses = long_pauses(words_file.words, float(cfg.get("max_pause_seconds", MAX_PAUSE_SECONDS)),
+                         float(cfg.get("pause_keep_seconds", PAUSE_KEEP_SECONDS)))
+    try:
+        left = [tuple(p) for p in (ctx.read_json(PAUSES_FILE) or {}).get("kept") or []]
+    except Exception:
+        left = []
+    if any(not any(abs(a - k[0]) < 0.05 and abs(b - k[1]) < 0.05 for k in left) for a, b in pauses):
+        return False                        # a pause no shot can be cut in, not looked at yet: the voice loses it
     voice, backup = ctx.materials_dir / "voz.mp3", ctx.materials_dir / "voz.original.mp3"
     if backup.is_file() and voice.is_file() and abs(_seconds(voice) - _seconds(backup)) < 0.5:
         return False                        # the old cut (aselect) moved the words but not the voice: again, properly

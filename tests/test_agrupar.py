@@ -78,8 +78,11 @@ def test_a_title_read_aloud_is_not_searched_nor_covered_with_footage():
     from pipeline.timeline import fill_empty_shots
 
     media = {"src": "media/a.mp4", "kind": "video", "source": "youtube", "credit": "Fuente: x"}
+    # the donor is not the shot right next to it (that file is never lent to its neighbour: 27-11)
     shots = [TimelineShot.model_validate({"id": "s001", "type": "broll", "from": 0, "durationInFrames": 60, "text": "SECRETO 4"}),
              TimelineShot.model_validate({"id": "s002", "type": "broll", "from": 60, "durationInFrames": 60, "text": "x",
+                                          "media": {**media, "src": "media/b.mp4"}}),
+             TimelineShot.model_validate({"id": "s003", "type": "broll", "from": 120, "durationInFrames": 60, "text": "x",
                                           "media": media})]
     fill_empty_shots(shots, [], 30, skip={"s001"})
     assert shots[0].media is None                                  # stays for the key-word board

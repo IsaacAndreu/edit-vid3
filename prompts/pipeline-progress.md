@@ -681,3 +681,318 @@ Test: `tests/test_arreglo_guion.py`.
   edad: el vigilante la tiene días seguidos con razón.
 - Una espera de turno de más de `queue.turn_wait_warn_minutes` (120) se avisa una vez, con quién tiene el turno.
 - Prueba: `tests/test_cerrojos_pid.py`.
+
+## Revisión 27-11 · A9 el recorte de pausas no corta voz
+
+- Solo se quita de una pausa larga lo que está en silencio de verdad (ffmpeg `silencedetect`, por debajo de
+  `align.silence_db`, -35 dB) y donde Whisper no oyó ninguna palabra, del guion o no. Una frase dicha que no está en
+  `guion.txt` se queda entera. Si no se puede saber dónde está el silencio, no se quita nada (aviso en el log).
+- Las pausas largas que se quedan se apuntan en `work/<vídeo>/pausas.json`, para que la alineación no se repita en
+  cada vuelta por ellas.
+- Lo que queda de una pausa larga es una opción: `align.pause_keep_seconds` (1 s, como hasta ahora; 4 para
+  respetar las pausas hechas a propósito). No lo he cambiado porque cambia lo que sale en pantalla.
+- Cada voz nueva deja su propia copia: al subirla desde el estudio, `voz.original.mp3` pasa a ser esa voz; la
+  anterior se guarda en `voces-anteriores/` (las 3 últimas) y se borra lo que salió de ella (`voz.sin-pausas.mp3`,
+  `voz.palabras.json`, `voz.error.json`, `voz.genaipro.json`). Una voz sintética nueva también borra las copias de
+  la anterior.
+- Prueba: `tests/test_pausas_reales.py`; las de `tests/test_align.py` usan ahora una voz con silencio de verdad.
+- Sin comprobar en el servidor: el umbral de -35 dB con las grabaciones reales (una con mucho ruido de fondo no
+  tendría «silencio» y no se le quitaría ninguna pausa: el log lo dice; `align.silence_db: -30`).
+
+
+## Revisión 27-11 · A10 una grabación tuya nunca se toma por voz sintética
+
+- Confirmado en el código: «sintética» se deducía de que existiera `voz.genaipro.json`, aunque la voz fuera una
+  grabación subida después. Ahora la voz es sintética solo si ese registro es al menos tan nuevo como la voz (la
+  original, si el recorte de pausas hizo copia); lo recordado de una vuelta anterior vale solo para esa misma voz.
+- Al reescribir el guion se borran también las copias de la voz anterior.
+- Prueba: `tests/test_voz_grabada.py`.
+
+## Revisión 27-11 · A11 el aviso de fallo dice lo que pasó
+
+- `pipeline/aviso_fallo.py`: el aviso «❌ Falló» lleva el tipo de error, la etapa de ESTE intento (la de
+  `current.json` solo si es de este proceso; si no, «antes de la primera etapa»), el número de intento (seguidos y de
+  hoy), lo que costó y duró el intento, y cuándo es el siguiente (en 1 min, en 6 h, mañana por el tope del día, o
+  «Reintentar» si no hay vigilante).
+- No sale para esperas (tope de gasto, cuota, una API sin saldo) ni para reinicios: `main.is_failure`.
+- El mismo fallo del mismo vídeo (tipo, etapa y texto sin números) en 12 h se manda una vez
+  (`out/_avisos_fallo.json`).
+- Prueba: `tests/test_aviso_fallo.py`.
+
+## Revisión 27-11 · A12 gasto que no se contaba
+
+- Voz de AI84 sin precio (`tts.ai84_usd_per_1k_credits` sin poner): se apunta con sus créditos y «unpriced», con
+  aviso en el log, en vez de como gratis.
+- Búsquedas de Serper (fotos en la búsqueda y en el relleno, verificación): se cuentan y se apuntan a
+  `budget.serper_usd_per_search`; sin precio, con su número y «unpriced».
+- El trabajo propio del estudio y del vigilante (radar, ideas, borradores: vídeos «_…») ahora respeta el tope del
+  día antes de cada llamada de pago.
+- Los cortes de Claude se apuntan desde A5.
+- Prueba: `tests/test_gasto_sin_contar.py`.
+- **Falta un dato tuyo**: el precio de AI84 (por 1000 créditos) y el de una búsqueda de Serper según tu plan. No los
+  he puesto porque no los sé; hasta entonces el gasto sale con su cantidad y sin dólares.
+
+## Revisión 27-11 · A13 libros de costes y de cuota con varios procesos
+
+- `costs.json` (gasto de cada vídeo) y `cache/ytapi/quota.json` (cuota de la API de YouTube) se leen y reescriben
+  bajo un cerrojo de archivo (entre procesos, no solo entre hilos), y se escriben con un temporal propio de cada
+  proceso. Antes, con varios vídeos y el estudio a la vez, se perdían apuntes (1 600 unidades gastadas, 604-714
+  apuntadas).
+- Prueba: `tests/test_libros_varios_procesos.py` (cuatro procesos escribiendo a la vez: no se pierde ninguno).
+- En Windows el cerrojo solo es entre hilos (no hay flock), como antes.
+
+## Revisión 27-11 · A14 la puerta del despliegue
+
+- Un nombre mal importado de nuestro propio código dentro de una función (`from .x import nombre_que_no_existe`)
+  ya no pasa la puerta: se mira al importar todo, no cuando esa línea se ejecuta.
+- Si el commit nuevo cambia `requirements.txt` y le falta una dependencia, la puerta la instala antes de bajar el
+  código. Si no se puede, sigue con el código de antes, avisa y lo reintenta a los 30 min (no lo marca como malo).
+- `deploy.require_ci` (apagado): solo se despliega un commit con la CI de GitHub en verde. Si está en rojo, no
+  entra; si aún corre, espera. Apagado, la CI de cada commit se apunta en `out/_puerta.json` («ci»), así puedes ver
+  cuántas veces habría esperado antes de encenderlo.
+- La CI instala `anthropic` y ejecuta el camino de Claude con la librería de verdad (`tests/test_claude_sdk.py`).
+  La prueba de extremo a extremo sigue con deepseek-flash.
+- Pruebas: `tests/test_puerta_ci.py`, `tests/test_claude_sdk.py`.
+- Sin comprobar en el servidor: que el servidor llegue a api.github.com (si no, la CI sale «desconocido» y con
+  `require_ci` encendido no se desplegaría nada: no lo enciendas sin mirar antes `out/_puerta.json`).
+
+## Revisión 27-11 · A15 ficha de intentos por vídeo
+
+- `pipeline/intentos.py`: cada intento de un vídeo se apunta al terminar (bien, con error, en espera o
+  interrumpido) en `work/<vídeo>/intentos.json` (los 50 últimos): hora, estado, etapa, error, segundos, dólares (lo
+  apuntado en el libro de costes desde que empezó) y GB de proxy (lo que el registro de descargas dice que pasó por
+  el proxy desde entonces).
+- En la página del vídeo, debajo de las etapas: «Intentos: N · M sin terminar bien: X min y Y $ perdidos», y cada
+  intento desplegable, el más nuevo arriba. Revisado en escritorio y móvil, sin errores de la página.
+- Prueba: `tests/test_ficha_intentos.py`.
+- Sin comprobar en el servidor: con vídeos reales (los intentos de antes de este cambio no salen: la ficha empieza
+  vacía).
+
+## GTA 6: catálogo de misiones (28-11)
+
+- `pipeline/catalogo_juego.py` + `python main.py --catalogo-juego gta6`: baja de la GTA Wiki (gta.wiki, página
+  «Missions in GTA VI») cada misión con su capítulo, quién la da y qué pasa en ella → `datos/juegos/gta6.json`.
+  Hoy: 92 misiones de historia (todas con descripción) y 71 secundarias (la wiki no las describe: solo nombre y
+  quién las da).
+- Licencia de la wiki: CC BY-NC-SA 3.0 (no comercial). Por eso el catálogo vive solo en el servidor (`datos/` está
+  en .gitignore: nunca en este repositorio público) y solo lo lee el planner para reconocer la misión; nunca sale en
+  pantalla, en títulos ni en descripciones. Decisión del dueño (28-11): guardarlo todo, descripciones incluidas.
+- Con `juego.catalogo: gta6` en el canal, el planner recibe todas las misiones: si una frase cuenta lo que pasa en
+  una misión (la nombre o no), su primera búsqueda es «GTA 6 <misión> mission walkthrough no commentary». Hay vídeos
+  de sobra: unos 20 por misión (p. ej. «Gone Fishing»: walkthroughs de 10-37 min) y walkthroughs del juego entero.
+- Encendido en `leonida-echt` (pedido por el dueño). Un canal creado desde el estudio cuyo tema nombra GTA 6 / GTA VI /
+  Leonida lo enciende solo (`pipeline/canal_juego.py`): así el canal del compañero lo tiene sin tocar nada.
+- Si falta el catálogo, se baja la primera vez que hace falta; si no se puede, el vídeo sigue sin él (aviso en el log).
+- Medirlo: el mismo guion con y sin (`juego: {catalogo: ""}` en el config.yaml del vídeo lo apaga) y comparar en
+  Puntería los planos con gameplay de la misión correcta.
+- Coste: unos 11 000 tokens más por tanda del planner de planos; con Haiku y la caché del prompt, céntimos por vídeo.
+- Prueba: `tests/test_catalogo_juego.py` (con una página inventada: el texto real no entra en el repositorio).
+- Sin comprobar en el servidor: que llegue a gta.wiki (aquí sí); con vídeos reales de leonida-echt.
+
+## Revisión 27-11 · C1 un 502 o un corte no pierde el clip
+
+- La lista de HLS y su segmento de arranque se piden otra vez ante un fallo pasajero (502/503/504 del túnel, conexión
+  cortada, tiempo agotado), como ya se hacía con los segmentos: `hls_segment_retries` (2).
+- `_range_get` (rangos de bytes) reintenta en la misma sesión `sourcing.youtube.range_retries` (2) veces y pide solo
+  los bytes que faltan. Un rechazo (403/404/410) nunca se reintenta ahí: refresca los enlaces quien llama, como antes.
+- Prueba: `tests/test_descargas_reintentos.py`.
+- No cambiado: si el tramo HD falla de verdad tras sus reintentos, el plano sigue contando como fallido en ingest.
+
+## Revisión 27-11 · C2 las ventanas de 360p ya no estropean los rangos de bytes del vídeo
+
+- Los rangos de bytes solo leen formatos DASH de solo vídeo (`bv`, `[acodec=none]`): `bv*` prefería el 18 (360p con
+  audio, sin índice), salía «sin índice» y se cerraban los rangos del vídeo entero.
+- El «sin índice» se apunta por (vídeo, tipo de formato: a360/hd/hdav/au): un 360p sin índice ya no apaga los rangos
+  del HD del mismo vídeo.
+- Prueba: `tests/test_rangos_formato.py`. Para probar la ventana de 360p con la sonda:
+  `python -m pipeline.sonda_rango <vídeo> --formato "bv*[height<=360][vcodec^=avc1]/bv*[height<=360]"`.
+- Solo afecta a quien tiene `sourcing.youtube.byte_ranges: true` (apagado por defecto).
+
+## Revisión 27-11 · C3 un fallo de HLS que no es un rechazo ya no pierde el clip
+
+- Si el tramo por HLS falla por algo que no sea un rechazo (403, bot, inicio de sesión, 429) ni un vídeo que ya no
+  existe —el corte local de ffmpeg, una lista vacía, un 502 tras sus reintentos, un tiempo agotado—, el tramo sigue
+  por rango de bytes y luego entero, como cuando no hay HLS. Los rechazos suben como antes: los lleva la rotación de
+  sesión.
+- El registro de la descarga dice «HLS falló (…): pruebo por rango o entero».
+- Prueba: `tests/test_hls_caida.py`.
+
+## Revisión 27-11 · C4 un clip con el audio o el vídeo cortados ya no se publica como bueno
+
+- `fileio.media_problem` mira la duración de cada pista pedida, no solo la del archivo (que es la de la más larga):
+  2,55 s de audio en un clip de 4,5 s pasaban y se reutilizaban de la caché. Si se pidió sonido, exige pista de audio.
+  Los tramos con sonido (HLS, rango, corte) lo piden.
+- Un segmento HLS o un rango de bytes que llega más corto que lo que anunció el servidor (Content-Length /
+  Content-Range) se pide otra vez (en el rango, solo lo que falta).
+- `urllib3>=2` en requirements.txt (la 1.x no avisaba de una respuesta más corta que su Content-Length).
+- Prueba: `tests/test_clips_cortados.py` (clips de verdad hechos con ffmpeg).
+- Sin comprobar en el servidor: qué urllib3 tiene instalado (`pip show urllib3`; la puerta del despliegue instala
+  requirements.txt cuando cambia, desde A14).
+
+## Revisión 27-11 · C5 tras rotar de sesión, los enlaces de la sesión nueva
+
+- Antes del rango de bytes y de la descarga entera se piden los enlaces de la sesión viva (solo se vuelve a extraer si
+  la sesión cambió, p. ej. por un «bot» durante el intento por HLS). Antes se usaban los viejos: un 403 pagado seguro.
+- Un 403 sobre enlaces de una sesión que ya no es la del vídeo no cuenta para apagar las descargas enteras
+  (`_whole_403 >= 2`) el resto del proceso. Solo con proxy residencial (sin él no hay sesiones).
+- Prueba: `tests/test_enlaces_tras_rotar.py`.
+
+## Revisión 27-11 · C6 el sonido de un tramo es la pista original, no la doblada
+
+- Cuando el vídeo marca una pista de audio original (yt-dlp: «original» en format_note, language_preference 10), las
+  dobladas y autodobladas no entran en la elección de formato (`selectable` → `original_sound`). «wa» (el peor audio)
+  elegía la autodoblada también por idioma: todas las declaraciones de `quotes.py` y `expediente.py`.
+- Sin pista original marcada (la mayoría de vídeos, de un solo idioma) no cambia nada.
+- La descarga por ffmpeg (sin proxy residencial) pide «ba», que yt-dlp ya ordena por idioma: no tenía el fallo.
+- Prueba: `tests/test_pista_original.py` (con la elección real de yt-dlp).
+
+## Revisión 27-11 · C7 resolución antes que fps y códec (opción, apagada)
+
+- Confirmado: `cap_fps` pone `[fps<=30]` delante de todas las resoluciones (una fuente a 60 fps baja a 480p30) y el
+  avc1 delante de la resolución (`hd` se queda con el 360p si es el único avc1 aunque haya 720p en otro códec).
+- `sourcing.youtube.resolution_first` (apagado): ordena por franjas de altura (720, luego 480…) y dentro de cada una
+  avc1 y 30 fps primero. Apagado porque sube los GB de proxy (720p60 es el doble que 480p30) y cambia lo que sale en
+  pantalla. Medirlo: una noche con y otra sin, `python main.py --youtube-stats 1` (GB y alturas de los tramos).
+- Prueba: `tests/test_formato_60fps.py` (elección real de yt-dlp).
+
+## Revisión 27-11 · C8 un vídeo rechazado por «bot» no se paga en cada plano
+
+- «bot» entra en `_blocking_refusals`: por el proxy residencial, durante las horas de su rechazo
+  (`refused_hours_residential`, 3), los planos que lo eligieron pasan a su siguiente candidato sin pedir nada a
+  YouTube. Antes cada plano pagaba otra extracción y otra descarga.
+- Prueba: `tests/test_rechazo_bot.py`.
+
+## Revisión 27-11 · C9 el techo por hora y los tramos que reutilizan extracción (opción, apagada)
+
+- Confirmado: con 3 unidades por tramo, las 1 500 peticiones/hora son 500 tramos/hora para toda la máquina.
+- `sourcing.youtube.reused_download_units` (apagado: 3, como cualquier descarga): lo que cuesta un tramo que reutiliza
+  la extracción ya hecha (solo bytes del servidor de vídeo). Apagado porque cambia el ritmo de peticiones a YouTube.
+  Medirlo antes de bajarlo a 1: bots y 429 por hora con `python main.py --youtube-stats 1`.
+- Prueba: `tests/test_presupuesto_tramos.py`.
+
+## Revisión 27-11 · C10 un 502 del túnel: otra vez en la misma sesión, y sin gastar rotaciones si el proxy está caído
+
+- Un 502/503 al abrir el túnel del proxy residencial se reintenta una vez en la misma sesión antes de rotar (la mayoría
+  pasan). Si fallan así `tunnel_down_sessions` (3) sesiones distintas en 5 minutos, el proxy entero no responde: el
+  vídeo espera unos minutos (ProxyDown, como con el proxy de casa) y no se gastan más rotaciones.
+- Prueba: `tests/test_tunel_502.py`; `tests/test_residential_bot.py` actualizado a este orden.
+
+## Revisión 27-11 · C11 vídeo entero una sola vez, tramos al final del vídeo y causas de los fallos
+
+- Un tramo sin sonido («hd») se corta del vídeo entero ya bajado con sonido («hdav») en vez de bajar el mismo vídeo
+  entero otra vez. Al revés no se puede (al «hd» le falta el audio): si «hd» llega primero, «hdav» sigue bajándolo.
+- Un tramo que pasa del final del vídeo se pide hasta el final (los 2,5 s que hay), en vez de rechazarse por corto.
+- Los resúmenes del propio programa («no eres un bot», «descartado», el túnel del proxy, segmentos incompletos,
+  formatos sin índice…) tienen causa en el registro de descargas en vez de «other». Solo cambia la causa del
+  registro: lo que decide reintentos y rotaciones no cambia.
+- Pruebas: `tests/test_entero_y_final.py`, `tests/test_causas_propias.py`.
+- No comprobado: los 80 mensajes reales del servidor; he clasificado los que escribe el programa. Para ver los que
+  sigan en «other»: `out/<vídeo>/…/youtube_downloads.jsonl`, campo «cause».
+
+## Revisión 27-11 · D1 un plano sin imagen ya no repite el clip de al lado desde el segundo 0
+
+- El préstamo de metraje (`fill_empty_shots`, el camino por defecto) cuenta los usos de cada archivo en todo el
+  montaje, no por pasada (las tres pasadas, de 2, 5 y 6 usos, empezaban de cero: un clip llenó diez huecos seguidos),
+  y nunca presta el archivo del plano que tiene pegado delante o detrás.
+- Un donante más largo que el hueco presta sus últimos segundos (`media.start`, nuevo en el esquema y en Remotion:
+  BRoll, ArchiveFootage, FramedCard), no los mismos del principio.
+- QA suma los planos seguidos del mismo archivo: si pasan del tope de un clip de terceros, bloquea («el mismo clip
+  N s seguidos»); y bloquea un préstamo que pediría más segundos de los que tiene su clip.
+- Cambia lo que sale en pantalla, pero es arreglar un fallo del camino por defecto (el plan lo marca así): un hueco
+  que solo tenía al lado el clip del vecino ahora se queda para la pizarra o el siguiente relleno.
+- Prueba: `tests/test_prestamos_vecinos.py`; `tests/test_qash_style.py` y `tests/test_agrupar.py` dan a cada plano
+  su propio archivo (en un vídeo real cada plano tiene el suyo).
+
+## Revisión 27-11 · D2 el préstamo de metraje mira de quién es el clip
+
+- `fill_empty_shots` (el préstamo por defecto) aplica la misma regla que el tope de texto (`lendable`, antes
+  `may_lend` solo dentro de `limit_text`): con ideas, un hueco solo toma un clip de su idea o de una idea de ambiente
+  de la misma persona (o del mismo capítulo si no hay persona); nunca el clip de una idea literal de otra cosa («boda
+  2023» en un plano de ambiente), nunca a quien el plano no debe enseñar, nunca de otra época. Sin ideas, como antes.
+- Los nombres se comparan por palabras y sin acentos (`same_people`): «Simone» es «Simone Biles». Admite otros
+  nombres de cada persona (`aliases`) para cuando estén en people.json.
+- Prueba: `tests/test_prestamo_de_quien.py`.
+
+## Revisión 27-11 · D3 el gancho no se queda en texto mientras haya algo de su protagonista
+
+- En el gancho, cuando no queda ningún clip que se pueda prestar: primero uno ya usado en el gancho (nunca pegado a
+  sí mismo); luego cualquier clip juzgado donde salga su protagonista, aunque sea de una idea literal o de otra época;
+  luego una foto suya. Solo si no hay nada de eso se queda en texto.
+- Los nombres se comparan por palabras (D2): «Simone» y «Simone Biles» son la misma persona. people.json no guarda
+  hoy otros nombres; `same_people` los acepta cuando los tenga.
+- Prueba: `tests/test_gancho_sin_texto.py`; `tests/test_text_limit.py` actualizado (antes el resto del gancho se
+  quedaba en texto a propósito).
+
+## Revisión 27-11 · D4 el tope de texto y las pizarras
+
+- Ninguna pizarra dura más de `timeline.board_max_seconds` (3 s): `chalkboards` juntaba planos en pizarras de hasta
+  6 s sin mirar el ajuste. Un tramo largo sale en varias pizarras, cada una con lo que se dice entonces.
+- El texto de una pizarra (línea de la idea, dato, rótulo) se corta entre palabras, nunca a media palabra.
+- Sin línea de la idea, un plano que es solo un trozo de frase («Y», «en Spring») enseña las palabras de la frase
+  entera a la que pertenece.
+- Con el tope gastado y nadie que pueda prestar por la regla de siempre, el hueco toma un clip neutro del vídeo (de
+  una idea de ambiente, nunca de una literal ni de quien no debe salir) antes de quedarse en texto. Lo que aún pase
+  del tope se cuenta y se dice en el log («N por encima del tope»). Los rótulos leídos se quedan en texto, como antes.
+- Prueba: `tests/test_tope_texto_real.py`.
+
+## Revisión 27-11 · D5 ningún clip normal en tarjeta pequeña de serie
+
+- `timeline.card_share` pasa de 0.25 a 0 de serie (en config.yaml y en el código): metía 1 de cada 4 clips en tarjeta
+  enmarcada, con 72 saltos entre tarjeta y pantalla completa en un vídeo. En el servidor ya estaba a 0 (lo pusiste
+  tú): allí no cambia nada. Los canales que fijan el suyo (aviación, instrumentos y megaproyectos a 0.1) lo conservan;
+  las fotos y los clips verticales siguen enmarcados.
+- Prueba: `tests/test_tarjetas_de_serie.py`.
+
+## Revisión 27-11 · D6 las recetas encienden lo que necesitan
+
+- `persona` y `suceso` encienden `planner.ideas`: `literal_ambient`, `ambient_photo_first`, el tope de texto por
+  persona y `cobertura` solo funcionan con ideas, y sin ellas no hacían nada.
+- Si el canal, la serie o el vídeo apagan `planner.ideas` bajo una de esas recetas, falla diciéndolo
+  (`recetas.check`), en vez de aplicar media receta en silencio.
+- `agrupar.SYSTEM` ya no le dice al modelo que una idea literal sin su clip «se queda en texto».
+- Ningún canal tiene receta todavía (eso lo decides tú tras ver un vídeo de prueba), así que esto no cambia nada
+  hasta que pongas una.
+- Prueba: `tests/test_recetas_completas.py`.
+
+## Revisión 27-11 · D7 el orden del relleno (opción, apagada)
+
+- Confirmado en el código: en canales que no son de persona, el stock de Pexels sin juez va antes que el clip y la
+  foto del protagonista; la foto del protagonista entra sin juez; el clip del protagonista que rellena solo pasa por
+  el juez si es un «momento» o con `judge_filler` (que en el servidor tienes encendido); y la época de las fotos se
+  busca pero no se comprueba.
+- `fallback.protagonist_first` (apagado): el orden del objetivo — el clip del protagonista y luego su foto, los dos
+  con el juez (que ve la idea y su época), antes que el stock. Apagado porque cambia lo que sale y añade llamadas al
+  juez. Medirlo: el mismo vídeo con y sin, en Puntería.
+- Prueba: `tests/test_orden_relleno.py` (comprueba el orden en el código; montar la etapa entera con dobles probaría
+  los dobles).
+
+## Revisión 27-11 · D8 las medidas de pantalla dicen la verdad, y Puntería sale para todos los vídeos
+
+- `revisor.screen_measures`: la pantalla final ya no cuenta en el total; las tarjetas y paneles sobre un clip
+  (datacard, split, stat, pregunta, pizarras, tarjetas de argumento y de cita) cuentan como texto (56 s de tarjetas
+  daban 0 %); los gráficos a pantalla completa (mapas, gráficas) salen aparte («Gráficos»); las palabras clave sobre
+  metraje prestado siguen contando como imagen.
+- «1.ª imagen» es la del primer clip o foto que se ve tras la apertura (una apertura de 15 s ponía 0 s aunque luego
+  hubiera 30 s de pizarra), y «Texto 1.er min» es la parte del primer minuto tras ella sin clip ni foto.
+- Puntería lista todos los vídeos montados (`work/<vídeo>/timeline.json`) con sus medidas; la nota del revisor solo
+  sale donde la hay («—» si no). Antes estaba vacía de serie. Revisado en escritorio y móvil, sin errores.
+- Prueba: `tests/test_medidas_reales.py`.
+
+## Revisión 27-11 · D9 antes del juez (en parte; opción, apagada)
+
+- Confirmado: fuera del gancho `judge.rounds_rest: 1` deja que el juez vea tres opciones una sola vez, también en
+  las ideas literales.
+- `judge.rounds_literal` (apagado: lo mismo que rounds_rest): una segunda hoja de opciones para una idea literal antes
+  del relleno. Apagado porque son más llamadas al juez. Medirlo: Puntería del mismo vídeo con 1 y con 2.
+- Prueba: `tests/test_rondas_literales.py`.
+- No hecho: más vídeos o ventanas por plano (más peticiones a YouTube: es el bloque de descargas y su presupuesto) y
+  volver a puntuar con CLIP el `protagonist_pool` para cada plano (hoy ordena con las notas de otros planos: hace falta
+  guardar los vectores de cada fragmento, que hoy no se guardan). Lo dejo dicho para decidirlo contigo.
+
+## Revisión 27-11 · D10 una prueba con las ideas, el gancho, el tope de texto y el revisor juntos
+
+- El escenario «ideas» de la prueba de extremo a extremo (planner.ideas + revisor en la cola) comprueba además, sobre
+  el montaje real: que las pizarras de planos que debían tener imagen (no los rótulos leídos ni los paneles de cifras,
+  que son texto a propósito) no pasan del tope; que el gancho no tiene ninguna; que nunca sale el mismo archivo dos
+  planos seguidos; y que las medidas de pantalla salen.
+- Prueba: `tests/test_e2e_stages.py::test_every_stage_runs_its_real_code[ideas]`.

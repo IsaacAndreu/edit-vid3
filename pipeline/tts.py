@@ -100,6 +100,18 @@ def voice_usd(ctx: Any, voice: dict[str, Any], chars: float, result: dict[str, A
     return usd_per_1k_chars(ctx, voice) * chars / 1000
 
 
+def voice_cost(ctx: Any, voice: dict[str, Any], chars: float, result: dict[str, Any]) -> tuple[float, dict[str, Any]]:
+    """(dollars, the ledger's details) of a narration. An AI84 voice with no price set
+    (tts.ai84_usd_per_1k_credits) is written down as «unpriced», with its credits, never as a free one."""
+
+    details: dict[str, Any] = {"chars": chars, "pieces": result.get("pieces"), "credits": result.get("credits", 0)}
+    usd = voice_usd(ctx, voice, chars, result)
+    if result.get("provider") == "ai84" and usd == 0:
+        details["unpriced"] = True
+        print("   Aviso: la voz de AI84 no tiene precio (tts.ai84_usd_per_1k_credits): se apunta sin dólares")
+    return usd, details
+
+
 def usd_per_1k_chars(ctx: Any, voice: dict[str, Any] | None = None) -> float:
     """What 1,000 narrated characters cost: the voice's own price, else tts.usd_per_1k_chars, else 0.022 $. The
     voices never carried one, so every narration was recorded at 0.00 $ (about 0.30 $ a 12-15 minute video)."""
@@ -919,6 +931,8 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
 
     before_paid_call(ctx)
     result = generate(keys(ctx.root), text, voice, voice_file)
+    for stale in ("voz.original.mp3", "voz.sin-pausas.mp3"):    # copies of the voice this one replaces
+        (voice_file.parent / stale).unlink(missing_ok=True)
     (ctx.materials_dir / "voz.genaipro.json").write_text(json.dumps(
         {"voice": voice, **result, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
@@ -926,8 +940,8 @@ def _make(ctx: Any, voice: dict[str, Any], script: Path, voice_file: Path) -> bo
 
         paid = result.get("paidChars", result["chars"])     # a restart reuses pieces: they are not paid twice
         provider = result.get("provider", "genaipro")
-        record_cost(ctx, stage="voz", provider=provider, operation=voice["model_id"], usd=voice_usd(ctx, voice, paid, result),
-                    details={"chars": paid, "pieces": result["pieces"], "credits": result.get("credits", 0)})
+        usd, details = voice_cost(ctx, voice, paid, result)
+        record_cost(ctx, stage="voz", provider=provider, operation=voice["model_id"], usd=usd, details=details)
         if result.get("reusedChars"):
             from .ahorro import record
 

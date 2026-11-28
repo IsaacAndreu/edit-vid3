@@ -597,6 +597,7 @@ class TimelineMedia(_Strict):
     height: int | None = None
     zoom: list[float] | None = None                          # [start frame in the shot, frames, final scale] (pipeline/camera.py)
     rate: float | None = None                                # playback speed: < 1 when the shot outlasts its clip, or the editor's speed
+    start: float | None = None                               # s into the file where the shot starts (a lent clip shows other seconds)
     mono: bool | None = None                                 # black and white (a low moment of the story)
     cutout: str | None = None                                # parallax photos with depth: the subject alone, same size (pipeline/depth.py)
 

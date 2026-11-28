@@ -844,8 +844,6 @@ def run(ctx: RunContext) -> None:
         who = expected_people(shot, portrait_names, protagonist, scope)
         return [(name, portrait_of[name]) for name in who[:2] if name in portrait_of]
 
-    rounds = int(cfg.get("rounds", 2))
-
     def judge(shot: Shot) -> None:
         """Up to `rounds` sheets: the next options are shown only if everything so far was rejected."""
 
@@ -853,8 +851,9 @@ def run(ctx: RunContext) -> None:
         accepted: list[Option] = []
         verdict: dict[str, Any] = {}
         hook = shot.start < hook_seconds
-        # judge.rounds_rest: outside the hook, how many sheets at most (1: if the first three fail, straight to fallback)
-        for round_number in range(rounds if hook else int(cfg.get("rounds_rest", rounds))):
+        # judge.rounds_rest: outside the hook, how many sheets at most (1: if the first three fail, straight to fallback);
+        # judge.rounds_literal: the same for a literal idea (off: as rounds_rest)
+        for round_number in range(rounds_for(shot, cfg, hook)):
             options = plans[shot.id][round_number * shown : (round_number + 1) * shown]
             if not options:
                 break
@@ -1062,6 +1061,21 @@ def _judge_with_retry(call: Any, cfg: dict[str, Any]) -> dict[str, Any]:
                 raise
             time.sleep(float(cfg.get("error_pause_seconds", 5)) * (attempt + 1))
     raise AssertionError("inalcanzable")
+
+
+def rounds_for(shot: Any, cfg: dict[str, Any], in_hook: bool) -> int:
+    """How many sheets of options the judge may see for a shot: `rounds` (2) in the hook; outside it `rounds_rest`;
+    for a literal idea outside the hook `rounds_literal` (off: the same as rounds_rest). 27-11: three candidates,
+    judged once, decided whether «that very thing» had any footage at all."""
+
+    rounds = int(cfg.get("rounds", 2))
+    if in_hook:
+        return rounds
+    rest = int(cfg.get("rounds_rest", rounds))
+    idea = getattr(shot, "idea", None)
+    if idea is not None and getattr(idea, "kind", None) == "literal":
+        return int(cfg.get("rounds_literal", rest))
+    return rest
 
 
 def _save_sheet_context(path: Path, shot: Shot, options: list[Option], sources: str, topic: str, subject: str,

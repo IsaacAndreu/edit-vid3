@@ -625,6 +625,9 @@ def run(ctx: RunContext) -> None:
         "warnings": notes,
     }
     ctx.write_json(f"{OUTPUT}/{SUMMARY}", summary)
+    from ..costs import record_searches
+
+    record_searches(ctx, "sourcing", "serper", getattr(images, "serper_calls", 0))
     print(f"   {len(results)} planos con metraje · candidatos: {json.dumps(by_source)}")
     print(f"   Planos con YouTube: {summary['shotsWithYouTube']} · sin ningún candidato: {len(empty)}")
     for warning in notes:

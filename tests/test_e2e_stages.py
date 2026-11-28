@@ -1089,6 +1089,22 @@ def test_every_stage_runs_its_real_code(tmp_path: Path, monkeypatch: pytest.Monk
         assert hinted and all(o["source"] == "propio" for o in hinted)   # the scene found by its description
         reviewed = json.loads((ctx.out_dir / "revisor" / "revisor.json").read_text())
         assert "skipped" not in reviewed and reviewed["shots"] > 0            # the reviewer ran in the queue
+        # D10 (27-11): ideas, hook, text cap and reviewer together, on the real edit
+        from pipeline.qa import same_file_runs
+        from pipeline.revisor import screen_measures
+
+        edit = Timeline.model_validate(ctx.read_json("timeline.json"))
+        measures = screen_measures(ctx.read_json("timeline.json"))
+        assert measures["firstImage"] is not None and measures["graphicShare"] == 0.0
+        # what the cap is about: boards over shots that should have shown footage — not a title read aloud (rotulo),
+        # nor a data panel, which are text on purpose
+        boards = [x for x in edit.shots if x.type == "broll" and x.media is None and not x.groupId
+                  and kinds.get(x.id.split("-")[0]) != "rotulo"]
+        cap = float(ctx.section("timeline").get("max_text_share", 0.10))
+        assert sum(x.durationInFrames for x in boards) <= cap * edit.durationInFrames + 3 * edit.fps, boards
+        hook = float(ctx.section("judge").get("hook_seconds", 30)) * edit.fps
+        assert not [x.id for x in boards if x.from_ < hook]                   # the hook is never a board
+        assert not same_file_runs(edit.shots, edit.fps)                      # never the same file twice in a row
     if scenario.name == "minimo":
         assert coldopen == ColdOpenFile(slug=SLUG)
         assert not (ctx.out_dir / "shorts").exists() or not list((ctx.out_dir / "shorts").glob("*.mp4"))

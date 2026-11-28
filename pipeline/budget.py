@@ -213,10 +213,14 @@ ATTEMPT_START: dict[str, float] = {}      # work dir → what the video had spen
 
 
 def before_paid_call(ctx: Any) -> None:
-    """Before ANY paid call (model, voice, images) of a video: the same caps as `guard`. Not for the studio's or the
-    watcher's own work (slugs starting with «_»: radar, ideas, drafts), which has no video to put on hold."""
+    """Before ANY paid call (model, voice, images) of a video: the same caps as `guard`. The studio's and the
+    watcher's own work (slugs starting with «_»: radar, ideas, drafts) has no video to put on hold: only today's cap
+    (27-11: it never looked at any)."""
 
     slug = str(getattr(ctx, "slug", "") or "")
+    if slug.startswith("_") and hasattr(ctx, "root") and hasattr(ctx, "config"):
+        check(ctx.root, ctx.config)          # the studio's own work (radar, ideas, drafts): today's cap all the same
+        return
     if not slug or slug.startswith("_") or not hasattr(ctx, "work_dir"):
         return
     guard(ctx)

@@ -336,6 +336,7 @@ class ImageSources:
                 time.sleep(2.0 * (attempt + 1))
                 continue
             response.raise_for_status()
+            self.serper_calls = getattr(self, "serper_calls", 0) + 1     # paid: written down by whoever searched
             return response.json()
         raise AssertionError("inalcanzable")
 

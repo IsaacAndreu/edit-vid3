@@ -45,8 +45,7 @@ Etiqueta de cada idea:
 - "literal": SOLO cuando la voz narra una ACCIÓN concreta que alguien grabó y que el espectador espera ver en ese
   momento: una caída, un salto, salirse del podio, un gol, el veredicto leído en el juicio, la explosión. Si en la
   pantalla saliera otra acción de la misma persona, sería mentira. Es la excepción: en un vídeo normal, una de cada
-  cinco o seis ideas como mucho. Si no hay ese clip, el plano se queda en texto, así que no marques literal lo que
-  admite material de la persona.
+  cinco o seis ideas como mucho. No marques literal lo que admite material de la persona.
   Ej.: «en plena ceremonia de medallas bajó del podio de un salto» (gimnasia); «el jurado le declaró culpable» con
   la lectura del veredicto (crimen); «el coche explota al final de la misión» (GTA).
 - "ambiente": todo lo demás que se ilustra con metraje: hablar de una competición, de sus títulos, de un lugar, de

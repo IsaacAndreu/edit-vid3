@@ -37,6 +37,13 @@ def _shot(i, media=True, kind="broll"):
                                         "media": MEDIA if media else None})
 
 
+def _own(i, media=True):
+    """A shot with its own clip file (as in a real video)."""
+
+    shot = _shot(i, media=media)
+    return shot.model_copy(update={"media": shot.media.model_copy(update={"src": f"media/s{i:03d}.mp4"})}) if media else shot
+
+
 def test_chalkboards_cover_empty_shots_and_pass_the_schema():
     shots = [_shot(0), _shot(1, media=False), _shot(2, media=False)]
     busy = TimelineGroup.model_validate({"id": "g1", "kind": "graphic", "from": 120, "durationInFrames": 60,
@@ -115,12 +122,14 @@ def test_empty_shots_borrow_nearby_footage_and_flash_their_key_words():
 
     assert punch_words("Solo uno de esos oros se vendió por 176.321 dólares") == "176.321 dólares"
     assert punch_words("La mujer") == ""                                    # nothing striking: just footage
-    shots = [_shot(i) for i in range(6)]
+    shots = [_own(i) for i in range(6)]                                     # each shot its own file
     shots[4] = shots[4].model_copy(update={"media": None, "text": "Le llamaban el Gorrión de Minsk"})
     shots[5] = shots[5].model_copy(update={"media": None, "text": "y lo sabía"})
     punches = fill_empty_shots(shots, [], 30)
     assert shots[4].media is not None and shots[4].media.zoom and shots[5].media is not None
-    assert shots[4].media.src == shots[3].media.src                          # the nearest clip: the same passage
+    # the nearest clip of the same passage that is not the one right next to it (27-11: the neighbour's clip again,
+    # from its second 0)
+    assert shots[4].media.src == shots[2].media.src and shots[5].media.src == shots[3].media.src
     assert len(punches) == 1 and punches[0].graphic["lines"] == ["Gorrión de Minsk"]
     assert punches[0].from_ == shots[4].from_ and punches[0].durationInFrames <= 66
 
@@ -136,14 +145,14 @@ def test_borrowed_footage_never_plays_past_its_clip():
     from pipeline.timeline import fill_empty_shots
 
     # a 2 s donor cannot cover a 5 s gap (it would need 0.4×: past the end of its file, avion9 s202 5.27 s)
-    shots = [_shot(0), _shot(1, media=False)]
-    shots[1] = shots[1].model_copy(update={"durationInFrames": 150})
+    shots = [_own(0), _own(1), _own(2, media=False)]
+    shots[2] = shots[2].model_copy(update={"durationInFrames": 150})
     fill_empty_shots(shots, [], 30)
-    assert shots[1].media is None
+    assert shots[2].media is None
     # a 2.5 s gap at 0.8×: never more of the clip than the donor shows
-    shots[1] = shots[1].model_copy(update={"durationInFrames": 75})
+    shots[2] = shots[2].model_copy(update={"durationInFrames": 75})
     fill_empty_shots(shots, [], 30)
-    assert shots[1].media is not None and shots[1].durationInFrames * shots[1].media.rate <= 60
+    assert shots[2].media is not None and shots[2].durationInFrames * shots[2].media.rate <= 60
 
 
 def test_words_on_screen_never_end_hanging():
@@ -159,13 +168,13 @@ def test_a_shot_only_partly_under_a_graphic_gets_footage_for_the_rest():
     from pipeline.schemas import TimelineGroup
     from pipeline.timeline import fill_empty_shots
 
-    shots = [_shot(0), _shot(1, media=False)]
-    card = TimelineGroup.model_validate({"id": "c", "kind": "graphic", "from": 60, "durationInFrames": 20,
+    shots = [_own(0), _own(1), _own(2, media=False)]
+    card = TimelineGroup.model_validate({"id": "c", "kind": "graphic", "from": 120, "durationInFrames": 20,
                                          "graphic": {"type": "kinetic", "lines": ["x"]}})
     fill_empty_shots(shots, [card], 30, words=False)
-    assert shots[1].media is None                                        # the usual pass leaves it alone
+    assert shots[2].media is None                                        # the usual pass leaves it alone
     fill_empty_shots(shots, [card], 30, words=False, partial=True)
-    assert shots[1].media is not None
+    assert shots[2].media is not None and shots[2].media.src == shots[0].media.src   # never the neighbour's file
 
 
 def test_a_clip_from_another_part_of_the_video_is_never_borrowed():

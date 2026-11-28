@@ -18,6 +18,7 @@ It is a warning, never a block: the studio shows the shares and the sentences, a
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 SYSTEM = """
@@ -287,6 +288,37 @@ class ScriptRewritten(RuntimeError):
     """The script was rewritten (and its synthetic voice made again): the video starts over with it."""
 
 
+def _given_voice(folder: Path) -> Path:
+    """The voice as it came (the pause cut keeps it as voz.original.mp3, with its time)."""
+
+    return folder / "voz.original.mp3" if (folder / "voz.original.mp3").is_file() else folder / "voz.mp3"
+
+
+def voice_mark(folder: Path) -> str:
+    given = _given_voice(folder)
+    try:
+        info = given.stat()
+        return f"{given.name}:{info.st_size}:{int(info.st_mtime)}"
+    except OSError:
+        return ""
+
+
+def is_synthetic(folder: Path, state: dict[str, Any]) -> bool:
+    """Is the current voice the program's synthetic one (and so can be remade)? Its GenAIPro record must be at least as
+    new as the voice itself: a recording put over a video that once had a synthetic voice is newer than that record
+    (27-11: inferred from voz.genaipro.json alone, it would have been deleted). No voice yet: the program makes it."""
+
+    if not (folder / "voz.mp3").is_file():
+        return True
+    if state.get("synthetic") and state.get("voice") == voice_mark(folder):
+        return True
+    record = folder / "voz.genaipro.json"
+    try:
+        return record.is_file() and record.stat().st_mtime >= _given_voice(folder).stat().st_mtime - 120
+    except OSError:
+        return False
+
+
 def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None, send: Any = None) -> str:
     """When the check stops a video (too much of its script cannot be shown), it fixes itself instead of waiting for
     the owner (`guion.arreglar_solo`, on):
@@ -313,9 +345,9 @@ def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None,
     attempts = _tries(ctx)
     tries = max(int(state.get("autoTries", 0)), int(attempts.get("tries", 0)))   # the materials' count wins
     path.parent.mkdir(parents=True, exist_ok=True)
-    synthetic = bool(state.get("synthetic")) or (folder / "voz.genaipro.json").is_file() \
-        or not (folder / "voz.mp3").is_file()
-    state["synthetic"] = synthetic              # remembered: the remade voice is the program's too
+    synthetic = is_synthetic(folder, state)
+    state["synthetic"] = synthetic              # remembered for this very voice (the remade one is the program's too)
+    state["voice"] = voice_mark(folder)
     note = None
 
     def tell(text: str) -> None:
@@ -359,7 +391,7 @@ def rescue(ctx: Any, stopped: str, fix_fn: Any = None, ensure_voice: Any = None,
             after = (result.get("after") or {}).get("shares", {}).get("sin_imagen")
             state["autoFix"] = {"changed": result["changed"], "before": before, "after": after}
             path.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
-            for name in ("voz.mp3", "voz.genaipro.json"):         # the voice again, over the new script
+            for name in ("voz.mp3", "voz.genaipro.json", "voz.original.mp3", "voz.sin-pausas.mp3"):   # the voice again
                 (folder / name).unlink(missing_ok=True)
             if ensure_voice is not None:
                 ensure_voice(ctx)

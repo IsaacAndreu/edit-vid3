@@ -357,7 +357,7 @@ def test_text_share_and_first_image_come_from_the_edit():
              {"id": "s003", "type": "broll", "from": 360, "durationInFrames": 240, "media": {"kind": "video"}},
              {"id": "s004", "type": "broll", "from": 600, "durationInFrames": 300, "groupId": "panel-1"}]
     got = revisor.screen_measures({"fps": 30, "durationInFrames": 900, "shots": shots})
-    assert got == {"textShare": 33.3, "firstImage": 12.0}
+    assert {k: got[k] for k in ("textShare", "firstImage")} == {"textShare": 33.3, "firstImage": 12.0}
 
 
 def test_sources_per_minute_and_functions_per_key_event():

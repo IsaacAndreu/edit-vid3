@@ -94,6 +94,9 @@ def web_snippets(ctx: RunContext, query: str, count: int = 5) -> list[dict[str, 
             response = requests.post("https://google.serper.dev/search", json={"q": query, "num": count},
                                      headers={"X-API-KEY": serper}, timeout=30)
             response.raise_for_status()
+            from .costs import record_searches
+
+            record_searches(ctx, "factcheck", "serper", 1)
             return [{"title": r.get("title", ""), "snippet": r.get("snippet", ""), "url": r.get("link", "")}
                     for r in response.json().get("organic", [])[:count]]
         from ddgs import DDGS

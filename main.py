@@ -158,6 +158,9 @@ def _parser() -> argparse.ArgumentParser:
     target.add_argument("--montar", metavar="VIDEO",
                         help="Modo «material primero»: baja los tramos, comprueba las declaraciones, voz del narrador, "
                              "gancho, montaje y render desde sus bloques.")
+    target.add_argument("--catalogo-juego", metavar="JUEGO",
+                        help="Baja de su wiki el catálogo de misiones de un juego (gta6) → datos/juegos/: el planner "
+                             "reconoce de qué misión habla cada frase y busca su gameplay (canal con juego.catalogo).")
     target.add_argument("--huecos-idiomas", metavar="TEMA",
                         help="Mide un tema en todos los idiomas de radar.idiomas que quepan en la cuota de hoy.")
     target.add_argument("--radar", action="store_true",
@@ -277,9 +280,22 @@ class _one_process:
             pass
 
 
+def is_failure(error: BaseException) -> bool:
+    """A failure worth a «❌» notice: not a wait (spending cap, quota, an API without balance) nor a restart, which the
+    queue reports as «⏸» or takes back by itself."""
+
+    from pipeline.budget import BudgetReached
+    from pipeline.sin_youtube import WaitingForYouTube
+
+    if isinstance(error, (KeyboardInterrupt, Stopped, BudgetReached, WaitingForYouTube)):
+        return False
+    return not out_of_credit(error)
+
+
 def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: bool) -> None:
     from pipeline import diag
 
+    started = time.time()
     # everything printed also goes to out/<slug>/log.txt; out/<slug>/diagnostico.md says what to improve
     with diag.logging(ctx):
         try:
@@ -312,20 +328,28 @@ def _run_one(ctx: RunContext, *, force: set[str], until: str | None, review: boo
                     housekeeping.after_video(ctx)          # cleanup.after_video (a server's small disk)
         except BaseException as error:
             diag.write(ctx, error)
+            from pipeline import intentos
+
+            intentos.record(ctx, started, "ERROR" if is_failure(error) else
+                            "interrumpido" if isinstance(error, (KeyboardInterrupt, Stopped)) else "en espera", error)
             from pipeline import ytpause
             from pipeline.sin_youtube import WaitingForYouTube
 
             if isinstance(error, ytpause.YouTubeBlocked):    # the whole queue waits (one message, not one per video)
                 ytpause.pause(ctx.root, str(error))
-            elif not isinstance(error, (KeyboardInterrupt, WaitingForYouTube)):   # waiting is no failure
+            elif is_failure(error):                         # waiting or a restart is no failure
                 from pipeline import notify as messages
 
-                try:
-                    messages.video_failed(ctx, error)       # to the phone: stage, error, link to the log
+                try:                                        # to the phone: this attempt's stage, error, cost, next try
+                    messages.video_failed(ctx, error, started=started,
+                                          signature=_materials_signature(ctx.root, ctx.slug))
                 except Exception:
                     pass
             raise
         diag.write(ctx)
+        from pipeline import intentos
+
+        intentos.record(ctx, started, "OK")
 
 
 def pending_slugs(root: Path = PROJECT_ROOT) -> list[str]:
@@ -2008,6 +2032,11 @@ def main() -> None:
         summary = montaje_mf.run(PROJECT_ROOT, args.montar)
         print(f"Montado: {summary['seconds']} s · {summary['clips']} tramos · gancho de {summary['hookCuts']} cortes · "
               f"{summary['dubbed']} declaraciones dobladas → out/{args.montar}/")
+        return
+    if args.catalogo_juego:
+        from pipeline import catalogo_juego
+
+        catalogo_juego.fetch(PROJECT_ROOT, args.catalogo_juego)
         return
     if args.huecos_idiomas:
         from pipeline import huecos

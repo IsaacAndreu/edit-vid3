@@ -125,13 +125,17 @@ def test_a_502_on_the_proxy_tunnel_rotates_the_session_instead_of_pausing_the_pr
                                "OSError('Tunnel connection failed: 502 Bad Gateway'))")
         return "ok"
 
+    monkeypatch.setattr("time.sleep", lambda s: None)
     assert yt._call("metadata", dead_node) == "ok"
-    assert len(set(seen)) == 3 and yt.sessions.rotated == 2 and yt._resting[0] == 0.0   # new sessions, the proxy never rests
+    # the same session once more first (27-11: most 502s pass), then a new one; the proxy never rests
+    assert seen[0] == seen[1] != seen[2] and yt.sessions.rotated == 1 and yt._resting[0] == 0.0
+    from pipeline.budget import ProxyDown
+
     calls = []
     yt._local.video_id = "abcdefghijk"
-    with pytest.raises(RuntimeError, match="túnel \\(502\\)"):
+    with pytest.raises(ProxyDown):               # every session fails the tunnel: the proxy is down, this video waits
         yt._call("metadata", lambda: calls.append(1) or (_ for _ in ()).throw(RuntimeError("Tunnel connection failed: 502 Bad Gateway")))
-    assert len(calls) == 3 and not yt._in_quarantine(0)                                 # bounded, then this request only
+    assert len(calls) == 4 and not yt._in_quarantine(0)                                 # bounded, no quarantine
 
 
 def test_a_home_proxy_tunnel_failure_still_means_the_proxy_is_down(tmp_path, monkeypatch):

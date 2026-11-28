@@ -71,19 +71,29 @@ _GONE_MARKERS = ("video unavailable. this video has been removed", "this video h
 # What a failure was, finer than error_kind (which drives the retry logic and stays as it was): the request log keeps
 # it as «cause», so «otros» — 1/3 of every failure on 17-11, most rows without a word — can be told apart.
 _CAUSES = (
+    # the program's own summaries, in Spanish (27-11: 36 of 80 real failures still fell in «other», most of them these)
+    ("rechazo-bot", ("no eres un bot",)),
+    ("proxy-ip", ("a la ip de un proxy", "país del proxy")),
+    ("cuenta", ("necesita una cuenta",)),
+    ("descartado", ("descartado antes de analizarlo", "se pasa al siguiente candidato")),
+    ("sesión-rotada", ("cambió de ip",)),
+    ("api-youtube", ("api de youtube",)),
     # descargas-rango-fallo.md: 884 range failures and 1 376 whole-over-cap discards counted as «other»
     ("rango-sin-indice", ("faltan moov o sidx", "sin sidx", "sidx vacío", "sidx jerárquico", "cajas inesperadas",
                           "índice demasiado grande", "webm (matroska)", "sin formato mp4 por https",
-                          "no atiende peticiones range")),
+                          "no atiende peticiones range", "no es mp4/m4a", "índice demasiado grueso",
+                          "ningún formato de solo vídeo")),
     ("sin-hls-tope", ("entero supera el tope",)),
-    ("proxy-túnel", ("unable to connect to proxy", "tunnel connection failed")),
+    ("proxy-túnel", ("unable to connect to proxy", "tunnel connection failed", "no abre el túnel",
+                     "no pudo abrir el túnel")),
     ("proxy-407", ("407", "proxy authentication required")),
     ("proxy-sin-respuesta", ("no responde", "proxy connection refused", "connection refused", "proxyerror")),
     ("formato-no-disponible", ("requested format is not available", "no hls stream")),
-    ("tramo-vacío", ("tramo vacío", "empty media playlist", "no segment covers", "salió incompleto")),
+    ("tramo-vacío", ("tramo vacío", "empty media playlist", "no segment covers", "salió incompleto", "segmento vacío")),
     ("ffmpeg", ("ffmpeg", "corte local", "remux")),
     ("conexión-cortada", ("connection reset", "connection aborted", "remote end closed", "broken pipe",
-                          "incompleteread", "connection broken", "eof occurred")),
+                          "incompleteread", "connection broken", "eof occurred", "segmento incompleto",
+                          "cortado a", "llegaron")),
     ("http-5xx", ("http error 500", "http error 502", "http error 503", "http error 504", " 502 ", " 503 ")),
     ("http-404", ("http error 404", "http error 410")),
     ("plazo", ("se corta", "tardó más de")),
@@ -116,10 +126,59 @@ STALE_PICK = ("requested_formats", "requested_downloads", "format_id", "format",
               "fps", "tbr", "vbr", "abr", "resolution", "dynamic_range", "container")
 
 
-def selectable(data: dict[str, Any]) -> dict[str, Any]:
-    """The saved details without the extraction's own pick: a format request chooses from `formats` again."""
+# a passing failure of the connection or of the proxy's tunnel: the same request again usually works
+TRANSIENT_ERRORS = (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
+                    requests.exceptions.Timeout)
+TRANSIENT_STATUS = (500, 502, 503, 504)
+# a failure that is the session's or the account's (rotation, cookies), never the format's: it goes up as it is
+REFUSAL_KINDS = ("bot", "auth", "403", "429")
 
-    return {k: v for k, v in data.items() if k not in STALE_PICK}
+
+def announced_bytes(headers: Any) -> int:
+    """What an answer says it carries: Content-Range «bytes a-b/total» → b-a+1, else Content-Length; 0 unknown."""
+
+    try:
+        span = re.match(r"bytes (\d+)-(\d+)/", str(headers.get("Content-Range") or ""))
+        if span:
+            return int(span.group(2)) - int(span.group(1)) + 1
+        return int(headers.get("Content-Length") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def selectable(data: dict[str, Any]) -> dict[str, Any]:
+    """The saved details without the extraction's own pick: a format request chooses from `formats` again — and,
+    when the video has an original sound track marked, without its dubbed and auto-dubbed tracks: «wa» (the worst
+    audio) is the worst in language too, and the statements of «material primero» came out dubbed (27-11)."""
+
+    out = {k: v for k, v in data.items() if k not in STALE_PICK}
+    formats = out.get("formats")
+    if isinstance(formats, list):
+        out["formats"] = original_sound(formats)
+    return out
+
+
+def _is_original(f: dict[str, Any]) -> bool:
+    note = str(f.get("format_note") or "").casefold()
+    try:
+        preference = float(f.get("language_preference") or 0)
+    except (TypeError, ValueError):
+        preference = 0.0
+    return "original" in note or preference >= 10
+
+
+def original_sound(formats: list[Any]) -> list[Any]:
+    """The formats without the sound tracks in another language than the original one, when an original is marked
+    (yt-dlp: «original» in format_note, language_preference 10). Video-only formats and anything unreadable stay."""
+
+    with_sound = [f for f in formats if isinstance(f, dict) and f.get("acodec") not in (None, "none")]
+    originals = [f for f in with_sound if _is_original(f)]
+    if not originals:
+        return formats
+    languages = {str(f.get("language") or "") for f in originals}
+    return [f for f in formats if not (isinstance(f, dict) and f.get("acodec") not in (None, "none"))
+            or _is_original(f) or (str(f.get("language") or "") in languages
+                                   and "dubbed" not in str(f.get("format_note") or "").casefold())]
 
 
 def error_cause(message: str) -> str:
@@ -355,22 +414,49 @@ def cap_height(fmt: str, max_height: Any) -> str:
     return re.sub(r"height<=(\d+)", lambda m: f"height<={min(int(m.group(1)), limit)}", fmt)
 
 
-def cap_fps(fmt: str, max_fps: Any) -> str:
-    """Each video alternative first at `max_fps` (30) or less, then as it was: a 720p60 stream is twice the bytes of
-    the 720p30 one and the clip is rendered at 30 fps. The resolution still wins over the frame rate (720p60 before
-    480p30). Audio-only alternatives are left alone."""
+TIERS = (1080, 720, 480, 360, 240, 144)
+
+
+def cap_fps(fmt: str, max_fps: Any, resolution_first: bool = False) -> str:
+    """Off (as always): each alternative first at `max_fps` (30) or less, then as it was — a 60 fps source comes at
+    480p30 and a 360p avc1 beats a 720p vp9 (27-11), but with fewer bytes through the proxy.
+
+    `resolution_first` (sourcing.youtube.resolution_first, off): the request ordered by resolution first: for each band of height (720, then 480, 360…) its alternatives as
+    written (avc1 first) at `max_fps` (30) or less, then at any frame rate; only then the next band down. A 720p60
+    stream is twice the bytes of the 720p30 one and the clip is rendered at 30 fps, but it is still better than 480p:
+    the fps cap used to go first over every resolution (a 60 fps source came at 480p30), and avc1 over every
+    resolution (a 360p avc1 before a 720p vp9) — 27-11. Audio-only alternatives and those that already say fps are
+    left alone; the request as written stays at the end (formats without a height)."""
 
     if not max_fps:
         return fmt
-    out: list[str] = []
-    for alt in (a.strip() for a in fmt.split("/") if a.strip()):
-        parts = alt.split("+")
-        video = parts[0]
-        if video.startswith("ba") or "acodec!=none" in video or "fps" in video or "[vcodec=none]" in video:
-            out.append(alt)
-            continue
-        capped = "+".join([f"{video}[fps<={int(max_fps)}]", *parts[1:]])
-        out.extend([capped, alt])
+    alts = [a.strip() for a in fmt.split("/") if a.strip()]
+    top = requested_height(fmt)
+
+    def plain(alt: str) -> bool:
+        video = alt.split("+")[0]
+        return video.startswith("ba") or "acodec!=none" in video or "fps" in video or "[vcodec=none]" in video
+
+    if top is None or not resolution_first:      # the frame rate first per alternative, as before
+        out: list[str] = []
+        for alt in alts:
+            if plain(alt):
+                out.append(alt)
+                continue
+            parts = alt.split("+")
+            out.extend(["+".join([f"{parts[0]}[fps<={int(max_fps)}]", *parts[1:]]), alt])
+        return "/".join(dict.fromkeys(out))
+    tiers = [top, *[h for h in TIERS if h < top]]
+    out = []
+    for n, tier in enumerate(tiers):
+        band = (f"[height<={tier}]" if tier < top else "") + (f"[height>{tiers[n + 1]}]" if n + 1 < len(tiers) else "")
+        for fps in (f"[fps<={int(max_fps)}]", ""):
+            for alt in alts:
+                if plain(alt):
+                    continue
+                parts = alt.split("+")
+                out.append("+".join([f"{parts[0]}{band}{fps}", *parts[1:]]))
+    out.extend(alts)
     return "/".join(dict.fromkeys(out))
 
 
@@ -1131,6 +1217,7 @@ class YouTubeSource:
         through = bool(getattr(self._local, "via_metadata_proxy", False))     # metadata via the residential proxy
         with_account = self.cookies_mode == "rotate" and not through
         tried_ways: set[int] = set()
+        tunnel_again: str | None = None              # the session whose tunnel already got its second chance
         while True:
             if self._all_in_quarantine():
                 self._blocked_everywhere()
@@ -1150,7 +1237,7 @@ class YouTubeSource:
                 if delay > 0:
                     time.sleep(delay)
                     self._count("espera por límite", delay)
-                held = 0.0 if through else self._budget_take(way, REQUEST_UNITS.get(action, 2))
+                held = 0.0 if through else self._budget_take(way, self._units(action))
                 if held:
                     self._count("espera por presupuesto/hora", held)
                 per_session = self._paced_per_session(way, through)
@@ -1198,8 +1285,19 @@ class YouTubeSource:
                         continue
                 tunnel = tunnel_failure(lowered) if is_residential((self.proxies or [""])[way]) else None
                 if tunnel is not None:
-                    # the exit node of this sticky session cannot reach YouTube (502/503 on the CONNECT): another
-                    # session, not a 15-minute pause of the whole proxy as with a home PC that is off
+                    # the exit node of this sticky session cannot reach YouTube (502/503 on the CONNECT). Once more
+                    # in the same session first (most 502s pass), then another session; and when several sessions
+                    # fail it in a row the proxy itself is down: this video waits, no rotation is spent on it (27-11)
+                    session = self.sessions.session_id(self._session_key())
+                    if tunnel_again != session:
+                        tunnel_again = session
+                        time.sleep(1.0)
+                        continue
+                    if self._tunnel_down(session):
+                        from ..budget import ProxyDown
+
+                        raise ProxyDown(f"el proxy residencial no abre el túnel ({tunnel}) en varias sesiones seguidas: "
+                                        "está caído o sin saldo; este vídeo espera unos minutos") from None
                     if self._rotate_after(f"túnel {tunnel}", action, tries):
                         continue
                     raise RuntimeError(f"yt-dlp {action}: el proxy residencial no pudo abrir el túnel ({tunnel}) en "
@@ -1335,6 +1433,16 @@ class YouTubeSource:
                     continue
                 raise RuntimeError(f"yt-dlp {action}: {message[:200]}") from None
 
+    def _tunnel_down(self, session: str) -> bool:
+        """This session failed the tunnel twice: is it the proxy (`tunnel_down_sessions`, 3, different sessions in
+        the last 5 minutes, in this process) rather than one exit node?"""
+
+        now = time.time()
+        fails = [(t, s) for t, s in getattr(self, "_tunnel_fails", []) if now - t < 300]
+        fails.append((now, session))
+        self._tunnel_fails = fails
+        return len({s for _, s in fails}) >= max(1, int(self.cfg.get("tunnel_down_sessions", 3)))
+
     def _rotate_after(self, kind: str, action: str, tries: int) -> bool:
         """A new sticky session (exit IP) for the current video or the shared search session after «are you a bot»
         or a 429 (with a pause, rate_backoff × try); False when this video already rotated its share."""
@@ -1435,9 +1543,10 @@ class YouTubeSource:
 
     def _blocking_refusals(self) -> tuple[str, ...]:
         """What keeps a video from being downloaded at all: with byte ranges on, «sin-hls» no longer does (its
-        ranges come from the DASH mp4) — the videos refused that way before can be used again at once."""
+        ranges come from the DASH mp4) — the videos refused that way before can be used again at once. «bot» does,
+        for its refusal's hours (refused_hours_residential): every shot that picked the video paid it again (27-11)."""
 
-        return ("vpn", "geo") if self.cfg.get("byte_ranges", False) else ("sin-hls", "vpn", "geo")
+        return ("bot", "vpn", "geo") if self.cfg.get("byte_ranges", False) else ("bot", "sin-hls", "vpn", "geo")
 
     def refused(self, video: str) -> bool:
         return self.refused_why(video) is not None
@@ -1499,6 +1608,19 @@ class YouTubeSource:
         share = refusals / len(rows)
         return len(refused) >= int(self.cfg.get("bot_breaker_videos", 3)) and \
             share >= float(self.cfg.get("bot_breaker_share", 0.5))
+
+    def _units(self, action: str) -> float:
+        """What `action` costs out of the hourly budget. A range that reuses an extraction already on disk only asks
+        the media servers for its bytes (no page, no player): `reused_download_units` (off: 3, as any download) can
+        charge it less — at 3, the 1 500 requests an hour are 500 ranges for the whole machine (27-11)."""
+
+        units = float(REQUEST_UNITS.get(action, 2))
+        if action.startswith("download") and action != "download (completo)" and getattr(self._local, "info_reused", None):
+            try:
+                return float(self.cfg.get("reused_download_units", units))
+            except (TypeError, ValueError):
+                return units
+        return units
 
     def _budget_take(self, way: int, units: float) -> float:
         """The hourly budget of that way out; says so (once a while) when the hour is full and requests wait."""
@@ -2066,6 +2188,20 @@ class YouTubeSource:
             self._local.refresh_links = False
         return path
 
+    def _links_of_old_session(self, video_id: str) -> bool:
+        """Through the residential proxy: the links on disk were extracted by a session that is no longer this
+        video's (a rotation since), so any 403 on them is theirs, not the download's."""
+
+        import json
+
+        if not self.residential:
+            return False
+        try:
+            data = json.loads(self._full_info_path(video_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return not self.sessions.matches(video_id, data.get("_edit_vid3_session"))
+
     def _full_info_usable(self, video_id: str) -> bool:
         """The full info on disk has stream links this download can still use (see _fresh_full_info)."""
 
@@ -2124,7 +2260,8 @@ class YouTubeSource:
         suffix = ".m4a" if audio_only else ".mp4"       # audio_only: just the sound of the range (sound bites)
         if not audio_only:
             # 720p/30fps at most (sourcing.youtube.max_height/max_fps): the final 1920x1080 at 30 fps shows no more
-            fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30))
+            fmt = cap_fps(cap_height(fmt, self.cfg.get("max_height", 720)), self.cfg.get("max_fps", 30),
+                          bool(self.cfg.get("resolution_first", False)))
         wanted = requested_height(fmt)
         self._local.route, self._local.not_hls = "biblioteca", None
         existing = self._library_range(target_dir, prefix, suffix, start, end, wanted)
@@ -2138,13 +2275,17 @@ class YouTubeSource:
         self._local.fetched = getattr(self._local, "fetched", 0) + 1     # not in the cache: a real download
         # Resolve (maybe re-extract) the info *before* taking a connection slot: _fresh_full_info
         # may itself call _call(), and nesting slots deadlocks when all of them are taken.
-        whole = next((p for p in sorted(target_dir.glob(f"full_{prefix}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
-        if whole is not None and not audio_only:          # already downloaded whole (prefetch_sections)
+        # already downloaded whole (prefetch_sections), also by a kind that serves this one: a silent «hd» is cut from
+        # the «hdav» file with sound instead of downloading the same video whole a second time (27-11)
+        whole = next((p for kind in RANGE_FAMILY.get(prefix, (prefix,))
+                      for p in sorted(target_dir.glob(f"full_{kind}.*")) if p.suffix in (".mp4", ".mkv", ".webm")), None)
+        if whole is not None and not audio_only:
             self._local.route = "corte-de-entero-en-caché"
             return self._cut(whole, video_id, start, end, prefix, audio)
         if self.offline:                                  # not on disk: without YouTube this clip cannot come
             raise SourceUnavailable(self.offline)
         info_path = self._fresh_full_info(video_id)
+        end = self._within_video(info_path, start, end)
         if prefix == "a360":
             self._check_hd_reachable(video_id, info_path)     # not worth analysing a clip that cannot come in HD
         hls = hls_format(fmt, audio=audio, audio_only=audio_only) if self.cfg.get("hls_ranges", True) else None
@@ -2166,8 +2307,17 @@ class YouTubeSource:
                     return self._fetch_hls_locally(video_id, start, end, hls, prefix, audio, audio_only, info_path)
                 return self._fetch_range(video_id, start, end, hls, prefix, audio, audio_only, info_path, exact=True)
             except (RuntimeError, SourceUnavailable) as error:
-                if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
-                    raise
+                if isinstance(error, SourceUnavailable) or error_kind(str(error)) in REFUSAL_KINDS:
+                    raise                     # a refusal or a video gone: the session's rotation handles it
+                failed_hls = "format is not available" not in str(error).lower()
+                hls_error = " ".join(str(error).split())[:120]
+            else:
+                failed_hls = None
+            if failed_hls:
+                # anything else (the local cut, an empty playlist, a 502 after its retries, a timeout): the range
+                # still comes by bytes or whole, instead of losing the clip (27-11)
+                self._local.not_hls = f"HLS falló ({hls_error}): pruebo por rango o entero"
+            elif failed_hls is not None:
                 untested = _untested_hls(info_path)
                 # sourcing.youtube.hls_retry_untested (off): the HLS formats of a video uploaded ≤ 2 days before
                 # the extraction are «to be tested» and yt-dlp drops the ones whose test piece fails; the same
@@ -2191,14 +2341,17 @@ class YouTubeSource:
                 why = " (HLS por probar)" if untested else ""
                 self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»{why}"
                 missed.add((video_id, hls))
-        no_range = self.__dict__.setdefault("_no_range", set())
-        if self.cfg.get("byte_ranges", False) and video_id not in no_range:
+        if self.cfg.get("byte_ranges", False) and not self._no_range_for(video_id, prefix):
             # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
             try:
                 self._local.route = "rango-bytes"
+                # the links of the live session: a rotation during the HLS attempt left these ones stale (a paid 403
+                # for sure, 27-11); extracted again only then
+                if self._links_of_old_session(video_id):
+                    info_path = self._fresh_full_info(video_id)
                 return self._fetch_byte_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path)
             except NoIndex as error:
-                no_range.add(video_id)          # its formats will not change: the next shots do not ask again (884 rows)
+                self._mark_no_range(video_id, prefix)   # that format will not change: its next shots do not ask (884 rows)
                 self._local.route = None
                 self._local.not_hls = f"{self._local.not_hls or 'sin HLS'}; sin rango de bytes: {error}"
         # two 403s in a row on whole downloads: this client/connection does not get them today (pati12 14/10: 403 on
@@ -2206,12 +2359,16 @@ class YouTubeSource:
         whole_off = getattr(self, "_whole_403", 0) >= 2
         if not audio_only and self.cfg.get("whole_fallback", True) and not whole_off:
             try:
+                if self._links_of_old_session(video_id):
+                    info_path = self._fresh_full_info(video_id)     # the live session's links (see above)
                 whole = self._fetch_whole(video_id, fmt, prefix, info_path)
                 self._whole_403 = 0
             except SourceUnavailable:
                 raise
             except Exception as error:     # the old way still works, only slower
-                if "403" in str(error):
+                # a 403 of links that no longer belong to the session (a rotation meanwhile) says nothing about
+                # whole downloads: it never counts towards switching them off for the rest of the run
+                if "403" in str(error) and not self._links_of_old_session(video_id):
                     self._whole_403 = getattr(self, "_whole_403", 0) + 1
                     if self._whole_403 == 2:
                         print("   YouTube niega las descargas completas (403): el resto, solo el tramo que hace falta")
@@ -2445,12 +2602,27 @@ class YouTubeSource:
                 raise RuntimeError(f"yt-dlp download (HLS): HTTP Error {response.status_code}: {response.reason}")
 
             def get(url: str) -> bytes:
-                response = self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies)
-                if response.status_code >= 400:
-                    fail(response)
-                with moved_lock:
-                    moved[0] += len(response.content)
-                return response.content
+                """The media playlist or the init segment: a passing error (a 502 of the proxy's tunnel, a cut
+                connection) is asked again in the same session, like the segments (27-11: one 502 lost the clip)."""
+
+                for attempt in range(retries + 1):
+                    try:
+                        response = self._sessions[way].get(url, headers=headers, timeout=60, proxies=proxies)
+                        content = response.content
+                    except TRANSIENT_ERRORS as error:
+                        if attempt >= retries:
+                            raise RuntimeError(f"yt-dlp download (HLS): {type(error).__name__}: {error}") from None
+                        time.sleep(0.5 * (attempt + 1))
+                        continue
+                    if response.status_code in TRANSIENT_STATUS and attempt < retries:
+                        time.sleep(0.5 * (attempt + 1))
+                        continue
+                    if response.status_code >= 400:
+                        fail(response)
+                    with moved_lock:
+                        moved[0] += len(content)
+                    return content
+                raise AssertionError("inalcanzable")
 
             def segment(url: str, path: Path) -> Path:
                 """One segment to disk, streamed (never whole in memory), retried on a passing error; one already
@@ -2472,6 +2644,9 @@ class YouTubeSource:
                                     size += len(block)
                         if size == 0:
                             raise RuntimeError("yt-dlp download (HLS): segmento vacío")
+                        announced = announced_bytes(getattr(response, "headers", None) or {})
+                        if announced and size < announced:   # closed early without an error: asked again
+                            raise RuntimeError(f"yt-dlp download (HLS): segmento incompleto ({size} de {announced} bytes)")
                         partial.replace(path)
                         with moved_lock:
                             moved[0] += size
@@ -2548,7 +2723,7 @@ class YouTubeSource:
                 height = next((p.get("height") for p in pieces if p.get("vcodec") not in (None, "none")),
                               pieces[0].get("height"))
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
-            self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS")
+            self._publish(part, target, video=not audio_only, seconds=end - start, what="HLS", audio=audio)
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -2649,10 +2824,33 @@ class YouTubeSource:
             if not audio_only:
                 height = pieces_[0].get("height")
                 self._write_range_sidecar(target, height=int(height) if height else None, cap=requested_height(fmt))
-            self._publish(part, target, video=not audio_only, seconds=end - start, what="rango")
+            self._publish(part, target, video=not audio_only, seconds=end - start, what="rango", audio=audio)
             return target
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    @staticmethod
+    def _within_video(info_path: Path, start: float, end: float) -> float:
+        """`end`, or the video's own end when the range runs past it: the seconds there are come (2.5 s of a 5 s
+        range at the end were refused as «incomplete», 27-11). Unchanged when the length is unknown."""
+
+        import json
+
+        try:
+            duration = float(json.loads(info_path.read_text(encoding="utf-8")).get("duration") or 0)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return end
+        if duration > start + 0.5 and end > duration:
+            return round(duration, 3)
+        return end
+
+    def _no_range_for(self, video_id: str, prefix: str) -> bool:
+        return (video_id, prefix) in self.__dict__.setdefault("_no_range", set())
+
+    def _mark_no_range(self, video_id: str, prefix: str) -> None:
+        """No byte ranges for this (video, kind of format): a 360p window without index never closes the HD ones."""
+
+        self.__dict__.setdefault("_no_range", set()).add((video_id, prefix))
 
     def _range_formats(self, info_path: Path, fmt: str, audio: bool, audio_only: bool) -> list[dict[str, Any]]:
         """The DASH mp4 formats (video, and m4a audio when asked) a byte range would read, as yt-dlp picks them."""
@@ -2663,8 +2861,18 @@ class YouTubeSource:
         if audio_only:
             request = "ba[ext=m4a][protocol=https]"
         else:
-            video = "/".join(dict.fromkeys(f"{alt.split('+')[0]}[ext=mp4][protocol=https]"
-                                           for alt in fmt.split("/") if alt.strip() and not alt.startswith("ba")))
+            # video-only DASH formats: a muxed one (360p «18», «b», «w») has no index to read a range by, and
+            # `bv*` prefers it (27-11: every 360p window took the 18 and closed the ranges of the whole video)
+            alts = []
+            for alt in fmt.split("/"):
+                base = alt.split("+")[0].strip()
+                if not base or base.startswith(("ba", "wa")) or base in ("b", "w") or base.startswith(("b[", "w[")):
+                    continue
+                base = re.sub(r"^(bv|wv)\*", r"\1", base)
+                alts.append(f"{base}[ext=mp4][protocol=https][acodec=none]")
+            video = "/".join(dict.fromkeys(alts))
+            if not video:
+                raise NoIndex(f"«{fmt[:80]}» no pide ningún formato de solo vídeo")
             request = f"({video})+ba[ext=m4a][protocol=https]" if audio else video
         try:
             with self._ydl({"format": request, "simulate": True, "quiet": True}) as ydl:
@@ -2680,25 +2888,63 @@ class YouTubeSource:
 
     def _range_get(self, way: int, proxies: Any, url: str, headers: dict[str, str], first: int,
                    last: int) -> tuple[bytes, int, str]:
-        """bytes [first, last] of a format's URL through this video's session: (body, HTTP code, Content-Type)."""
+        """bytes [first, last] of a format's URL through this video's session: (body, HTTP code, Content-Type).
+
+        A passing error (a 502 of the proxy's tunnel, a connection cut halfway) is asked again in the same session,
+        `range_retries` (2) times, for the bytes still missing only (27-11: one cut lost the clip). A refusal
+        (403/404/410) is never asked again here: the caller refreshes the links."""
 
         wanted = last - first + 1
-        response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={first}-{last}"},
-                                           timeout=60, proxies=proxies, stream=True)
-        try:
-            status, kind = response.status_code, str(response.headers.get("Content-Type") or "")
-            if status >= 400:
-                raise RuntimeError(f"yt-dlp download (rango): HTTP Error {status}: {response.reason}")
-            if status != 206 and first > 0:
-                raise NoIndex(f"el servidor no atiende peticiones Range (HTTP {status} {kind})")
-            body = bytearray()
-            for block in response.iter_content(256 * 1024):
-                body += block
-                if len(body) >= wanted:
-                    break
-        finally:
-            response.close()
-        self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + len(body)
+        retries = max(0, int(self.cfg.get("range_retries", 2)))
+        body = bytearray()
+        status, kind, attempts = 0, "", 0
+        while len(body) < wanted:
+            low = first + len(body)
+            try:
+                response = self._sessions[way].get(url, headers={**headers, "Range": f"bytes={low}-{last}"},
+                                                   timeout=60, proxies=proxies, stream=True)
+            except TRANSIENT_ERRORS as error:
+                if attempts >= retries:
+                    raise RuntimeError(f"yt-dlp download (rango): {type(error).__name__}: {error}") from None
+                attempts += 1
+                time.sleep(0.5 * attempts)
+                continue
+            got = 0
+            try:
+                status, kind = response.status_code, str(response.headers.get("Content-Type") or "")
+                if status in TRANSIENT_STATUS and attempts < retries:
+                    attempts += 1
+                    time.sleep(0.5 * attempts)
+                    continue
+                if status >= 400:
+                    raise RuntimeError(f"yt-dlp download (rango): HTTP Error {status}: {response.reason}")
+                if status != 206 and low > 0:
+                    raise NoIndex(f"el servidor no atiende peticiones Range (HTTP {status} {kind})")
+                try:
+                    for block in response.iter_content(256 * 1024):
+                        body += block
+                        got += len(block)
+                        if len(body) >= wanted:
+                            break
+                except TRANSIENT_ERRORS as error:
+                    if attempts >= retries:
+                        raise RuntimeError(f"yt-dlp download (rango): cortado a {len(body)} de {wanted} bytes "
+                                           f"({type(error).__name__})") from None
+                    attempts += 1
+                    time.sleep(0.5 * attempts)
+                    continue
+                announced = announced_bytes(getattr(response, "headers", None) or {})
+                if announced and got < announced and len(body) < wanted:
+                    # the server closed before what it announced, without an error: the rest is asked again
+                    if attempts >= retries:
+                        raise RuntimeError(f"yt-dlp download (rango): llegaron {got} de {announced} bytes")
+                    attempts += 1
+                    time.sleep(0.5 * attempts)
+                    continue
+            finally:
+                response.close()
+                self._local.proxy_bytes = getattr(self._local, "proxy_bytes", 0) + got
+            break                     # complete, or the file ended before `last` (the caller decides)
         return bytes(body[:wanted]), status, kind
 
     def _fetch_whole(self, video_id: str, fmt: str, prefix: str, info_path: Path) -> Path | None:
@@ -2805,15 +3051,16 @@ class YouTubeSource:
             raise RuntimeError(f"yt-dlp download: ffmpeg no pudo cortar {start:.1f}-{end:.1f} s de {video_id} "
                                f"(código {error.returncode})") from None
         self._write_range_sidecar(target, height=self._probe_height(part), cap=self.cfg.get("max_height", 720))
-        self._publish(part, target, video=True, seconds=end - start, what="corte")
+        self._publish(part, target, video=True, seconds=end - start, what="corte", audio=audio)
         return target
 
-    def _publish(self, part: Path, target: Path, *, video: bool, seconds: float | None, what: str) -> None:
+    def _publish(self, part: Path, target: Path, *, video: bool, seconds: float | None, what: str,
+                 audio: bool = False) -> None:
         """`part` → `target` once ffprobe sees a whole clip (a picture, and at least ~80 % of the seconds asked: the
         source may end before `end`). Otherwise the RuntimeError names it and nothing reaches the cache."""
 
         try:
-            publish(part, target, video=video, seconds=seconds, tolerance=max(1.0, 0.2 * (seconds or 0)))
+            publish(part, target, video=video, seconds=seconds, tolerance=max(1.0, 0.2 * (seconds or 0)), audio=audio)
         except RuntimeError as error:
             target.with_suffix(target.suffix + ".json").unlink(missing_ok=True)
             raise RuntimeError(f"yt-dlp download ({what}): {error}") from None

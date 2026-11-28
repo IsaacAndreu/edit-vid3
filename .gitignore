@@ -11,6 +11,9 @@ __pycache__/
 work/
 cache/
 cookies/
+# Datos bajados de fuentes con licencia propia (p. ej. el catálogo de misiones de la GTA Wiki, CC BY-NC-SA): solo en
+# el servidor, nunca en el repositorio público
+datos/
 *.cookies.txt
 editor/dist/
 config.local.yaml

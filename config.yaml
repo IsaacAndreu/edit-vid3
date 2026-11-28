@@ -29,6 +29,10 @@ align:
   # max_pause_seconds: 4.0 # una pausa más larga entre dos palabras se quita de la voz (queda 1 s; la voz de antes se
   #                          guarda como voz.original.mp3): ningún plano puede cubrirla. 0 = no quitar nunca.
   #                          El silencio después de la última palabra se deja en 1 s.
+  #                          Solo se quita lo que está en silencio de verdad y Whisper no oye: una frase dicha que
+  #                          no está en guion.txt se queda.
+  # pause_keep_seconds: 1.0  # lo que queda de una pausa larga (4 para respetar las pausas hechas a propósito)
+  # silence_db: -35          # por debajo de esto es silencio (sube a -30 con una grabación con ruido de fondo)
 
 planner:
   # cobertura: false            # con ideas: los sucesos clave (3-6) se cuentan por funciones — acción, otro ángulo,
@@ -117,6 +121,10 @@ sourcing:
     # requests_per_hour 1500 (peticiones HTTP estimadas: búsqueda 2, detalles 4, tramo descargado 3; las miniaturas
     # del storyboard, de i.ytimg.com, no cuentan). Al llegar al límite lo dice en el registro y espera.
     # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
+    # reused_download_units: 3       # lo que cuesta un tramo que reutiliza una extracción ya hecha (solo bytes del
+                                   # servidor de vídeo, sin página ni reproductor); con 3, 1500/h son 500 tramos/h para
+                                   # toda la máquina. 1 = más tramos por hora; compara bots y 429 por hora con
+                                   # python main.py --youtube-stats 1 antes de bajarlo
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
     # Proxy residencial de pago (usuario en la URL, p. ej. http://USUARIO:CLAVE@resi-bridge-eu.rainproxy.io:1111, en
     # config.local.yaml o YOUTUBE_PROXY): cobra por GB y cambia de IP en cada conexión salvo con el sufijo de sesión
@@ -134,6 +142,9 @@ sourcing:
     proxy_usd_per_gb: 0.62             # lo que cobra el proxy por GB, para el coste de --youtube-stats
     max_height: 720                    # tope de los tramos (el vídeo final es 1080p y no se nota más); null = como se pida
     max_fps: 30                        # un 720p60 son el doble de bytes y el vídeo final va a 30 fps; null = sin tope
+    # resolution_first: false          # true: la resolución manda sobre los fps y el códec (una fuente a 60 fps da su
+                                       # 720p, no 480p30; un 720p vp9 antes que el único avc1 a 360p). Más GB de proxy:
+                                       # compara una noche con y sin (python main.py --youtube-stats 1)
     whole_max_minutes_residential: 10  # sin HLS, el vídeo entero por el proxy residencial solo si dura/pesa menos que esto
     whole_max_mb_residential: 80       # (en casa: whole_max_minutes 30 / whole_max_mb 600); por encima, siguiente candidato
     prefetch_whole_residential: false  # análisis por el proxy residencial: los tramos por HLS, no el vídeo entero a 360p
@@ -216,6 +227,8 @@ judge:
   candidates: 3                    # opciones que ve el juez por hoja
   rounds: 2                        # si rechaza todas, se le enseñan las 3 siguientes; si no, fallback
   rounds_rest: 1                   # fuera del gancho, como mucho una hoja (ahorra la 2.ª llamada); sin poner = rounds.
+  # rounds_literal: 1               # lo mismo para una idea literal fuera del gancho (sin poner = rounds_rest). 2 = una
+                                   # segunda hoja antes del relleno: más llamadas al juez; compara Puntería con y sin
                                    # Solo cuenta para los planos que se juzguen a partir de ahora: no rehace nada
   lessons_refresh: 10              # las lecciones de «Errores» se renuevan cada 10 correcciones nuevas (si no, cada etiqueta invalida la caché del juez)
   # model_rest: gpt-6-luna          # fuera del gancho, un modelo más barato; el gancho sigue con `model`
@@ -277,6 +290,9 @@ quotes:                            # declaraciones originales con subtítulos (p
   # passage_language: es           # …idioma de los subtítulos de la fuente que se leen (sin subtítulos: suena sin ellos)
 
 fallback:
+  # protagonist_first: false       # true: el orden del objetivo — clip y luego foto del protagonista, los dos con el juez
+  #                                  (que ve la época de la idea), ANTES que el stock de Pexels. Más llamadas al juez y
+  #                                  cambia lo que sale: compara Puntería de un vídeo hecho con y sin
   # literal_ambient: true          # idea literal sin su clip: foto de la persona y luego un clip suyo que el juez acepte,
   #                                  antes que la pizarra (false: «eso o nada», lo que dejó newideas medio en texto)
   # text_check: true              # texto ajeno quemado (subtítulos de otro canal, un rótulo de informativo, un anuncio)
@@ -444,7 +460,8 @@ timeline:
   question_merge_gap: 2.5          # preguntas a menos de 2,5 s salen juntas
   question_hold: 1.2               # s que el texto sigue tras la última palabra
   question_max_words: 30
-  card_share: 0.25                 # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre)
+  card_share: 0                    # parte de los clips panorámicos que van en tarjeta enmarcada (fotos y verticales, siempre).
+                                   # 0 de serie (27-11: 0.25 metía 1 de cada 4 clips en tarjeta, con 72 saltos tarjeta↔pantalla)
   photo_layout: mixed              # fotos: mixed (tarjeta enmarcada o paralaje, a partes) · full (a pantalla completa, con un Ken Burns lento)
   photo_hold_seconds: 0            # >0: una foto real sigue en pantalla sobre los planos de relleno que vienen detrás, hasta estos segundos (crímenes reales: 9)
   labels: true                     # rótulos abajo a la izquierda: nombres, lugar/fecha de cada tramo, notas
@@ -464,6 +481,11 @@ timeline:
 
 speed:                             # solo cuánto trabajo va a la vez: cambiarlo no hace rehacer ninguna etapa
   fallback_parallel: 8             # planos que el relleno busca a la vez (descargas y juez en paralelo); con poca RAM, 4
+
+deploy:                            # el despliegue automático (el estudio y el vigilante bajan main solos: pipeline/puerta.py)
+  require_ci: false                # true: solo se despliega un commit con la CI de GitHub en verde (espera mientras corre).
+                                   # Apagado: la CI de cada commit se apunta en out/_puerta.json («ci») para ver cuántas
+                                   # veces habría esperado o parado. La barrera de verdad sigue siendo proteger main en GitHub.
 
 queue:                             # cola nocturna (python main.py --all)
   parallel_videos: 3               # vídeos a la vez: mientras uno descarga de YouTube, otro analiza o renderiza
@@ -593,6 +615,8 @@ budget:
   daily_usd: 0                     # límite de gasto de API al día (0 = sin límite; también en el estudio → Ajustes)
   proxy_gb_per_day: 0              # tope de GB por el proxy residencial al día (0 = sin tope; también en Ajustes): al llegar,
                                    # los vídeos que necesitan YouTube esperan a mañana y los doblajes siguen
+  # serper_usd_per_search: 0      # precio de una búsqueda de Serper (fotos, verificación); sin él se apuntan
+                                   # como «sin precio» con su número, nunca como gratis
   # per_video_usd: 1.5             # lo que UN vídeo puede gastar en el día, sumando todos sus intentos (antes era por
                                    # intento); se mira antes de cada llamada de pago (modelo, voz, imágenes), no solo
                                    # entre etapas. También en Ajustes → «Límite por vídeo».

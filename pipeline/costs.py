@@ -34,7 +34,11 @@ def record_cost(
     usd: float,
     details: dict[str, Any] | None = None,
 ) -> None:
-    with _LOCK:
+    from .fileio import file_lock
+
+    path = ctx.work_dir / COSTS_FILE
+    # between threads AND processes (27-11: entries lost with several videos and the studio writing at once)
+    with _LOCK, file_lock(path.with_name(path.name + ".lock")):
         _append(ctx, stage=stage, provider=provider, operation=operation, usd=usd, details=details)
 
 
@@ -50,7 +54,25 @@ def _append(ctx: RunContext, *, stage: str, provider: str, operation: str, usd: 
             **({"details": details} if details else {}),
         }
     )
-    ctx.write_json(COSTS_FILE, {"totalUsd": round(sum(float(e.get("usd", 0)) for e in entries), 6), "entries": entries})
+    from .fileio import atomic_write_text
+
+    payload = {"totalUsd": round(sum(float(e.get("usd", 0) or 0) for e in entries if isinstance(e, dict)), 6),
+               "entries": entries}
+    atomic_write_text(ctx.work_dir / COSTS_FILE, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def record_searches(ctx: RunContext, stage: str, provider: str, count: int) -> None:
+    """Paid web searches (Serper) at `budget.<provider>_usd_per_search`; without a price, written down as «unpriced»
+    with their number, so they are seen in the spend page instead of costing nothing."""
+
+    if count <= 0:
+        return
+    try:
+        price = float((ctx.config.get("budget") or {}).get(f"{provider}_usd_per_search") or 0)
+    except (AttributeError, TypeError, ValueError):
+        price = 0.0
+    record_cost(ctx, stage=stage, provider=provider, operation=f"{count} búsquedas", usd=price * count,
+                details={"searches": int(count), **({} if price else {"unpriced": True})})
 
 
 def total_cost(ctx: RunContext) -> float:

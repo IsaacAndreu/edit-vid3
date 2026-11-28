@@ -87,7 +87,9 @@ def test_the_hook_never_repeats_a_clip_newideas_s015_six_times():
     limit_text(shots, [], FPS, ideas, scores, share=0.10, hook_seconds=30)
     picked = [s.media.src if s.media else None for s in shots[:9]]
     clips = [p for p in picked if p]
-    assert len(clips) == len(set(clips)) == 6                        # each donor once; the rest stays text
+    # each donor once first; then (27-11) the hook never stays text while a clip of its subject exists: the used
+    # ones come back, never next to themselves
+    assert len(set(clips[:6])) == 6 and len(clips) == 9
     assert picked[0] == "media/s015.mp4"                             # still the best judged first
     assert all(a is None or a != b for a, b in zip(picked, picked[1:]))
 

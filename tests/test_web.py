@@ -368,7 +368,8 @@ class PhoneNoticeTests(unittest.TestCase):
             for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "STUDIO_URL", "SMTP_HOST"):
                 __import__("os").environ.pop(key, None)
             ctx = self._ctx(root, TELEGRAM_BOT_TOKEN="1:x", TELEGRAM_CHAT_ID="42", STUDIO_URL="http://192.168.1.5:8080")
-            (root / "work" / "V1" / "current.json").write_text(json.dumps({"stage": "render", "number": 13, "of": 15}))
+            (root / "work" / "V1" / "current.json").write_text(json.dumps({"stage": "render", "number": 13, "of": 15,
+                                                                               "pid": __import__("os").getpid()}))
             with patch("pipeline.notify.requests.post", return_value=self._Response()) as post:
                 notify.video_failed(ctx, RuntimeError("Cannot allocate memory"))
             text = post.call_args.kwargs["data"]["text"]
