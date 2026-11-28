@@ -242,7 +242,7 @@ function uploadOpening(file) {     // the same file is uploaded once, however ma
   $("#opbar").classList.remove("hide");
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/apertura/subir");
+    xhr.open("POST", "/api/apertura/subir"); xhr.setRequestHeader("X-Estudio", "1");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("#opbar i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
     xhr.onload = () => {

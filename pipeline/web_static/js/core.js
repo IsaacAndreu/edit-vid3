@@ -99,7 +99,8 @@ async function api(path, options = {}) {
   // stays pending), so a slow answer cannot paint the old page over the new one
   const stop = isGet ? navStop : null;
   let res;
-  try { res = await fetch(path, {credentials: "same-origin", ...(stop ? {signal: stop.signal} : {}), ...options}); }
+  const sent = isGet ? options : {...options, headers: {"X-Estudio": "1", ...(options.headers || {})}};   // the server's check
+  try { res = await fetch(path, {credentials: "same-origin", ...(stop ? {signal: stop.signal} : {}), ...sent}); }
   catch (e) { if (stop && stop.signal.aborted) return new Promise(() => {}); throw e; }
   if (stop && stop.signal.aborted) return new Promise(() => {});
   if (res.status === 401) { showLogin(); throw new Error("login"); }
@@ -234,7 +235,7 @@ function wireDrop(id, {multiple = false, render = null, onChange = null} = {}) {
 function sendFile(url, file, bar) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
+    xhr.open("POST", url); xhr.setRequestHeader("X-Estudio", "1");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (e.lengthComputable && bar) bar.querySelector("i").style.setProperty("--v", (100 * e.loaded / e.total) + "%"); };
     xhr.onload = () => xhr.status < 300 ? resolve(JSON.parse(xhr.responseText || "{}")) : reject(new Error(JSON.parse(xhr.responseText || "{}").error || xhr.statusText));

@@ -2436,6 +2436,11 @@ def make_handler(root: Path, password: str) -> type[BaseHTTPRequestHandler]:
                 return self._fail(401, "Inicia sesión")
             if self.headers.get("Origin") and urllib.parse.urlparse(self.headers["Origin"]).netloc != self.headers.get("Host"):
                 return self._fail(403, "Origen no permitido")
+            # a change only from the studio's own pages: the browser says so (Sec-Fetch-Site), or the studio's own
+            # header, which another site cannot send without the browser asking first
+            if (self.headers.get("Sec-Fetch-Site") not in ("same-origin", "none")
+                    and self.headers.get("X-Estudio") != "1"):
+                return self._fail(403, "Origen no permitido")
             mine = usuarios.channels_of(root, who) if who else []
             if path.startswith("/editor/"):                # the editor's changes, uploads, apply and render
                 data = self.rfile.read(length)

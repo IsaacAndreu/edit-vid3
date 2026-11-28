@@ -209,8 +209,8 @@ class HttpTests(unittest.TestCase):
 
     def call(self, path: str, body: dict | None = None, headers: dict | None = None) -> tuple[int, bytes, dict]:
         request = urllib.request.Request(self.base + path, data=json.dumps(body).encode() if body is not None else None,
-                                         headers={"Content-Type": "application/json", **({"Cookie": self.cookie} if self.cookie else {}),
-                                                  **(headers or {})})
+                                         headers={"Content-Type": "application/json", "X-Estudio": "1",   # as the pages send it
+                                                  **({"Cookie": self.cookie} if self.cookie else {}), **(headers or {})})
         try:
             with urllib.request.urlopen(request) as response:
                 return response.status, response.read(), dict(response.headers)

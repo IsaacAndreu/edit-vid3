@@ -608,3 +608,12 @@ Test: `tests/test_arreglo_guion.py`.
 - `notify.set_env`: solo nombres en MAYÚSCULAS_CON_GUIONES y valores sin saltos de línea; lo demás se rechaza antes
   de tocar `.env`.
 - Prueba: `tests/test_seguridad_env.py`.
+
+## Revisión 27-11 · seguridad 8
+
+- Estudio: un cambio (POST) solo se acepta si el navegador dice que viene del propio estudio (Sec-Fetch-Site
+  same-origin) o lleva la cabecera `X-Estudio: 1`, que las páginas del estudio mandan siempre (también en las
+  subidas). Otra web no puede mandarla sin que el navegador pregunte antes.
+- Prueba: `tests/test_seguridad_origen.py`; las pruebas de la web y de socios mandan la cabecera.
+- Sin comprobar en el servidor: que el proxy delante del estudio no quite esas cabeceras (si un cambio da
+  «Origen no permitido», es eso).
