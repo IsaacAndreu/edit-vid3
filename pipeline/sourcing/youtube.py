@@ -2197,14 +2197,13 @@ class YouTubeSource:
                 why = " (HLS por probar)" if untested else ""
                 self._local.not_hls = f"ningún formato HLS encaja con «{hls[:120]}»{why}"
                 missed.add((video_id, hls))
-        no_range = self.__dict__.setdefault("_no_range", set())
-        if self.cfg.get("byte_ranges", False) and video_id not in no_range:
+        if self.cfg.get("byte_ranges", False) and not self._no_range_for(video_id, prefix):
             # opt-in: the DASH mp4's own index says which bytes hold these seconds; only those come (byteranges.py)
             try:
                 self._local.route = "rango-bytes"
                 return self._fetch_byte_range(video_id, start, end, fmt, prefix, audio, audio_only, info_path)
             except NoIndex as error:
-                no_range.add(video_id)          # its formats will not change: the next shots do not ask again (884 rows)
+                self._mark_no_range(video_id, prefix)   # that format will not change: its next shots do not ask (884 rows)
                 self._local.route = None
                 self._local.not_hls = f"{self._local.not_hls or 'sin HLS'}; sin rango de bytes: {error}"
         # two 403s in a row on whole downloads: this client/connection does not get them today (pati12 14/10: 403 on
@@ -2675,6 +2674,14 @@ class YouTubeSource:
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+    def _no_range_for(self, video_id: str, prefix: str) -> bool:
+        return (video_id, prefix) in self.__dict__.setdefault("_no_range", set())
+
+    def _mark_no_range(self, video_id: str, prefix: str) -> None:
+        """No byte ranges for this (video, kind of format): a 360p window without index never closes the HD ones."""
+
+        self.__dict__.setdefault("_no_range", set()).add((video_id, prefix))
+
     def _range_formats(self, info_path: Path, fmt: str, audio: bool, audio_only: bool) -> list[dict[str, Any]]:
         """The DASH mp4 formats (video, and m4a audio when asked) a byte range would read, as yt-dlp picks them."""
 
@@ -2684,8 +2691,18 @@ class YouTubeSource:
         if audio_only:
             request = "ba[ext=m4a][protocol=https]"
         else:
-            video = "/".join(dict.fromkeys(f"{alt.split('+')[0]}[ext=mp4][protocol=https]"
-                                           for alt in fmt.split("/") if alt.strip() and not alt.startswith("ba")))
+            # video-only DASH formats: a muxed one (360p «18», «b», «w») has no index to read a range by, and
+            # `bv*` prefers it (27-11: every 360p window took the 18 and closed the ranges of the whole video)
+            alts = []
+            for alt in fmt.split("/"):
+                base = alt.split("+")[0].strip()
+                if not base or base.startswith(("ba", "wa")) or base in ("b", "w") or base.startswith(("b[", "w[")):
+                    continue
+                base = re.sub(r"^(bv|wv)\*", r"\1", base)
+                alts.append(f"{base}[ext=mp4][protocol=https][acodec=none]")
+            video = "/".join(dict.fromkeys(alts))
+            if not video:
+                raise NoIndex(f"«{fmt[:80]}» no pide ningún formato de solo vídeo")
             request = f"({video})+ba[ext=m4a][protocol=https]" if audio else video
         try:
             with self._ydl({"format": request, "simulate": True, "quiet": True}) as ydl:

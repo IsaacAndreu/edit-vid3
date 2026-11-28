@@ -797,3 +797,13 @@ Test: `tests/test_arreglo_guion.py`.
   los bytes que faltan. Un rechazo (403/404/410) nunca se reintenta ahí: refresca los enlaces quien llama, como antes.
 - Prueba: `tests/test_descargas_reintentos.py`.
 - No cambiado: si el tramo HD falla de verdad tras sus reintentos, el plano sigue contando como fallido en ingest.
+
+## Revisión 27-11 · C2 las ventanas de 360p ya no estropean los rangos de bytes del vídeo
+
+- Los rangos de bytes solo leen formatos DASH de solo vídeo (`bv`, `[acodec=none]`): `bv*` prefería el 18 (360p con
+  audio, sin índice), salía «sin índice» y se cerraban los rangos del vídeo entero.
+- El «sin índice» se apunta por (vídeo, tipo de formato: a360/hd/hdav/au): un 360p sin índice ya no apaga los rangos
+  del HD del mismo vídeo.
+- Prueba: `tests/test_rangos_formato.py`. Para probar la ventana de 360p con la sonda:
+  `python -m pipeline.sonda_rango <vídeo> --formato "bv*[height<=360][vcodec^=avc1]/bv*[height<=360]"`.
+- Solo afecta a quien tiene `sourcing.youtube.byte_ranges: true` (apagado por defecto).
