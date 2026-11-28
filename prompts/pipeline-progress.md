@@ -988,3 +988,11 @@ Test: `tests/test_arreglo_guion.py`.
 - No hecho: más vídeos o ventanas por plano (más peticiones a YouTube: es el bloque de descargas y su presupuesto) y
   volver a puntuar con CLIP el `protagonist_pool` para cada plano (hoy ordena con las notas de otros planos: hace falta
   guardar los vectores de cada fragmento, que hoy no se guardan). Lo dejo dicho para decidirlo contigo.
+
+## Revisión 27-11 · D10 una prueba con las ideas, el gancho, el tope de texto y el revisor juntos
+
+- El escenario «ideas» de la prueba de extremo a extremo (planner.ideas + revisor en la cola) comprueba además, sobre
+  el montaje real: que las pizarras de planos que debían tener imagen (no los rótulos leídos ni los paneles de cifras,
+  que son texto a propósito) no pasan del tope; que el gancho no tiene ninguna; que nunca sale el mismo archivo dos
+  planos seguidos; y que las medidas de pantalla salen.
+- Prueba: `tests/test_e2e_stages.py::test_every_stage_runs_its_real_code[ideas]`.
