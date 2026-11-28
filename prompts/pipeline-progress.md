@@ -575,3 +575,10 @@ Test: `tests/test_arreglo_guion.py`.
   en vez de DeepSeek. `llm.keys_needed`: el doctor y la comprobación de antes de la cola piden ANTHROPIC_API_KEY si
   algo usa Claude y LLM_API_KEY solo si algo usa DeepSeek.
 - Prueba: `tests/test_modelo_por_defecto.py`.
+
+## Revisión 27-11 · seguridad 3
+
+- `referencias.public_url` / `fetch_text`: los enlaces pegados solo se leen si son http(s) a puertos web normales y
+  todas las direcciones del nombre son públicas; cada redirección se comprueba igual; como mucho 2 MB por página.
+- El editor solo sirve imágenes y vídeo de `cache/`.
+- Prueba: `tests/test_seguridad_enlaces.py`.

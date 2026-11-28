@@ -15,6 +15,69 @@ from pathlib import Path
 from typing import Any, Callable
 
 MAX_LINKS = 6                   # each YouTube one is a request: a handful, never a list
+MAX_BYTES = 2_000_000           # a page read for its text: never more
+MAX_REDIRECTS = 4
+
+
+class BlockedLink(ValueError):
+    pass
+
+
+def public_url(url: str, resolve: Callable[[str], list[str]] | None = None) -> str:
+    """`url` if it is http(s) to a public internet address; BlockedLink otherwise. The name is resolved and every
+    address checked (never this machine, its network, the cloud's metadata or any private range)."""
+
+    import ipaddress
+    import socket
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise BlockedLink("solo enlaces http(s)")
+    if parts.port not in (None, 80, 443):
+        raise BlockedLink("solo los puertos web normales")
+    host = parts.hostname
+    if resolve is None:
+        def resolve(name: str) -> list[str]:
+            return [info[4][0] for info in socket.getaddrinfo(name, None)]
+    try:
+        addresses = resolve(host)
+    except OSError as error:
+        raise BlockedLink(f"no se encuentra {host}") from error
+    if not addresses:
+        raise BlockedLink(f"no se encuentra {host}")
+    for address in addresses:
+        ip = ipaddress.ip_address(address.split("%")[0])
+        if not ip.is_global or ip.is_multicast:
+            raise BlockedLink("dirección no pública")
+    return url
+
+
+def fetch_text(url: str, session: Any = None, resolve: Callable[[str], list[str]] | None = None) -> str:
+    """A web page's text through public addresses only, following redirects by hand (each one checked again) and
+    reading at most MAX_BYTES."""
+
+    import requests
+    from urllib.parse import urljoin
+
+    session = session or requests.Session()
+    current = public_url(url, resolve)
+    for _ in range(MAX_REDIRECTS + 1):
+        response = session.get(current, headers={"User-Agent": USER_AGENT}, timeout=20, allow_redirects=False,
+                               stream=True)
+        if response.status_code in (301, 302, 303, 307, 308) and response.headers.get("Location"):
+            current = public_url(urljoin(current, response.headers["Location"]), resolve)
+            response.close()
+            continue
+        response.raise_for_status()
+        body = b""
+        for chunk in response.iter_content(65536):
+            body += chunk
+            if len(body) >= MAX_BYTES:
+                break
+        response.close()
+        return body[:MAX_BYTES].decode(response.encoding or "utf-8", errors="replace")
+    raise BlockedLink("demasiadas redirecciones")
 PER_LINK_CHARS = 6000
 USER_AGENT = "Mozilla/5.0 (compatible; edit-vid3 referencias)"
 
@@ -99,12 +162,8 @@ def read(ctx: Any, links: Any, youtube: Any = None, get: Callable[[str], str] | 
             if get is not None:
                 raw = get(url)
             else:
-                import requests
-
                 try:
-                    response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
-                    response.raise_for_status()
-                    raw = response.text
+                    raw = fetch_text(url)
                 except Exception as error:
                     print(f"   referencia {url[:80]}: {str(error)[:100]}")
                     return ""
