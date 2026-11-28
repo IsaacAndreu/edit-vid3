@@ -121,6 +121,10 @@ sourcing:
     # requests_per_hour 1500 (peticiones HTTP estimadas: búsqueda 2, detalles 4, tramo descargado 3; las miniaturas
     # del storyboard, de i.ytimg.com, no cuentan). Al llegar al límite lo dice en el registro y espera.
     # Más bajo = menos riesgo de «no eres un bot» y documentales más lentos. No se escribe aquí: en config.local.yaml.
+    # reused_download_units: 3       # lo que cuesta un tramo que reutiliza una extracción ya hecha (solo bytes del
+                                   # servidor de vídeo, sin página ni reproductor); con 3, 1500/h son 500 tramos/h para
+                                   # toda la máquina. 1 = más tramos por hora; compara bots y 429 por hora con
+                                   # python main.py --youtube-stats 1 antes de bajarlo
     player_client: [default, web_safari]   # web_safari trae los formatos HLS (m3u8), que no hace falta frenar
     # Proxy residencial de pago (usuario en la URL, p. ej. http://USUARIO:CLAVE@resi-bridge-eu.rainproxy.io:1111, en
     # config.local.yaml o YOUTUBE_PROXY): cobra por GB y cambia de IP en cada conexión salvo con el sufijo de sesión

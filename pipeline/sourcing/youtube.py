@@ -1226,7 +1226,7 @@ class YouTubeSource:
                 if delay > 0:
                     time.sleep(delay)
                     self._count("espera por límite", delay)
-                held = 0.0 if through else self._budget_take(way, REQUEST_UNITS.get(action, 2))
+                held = 0.0 if through else self._budget_take(way, self._units(action))
                 if held:
                     self._count("espera por presupuesto/hora", held)
                 per_session = self._paced_per_session(way, through)
@@ -1576,6 +1576,19 @@ class YouTubeSource:
         share = refusals / len(rows)
         return len(refused) >= int(self.cfg.get("bot_breaker_videos", 3)) and \
             share >= float(self.cfg.get("bot_breaker_share", 0.5))
+
+    def _units(self, action: str) -> float:
+        """What `action` costs out of the hourly budget. A range that reuses an extraction already on disk only asks
+        the media servers for its bytes (no page, no player): `reused_download_units` (off: 3, as any download) can
+        charge it less — at 3, the 1 500 requests an hour are 500 ranges for the whole machine (27-11)."""
+
+        units = float(REQUEST_UNITS.get(action, 2))
+        if action.startswith("download") and action != "download (completo)" and getattr(self._local, "info_reused", None):
+            try:
+                return float(self.cfg.get("reused_download_units", units))
+            except (TypeError, ValueError):
+                return units
+        return units
 
     def _budget_take(self, way: int, units: float) -> float:
         """The hourly budget of that way out; says so (once a while) when the hour is full and requests wait."""

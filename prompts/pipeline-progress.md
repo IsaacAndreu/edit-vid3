@@ -861,3 +861,11 @@ Test: `tests/test_arreglo_guion.py`.
   (`refused_hours_residential`, 3), los planos que lo eligieron pasan a su siguiente candidato sin pedir nada a
   YouTube. Antes cada plano pagaba otra extracción y otra descarga.
 - Prueba: `tests/test_rechazo_bot.py`.
+
+## Revisión 27-11 · C9 el techo por hora y los tramos que reutilizan extracción (opción, apagada)
+
+- Confirmado: con 3 unidades por tramo, las 1 500 peticiones/hora son 500 tramos/hora para toda la máquina.
+- `sourcing.youtube.reused_download_units` (apagado: 3, como cualquier descarga): lo que cuesta un tramo que reutiliza
+  la extracción ya hecha (solo bytes del servidor de vídeo). Apagado porque cambia el ritmo de peticiones a YouTube.
+  Medirlo antes de bajarlo a 1: bots y 429 por hora con `python main.py --youtube-stats 1`.
+- Prueba: `tests/test_presupuesto_tramos.py`.
