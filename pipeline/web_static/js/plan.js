@@ -15,16 +15,16 @@ async function allVideosPage() {
   const count = (fn) => data.videos.filter(fn).length;
   lazyLists.videos = data.channels;
   const channels = [...new Set(data.videos.map((v) => v.channel).filter(Boolean))].sort();     // only those with videos
-  const th = (key, name, cls = "") => `<th class="${cls}" tabindex="0" aria-sort="${allSort.key === key ? (allSort.dir > 0 ? "ascending" : "descending") : "none"}" onclick="allSortBy('${key}')">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
-  const state = (v) => v.published ? `<span class="pill hecho">subido</span> <span class="small muted">${esc(String(v.published.at || "").slice(0, 10))}</span>${v.published.url ? ` <a href="${esc(v.published.url)}" target="_blank" rel="noopener">↗</a>` : ""}`
+  const th = (key, name, cls = "") => `<th class="${cls}" tabindex="0" aria-sort="${allSort.key === key ? (allSort.dir > 0 ? "ascending" : "descending") : "none"}" onclick="allSortBy(${jsq(key)})">${name}${allSort.key === key ? (allSort.dir > 0 ? " ▴" : " ▾") : ""}</th>`;
+  const state = (v) => v.published ? `<span class="pill hecho">subido</span> <span class="small muted">${esc(String(v.published.at || "").slice(0, 10))}</span>${v.published.url ? ` <a href="${safeUrl(v.published.url)}" target="_blank" rel="noopener">↗</a>` : ""}`
     : v.archived ? '<span class="pill">archivado</span>' : pill(v.lastError && v.status === "en cola" ? "reintento" : v.status);
   show(`<h1>Todos los vídeos</h1>
     <div class="hb mt-2"><div class="tools grow">
       <input type="search" aria-label="Buscar por nombre o título" placeholder="Buscar por nombre o título" value="${esc(f.q)}" oninput="allFilter.q=this.value;clearTimeout(window.allT);window.allT=setTimeout(allVideosPage,300)">
       <select class="w-auto" aria-label="Canal" onchange="allFilter.channel=this.value;allVideosPage()"><option value="">Todos los canales (${data.videos.length})</option>${[...channels, ...(count((v) => !v.channel) ? ["(sin canal)"] : [])].map((c) =>
         `<option value="${esc(c)}" ${f.channel === c ? "selected" : ""}>${esc(c)} (${count((v) => c === "(sin canal)" ? !v.channel : v.channel === c)})</option>`).join("")}</select>
-      ${data.videos.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${(f.kind || "") === k ? "on" : ""}" onclick="allFilter.kind='${k}';allVideosPage()">${name}</button>`).join("")}</span>` : ""}</div>
-      <div class="tools mw0"><span class="seg">${["todos", "en marcha", "sin subir", "subidos", "archivados"].map((st) => `<button class="${f.state === st ? "on" : ""}" onclick="allFilter.state='${st}';allVideosPage()">${st} <span class="muted">${st === "todos" ? data.videos.length : count((v) => stateOf(v) === st)}</span></button>`).join("")}</span></div></div>
+      ${data.videos.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${(f.kind || "") === k ? "on" : ""}" onclick="allFilter.kind=${jsq(k)};allVideosPage()">${name}</button>`).join("")}</span>` : ""}</div>
+      <div class="tools mw0"><span class="seg">${["todos", "en marcha", "sin subir", "subidos", "archivados"].map((st) => `<button class="${f.state === st ? "on" : ""}" onclick="allFilter.state=${jsq(st)};allVideosPage()">${st} <span class="muted">${st === "todos" ? data.videos.length : count((v) => stateOf(v) === st)}</span></button>`).join("")}</span></div></div>
     <div class="small muted my-2">${list.length} vídeo(s). El desplegable de canal cambia dónde cuenta el vídeo (no se rehace).</div>
     <div class="card flush"><table class="vt"><thead><tr>${th("title", "Vídeo")}${th("channel", "Canal", "wide")}${th("updated", "Estado")}${th("minutes", "Dura", "r wide")}${th("cost", "API", "r wide")}</tr></thead>
       <tbody>${list.map((v) => `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.title ? v.slug : "")}</div></td>
@@ -59,7 +59,7 @@ async function errorsPage() {
     ${e.tips.length ? `<div class="notice elf">${e.tips.map(esc).join("<br>")}</div>` : ""}
     <div class="hb"><h2>Vídeos terminados</h2>
       <span class="seg">${[["todos", `Todos <span class="muted">${done.length}</span>`], ["sin revisar", `Sin revisar <span class="muted">${pending}</span>`], ["revisados", `Revisados <span class="muted">${e.videos.length}</span>`]].map(([k, n]) =>
-        `<button class="${k === errFilter ? "on" : ""}" onclick="errFilter='${k}';errorsPage()">${n}</button>`).join("")}</span></div>
+        `<button class="${k === errFilter ? "on" : ""}" onclick="errFilter=${jsq(k)};errorsPage()">${n}</button>`).join("")}</span></div>
     ${done.length ? `<div class="card flush"><table class="vt"><thead><tr><th>Vídeo</th><th class="wide">Canal</th><th class="wide">Clips bien · mal · dudosos</th><th class="r wide">Acierto</th><th></th></tr></thead>
       <tbody>${list.map((v) => { const r = byVideo[v.slug]; return `<tr><td class="t"><a href="#/video/${encodeURIComponent(v.slug)}">${esc(v.title || v.slug)}</a><div class="s">${esc(v.title ? v.slug : "")}<span class="ph"> · ${r ? `${verdicts(r)} · ${acc(r)}` : "sin revisar"}</span></div></td>
         <td class="wide"><span class="chan">${dot(v.channel, "sm")}${esc(v.channel || "—")}</span></td>
@@ -111,7 +111,7 @@ function drawCalendar() {
     return `<th scope="col" class="${d === today ? "today" : ""} ${n === 1 ? "wk" : ""}" title="${DAY(d)}"><span>${"DLMXJVS"[n]}</span><b>${day.getDate()}</b></th>`; }).join("");
   const cell = (c, d) => { const s = slots[c + "|" + d], n = new Date(d + "T12:00:00").getDay(), key = c + "|" + d;
     return `<td class="${n === 1 ? "wk" : ""} ${n === 0 || n === 6 ? "we" : ""}">${s ? `<button class="${calKind(s)} ${s.pinned ? "pin" : ""} ${s.past ? "past" : ""}"
-      aria-pressed="${calPicked === key}" aria-label="${esc(said(s))}" title="${esc(said(s))}" onclick="calPick('${esc(key)}')"></button>` : ""}</td>`; };
+      aria-pressed="${calPicked === key}" aria-label="${esc(said(s))}" title="${esc(said(s))}" onclick="calPick(${jsq(key)})"></button>` : ""}</td>`; };
   const grid = rows.length ? `<div class="card flush cal-wrap" role="region" aria-label="Calendario de publicación" tabindex="0"><table class="cal">
       <thead><tr><th scope="col" class="t-l">Canal</th><th scope="col" title="Vídeos de reserva (objetivo ${st.buffer})">Res.</th>${head}</tr></thead>
       <tbody>${rows.map((c) => { const n = a.reserve[c];
@@ -123,7 +123,7 @@ function drawCalendar() {
   const s = slots[calPicked];
   const free = (channel) => a.videos.filter((v) => v.channel === channel && v.status !== "subido");
   const detail = !s ? (open.length ? `<div class="card mt"><b>Próximos huecos</b> <span class="small muted">toca uno para ponerle vídeo</span>
-        <div class="tools">${open.slice(0, 10).map((g) => `<button class="chip" onclick="calPick('${esc(g.channel + "|" + g.date)}')">${dot(g.channel, "sm")} ${esc(g.channel)} · <span class="${g.late ? "t-bad" : "muted"}">${DAY(g.date)}</span></button>`).join("")}
+        <div class="tools">${open.slice(0, 10).map((g) => `<button class="chip" onclick="calPick(${jsq(g.channel + "|" + g.date)})">${dot(g.channel, "sm")} ${esc(g.channel)} · <span class="${g.late ? "t-bad" : "muted"}">${DAY(g.date)}</span></button>`).join("")}
         ${open.length > 10 ? `<span class="small muted">y ${open.length - 10} más</span>` : ""}</div></div>` : "")
     : (() => { const v = s.video;
       return `<div class="cal-detail card" id="cal-detail"><div class="row between nowrap top"><div class="mw0"><b>${dot(s.channel)} ${esc(s.channel)}</b> <span class="muted">· ${DAY(s.date)}${s.date === today ? " · hoy" : ""} · ${esc(s.time)}</span>
@@ -132,16 +132,16 @@ function drawCalendar() {
               ${s.pinned ? `<span class="small muted">${icon("pin")} fijado</span>` : ""}
               ${s.gap && !s.past ? `<span class="small muted">${s.late ? "ya vas tarde" : "listo " + need(s)}</span>` : ""}`}</div></div>
           <button class="icon ghost" aria-label="Cerrar" onclick="calPick('')">${icon("x")}</button></div>
-        <div class="tools">${v && v.status === "hecho" && s.date <= today ? `<button onclick="uploaded('${esc(v.slug)}')">Ya está subido</button>` : ""}
-          ${s.pinned ? `<button onclick="pin('${esc(v.slug)}', '')">Quitar fijado</button>` : ""}
-          ${s.past ? "" : `<select class="w-auto" aria-label="Poner otro vídeo en este día" onchange="pin(this.value, '${s.date}')"><option value="">Poner otro…</option>${free(s.channel).map((x) =>
+        <div class="tools">${v && v.status === "hecho" && s.date <= today ? `<button onclick="uploaded(${jsq(v.slug)})">Ya está subido</button>` : ""}
+          ${s.pinned ? `<button onclick="pin(${jsq(v.slug)}, '')">Quitar fijado</button>` : ""}
+          ${s.past ? "" : `<select class="w-auto" aria-label="Poner otro vídeo en este día" onchange="pin(this.value, ${jsq(s.date)})"><option value="">Poner otro…</option>${free(s.channel).map((x) =>
             `<option value="${esc(x.slug)}">${esc(x.slug)} (${esc(x.status)})</option>`).join("")}</select>`}</div></div>`; })();
   const publishing = Object.values(st.schedule).filter((r) => r.enabled).length;
   const rules = !calRules ? "" : `<div class="scroll-x"><table class="cal-rules"><thead><tr><th>Canal</th><th>Publica</th>${a.weekdays.map((d) => `<th class="t-c" title="${esc(d)}">${esc(d.slice(0, 1).toUpperCase())}</th>`).join("")}<th>Hora</th></tr></thead>
       <tbody>${Object.entries(st.schedule).map(([c, r]) => `<tr><td>${dot(c, "sm")} ${esc(c)}</td>
-        <td><input type="checkbox" aria-label="${esc(c)}: publica en este canal" ${r.enabled ? "checked" : ""} onchange="rule('${esc(c)}', {enabled: this.checked})"></td>
-        ${a.weekdays.map((d, i) => `<td class="t-c"><input type="checkbox" aria-label="${esc(c)}: ${esc(d)}" ${r.days.includes(i) ? "checked" : ""} onchange="toggleDay('${esc(c)}', ${i}, this.checked)"></td>`).join("")}
-        <td><input type="time" class="sm w-auto" aria-label="${esc(c)}: hora" value="${esc(r.time)}" onchange="rule('${esc(c)}', {time: this.value})"></td></tr>`).join("")}</tbody></table></div>`;
+        <td><input type="checkbox" aria-label="${esc(c)}: publica en este canal" ${r.enabled ? "checked" : ""} onchange="rule(${jsq(c)}, {enabled: this.checked})"></td>
+        ${a.weekdays.map((d, i) => `<td class="t-c"><input type="checkbox" aria-label="${esc(c)}: ${esc(d)}" ${r.days.includes(i) ? "checked" : ""} onchange="toggleDay(${jsq(c)}, ${i}, this.checked)"></td>`).join("")}
+        <td><input type="time" class="sm w-auto" aria-label="${esc(c)}: hora" value="${esc(r.time)}" onchange="rule(${jsq(c)}, {time: this.value})"></td></tr>`).join("")}</tbody></table></div>`;
   window.agendaRules = st.schedule;
   paint($("#app"), `<div class="hb"><div><h1>Calendario</h1>
       <div class="small muted">Lo que sale cada día en cada canal, y los huecos que aún no tienen vídeo.</div></div>
@@ -245,9 +245,9 @@ async function uploadPage() {
       <div class="small muted">Junta los mejores vídeos terminados de un canal en uno de 2-3 horas («3 HORAS de…»): mucho tiempo de visualización con trabajo ya hecho. Tarda ~30-60 min.</div>
       ${jobLine(r.compilationJob, "Montando la compilación")}
       <div class="row mt-3">${r.compilations.map((c) =>
-        `<button onclick="makeCompilation('${esc(c.channel)}', this)" ${r.compilationJob.running || c.videos < 3 ? "disabled" : ""} title="${esc(c.titles.join(" · "))}">${icon("film")} ${esc(c.channel)} (${c.videos} vídeos)</button>`).join("")}</div></div>` : ""}
+        `<button onclick="makeCompilation(${jsq(c.channel)}, this)" ${r.compilationJob.running || c.videos < 3 ? "disabled" : ""} title="${esc(c.titles.join(" · "))}">${icon("film")} ${esc(c.channel)} (${c.videos} vídeos)</button>`).join("")}</div></div>` : ""}
     ${(() => { const chans = [...new Set(r.videos.map((v) => v.channel))].sort();
-      return chans.length > 1 ? `<div class="tools mt-4">${["", ...chans].map((c) => `<button class="chip ${c === uploadChannel ? "on" : ""}" onclick="pickUploadChannel('${esc(c)}')">
+      return chans.length > 1 ? `<div class="tools mt-4">${["", ...chans].map((c) => `<button class="chip ${c === uploadChannel ? "on" : ""}" onclick="pickUploadChannel(${jsq(c)})">
         ${c ? `${dot(c)}${esc(c)} <span class="muted">${r.videos.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : ""; })()}
     ${!window.partner && r.videos.length ? `<div class="row between mt-4 discardbar" id="discardbar"><span class="small muted n"></span>
       <span class="row end"><button class="sm" onclick="pickAllUpload(true)">Marcar todos</button>
@@ -263,7 +263,7 @@ async function uploadPage() {
       const done = UPLOAD_STEPS.filter(([k]) => checked(v.slug, k)).length;
       const video = v.files.find((x) => !x.image && !x.still && /video|mp4/i.test(x.label + " " + x.path));
       return `${group !== prevGroup ? `<div class="daylabel ${late ? "late" : v.date === today ? "today" : ""}">${esc(group)}</div>` : ""}
-      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""} ontoggle="uploadBody(this, '${esc(v.slug)}')"><summary>${window.partner ? "" : `<input type="checkbox" class="pick" data-slug="${esc(v.slug)}" aria-label="Marcar para descartar: ${esc(v.title || v.slug)}" ${uploadPicked.has(v.slug) ? "checked" : ""} onclick="event.stopPropagation()" onchange="pickUpload(this.dataset.slug, this.checked)">`}${dot(v.channel)}
+      <details class="upl" ${i === 0 && !uploadOpenAll ? "open" : ""} ontoggle="uploadBody(this, ${jsq(v.slug)})"><summary>${window.partner ? "" : `<input type="checkbox" class="pick" data-slug="${esc(v.slug)}" aria-label="Marcar para descartar: ${esc(v.title || v.slug)}" ${uploadPicked.has(v.slug) ? "checked" : ""} onclick="event.stopPropagation()" onchange="pickUpload(this.dataset.slug, this.checked)">`}${dot(v.channel)}
         <div class="mw0"><b class="lg">${esc(v.title || v.slug)}</b>
           <div class="small muted">${esc(v.channel)} · ${esc(v.slug)}${v.minutes ? ` · ${v.minutes} min` : ""} · <span class="mini ok"><i style="--v:${Math.round(100 * done / UPLOAD_STEPS.length)}%"></i></span> ${done}/${UPLOAD_STEPS.length} pasos</div></div>
         <span class="row end"><span class="pill ${late ? "error" : "hecho"}">${late ? "tocaba " : ""}${when}</span>
@@ -273,7 +273,7 @@ async function uploadPage() {
         <div class="small mt-2"><a href="#/video/${encodeURIComponent(v.slug)}">Abrir la ficha del vídeo →</a></div>
         <div class="row gap-4 small mt-3 mb-3">${UPLOAD_STEPS.map(([k, name]) =>
           `<label class="check"><input type="checkbox"
-            ${checked(v.slug, k) ? "checked" : ""} onchange="check('${esc(v.slug)}','${k}',this.checked)">${name}</label>`).join("")}</div>
+            ${checked(v.slug, k) ? "checked" : ""} onchange="check(${jsq(v.slug)},${jsq(k)},this.checked)">${name}</label>`).join("")}</div>
         <div class="row">${v.files.filter((x) => !x.image && !x.still).map((x) =>
           `<a class="btn" href="${f(x.path)}" download>${icon("download")} ${esc(x.label)}${x.mb ? ` (${x.mb} MB)` : ""}</a>`).join("")}</div>
         ${v.files.some((x) => x.image) ? `<div class="thumbs mt-3">${v.files.filter((x) => x.image).map((x) =>
@@ -288,7 +288,7 @@ async function uploadPage() {
         ${s["COMENTARIO FIJADO"] ? copyBox("Comentario fijado (publícalo y fíjalo)", s["COMENTARIO FIJADO"], 2) : ""}
         ${s["POST DE COMUNIDAD"] ? copyBox("Post de comunidad (el día de la publicación)", s["POST DE COMUNIDAD"], 3) : ""}
         ${v.shortsText ? copyBox("Shorts (títulos y textos)", v.shortsText, 4) : ""}
-        <div class="actions"><button class="main" onclick="doneUpload('${esc(v.slug)}')">Ya está subido</button></div>`) && i === 0 && !uploadOpenAll ? window.uploadBodies[v.slug]() : ""}</div></details>`;
+        <div class="actions"><button class="main" onclick="doneUpload(${jsq(v.slug)})">Ya está subido</button></div>`) && i === 0 && !uploadOpenAll ? window.uploadBodies[v.slug]() : ""}</div></details>`;
     }).join("")}`);
   window.makeCompilation = async (channel, button) => {
     if (!(await ask(`¿Montar una compilación larga con los mejores vídeos de ${channel}? Saldrá aquí cuando esté (30-60 min).`, {ok: "Montarla"}))) return;
@@ -325,7 +325,7 @@ async function scriptsPage(days = 14) {
       ${c.winners && c.winners.length ? `<div class="cand">
         <b class="small">Lo que mejor te funciona en ${esc(c.channel)}</b>${c.winners.map((w) => `<div class="media mt-3">${w.thumbnail ? thumb(w.thumbnail, "", "") : ""}
             <div><div class="small">${esc(w.title)}</div><div class="small muted">${kfmt(w.views)} visitas${w.vsChannel ? ` · ${times(w.vsChannel)} tu media` : ""}${w.format ? ` · formato ${esc(w.format)}` : ""}</div>
-          <button class="sm mt-2" onclick="moreLike('${esc(w.slug)}', '${esc(c.channel)}', this)">${icon("bulb")} Más como este</button></div></div>`).join("")}
+          <button class="sm mt-2" onclick="moreLike(${jsq(w.slug)}, ${jsq(c.channel)}, this)">${icon("bulb")} Más como este</button></div></div>`).join("")}
         <div id="similar-${esc(c.channel)}"></div></div>` : ""}
       ${c.empty.length ? `<div class="small cand"><b>Días sin vídeo</b><div class="datechips">${c.empty.map((x) =>
         `<span class="datechip"><b>${DAY(x.date)} · ${esc(x.time)}</b><span>guion antes del ${DAY(x.deadline.slice(0, 10))}, ${esc(x.deadline.slice(11))}</span></span>`).join("")}</div></div>` : ""}
@@ -334,13 +334,13 @@ async function scriptsPage(days = 14) {
         ${c.ideas.length ? `<div>${c.ideas.map((i) => { const id = `${c.channel}:${i.id}`; window.scriptIdeas[id] = {channel: c.channel, idea: {...(i.idea || {}), title: i.title, note: i.note}};
           return `<div class="rowline row between"><div><div>${esc(i.title)}</div>
             ${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ""}</div>
-            <div class="row"><button class="sm" onclick="draftFrom('${esc(id)}', this)">${icon("pen")} Borrador de guion</button><button class="sm" onclick="writeOwn('${esc(id)}')">Lo escribo yo</button></div></div>`; }).join("")}</div>`
+            <div class="row"><button class="sm" onclick="draftFrom(${jsq(id)}, this)">${icon("pen")} Borrador de guion</button><button class="sm" onclick="writeOwn(${jsq(id)})">Lo escribo yo</button></div></div>`; }).join("")}</div>`
           : `<div class="small muted mt-1">No hay ideas para este canal: añádelas en <a href="#/tablero">Tablero</a> o búscalas en <a href="#/competencia">Competencia</a>.</div>`}
         <div class="row mt-3"><label class="small muted n4" for="fmt-${esc(c.channel)}">Formato del borrador:</label>
           <select id="fmt-${esc(c.channel)}" class="w-auto"><option value="">— el del canal —</option>
           ${(data.formats || []).map((f) => `<option ${f === "caso-real" ? "" : ""}>${esc(f)}</option>`).join("")}</select></div>
         <div class="row nowrap mt-2"><input id="quick-${esc(c.channel)}" class="grow" aria-label="Idea rápida para ${esc(c.channel)}" placeholder="Idea rápida: un título…">
-          <button onclick="quickDraft('${esc(c.channel)}', this)">${icon("pen")} Borrador</button></div></div>` : ""}
+          <button onclick="quickDraft(${jsq(c.channel)}, this)">${icon("pen")} Borrador</button></div></div>` : ""}
     </div>`).join("")}`);
   const toNew = (channel, idea, draft) => {
     const pre = {channel, idea: {...idea, title: (draft && draft.title) || idea.title, format: (draft && draft.format) || idea.format || ""},
@@ -367,7 +367,7 @@ async function scriptsPage(days = 14) {
       box.innerHTML = `<div class="small muted mt-3">Otros como «${esc(r.title)}»:</div>` + r.ideas.map((i, n) => {
         const id = `similar:${slug}:${n}`; window.scriptIdeas[id] = {channel, idea: {title: i.title, note: i.note, format: i.format}};
         return `<div class="rowline row between"><div><div>${esc(i.title)}</div>
-          <div class="small muted">${esc(i.note)}</div></div><button class="sm" onclick="draftFrom('${esc(id)}', this)">${icon("pen")} Borrador</button></div>`; }).join("");
+          <div class="small muted">${esc(i.note)}</div></div><button class="sm" onclick="draftFrom(${jsq(id)}, this)">${icon("pen")} Borrador</button></div>`; }).join("");
       button.innerHTML = label;
     } catch (e) { oops(e); button.innerHTML = label; }
     button.disabled = false;
@@ -402,7 +402,7 @@ async function libraryEntity(key) {
   const e = await api(`/api/library/${encodeURIComponent(key)}`);
   show(`<div class="small"><a href="#/biblioteca">← Biblioteca</a></div>
     <div class="hb mt-2"><h1>${esc(e.name)}</h1>
-      <button onclick="libRemove('${esc(key)}', null)">Borrar todo</button></div>
+      <button onclick="libRemove(${jsq(key)}, null)">Borrar todo</button></div>
     <div class="small muted mb-3">${e.kind === "person" ? "Persona" : "Tema"} · ${e.sources.length} fuente(s). Quita las que no quieras volver a ver con «Quitar».</div>
     <div class="cards sm">${e.sources.map((x) => `<div class="card col">
       ${x.clips && x.clips.length ? `<video controls muted playsinline preload="none"
@@ -412,11 +412,11 @@ async function libraryEntity(key) {
           `<a href="/api/library/clip?file=${encodeURIComponent(c.file)}" target="_blank" title="${esc(c.text)}">${i + 2}</a>`).join(" ") : ""}
           · «${esc((x.clips[0].text || "").slice(0, 80))}» (${esc(x.clips[0].video)})</div>`
       : x.preview ? `<div title="miniaturas de todo el vídeo (aún sin clip guardado)">${thumb(`/api/library/${encodeURIComponent(key)}/preview?id=${encodeURIComponent(x.id)}`, "shot", "")}</div>` : ""}
-      <div><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.id)}</a>
+      <div><a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.id)}</a>
         <div class="small muted">${esc(x.channel)} · ${x.kind === "videos" ? "vídeo" : "foto"}</div></div>
       ${x.used || x.approved || x.right ? `<div class="small row gap-4">${x.used ? `<span class="nw"><span class="t-ok">${icon("check")}</span> usada ${x.used}</span>` : ""}${x.approved ? `<span class="nw"><span class="t-ok">${icon("thumb")}</span> buena ${x.approved}</span>` : ""}${x.right ? `<span class="nw"><span class="t-warn">${icon("spark")}</span> correcta ${x.right}</span>` : ""}</div>` : ""}
       ${x.videos.length ? `<div class="small muted">${x.videos.map(esc).join(", ")}</div>` : ""}
-      <div class="row"><button class="sm" onclick="libRemove('${esc(key)}', '${esc(x.id)}')">Quitar</button></div></div>`).join("")}</div>`);
+      <div class="row"><button class="sm" onclick="libRemove(${jsq(key)}, ${jsq(x.id)})">Quitar</button></div></div>`).join("")}</div>`);
 }
 window.libRemove = async (key, id) => {
   if (!(await ask(id ? "¿Quitar esta fuente? No volverá a ofrecerse para este tema." : "¿Borrar toda la biblioteca de este tema?", {ok: id ? "Quitar" : "Borrar", danger: true}))) return;
@@ -433,8 +433,8 @@ async function boardPage() {
       window.boardIdeas[x.id] = x;
       return `<div class="item"><b>${esc(x.title)}</b><div class="small muted">${esc(x.channel || "sin canal")}${x.date ? " · para el " + esc(DAY(x.date)) : ""}</div>
         ${x.note ? `<div class="small mt-1">${esc(String(x.note).slice(0, 160))}</div>` : ""}
-        <div class="row mt-2"><button class="main sm" onclick="makeVideo('${esc(x.id)}')">Crear vídeo</button>
-        <button class="sm" onclick="dropIdea('${esc(x.id)}')">Quitar</button></div></div>`;
+        <div class="row mt-2"><button class="main sm" onclick="makeVideo(${jsq(x.id)})">Crear vídeo</button>
+        <button class="sm" onclick="dropIdea(${jsq(x.id)})">Quitar</button></div></div>`;
     }
     return `<div class="item"><a href="#/video/${encodeURIComponent(x.slug)}"><b>${esc(x.title || x.slug)}</b></a>
       <div class="small muted">${esc(x.channel)} · ${esc(x.status)}${x.date ? " · sale el " + esc(DAY(x.date)) : x.published ? " · " + esc(x.published) : ""}</div></div>`;
@@ -581,7 +581,7 @@ function formulaCard(f) {
   const pilot = f.pilot ? `<div class="small mt-2"><b>Piloto ${esc(f.pilot.slug)}</b>${f.pilot.seen ? " · visto" : ""}<table class="small">
     ${(f.pilot.table || []).map((p) => `<tr><td>${esc(p.name)}</td><td class="r">${p.cutSeconds ?? "—"} s/corte</td><td class="r">${p.firstImage ?? "—"} s</td>
     <td class="r">${p.textShare ?? "—"} % texto</td><td class="r">${p.cardShare ?? "—"} % tarjeta</td></tr>`).join("")}</table>
-    ${f.pilot.seen ? "" : `<button onclick="post('/api/formula/visto',{key:'${esc(f.key)}'}).then(()=>queHacerPage())">Lo he visto: puede entrar en el piloto automático</button>`}</div>` : "";
+    ${f.pilot.seen ? "" : `<button onclick="post('/api/formula/visto',{key:${jsq(f.key)}}).then(()=>queHacerPage())">Lo he visto: puede entrar en el piloto automático</button>`}</div>` : "";
   return `<div class="card mt-2"><div class="hb"><b>${esc(f.niche || f.key)}</b><span class="small">${esc(f.date || "")}${f.channel ? ` · canal ${esc(f.channel)}` : ""}</span></div>
     <div class="small"><b>Medido</b>: ${esc(f.summary || "")} · títulos: ${(m.titleTraits || []).map(esc).join(", ") || "sin rasgo común"}
       · visitas ${m.ratio ?? "—"}x lo normal de su canal${mo ? ` · ${mo.firstImage} s hasta la 1.ª imagen · ${mo.textShare} % texto · ${mo.cardShare} % tarjeta` : ""}</div>
@@ -590,9 +590,9 @@ function formulaCard(f) {
     ${(f.lonely || []).length ? `<div class="small muted">Solo en un vídeo (no es fórmula): ${f.lonely.map(esc).join(" · ")}</div>` : ""}
     ${(f.sources || []).length ? `<div class="small">Acreditan: ${f.sources.map(esc).join(", ")}</div>` : ""}
     <div class="tablewrap"><table class="small"><tr><th>Referencia</th><th class="r">Visitas/normal</th><th class="r">Pal./min</th><th class="r">Dura</th><th class="r">Corte</th><th class="r">Tarjeta</th></tr>${vids}</table></div>
-    <div class="row mt-2">${mo ? "" : `<button onclick="formulaMontage('${esc(f.key)}')">Medir el montaje (~${f.montageMB} MB por el proxy)</button>`}
-      ${f.channel ? `<input id="fxPilot-${esc(f.key)}" placeholder="vídeo piloto ya montado"><button onclick="post('/api/formula/piloto',{key:'${esc(f.key)}',slug:document.getElementById('fxPilot-${esc(f.key)}').value}).then(()=>queHacerPage())">Medir el piloto</button>`
-        : `<input id="fxName-${esc(f.key)}" placeholder="nombre del canal nuevo"><button onclick="post('/api/formula/crear',{key:'${esc(f.key)}',name:document.getElementById('fxName-${esc(f.key)}').value}).then(()=>queHacerPage())">Crear canal</button>`}</div>${pilot}</div>`;
+    <div class="row mt-2">${mo ? "" : `<button onclick="formulaMontage(${jsq(f.key)})">Medir el montaje (~${f.montageMB} MB por el proxy)</button>`}
+      ${f.channel ? `<input id="fxPilot-${esc(f.key)}" placeholder="vídeo piloto ya montado"><button onclick="post('/api/formula/piloto',{key:${jsq(f.key)},slug:document.getElementById('fxPilot-${esc(f.key)}').value}).then(()=>queHacerPage())">Medir el piloto</button>`
+        : `<input id="fxName-${esc(f.key)}" placeholder="nombre del canal nuevo"><button onclick="post('/api/formula/crear',{key:${jsq(f.key)},name:document.getElementById('fxName-${esc(f.key)}').value}).then(()=>queHacerPage())">Crear canal</button>`}</div>${pilot}</div>`;
 }
 
 async function formulaMontage(key) {
@@ -644,12 +644,12 @@ async function materialVideoPage(slug) {
   const who = (sp) => !sp ? "" : `<b>${esc(sp.name || "")}</b>${sp.name ? " · " : ""}${esc(sp.role)} <span class="muted">(${esc(sp.evidence || "")},
     seguridad ${Math.round((sp.confidence || 0) * 100)} %)</span>${sp.droppedName ? ` <span class="t-bad" title="El modelo dio este nombre pero no está escrito ni dicho en la fuente: no saldrá">· nombre descartado: ${esc(sp.droppedName)}</span>` : ""}`;
   let segN = 0;                                    // the same ids as the blocks (t1, t2… in this order)
-  const seg = (src, s) => `<tr><td class="nw muted">t${++segN}</td><td class="nw"><a href="${esc(src.url)}&t=${Math.floor(s.start)}" target="_blank">${t(s.start)}-${t(s.end)}</a></td>
+  const seg = (src, s) => `<tr><td class="nw muted">t${++segN}</td><td class="nw"><a href="${safeUrl(src.url)}&t=${Math.floor(s.start)}" target="_blank">${t(s.start)}-${t(s.end)}</a></td>
     <td>${esc(s.type)}</td><td>${esc(s.seen || "")}${s.fact ? `<div><b>dato:</b> ${esc(s.fact)}</div>` : ""}</td>
     <td>${s.said ? `«${esc(s.said.slice(0, 220))}${s.said.length > 220 ? "…" : ""}»` : ""}<div class="small">${who(s.speaker)}</div></td></tr>`;
   const items = !e ? "" : e.items.map((it) => `<section class="card mt-3"><div class="hb"><h2>${it.n}. ${esc(it.name)}</h2>
       <span class="small muted">${esc(it.whereWhen || "")}</span></div>
-      ${it.sources.map((src) => `<div class="mt-2"><b><a href="${esc(src.url)}" target="_blank">${esc(src.title || src.id)}</a></b>
+      ${it.sources.map((src) => `<div class="mt-2"><b><a href="${safeUrl(src.url)}" target="_blank">${esc(src.title || src.id)}</a></b>
         <span class="small"> · ${esc(src.channel || "")} · ${esc(src.kind || "")} · ${Math.round((src.duration || 0) / 60)} min
         · subtítulos: ${esc(src.subtitles || "no")}${src.eventMatch != null ? ` · de este suceso: ${Math.round(src.eventMatch * 100)} %` : ""}</span>
         ${src.note ? `<div class="small muted">${esc(src.note)}</div>` : ""}
@@ -659,8 +659,8 @@ async function materialVideoPage(slug) {
     <td class="r">${s.named}</td><td class="r">${s.footageSeconds} s</td><td class="r">${s.facts}</td></tr>`).join("") : "";
   show(`<h1>${esc(e ? e.title : slug)}</h1>
     <div class="row"><a href="#/material">← Material primero</a>
-      <button onclick="post('/api/material-primero/${encodeURIComponent(slug)}/investigar').then(()=>materialVideoPage('${esc(slug)}'))">Investigar otra vez</button>
-      ${e ? `<button onclick="post('/api/material-primero/${encodeURIComponent(slug)}/bloques').then(()=>materialVideoPage('${esc(slug)}'))">Escribir el guion por bloques</button>` : ""}</div>
+      <button onclick="post('/api/material-primero/${encodeURIComponent(slug)}/investigar').then(()=>materialVideoPage(${jsq(slug)}))">Investigar otra vez</button>
+      ${e ? `<button onclick="post('/api/material-primero/${encodeURIComponent(slug)}/bloques').then(()=>materialVideoPage(${jsq(slug)}))">Escribir el guion por bloques</button>` : ""}</div>
     ${running ? `<div class="notice mt-2">Investigando… (recarga en un rato)</div>` : ""}
     ${e ? `<div class="tablewrap mt-3"><table class="small"><tr><th>Puesto</th><th class="r">Fuentes</th><th class="r">Declaraciones</th>
       <th class="r">…con nombre de la fuente</th><th class="r">Metraje</th><th class="r">Datos</th></tr>${sum}</table></div>
@@ -683,13 +683,13 @@ function bloquesView(slug, b) {
   const act = (i, action) => `post('/api/material-primero/${encodeURIComponent(slug)}/bloque',{position:${i},action:'${action}'${action === "cambiar" ? `,ref:prompt('Id del tramo de la otra declaración (t1, t2…)')` : ""}}).then(()=>materialVideoPage('${esc(slug)}'))`;
   const body = (x) => x.type === "narrador" ? `${esc(x.text)} ${x.refs.length ? `<span class="muted">[${x.refs.map(esc).join(", ")}]</span>` : `<span class="muted">(conecta)</span>`}`
     : x.type === "tarjeta" ? `<b>${x.number != null ? `#${x.number} ` : ""}${esc(x.title || "")}</b>`
-    : `<a href="${esc(x.url || "")}&t=${Math.floor(x.start)}" target="_blank">${esc(x.channel || x.source)} ${Math.floor(x.start)}-${Math.floor(x.end)} s</a>`
+    : `<a href="${safeUrl(x.url)}&t=${Math.floor(x.start)}" target="_blank">${esc(x.channel || x.source)} ${Math.floor(x.start)}-${Math.floor(x.end)} s</a>`
       + (x.type === "declaracion" ? ` · <b>${esc(x.speaker || "")}</b>${x.speaker ? " · " : ""}${esc(x.role)}: «${esc(x.said)}»${x.translation ? `<div class="muted">${esc(x.translation)}</div>` : ""}` : "");
   return `<section class="card mt-3"><div class="hb"><h2>Guion por bloques</h2><span class="small">${e.minutes} min · voz ajena ${Math.round((e.otherVoiceShare || 0) * 100)} %
       · ${e.clips} tramos a bajar: <b>~${e.downloadMB} MB por el proxy</b></span></div>
     ${b.criterion ? `<div class="small">Orden: ${esc(b.criterion)}</div>` : ""}
     ${(b.notes || []).length ? `<div class="small t-bad">${b.notes.map(esc).join(" · ")}</div>` : ""}
-    <div class="row mt-2"><button class="main" onclick="if(confirm('Va a bajar unos ${e.downloadMB} MB por el proxy y a gastar en la voz del narrador. ¿Seguimos?'))post('/api/material-primero/${encodeURIComponent(slug)}/montar',{confirm:true}).then(()=>materialVideoPage('${esc(slug)}'))">Montar el vídeo</button>
+    <div class="row mt-2"><button class="main" onclick="if(confirm('Va a bajar unos ${e.downloadMB} MB por el proxy y a gastar en la voz del narrador. ¿Seguimos?'))post('/api/material-primero/${encodeURIComponent(slug)}/montar',{confirm:true}).then(()=>materialVideoPage(${jsq(slug)}))">Montar el vídeo</button>
       <span class="small muted">Baja los tramos, comprueba cada declaración, pone la voz al narrador, monta el gancho y renderiza.</span></div>
     <div class="tablewrap"><table class="small">${(b.blocks || []).map((x, i) => `<tr><td class="nw">${label[x.type] || x.type}</td><td>${body(x)}</td>
       <td class="nw"><button class="small" onclick="${act(i, "quitar")}">Quitar</button>${x.type === "declaracion" ? ` <button class="small" onclick="${act(i, "cambiar")}">Cambiar</button>` : ""}</td></tr>`).join("")}</table></div></section>`;

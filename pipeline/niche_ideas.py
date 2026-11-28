@@ -181,9 +181,13 @@ def saved(root: Path) -> list[dict[str, Any]]:
 
 
 def save(root: Path, idea: dict[str, Any], channel: str = "") -> list[dict[str, Any]]:
+    import re
+
     keep = ("id", "title", "format", "protagonist", "angle", "hook", "outline", "footage", "why", "research")
     if not str(idea.get("title") or "").strip():
         raise ValueError("Idea sin título")
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", str(idea.get("id") or "")):    # it goes into the page's buttons
+        raise ValueError("Identificador de idea no válido")
     items = [i for i in saved(root) if i.get("id") != idea.get("id")]
     items.insert(0, {**{k: idea.get(k) for k in keep}, "channel": channel, "savedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
     _write(root / SAVED, items)

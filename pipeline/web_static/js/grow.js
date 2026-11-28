@@ -58,7 +58,7 @@ async function stats(refresh = false) {
     const colors = {youtube: "#e5534b", fotos: "#3b82f6", stock: "#a371f7", generadas: "#f2cc60", "gráficos": "#3fb950", otros: "#8b949e"};
     return `<div class="bar mix">${Object.entries(mix).map(([k, n]) =>
       `<i title="${esc(k)}: ${n} planos" style="--v:${100 * n / total}%;--c:${colors[k] || "#8b949e"}"></i>`).join("")}</div>`; };
-  const head = (key, label) => `<th class="r" tabindex="0" aria-sort="${statsSort === key ? "descending" : "none"}" onclick="statsSort='${key}';stats()">${label}${statsSort === key ? " ▾" : ""}</th>`;
+  const head = (key, label) => `<th class="r" tabindex="0" aria-sort="${statsSort === key ? "descending" : "none"}" onclick="statsSort=${jsq(key)};stats()">${label}${statsSort === key ? " ▾" : ""}</th>`;
   show(`<div class="hb"><h1>Estadísticas</h1>
       <div class="tools"><select class="w-auto" aria-label="Canal" onchange="statsChannel=this.value;stats()"><option value="">Todos los canales</option>
         ${st.channels.map((c) => `<option ${c.channel === statsChannel ? "selected" : ""}>${esc(c.channel)}</option>`).join("")}</select>
@@ -146,18 +146,18 @@ async function pilotPage() {
     ${g.channels.map((c) => `<div class="card">
       <div class="row between">
         <div class="row"><b class="lg">${esc(c.channel)}</b>
-          <button class="${c.on ? "main" : ""}" onclick="pilotSet('${esc(c.channel)}', {on: ${!c.on}})">${c.on ? "VÍDEOS ON" : "EN PAUSA"}</button>
-          <select class="w-auto" aria-label="Vídeos al día en ${esc(c.channel)}" onchange="pilotSet('${esc(c.channel)}', {perDay: +this.value})">${[1, 2, 3].map((n) => `<option value="${n}" ${n === c.perDay ? "selected" : ""}>${n} al día</option>`).join("")}</select></div>
+          <button class="${c.on ? "main" : ""}" onclick="pilotSet(${jsq(c.channel)}, {on: ${!c.on}})">${c.on ? "VÍDEOS ON" : "EN PAUSA"}</button>
+          <select class="w-auto" aria-label="Vídeos al día en ${esc(c.channel)}" onchange="pilotSet(${jsq(c.channel)}, {perDay: +this.value})">${[1, 2, 3].map((n) => `<option value="${n}" ${n === c.perDay ? "selected" : ""}>${n} al día</option>`).join("")}</select></div>
         <span class="small">${c.voice ? `<span class="pill hecho">${icon("mic")} voz lista</span>` : `<span class="pill" title="Sin voz de GenAIPro: el vídeo esperará a que subas la voz (Ajustes → Voces)">${icon("mic")} sin voz automática</span>`}</span></div>
       ${c.error ? `<div class="notice bad small">Último intento: ${esc(c.error)}</div>` : ""}
       ${c.job && c.job.running ? `<div class="notice small">${icon("pen")} Escribiendo el guion… (un par de minutos)</div>` : ""}
       ${c.job && c.job.failed ? `<div class="notice bad small">${esc((c.job.log || "").trim().split("\n").pop())}</div>` : ""}
       ${c.candidates.length ? c.candidates.map((v) => `<div class="media mt-3">
           ${v.thumbnail ? thumb(v.thumbnail, "") : ""}
-          <div><a href="${esc(v.url)}" target="_blank" rel="noopener"><b>${esc(v.title)}</b></a>
+          <div><a href="${safeUrl(v.url)}" target="_blank" rel="noopener"><b>${esc(v.title)}</b></a>
             <div class="small muted">${v.evidence.map(esc).join(" · ")}</div>
-            <div class="row mt-2"><button class="main" ${busy ? "disabled" : ""} onclick="pilotMake('${esc(c.channel)}', '${esc(v.id)}', this)">${icon("play")} Hacer este vídeo</button>
-              <button onclick="pilotSkip('${esc(c.channel)}', '${esc(v.id)}')">No me interesa</button></div></div></div>`).join("")
+            <div class="row mt-2"><button class="main" ${busy ? "disabled" : ""} onclick="pilotMake(${jsq(c.channel)}, ${jsq(v.id)}, this)">${icon("play")} Hacer este vídeo</button>
+              <button onclick="pilotSkip(${jsq(c.channel)}, ${jsq(v.id)})">No me interesa</button></div></div></div>`).join("")
         : '<div class="small muted mt-2">Sin ideas todavía: el radar las trae cada día (Crecer › Radar › Buscar ahora).</div>'}
       ${c.made.length ? `<h3>Hechos por el piloto</h3>${c.made.map((m) => `<div class="small">${esc(m.date)} · <a href="#/video/${encodeURIComponent(m.slug)}">${esc(m.title)}</a>
         <span class="muted">· de «${esc(m.fromTitle || "")}»${m.angle ? " · ángulo: " + esc(m.angle) : ""}</span></div>`).join("")}` : ""}</div>`).join("")}`);
@@ -198,7 +198,7 @@ async function experimentsPage() {
     <h2>Por vídeo</h2>
     <div class="tools">
       <button class="chip ${expChannel ? "" : "on"}" onclick="expChannel='';experimentsPage()">Todos</button>
-      ${channelsList.map((c) => `<button class="chip ${c === expChannel ? "on" : ""}" onclick="expChannel='${esc(c)}';experimentsPage()">
+      ${channelsList.map((c) => `<button class="chip ${c === expChannel ? "on" : ""}" onclick="expChannel=${jsq(c)};experimentsPage()">
         ${dot(c)}${esc(c)}</button>`).join("")}</div>
     <div class="card flush tall"><table class="ytt">
       <thead><tr><th>Vídeo</th><th>7 días</th><th>Frente al canal</th><th class="l">Probó</th><th class="l">Etiquetas</th>
@@ -209,9 +209,9 @@ async function experimentsPage() {
         <td data-k="Frente al canal"><b>${times(v.score)}</b></td>
         <td class="wide small l">${Object.entries(v.tried).map(([k, x]) => `<span class="pill" title="${esc(k)}">${esc(x)}</span>`).join(" ")}</td>
         <td data-k="Etiquetas" class="l"><input class="w-md" aria-label="Etiquetas de ${esc(v.slug)}" placeholder="p. ej. miniatura con cara" value="${esc((v.tags || []).join(", "))}"
-          onchange="saveExperiment('${esc(v.slug)}', 'tags', this.value).then(experimentsPage)"></td>
+          onchange="saveExperiment(${jsq(v.slug)}, 'tags', this.value).then(experimentsPage)"></td>
         ${["retention30", "retentionAvg", "ctr"].map((k) => `<td data-k="${k}"><input class="w-xs" inputmode="decimal" aria-label="${{retention30: "Retención a los 30 s", retentionAvg: "Retención media", ctr: "CTR"}[k]} (%) de ${esc(v.slug)}" value="${v[k] ?? ""}"
-          onchange="saveExperiment('${esc(v.slug)}', '${k}', this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
+          onchange="saveExperiment(${jsq(v.slug)}, ${jsq(k)}, this.value).then(experimentsPage)"></td>`).join("")}</tr>`).join("")
         || '<tr><td colspan="8" class="empty-row">Aún no hay vídeos terminados.</td></tr>'}</tbody></table></div>`);
 }
 
@@ -236,7 +236,7 @@ function drawYtTable(typing = false) {
   const vs = (r) => r == null ? "—" : `<span class="pill ${r >= 1.5 ? "hecho" : r < 0.7 ? "error" : ""}">${times(r)}</span>`;
   const row = (v) => { const y = v.youtube; return `<tr class="v">
     <td><div class="row gap-3 nowrap">
-      <a class="thumb" href="${esc(v.url)}" target="_blank" rel="noopener" aria-label="${esc(y.title || v.title)} en YouTube">${y.thumbnail ? thumb(y.thumbnail) : ""}</a>
+      <a class="thumb" href="${safeUrl(v.url)}" target="_blank" rel="noopener" aria-label="${esc(y.title || v.title)} en YouTube">${y.thumbnail ? thumb(y.thumbnail) : ""}</a>
       <div class="mw0"><a class="t" href="#/video/${encodeURIComponent(v.slug)}">${esc(y.title || v.title)}</a>
         <div class="sub">${dot(v.channel)}${esc(v.channel)} · ${esc(v.slug)}${v.publishedDay ? " · " + esc(v.publishedDay) : ""}${y.minutes ? " · " + fmt(y.minutes) + " min" : ""}</div></div></div></td>
     <td data-k="Visitas" title="${fmt(y.views)} visitas"><b>${kfmt(y.views)}</b><div class="vbar" style="--v:${Math.max(3, 100 * (y.views || 0) / maxViews)}%"></div></td>
@@ -255,7 +255,7 @@ function drawYtTable(typing = false) {
   fill(box, `<div class="tools">
       <input type="search" aria-label="Buscar título o carpeta" placeholder="Buscar título o carpeta…" value="${esc(statsQuery)}" oninput="statsQuery=this.value;drawYtTable(true)">
       <button class="chip ${statsChannel ? "" : "on"}" onclick="statsChannel='';drawYtTable()">Todos <span class="muted">${statsRows.length}</span></button>
-      ${Object.keys(counts).sort().map((c) => `<button class="chip ${c === statsChannel ? "on" : ""}" onclick="statsChannel='${esc(c)}';drawYtTable()">
+      ${Object.keys(counts).sort().map((c) => `<button class="chip ${c === statsChannel ? "on" : ""}" onclick="statsChannel=${jsq(c)};drawYtTable()">
         ${dot(c)}${esc(c)} <span class="muted">${counts[c]}</span></button>`).join("")}
       <span class="row small gap-1 push nowrap">Ordenar:
         <select class="w-auto" aria-label="Ordenar por" onchange="statsSort=this.value;statsDir=['title','channel'].includes(this.value)?1:-1;drawYtTable()">
@@ -266,7 +266,7 @@ function drawYtTable(typing = false) {
     <div class="card flush tall"><table class="ytt">
       <thead><tr><th class="${statsSort === "title" ? "on" : ""}" tabindex="0" aria-sort="${statsSort === "title" ? (statsDir > 0 ? "ascending" : "descending") : "none"}" onclick="ytSort('title')">Vídeo${arrow("title")}
         <span class="ml-2 ${statsSort === "channel" ? "on" : ""}" role="button" tabindex="0" onclick="event.stopPropagation();ytSort('channel')">· Canal${arrow("channel")}</span></th>
-        ${YT_COLS.map(([k, label]) => `<th class="${statsSort === k ? "on" : ""} ${["at48h", "at7d", "commentsPer1k"].includes(k) ? "wide" : ""}" tabindex="0" aria-sort="${statsSort === k ? (statsDir > 0 ? "ascending" : "descending") : "none"}" onclick="ytSort('${k}')">${label}${arrow(k)}</th>`).join("")}</tr></thead>
+        ${YT_COLS.map(([k, label]) => `<th class="${statsSort === k ? "on" : ""} ${["at48h", "at7d", "commentsPer1k"].includes(k) ? "wide" : ""}" tabindex="0" aria-sort="${statsSort === k ? (statsDir > 0 ? "ascending" : "descending") : "none"}" onclick="ytSort(${jsq(k)})">${label}${arrow(k)}</th>`).join("")}</tr></thead>
       <tbody>${body || '<tr><td colspan="10" class="empty-row">Ningún vídeo con ese filtro.</td></tr>'}</tbody>
     </table></div>
     <div class="small muted mt-1">${rows.length} de ${statsRows.length} vídeos · ${kfmt(rows.reduce((s, v) => s + (v.youtube.views || 0), 0))} visitas · ${kfmt(rows.reduce((s, v) => s + (v.youtube.watchHours || 0), 0))} h (est.) · toca una columna para ordenar (otra vez: al revés)</div>`);
@@ -287,9 +287,9 @@ function viralBadge(v) {
     style="--c:${color}">${n >= 60 ? icon("fire") : ""}${n}<small>VIRAL</small></span>`;
 }
 function videoTile(v, actions = "") {
-  return `<div class="card"><a href="${esc(v.url)}" target="_blank" rel="noopener" aria-label="${esc(v.title)} en YouTube">${thumb(v.thumbnail)}</a>
+  return `<div class="card"><a href="${safeUrl(v.url)}" target="_blank" rel="noopener" aria-label="${esc(v.title)} en YouTube">${thumb(v.thumbnail)}</a>
     <div class="body"><div class="row between"><span class="row">${viralBadge(v)}<span class="big">${times(v.ratio)}</span></span>${v.new ? '<span class="pill hecho">nuevo</span>' : ""}</div>
-    <a class="t" href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>
+    <a class="t" href="${safeUrl(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>
     <div class="small muted">${esc(v.channel)}${v.subscribers != null ? " · " + kfmt(v.subscribers) + " subs" : ""} · ${kfmt(v.views)} visitas · hace ${v.ageDays} días</div>
     ${v.why ? `<div class="small muted">${esc(v.why)}</div>` : ""}${actions ? `<div class="row mt-2">${actions}</div>` : ""}</div></div>`;
 }
@@ -309,8 +309,8 @@ function ideaCard(i, channel) {
     ${i.footage ? `<p class="small muted"><b>Metraje:</b> ${esc(i.footage)}</p>` : ""}
     ${i.why ? `<p class="small muted"><b>Por qué:</b> ${esc(i.why)}</p>` : ""}
     ${i.research ? `<p class="small muted"><b>Comprobar antes:</b> ${esc(i.research)}</p>` : ""}
-    <div class="actions"><button class="main" onclick="ideaToVideo('${i.id}','${esc(channel || "")}')">Crear vídeo</button>
-      <button onclick="saveIdea('${i.id}','${esc(channel || "")}',this)">Guardar</button></div></div>`;
+    <div class="actions"><button class="main" onclick="ideaToVideo(${jsq(i.id)},${jsq(channel || "")})">Crear vídeo</button>
+      <button onclick="saveIdea(${jsq(i.id)},${jsq(channel || "")},this)">Guardar</button></div></div>`;
 }
 function closeIdeas() { const m = document.getElementById("modal"); if (m) m.remove(); route(); }   // a <dialog>: Esc and the backdrop close it too
 async function openIdeas(n, more = false) {
@@ -369,11 +369,11 @@ async function radarPage() {
         <div class="small muted">${kfmt(st.views)} visitas · ${st.channels} canal(es) lo cuentan</div></div>
         <span class="pill ${st.channels >= 2 ? "error" : "haciendo"}" title="visitas por hora entre todos sus vídeos">${icon("fire")} ${kfmt(st.speed)}/h</span></div>
       <div class="cols3 mt-3">${st.videos.slice(0, 3).map((v) =>
-        `<a class="plain mw0" href="${esc(v.url)}" target="_blank" rel="noopener">${thumb(v.thumbnail)}
+        `<a class="plain mw0" href="${safeUrl(v.url)}" target="_blank" rel="noopener">${thumb(v.thumbnail)}
           <div class="small mt-1">${esc(v.title.slice(0, 70))}</div>
           <div class="small muted">${esc(v.channel)} · ${kfmt(v.perHour)}/h · ${ago(v.ageHours)}</div></a>`).join("")}</div>
-      <div class="actions"><button class="main" onclick="newsDraft('${i}', this)">${label}</button>
-        <button onclick="newsSave('${i}', this)">Guardar idea</button></div></div>`; };
+      <div class="actions"><button class="main" onclick="newsDraft(${jsq(i)}, this)">${label}</button>
+        <button onclick="newsSave(${jsq(i)}, this)">Guardar idea</button></div></div>`; };
   const originLabel = (n) => n.near === "descubierto" ? "descubierto en YouTube" : n.near === "libre" ? "tema libre" : "cerca de " + n.near;
   const niches = r.niches.filter((n) => nicheFilter === "todos" || (nicheFilter === "descubiertos" ? n.near === "descubierto"
     : nicheFilter === "libres" ? n.near === "libre" : !["descubierto", "libre"].includes(n.near)));
@@ -394,10 +394,10 @@ async function radarPage() {
     ${latest && latest.rising && latest.rising.length ? `<div class="cards">${latest.rising.map((c) => `<div class="card">
       <div class="row between top nowrap">
         <div class="row nowrap mw0">${c.thumbnail ? `<img class="avatar" src="${esc(c.thumbnail)}" alt="" width="40" height="40" loading="lazy" decoding="async">` : ""}
-          <div class="mw0"><a class="b" href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.title)}</a>${c.new ? ' <span class="pill hecho">nuevo</span>' : ""}
+          <div class="mw0"><a class="b" href="${safeUrl(c.url)}" target="_blank" rel="noopener">${esc(c.title)}</a>${c.new ? ' <span class="pill hecho">nuevo</span>' : ""}
           <div class="small muted">${kfmt(c.subscribers)} subs · ${c.videos} vídeos · canal de hace ${c.ageDays} días</div></div></div>
         ${c.fit != null ? `<div class="t-c"><div class="stat ${scoreLook(c.fit)[0]}">${c.fit}</div><div class="small muted">encaje</div></div>` : ""}</div>
-      <a class="plain mt-2" href="${esc(c.best.url)}" target="_blank" rel="noopener">
+      <a class="plain mt-2" href="${safeUrl(c.best.url)}" target="_blank" rel="noopener">
         ${thumb(c.best.thumbnail)}
         <div class="small mt-1">${esc(c.best.title)}</div></a>
       <div class="row mt-2"><span class="pill error">${icon("fire")} ${kfmt(c.best.views)} visitas = ${fmt(c.multiple)}× sus subs</span>
@@ -406,7 +406,7 @@ async function radarPage() {
       ${c.why ? `<div class="small muted">${esc(c.why)}</div>` : ""}
       ${c.how ? `<div class="small mt-1">${icon("right")} ${esc(c.how)}</div>` : ""}
       ${c.latest && c.latest.length ? `<details class="mt-2"><summary class="small muted">Sus últimos vídeos</summary>
-        <div class="small">${c.latest.map((v) => `<div>· <a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a> — ${kfmt(v.views)}</div>`).join("")}</div></details>` : ""}
+        <div class="small">${c.latest.map((v) => `<div>· <a href="${safeUrl(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a> — ${kfmt(v.views)}</div>`).join("")}</div></details>` : ""}
       ${c.query ? `<div class="actions">${seedButton({kind: "niche", query: c.query, name: c.niche || c.format, near: "revelación"}, icon("bulb") + " Ideas con este formato")}</div>` : ""}
     </div>`).join("")}</div>` : '<div class="notice">Sale con el radar de cada día (a las 13:00) o con «Buscar todo ahora».</div>'}
 
@@ -437,7 +437,7 @@ async function radarPage() {
           ${g.fit != null ? `<span class="pill" title="si esta herramienta lo puede hacer">encaje ${g.fit}/10</span>` : ""}</div>
         ${g.why ? `<div class="small mt-2">${esc(g.why)}</div>` : ""}
         ${g.examples && g.examples.length ? `<div class="cols4 mt-2">${g.examples.map((v) =>
-          `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${kfmt(v.views)} visitas · ${esc(v.channel || "")}${v.subscribers != null ? " (" + kfmt(v.subscribers) + " subs)" : ""}">${thumb(v.thumbnail, "shot", v.title)}</a>`).join("")}</div>` : ""}
+          `<a href="${safeUrl(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${kfmt(v.views)} visitas · ${esc(v.channel || "")}${v.subscribers != null ? " (" + kfmt(v.subscribers) + " subs)" : ""}">${thumb(v.thumbnail, "shot", v.title)}</a>`).join("")}</div>` : ""}
         ${g.ideas && g.ideas.length ? `<div class="small mt-2">${g.ideas.map((t) => `<div>${icon("bulb")} ${esc(t)}</div>`).join("")}</div>` : ""}
         <div class="actions">${seedButton({kind: "niche", query: g.query_es, name: g.name, near: "hueco"}, icon("bulb") + " Más ideas")}
           <a class="small" href="https://www.youtube.com/results?search_query=${encodeURIComponent(g.query_es)}" target="_blank" rel="noopener">Ver en YouTube ↗</a></div>
@@ -451,22 +451,22 @@ async function radarPage() {
     <h2>Noticias del día</h2>
     <div class="small muted">Historias de tus nichos que están subiendo ahora (vídeos de las últimas 48 h). Un vídeo en 24 h sobre ellas llega cuando la gente lo busca.
       ${news ? `Actualizado: ${esc(news.at.replace("T", " "))}.` : ""}</div>
-    ${news ? `<div class="tabs">${newsNames.map((n) => `<button class="${n === newsTab ? "on" : ""}" onclick="newsTab='${esc(n)}';route()">${esc(n)} (${news.channels[n].length})</button>`).join("")}</div>
+    ${news ? `<div class="tabs">${newsNames.map((n) => `<button class="${n === newsTab ? "on" : ""}" onclick="newsTab=${jsq(n)};route()">${esc(n)} (${news.channels[n].length})</button>`).join("")}</div>
       ${(news.channels[newsTab] || []).length ? `<div class="cards">${news.channels[newsTab].map((st, i) => storyCard(st, i)).join("")}</div>`
         : '<div class="notice">Nada sube con fuerza ahora en este nicho. Pon búsquedas propias en canales/&lt;canal&gt;.yaml → radar.news_queries.</div>'}
       ${news.errors && news.errors.length ? `<div class="small muted mt-2">${news.errors.map(esc).join(" · ")}</div>` : ""}`
       : '<div class="notice">Aún no hay noticias: pulsa «Noticias ahora».</div>'}
 
     <h2>Lo que mejor funciona en tus nichos</h2>
-    ${names.length ? `<div class="tabs">${names.map((n) => `<button class="${n === radarChannel ? "on" : ""}" onclick="radarChannel='${esc(n)}';route()">${esc(n)}
+    ${names.length ? `<div class="tabs">${names.map((n) => `<button class="${n === radarChannel ? "on" : ""}" onclick="radarChannel=${jsq(n)};route()">${esc(n)}
       (${latest.channels[n].top.filter((v) => v.new).length} nuevos)</button>`).join("")}</div>` : ""}
     ${info ? `${info.top.length ? `<div class="vids">${info.top.map((v) => videoTile(v, seedButton({kind: "video", id: v.id, title: v.title,
         author: v.channel, views: v.views, ratio: v.ratio, channel: radarChannel}, icon("bulb") + " Ideas como este"))).join("")}</div>` : '<div class="notice">Nada por encima de 2× en estos días. Añade competidores en canales/' + esc(radarChannel) + '.yaml (ideas.competitors).</div>'}
       ${info.errors.length ? `<div class="small muted mt-2">${info.errors.map(esc).join(" · ")}</div>` : ""}` : '<div class="notice">Sale con el primer radar completo.</div>'}
     ${r.saved.length ? `<h2>Ideas guardadas (${r.saved.length})</h2><div class="card rows">${r.saved.map((i) => { shownIdeas[i.id] = i;
       return `<div class="rowline"><div class="row between"><b>${esc(i.title)}</b><span class="small muted">${esc(i.channel || "")}${i.format ? " · " + esc(i.format) : ""}</span></div>
-      <div class="small muted">${esc(i.angle || "")}</div><div class="row mt-2"><button class="main" onclick="ideaToVideo('${i.id}','${esc(i.channel || "")}')">Crear vídeo</button>
-      <button onclick="post('/api/ideas/save', {remove: '${i.id}'}).then(route)">Quitar</button></div></div>`; }).join("")}</div>` : ""}
+      <div class="small muted">${esc(i.angle || "")}</div><div class="row mt-2"><button class="main" onclick="ideaToVideo(${jsq(i.id)},${jsq(i.channel || "")})">Crear vídeo</button>
+      <button onclick="post('/api/ideas/save', {remove: ${jsq(i.id)}}).then(route)">Quitar</button></div></div>`; }).join("")}</div>` : ""}
 
     <h2>Nichos nuevos</h2>
     <div class="small muted">Cada día busca en YouTube vídeos de canales pequeños (menos de 100 mil subs) que triplican sus visitas normales, los agrupa en nichos y los mide.
@@ -477,7 +477,7 @@ async function radarPage() {
         <div class="small muted">${originLabel(n)} · ${esc(n.date)}</div></div>
         <div class="t-c"><div class="stat ${scoreLook(n.score)[0]}">${fmt(n.score)}</div><div class="small muted">/10</div></div></div>
       <div class="hbar"><i style="--v:${10 * n.score}%;--c:${scoreLook(n.score)[1]}"></i></div>
-      ${n.examples.length ? `<div class="cols3">${n.examples.slice(0, 3).map((v) => `<a href="${esc(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${times(v.ratio)} · ${esc(v.channel || "")}">${thumb(v.thumbnail, "shot", v.title)}</a>`).join("")}</div>` : ""}
+      ${n.examples.length ? `<div class="cols3">${n.examples.slice(0, 3).map((v) => `<a href="${safeUrl(v.url)}" target="_blank" rel="noopener" title="${esc(v.title)} · ${times(v.ratio)} · ${esc(v.channel || "")}">${thumb(v.thumbnail, "shot", v.title)}</a>`).join("")}</div>` : ""}
       <div class="row mt-2">
         <span class="pill hecho" title="éxitos de canales pequeños">${n.smallHits} pequeños</span>
         <span class="pill" title="vídeos que triplican a su canal">${icon("trend")} ${n.hits} éxitos</span>

@@ -582,3 +582,12 @@ Test: `tests/test_arreglo_guion.py`.
   todas las direcciones del nombre son públicas; cada redirección se comprueba igual; como mucho 2 MB por página.
 - El editor solo sirve imágenes y vídeo de `cache/`.
 - Prueba: `tests/test_seguridad_enlaces.py`.
+
+## Revisión 27-11 · seguridad 4
+
+- Páginas del estudio: todo valor que va como argumento de un `on…=""` pasa por `jsq()` (JSON escapado para el
+  atributo; `esc()` solo no basta ahí); todo enlace que viene de datos por `safeUrl()` (solo http/https); `md()` solo
+  genera enlaces http(s) o del propio estudio.
+- Servidor: el id de una idea guardada y la URL de «publicado» se validan al guardar.
+- Prueba: `tests/test_seguridad_pagina.py` (las funciones de la página ejecutadas en Node); `tests/ui` behave,
+  dialogs y shoot sin errores.

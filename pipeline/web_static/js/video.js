@@ -286,7 +286,7 @@ function showOpenings(result) {
     <div class="small"><b>Busca:</b> ${esc(plan.about || "")}${plan.speaker ? ` · <b>Habla:</b> ${esc(plan.speaker)}${plan.role ? " (" + esc(plan.role) + ")" : ""}` : ""}</div>
     ${list.length ? "" : `<div class="small mt-2">No he encontrado el momento en ningún vídeo. Prueba a describirlo de otra forma o pega el enlace (y el segundo).</div>`}
     ${list.map((c, i) => `<div class="cand">
-      <div class="small"><b>${i + 1}. ${c.file ? "Tu vídeo" : esc(c.title || c.id)}</b>${c.file ? "" : ` <span class="muted">· ${esc(c.channel || "")} · <a href="${esc(c.url)}&t=${Math.floor(c.start)}s" target="_blank">abrir en YouTube</a></span>`}</div>
+      <div class="small"><b>${i + 1}. ${c.file ? "Tu vídeo" : esc(c.title || c.id)}</b>${c.file ? "" : ` <span class="muted">· ${esc(c.channel || "")} · <a href="${safeUrl(c.url)}&t=${Math.floor(c.start)}s" target="_blank">abrir en YouTube</a></span>`}</div>
       <div class="small muted">${esc(c.why || "")}</div>
       <div class="player">${c.file
         ? `<video id="opv${i}" src="${window.opUpload ? window.opUpload.src : ""}#t=${c.start}" controls playsinline preload="metadata"></video>`
@@ -564,16 +564,16 @@ async function videoPage(slug) {
       <summary><b>${esc(d.name)}</b> · <span class="small">${dubState(d)}</span>${d.voiceId ? "" : ' <span class="pill error">sin voz elegida para este idioma</span>'}</summary>
       ${d.error ? `<div class="notice bad small">${esc(d.error)}</div>` : ""}
       ${d.done || d.manual ? "" : (d.skipped || d.old) && !d.voice && !d.script
-        ? `<div class="row my-2"><button class="main" onclick="dubChoose('${d.lang}', true, this)">Doblar a ${esc(d.name)}</button></div>`
-        : !d.voice ? `<div class="row my-2"><button onclick="dubChoose('${d.lang}', false, this)">No doblar a ${esc(d.name)}</button></div>` : ""}
+        ? `<div class="row my-2"><button class="main" onclick="dubChoose(${jsq(d.lang)}, true, this)">Doblar a ${esc(d.name)}</button></div>`
+        : !d.voice ? `<div class="row my-2"><button onclick="dubChoose(${jsq(d.lang)}, false, this)">No doblar a ${esc(d.name)}</button></div>` : ""}
       ${d.adapted ? `<div class="small my-2"><b>Adaptado a su público:</b><div class="md">${md(d.adapted.split("\n").slice(2).join("\n"), "")}</div></div>` : ""}
       ${d.done ? "" : `<div class="small muted my-2">Pega aquí tu guion ya traducido (con sus «## » de capítulo si los tiene). Se leerá con la voz de ${esc(d.name)} y se hará ${esc(d.slug)} con los mismos clips.</div>
         <input id="dubt-${d.lang}" aria-label="Título en ${esc(d.name)}" placeholder="Título en ${esc(d.name)} (opcional)" value="${esc(d.title)}" class="mb-2">
         <textarea id="dubs-${d.lang}" aria-label="Guion en ${esc(d.name)}" rows="${d.review ? 14 : 8}" placeholder="Guion en ${esc(d.name)}…">${esc(d.own || d.review ? d.script : "")}</textarea>
         ${d.review ? `<div class="small muted my-2">Revísalo (o pásaselo a un corrector nativo): si está bien, apruébalo; si lo corriges aquí, «Usar mi guion y doblar».</div>` : ""}
-        <div class="row mt-2">${d.review ? `<button class="main" onclick="dubApprove('${d.lang}', this)">Aprobar y grabar la voz</button>` : ""}
-        <button class="${d.review ? "" : "main"}" onclick="dubScript('${d.lang}', this)">Usar mi guion y doblar</button>`}
-        <button onclick="dubManual('${d.lang}', ${!d.manual})">${d.manual ? "Deshacer «lo doblé yo»" : "Ya lo doblé yo"}</button>${d.done ? "" : "</div>"}</details>`).join("")}` : "";
+        <div class="row mt-2">${d.review ? `<button class="main" onclick="dubApprove(${jsq(d.lang)}, this)">Aprobar y grabar la voz</button>` : ""}
+        <button class="${d.review ? "" : "main"}" onclick="dubScript(${jsq(d.lang)}, this)">Usar mi guion y doblar</button>`}
+        <button onclick="dubManual(${jsq(d.lang)}, ${!d.manual})">${d.manual ? "Deshacer «lo doblé yo»" : "Ya lo doblé yo"}</button>${d.done ? "" : "</div>"}</details>`).join("")}` : "";
   window.dubScript = async (lang, button) => {
     button.disabled = true;
     try { await post(`/api/video/${encodeURIComponent(slug)}/doblaje`, {lang, script: $("#dubs-" + lang).value, title: $("#dubt-" + lang).value}); route(); }
@@ -600,7 +600,7 @@ async function videoPage(slug) {
     <div class="field"><label class="check"><input type="checkbox" id="msave"> Guardar estos canales para todos los vídeos de ${esc(v.channel)}</label></div>
     ${mat.clips.length ? `<div class="field"><label>Tus clips</label><div class="drop-list">${mat.clips.map((c, i) => `<div class="drop-file">${icon("film")}
         <span class="name" title="${esc(c.name)}">${esc(c.name)}</span><span class="size">${c.mb} MB</span>
-        <button type="button" class="icon ghost" aria-label="Quitar ${esc(c.name)}" onclick="removeClip('${esc(c.name)}', this)">${icon("trash")}</button>
+        <button type="button" class="icon ghost" aria-label="Quitar ${esc(c.name)}" onclick="removeClip(${jsq(c.name)}, this)">${icon("trash")}</button>
         <input class="tags mtag" data-name="${esc(c.name)}" value="${esc(c.tags)}" placeholder="Qué se ve" aria-label="Qué se ve en ${esc(c.name)}"></div>`).join("")}</div></div>` : ""}
     ${field("Añadir clips", dropZone("mclips", "video/*,.mp4,.mov,.mkv,.webm", "Arrastra aquí tus clips o pulsa para elegirlos", "hasta 4 GB cada uno", {multiple: true}), "", "mclips")}
     <div class="actions"><button onclick="saveMaterial(false)">Guardar</button>
@@ -685,13 +685,13 @@ async function videoPage(slug) {
   const secondary = [
     v.status === "hecho" ? `<a class="btn" href="#/revisar/${encodeURIComponent(v.slug)}">Revisar clips</a>` : "",
     v.stagesDone >= 9 ? `<a class="btn" href="#/decisiones/${encodeURIComponent(v.slug)}">Decisiones del relleno</a>` : "",
-    `<button onclick="copyForClaude('${esc(v.slug)}', this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">${icon("copy")} Copiar para Claude</button>`,
+    `<button onclick="copyForClaude(${jsq(v.slug)}, this)" title="Error, etapas, diagnóstico y el final del registro en un solo texto">${icon("copy")} Copiar para Claude</button>`,
     v.status === "en cola" || v.status === "error" ? '<button onclick="act(\'hold\')" title="No se hará hasta que lo vuelvas a poner">Quitar de la cola</button>' : "",
     !v.published && v.status !== "haciendo" && (v.status === "hecho" || v.hasVideo || v.stagesDone) ? '<button onclick="markUploaded()">Ya está subido a YouTube</button>' : "",
     v.status !== "haciendo" && v.stagesDone ? '<button onclick="redoFrom(this)" title="Vuelve a la cola y se rehace desde el paso que elijas (reaprovecha descargas y voz)">Rehacer desde…</button>' : "",
     v.hasVideo ? '<button onclick="act(\'archive\')" title="Sacarlo de la lista (materiales/_hechos)">Archivar</button>'
       : v.status !== "haciendo" ? '<button onclick="ask(\'¿Quitar este vídeo de la lista? No se borra nada: va a materiales/_hechos.\', {ok: \'Quitar de la lista\'}).then((yes) => yes && act(\'archive\'))" title="Sin vídeo hecho: sale de la lista y de la cola (materiales/_hechos)">Quitar de la lista</button>' : "",
-    `<button onclick="changeChannel('${esc(v.slug)}', '${esc(v.channel)}', this)">Cambiar de canal</button>`,
+    `<button onclick="changeChannel(${jsq(v.slug)}, ${jsq(v.channel)}, this)">Cambiar de canal</button>`,
   ].filter(Boolean);
   show(`
     <div class="vhead"><div class="mw0"><h1>${esc(v.title || v.slug)}${v.title && v.title !== v.slug ? `<span class="slug">${esc(v.slug)}</span>` : ""} ${pill(v.lastError && v.status === "en cola" ? "reintento" : v.status)}</h1>
@@ -702,7 +702,7 @@ async function videoPage(slug) {
         <span class="more"><button onclick="event.stopPropagation();this.parentNode.classList.toggle('open')">Más ${icon("down")}</button><div>${secondary.join("")}</div></span></div></div>
     ${whyView}
     ${v.quotaWait ? `<div class="notice">${icon("pause")} En espera: ${esc(v.quotaWait)}. La cola sigue con los demás vídeos y este se reintenta solo.</div>` : ""}
-    ${v.published ? `<div class="notice ok">${vMark("t-ok", "check")} Subido a YouTube${v.published.url ? ` · <a href="${esc(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
+    ${v.published ? `<div class="notice ok">${vMark("t-ok", "check")} Subido a YouTube${v.published.url ? ` · <a href="${safeUrl(v.published.url)}" target="_blank" rel="noopener">verlo</a>` : ""}
       ${v.removed ? ` · los archivos pesados se borraron el ${esc(v.removed.at.slice(0, 10))} (${v.removed.gb} GB)` : " · el vídeo final se borrará del servidor a los 7 días para dejar sitio"}
       <button class="sm ml-2" onclick="markUploaded(false)">No, aún no está subido</button></div>` : ""}
     <div class="vlayout"><div class="vmain">
@@ -720,7 +720,7 @@ async function videoPage(slug) {
     ${scenesPreview}${dubs}
     ${v.hasVideo || v.published ? '<div id="repBox"></div>' : ""}
     ${v.published ? '<div id="whyBox"></div>' : ""}
-    <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab='${k}';window.tabPicked=1;route()">${name}</button>`).join("")}</div>
+    <div class="tabs">${Object.entries(docs).map(([k, [name]]) => `<button class="${k === tab ? "on" : ""}" onclick="tab=${jsq(k)};window.tabPicked=1;route()">${name}</button>`).join("")}</div>
     <div class="card">${body}</div></div>
     <aside class="vside">${v.hasVideo ? doing : ""}${ytView}<div class="row" id="pilotBox"></div><div id="pilotReport"></div>${titles}${thumbs}${shorts}</aside></div>`);
   window.mclipTags = {};
@@ -868,11 +868,11 @@ async function pilotBox(slug, v) {
   const url = `/api/video/${encodeURIComponent(slug)}/pilot`;
   if (p.pilot) {
     fill(box, `<span class="pill">${icon("flask")} Piloto por escenas · referencia ${esc(p.pilot.reference || "—")}</span>
-      ${v.status === "hecho" ? `<button onclick="pilotReport('${esc(slug)}')">Informe del piloto</button>` : ""}
-      <button onclick="ask('¿Volver este vídeo a la búsqueda por plano?', {ok: 'Quitar piloto'}).then((yes) => yes && post('${url}', {on: false}).then(() => route()))">Quitar piloto</button>`);
+      ${v.status === "hecho" ? `<button onclick="pilotReport(${jsq(slug)})">Informe del piloto</button>` : ""}
+      <button onclick="ask('¿Volver este vídeo a la búsqueda por plano?', {ok: 'Quitar piloto'}).then((yes) => yes && post(${jsq(url)}, {on: false}).then(() => route()))">Quitar piloto</button>`);
     if (p.report) showPilot(p.report);
   } else if (!p.others.length && !v.stagesDone) {
-    fill(box, `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot('${esc(slug)}', ${esc(JSON.stringify(p.references))})">${icon("flask")} Hacer de piloto por escenas</button>`);
+    fill(box, `<button title="Solo este vídeo buscará por escenas; el resto sigue igual" onclick="startPilot(${jsq(slug)}, ${esc(JSON.stringify(p.references))})">${icon("flask")} Hacer de piloto por escenas</button>`);
   }
 }
 window.startPilot = async (slug, refs) => {
@@ -929,13 +929,13 @@ async function reviewPage(slug) {
         ${thumb(`/api/review/${encodeURIComponent(slug)}/frame/${sh.id}.jpg`)}
         <div class="body">
           <div class="quote">«${esc(sh.text || "—")}»</div>
-          <div class="src">${clock(sh.at)} · ${esc(sh.title || sh.credit || sh.source || "")}${sh.url ? ` · <a href="${esc(sh.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
+          <div class="src">${clock(sh.at)} · ${esc(sh.title || sh.credit || sh.source || "")}${sh.url ? ` · <a href="${safeUrl(sh.url)}" target="_blank" rel="noopener">fuente</a>` : ""}</div>
           <div class="acts">
-            <button class="b-ok ${v && v !== "correcta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','correcta')" title="tecla 1">Correcta</button>
+            <button class="b-ok ${v && v !== "correcta" ? "off" : ""}" onclick="event.stopPropagation();mark(${jsq(sh.id)},'correcta')" title="tecla 1">Correcta</button>
             <select id="why-${sh.id}" aria-label="Por qué es incorrecta" onclick="event.stopPropagation()">${options}</select>
-            <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','incorrecta')" title="tecla 3">Incorrecta</button>
-            <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="event.stopPropagation();mark('${sh.id}','dudosa')" title="tecla 2">Dudosa</button>
-            ${v ? `<button onclick="event.stopPropagation();mark('${sh.id}',null)" class="icon" aria-label="Quitar (tecla 0)" title="Quitar (tecla 0)">${icon("undo")}</button>` : ""}
+            <button class="b-bad ${v && v !== "incorrecta" ? "off" : ""}" onclick="event.stopPropagation();mark(${jsq(sh.id)},'incorrecta')" title="tecla 3">Incorrecta</button>
+            <button class="b-doubt ${v && v !== "dudosa" ? "off" : ""}" onclick="event.stopPropagation();mark(${jsq(sh.id)},'dudosa')" title="tecla 2">Dudosa</button>
+            ${v ? `<button onclick="event.stopPropagation();mark(${jsq(sh.id)},null)" class="icon" aria-label="Quitar (tecla 0)" title="Quitar (tecla 0)">${icon("undo")}</button>` : ""}
           </div></div></div>`; };
   const header = () => { const c = counts(), left = shots.length - c.correcta - c.incorrecta - c.dudosa; return `
     <div class="row between"><h1 class="m-0">Revisar clips <span class="small muted n4">${esc(slug)}</span></h1>
@@ -945,7 +945,7 @@ async function reviewPage(slug) {
       <span class="small muted">${shots.length - left} de ${shots.length} revisados</span></div>
     <div class="row between"><div class="tabs">${[["todos", `Todos (${shots.length})`], ["pendientes", `Sin revisar (${left})`], ["incorrecta", `Incorrectos (${c.incorrecta})`],
       ["dudosa", `Dudosos (${c.dudosa})`], ["correcta", `Correctos (${c.correcta})`]].map(([k, n]) =>
-      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter='${k}';route()">${n}</button>`).join("")}</div>
+      `<button class="${k === reviewFilter ? "on" : ""}" onclick="reviewFilter=${jsq(k)};route()">${n}</button>`).join("")}</div>
       <span class="keys"><kbd>←</kbd><kbd>→</kbd> moverse · <kbd>1</kbd> correcta · <kbd>2</kbd> dudosa · <kbd>3</kbd> incorrecta · <kbd>0</kbd> quitar</span></div>`; };
   show(`<div class="rtool" id="rtool">${header()}</div>
     <div class="small muted mb-2">Marca cada clip. Lo incorrecto no se vuelve a usar en ningún vídeo; «Rehacer con correcciones» cambia esos planos y vuelve a montar el vídeo.</div>
@@ -1010,12 +1010,12 @@ async function decisionsPage(slug) {
       <div class="vids sm mt-3">
         <div class="card pick">${thumb(img(i.shot, "final"))}
           <div class="body small"><b>Lo que puso</b>${i.method ? ` · ${esc(i.method)}` : ""}${i.resolved ? "" : " · (no encontró nada)"}
-          <div class="row mt-2"><button class="b-ok" onclick="decide('${i.shot}', {ok: true})">Bien así</button></div></div></div>
+          <div class="row mt-2"><button class="b-ok" onclick="decide(${jsq(i.shot)}, {ok: true})">Bien así</button></div></div></div>
         ${i.options.map((o) => `<div class="card ${i.pick === o.key ? "correcta" : ""}">
           ${thumb(img(i.shot, o.key))}
           <div class="body small">${o.original ? '<b>La que eligió el juez</b> (descartada) · ' : ""}${esc(o.title).slice(0, 80)}
             <div class="muted">${esc(o.channel)}${o.score != null ? ` · nota ${o.score}` : ""}${o.kind === "image" ? " · foto" : ""}</div>
-            <div class="row mt-2"><button onclick="decide('${i.shot}', {pick: '${esc(o.key)}'})">${i.pick === o.key ? `${icon("check")} Elegida` : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
+            <div class="row mt-2"><button onclick="decide(${jsq(i.shot)}, {pick: ${jsq(o.key)}})">${i.pick === o.key ? `${icon("check")} Elegida` : `Usar esta${i.options.indexOf(o) < 9 ? ` <span class="muted">(${i.options.indexOf(o) + 1})</span>` : ""}`}</button></div></div></div>`).join("")}
       </div></div>`).join("") || empty("check", "En este vídeo el relleno no tuvo que decidir nada.")}`);
   window.decide = async (shot, body) => { const y = window.scrollY; await post(`/api/decisions/${encodeURIComponent(slug)}/${shot}`, body); await route(); window.scrollTo(0, y); };
   window.applyPicks = async () => { try { await post(`/api/decisions/${encodeURIComponent(slug)}/apply`); route(); } catch (e) { oops(e); } };

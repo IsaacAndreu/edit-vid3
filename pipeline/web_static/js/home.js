@@ -11,10 +11,10 @@ function splitBlock(title, list, opts = {}) {
   const key = opts.hideShorts;
   if (key && shorts.length && hiddenShorts[key]) {
     const line = `<div class="block"><div class="bh"><b>${title} · Shorts<span class="count">${shorts.length}</span></b>
-      <span class="small"><span class="muted">ocultos</span> <button class="sm" onclick="toggleShorts('${key}')">Mostrar</button></span></div></div>`;
+      <span class="small"><span class="muted">ocultos</span> <button class="sm" onclick="toggleShorts(${jsq(key)})">Mostrar</button></span></div></div>`;
     return (longs.length ? block(longs.length && shorts.length ? `${title} · Vídeos` : title, longs, opts) : "") + line;
   }
-  const hide = key ? ` <button class="sm" onclick="event.preventDefault();event.stopPropagation();toggleShorts('${key}')">Ocultar</button>` : "";
+  const hide = key ? ` <button class="sm" onclick="event.preventDefault();event.stopPropagation();toggleShorts(${jsq(key)})">Ocultar</button>` : "";
   if (!shorts.length || !longs.length) return block(`${title}${shorts.length ? " · Shorts" : ""}`, list,
     shorts.length && key ? {...opts, more: (opts.more || "") + hide} : opts);
   return block(`${title} · Vídeos`, longs, opts)
@@ -147,22 +147,22 @@ function drawHome(force = false) {               // the channel buttons redraw f
     const key = opts.key || head;
     const open = openSections[key] !== false;
     const shown = opts.limit && list.length > opts.limit && !expanded[key] ? list.slice(0, opts.limit) : list;
-    return `<div class="block ${opts.cls || ""}"${opts.id ? ` id="${opts.id}"` : ""}><div class="bh click" role="button" tabindex="0" aria-expanded="${open}" onclick="toggleSection('${esc(key)}')"><b>${head}<span class="count">${list.length}</span></b><span class="small">${opts.more || ""} <span class="muted">${open ? "▴" : "▾"}</span></span></div>
+    return `<div class="block ${opts.cls || ""}"${opts.id ? ` id="${opts.id}"` : ""}><div class="bh click" role="button" tabindex="0" aria-expanded="${open}" onclick="toggleSection(${jsq(key)})"><b>${head}<span class="count">${list.length}</span></b><span class="small">${opts.more || ""} <span class="muted">${open ? "▴" : "▾"}</span></span></div>
       ${open ? `<div class="scroll-x"><table class="vt"><thead><tr><th>Vídeo</th><th class="wide">Canal</th>${opts.cols.map((c) => `<th class="${c.cls || ""}">${c.name}</th>`).join("")}</tr></thead>
       <tbody>${shown.map((v) => row(v, extra(v))).join("")}</tbody></table></div>
-      ${shown.length < list.length ? `<div class="vrow click" role="button" tabindex="0" onclick="expandSection('${esc(key)}')"><span></span><span class="small muted">y ${list.length - shown.length} más: ver todos</span><span></span></div>` : ""}` : ""}</div>`;
+      ${shown.length < list.length ? `<div class="vrow click" role="button" tabindex="0" onclick="expandSection(${jsq(key)})"><span></span><span class="small muted">y ${list.length - shown.length} más: ver todos</span><span></span></div>` : ""}` : ""}</div>`;
   };
   const makingRows = (v) => { const st = v.stage || {}; return `<td><span class="t-work">${esc(STAGES[st.stage] || st.stage || "")}</span> <span class="muted small">${st.number}/${st.of}</span></td>
     <td class="r"><span class="mini"><i style="--v:${Math.round(100 * ((st.number || 1) - 1) / (st.of || 15))}%"></i></span></td><td class="r wide">${ago(st.started)}</td>`; };
   const uploadRows = (v) => `<td>${when(v)}</td><td class="r wide">${v.minutes || "—"} min</td><td class="r"><a class="btn sm" href="#/video/${encodeURIComponent(v.slug)}">Abrir</a></td>`;
   const queueRows = (v) => `<td>${v.quotaWait ? `<span class="pill" title="${esc(v.quotaWait)}">${icon("pause")} ${v.quotaWait.startsWith("espera a YouTube") ? "espera YouTube" : "espera API"}</span>` : v.stagesDone ? `${v.stagesDone}/16 pasos` : '<span class="muted">por empezar</span>'}</td>
     <td class="r wide">${v.stagesDone ? `<span class="mini wait"><i style="--v:${Math.round(100 * v.stagesDone / 16)}%"></i></span>` : ""}</td>`;
-  const doneRows = (v) => `<td>${v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"}</td><td class="r wide">${v.published && v.published.url ? `<a href="${esc(v.published.url)}" target="_blank" rel="noopener">ver ↗</a>` : ""}</td>`;
+  const doneRows = (v) => `<td>${v.published && v.published.at ? `subido ${esc(String(v.published.at).slice(0, 10))}` : "en YouTube"}</td><td class="r wide">${v.published && v.published.url ? `<a href="${safeUrl(v.published.url)}" target="_blank" rel="noopener">ver ↗</a>` : ""}</td>`;
   const channelPick = channels.length > 6
     ? `<select class="w-auto" aria-label="Canal" onchange="pickChannel(this.value)"><option value="">Todos los canales (${all.length})</option>${channels.map((c) => `<option value="${esc(c)}" ${c === homeChannel ? "selected" : ""}>${esc(c)} (${all.filter((v) => v.channel === c).length})</option>`).join("")}</select>`
-    : channels.length > 1 ? `<div class="tools">${["", ...channels].map((c) => `<button class="chip ${c === homeChannel ? "on" : ""}" onclick="pickChannel('${esc(c)}')">${c ? `${dot(c)}${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : "";
-  const kindPick = all.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind('${k}')">${name}</button>`).join("")}</span>` : "";
-  const viewPick = `<span class="seg">${[["tablero", "Tablero"], ["tabla", "Tabla"], ["lista", "Tarjetas"]].map(([k, n]) => `<button class="${homeView === k ? "on" : ""}" aria-pressed="${homeView === k}" onclick="pickView('${k}')">${n}</button>`).join("")}</span>`;
+    : channels.length > 1 ? `<div class="tools">${["", ...channels].map((c) => `<button class="chip ${c === homeChannel ? "on" : ""}" onclick="pickChannel(${jsq(c)})">${c ? `${dot(c)}${esc(c)} <span class="muted">${all.filter((v) => v.channel === c).length}</span>` : "Todos"}</button>`).join("")}</div>` : "";
+  const kindPick = all.some((v) => v.short) ? `<span class="seg">${[["", "Todo"], ["videos", "Vídeos"], ["shorts", "Shorts"]].map(([k, name]) => `<button class="${k === homeKind ? "on" : ""}" onclick="pickKind(${jsq(k)})">${name}</button>`).join("")}</span>` : "";
+  const viewPick = `<span class="seg">${[["tablero", "Tablero"], ["tabla", "Tabla"], ["lista", "Tarjetas"]].map(([k, n]) => `<button class="${homeView === k ? "on" : ""}" aria-pressed="${homeView === k}" onclick="pickView(${jsq(k)})">${n}</button>`).join("")}</span>`;
   // the board: from the idea to YouTube, one column per step, a card per video
   const week = Date.now() - 7 * 864e5;
   const recent = uploaded.filter((v) => Date.parse((v.published || {}).at || 0) >= week);
