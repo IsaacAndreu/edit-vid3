@@ -807,3 +807,12 @@ Test: `tests/test_arreglo_guion.py`.
 - Prueba: `tests/test_rangos_formato.py`. Para probar la ventana de 360p con la sonda:
   `python -m pipeline.sonda_rango <vídeo> --formato "bv*[height<=360][vcodec^=avc1]/bv*[height<=360]"`.
 - Solo afecta a quien tiene `sourcing.youtube.byte_ranges: true` (apagado por defecto).
+
+## Revisión 27-11 · C3 un fallo de HLS que no es un rechazo ya no pierde el clip
+
+- Si el tramo por HLS falla por algo que no sea un rechazo (403, bot, inicio de sesión, 429) ni un vídeo que ya no
+  existe —el corte local de ffmpeg, una lista vacía, un 502 tras sus reintentos, un tiempo agotado—, el tramo sigue
+  por rango de bytes y luego entero, como cuando no hay HLS. Los rechazos suben como antes: los lleva la rotación de
+  sesión.
+- El registro de la descarga dice «HLS falló (…): pruebo por rango o entero».
+- Prueba: `tests/test_hls_caida.py`.

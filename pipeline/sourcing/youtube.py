@@ -120,6 +120,8 @@ STALE_PICK = ("requested_formats", "requested_downloads", "format_id", "format",
 TRANSIENT_ERRORS = (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
                     requests.exceptions.Timeout)
 TRANSIENT_STATUS = (500, 502, 503, 504)
+# a failure that is the session's or the account's (rotation, cookies), never the format's: it goes up as it is
+REFUSAL_KINDS = ("bot", "auth", "403", "429")
 
 
 def selectable(data: dict[str, Any]) -> dict[str, Any]:
@@ -2172,8 +2174,17 @@ class YouTubeSource:
                     return self._fetch_hls_locally(video_id, start, end, hls, prefix, audio, audio_only, info_path)
                 return self._fetch_range(video_id, start, end, hls, prefix, audio, audio_only, info_path, exact=True)
             except (RuntimeError, SourceUnavailable) as error:
-                if isinstance(error, SourceUnavailable) or "format is not available" not in str(error).lower():
-                    raise
+                if isinstance(error, SourceUnavailable) or error_kind(str(error)) in REFUSAL_KINDS:
+                    raise                     # a refusal or a video gone: the session's rotation handles it
+                failed_hls = "format is not available" not in str(error).lower()
+                hls_error = " ".join(str(error).split())[:120]
+            else:
+                failed_hls = None
+            if failed_hls:
+                # anything else (the local cut, an empty playlist, a 502 after its retries, a timeout): the range
+                # still comes by bytes or whole, instead of losing the clip (27-11)
+                self._local.not_hls = f"HLS falló ({hls_error}): pruebo por rango o entero"
+            elif failed_hls is not None:
                 untested = _untested_hls(info_path)
                 # sourcing.youtube.hls_retry_untested (off): the HLS formats of a video uploaded ≤ 2 days before
                 # the extraction are «to be tested» and yt-dlp drops the ones whose test piece fails; the same
